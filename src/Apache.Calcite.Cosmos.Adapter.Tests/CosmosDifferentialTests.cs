@@ -617,6 +617,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\" NULLS LAST, c.\"id\"", true),
             ("SELECT c.\"id\" FROM products AS c ORDER BY c.\"_MAP\"['price'], c.\"id\"", true),
 
+            // The same ordering once the query has removed the nulls, which is what lets it push at
+            // all. The seeded categories tie — three shoes, two bikes — so the single-key form is
+            // compared as a multiset: with ties the sequence is unspecified and only the rows are
+            // the statement's to get right. The tie-broken form is deterministic and comparable as
+            // a sequence, and does not push here for want of a composite index over two paths.
+            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\"", false),
+            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" DESC", false),
+            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\", c.\"id\"", true),
+
             // Row restriction combined with a predicate over a path some documents lack, where a
             // wrongly pushed TOP takes the wrong rows rather than the wrong number of them.
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] IS NOT NULL ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),

@@ -1455,6 +1455,107 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             }
         }
 
+        // ── Where the service puts nulls ──────────────────────────────────────────
+
+        /// <summary>
+        /// Nulls and absent properties sort below everything ascending, and above everything
+        /// descending; a predicate excluding both leaves an ordering with neither.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the premise the whole null-placement rule rests on, and until now it was prose in
+        /// <c>DESIGN.md</c> rather than a measurement anything reran. <c>CosmosSort</c> refuses a
+        /// nullable key whose placement conflicts, and accepts one the query has emptied of nulls —
+        /// both decisions are wrong, silently and in the rows, if the service does not order this
+        /// way.
+        /// </para>
+        /// <para>
+        /// It is easy to read the service's behaviour as agreeing with SQL when it does not. SQL has
+        /// no single answer here: SQL Server, MySQL and SQLite sort nulls first ascending, while
+        /// PostgreSQL and Oracle sort them last. Calcite's default is the second of those —
+        /// <c>NullCollation.HIGH</c>, so ascending means nulls last — which is why Cosmos putting
+        /// them first is a conflict rather than a match.
+        /// </para>
+        /// <para>
+        /// Its own container, seeded with a value of each JSON type alongside an explicit null and an
+        /// absent property, because the fixture's documents carry no explicit null and the two are
+        /// exactly what must be told apart. Asserted rather than skipped where it disagrees: there is
+        /// no service that could answer differently and leave the rule standing.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task NullAndAbsentSortFirstAscendingAndLastDescending()
+        {
+            Container();
+
+            var database = _client!.GetDatabase(DatabaseName);
+            var name = "null_placement";
+            var properties = new ContainerProperties(name, "/category");
+
+            try { await database.GetContainer(name).DeleteContainerAsync(); } catch (CosmosException) { }
+            var container = (await database.CreateContainerIfNotExistsAsync(properties)).Container;
+
+            try
+            {
+                foreach (var json in new[]
+                {
+                    """{"id":"string","category":"c","v":"apple"}""",
+                    """{"id":"number","category":"c","v":5}""",
+                    """{"id":"boolean","category":"c","v":true}""",
+                    """{"id":"null","category":"c","v":null}""",
+                    """{"id":"absent","category":"c"}""",
+                })
+                {
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var response = await container.CreateItemStreamAsync(stream, new PartitionKey("c"));
+                    response.EnsureSuccessStatusCode();
+                }
+
+                static async Task<List<string>> Ids(Container container, string sql)
+                {
+                    var ids = new List<string>();
+
+                    using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition(sql));
+                    while (iterator.HasMoreResults)
+                    {
+                        using var response = await iterator.ReadNextAsync();
+                        response.EnsureSuccessStatusCode();
+
+                        using var document = await JsonDocument.ParseAsync(response.Content);
+                        foreach (var row in document.RootElement.GetProperty("Documents").EnumerateArray())
+                            ids.Add(row.GetProperty("id").GetString()!);
+                    }
+
+                    return ids;
+                }
+
+                // Ascending is the total order over JSON types: undefined < null < boolean < number
+                // < string. Descending is its exact reverse, null placement included, there being no
+                // separate control over where they go.
+                (await Ids(container, $"SELECT c.id FROM {name} c ORDER BY c.v"))
+                    .Should().Equal("absent", "null", "boolean", "number", "string");
+
+                (await Ids(container, $"SELECT c.id FROM {name} c ORDER BY c.v DESC"))
+                    .Should().Equal("string", "number", "boolean", "null", "absent");
+
+                // The absent document is returned rather than dropped, which is what makes the
+                // placement a question about order rather than about membership.
+                (await Ids(container, $"SELECT c.id FROM {name} c ORDER BY c.v")).Should().Contain("absent");
+
+                // And the guard the sort rule accepts a nullable key on: SQL IS NOT NULL renders as
+                // this pair, and it has to remove both senses of absent, not one of them.
+                (await Ids(container, $"SELECT c.id FROM {name} c WHERE IS_DEFINED(c.v) AND NOT IS_NULL(c.v) ORDER BY c.v"))
+                    .Should().Equal("boolean", "number", "string");
+
+                (await Ids(container, $"SELECT c.id FROM {name} c WHERE IS_DEFINED(c.v) AND NOT IS_NULL(c.v) ORDER BY c.v DESC"))
+                    .Should().Equal("string", "number", "boolean");
+            }
+            finally
+            {
+                try { await container.DeleteContainerAsync(); } catch (CosmosException) { }
+            }
+        }
+
     }
 
 }

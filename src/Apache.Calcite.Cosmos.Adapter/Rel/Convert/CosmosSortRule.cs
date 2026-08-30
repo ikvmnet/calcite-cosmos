@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 using java.util.function;
 
 using org.apache.calcite.plan;
@@ -53,10 +55,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields) == false)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(sort), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
+        }
+
+        /// <summary>
+        /// Reads the fields the plan guarantees are never null over the sort's input.
+        /// </summary>
+        /// <remarks>
+        /// Asked here and handed to the node, rather than asked twice. The answer depends on which
+        /// equivalent of the input the metadata is asked about, so the rule and the node have to be
+        /// deciding on the same one — the same reason the binding above is derived by walking the
+        /// input rather than read off its row type.
+        /// </remarks>
+        static IReadOnlyList<int> NonNullFields(Sort sort)
+        {
+            return CosmosSort.FindNonNullFields(sort.getInput(), sort.getCluster().getMetadataQuery());
         }
 
         /// <summary>
@@ -80,7 +96,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 convert(sort.getInput(), sort.getInput().getTraitSet().replace(@out)),
                 sort.getCollation(),
                 sort.offset,
-                sort.fetch);
+                sort.fetch,
+                NonNullFields(sort));
         }
 
     }
