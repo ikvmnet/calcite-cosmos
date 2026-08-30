@@ -564,12 +564,63 @@ apart. There is more here than the two cases taken so far.
 reader that knows what type a path was declared to have — the schema-level `columns` binding — because
 each carries the value rather than comparing it, and no filter helps with that.
 
+**Projecting a cast is declined for a measured reason, not a missing case.** The obvious repair — a
+cast to `VARCHAR` over an `ANY` path is a no-op at the service, so emit the path — is wrong, and so
+is the next candidate. Measured over one document per JSON type:
+
+| stored value | Calcite `CAST(… AS VARCHAR)` | Cosmos `ToString` | the bare path |
+| --- | --- | --- | --- |
+| `"bikes"` | `"bikes"` | `"bikes"` | `"bikes"` |
+| `30` | `"30"` | `"30"` | `30` |
+| `30.7` | `"30.7"` | `"30.7"` | `30.7` |
+| `true` | `"true"` | `"true"` | `true` |
+| `{"v":"bikes"}` | `"{v=bikes}"` | `"{\"v\":\"bikes\",…}"` | an object |
+| `["x","y"]` | `"[x, y]"` | `"[\"x\",\"y\"]"` | an array |
+| `null` | null | `"null"` | null |
+
+The bare path returns a JSON number where the plan declared text, and `CosmosJson.GetString` refuses
+to coerce one — deliberately, since coercing would make the row type a suggestion — so the statement
+would not return a different answer, it would *fail*, for data the in-process plan handles. `ToString`
+agrees exactly on every scalar and disagrees on three things that matter: JSON null becomes the
+*string* `"null"` where SQL wants null, and objects and arrays render in Cosmos's notation rather than
+Java's. None of the three can be excluded statically over a path typed `ANY`.
+
+So the cast stays in process. What does not have to stay with it is everything above it — see below.
+
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
 Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has no counterpart. The
 `IS TRUE` / `IS FALSE` family and `IS DISTINCT FROM` are declined because reproducing their null
 semantics over a property that may be *undefined* needs a Cosmos behaviour that has not been
 measured, and a wrong answer is worse than a refused pushdown.
+
+### A projection that cannot be pushed is not a wall
+
+A view is how a caller gives a container a relational shape, and a view has to cast: the row model
+types every path `ANY`, and nothing downstream that expects columns of a type can consume `ANY`. Since
+nothing renders a bare cast, the projection stays in process — and a sort and a row limit above it
+used to stay with it, so a bounded page over a view read every document the predicate matched.
+
+`CoreRules.SORT_PROJECT_TRANSPOSE` is registered for this, alongside the other Calcite rewrites the
+rule set carries because a bare Volcano planner has none. Transposed, the sort and its limit sit under
+the projection and push; the cast runs over the rows that come back.
+
+```
+ClrAsyncEnumerableProject(id=[$1], n=[CAST(ITEM($0, 'name')):VARCHAR])
+  CosmosToClrAsyncEnumerableConverter
+    CosmosSort(sort0=[$1], dir0=[ASC], fetch=[10])
+      CosmosTableScan(table=[[products]])
+```
+
+**It fires only where the collation survives the transpose**, and that is what makes it sound rather
+than merely profitable. Calcite maps the sort keys through the projection and declines unless every
+one is a plain reference — so ordering by a cast column, which is not ordering by the path underneath
+(rendered as text, `10` sorts before `9`), stays above the projection where it belongs. A
+transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
+the planner costs both.
+
+This does not make the projection pushable and is not a substitute for the typed column that would;
+what it removes is the projection's ability to strand everything above it.
 
 ### Full text search
 

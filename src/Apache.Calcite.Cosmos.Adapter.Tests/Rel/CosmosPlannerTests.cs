@@ -753,6 +753,83 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
+        // ── Past a projection that cannot be pushed ───────────────────────────────
+        //
+        // A view gives a container a relational shape by casting, the row model typing every path
+        // ANY. Nothing renders a bare cast, so the projection stays in process — and a sort and row
+        // limit above it used to stay with it, reading the container whole to answer a bounded page.
+        // Transposed below the projection they push, and the cast runs over the rows that come back.
+
+        /// <summary>
+        /// The sort and its row limit reach the statement even though the projection above them
+        /// cannot be rendered.
+        /// </summary>
+        [TestMethod]
+        public void ASortOnAnUncastColumnPushesPastAnUnrenderableProjection()
+        {
+            var best = PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+            var plan = Plan(best);
+
+            plan.Should().Contain("CosmosSort", "the sort belongs at the service: " + plan);
+            plan.Should().NotContain("ClrAsyncEnumerableSort", "and must not also remain in process: " + plan);
+            plan.Should().Contain("ClrAsyncEnumerableProject", "the cast itself still runs in process: " + plan);
+
+            Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 10");
+        }
+
+        /// <remarks>
+        /// The other half, and the reason this is sound. Ordering by the cast column is not ordering
+        /// by the path underneath — rendered as text, 10 sorts before 9 — so the sort must stay above
+        /// the projection. Calcite maps the keys through and declines where any of them is not a
+        /// plain reference, which is the whole guard.
+        ///
+        /// Stated <c>NULLS FIRST</c> deliberately: under Calcite's default placement the sort would
+        /// be refused on its null placement instead, and the test would pass without saying anything
+        /// about the transpose.
+        /// </remarks>
+        [TestMethod]
+        public void ASortOnTheCastColumnItselfDoesNotTranspose()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
+
+            plan.Should().NotContain("CosmosSort", "ordering by the cast is not ordering by the path: " + plan);
+        }
+
+        /// <summary>
+        /// The shape a paged view has, end to end: a predicate, a cast projection, an ordering and a
+        /// row limit. Everything but the cast belongs at the service.
+        /// </summary>
+        /// <remarks>
+        /// This is the difference the item is about. Answering ten rows used to read every document
+        /// the predicate matched; it now reads ten.
+        /// </remarks>
+        [TestMethod]
+        public void APagedViewReadsAPageRatherThanTheMatchingDocuments()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c " +
+                "WHERE c.\"category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("WHERE (c.category = @p0)");
+            sql.Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 10");
+        }
+
+        /// <remarks>
+        /// The control for both: with no cast the projection pushes and the sort goes with it, which
+        /// is the plan the transpose is trying to get back to the shape of.
+        /// </remarks>
+        [TestMethod]
+        public void WithNoCastTheWholeStatementPushesAsBefore()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", c.\"_MAP\"['name'] AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY"));
+
+            plan.Should().Contain("CosmosSort");
+            plan.Should().Contain("CosmosProject");
+            plan.Should().NotContain("ClrAsyncEnumerableProject", "nothing is left for the plan to do: " + plan);
+        }
+
         // ── Partial filter pushdown ───────────────────────────────
 
         /// <summary>
