@@ -181,9 +181,69 @@ normally be pushed down, because doing so would return rows in an order the plan
 for. `CosmosSort` refuses unless the placement matches or the key is non-nullable.
 
 In practice this is what keeps sorting on `id` and the system properties available while
-declining sorts on arbitrary document paths. The principled fix is to declare the collation the
-adapter actually provides as a trait and let the planner insert a corrective sort, which is not
-yet implemented.
+declining sorts on arbitrary document paths.
+
+**A query that removes the nulls settles the placement itself.** The rule refuses a nullable key
+because the two sides disagree about where nulls go; a predicate that leaves none in the rows being
+sorted leaves nothing to disagree about, whichever way each side would have placed one. So under
+Calcite's default placement — `NullCollation.HIGH`, ascending meaning nulls last —
+`WHERE c.category IS NOT NULL ORDER BY c.category` pushes in both directions where
+`ORDER BY c.category` alone is refused.
+
+That default is a connection setting rather than a fact, and the other value worth knowing is
+`LOW` — nulls first ascending, last descending, which is Cosmos's own order and SQL Server's. A
+connection set that way asks for what the service already does, so the placement never conflicts and
+no predicate is needed. It is a property of the connection and not of the schema, so it changes what
+`ORDER BY` means for every schema on it; recorded here as the fact it is, with the guidance it wants
+still to be written.
+
+Two things make it sound rather than merely plausible. **Both senses of absent go.** Cosmos
+distinguishes a property holding JSON `null` from a property that is not there, and sorts
+`undefined` below `null` below everything else — so excluding only one of them would leave the
+other to arrive first ascending and the guarantee would be false. SQL `IS NOT NULL` renders as
+`IS_DEFINED(p) AND NOT IS_NULL(p)`, which excludes exactly the two. And **the predicate and the
+ordering leave as one statement**, so the guarantee holds at the service and not only in the plan.
+
+Only the explicit `IS NOT NULL` form is read. A comparison such as `c.v > 'a'` also drops nulls
+under SQL's three-valued logic, and appears to under Cosmos's rule that a comparison across types
+yields `undefined` — but that rule is unmeasured here, and over a path typed `ANY` the values
+compared are whatever the documents hold. A wrong answer is the failure mode, so the wider form
+waits on evidence.
+
+**It reaches promoted columns and not paths inside the map column, and the reason is structural.**
+The guarantee is read from `RelMdPredicates`, which carries a predicate through a projection only
+where the projection is a `RexInputRef`. A promoted column projects as a plain reference and its
+predicate survives; a document path projects as `ITEM($0, 'name')` over the map column — not a
+reference, and over an input the projection does not output — so the predicate is dropped.
+Measured, at rule-firing time, against a live planner:
+
+```
+WHERE c."category" IS NOT NULL        →  {pulled[IS NOT NULL($1)]}
+WHERE c."_MAP"['name'] IS NOT NULL    →  {}
+```
+
+That is worth stating plainly, because it says something about the typed-column question that the
+question does not say about itself: what a declared column buys is not only a type the planner can
+see, but a path that projects as a *reference*, at which point Calcite's existing metadata layer
+starts working over it with no adapter code at all. Nullability in particular then needs nobody's
+declaration — the query already carries it.
+
+**The guarantee is taken once, in the rule, and carried on the node.** What the metadata answers
+depends on which equivalent of the input is asked: measured, the same query answers with the
+predicate while the input is still logical and with nothing once the input has been converted.
+Re-deriving it during implementation would therefore throw on a plan the planner had already
+chosen, which is the rule-and-renderer disagreement `CosmosSortRule` exists to prevent. Carrying it
+is sound because every member of an equivalence set produces the same rows.
+
+**Declaring the provided collation as a trait was considered and does not pay.** The idea is to
+declare the order the adapter actually delivers and let the planner insert a corrective sort. It
+buys no smaller read in either case: with no row limit the corrective sort consumes the whole
+pushed result, so the service-side `ORDER BY` is paid on top of the same in-process sort; with a
+row limit the limit cannot ride along, because the first *n* under Cosmos's order are not the first
+*n* under the plan's, so it stays above the corrective sort and the read is unbounded again — the
+bound being exactly what the mismatch destroys. What it would buy is plan legibility: the planner
+would see and cost both alternatives instead of the adapter refusing outright. Recorded as a
+deliberate decline rather than an omission.
 
 **`IS_DEFINED` and `IS_NULL` are independent**, confirming the translation of SQL `IS NULL`:
 

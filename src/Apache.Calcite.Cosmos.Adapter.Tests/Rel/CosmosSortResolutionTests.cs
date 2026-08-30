@@ -220,6 +220,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         bool Resolves(RelCollation collation) =>
             CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", out _, out _);
 
+        bool Resolves(RelCollation collation, params int[] nonNullFields) =>
+            CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", nonNullFields, out _, out _);
+
+        // ── A placement the plan has already settled ──────────────────────────────
+        //
+        // A predicate that removes the nulls removes the disagreement about where they go. What the
+        // row type says a field may hold is then the weaker fact; what the rows being sorted
+        // actually hold is the one that decides.
+
+        /// <remarks>
+        /// The two placements refused above, accepted once the ordinal is guaranteed non-null. This
+        /// is the whole of the change: the same collation, the same nullable row type, a different
+        /// answer.
+        /// </remarks>
+        [TestMethod]
+        public void AGuaranteedNonNullKeyAcceptsEitherPlacement()
+        {
+            Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), 1).Should().BeTrue();
+            Resolves(Collation(1, RelFieldCollation.Direction.DESCENDING, RelFieldCollation.NullDirection.FIRST), 1).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// Calcite's defaults are the two placements Cosmos cannot honour, so this is the shape an
+        /// ordinary <c>ORDER BY name</c> arrives in.
+        /// </remarks>
+        [TestMethod]
+        public void AGuaranteedNonNullKeyAcceptsCalciteDefaultPlacement()
+        {
+            var ascending = new java.util.ArrayList();
+            ascending.add(new RelFieldCollation(1, RelFieldCollation.Direction.ASCENDING));
+            Resolves(RelCollations.of(ascending), 1).Should().BeTrue();
+
+            var descending = new java.util.ArrayList();
+            descending.add(new RelFieldCollation(1, RelFieldCollation.Direction.DESCENDING));
+            Resolves(RelCollations.of(descending), 1).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// The guarantee is per ordinal and not a blanket one. A predicate over one column says
+        /// nothing about the column beside it.
+        /// </remarks>
+        [TestMethod]
+        public void AGuaranteeOverAnotherOrdinalDoesNotReachTheKey()
+        {
+            Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), 2).Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// Every key has to be covered, not merely one of them. The container declares no composite
+        /// index here, so this is about resolution alone; index legality is decided separately.
+        /// </remarks>
+        [TestMethod]
+        public void AMultiKeySortNeedsTheGuaranteeOnEveryNullableKey()
+        {
+            var partial = new java.util.ArrayList();
+            partial.add(new RelFieldCollation(1, RelFieldCollation.Direction.ASCENDING));
+            partial.add(new RelFieldCollation(2, RelFieldCollation.Direction.ASCENDING));
+
+            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1 }, out _, out _).Should().BeFalse();
+            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1, 2 }, out _, out _).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// An empty guarantee is the state before any predicate, and has to leave the rule exactly
+        /// as it was rather than weakening it.
+        /// </remarks>
+        [TestMethod]
+        public void NoGuaranteeLeavesThePlacementRuleUnchanged()
+        {
+            Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), System.Array.Empty<int>()).Should().BeFalse();
+            Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.FIRST), System.Array.Empty<int>()).Should().BeTrue();
+        }
+
         // ── Keys rooted at an array-traversal alias ───────────────────────────────
         //
         // The service refuses to order by one at all. Measured against Azure, which rejects both

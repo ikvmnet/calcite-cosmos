@@ -627,6 +627,89 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<Exception>();
         }
 
+        // ── A null placement the query itself has settled ─────────────────────────
+        //
+        // `category` is nullable and its placement conflicts with Cosmos in both directions, so
+        // ordering by it is refused. A predicate that removes the nulls settles the conflict: with
+        // none left there is nothing to place wrongly, whichever way each side would have placed
+        // one. The predicate reaches the node through `RelMdPredicates`, so this is the planner
+        // deciding rather than the renderer discovering.
+
+        /// <remarks>
+        /// The pair that carries the change. Both directions, both of Calcite's default placements,
+        /// and both refused without the predicate — see
+        /// <see cref="ANullableKeyIsStillRefusedWithoutTheGuarantee"/>.
+        /// </remarks>
+        [TestMethod]
+        public void AnIsNotNullPredicateMakesANullableColumnASortKey()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\""))
+                .Should().Contain("ORDER BY c.category ASC");
+
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" DESC"))
+                .Should().Contain("ORDER BY c.category DESC");
+        }
+
+        /// <summary>
+        /// The predicate and the ordering leave as one statement, which is what makes the guarantee
+        /// hold at the service rather than only in the plan.
+        /// </summary>
+        [TestMethod]
+        public void ThePredicateAndTheOrderingPushAsOneStatement()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\""))
+                .Should().Be("SELECT VALUE { \"id\": c.id, \"category\": c.category } FROM products c WHERE (IS_DEFINED(c.category) AND NOT IS_NULL(c.category)) ORDER BY c.category ASC");
+        }
+
+        /// <summary>
+        /// The row limit becomes pushable at the same moment the ordering does, a limit being sound
+        /// only once the ordering above it is.
+        /// </summary>
+        [TestMethod]
+        public void TheRowLimitRidesAlongWithTheOrdering()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" FETCH NEXT 10 ROWS ONLY"))
+                .Should().Contain("ORDER BY c.category ASC OFFSET 0 LIMIT 10");
+        }
+
+        /// <remarks>
+        /// The control. Without the predicate the same statement is refused, which is what says the
+        /// tests above depend on the predicate rather than on anything else that changed.
+        /// </remarks>
+        [TestMethod]
+        public void ANullableKeyIsStillRefusedWithoutTheGuarantee()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\"");
+
+            act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// The guarantee has to be about the sort key. A predicate over a different column removes
+        /// no null from the one being ordered by.
+        /// </remarks>
+        [TestMethod]
+        public void APredicateOverAnotherColumnDoesNotUnlockTheSort()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"id\" IS NOT NULL ORDER BY c.\"category\"");
+
+            act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// A path inside the map column is not reached, and the reason is structural: it projects as
+        /// <c>ITEM($0, 'name')</c> rather than as a reference, and <c>RelMdPredicates</c> carries a
+        /// predicate through a projection only where the projection is a reference. Recorded as the
+        /// boundary of what this reaches — see <c>TODO.md</c> section 6, where the fix is a column.
+        /// </remarks>
+        [TestMethod]
+        public void APathInsideTheMapColumnIsNotReached()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"_MAP\"['name'] FROM products AS c WHERE c.\"_MAP\"['name'] IS NOT NULL ORDER BY c.\"_MAP\"['name']");
+
+            act.Should().Throw<Exception>();
+        }
+
         // ── Binding through a projection ────────────────────────
 
         /// <remarks>

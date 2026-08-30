@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**534 tests: 528 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**574 tests: 568 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -40,11 +40,15 @@ functions and the diagnostics surface are complete and covered. What remains bel
 
 **Declared columns were built and then dropped**, and the shape of the hole they left is worth
 knowing before anyone rebuilds them. A caller-declared, typed document path promoted to a real
-column — through a `columns` operand — would have given four things a type to work with: a
-patchable `UPDATE` target, an argument the nullable-aggregate rewrite could fire on, a declared
-temporal representation, and a non-nullable sort key for `DISTINCT` with `ORDER BY`. Every one of
-those items below still names that dependency, because the dependency is real; what is gone is one
-answer to it, not the question.
+column — through a `columns` operand — would have given three things a type to work with: a
+patchable `UPDATE` target, an argument the nullable-aggregate rewrite could fire on, and a declared
+temporal representation. Every one of those items below still names that dependency, because the
+dependency is real; what is gone is one answer to it, not the question.
+
+The fourth, **a sort key that can be non-nullable**, turned out not to need a declaration at all: a
+query that removes the nulls itself settles the null placement, and the planner already carries
+that fact. It is done for the promoted columns and out of reach inside the map column — and *why*
+it is out of reach says more about the surface than the original argument did. See section 6.
 
 ### Running the sample
 
@@ -72,9 +76,10 @@ carries both with the reasoning.
    `Apache.Calcite.Data` offers a supported way to hand back the same schema instance.
 2. **An explicit statistics refresh** (section 1) — the time to live is in; what is missing is a way
    for a caller to say *now*, which after a bulk load is the only moment that matters.
-3. **Typed columns, if they are wanted at all** (section 6) — four items name this dependency, and
+3. **Typed columns, if they are wanted at all** (section 6) — three items name this dependency, and
    nothing satisfies it. Whether the answer is a `columns` operand, computed properties, or
-   something else is open again.
+   something else is open again, and the fourth item's departure sharpened the case rather than
+   weakening it: read section 6's last paragraph first.
 
 ---
 
@@ -296,12 +301,14 @@ else waits on section 6.
   `BETWEEN` costs exactly what its two comparisons do (7.90 RU). Neither form used an index on an
   unindexed path, so the reference's "index-friendly" is a property of the path rather than of the
   spelling. Emitting the native form would be a change with no effect.
-- **`DISTINCT` with `ORDER BY` reaches only non-nullable keys** — *small, and it waits on a column
-  that can be non-nullable.* The combination pushes as one statement now, but the null-placement
-  rule refuses any nullable sort key — Calcite's ascending means nulls last and Cosmos sorts them
-  first — and everything reachable within the map column is nullable, so today it reaches `_ts`,
-  `id` and `_etag` alone. A user path stated non-nullable would extend it; the rule itself is
-  correct and should not move.
+- **`DISTINCT` with `ORDER BY` reaches promoted columns and not the map column** — *small, and what
+  is left of it waits on section 6.* The null-placement rule refuses a nullable sort key, and a
+  query that removes the nulls itself now satisfies it: `WHERE c.category IS NOT NULL ORDER BY
+  c.category` pushes, read from `RelMdPredicates` at the rule. That covers the promoted columns.
+  It does not reach a path inside the map column, and not for want of a type — such a path projects
+  as `ITEM($0, 'name')` rather than as a reference, and `RelMdPredicates` carries a predicate
+  through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
+  a total order over JSON types*, and section 6 below, whose case this sharpens.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
@@ -341,17 +348,27 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
 
 ## 6. Row model and types
 
-- **A typed column over a document path — *large, and it is a question before it is work*.** Four
+- **A typed column over a document path — *large, and it is a question before it is work*.** Three
   items converge here and none of them can move without it: the `UPDATE` patch tier (section 3), a
-  temporal basis (section 4), the nullable-aggregate rewrite and `DISTINCT` with `ORDER BY`
-  (sections 5 and 4). Each needs the same thing — a document path the planner can see the *type* of,
-  and in one case the nullability of — and the map column gives it `ANY`. A `columns` operand
+  temporal basis (section 4) and the nullable-aggregate rewrite (section 5). Each needs the same
+  thing — a document path the planner can see the *type* of — and the map column gives it `ANY`. A `columns` operand
   taking caller-declared paths was built for this and dropped; it is not the only shape. **Computed
   properties** (section 5) are the other candidate and a materially different one: the container
   declares them, so the adapter would be reading metadata it already trusts rather than taking a
   caller's word, and they are indexable — but the caller must create them on the container first,
   and their type still is not declared anywhere the adapter can read. Whichever way, this is a new
   public surface and wants a decision recorded in `DESIGN.md` before any code.
+
+  **The sort key is no longer one of the four, and what it left behind reframes the other three.**
+  A nullable sort key is now reachable when the query itself removes the nulls — for a promoted
+  column. It is not reachable for a document path, and the obstacle turned out not to be the type
+  at all: `RelMdPredicates` carries a predicate through a projection only where the projection is a
+  `RexInputRef`, and a document path projects as `ITEM($0, 'name')` over the map column. So what a
+  declared column buys is not only a type the planner can see but a path that projects as a
+  *reference*, at which point Calcite's whole existing metadata layer — predicates, nullability,
+  keys, distinctness — begins working over it with no adapter code at all. That is a larger and
+  more concrete argument for the surface than "a type to work with", and it is the one worth
+  putting to the decision. Measured; recorded in `DESIGN.md`.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
