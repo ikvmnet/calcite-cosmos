@@ -63,10 +63,12 @@ rather than read whole.
 
 ### Integration requirements, recorded in the README
 
-Two things trip a host and fail with messages that name nothing useful: the calc rules must run as a
-*pass* after the planner (`Programs.CALC_PROGRAM`'s shape — given to Volcano they do nothing), and a
-model must name `CosmosSchemaFactory` assembly-qualified with the assembly already loaded. The README
-carries both with the reasoning.
+Three things trip a host and fail with messages that name nothing useful: the calc rules must run as
+a *pass* after the planner (`Programs.CALC_PROGRAM`'s shape — given to Volcano they do nothing), a
+model must name `CosmosSchemaFactory` assembly-qualified with the assembly already loaded, and
+`defaultNullCollation` defaults to the opposite of the service's null placement, so every sort on a
+document path silently declines until the connection says `LOW`. The README carries all three with
+the reasoning.
 
 ### Where to start
 

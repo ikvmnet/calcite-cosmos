@@ -92,6 +92,59 @@ data-plane API — a page of results arrives only by awaiting it — so a synchr
 nothing but block a thread for a network round trip per page. Rather than hide that behind an
 interface that looks cheap, the adapter offers only the asynchronous route.
 
+## Set `defaultNullCollation` to `LOW`
+
+**Calcite's default null placement is the opposite of the service's, in both directions.** A bare
+`ORDER BY` means *nulls last ascending, first descending* — Oracle's convention, and Calcite's
+default. Cosmos sorts a null or absent property first ascending and last descending, and offers no
+control over it. So a sort on a nullable key is declined for disagreeing with a placement the caller
+never wrote, and the refusal is silent: the ordering runs in-process over a full container read
+rather than failing. Everything reachable through the map column is nullable, so out of the box that
+is every document path.
+
+`defaultNullCollation=LOW` asks for the placement Cosmos already implements — nulls low, first
+ascending and last descending — and the sort pushes:
+
+```csharp
+await using var connection = new CalciteConnection(new CalciteConnectionStringBuilder
+{
+    Model = "inline:" + model,
+    CaseSensitive = true,
+    DefaultNullCollation = "LOW",
+}.ConnectionString);
+```
+
+| statement | default (`HIGH`) | `LOW` |
+|---|---|---|
+| `ORDER BY c."_MAP"['name']` | in-process | `ORDER BY c.name ASC` |
+| `ORDER BY c."_MAP"['name'] DESC` | in-process | `ORDER BY c.name DESC` |
+| `ORDER BY c."_MAP"['name'] FETCH NEXT 10 ROWS ONLY` | in-process | `ORDER BY c.name ASC OFFSET 0 LIMIT 10` |
+| `ORDER BY c."_MAP"['metadata']['sku']` | in-process | `ORDER BY c.metadata.sku ASC` |
+| `ORDER BY c."_MAP"['name'] NULLS LAST` | in-process | in-process |
+
+The row limit rides along, which is the shape that matters: a bounded page stops being a full
+container read. The last row is what says this is not a fudge — `LOW` does not weaken the rule, it
+changes what the query asks for, and an explicit `NULLS LAST` is still declined because Cosmos
+genuinely cannot do it.
+
+**`LOW`, not `FIRST`.** `FIRST` places nulls first in *both* directions; Cosmos reverses exactly. So
+`FIRST` pushes an ascending sort and declines a descending one, which looks like nothing at all.
+
+**It is a property of the connection, not of the schema.** A connection that also carries a JDBC or
+CSV schema gets this placement over those too. For a Cosmos-primary application that is a reasonable
+trade; for a mixed one it is a decision, and there is no per-schema lever to make it with.
+
+Leaving the connection alone, two things reach the same pushdown from inside a query: state the
+placement — `ORDER BY … NULLS FIRST` ascending, `ORDER BY … DESC NULLS LAST` — or remove the nulls,
+since `WHERE c."category" IS NOT NULL ORDER BY c."category"` has no placement left to disagree
+about. The second reaches promoted columns only; a path inside the map column projects as an
+expression rather than a reference, and the guarantee does not survive that.
+
+> **A view whose columns are `CAST(…)` does not benefit yet.** A sort written directly on a
+> container pushes; the same sort through such a view still runs in-process, because the cast keeps
+> the whole `Calc` above the converter. That is [#37](https://github.com/ikvmnet/calcite-cosmos/issues/37),
+> and it gates this for anything consuming the adapter through a view.
+
 ## Joining a container to something else
 
 Cosmos has no relational join — its `JOIN` cross-products a document with its own nested arrays — so a join between a container and anything else is performed outside the service. The adapter does not read the whole container to do it: the other side's join keys are collected, deduplicated, and sent with the statement, so only documents that could match come back. This is the shape Flink calls a lookup join.
