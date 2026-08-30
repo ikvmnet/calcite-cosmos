@@ -626,6 +626,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" DESC", false),
             ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\", c.\"id\"", true),
 
+            // A view's shape: the projection casts, so it cannot be pushed, and the ordering and row
+            // limit go under it rather than staying above. The cast runs over the rows that come back,
+            // which is what these compare.
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\"", true),
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c WHERE c.\"category\" = 'shoes' ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
+
             // Row restriction combined with a predicate over a path some documents lack, where a
             // wrongly pushed TOP takes the wrong rows rather than the wrong number of them.
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] IS NOT NULL ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
