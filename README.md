@@ -242,7 +242,8 @@ sixteen operands, while the operator table's checker has no bound at all.
 > **`ORDER BY RANK` does not yet survive a connection.** The names resolve and the statement is built,
 > but the projection that discards the score is applied by `Prepare` after planning rather than being
 > a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
-> predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See `TODO.md`.
+> predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
+> [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
 
 ## What a query cost
 

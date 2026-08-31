@@ -265,7 +265,8 @@ owns the client.
 ### Ranking and search
 
 - **`ORDER BY RANK` does not survive a connection** — *medium, and it is a shape rather than a
-  translation.* The functions are nameable from a `CalciteConnection` now, and the predicates push;
+  translation, and it is [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).* The functions
+  are nameable from a `CalciteConnection` now, and the predicates push;
   the rank clause does not, because `CosmosRankRule` matches `Project(Sort(Project))` and a
   connection never presents that. `Prepare` plans `RelRoot.rel` and applies the root's field mapping
   by wrapping the finished plan in a calc, so the projection that discards the score is built after

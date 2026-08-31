@@ -752,7 +752,7 @@ plans an in-process sort over a projected score, and fails to implement, which i
 arriving where it is least useful. Planning the same statement from `RelRoot.project()` gives
 `CosmosRank`; from `RelRoot.rel` it does not. Whether the rule should learn the second shape — and
 what it would then have to promise about the score column nothing is known to read — is open; see
-`TODO.md`.
+[#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
 
 `CosmosQueryBuilder.RankBy` emits the clause and refuses to combine it with an ordinary `ORDER BY` or
 with `GROUP BY` — one `ORDER BY` per statement, and the reference says as much of `RRF` explicitly.

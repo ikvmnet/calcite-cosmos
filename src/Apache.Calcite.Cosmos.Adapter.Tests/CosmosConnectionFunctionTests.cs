@@ -310,7 +310,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// the three-node shape <c>CosmosRankRule</c> matches never exists while rules are running.
         /// Measured by planning the same statement from <c>RelRoot.rel</c> instead of
         /// <c>RelRoot.project()</c>: the first plans to <c>CosmosRank</c> and the second does not.
-        /// See <c>TODO.md</c>.
+        /// See <c>ikvmnet/calcite-cosmos#46</c>, and <c>TODO.md</c> under <em>Ranking and search</em>.
         /// </para>
         /// <para>
         /// Reported inconclusive rather than failed, and it tells the two gaps apart: an emulator that
