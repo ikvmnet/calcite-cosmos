@@ -61,7 +61,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// and still permits.
         /// </param>
         /// <param name="account">Whether to root the connection at an account rather than a database.</param>
-        static RelNode Plan(string sql, bool chain = false, bool account = false)
+        /// <param name="libraries">
+        /// Whether to chain every <c>SqlLibrary</c> table as well, which is what a connection setting
+        /// <c>fun</c> does — and which is chained ahead of the catalog reader, so it is where a name
+        /// Calcite also uses would shadow the schema's declaration.
+        /// </param>
+        static RelNode Plan(string sql, bool chain = false, bool account = false, bool libraries = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
 
@@ -94,9 +99,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // What CalcitePrepareImpl builds: the fun libraries the connection names, chained with the
             // catalog reader. Nothing Cosmos-specific unless the caller asks for it.
-            var operators = chain
-                ? SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance, catalogReader)
-                : SqlOperatorTables.chain(SqlStdOperatorTable.instance(), catalogReader);
+            var tables = new List<org.apache.calcite.sql.SqlOperatorTable> { SqlStdOperatorTable.instance() };
+
+            if (libraries)
+                tables.Add(org.apache.calcite.sql.fun.SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(
+                    java.util.EnumSet.allOf(java.lang.Class.forName("org.apache.calcite.sql.fun.SqlLibrary"))));
+
+            if (chain)
+                tables.Add(CosmosOperators.Instance);
+
+            tables.Add(catalogReader);
+
+            var operators = SqlOperatorTables.chain(tables.ToArray());
 
             var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
@@ -318,6 +332,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var operators = CosmosOperators.Instance.getOperatorList();
             for (var i = 0; i < operators.size(); i++)
                 declared.Should().Contain(((org.apache.calcite.sql.SqlOperator)operators.get(i)).getName());
+        }
+
+        /// <summary>
+        /// The same names still resolve to the schema's functions with every <c>fun</c> library
+        /// chained ahead of the catalog reader.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The claim below stated the other way round, and this is the half that would actually bite a
+        /// host: <c>Fun = "all"</c> is an ordinary connection string, and the library table it builds
+        /// is chained before the catalog reader. Rendering the statement is what proves the Cosmos
+        /// operator answered — a shadowing library function would type-check and then fail to
+        /// translate, or worse, translate as something else.
+        /// </para>
+        /// <para>
+        /// <c>REVERSE</c> first, and not incidentally: Calcite's standard table does not carry it, so
+        /// it resolves only where the libraries really were chained. Without it this would pass just as
+        /// well against a library table that had failed to load, which is how a test like this goes
+        /// quietly wrong.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheFunLibrariesDoNotShadowThem()
+        {
+            Render(Plan("SELECT REVERSE(c.\"id\") AS \"r\" FROM products AS c", libraries: true))
+                .Should().Contain("REVERSE(c.id)");
+
+            var withoutLibraries = () => Plan("SELECT REVERSE(c.\"id\") AS \"r\" FROM products AS c");
+            withoutLibraries.Should().Throw<Exception>("REVERSE is a library function, so chaining them above is doing something");
+
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['price'])", libraries: true))
+                .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE IS_DEFINED(c.price)");
+
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE REGEXMATCH(c.\"id\", '^a')", libraries: true))
+                .Should().Contain("REGEXMATCH(c.id, @p0)");
+
+            Render(Plan("SELECT \"StringToArray\"(c.\"id\") AS \"a\" FROM products AS c", libraries: true))
+                .Should().Contain("StringToArray(c.id)");
+        }
+
+        /// <summary>
+        /// Every one of these names is Cosmos's alone: Calcite has no operator by any of them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Not a tidiness check. A connection chains the operator table its <c>fun</c> property names
+        /// <em>before</em> the catalog reader, and overload resolution takes the first candidate whose
+        /// arity fits — so the day Calcite gives some library a function called <c>IS_ARRAY</c>, that
+        /// operator answers and the schema's declaration stops being reached, silently and only for
+        /// hosts that set <c>fun</c>. The failure would be a wrong statement rather than an error, and
+        /// nothing else here would notice.
+        /// </para>
+        /// <para>
+        /// Measured against every library Calcite ships rather than the few the suite chains elsewhere,
+        /// and case-insensitively, because that is how a name matcher would find one. There are near
+        /// misses and they are on purpose: Calcite has <c>IS_INF</c> and <c>IS_NAN</c> beside this
+        /// family, <c>REGEXP_LIKE</c> beside <c>REGEXMATCH</c>, and <c>STRING_TO_ARRAY</c> beside
+        /// <c>StringToArray</c> — the last two named apart deliberately, being different functions
+        /// rather than different spellings. See <see cref="CosmosOperators"/>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void NoneOfTheNamesIsOneCalciteAlreadyUses()
+        {
+            var libraries = java.util.EnumSet.allOf(java.lang.Class.forName("org.apache.calcite.sql.fun.SqlLibrary"));
+
+            var calcite = new List<string>();
+
+            foreach (var table in new org.apache.calcite.sql.SqlOperatorTable[]
+            {
+                SqlStdOperatorTable.instance(),
+                org.apache.calcite.sql.fun.SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(libraries),
+            })
+            {
+                var list = table.getOperatorList();
+                for (var i = 0; i < list.size(); i++)
+                    calcite.Add(((org.apache.calcite.sql.SqlOperator)list.get(i)).getName());
+            }
+
+            calcite.Should().HaveCountGreaterThan(500, "both tables have to have actually loaded for this to mean anything");
+
+            var ours = CosmosOperators.Instance.getOperatorList();
+            for (var i = 0; i < ours.size(); i++)
+            {
+                var name = ((org.apache.calcite.sql.SqlOperator)ours.get(i)).getName();
+
+                calcite.Should().NotContain(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase),
+                    "'{0}' would be shadowed by Calcite's own operator wherever a connection sets fun", name);
+            }
         }
 
     }

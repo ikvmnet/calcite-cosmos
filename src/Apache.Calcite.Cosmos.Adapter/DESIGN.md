@@ -688,6 +688,21 @@ for one unqualified name, so nothing resolves twice.
 fits, and the chained table comes before the catalog reader — so the operator answers and the schema's
 declaration is never reached. The README says the chaining is optional rather than required.
 
+**Every one of these names is Cosmos's alone, and that is measured rather than assumed.** None of the
+twenty-one appears in `SqlStdOperatorTable` or in the union of all fourteen `SqlLibrary` tables, at
+any casing. It matters because the same resolution order that makes chaining harmless makes a
+collision silent: a connection chains the table its `fun` property names *ahead* of the catalog
+reader, so the day Calcite gives some library a function called `IS_ARRAY`, that operator would answer
+and the schema's declaration would stop being reached — for hosts that set `fun` and for nobody else.
+`NoneOfTheNamesIsOneCalciteAlreadyUses` is the tripwire.
+
+The near misses are near on purpose. Calcite has `IS_INF` and `IS_NAN` beside this family, and
+`STRING_TO_ARRAY` and `REGEXP_LIKE` beside `StringToArray` and `REGEXMATCH` — the last two named apart
+deliberately, being different functions rather than different spellings, and the operator comments say
+why. `IS JSON ARRAY` and the `JSON_*` family are the closest thing SQL has to the type tests and are
+still not the same question: they ask whether a *string* holds JSON text of some shape, where the row
+model holds parsed values and Cosmos asks what the value *is*.
+
 **What arrives is not the operator.** Calcite reads a schema function's parameter list and builds a
 `SqlUserDefinedFunction` of its own around it, carrying the name and the arity. The translator and the
 rules therefore ask a call for its *name* rather than for its identity — `IsScoringFunction` always
