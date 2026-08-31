@@ -361,6 +361,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case SqlKind.__Enum.TRIM:
                     WriteTrim(builder, call);
                     break;
+                case SqlKind.__Enum.CAST:
+                case SqlKind.__Enum.SAFE_CAST:
+                    WriteCast(builder, call);
+                    break;
                 case SqlKind.__Enum.FLOOR:
                     RequireOperandCount(call, 1);
                     WriteFunctionCall(builder, call, "FLOOR");
@@ -698,6 +702,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 _negated = negated;
             }
+        }
+
+        /// <summary>
+        /// Writes a cast, which is only ever a cast of a numeric literal to an approximate type.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A cast over a document value is still refused</b>, and everything said about that
+        /// elsewhere in this type stands: Calcite converts the stored value and the service compares it
+        /// as it stands, so the two select different documents. This case is disjoint from that one —
+        /// the operand has to be a literal, whose value is known while the statement is being written.
+        /// </para>
+        /// <para>
+        /// What makes it worth writing is that comparing against a function returning a double puts one
+        /// here. <c>VECTORDISTANCE(c.embedding, …) &lt; 0.5</c> arrives as
+        /// <c>&lt;(VECTORDISTANCE(…), CAST(0.5):DOUBLE NOT NULL)</c>, because the comparison coerces the
+        /// literal to the function's type — and declining the cast declines the predicate, which is the
+        /// half of such a query that bounds what is read. Calcite's own constant reduction folds this
+        /// where a host registers it, and this adapter does not require a host to.
+        /// </para>
+        /// <para>
+        /// Only the approximate targets, because only they are reached this way and because widening an
+        /// exact literal to a double is the conversion Calcite would itself have performed. A cast to an
+        /// exact type truncates or throws depending on the value, which is a question worth answering
+        /// when something asks it.
+        /// </para>
+        /// </remarks>
+        void WriteCast(StringBuilder builder, RexCall call)
+        {
+            if (call.getOperands().size() != 1 || Operand(call, 0) is not RexLiteral literal)
+                throw new CosmosTranslationException("A cast of anything but a literal has no Cosmos equivalent.");
+
+            var target = call.getType()?.getSqlTypeName();
+            if (target != SqlTypeName.DOUBLE && target != SqlTypeName.FLOAT && target != SqlTypeName.REAL)
+                throw new CosmosTranslationException($"A cast to '{target?.getName()}' has no Cosmos equivalent.");
+
+            var value = GetLiteralValue(literal) switch
+            {
+                long l => (double)l,
+                decimal m => (double)m,
+                double d => d,
+                var other => throw new CosmosTranslationException($"A cast of '{other?.GetType().Name ?? "null"}' to a double has no Cosmos equivalent."),
+            };
+
+            builder.Append(_parameters.Add(value));
         }
 
         /// <summary>

@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**591 tests: 585 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**596 tests: 590 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -277,6 +277,11 @@ owns the client.
   all: Calcite's standard table carries none of them, and the adapter translates whatever arrives
   rather than deciding which library a caller uses. Worth a line in the README beside the
   `CosmosOperators` chaining it already documents — *small*.
+- **A cast of a numeric literal renders**, which is what lets a comparison against a function
+  returning a double push: `VECTORDISTANCE(…) < 0.5` coerces the literal and arrives as
+  `CAST(0.5):DOUBLE`, and declining the cast declined the predicate. A cast over a *document
+  value* is refused as it always was — see `DESIGN.md` under *Casts over document values*, whose
+  argument this does not touch.
 - **Currently declined, admissible with work** — `SUBSTRING` without a length (`LENGTH(s)` supplies
   it); `LIKE` with `ESCAPE`, and a bracket-escaping rewrite that would lift the bracket-pattern
   decline (Cosmos `LIKE` reads `[…]` as a character range where SQL does not — measured, and why
