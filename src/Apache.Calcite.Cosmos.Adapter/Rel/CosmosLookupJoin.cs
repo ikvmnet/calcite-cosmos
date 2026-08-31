@@ -168,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
 
-            var (query, _) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize);
+            var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize);
 
             org.apache.calcite.runtime.Hook.QUERY_PLAN.run(query.Sql);
 
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     Expression.Constant(KeyPrefix),
                     Expression.Constant(_batchSize),
                     KeySelector(buildResult.PhysType, buildType, _buildKey),
-                    CosmosConverters.RowBuilder(probePhysType, probe.getRowType()),
+                    CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings),
                     KeySelector(probePhysType, probeType, _probeKey),
                     ResultSelector(physType, buildResult.PhysType, buildType, probePhysType, probeType),
                     Expression.Constant(DefaultCacheSize),

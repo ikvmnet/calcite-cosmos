@@ -49,8 +49,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList());
 
+            // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the
+            // expressions CosmosProject.Implement can render — including the cast to text it sends the
+            // value underneath of. Asking the plain translator here would decline a projection the node
+            // can push.
             for (var i = 0; i < projects.size(); i++)
-                if (translator.TryTranslate((RexNode)projects.get(i), out _) == false)
+                if (translator.TryTranslateProjection((RexNode)projects.get(i), out _, out _) == false)
                     return false;
 
             // Window functions have no Cosmos equivalent.
