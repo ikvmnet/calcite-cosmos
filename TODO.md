@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**587 tests: 581 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**591 tests: 585 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -332,6 +332,15 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
 
 ### Smaller rules
 
+- **Binding the traversal element in `TryBindOutput`** — *small, and blocked on one measurement.*
+  `CosmosUnnest.Implement` binds the element to its traversal alias; `TryBindOutput` leaves it
+  unbound, so a rule deciding above a correlate sees a column with no path. A predicate no longer
+  needs this — `FILTER_CORRELATE` and `CosmosUnnestRule` between them push one that is written above
+  the traversal — but a *projection* over the element still declines and would not have to. What
+  stops the one-line change is that the same binding would let `CosmosAggregateRule` group by the
+  element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
+  t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
+  cannot answer. Measure it against an account before binding it.
 - **Unique key policy** — *small.* Declared unique keys are keys `getStatistic` does not report.
 - **Computed properties** — *medium.* A container can declare named, queryable, indexable computed
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
