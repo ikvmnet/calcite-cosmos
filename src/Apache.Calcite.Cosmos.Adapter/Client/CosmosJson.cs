@@ -57,6 +57,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Reads a named property of a row as the text Calcite's cast over an <c>ANY</c> value renders
+        /// it as.
+        /// </summary>
+        /// <remarks>
+        /// What a projection that dropped a <c>CAST(&#8230; AS VARCHAR)</c> reads back with — see
+        /// <see cref="Sql.CosmosRexTranslator.TryRenderedTextOperand"/>. Not a coercion of a typed
+        /// column: <see cref="GetValue"/> still refuses to read a number as <c>VARCHAR</c>, and this is
+        /// reached only where the plan asked for a rendering rather than for a value of a declared type.
+        /// </remarks>
+        /// <param name="row">The JSON value Cosmos returned for the row.</param>
+        /// <param name="name">The property to read.</param>
+        /// <returns>The rendered text, or <c>null</c> where the property is absent or JSON null.</returns>
+        /// <exception cref="CosmosMaterializationException">The row is not a JSON object.</exception>
+        public static string? GetTextProperty(JsonElement row, string name)
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+                throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
+
+            return row.TryGetProperty(name, out var value) ? GetText(value) : null;
+        }
+
+        /// <summary>
+        /// Reads a JSON value as the text Calcite's cast over an <c>ANY</c> value renders it as.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Java's rendering, and that is the whole of the equivalence.</b> Calcite holds an
+        /// <c>ANY</c> value in the boxes <see cref="GetNatural"/> builds, and its cast to <c>VARCHAR</c>
+        /// is those boxes' own <c>toString</c>. Measured over one document per JSON type, against the
+        /// in-process plan:
+        /// </para>
+        /// <list type="table">
+        /// <item><description><c>"bikes"</c> &#8594; <c>bikes</c>; <c>30</c> &#8594; <c>30</c>;
+        /// <c>30.7</c> &#8594; <c>30.7</c>; <c>1e30</c> &#8594; <c>1.0E30</c></description></item>
+        /// <item><description><c>true</c> &#8594; <c>true</c>; <c>["bikes"]</c> &#8594; <c>[bikes]</c>;
+        /// <c>{"x":1}</c> &#8594; <c>{x=1}</c></description></item>
+        /// <item><description>JSON null and an absent property &#8594; SQL <c>NULL</c></description></item>
+        /// </list>
+        /// <para>
+        /// So the rendering is not reproduced here, it is delegated: the value is built as Calcite would
+        /// have received it and rendered by the same code that would have rendered it. A stored string
+        /// is returned as itself rather than through <c>toString</c>, which is the same answer and skips
+        /// a round trip through the bridge.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The value to read.</param>
+        /// <returns>The rendered text, or <c>null</c> where the value is JSON null or undefined.</returns>
+        public static string? GetText(JsonElement value)
+        {
+            return GetNatural(value) switch
+            {
+                null => null,
+                string text => text,
+                var natural => natural.ToString(),
+            };
+        }
+
+        /// <summary>
         /// Reads a document path as a value of the given SQL type.
         /// </summary>
         /// <remarks>

@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
             var rowType = physType.RowType;
 
-            var (query, fields) = CosmosConverters.GenerateQuery(input, implementor.RexBuilder);
+            var (query, fields, readings) = CosmosConverters.GenerateQuery(input, implementor.RexBuilder);
 
             // A point read — one, or a batch of many — returns documents rather than the object the
             // statement constructs, so the two paths need different row builders; and the read needs
@@ -96,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((query.PointReadId is not null || query.PointReadIds is not null) && rowBuilder is null)
                 query = query with { PointReadId = null, PointReadIds = null };
 
-            rowBuilder ??= CosmosConverters.RowBuilder(physType, getRowType());
+            rowBuilder ??= CosmosConverters.RowBuilder(physType, getRowType(), readings);
 
             Hook.QUERY_PLAN.run(query.Sql);
 

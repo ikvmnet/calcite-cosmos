@@ -389,7 +389,35 @@ namespace Apache.Calcite.Cosmos.Adapter
         public IReadOnlyList<CosmosPath?> Fields
         {
             get => _fields;
-            set => _fields = value ?? throw new ArgumentNullException(nameof(value));
+            set
+            {
+                _fields = value ?? throw new ArgumentNullException(nameof(value));
+
+                // A rebinding is a new set of output fields, so whatever was recorded about how to read
+                // the old ones no longer describes anything. Cleared here rather than at each of the
+                // nodes that rebind, so that a node which does not think about readings cannot inherit
+                // one and render a value as text that was never cast.
+                _readings = Array.Empty<CosmosReading>();
+            }
+        }
+
+        IReadOnlyList<CosmosReading> _readings = Array.Empty<CosmosReading>();
+
+        /// <summary>
+        /// Gets or sets how each output field is to be read back, where that is not simply as the
+        /// field's declared SQL type.
+        /// </summary>
+        /// <remarks>
+        /// Parallel to <see cref="Fields"/> and cleared whenever it is set, so a shorter list than the
+        /// row type is not a gap but the ordinary case: every ordinal it does not reach is
+        /// <see cref="CosmosReading.Typed"/>. Only <see cref="Rel.CosmosProject"/> sets it, and only for
+        /// a column whose cast to text it dropped.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>
+        public IReadOnlyList<CosmosReading> Readings
+        {
+            get => _readings;
+            set => _readings = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         /// <summary>

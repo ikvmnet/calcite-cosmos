@@ -196,6 +196,103 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON object for the row*");
         }
 
+        // ── Rendering a value as text ────────────────────────────────────────────
+        //
+        // What a projection that dropped a CAST(… AS VARCHAR) reads back with. The expected strings
+        // are not this method's invention: each is what the in-process plan returns for that document,
+        // measured against the emulator, and the table is in DESIGN.md. A change here that these do
+        // not catch is a change the differential oracle will.
+
+        [TestMethod]
+        public void ShouldRenderAStringAsItself()
+        {
+            CosmosJson.GetText(Value("\"bikes\"")).Should().Be("bikes");
+        }
+
+        [TestMethod]
+        public void ShouldRenderAnIntegralNumberWithoutAFraction()
+        {
+            CosmosJson.GetText(Value("30")).Should().Be("30");
+        }
+
+        [TestMethod]
+        public void ShouldRenderAFractionalNumberAsJavaDoes()
+        {
+            CosmosJson.GetText(Value("30.7")).Should().Be("30.7");
+        }
+
+        /// <remarks>
+        /// Java's rendering of a double, not the JSON text: <c>1e30</c> arrives written that way and
+        /// comes back as <c>1.0E30</c>, which is what the in-process cast returns.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldRenderALargeNumberInJavaNotation()
+        {
+            CosmosJson.GetText(Value("1e30")).Should().Be("1.0E30");
+        }
+
+        /// <remarks>
+        /// Lower case, which is Java's and not SQL's — a <c>BOOLEAN</c> column renders <c>TRUE</c>.
+        /// This is a rendering of an <c>ANY</c> value and follows the box it is held in.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldRenderABooleanInLowerCase()
+        {
+            CosmosJson.GetText(Value("true")).Should().Be("true");
+        }
+
+        /// <remarks>
+        /// Java's collection rendering rather than JSON's: no quotes, and a space after each comma.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldRenderAnArrayAsAJavaList()
+        {
+            CosmosJson.GetText(Value("""["x","y"]""")).Should().Be("[x, y]");
+        }
+
+        [TestMethod]
+        public void ShouldRenderAnObjectAsAJavaMap()
+        {
+            CosmosJson.GetText(Value("""{ "v": "bikes" }""")).Should().Be("{v=bikes}");
+        }
+
+        [TestMethod]
+        public void ShouldRenderJsonNullAsNull()
+        {
+            CosmosJson.GetText(Value("null")).Should().BeNull();
+        }
+
+        [TestMethod]
+        public void ShouldRenderAnAbsentPropertyAsNull()
+        {
+            CosmosJson.GetTextProperty(Value("""{ "id": "a" }"""), "missing").Should().BeNull();
+        }
+
+        [TestMethod]
+        public void ShouldRenderAPresentPropertyByName()
+        {
+            CosmosJson.GetTextProperty(Value("""{ "n": 30 }"""), "n").Should().Be("30");
+        }
+
+        [TestMethod]
+        public void ShouldRefuseARowThatIsNotAnObjectWhenRendering()
+        {
+            var act = () => CosmosJson.GetTextProperty(Value("42"), "id");
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON object for the row*");
+        }
+
+        /// <remarks>
+        /// The reading is per ordinal and does not change what a declared column does: a <c>VARCHAR</c>
+        /// column reached the ordinary way still refuses a number rather than coercing it, which is what
+        /// keeps the row type from becoming a suggestion.
+        /// </remarks>
+        [TestMethod]
+        public void RenderingDoesNotLoosenTheTypedReading()
+        {
+            var act = () => CosmosJson.GetValue(Value("30"), SqlTypeName.VARCHAR);
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
+        }
+
     }
 
 }

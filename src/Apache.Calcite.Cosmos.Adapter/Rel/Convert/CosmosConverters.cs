@@ -33,6 +33,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static readonly System.Reflection.MethodInfo GetPathMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetPath), [typeof(JsonElement), typeof(IReadOnlyList<CosmosPathSegment>), typeof(SqlTypeName)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetPath)}' is missing from {nameof(CosmosJson)}.");
 
+        static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string)])
+            ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetTextProperty)}' is missing from {nameof(CosmosJson)}.");
+
         static readonly System.Reflection.MethodInfo GetExecutorMethod = typeof(CosmosSchemas).GetMethod(nameof(CosmosSchemas.GetExecutor), [typeof(org.apache.calcite.DataContext), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosSchemas.GetExecutor)}' is missing from {nameof(CosmosSchemas)}.");
 
@@ -41,9 +44,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <param name="input">The subtree, whose root is the node being converted.</param>
         /// <param name="rexBuilder">Used when translating expressions.</param>
-        /// <returns>The statement, its bound parameters, and any partition key a filter pinned.</returns>
+        /// <returns>
+        /// The statement, its bound parameters and any partition key a filter pinned; the path each
+        /// output field addresses; and how each is to be read back.
+        /// </returns>
         /// <exception cref="CosmosTranslationException">The subtree has no Cosmos SQL equivalent.</exception>
-        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields) GenerateQuery(RelNode input, RexBuilder rexBuilder)
+        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateQuery(RelNode input, RexBuilder rexBuilder)
         {
             if (input.getConvention() is not CosmosConvention convention)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
@@ -55,10 +61,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // the paths each output field addresses in the document, which is what a point read reads
             // by. After EnsureProjection the statement projects them, and the query path reads by name.
             var fields = implementor.Fields;
+            var readings = implementor.Readings;
 
             EnsureProjection(implementor, input.getRowType());
 
-            return (implementor.Build(), fields);
+            return (implementor.Build(), fields, readings);
         }
 
         /// <summary>
@@ -82,9 +89,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="keyOrdinal">Which output field of the subtree the join matches on.</param>
         /// <param name="prefix">The key parameters' name prefix.</param>
         /// <param name="batchSize">How many key parameters to render.</param>
-        /// <returns>The statement and the bindings of its output fields.</returns>
+        /// <returns>The statement, the bindings of its output fields, and how each is to be read back.</returns>
         /// <exception cref="CosmosTranslationException">The subtree or its key has no Cosmos equivalent.</exception>
-        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize)
+        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize)
         {
             if (input.getConvention() is not CosmosConvention convention)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
@@ -93,6 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             implementor.Visit(input);
 
             var fields = implementor.Fields;
+            var readings = implementor.Readings;
 
             if (keyOrdinal < 0 || keyOrdinal >= fields.Count || fields[keyOrdinal] is not CosmosPath keyPath)
                 throw new CosmosTranslationException("The lookup key is not bound to a document path.");
@@ -113,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // extractor reads literals only and so would not have offered one, but a point read applies
             // no predicate at all — it would ignore this and return a document the batch did not ask
             // for, which is a wrong answer rather than a slow one. Both forms, for the same reason.
-            return (implementor.Build() with { PointReadId = null, PointReadIds = null }, fields);
+            return (implementor.Build() with { PointReadId = null, PointReadIds = null }, fields, readings);
         }
 
         /// <summary>
@@ -297,8 +305,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         /// <param name="physType">The physical type of the rows.</param>
         /// <param name="rowType">The logical row type, whose field names key the JSON object.</param>
+        /// <param name="readings">
+        /// How each output field is to be read back, where that is not simply as its declared SQL type.
+        /// A list shorter than the row type, or none at all, leaves every remaining ordinal
+        /// <see cref="CosmosReading.Typed"/> — which is every statement that dropped no cast.
+        /// </param>
         /// <returns>The lambda.</returns>
-        public static LambdaExpression RowBuilder(ClrPhysType physType, RelDataType rowType)
+        public static LambdaExpression RowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosReading>? readings = null)
         {
             var row = Expression.Parameter(typeof(JsonElement), "row");
             var fields = rowType.getFieldList();
@@ -308,12 +321,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (fieldCount == 0)
                 body = Expression.Constant(null, typeof(object));
             else if (fieldCount == 1)
-                body = ReadField(row, (RelDataTypeField)fields.get(0));
+                body = ReadField(row, (RelDataTypeField)fields.get(0), ReadingOf(readings, 0));
             else
             {
                 var values = new Expression[fieldCount];
                 for (var i = 0; i < fieldCount; i++)
-                    values[i] = ReadField(row, (RelDataTypeField)fields.get(i));
+                    values[i] = ReadField(row, (RelDataTypeField)fields.get(i), ReadingOf(readings, i));
 
                 body = Expression.NewArrayInit(typeof(object), values);
             }
@@ -381,13 +394,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// value is undefined, so the properties present in a row are a subset of the output fields and
         /// their positions are not the fields' positions.
         /// </remarks>
-        static Expression ReadField(ParameterExpression row, RelDataTypeField field)
+        static Expression ReadField(ParameterExpression row, RelDataTypeField field, CosmosReading reading)
         {
+            // A rendered column carries whatever JSON the document held, so it is read by rendering it
+            // rather than by the declared type — which for VARCHAR refuses anything but a string, and
+            // deliberately. Converted to object because that is what every other field reads as, the
+            // wider row being an object[].
+            if (reading == CosmosReading.Text)
+                return Expression.Convert(
+                    Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName())),
+                    typeof(object));
+
             return Expression.Call(null,
                 GetPropertyMethod,
                 row,
                 Expression.Constant(field.getName()),
                 Expression.Constant(field.getType().getSqlTypeName()));
+        }
+
+        /// <summary>
+        /// Returns the reading recorded for an ordinal, which is <see cref="CosmosReading.Typed"/>
+        /// wherever none was.
+        /// </summary>
+        static CosmosReading ReadingOf(IReadOnlyList<CosmosReading>? readings, int ordinal)
+        {
+            return readings is not null && ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
         }
 
     }

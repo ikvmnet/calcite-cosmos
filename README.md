@@ -191,6 +191,23 @@ WHERE c."_MAP"['tags'][0] = 'steel'
 Those collapse to the Cosmos paths `c.metadata.sku` and `c.tags[0]` and are evaluated by the service.
 The key must be a constant — a Cosmos path names a property statically.
 
+### Giving a column a type
+
+A path read through the map column is typed `ANY`, which nothing expecting typed columns — an ORM, a
+BI tool — can consume, so a view over a container casts. A cast to `VARCHAR` is carried: the service
+returns the value and the adapter renders it exactly as Calcite would, so the view's projection is
+evaluated by the service rather than over whole documents. `CAST(<path> AS VARCHAR) = 'text'` pushes
+as a comparison too, wherever no other JSON value could render as that text.
+
+Two limits are worth knowing before writing the view. A cast to a **number** converts rather than
+renders — `CAST(x AS INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service
+reproduces that, so it stays in-process, as does any cast carrying a width. And a cast column
+**cannot be an `ORDER BY` key at the service**: the rendering is not the path underneath, and the
+service will not order by an expression in any case, answering one with *"ORDER BY item expression
+could not be mapped to a document path"*. So a page ordered by a cast column reads every matching
+document. Order by an uncast path instead and it reads a page — subject to the null placement
+above, which `id` and the partition key are exempt from, being non-nullable.
+
 ## What gets pushed down
 
 | | |

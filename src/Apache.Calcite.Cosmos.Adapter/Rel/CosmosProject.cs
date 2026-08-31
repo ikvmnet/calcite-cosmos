@@ -73,15 +73,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var translator = implementor.CreateTranslator();
 
             var paths = new CosmosPath?[projects.size()];
+            var readings = new CosmosReading[projects.size()];
 
             for (var i = 0; i < projects.size(); i++)
             {
                 var node = (RexNode)projects.get(i);
-                implementor.Query.SelectProperty((string)names.get(i), translator.Translate(node));
+
+                // A cast to text over a document value is dropped and put back by the reader, which is
+                // the one expression the statement carries without. See
+                // CosmosRexTranslator.TryRenderedTextOperand for why that is an equivalence and not a
+                // trade, and why such a column addresses nothing afterwards.
+                implementor.Query.SelectProperty((string)names.get(i), translator.TranslateProjection(node, out var rendered));
+                readings[i] = rendered ? CosmosReading.Text : CosmosReading.Typed;
 
                 // Null where the projection computes rather than addresses. Nothing downstream can
                 // refer to it, because Cosmos has no name for it — a projection alias is not
-                // addressable from ORDER BY or WHERE.
+                // addressable from ORDER BY or WHERE. A rendered cast resolves to none for the same
+                // reason it is rendered: the column carries text and the path carries the raw value,
+                // so an operator written against the path would mean something else.
                 paths[i] = translator.TryResolvePath(node, out var path) ? path : null;
             }
 
@@ -93,6 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // operators that actually read it, leaving a sort or filter over the plain paths beside
             // it still pushable.
             implementor.Fields = paths;
+            implementor.Readings = readings;
         }
 
     }

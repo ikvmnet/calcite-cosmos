@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**615 tests: 607 passing, 8 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**632 tests: 624 passing, 8 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -406,6 +406,16 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
   keys, distinctness — begins working over it with no adapter code at all. That is a larger and
   more concrete argument for the surface than "a type to work with", and it is the one worth
   putting to the decision. Measured; recorded in `DESIGN.md`.
+
+  **Paging a view by one of its own columns is the fourth thing it would buy, and the one with a
+  measurement behind it.** A cast to text now projects — the value is sent as it stands and rendered
+  as it is read — so a view's columns push and the statement stops carrying whole documents. What
+  does not push is an `ORDER BY` over such a column: the rendering is not the path, and as text `10`
+  sorts before `9`. Nor could the rendering be put into the clause instead — measured, the service
+  answers `ORDER BY ToString(c.x)` with 400, error 2206, *"ORDER BY item expression could not be
+  mapped to a document path"*. So a page ordered by a cast column reads every matching document, and
+  the only thing that would change it is a column the sort can name. See `DESIGN.md` under
+  *Projecting a cast to text is a reading, not a translation*.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
