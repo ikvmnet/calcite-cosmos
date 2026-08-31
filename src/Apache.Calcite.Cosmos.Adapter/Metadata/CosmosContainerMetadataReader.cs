@@ -165,7 +165,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadPartitionKeyPaths(properties),
                 ReadCompositeIndexes(properties.IndexingPolicy),
                 ReadPaths(properties.IndexingPolicy?.IncludedPaths, x => x.Path),
-                ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path));
+                ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path),
+                ReadFullTextPaths(properties),
+                ReadVectorPaths(properties));
         }
 
         /// <summary>
@@ -209,6 +211,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             return values;
+        }
+
+        /// <summary>
+        /// Reads the paths the container declares full text searchable.
+        /// </summary>
+        /// <remarks>
+        /// Two declarations, read as one list. The container's full text policy names the searchable
+        /// paths and their language; the indexing policy indexes them. What the planner asks is
+        /// whether the container said anything at all about a path — see
+        /// <see cref="CosmosContainerMetadata.IsPathFullTextSearchable"/>, which is where the choice
+        /// of the union over either half is argued.
+        /// </remarks>
+        static IReadOnlyList<string> ReadFullTextPaths(ContainerProperties properties)
+        {
+            var paths = new List<string>();
+
+            Add(paths, properties.FullTextPolicy?.FullTextPaths, x => x.Path);
+            Add(paths, properties.IndexingPolicy?.FullTextIndexes, x => x.Path);
+
+            return paths;
+        }
+
+        /// <summary>
+        /// Reads the paths the container declares vector searchable.
+        /// </summary>
+        /// <remarks>
+        /// The vector embedding policy and the vector indexes, read as one list for the same reason.
+        /// <c>VectorEmbeddingPolicy.Embeddings</c> is a field rather than a property, which is the SDK's
+        /// shape and not a distinction worth reflecting here.
+        /// </remarks>
+        static IReadOnlyList<string> ReadVectorPaths(ContainerProperties properties)
+        {
+            var paths = new List<string>();
+
+            Add(paths, properties.VectorEmbeddingPolicy?.Embeddings, x => x.Path);
+            Add(paths, properties.IndexingPolicy?.VectorIndexes, x => x.Path);
+
+            return paths;
+        }
+
+        /// <summary>
+        /// Appends the normalized path of every declaration, skipping what is empty or already there.
+        /// </summary>
+        static void Add<T>(List<string> paths, IEnumerable<T>? declarations, Func<T, string> selector)
+        {
+            if (declarations is null)
+                return;
+
+            foreach (var declaration in declarations)
+            {
+                var path = selector(declaration);
+                if (string.IsNullOrEmpty(path))
+                    continue;
+
+                path = NormalizePath(path);
+                if (paths.Contains(path) == false)
+                    paths.Add(path);
+            }
         }
 
         /// <summary>

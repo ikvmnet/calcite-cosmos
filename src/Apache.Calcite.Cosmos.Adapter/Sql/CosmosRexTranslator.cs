@@ -54,6 +54,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly RexBuilder _rexBuilder;
 
         /// <summary>
+        /// What the container declares, where the caller knows which container this is written
+        /// against.
+        /// </summary>
+        readonly Metadata.CosmosContainerMetadata? _container;
+
+        /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="rexBuilder">Used to expand <c>SEARCH</c> nodes back into comparison trees.</param>
@@ -64,13 +70,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// where one is in scope. A lateral traversal is correlated on its own input, so its array
         /// expression addresses this input through such a variable; nothing else does.
         /// </param>
+        /// <param name="container">
+        /// What the container declares, where the caller knows it. Only the full text and vector
+        /// functions consult it — see <see cref="RequireFullTextDeclared"/> — and a caller with nothing to
+        /// translate but a path may leave it out. Where it is <c>null</c> those functions render as
+        /// they did before this was read, which is what keeps a caller that only resolves paths from
+        /// having to supply one.
+        /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _ownRow = ownRow;
+            _container = container;
         }
 
         /// <summary>
@@ -1109,10 +1123,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // The two-argument SQL form — truncate to a number of decimal places — is left out
             // rather than guessed at, the arity of Cosmos's TRUNC not having been verified.
             ["TRUNCATE"] = ("TRUNC", 1, 1),
-            // Rankable, but not restricted to a rank clause the way a full text score is: the reference
-            // projects it. So it renders wherever any other function does, and IsScoringFunction lets an
-            // ORDER BY over it reach the clause as well.
-            ["VECTORDISTANCE"] = ("VECTORDISTANCE", 2, 4),
             // String functions SQL and Cosmos spell alike and mean alike. LEFT and RIGHT clamp rather
             // than fail on a count longer than the string at both ends; REVERSE is a reversal.
             ["LEFT"] = ("LEFT", 2, 2),
@@ -1175,6 +1185,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return;
                 case "MEMBER OF":
                     WriteMemberOf(builder, call);
+                    return;
+                // Rankable, but not restricted to a rank clause the way a full text score is: the
+                // reference projects it. So it renders wherever any other function does, and
+                // IsScoringFunction lets an ORDER BY over it reach the clause as well. It is written
+                // here rather than mapped by name because one of its vectors has to be a path the
+                // container declares.
+                case "VECTORDISTANCE":
+                    WriteVectorDistance(builder, call);
                     return;
                 case "FULLTEXTCONTAINS":
                 case "FULLTEXTCONTAINSALL":
@@ -1450,6 +1468,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(Operand(call, 0), out var path) == false || path is null)
                 throw new CosmosTranslationException($"The first argument of '{name}' must be a document path.");
 
+            RequireFullTextDeclared(name, path);
+
             builder.Append(name).Append('(');
             path.WriteTo(builder);
 
@@ -1460,6 +1480,89 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             builder.Append(')');
+        }
+
+        /// <summary>
+        /// Writes <c>VECTORDISTANCE</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>VECTORDISTANCE(&lt;vector1&gt;, &lt;vector2&gt;, [&lt;brute_force&gt;], [&lt;options&gt;])</c>,
+        /// rendered over all of its operands. Either vector may be a literal — searching for a
+        /// neighbour of a supplied embedding is the whole point of the function — so unlike a full text
+        /// predicate this does not require its first argument to be a path.
+        /// </para>
+        /// <para>
+        /// What it does require is that <em>one</em> of the two is a path the container declares
+        /// searchable. Comparing two arbitrary arrays is legal and pointless; comparing a document path
+        /// the container has said nothing about is the case the gate exists for.
+        /// </para>
+        /// </remarks>
+        void WriteVectorDistance(StringBuilder builder, RexCall call)
+        {
+            var operands = call.getOperands();
+            if (operands.size() < 2 || operands.size() > 4)
+                throw new CosmosTranslationException($"Function 'VECTORDISTANCE' with {operands.size()} argument(s) has no Cosmos equivalent.");
+
+            if (_container is not null &&
+                DeclaresVector(Operand(call, 0)) == false &&
+                DeclaresVector(Operand(call, 1)) == false)
+                throw new CosmosTranslationException("'VECTORDISTANCE' requires a vector path the container declares; " + Declared(_container.VectorPaths) + ".");
+
+            WriteFunctionCall(builder, call, "VECTORDISTANCE");
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a path the container declares vector searchable.
+        /// </summary>
+        bool DeclaresVector(RexNode node)
+        {
+            return TryResolvePath(node, out var path) && path is not null && _container!.IsPathVectorSearchable(path.ToPolicyPath());
+        }
+
+        /// <summary>
+        /// Refuses a full text function over a path the container declares nothing about.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This and <see cref="WriteVectorDistance"/> are where a declaration decides whether a
+        /// <em>function</em> pushes, as <c>CosmosContainerMetadata.IsSortSupported</c> is where one
+        /// decides whether a sort does. All three are legality rather than cost: a multi-key sort
+        /// with no composite index and a full text predicate over an undeclared path are each
+        /// refused by the service outright, so rendering one is a defect and not a pessimisation.
+        /// </para>
+        /// <para>
+        /// The path is compared without its alias, which is what makes this answer the same question a
+        /// container policy does. An element-rooted path — the <c>t0</c> of a traversal — reduces to
+        /// the policy path of its property, and a full text policy cannot name a path inside an array
+        /// at all, so such a call is refused unless the property happens to be declared at the root.
+        /// That last case renders as it did before and is no worse than it was.
+        /// </para>
+        /// </remarks>
+        /// <param name="name">The function being written, for the message.</param>
+        /// <param name="path">The path it is written over.</param>
+        /// <exception cref="CosmosTranslationException">The container declares nothing about the path.</exception>
+        void RequireFullTextDeclared(string name, CosmosPath path)
+        {
+            if (_container is null)
+                return;
+
+            var policyPath = path.ToPolicyPath();
+            if (_container.IsPathFullTextSearchable(policyPath))
+                return;
+
+            throw new CosmosTranslationException(
+                $"'{name}' requires a full text policy or index on '{policyPath}'; " + Declared(_container.FullTextPaths) + ".");
+        }
+
+        /// <summary>
+        /// Renders what a container declares, for a refusal that names it.
+        /// </summary>
+        static string Declared(IReadOnlyList<string> paths)
+        {
+            return paths.Count == 0
+                ? "the container declares none"
+                : "the container declares " + string.Join(", ", paths);
         }
 
         /// <summary>

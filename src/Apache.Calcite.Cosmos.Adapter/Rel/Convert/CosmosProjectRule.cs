@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// implementor then refused rather than a projection Calcite applies itself.
         /// </para>
         /// </remarks>
-        static bool IsTranslatable(Project project)
+        static bool IsTranslatable(CosmosConvention convention, Project project)
         {
             var projects = project.getProjects();
             if (projects.size() == 0)
@@ -47,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
 
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container);
 
             // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the
             // expressions CosmosProject.Implement can render — including the cast to text it sends the
@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosProjectRule Create(CosmosConvention convention)
         {
             return (CosmosProjectRule)Config.INSTANCE
-                .withConversion(typeof(Project), new DelegatePredicate<Project>(IsTranslatable), Convention.NONE, convention, "CosmosProjectRule")
+                .withConversion(typeof(Project), new DelegatePredicate<Project>(p => IsTranslatable(convention, p)), Convention.NONE, convention, "CosmosProjectRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosProjectRule>(c => new CosmosProjectRule(c)))
                 .toRule(typeof(CosmosProjectRule));
         }

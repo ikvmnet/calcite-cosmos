@@ -452,7 +452,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
         /// </remarks>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null) => new(_rexBuilder, _fields, _parameters, ownRow);
+        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null) => new(_rexBuilder, _fields, _parameters, ownRow, _container);
 
         /// <summary>
         /// Visits an input node, allowing it to contribute to this implementor.

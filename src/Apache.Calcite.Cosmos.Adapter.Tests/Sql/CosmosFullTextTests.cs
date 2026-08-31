@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
@@ -36,14 +37,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 CosmosPath.Root("c").Property("text"),   // 0
                 null,                                    // 1 — a computed projection
+                CosmosPath.Root("c").Property("note"),   // 2 — a path nothing declares
             };
         }
 
         CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList());
 
+        /// <summary>
+        /// A translator that knows what the container declares, which is what gates the full text
+        /// functions.
+        /// </summary>
+        CosmosRexTranslator Translator(CosmosContainerMetadata container) => new(_rex, _fields, new CosmosParameterList(), null, container);
+
         RexNode Text() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 0);
 
         RexNode Computed() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1);
+
+        RexNode Other() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 2);
 
         RexNode Keyword(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, value.Length));
 
@@ -161,6 +171,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             var act = () => Translator().TranslateRank(Text());
             act.Should().Throw<CosmosTranslationException>();
+        }
+
+
+        // ── The declaration decides ─────────────────────────────────
+
+        /// <remarks>
+        /// The gate. A container declaring the path renders as it always did; the same call over a
+        /// path it declares nothing about is refused, because the service refuses it with a bodyless
+        /// 400 that names neither the path nor the function.
+        /// </remarks>
+        [TestMethod]
+        public void APredicateOverADeclaredPathRenders()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+
+            Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("steel")))
+                .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
+        }
+
+        [TestMethod]
+        public void APredicateOverAnUndeclaredPathIsDeclined()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+
+            Translator(container).TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")), out _)
+                .Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// Every form of the predicate, and the score, go through the same gate.
+        /// </remarks>
+        [TestMethod]
+        public void EveryFullTextFormIsGated()
+        {
+            var container = new CosmosContainerMetadata("products");
+            var translator = Translator(container);
+
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("a")), out _).Should().BeFalse();
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAll, Text(), Keyword("a"), Keyword("b")), out _).Should().BeFalse();
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAny, Text(), Keyword("a"), Keyword("b")), out _).Should().BeFalse();
+
+            var rank = () => translator.TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Text(), Keyword("a")));
+            rank.Should().Throw<CosmosTranslationException>();
+        }
+
+        /// <remarks>
+        /// The refusal names the path and what the container has instead, which is the whole point of
+        /// deciding this while planning rather than reading a bodyless 400 afterwards.
+        /// </remarks>
+        [TestMethod]
+        public void TheRefusalNamesThePath()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+
+            var act = () => Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")));
+
+            act.Should().Throw<CosmosTranslationException>()
+                .WithMessage("*'/note'*").WithMessage("*/text*");
+        }
+
+        /// <remarks>
+        /// A caller that has not said which container this is written against gets what it always got.
+        /// Nothing but the rules and the implementor supplies one, and both of those know.
+        /// </remarks>
+        [TestMethod]
+        public void WithoutAContainerNothingIsGated()
+        {
+            Translate(CosmosOperators.FullTextContains, Other(), Keyword("steel"))
+                .Should().Be("FULLTEXTCONTAINS(c.note, @p0)");
+        }
+
+        /// <remarks>
+        /// A vector distance takes two vectors and either may be a literal — searching for the
+        /// neighbours of a supplied embedding is the point — so it is enough that one of them is a
+        /// declared path.
+        /// </remarks>
+        [TestMethod]
+        public void AVectorDistanceNeedsOneDeclaredVector()
+        {
+            var container = new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" });
+
+            Translator(container).Translate(_rex.makeCall(CosmosOperators.VectorDistance, Text(), Other()))
+                .Should().Be("VECTORDISTANCE(c.text, c.note)");
+
+            Translator(container).Translate(_rex.makeCall(CosmosOperators.VectorDistance, Other(), Text()))
+                .Should().Be("VECTORDISTANCE(c.note, c.text)");
+
+            Translator(container).TryTranslate(_rex.makeCall(CosmosOperators.VectorDistance, Other(), Other()), out _)
+                .Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// The two are declared separately: a full text path is not a vector path and the other way
+        /// round.
+        /// </remarks>
+        [TestMethod]
+        public void TheTwoDeclarationsAreNotInterchangeable()
+        {
+            var fullText = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
+
+            Translator(fullText).TryTranslate(_rex.makeCall(CosmosOperators.VectorDistance, Text(), Text()), out _).Should().BeFalse();
+
+            var vector = new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" });
+
+            Translator(vector).TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("steel")), out _).Should().BeFalse();
         }
 
 

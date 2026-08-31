@@ -38,6 +38,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     public class CosmosPlannerTests
     {
 
+        /// <remarks>
+        /// The full text and vector paths are declared because the functions over them are gated on
+        /// the declaration: a container that says nothing about a path is one whose full text
+        /// predicate the service refuses, so the rules decline it. Every statement here that names
+        /// one names a declared path, and <see cref="AFullTextPredicateOverAnUndeclaredPathIsNotPushedDown"/>
+        /// is the other half.
+        /// </remarks>
         static readonly CosmosContainerMetadata Products = new(
             "products",
             new[] { "/category" },
@@ -48,7 +55,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     new CosmosCompositeIndexPath("/id", false),
                     new CosmosCompositeIndexPath("/_ts", false),
                 }),
-            });
+            },
+            fullTextPaths: new[] { "/name", "/tags" },
+            vectorPaths: new[] { "/a" });
 
         CosmosTable _table = null!;
 
@@ -1513,6 +1522,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(c.\"_MAP\"['a'], c.\"_MAP\"['b']) < 0.5");
 
             Render(best).Should().Contain("WHERE (VECTORDISTANCE(c.a, c.b) < @p0)");
+        }
+
+
+        // ── The declaration decides ───────────────────────────────────────────────
+
+        /// <remarks>
+        /// A full text predicate over a path the container declares nothing about is refused by the
+        /// service with a bodyless 400 that names neither the path nor the function. The rule
+        /// declines instead, so the refusal happens while planning and says which path is at fault.
+        /// <c>/description</c> is not among the container's declared paths; <c>/name</c> is, and the
+        /// tests above push.
+        /// </remarks>
+        [TestMethod]
+        public void AFullTextPredicateOverAnUndeclaredPathIsNotPushedDown()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(c.\"_MAP\"['description'], 'steel')");
+
+            act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// And the same for a score, which reaches the rank clause through a different rule.
+        /// </remarks>
+        [TestMethod]
+        public void ARankOverAnUndeclaredPathIsNotPushedDown()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(c.\"_MAP\"['description'], 'steel') FETCH FIRST 10 ROWS ONLY");
+
+            act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// A vector distance needs one of its two vectors to be a declared path. <c>/a</c> is one and
+        /// <c>/b</c> is not, so the test above pushes on the strength of the first argument alone;
+        /// with neither declared there is nothing for the service to search.
+        /// </remarks>
+        [TestMethod]
+        public void AVectorDistanceOverUndeclaredPathsIsNotPushedDown()
+        {
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(c.\"_MAP\"['b'], c.\"_MAP\"['d']) < 0.5");
+
+            act.Should().Throw<Exception>();
         }
 
         // ── Point lookup ──────────────────────────────────────────────────────────

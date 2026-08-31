@@ -95,10 +95,12 @@ metadata rather than *type* metadata:
 | Composite indexes (ordered, with direction) | Indexing policy | **Whether `ORDER BY` is legal at all** |
 | Unique key policy | Container definition | Unique keys |
 | Computed properties | Container definition | Named, queryable, declared paths |
-| Tuple / full-text / vector indexes | Indexing policy | Function pushdown eligibility |
+| Full text policy and full text indexes | Container definition, indexing policy | **Whether a full text function pushes at all** |
+| Vector embedding policy and vector indexes | Container definition, indexing policy | **Whether `VECTORDISTANCE` pushes at all** |
+| Tuple indexes | Indexing policy | Nothing yet |
 | Spatial indexes | Indexing policy | Nothing — see *Spatial is out of scope* |
 
-Two of these carry hard consequences:
+Three of these carry hard consequences:
 
 - `id` and `_ts` are **always** indexed when the indexing mode is `Consistent`; `_etag` is
   excluded by default; the partition key is *not* indexed unless it is `/id`.
@@ -107,8 +109,13 @@ Two of these carry hard consequences:
   exactly or be exactly inverted. A multi-property sort without a matching composite index is
   not a slow query — it is an invalid one.
 
-The last point is the important one: **whether a `Sort` is pushable is a function of container
-metadata, not of the plan.** `CosmosSortRule` must read the indexing policy.
+- A full text function over a path the container declares nothing about, and a `VECTORDISTANCE`
+  over two of them, are refused by the service rather than answered slowly. See *The declaration
+  decides whether a full text or vector function pushes*.
+
+The middle point is the important one: **whether a `Sort` is pushable is a function of container
+metadata, not of the plan.** `CosmosSortRule` must read the indexing policy. The last is the same
+shape one level down — the operator is legal, the *path* is what decides.
 
 ### Verified against the emulator
 
@@ -811,6 +818,71 @@ with `GROUP BY` — one `ORDER BY` per statement, and the reference says as much
 The scoring functions are in the operator table so a query can name them, and the translator permits
 them through `TranslateRank` alone; everywhere else is a place the service rejects them, so a `WHERE`
 or a select list containing one declines.
+
+### The declaration decides whether a full text or vector function pushes
+
+The operator being nameable is not the same as the *path* being searchable, and only the container
+knows which paths are. `CosmosContainerMetadataReader` reads both declarations — the container's full
+text policy and the indexing policy's full text indexes, and likewise the vector embedding policy and
+the vector indexes — into `CosmosContainerMetadata.FullTextPaths` and `VectorPaths`, and the
+translator refuses a call over a path neither of them names. Reached from the call's *name*, like
+everything else here, so a call Calcite built around a schema declaration is held to it as well.
+
+This is the second legality gate after `IsSortSupported`, and it is the same argument: a full text
+predicate over an undeclared path was measured against a real account as a **bodyless 400** naming
+neither the path nor the function, so rendering one is a defect and not a pessimisation. Declining
+puts the refusal where a caller can read it —
+
+```
+'FULLTEXTCONTAINS' requires a full text policy or index on '/description'; the container declares /name.
+```
+
+— rather than in a response body that says nothing.
+
+**Why the policy and the index count the same.** The reference has moved: it now describes the full
+text index as something a query *benefits from* rather than something it requires, and describes the
+vector index the same way — `VECTORDISTANCE`'s own brute-force argument is documented as using "any
+index defined on the vector property, **if it exists**". What it does still require is the container
+*policy*: performing a vector search "requires you to define a vector policy for the container", and
+the full text policy is what names a path as text at all. Against that stands the measurement here,
+which is that a path with neither declaration is refused outright. The two readings agree on exactly
+one thing — a path the container has said **nothing** about — so that is what the gate asks. It
+declines least, and it still catches the case that was diagnosed.
+
+Consequently the gate is over the union rather than over the index alone, and a container that
+declares a path in its policy but does not index it still pushes. If that turns out to be a 400 as
+well, the fix is to read the two lists separately and require both; nothing else changes.
+
+**`VECTORDISTANCE` needs only one of its two vectors declared.** Either may be a literal — searching
+for the neighbours of a supplied embedding is the point of the function — so requiring the first
+argument to be a path, as the full text predicates do, would refuse the ordinary case. What it
+refuses instead is a call in which *neither* vector is a path the container declares.
+
+### What is deliberately not done: inferring full text from a substring predicate
+
+Rewriting `LIKE '%steel%'` into `FULLTEXTCONTAINS` where the path happens to be declared looks like
+the same kind of win as `LIKE 'abc%'` becoming `STARTSWITH`, and it is not, because it **changes the
+answer** in both directions:
+
+- `'%steel%'` matches `"steelworks"`; full text does not — a different token.
+- Full text matches `"Steel"` by case folding and likely `"steels"` by stemming, in the language the
+  container's full text policy declares. `LIKE` matches neither.
+
+Because neither predicate implies the other, `CosmosFilterSplitRule` cannot rescue it either: that
+rule pushes a *weaker* predicate and rechecks the original above, which needs the pushed form to
+return a superset. Full text is not a superset, so rows the `LIKE` should have returned would be gone
+before the recheck ran.
+
+The deeper reason is that a full text result depends on an analyzer and a language declared on the
+container, and SQL has no way to name either — which is why the custom operators exist rather than
+being an oversight. A caller who wants that trade should ask for it in the operand, the way
+`lookupCacheMaxRows` is asked for, rather than have the planner make it for them.
+
+Calcite's own precedent does not argue otherwise. The Elasticsearch adapter maps
+`SqlStdOperatorTable.CONTAINS` onto an ES `match` query
+([CALCITE-3437](https://issues.apache.org/jira/browse/CALCITE-3437), 1.22.0) — the *period* operator,
+reused for text. It has no tests, that adapter's documentation does not mention it, and the operator
+does not validate over strings, so no query reaches it. A loose end rather than a pattern.
 
 ### Spatial is out of scope, and cannot be brought in
 

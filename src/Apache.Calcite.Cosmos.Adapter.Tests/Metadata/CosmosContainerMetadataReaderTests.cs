@@ -110,6 +110,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosContainerMetadataReader.FromProperties(properties).CompositeIndexes.Should().BeEmpty();
         }
 
+        // ── Full text and vector declarations ─────────────────────────────────────
+
+        /// <remarks>
+        /// Two declarations for one question. The container's full text policy names the searchable
+        /// paths and the indexing policy indexes them; what the planner asks is whether the container
+        /// said anything at all, so both are read into one list.
+        /// </remarks>
+        [TestMethod]
+        public void FullTextPolicyAndIndexPathsAreBothRead()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.FullTextPolicy = new FullTextPolicy
+            {
+                DefaultLanguage = "en-US",
+                FullTextPaths = new Collection<FullTextPath> { new FullTextPath { Path = "/name", Language = "en-US" } },
+            };
+            properties.IndexingPolicy.FullTextIndexes.Add(new FullTextIndexPath { Path = "/description" });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.FullTextPaths.Should().BeEquivalentTo(new[] { "/name", "/description" });
+            container.IsPathFullTextSearchable("/name").Should().BeTrue();
+            container.IsPathFullTextSearchable("/description").Should().BeTrue();
+            container.IsPathFullTextSearchable("/price").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// A path declared by both is one path. The usual container declares every searchable path in
+        /// the policy and indexes the same ones.
+        /// </remarks>
+        [TestMethod]
+        public void APathDeclaredTwiceIsReadOnce()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.FullTextPolicy = new FullTextPolicy
+            {
+                DefaultLanguage = "en-US",
+                FullTextPaths = new Collection<FullTextPath> { new FullTextPath { Path = "/name", Language = "en-US" } },
+            };
+            properties.IndexingPolicy.FullTextIndexes.Add(new FullTextIndexPath { Path = "/name" });
+
+            CosmosContainerMetadataReader.FromProperties(properties).FullTextPaths.Should().Equal("/name");
+        }
+
+        [TestMethod]
+        public void VectorPolicyAndIndexPathsAreBothRead()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.VectorEmbeddingPolicy = new VectorEmbeddingPolicy(new Collection<Embedding>
+            {
+                new Embedding { Path = "/embedding", DataType = VectorDataType.Float32, Dimensions = 3, DistanceFunction = DistanceFunction.Cosine },
+            });
+            properties.IndexingPolicy.VectorIndexes.Add(new VectorIndexPath { Path = "/other", Type = VectorIndexType.Flat });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.VectorPaths.Should().BeEquivalentTo(new[] { "/embedding", "/other" });
+            container.IsPathVectorSearchable("/embedding").Should().BeTrue();
+            container.IsPathVectorSearchable("/other").Should().BeTrue();
+            container.IsPathVectorSearchable("/name").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// A container declaring neither is the case the gate exists for, and it must read as empty
+        /// rather than as unknown.
+        /// </remarks>
+        [TestMethod]
+        public void AContainerWithNoDeclarationsReadsEmpty()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.FullTextPaths.Should().BeEmpty();
+            container.VectorPaths.Should().BeEmpty();
+        }
+
+        /// <remarks>
+        /// Stripped as composite index paths are, so that comparison against a path produced by
+        /// <c>CosmosPath.ToPolicyPath</c> does not depend on which form the service returned.
+        /// </remarks>
+        [TestMethod]
+        public void DeclaredPathSpecifiersAreStripped()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.IndexingPolicy.FullTextIndexes.Add(new FullTextIndexPath { Path = "/name/?" });
+
+            CosmosContainerMetadataReader.FromProperties(properties).IsPathFullTextSearchable("/name").Should().BeTrue();
+        }
+
         /// <remarks>
         /// The read metadata must drive the sort guard, so check it end to end rather than only
         /// asserting the shape.

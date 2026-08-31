@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// binding from the row type instead would read alias names as document properties above a
         /// projection, and answer for paths the container does not have.
         /// </remarks>
-        static bool IsTranslatable(Filter filter)
+        static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var written) == false)
                 return false;
@@ -41,7 +41,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
-            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container);
             return translator.TryTranslate(filter.getCondition(), out _);
         }
 
@@ -53,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosFilterRule Create(CosmosConvention convention)
         {
             return (CosmosFilterRule)Config.INSTANCE
-                .withConversion(typeof(Filter), new DelegatePredicate<Filter>(IsTranslatable), Convention.NONE, convention, "CosmosFilterRule")
+                .withConversion(typeof(Filter), new DelegatePredicate<Filter>(f => IsTranslatable(convention, f)), Convention.NONE, convention, "CosmosFilterRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosFilterRule>(c => new CosmosFilterRule(c)))
                 .toRule(typeof(CosmosFilterRule));
         }

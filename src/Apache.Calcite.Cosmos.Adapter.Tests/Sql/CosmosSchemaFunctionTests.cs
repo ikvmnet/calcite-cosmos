@@ -50,7 +50,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     public class CosmosSchemaFunctionTests
     {
 
-        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+        /// <remarks>
+        /// <c>/name</c> and <c>/tags</c> are declared full text searchable because a full text
+        /// function pushes only over a path the container declares. These tests are about where a
+        /// name is <em>resolved</em>, so the declaration is here to keep the gate from being what
+        /// they measure — <c>CosmosPlannerTests</c> measures the gate.
+        /// </remarks>
+        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" }, fullTextPaths: new[] { "/name", "/tags" });
 
         /// <summary>
         /// Plans a statement against a <see cref="CosmosSchema"/> the connection is rooted in.
@@ -254,6 +260,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             projected.Should()
                 .Throw<Exception>("Cosmos will not project a score, and there is no in-process implementation either")
+                .Where(e => e.Message.Contains("No match found for function signature") == false,
+                    "the refusal has to be the planner declining a resolved call, not the name failing to resolve");
+        }
+
+        /// <summary>
+        /// And so does the gate on what the container declares.
+        /// </summary>
+        /// <remarks>
+        /// The other half of the same claim. A full text predicate pushes only over a path the
+        /// container declares searchable, and that check is reached from the call's name like every
+        /// other — so a call Calcite built around a schema declaration is held to it as well.
+        /// <c>/name</c> is declared and <c>/description</c> is not.
+        /// </remarks>
+        [TestMethod]
+        public void AnUndeclaredPathIsStillRefused()
+        {
+            var undeclared = () => Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(c.\"_MAP\"['description'], 'steel')");
+
+            undeclared.Should()
+                .Throw<Exception>("the container declares nothing about the path, and the service refuses the statement")
                 .Where(e => e.Message.Contains("No match found for function signature") == false,
                     "the refusal has to be the planner declining a resolved call, not the name failing to resolve");
         }

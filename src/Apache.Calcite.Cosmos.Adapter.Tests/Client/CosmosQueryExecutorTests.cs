@@ -1021,6 +1021,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             table.Container.PartitionKeyPaths.Should().Equal("/category");
         }
 
+        /// <remarks>
+        /// The fixture declares <c>/name</c> in both the full text policy and the full text index, and
+        /// the read has to bring that back: it is what the full text functions are gated on, so a
+        /// container whose declaration failed to read would decline every predicate over it. Checked
+        /// against a service rather than a hand-built <c>ContainerProperties</c>, which is the point —
+        /// the emulator discards configuration it does not implement, composite indexes being the
+        /// documented case, so a run that reports this empty on the emulator and populated on Azure has
+        /// told us which.
+        /// </remarks>
+        [TestMethod]
+        public void SchemaFactoryTableCarriesTheFullTextDeclaration()
+        {
+            Container();
+
+            var table = Products(listContainers: true)!;
+
+            if (table.Container.FullTextPaths.Count == 0)
+                Assert.Inconclusive("This account did not return a full text policy or index for the fixture's container.");
+
+            table.Container.FullTextPaths.Should().Contain("/name");
+            table.Container.IsPathFullTextSearchable("/name").Should().BeTrue();
+            table.Container.IsPathFullTextSearchable("/price").Should().BeFalse();
+        }
+
         // ── What the adapter reports about what it did ────────────────────────────
 
         /// <summary>
