@@ -208,7 +208,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             // Everything has to render, and against the binding implementation will use.
-            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out var projected) == false || projected)
+            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out var written) == false)
+                return null;
+
+            // The node writes the whole SELECT itself, the statement's one ORDER BY, and the row limit
+            // that goes with it. A subtree holding any of those already leaves it nowhere to go, so the
+            // nodes stay as they are and the ordering runs in process.
+            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return null;
 
             var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList());
