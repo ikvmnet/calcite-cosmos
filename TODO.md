@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**596 tests: 590 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**615 tests: 607 passing, 8 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -37,6 +37,14 @@ No PRs are open and nothing is parked; `main` is where the work is and a new bra
 Reading, writing (`INSERT`, `DELETE` including the whole-partition form, and `UPDATE` of the map
 column as a whole-document replace), the lookup join, partial aggregates, `DISTINCT`, the scalar
 functions and the diagnostics surface are complete and covered. What remains below is not started.
+
+**The Cosmos functions are now nameable through a connection**, a `CosmosSchema` and a
+`CosmosAccountSchema` declaring them where the catalog reader looks — so full text search is no
+longer the one feature a supported host could not use, and `CosmosConnectionFunctionTests` is the
+proof, against a real `DbConnection` over a model document. Chaining `CosmosOperators.Instance` is
+optional now rather than required, and is still the route for a host that assembles its own planner.
+One thing did **not** come with it: `ORDER BY RANK` still does not survive a connection, for a reason
+that is about plan shape rather than about names, and it is the first item under section 4.
 
 **Declared columns were built and then dropped**, and the shape of the hole they left is worth
 knowing before anyone rebuilds them. A caller-declared, typed document path promoted to a real
@@ -254,6 +262,25 @@ owns the client.
 
 ## 4. Query language coverage
 
+### Ranking and search
+
+- **`ORDER BY RANK` does not survive a connection** — *medium, and it is a shape rather than a
+  translation, and it is [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).* The functions
+  are nameable from a `CalciteConnection` now, and the predicates push;
+  the rank clause does not, because `CosmosRankRule` matches `Project(Sort(Project))` and a
+  connection never presents that. `Prepare` plans `RelRoot.rel` and applies the root's field mapping
+  by wrapping the finished plan in a calc, so the projection that discards the score is built after
+  every rule has run. Measured both ways: the same statement planned from `RelRoot.project()` gives
+  `CosmosRank`, and from `RelRoot.rel` gives an in-process sort over a projected `FULLTEXTSCORE` that
+  then fails to implement. `CosmosConnectionFunctionTests.AScoreResolvesThroughAConnection` detects
+  it and reports inconclusive, telling it apart from the emulator's own refusal.
+
+  **The question is what the rule would have to promise.** Matching `Sort(Project)` alone means the
+  node's row type carries a score column the statement cannot produce, which is exactly the
+  unsoundness the three-node match exists to prevent — `DESIGN.md` records that reasoning under
+  *Full text search*. Nothing a Volcano rule can see says whether anything above reads that column.
+  Decide before building.
+
 ### Subqueries
 
 - **`EXISTS` over an item-scoped subquery** — *large.* `EXISTS (SELECT VALUE t FROM t IN c.tags WHERE …)`
@@ -388,13 +415,6 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
 
 ## 7. Provider and integration
 
-- **Schema functions** — *medium, and the trade is the decision.* `CosmosOperators.Instance` is a
-  `SqlOperatorTable` a caller must chain, which is why full text is unreachable from a bare
-  `CalciteConnection`. Registering the functions on the schema instead means `ScalarFunctionImpl`
-  over real CLR methods, and these functions cannot execute outside Cosmos, so those methods would
-  throw: a non-pushed query becomes a run-time failure mid-enumeration rather than a plan-time
-  refusal. That downside is measured and pinned by `CosmosFunctionResolutionTests`; there is also no
-  `fun=cosmos` route, `SqlLibrary` being a closed enum.
 - **Connection options as operands** — *small.* Consistency level, preferred regions, application name,
   for callers who do not want to write a factory.
 - **Lazy subschemas** — *small.* Container *definitions* are read eagerly when an account-level schema

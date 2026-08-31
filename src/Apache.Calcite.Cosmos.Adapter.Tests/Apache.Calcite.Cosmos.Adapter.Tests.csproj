@@ -23,6 +23,13 @@
              answer to those arguments. Named here so the workflow keeps working — dropping it instead
              means rewriting how CI invokes tests. -->
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+        <!-- The ADO.NET provider, which is the path the README documents and the one issue #34 is
+             about: a model document, a DbConnection, a DbCommand. CosmosConnectionFunctionTests is
+             the only thing here that needs it, and it needs it because a claim about what a
+             connection can resolve is not testable against a planner the test built itself. Held at
+             the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
+             gives about core and linq4j. -->
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.0-pre.7" />
     </ItemGroup>
 
     <ItemGroup>

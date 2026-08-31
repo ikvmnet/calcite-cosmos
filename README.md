@@ -210,21 +210,40 @@ in-process. Anything the adapter cannot render faithfully it declines rather tha
 ## Full text search
 
 Cosmos has full text search and SQL does not, so the functions — `FULLTEXTCONTAINS`,
-`FULLTEXTSCORE`, `RRF` and the `IS_DEFINED` family — come from this package as Calcite operators, in
-`CosmosOperators.Instance`. Chain that into the operator table the validator is built with:
+`FULLTEXTSCORE`, `RRF` and the `IS_DEFINED` family — come from this package. A Cosmos schema declares
+them, so a connection resolves them the way it resolves a table:
 
-```csharp
-SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
+```sql
+SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(c."_MAP"['name'], 'steel')
 ```
 
 Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
 ranks the rows and never appears in the result, the service not permitting it to be projected.
 
-> **This needs a planner you build yourself, for now.** The validator resolves a function name against
-> the operator table its `fun` property names, chained with the catalog reader — and the catalog reader
-> resolves the *schema's own* functions. So a connection can reach these in principle; they are simply
-> offered as a `SqlOperatorTable` rather than registered on the schema, which is what a connection
-> would look them up through. Everything else on this page works through the provider.
+**Where the name is looked for.** An unqualified function name is resolved against the connection's
+default schema and the root, and nowhere else — so name the Cosmos schema as `defaultSchema` in the
+model, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)` from a query rooted elsewhere. A view
+declared in a model resolves against its own `path`, so a view over a Cosmos container either
+qualifies the call or declares `"path": [ "COSMOS" ]`.
+
+**Chaining the operator table is optional.** `CosmosOperators.Instance` is still there, and a host
+that assembles its own planner rather than opening a connection still needs it:
+
+```csharp
+SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
+```
+
+Chaining it alongside a Cosmos schema is not a duplicate definition: overload resolution takes the
+first candidate whose arity fits, so the chained operator answers and the schema's declaration is
+never reached. It is also the way past one limit of the schema route — Calcite builds a schema
+function's operand count from its parameter list, so the variadic functions are declared there up to
+sixteen operands, while the operator table's checker has no bound at all.
+
+> **`ORDER BY RANK` does not yet survive a connection.** The names resolve and the statement is built,
+> but the projection that discards the score is applied by `Prepare` after planning rather than being
+> a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
+> predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
+> [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
 
 ## What a query cost
 

@@ -73,6 +73,21 @@ namespace Apache.Calcite.Cosmos.Adapter
             return _subSchemas;
         }
 
+        /// <summary>
+        /// Declares the Cosmos functions, so that a connection rooted at the account can name one.
+        /// </summary>
+        /// <remarks>
+        /// The same set each <see cref="CosmosSchema"/> below declares. This is the level a query is
+        /// rooted at when a model omits <c>database</c>, and an unqualified function name is looked
+        /// for in the connection's default schema and the root — never in a subschema — so a query
+        /// that names <c>"inventory"."products"</c> would otherwise have nowhere to resolve
+        /// <c>FULLTEXTCONTAINS</c> from.
+        /// </remarks>
+        protected override com.google.common.collect.Multimap getFunctionMultimap()
+        {
+            return Sql.CosmosSchemaFunctions.Instance;
+        }
+
     }
 
 }
