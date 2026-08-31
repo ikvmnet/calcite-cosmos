@@ -769,6 +769,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             const string point = """{ "type": "Point", "coordinates": [-122.12, 47.66] }""";
 
+            // Resolved before the assertion rather than inside it. Where no account is reachable
+            // Container() reports inconclusive by throwing, and an assertion expecting a throw would
+            // catch that and call it the wrong exception — a skip turning into a failure on every
+            // runner without an emulator.
+            var container = Container();
+
             var builder = Builder();
             builder.SelectProperty("id", "c.id");
             builder.AddOrderBy($"ST_DISTANCE(c.location, {point})", false);
@@ -776,7 +782,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             var act = async () =>
             {
-                using var iterator = Container().GetItemQueryStreamIterator(new QueryDefinition(builder.Build()));
+                using var iterator = container.GetItemQueryStreamIterator(new QueryDefinition(builder.Build()));
                 while (iterator.HasMoreResults)
                 {
                     using var response = await iterator.ReadNextAsync();
