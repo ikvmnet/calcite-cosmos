@@ -479,6 +479,115 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Recognises <c>CAST(&lt;document value&gt; AS VARCHAR)</c> where the value can be sent as it
+        /// stands and turned into text as it is read back, and returns the value underneath.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>For a projection, and nothing else.</b> A comparison has a literal to reason from, which is
+        /// what <see cref="TryTextCastOperand"/> uses; a projection carries the value instead, so the
+        /// question is not which documents match but what each one returns. Nothing at the service
+        /// answers it — measured over one document per JSON type, neither the bare path nor
+        /// <c>ToString</c> reproduces what Calcite renders, and <c>DESIGN.md</c> keeps the table. What
+        /// does reproduce it is the reader: Calcite's cast over an <c>ANY</c> value is Java's rendering
+        /// of the very object <see cref="Client.CosmosJson.GetNatural"/> already builds, so the service
+        /// sends the value and <see cref="Client.CosmosJson.GetText"/> renders it. The rows are the
+        /// same ones; what changes is that the projection pushes, and with it the statement stops
+        /// carrying whole documents.
+        /// </para>
+        /// <para>
+        /// <b>The value is rendered, so it is no longer addressable.</b> The column projects text where
+        /// the document holds something else, and a filter or a sort above it would be written against
+        /// the raw path and mean something different — <c>= '30'</c> is true of the rendered number and
+        /// false at the service, and as text <c>10</c> sorts before <c>9</c>. Such a column therefore
+        /// binds to no path, exactly as a computed one does, and the operators reading it decline.
+        /// </para>
+        /// <para>
+        /// <b>Only an undecorated <c>VARCHAR</c>.</b> A width is a second conversion this does not
+        /// perform: measured, <c>VARCHAR(3)</c> truncates and <c>CHAR(8)</c> pads, so both are refused
+        /// and the cast stays in process. <c>SAFE_CAST</c> is admitted beside <c>CAST</c> because the
+        /// two differ only in what happens when a conversion fails, and rendering a value as text
+        /// never does.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression to inspect.</param>
+        /// <returns>The value underneath the cast, or <c>null</c> where this is not that shape.</returns>
+        internal static RexNode? TryRenderedTextOperand(RexNode node)
+        {
+            if (node is not RexCall call)
+                return null;
+
+            var kind = KindOf(call);
+            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                return null;
+
+            if (call.getOperands().size() != 1)
+                return null;
+
+            // An unspecified precision is what a bare VARCHAR carries -- Calcite's type system gives
+            // the type no default -- so this is the test for a cast that declares no width.
+            var type = call.getType();
+            if (type?.getSqlTypeName() != SqlTypeName.VARCHAR || type.getPrecision() != org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED)
+                return null;
+
+            var operand = Operand(call, 0);
+            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
+                return null;
+
+            return operand;
+        }
+
+        /// <summary>
+        /// Translates a projected expression, rendering the one cast a projection may send without.
+        /// </summary>
+        /// <remarks>
+        /// The single place the decision is made, so that the rule admitting a projection and the node
+        /// implementing it cannot disagree about which expressions are renderable — a disagreement that
+        /// shows up as a projection accepted by the planner and refused during implementation.
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="rendered">
+        /// On return, whether the cast was dropped and the value must be rendered as text when it is
+        /// read back. See <see cref="TryRenderedTextOperand"/>.
+        /// </param>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
+        public string TranslateProjection(RexNode node, out bool rendered)
+        {
+            if (node is null)
+                throw new ArgumentNullException(nameof(node));
+
+            if (TryRenderedTextOperand(node) is RexNode operand)
+            {
+                rendered = true;
+                return Translate(operand);
+            }
+
+            rendered = false;
+            return Translate(node);
+        }
+
+        /// <inheritdoc cref="TranslateProjection(RexNode, out bool)" />
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <param name="rendered">On success, whether the value must be rendered as text when read back.</param>
+        /// <returns><c>true</c> if the expression was translated; otherwise <c>false</c>.</returns>
+        public bool TryTranslateProjection(RexNode node, out string? expression, out bool rendered)
+        {
+            try
+            {
+                expression = TranslateProjection(node, out rendered);
+                return true;
+            }
+            catch (CosmosTranslationException)
+            {
+                expression = null;
+                rendered = false;
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Recognises <c>CAST(&lt;document value&gt; AS &lt;number&gt;)</c> whose conversion stays within
         /// one of the stored value, and returns the value underneath.
         /// </summary>

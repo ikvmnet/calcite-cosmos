@@ -82,17 +82,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             return planner.findBestExp();
         }
 
+        /// <summary>
+        /// The seam a host wires when it assembles its own planner.
+        /// </summary>
         /// <remarks>
-        /// The seam a caller wires today, and the reason the README says to.
+        /// The table here is added to the root schema directly rather than through a
+        /// <see cref="CosmosSchema"/>, so there is no schema declaring the functions and the operator
+        /// table is the only thing that can answer for the name — which is what makes this a
+        /// measurement of the table rather than of resolution in general. The other route, which is
+        /// the one a connection takes, is <c>CosmosSchemaFunctionTests</c>.
         /// </remarks>
         [TestMethod]
-        public void AFunctionResolvesOnlyWhenTheOperatorTableIsChained()
+        public void AFunctionNeedsSomethingToResolveAgainst()
         {
             var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"category\")");
             withTable.Should().NotThrow();
 
             var without = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"category\")", withOperatorTable: false);
-            without.Should().Throw<Exception>("the standard table has nothing to resolve IS_DEFINED to");
+            without.Should().Throw<Exception>("the standard table has nothing to resolve IS_DEFINED to, and no schema here declares it");
         }
 
         /// <summary>
@@ -105,8 +112,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// </para>
         /// <para>
         /// The failure is at plan time, which is the better of the two available failures — the
-        /// alternative, registering these as schema functions bound to CLR methods, would put a body
-        /// behind them and turn this into an exception once rows were already flowing.
+        /// alternative, binding these to CLR methods, would put a body behind them and turn this into
+        /// an exception once rows were already flowing. A <see cref="CosmosSchema"/> does declare them
+        /// as schema functions, and deliberately declares none of them implementable for this reason;
+        /// see <c>CosmosSchemaFunctions</c>.
         /// </para>
         /// </remarks>
         [TestMethod]

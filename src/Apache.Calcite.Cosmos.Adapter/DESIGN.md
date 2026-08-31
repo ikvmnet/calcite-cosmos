@@ -604,32 +604,65 @@ operator means what it says. Every use has to be either implied by the predicate
 the predicate rechecked above — or equivalent to it, and the differential corpus is what tells the two
 apart. There is more here than the two cases taken so far.
 
-**What is still declined.** Sorting by a cast column, joining on one, and projecting one. Each needs a
-reader that knows what type a path was declared to have — the schema-level `columns` binding — because
-each carries the value rather than comparing it, and no filter helps with that.
+**What is still declined.** Sorting by a cast column and joining on one. Each needs a reader that
+knows what type a path was declared to have — the schema-level `columns` binding — because each
+carries the value rather than comparing it, and no filter helps with that. Projecting one does not,
+for the reason below.
 
-**Projecting a cast is declined for a measured reason, not a missing case.** The obvious repair — a
-cast to `VARCHAR` over an `ANY` path is a no-op at the service, so emit the path — is wrong, and so
-is the next candidate. Measured over one document per JSON type:
+**Projecting a cast to text is a reading, not a translation.** Nothing at the service reproduces what
+Calcite renders, and the obvious repairs are both wrong. Measured over one document per JSON type:
 
 | stored value | Calcite `CAST(… AS VARCHAR)` | Cosmos `ToString` | the bare path |
 | --- | --- | --- | --- |
 | `"bikes"` | `"bikes"` | `"bikes"` | `"bikes"` |
 | `30` | `"30"` | `"30"` | `30` |
 | `30.7` | `"30.7"` | `"30.7"` | `30.7` |
+| `1e30` | `"1.0E30"` | `"1e+30"` | `1e+30` |
 | `true` | `"true"` | `"true"` | `true` |
-| `{"v":"bikes"}` | `"{v=bikes}"` | `"{\"v\":\"bikes\",…}"` | an object |
+| `{"v":"bikes"}` | `"{v=bikes}"` | `"{\"v\":\"bikes\",\"_propertyOrder\":[\"v\"]}"` | an object |
 | `["x","y"]` | `"[x, y]"` | `"[\"x\",\"y\"]"` | an array |
 | `null` | null | `"null"` | null |
 
 The bare path returns a JSON number where the plan declared text, and `CosmosJson.GetString` refuses
 to coerce one — deliberately, since coercing would make the row type a suggestion — so the statement
 would not return a different answer, it would *fail*, for data the in-process plan handles. `ToString`
-agrees exactly on every scalar and disagrees on three things that matter: JSON null becomes the
-*string* `"null"` where SQL wants null, and objects and arrays render in Cosmos's notation rather than
-Java's. None of the three can be excluded statically over a path typed `ANY`.
+agrees on the plain scalars and disagrees on four things that matter: JSON null becomes the *string*
+`"null"` where SQL wants null, an exponential number is written in JSON's notation rather than Java's,
+and objects and arrays render in Cosmos's — with, on the emulator, an internal `_propertyOrder` key
+leaking into the text. None of the four can be excluded statically over a path typed `ANY`.
 
-So the cast stays in process. What does not have to stay with it is everything above it — see below.
+**What the first column actually is, is Java's rendering of the box the reader already builds.** A
+number is a `Long` or a `Double`, a boolean a `Boolean`, an array an `ArrayList`, an object a
+`LinkedHashMap` — `CosmosJson.GetNatural` builds exactly those, because that is what Calcite holds an
+`ANY` value in, and Calcite's cast to `VARCHAR` over one is that object's own `toString`. So the cast
+does not have to be rendered at the service or reproduced here: the value is sent as it stands and
+rendered as it is read, by the same code that would have rendered it. `CosmosJson.GetText` is one
+`String.valueOf`, and the equality it rests on is the differential corpus's to keep — the `typed`
+container seeds `label` as a string, a number, a boolean, an array, an object, null and nothing, and
+those statements compare the pushed rendering against the in-process cast for all seven.
+
+`CosmosRexTranslator.TryRenderedTextOperand` recognises the shape and `CosmosProject` records a
+`CosmosReading.Text` for that ordinal, which the row builder reads by. **Only an undecorated
+`VARCHAR`**: a width is a second conversion the reader does not perform, and measured, `VARCHAR(3)`
+truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast in process. `SAFE_CAST`
+is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
+rendering a value as text never does. **Casts to a number are still declined**, and for the reason
+above: they convert rather than render, and no reading reproduces a conversion the service did not do.
+
+**A rendered column addresses no document path, and that is what makes it sound.** The column carries
+text where the document holds something else, so a filter or a sort above it written against the raw
+path would mean something different — `= '30'` is true of the rendered number and false at the
+service, and as text `10` sorts before `9`. Such a column binds to `null` exactly as a computed one
+does, and the operators reading it decline. So the projection pushes and the ordering does not, which
+is the split the next section is about.
+
+**Ordering by an expression is refused by the service anyway.** Measured, and it closes the question
+rather than leaving it a matter of caution: `ORDER BY ToString(c.label)`, `ORDER BY UPPER(c.label)` and
+`ORDER BY c.label || 'x'` each answer 400, error code 2206 — *"Unsupported ORDER BY clause. ORDER BY
+item expression could not be mapped to a document path."* `ORDER BY (c.label)` is accepted, so the
+restriction is exactly what the message says: the sort item must *be* a path. Rendering a cast into the
+clause was therefore never available, whatever it would have cost. Paging a view by one of its own cast
+columns waits on the typed column of `TODO.md` section 6, which gives the sort a path to name.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
@@ -641,16 +674,17 @@ measured, and a wrong answer is worse than a refused pushdown.
 ### A projection that cannot be pushed is not a wall
 
 A view is how a caller gives a container a relational shape, and a view has to cast: the row model
-types every path `ANY`, and nothing downstream that expects columns of a type can consume `ANY`. Since
-nothing renders a bare cast, the projection stays in process — and a sort and a row limit above it
-used to stay with it, so a bounded page over a view read every document the predicate matched.
+types every path `ANY`, and nothing downstream that expects columns of a type can consume `ANY`. A cast
+to text is rendered by the reader and pushes; the rest — a width, a numeric target — stays in process,
+and a sort and a row limit above it used to stay with it, so a bounded page over a view read every
+document the predicate matched.
 
 `CoreRules.SORT_PROJECT_TRANSPOSE` is registered for this, alongside the other Calcite rewrites the
 rule set carries because a bare Volcano planner has none. Transposed, the sort and its limit sit under
 the projection and push; the cast runs over the rows that come back.
 
 ```
-ClrAsyncEnumerableProject(id=[$1], n=[CAST(ITEM($0, 'name')):VARCHAR])
+ClrAsyncEnumerableProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
   CosmosToClrAsyncEnumerableConverter
     CosmosSort(sort0=[$1], dir0=[ASC], fetch=[10])
       CosmosTableScan(table=[[products]])
@@ -663,14 +697,74 @@ one is a plain reference — so ordering by a cast column, which is not ordering
 transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
 the planner costs both.
 
-This does not make the projection pushable and is not a substitute for the typed column that would;
-what it removes is the projection's ability to strand everything above it.
+This does not make an unrenderable projection pushable and is not a substitute for the typed column
+that would; what it removes is such a projection's ability to strand everything above it. Where the
+cast is to text the projection pushes on its own and there is nothing left to transpose past — but the
+rule still carries the cases that do not render, and the guard is what keeps it from carrying the sort
+that must not move.
 
 ### Full text search
 
 Cosmos has full text search and SQL does not, so there is nothing in Calcite's standard operator table
-to map onto it. `CosmosOperators` defines the operators and `CosmosOperators.Instance` is the operator
-table to chain into the one the validator is built with; without it a query cannot name these at all.
+to map onto it. `CosmosOperators` defines the operators, and they are offered two ways.
+
+#### Two routes to a name, and why there are two
+
+`CosmosOperators.Instance` is an operator table, chained into the one the validator is built with.
+That is what a host does when it assembles its own planner, and for a long time it was the only route
+— which meant full text search was the one thing on the feature list an application reaching the
+adapter the documented way could not use, because a connection does not build a validator for anyone
+to chain anything into.
+
+`CosmosSchemaFunctions` is the other route: a `CosmosSchema` and a `CosmosAccountSchema` declare the
+same operators through `Schema.getFunctions`, and the catalog reader — which `Prepare` chains into
+every statement's operator table — resolves a schema's own functions. So a connection finds them
+without being told.
+
+**Declared at both levels**, and that is the decision the two-level shape forces. An unqualified name
+is resolved against the connection's default schema and the root, and nowhere else: a model naming a
+`database` roots the connection at a `CosmosSchema` with no account above it, and a model naming an
+account roots it at the `CosmosAccountSchema` while the containers live a level down. Declaring at
+both is what makes the name work wherever a query is rooted, and no arrangement searches both levels
+for one unqualified name, so nothing resolves twice.
+
+**Chaining as well is not a duplicate.** Overload resolution takes the first candidate whose arity
+fits, and the chained table comes before the catalog reader — so the operator answers and the schema's
+declaration is never reached. The README says the chaining is optional rather than required.
+
+**Every one of these names is Cosmos's alone, and that is measured rather than assumed.** None of the
+twenty-one appears in `SqlStdOperatorTable` or in the union of all fourteen `SqlLibrary` tables, at
+any casing. It matters because the same resolution order that makes chaining harmless makes a
+collision silent: a connection chains the table its `fun` property names *ahead* of the catalog
+reader, so the day Calcite gives some library a function called `IS_ARRAY`, that operator would answer
+and the schema's declaration would stop being reached — for hosts that set `fun` and for nobody else.
+`NoneOfTheNamesIsOneCalciteAlreadyUses` is the tripwire.
+
+The near misses are near on purpose. Calcite has `IS_INF` and `IS_NAN` beside this family, and
+`STRING_TO_ARRAY` and `REGEXP_LIKE` beside `StringToArray` and `REGEXMATCH` — the last two named apart
+deliberately, being different functions rather than different spellings, and the operator comments say
+why. `IS JSON ARRAY` and the `JSON_*` family are the closest thing SQL has to the type tests and are
+still not the same question: they ask whether a *string* holds JSON text of some shape, where the row
+model holds parsed values and Cosmos asks what the value *is*.
+
+**What arrives is not the operator.** Calcite reads a schema function's parameter list and builds a
+`SqlUserDefinedFunction` of its own around it, carrying the name and the arity. The translator and the
+rules therefore ask a call for its *name* rather than for its identity — `IsScoringFunction` always
+did, and `CosmosOperators.IsAbsenceObserving` was changed to, an identity test there having been a
+soundness hole waiting for the second route to exist.
+
+**One declaration per arity, not one with optional parameters.** A call to a function whose type
+checker has fixed parameters is padded out to the whole parameter list with `DEFAULT` before it
+reaches the plan — `SqlCallBinding.operands` does it — so a single variadic declaration produced
+`FULLTEXTCONTAINSALL(c.name, 'steel', DEFAULT(), …)` and a Cosmos statement has nothing to render
+`DEFAULT` as. Declared one arity at a time, every parameter is required and nothing is padded. The
+consequence is a bound: a schema function accepts as many operands as it declares parameters, so the
+variadic operators are declared up to `CosmosSchemaFunctions.VariadicOperandLimit`, and a query
+needing more chains the operator table, whose checker has no bound.
+
+**None of them is implementable**, deliberately. A schema function bound to a CLR method would let a
+call that cannot be pushed down plan anyway and then answer with something Cosmos never computed; with
+no body, the failure is before any row exists.
 
 Signatures are the service's, from the query language reference:
 
@@ -709,6 +803,16 @@ the outer projection to discard it is how the rule knows nothing does. A consume
 through `RelRoot.project()`, which is where the extra column stops being output; a plan taken from
 `RelRoot.rel` still carries it, and is then correctly refused rather than silently returning nulls.
 
+**A connection is the second of those, and that is measured.** `Prepare` plans `RelRoot.rel` and then,
+where the root's field mapping is not trivial, wraps the finished plan in a calc that applies it — so
+the projection this rule requires is built *after* every rule has run and the three-node shape never
+exists while they are running. `ORDER BY FULLTEXTSCORE(…)` through a `CalciteConnection` therefore
+plans an in-process sort over a projected score, and fails to implement, which is the refusal above
+arriving where it is least useful. Planning the same statement from `RelRoot.project()` gives
+`CosmosRank`; from `RelRoot.rel` it does not. Whether the rule should learn the second shape — and
+what it would then have to promise about the score column nothing is known to read — is open; see
+[#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
+
 `CosmosQueryBuilder.RankBy` emits the clause and refuses to combine it with an ordinary `ORDER BY` or
 with `GROUP BY` — one `ORDER BY` per statement, and the reference says as much of `RRF` explicitly.
 The scoring functions are in the operator table so a query can name them, and the translator permits
@@ -721,7 +825,8 @@ The operator being nameable is not the same as the *path* being searchable, and 
 knows which paths are. `CosmosContainerMetadataReader` reads both declarations — the container's full
 text policy and the indexing policy's full text indexes, and likewise the vector embedding policy and
 the vector indexes — into `CosmosContainerMetadata.FullTextPaths` and `VectorPaths`, and the
-translator refuses a call over a path neither of them names.
+translator refuses a call over a path neither of them names. Reached from the call's *name*, like
+everything else here, so a call Calcite built around a schema declaration is held to it as well.
 
 This is the second legality gate after `IsSortSupported`, and it is the same argument: a full text
 predicate over an undeclared path was measured against a real account as a **bodyless 400** naming

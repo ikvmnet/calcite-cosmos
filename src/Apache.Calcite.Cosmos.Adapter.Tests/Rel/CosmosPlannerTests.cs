@@ -994,12 +994,102 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
-        // ── Past a projection that cannot be pushed ───────────────────────────────
+        // ── A cast to text is sent as the value and rendered on the way back ────
+
+        /// <summary>
+        /// A projection whose column is a cast to text pushes, the statement carrying the path.
+        /// </summary>
+        /// <remarks>
+        /// Which is what a view is made of. The cast is not rendered at the service and does not need
+        /// to be: Calcite's cast over an <c>ANY</c> value is Java's rendering of the box the reader
+        /// already builds, so the value is sent as it stands and rendered as it is read — see
+        /// <c>CosmosJson.GetText</c> and <c>DESIGN.md</c>, which keeps the measurement. What changes is
+        /// that the statement stops carrying whole documents.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextInAProjectionPushes()
+        {
+            var best = PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c");
+            var plan = Plan(best);
+
+            plan.Should().Contain("CosmosProject", "the projection belongs at the service: " + plan);
+            plan.Should().NotContain("ClrAsyncEnumerableProject", "and nothing should be left above it: " + plan);
+
+            Render(FindCosmos(best)).Should().Contain("SELECT VALUE { \"n\": c.name }");
+        }
+
+        /// <summary>
+        /// A width is a second conversion the reader does not perform, so a cast carrying one stays in
+        /// process.
+        /// </summary>
+        /// <remarks>
+        /// Measured against Calcite's own runtime: <c>VARCHAR(3)</c> truncates <c>'bikes'</c> to
+        /// <c>'bik'</c> and <c>CHAR(8)</c> pads it to <c>'bikes&#160;&#160;&#160;'</c>. Rendering either as the bare value
+        /// would return a different string, so both are refused.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextWithAWidthIsNotRendered()
+        {
+            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR(3)) AS \"n\" FROM products AS c"))
+                .Should().Contain("ClrAsyncEnumerableProject");
+
+            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS CHAR(8)) AS \"n\" FROM products AS c"))
+                .Should().Contain("ClrAsyncEnumerableProject");
+        }
+
+        /// <remarks>
+        /// A cast to a number converts rather than renders — <c>CAST(x AS INTEGER)</c> reads the stored
+        /// string <c>"30"</c> as 30 and truncates 30.7 — and nothing the service returns reproduces that.
+        /// It stays in process, as it did.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToANumberInAProjectionIsStillDeclined()
+        {
+            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c"))
+                .Should().Contain("ClrAsyncEnumerableProject");
+        }
+
+        /// <summary>
+        /// A rendered column addresses no document path, so a sort on it is not pushed.
+        /// </summary>
+        /// <remarks>
+        /// The whole of what makes the rendering sound. The column carries text and the path carries the
+        /// raw value, and the two do not order alike — as text <c>10</c> sorts before <c>9</c>, and
+        /// Cosmos orders a boolean before either. Binding it to no path is what makes the sort decline,
+        /// exactly as a computed column does.
+        ///
+        /// Stated <c>NULLS FIRST</c> deliberately: under Calcite's default placement the sort would be
+        /// refused on its null placement instead, and the test would pass without saying anything.
+        /// </remarks>
+        [TestMethod]
+        public void ASortOnARenderedCastColumnIsNotPushed()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
+
+            plan.Should().Contain("CosmosProject", "the projection still pushes: " + plan);
+            plan.Should().NotContain("CosmosSort", "ordering by the rendering is not ordering by the path: " + plan);
+        }
+
+        /// <remarks>
+        /// The same for a filter, and for the same reason: <c>= '30'</c> is true of the rendered number
+        /// and false at the service.
+        /// </remarks>
+        [TestMethod]
+        public void AFilterOnARenderedCastColumnIsNotPushed()
+        {
+            var plan = Plan(PlanToAsync(
+                "SELECT * FROM (SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c) WHERE \"n\" = '30'"));
+
+            plan.Should().NotContain("CosmosFilter", "the predicate reads a rendering, not a path: " + plan);
+        }
+
+        // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path
-        // ANY. Nothing renders a bare cast, so the projection stays in process — and a sort and row
-        // limit above it used to stay with it, reading the container whole to answer a bounded page.
-        // Transposed below the projection they push, and the cast runs over the rows that come back.
+        // ANY. A cast to text is rendered by the reader and pushes; the rest — a width, a numeric
+        // target — stays in process, and a sort and row limit above it used to stay with it, reading
+        // the container whole to answer a bounded page. Transposed below the projection they push,
+        // and the cast runs over the rows that come back.
 
         /// <summary>
         /// The sort and its row limit reach the statement even though the projection above them
@@ -1008,7 +1098,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortOnAnUncastColumnPushesPastAnUnrenderableProjection()
         {
-            var best = PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+            var best = PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosSort", "the sort belongs at the service: " + plan);
@@ -1020,9 +1110,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// The other half, and the reason this is sound. Ordering by the cast column is not ordering
-        /// by the path underneath — rendered as text, 10 sorts before 9 — so the sort must stay above
-        /// the projection. Calcite maps the keys through and declines where any of them is not a
-        /// plain reference, which is the whole guard.
+        /// by the path underneath, so the sort must stay above the projection. Calcite maps the keys
+        /// through and declines where any of them is not a plain reference, which is the whole guard.
         ///
         /// Stated <c>NULLS FIRST</c> deliberately: under Calcite's default placement the sort would
         /// be refused on its null placement instead, and the test would pass without saying anything
@@ -1031,18 +1120,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortOnTheCastColumnItselfDoesNotTranspose()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
 
             plan.Should().NotContain("CosmosSort", "ordering by the cast is not ordering by the path: " + plan);
         }
 
         /// <summary>
         /// The shape a paged view has, end to end: a predicate, a cast projection, an ordering and a
-        /// row limit. Everything but the cast belongs at the service.
+        /// row limit. All of it belongs at the service.
         /// </summary>
         /// <remarks>
         /// This is the difference the item is about. Answering ten rows used to read every document
-        /// the predicate matched; it now reads ten.
+        /// the predicate matched; it now reads ten — and, since the cast to text is rendered rather
+        /// than declined, nothing is left in process at all.
         /// </remarks>
         [TestMethod]
         public void APagedViewReadsAPageRatherThanTheMatchingDocuments()
@@ -1050,6 +1140,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var best = PlanToAsync(
                 "SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c " +
                 "WHERE c.\"category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+
+            var plan = Plan(best);
+            plan.Should().NotContain("ClrAsyncEnumerableProject", "nothing is left for the plan to do: " + plan);
 
             var sql = Render(FindCosmos(best));
 
@@ -1070,6 +1163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().Contain("CosmosProject");
             plan.Should().NotContain("ClrAsyncEnumerableProject", "nothing is left for the plan to do: " + plan);
         }
+
 
         // ── Partial filter pushdown ───────────────────────────────
 

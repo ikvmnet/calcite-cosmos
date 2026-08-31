@@ -57,15 +57,17 @@ Relational joins, `UNION`/`INTERSECT`/`EXCEPT`, and `HAVING` have no Cosmos equi
 
 ## Full text search
 
-Cosmos has full text search and SQL does not, so the functions come from this adapter. Chain its operator table into the one the validator is built with:
+Cosmos has full text search and SQL does not, so the functions come from this adapter. A Cosmos schema declares them, so a connection resolves them the way it resolves a table — name the schema as the model's `defaultSchema`, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)`.
+
+`FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are usable in a `WHERE` clause and push down to the service. The first argument must be a property path, and it must be one the container declares full text searchable — in its full text policy, in a full text index, or both — since the service refuses the query otherwise. `VECTORDISTANCE` is gated the same way, on one of its two vectors being a declared vector path.
+
+A host that assembles its own planner rather than opening a connection chains the operator table instead, and may chain it alongside a schema without a duplicate definition:
 
 ```csharp
 SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
 ```
 
-`FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are then usable in a `WHERE` clause and push down to the service. The first argument must be a property path, and it must be one the container declares full text searchable — in its full text policy, in a full text index, or both — since the service refuses the query otherwise. `VECTORDISTANCE` is gated the same way, on one of its two vectors being a declared vector path.
-
-Ranking works too. `ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. See [DESIGN.md](DESIGN.md).
+Ranking works when the planner is one you built. `ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. Through a connection the clause is not recovered, because the projection that discards the score is applied after planning; see [DESIGN.md](DESIGN.md).
 
 ## What a query cost
 

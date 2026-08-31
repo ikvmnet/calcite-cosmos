@@ -700,6 +700,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'shoes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> 'bikes'", false),
 
+            // Projecting a cast to text, which the statement sends as the value and the reader renders.
+            // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
+            // reader already builds, so these are asked of a field seeded to hold a string, a number, a
+            // boolean, an array, an object, null and nothing — and of one holding 1e30, whose rendering
+            // is the one a JSON writer would not have produced. A rendering that drifts from Calcite's
+            // fails here, which is the only place it would be caught.
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(c.\"_MAP\"['big'] AS VARCHAR) FROM typed AS c", false),
+            ("SELECT SAFE_CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c WHERE c.\"category\" = 'a'", false),
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM typed AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
+
+            // A width is a second conversion the reader does not perform, so these keep the cast in
+            // process — and the rows are what says so: VARCHAR(3) truncates and CHAR(8) pads.
+            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR(3)) FROM typed AS c", false),
+            ("SELECT CAST(c.\"_MAP\"['label'] AS CHAR(8)) FROM typed AS c", false),
+
+            // Ordering by a rendered column is not ordering by the path underneath — as text 10 sorts
+            // before 9, and the service puts a boolean and a null before either — so the column
+            // addresses nothing and the sort stays above. Compared in order, so a sort that quietly
+            // reached the service is a failure here rather than a coincidence: over these documents
+            // the two orders genuinely differ.
+            //
+            // One key and one column deliberately. A second key would need a composite index and be
+            // refused for that instead, saying nothing; and a row that is only the rendering makes a
+            // tie between equal values invisible, so the comparison does not depend on which of two
+            // identical rows came first.
+            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT CAST(c.\"_MAP\"['price'] AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+
             // The literals that are refused, each because some other JSON value renders as them. If any
             // of these starts being dropped, these are the statements that say so.
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '30'", false),

@@ -191,6 +191,23 @@ WHERE c."_MAP"['tags'][0] = 'steel'
 Those collapse to the Cosmos paths `c.metadata.sku` and `c.tags[0]` and are evaluated by the service.
 The key must be a constant — a Cosmos path names a property statically.
 
+### Giving a column a type
+
+A path read through the map column is typed `ANY`, which nothing expecting typed columns — an ORM, a
+BI tool — can consume, so a view over a container casts. A cast to `VARCHAR` is carried: the service
+returns the value and the adapter renders it exactly as Calcite would, so the view's projection is
+evaluated by the service rather than over whole documents. `CAST(<path> AS VARCHAR) = 'text'` pushes
+as a comparison too, wherever no other JSON value could render as that text.
+
+Two limits are worth knowing before writing the view. A cast to a **number** converts rather than
+renders — `CAST(x AS INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service
+reproduces that, so it stays in-process, as does any cast carrying a width. And a cast column
+**cannot be an `ORDER BY` key at the service**: the rendering is not the path underneath, and the
+service will not order by an expression in any case, answering one with *"ORDER BY item expression
+could not be mapped to a document path"*. So a page ordered by a cast column reads every matching
+document. Order by an uncast path instead and it reads a page — subject to the null placement
+above, which `id` and the partition key are exempt from, being non-nullable.
+
 ## What gets pushed down
 
 | | |
@@ -210,11 +227,11 @@ in-process. Anything the adapter cannot render faithfully it declines rather tha
 ## Full text search
 
 Cosmos has full text search and SQL does not, so the functions — `FULLTEXTCONTAINS`,
-`FULLTEXTSCORE`, `RRF` and the `IS_DEFINED` family — come from this package as Calcite operators, in
-`CosmosOperators.Instance`. Chain that into the operator table the validator is built with:
+`FULLTEXTSCORE`, `RRF` and the `IS_DEFINED` family — come from this package. A Cosmos schema declares
+them, so a connection resolves them the way it resolves a table:
 
-```csharp
-SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
+```sql
+SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(c."_MAP"['name'], 'steel')
 ```
 
 Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
@@ -227,11 +244,30 @@ bodyless 400 that names neither the path nor the function, so the adapter declin
 says which path is at fault instead. This is the same shape as multi-property `ORDER BY`, which pushes
 only where a matching composite index is declared.
 
-> **This needs a planner you build yourself, for now.** The validator resolves a function name against
-> the operator table its `fun` property names, chained with the catalog reader — and the catalog reader
-> resolves the *schema's own* functions. So a connection can reach these in principle; they are simply
-> offered as a `SqlOperatorTable` rather than registered on the schema, which is what a connection
-> would look them up through. Everything else on this page works through the provider.
+**Where the name is looked for.** An unqualified function name is resolved against the connection's
+default schema and the root, and nowhere else — so name the Cosmos schema as `defaultSchema` in the
+model, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)` from a query rooted elsewhere. A view
+declared in a model resolves against its own `path`, so a view over a Cosmos container either
+qualifies the call or declares `"path": [ "COSMOS" ]`.
+
+**Chaining the operator table is optional.** `CosmosOperators.Instance` is still there, and a host
+that assembles its own planner rather than opening a connection still needs it:
+
+```csharp
+SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
+```
+
+Chaining it alongside a Cosmos schema is not a duplicate definition: overload resolution takes the
+first candidate whose arity fits, so the chained operator answers and the schema's declaration is
+never reached. It is also the way past one limit of the schema route — Calcite builds a schema
+function's operand count from its parameter list, so the variadic functions are declared there up to
+sixteen operands, while the operator table's checker has no bound at all.
+
+> **`ORDER BY RANK` does not yet survive a connection.** The names resolve and the statement is built,
+> but the projection that discards the score is applied by `Prepare` after planning rather than being
+> a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
+> predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
+> [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
 
 ## What a query cost
 
