@@ -216,6 +216,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static readonly SqlFunction StIsValid = Spatial("ST_ISVALID", ReturnTypes.BOOLEAN_NULLABLE, 1);
 
         /// <summary>
+        /// <c>COSMOS_GEOMETRY(&lt;expr&gt;)</c> — a stored GeoJSON value decoded as the geometry
+        /// Calcite's spatial library computes in.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The one operator here that carries an implementation</b>, and it has to: this is a storage
+        /// decode rather than a service capability. A container holds a geometry as a GeoJSON object,
+        /// which the row model materialises as a map; Calcite's <c>ST_WITHIN</c> and its siblings take a
+        /// JTS geometry, and the cast Calcite inserts between the two is a plain one that fails.
+        /// Measured: <c>InvalidCastException: Unable to cast object of type 'java.util.LinkedHashMap' to
+        /// type 'org.locationtech.jts.geom.Geometry'</c>. Naming this in the query is what turns stored
+        /// GeoJSON into something the engine can compute over — and with it, Calcite's whole spatial
+        /// library works against a container:
+        /// </para>
+        /// <code>
+        /// SELECT c."id" FROM places AS c
+        ///  WHERE ST_WITHIN(COSMOS_GEOMETRY(c."_MAP"['location']), ST_GEOMFROMGEOJSON('…'))
+        /// </code>
+        /// <para>
+        /// Because it is a real implementation rather than a name the service resolves, a query using it
+        /// answers whether or not anything pushes down — which is what makes a pushdown that narrows the
+        /// read safe to add later: there is something correct to fall back to, and something correct to
+        /// recheck against.
+        /// </para>
+        /// <para>
+        /// Named distinctly rather than shadowing one of Calcite's. It adds a capability Calcite has no
+        /// way to express over a schemaless container, which is the kind of operator this adapter may
+        /// define; redefining a name Calcite already gives a meaning is the kind it may not. See
+        /// <c>CLAUDE.md</c>.
+        /// </para>
+        /// </remarks>
+        public static readonly SqlFunction Geometry = CreateGeometry();
+
+        /// <summary>
+        /// Builds the geometry decode as a user-defined function, so that it both resolves and runs.
+        /// </summary>
+        /// <remarks>
+        /// A <see cref="SqlBasicFunction"/> — what everything else here is — names a function the
+        /// service will run and has no body, so Calcite cannot execute one. This is the opposite case:
+        /// nothing about it involves the service. Wrapping a real method in a
+        /// <c>SqlUserDefinedFunction</c> is how Calcite's own spatial library is built, and it is what
+        /// makes the operator executable in process.
+        /// </remarks>
+        static SqlFunction CreateGeometry()
+        {
+            var function = org.apache.calcite.schema.impl.ScalarFunctionImpl.create(
+                (java.lang.Class)typeof(CosmosGeometry),
+                nameof(CosmosGeometry.FromDocument));
+
+            // The parameter list is what SqlUserDefinedFunction derives its operand checker from, and
+            // without it the validator asks the operator for a count range it does not have —
+            // UnsupportedOperationException from Util.needToImplement, measured. The types are built
+            // from a factory of this type's own because an operator is static and a query's factory is
+            // not; ANY is what the row model gives every document value anyway, so nothing is lost by
+            // not using the caller's.
+            // A factory of this type's own, because an operator is static and a query's factory is not.
+            var factory = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
+            var types = new java.util.ArrayList();
+            types.add(factory.createSqlType(SqlTypeName.ANY));
+
+            return new GeometryFunction(
+                new SqlIdentifier("COSMOS_GEOMETRY", org.apache.calcite.sql.parser.SqlParserPos.ZERO),
+                new GeometryReturnType(),
+                InferTypes.@explicit(types),
+                OperandTypes.ANY,
+                types,
+                (org.apache.calcite.schema.Function)function);
+        }
+
+        /// <summary>
+        /// The decode operator, which supplies the one thing its base class cannot.
+        /// </summary>
+        /// <remarks>
+        /// <c>SqlUserDefinedFunction</c> answers <c>getOperandCountRange</c> out of the operand
+        /// <em>metadata</em> a catalog reader builds for it, and the constructor that takes a plain
+        /// operand type checker leaves that null — so the validator asks an operator built this way for
+        /// a range it does not have and gets <c>UnsupportedOperationException</c> from
+        /// <c>Util.needToImplement</c>. Measured. Building the metadata instead would mean a type
+        /// factory at operator-construction time and three Java functional interfaces implemented from
+        /// CLR; the arity is one, and saying so is the smaller truth.
+        /// </remarks>
+        sealed class GeometryFunction : org.apache.calcite.sql.validate.SqlUserDefinedFunction
+        {
+
+            public GeometryFunction(SqlIdentifier opName, SqlReturnTypeInference returnTypeInference, SqlOperandTypeInference operandTypeInference, SqlOperandTypeChecker operandTypeChecker, java.util.List paramTypes, org.apache.calcite.schema.Function function) :
+                base(opName, returnTypeInference, operandTypeInference, operandTypeChecker, paramTypes, function)
+            {
+
+            }
+
+            // Both of these are answered off operand metadata the base class was never given, so they
+            // are supplied here. The check is a real answer rather than a stub: the decode takes
+            // whatever a document holds at the path and answers null for anything that is not a
+            // geometry, so there is no operand it needs to refuse.
+            public override SqlOperandCountRange getOperandCountRange() => SqlOperandCountRanges.of(1);
+
+            public override bool checkOperandTypes(SqlCallBinding callBinding, bool throwOnFailure) => true;
+
+        }
+
+        /// <summary>
+        /// Types the decode as a nullable JTS geometry.
+        /// </summary>
+        /// <remarks>
+        /// Nullable because a document may hold no geometry at the path, or something else entirely, and
+        /// the decode answers <c>null</c> for both — a row that does not match rather than a query that
+        /// fails.
+        /// </remarks>
+        sealed class GeometryReturnType : SqlReturnTypeInference
+        {
+
+            public org.apache.calcite.rel.type.RelDataType inferReturnType(SqlOperatorBinding opBinding)
+            {
+                var factory = opBinding.getTypeFactory();
+                var geometry = ((org.apache.calcite.adapter.java.JavaTypeFactory)factory)
+                    .createJavaType((java.lang.Class)typeof(org.locationtech.jts.geom.Geometry));
+
+                return factory.createTypeWithNullability(geometry, true);
+            }
+
+            // Java default methods, which a CLR implementation of the interface has to supply. Written
+            // as the defaults are.
+            public SqlReturnTypeInference andThen(SqlTypeTransform transform) => ReturnTypes.cascade(this, transform);
+
+            public SqlReturnTypeInference orElse(SqlReturnTypeInference next) => ReturnTypes.chain(this, next);
+
+        }
+
+        /// <summary>
         /// Gets an operator table carrying every Cosmos-specific function.
         /// </summary>
         public static SqlOperatorTable Instance { get; } = SqlOperatorTables.of(
@@ -226,6 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 RegexMatch,
                 ToStringFunction, StringToNumber, StringToObject, StringToArray, StringToBoolean, ObjectToArray,
                 StDistance, StWithin, StIntersects, StIsValid,
+                Geometry,
             ]);
 
         /// <summary>

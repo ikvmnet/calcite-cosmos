@@ -87,7 +87,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         static readonly string[] Documents =
         [
-            """{"id":"1","category":"bikes","name":"Trail Blazer","price":120,"tags":["outdoor","steel"]}""",
+            // The one document carrying a geometry. Its point is inside the triangle the spatial test
+            // names, which is what makes that test able to fail: a decode answering null for everything
+            // would return no rows and look like a predicate that simply did not match.
+            """{"id":"1","category":"bikes","name":"Trail Blazer","price":120,"tags":["outdoor","steel"],"location":{"type":"Point","coordinates":[0.5,0.25]}}""",
             """{"id":"2","category":"bikes","name":"Road Runner","price":340,"metadata":{"sku":"B-2"}}""",
             """{"id":"3","category":"shoes","name":"Sprint","price":80}""",
             """{"id":"4","category":"shoes","name":"Marathon","price":null}""",
@@ -248,6 +251,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // dialects this suite exists to compare.
             var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(
                 SqlStdOperatorTable.instance(),
+                // Calcite's spatial library, and this adapter's operators after it. A spatial query
+                // over a container needs both: the ST_* functions are Calcite's, and the decode that
+                // turns stored GeoJSON into something they can compute over is this adapter's.
+                org.apache.calcite.sql.util.SqlOperatorTables.spatialInstance(),
+                Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance,
                 org.apache.calcite.sql.fun.SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(
                     java.util.EnumSet.of(
                         org.apache.calcite.sql.fun.SqlLibrary.MYSQL,
@@ -324,6 +332,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 rows.Add(row);
 
             return rows;
+        }
+
+        /// <summary>
+        /// Calcite's spatial library, run over geometries stored in a container.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What this proves is that the decode is load bearing.</b> Handed the materialised document
+        /// value directly, Calcite's <c>ST_WITHIN</c> fails — measured, <c>InvalidCastException: Unable
+        /// to cast object of type 'java.util.LinkedHashMap' to type
+        /// 'org.locationtech.jts.geom.Geometry'</c> — because the cast Calcite inserts between an
+        /// untyped document value and a geometry is a plain one. <c>COSMOS_GEOMETRY</c> is what turns
+        /// storage into the engine's type, and with it the whole library works against a container.
+        /// </para>
+        /// <para>
+        /// Run without pushdown, which is the point: this is Calcite computing the answer itself, with
+        /// its own planar semantics, over rows the adapter fetched. Anything pushed down later has to
+        /// agree with <em>this</em>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task CalciteSpatialRunsOverStoredGeoJson()
+        {
+            const string triangle = "'{\"type\":\"Polygon\",\"coordinates\":[[[0,0],[1,0],[1,1],[0,0]]]}'";
+
+            var within = await Run(
+                $"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(\"COSMOS_GEOMETRY\"(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
+                pushdown: false);
+
+            // Document 1 alone carries a geometry, and its point is inside the triangle. Every other
+            // document decodes to null and does not match, which is the answer rather than a failure.
+            within.Should().ContainSingle().Which.ToString().Should().Be("1");
+
+            var intersects = await Run(
+                $"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(\"COSMOS_GEOMETRY\"(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
+                pushdown: false);
+
+            intersects.Should().ContainSingle().Which.ToString().Should().Be("1");
         }
 
         /// <summary>

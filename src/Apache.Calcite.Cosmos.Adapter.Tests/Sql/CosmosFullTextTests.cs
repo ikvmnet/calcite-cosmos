@@ -130,6 +130,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 // Spelled as Calcite's spatial library spells them, and deliberately not mapped from it:
                 // the geometry models and the units differ. See CosmosSpatialTests.
                 "ST_DISTANCE", "ST_WITHIN", "ST_INTERSECTS", "ST_ISVALID",
+                // The one operator here that carries an implementation rather than naming a service
+                // function: it decodes stored GeoJSON into the geometry Calcite computes in.
+                "COSMOS_GEOMETRY",
             ]);
         }
 
