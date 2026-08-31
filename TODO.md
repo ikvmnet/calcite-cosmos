@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**638 tests: 631 passing, 7 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**607 tests: 601 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -36,13 +36,14 @@ No PRs are open and nothing is parked; `main` is where the work is and a new bra
 
 Reading, writing (`INSERT`, `DELETE` including the whole-partition form, and `UPDATE` of the map
 column as a whole-document replace), the lookup join, partial aggregates, `DISTINCT`, the scalar
-functions, the spatial functions and the diagnostics surface are complete and covered. What remains
+functions and the diagnostics surface are complete and covered. What remains
 below is not started.
 
-**Spatial is the newest of those and the least verified.** Predicates, the GeoJSON literal, the
-spatial-index cost and `ORDER BY ST_DISTANCE` are built and tested, and the emulator implements none
-of the four functions — so the service-side claims rest on the reference and on a consuming
-application's report. Section 4 says what one account run would settle.
+**Spatial works and pushes nothing.** Calcite's own spatial library now runs over a container —
+`COSMOS_GEOMETRY` decodes stored GeoJSON into the geometry it computes in, which is what it could not
+do before — so the answers are Calcite's and they are correct. They are also computed in process over
+a container read whole, which is the cost issue #33 opened about and is still open. Section 4 says
+what a pushdown could narrow and what it could never do.
 
 **Declared columns were built and then dropped**, and the shape of the hole they left is worth
 knowing before anyone rebuilds them. A caller-declared, typed document path promoted to a real
@@ -262,19 +263,15 @@ owns the client.
 
 ### Ranking and search
 
-- **Spatial is built and unverified against a service** — *small, and it needs an account.* The
-  emulator implements none of the four functions: each answers `500` with a Postgres error rather than
-  rejecting the query, so `SpatialFormsAreAcceptedWhereTheAccountSupportsThem` reports inconclusive
-  and asserts the moment an account answers. What that run would settle is every claim in `DESIGN.md`
-  under *Spatial* that came from the reference rather than from a measurement — that the emitted
-  object literal is accepted, that an ascending and a descending distance ordering are both served,
-  and that the spatial index is what serves them.
-- **Whether a geometry may be a bound parameter** — *small, and the same account answers it.*
-  `CosmosGeoJson` inlines the object because that is the documented form and because a parameter's
-  index behaviour is unknown; the index is the entire reason for the pushdown, so guessing was not on.
-  `ST_DISTANCE(c.location, @p0)` with the parameter bound to an object, checked with
-  `PopulateIndexMetrics`, decides it — and a yes restores this adapter's usual rule that statement
-  text does not vary with the data.
+- **Nothing spatial is pushed down** — *medium, and the shape is settled.* Calcite's spatial library
+  runs correctly over a container now that `COSMOS_GEOMETRY` decodes storage into a geometry, but it
+  runs in process over a container read whole, which is the cost issue #33 opened about. The step is
+  a restriction Calcite's own predicate *implies*, pushed and rechecked above — the pattern
+  `CosmosFilterSplitRule` already uses for casts — and `IsPathSpatiallyIndexed` is read from the
+  policy for it. What such a step can never do is fixed by the geometry rather than by effort: a
+  distance cannot be pushed as a *value*, the ratio between geodesic metres and planar degrees varying
+  with latitude and bearing, and an *ordering* cannot be pushed at all, the two models genuinely
+  sequencing rows differently. A predicate can. Recorded in `DESIGN.md` under *Spatial*.
 
 ### Subqueries
 

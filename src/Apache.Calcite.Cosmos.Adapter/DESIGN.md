@@ -124,16 +124,10 @@ documentation.
 > | `ORDER BY t0` over `JOIN t0 IN c.tags` | accepted | **400** |
 > | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
-> | `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID` | **500** | accepted, reported |
 >
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
 > run. `ORDER BY t0.x` is rejected too, so it is the alias and not the arity.
->
-> The last row's emulator answer was measured here; its Azure answer is a consuming application's
-> report rather than a measurement of this repository's, which is why it says so. The emulator
-> answers `500` with a Postgres error rather than rejecting the query, so it cannot even be read as
-> a refusal — it implements none of them.
 
 **A hundred-term `IN` is served by the index.** Measured on a real account with
 `PopulateIndexMetrics`: `WHERE c.category IN (@k0, ..., @k99)` reports
@@ -715,108 +709,68 @@ or a select list containing one declines.
 
 ### Spatial
 
-Cosmos has four spatial functions and so does Calcite's spatial library, spelled the same way. They
-are **not** the same functions.
+**This adapter defines no spatial operators.** Calcite's spatial library defines `ST_DISTANCE`,
+`ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID` and about a hundred and eighty more, and a query naming
+them gets Calcite's semantics — which is the contract. See `CLAUDE.md`: an adapter operator is
+warranted where the storage offers a capability Calcite has no way to express, and duplicating what
+Calcite already provides is not that.
 
-| | Cosmos | Calcite `SqlLibrary.SPATIAL` |
-| --- | --- | --- |
-| geometry | a GeoJSON object in the document | a JTS `Geometry` value |
-| model | geodesic over the ellipsoid | planar |
-| `ST_DISTANCE` answers in | **metres** | the units of the coordinate system |
+What Calcite could not do was *run* them here, and the reason was storage rather than semantics. A
+container holds a geometry as a GeoJSON object, the row model materialises it as a
+`java.util.LinkedHashMap` because a container declares no types, and the cast Calcite inserts between
+an untyped document value and a JTS `Geometry` is a plain one. Measured end to end, on the oracle
+path with nothing pushed down:
 
-Same names, different numbers, which is the situation `REGEXMATCH` was already decided by: two
-spellings that agree on most inputs and disagree on some are worse than two names. So `ST_DISTANCE`,
-`ST_WITHIN`, `ST_INTERSECTS` and `ST_ISVALID` are **`CosmosOperators`' own operators**, not a mapping
-from the library.
+```
+InvalidCastException: Unable to cast object of type 'java.util.LinkedHashMap'
+                      to type 'org.locationtech.jts.geom.Geometry'
+```
 
-Because the names collide, **the translator dispatches these on operator identity** rather than on the
-name it dispatches everything else by — `CosmosOperators.IsSpatial`. A host that chains Calcite's
-spatial table gets Calcite's operators, which decline here and are evaluated in process with the planar
-semantics that host asked for. A name comparison would have rendered one as the other, silently
-answering a query about metres in degrees.
+So every spatial query against a container validated, planned, and threw at the first row.
 
-**The arguments are a document path or a geometry, and nothing else.** The document side is held to a
-path for the reason a full text predicate's is: an expression cannot be served off the spatial index,
-and that index is the reason to push the call down at all. The constant side is GeoJSON *text* — SQL
-has no object literal and the row model has no geometry type — which `CosmosGeoJson` parses, validates
-against the four types Cosmos documents, and re-emits as an object built from what it validated. Copying
-the caller's text into the statement would be the one place query text reached the SQL verbatim.
+`COSMOS_GEOMETRY` is the decode, and with it the whole library works:
 
-**The geometry is inlined and not bound**, which is this adapter's only departure from binding a
-literal. An object in the geometry position is what every documented example shows, and whether the
-service serves a *parameter* there off the spatial index is unmeasured. The index is the entire point,
-so the documented form is emitted and the question is recorded rather than guessed at — it is one
-measurement on a real account away from being answered, and answering it would restore the usual rule.
-The numeric bound of a proximity predicate *is* bound: `ST_DISTANCE(c.location, {…}) < @p0` is the
-shape, so the radius varies without the statement text varying.
+```sql
+SELECT c."id" FROM places AS c
+ WHERE ST_WITHIN(COSMOS_GEOMETRY(c."_MAP"['location']), ST_GEOMFROMGEOJSON('…'))
+```
 
-That comparison is also why **a cast of a numeric literal renders**. `ST_DISTANCE(…) < 5000` coerces
-the integer to the function's double, arriving as `<(ST_DISTANCE(…), CAST(5000):DOUBLE)`, and declining
-the cast declines the predicate that makes the query cost a page rather than a container. A cast over a
-*document value* is refused exactly as before — see *Casts over document values*; the operand here has
-to be a literal, whose value is known while the statement is written, and widening it to a double is
-the conversion Calcite's own constant reduction would have performed for a host that registers it.
+Three things about it are deliberate.
 
-#### `ORDER BY ST_DISTANCE` is the documented exception to the document-path rule
+**It is named by the query rather than sniffed from the value.** Deciding that an object is a geometry
+because it carries a `type` and `coordinates` would change what an ordinary projection of that path
+returns, and would do it on a guess. The row model refuses to infer everywhere else.
 
-An `ORDER BY` item must map to a document path: `ORDER BY UPPER(c.name)` and `ORDER BY LENGTH(c.name)`
-are both rejected with *"Unsupported ORDER BY clause. ORDER BY item expression could not be mapped to a
-document path."* A distance ordering is served, ascending or descending, off the spatial index. Two
-things follow, and both were measured:
+**It answers `null` for anything that is not a geometry**, rather than throwing. A container guarantees
+nothing about what a path holds, so a spatial predicate over a document holding a string is a row that
+does not match.
 
-- **A distance ordering must be the only one.** `ORDER BY ST_DISTANCE(…), c.name` is rejected with that
-  same message — no index serves the pair — so `CosmosDistanceSortRule` matches exactly one collation
-  key and a composite sorts in process instead. The emulator answers this one even though it implements
-  none of the functions, because the rejection is the query engine's rather than the spatial
-  implementation's.
-- **An aggregate will not carry it.** `COUNT` over a query ordered by a distance is rejected, which
-  makes asking for a page *and* its total count fail while either alone is fine. `CosmosAggregate`
-  already refuses an aggregate above an `ORDER BY`, so this costs a pushdown here rather than a query.
+**It is the one operator here carrying an implementation.** Everything else in `CosmosOperators` names
+a function the service runs and has no body. This one runs in process, because decoding storage into
+the engine's types is not something the service does — which also means a query using it answers
+whether or not anything pushes down.
 
-Calcite expresses ordering by an expression as three nodes — project it, sort on that column, project it
-away — the same shape `CosmosRank` collapses, and for a related but different reason. A score *cannot*
-be projected, so there the middle node is illegal; a distance can be, and what cannot be expressed is
-ordering by it through an alias, Cosmos having no name for a projected column. `CosmosDistanceSort` is
-the three as one node: the surviving columns in the select list, the distance repeated in the clause.
+Building it took three answers `SqlUserDefinedFunction` could not give. That class reads its arity and
+its operand check off operand metadata a catalog reader would have built, and there is no catalog
+reader on this path, so a subclass supplies them; the operand check is a real answer rather than a
+stub, the decode taking whatever a document holds.
 
-**A query that also selects the distance is two nodes rather than three** — the sort keys on a column
-the select list already carries — and they collapse the same way, because Cosmos has no name for a
-projected column and the clause repeats the expression either way. Unlike a score, the distance may be
-a column, so the node simply projects a wider select list. `CosmosDistanceSortRule` carries an operand
-tree for each shape.
+#### Nothing spatial is pushed down yet
 
-#### The null placement is settled by a declaration, not measured
+The predicates and the ordering run in process, over rows the adapter fetched — correct, and over a
+container read whole. Pushing anything down means pushing a restriction Calcite's own predicate
+*implies* and rechecking above it, which is what `CosmosFilterSplitRule` already does for casts.
+`CosmosContainerMetadata.IsPathSpatiallyIndexed` is read from the indexing policy for that step: a
+range index does not serve a spatial function, and the default policy indexes every path while
+declaring no spatial index, so the two questions have different answers exactly where it matters.
 
-`ST_DISTANCE` is declared a **non-nullable** double. That is what makes the clause expressible at all:
-Cosmos orders an absent value below everything ascending and above everything descending, Calcite's
-defaults are the reverse of both, and a nullable key with a conflicting placement is refused — which
-would leave no ascending distance ordering at all.
-
-What the declaration costs is a document holding no geometry, whose distance is `undefined` and which
-therefore sorts first ascending where Calcite asked for last. Two things make that the right trade
-rather than a hidden one. The proximity predicate that makes such a query worth pushing —
-`ST_DISTANCE(…) < r` — excludes those documents itself, because a comparison against `undefined` is not
-true. And a query that orders by proximity without bounding it is asking to read the whole container in
-distance order, which is not the shape this exists for. The ordering-only query is where it bites, and
-it is written down here rather than discovered.
-
-#### A spatial index is a different index
-
-`CosmosContainerMetadata.IsPathSpatiallyIndexed` answers separately from `IsPathIndexed`, and it has to:
-a range index does not serve a spatial function, and the **default policy indexes every path while
-declaring no spatial index**. So the general question says a proximity predicate over `/location` is
-cheap on a container where it reads every document. `CosmosFilter` asks the spatial question of a
-spatial call's paths and the general one of everything else, and applies the same `UnindexedPathPenalty`
-either way — the difference is which index is asked about, not what it is worth.
-
-Paths only; the geometry types declared beside them are not read. A type says which of `Point`,
-`LineString`, `Polygon` and `MultiPolygon` the index serves, and what a document holds at that path is
-not something the container declares.
-
-**None of this is verified against the service.** The emulator (`vnext-preview`) does not implement the
-spatial functions at all — every one answers `500` with a Postgres error, which is the same kind of gap
-full text search was — so `SpatialFormsAreAcceptedWhereTheAccountSupportsThem` reports inconclusive and
-detects the gap it skips for.
+Two things bound what such a step can ever do, and both are properties of the geometry rather than of
+the adapter. Cosmos is geodesic over the ellipsoid and Calcite is planar over lon/lat, so **a distance
+cannot be pushed as a value** — the ratio between the two answers varies with latitude and bearing,
+and no transformation of the inputs fixes it, a similarity between a curved surface and a flat one
+being what Gauss ruled out. **An ordering cannot be pushed at all**: from 80°N a candidate 1° east and
+another 0.5° north swap places between the two models, so the sequences genuinely differ. A
+*predicate* can be pushed, as a deliberately loose bound with the real predicate rechecked above.
 
 ### What a table tells the planner
 
@@ -1449,10 +1403,7 @@ shape of the plan, so `CosmosFilter.computeSelfCost` reflects both:
   conjunction of equalities against constants; a disjunction or a range predicate does not
   qualify, since either may span partitions. What it recovers also reaches the executor, so such
   a query becomes single-partition without the caller asking.
-- **Filtering on an unindexed path** forces a scan of it, and which index is meant depends on what
-  reads the path: a spatial call is served only by a spatial index, which the default policy does not
-  declare, so `IsPathSpatiallyIndexed` answers for one and `IsPathIndexed` for everything else — see
-  *Spatial*. `CosmosContainerMetadata.IsPathIndexed`
+- **Filtering on an unindexed path** forces a scan of it. `CosmosContainerMetadata.IsPathIndexed`
   applies the documented precedence — deeper beats shallower, `/?` beats `/*` at equal depth —
   over the container's included and excluded paths. `id` and `_ts` are always indexed.
 

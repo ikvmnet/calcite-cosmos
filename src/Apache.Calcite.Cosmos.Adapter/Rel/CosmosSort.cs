@@ -225,17 +225,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <para>
         /// Verified empirically against the Cosmos emulator; see <c>DESIGN.md</c>.
         /// </para>
-        /// <para>
-        /// Shared with <see cref="CosmosDistanceSort"/>, whose key is an expression rather than a path
-        /// but whose placement question is the same one: the service orders by the value, and where the
-        /// value is absent it orders by absence.
-        /// </para>
         /// </remarks>
         /// <param name="field">The requested field collation.</param>
         /// <param name="nullable">Whether the key may be null in the rows being sorted.</param>
         /// <param name="descending">On success, whether to sort descending.</param>
         /// <returns><c>true</c> if the collation is one Cosmos can honour; otherwise <c>false</c>.</returns>
-        public static bool TryGetDescending(RelFieldCollation field, bool nullable, out bool descending)
+        static bool TryGetDescending(RelFieldCollation field, bool nullable, out bool descending)
         {
             switch ((RelFieldCollation.Direction.__Enum)field.getDirection().ordinal())
             {

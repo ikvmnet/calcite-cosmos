@@ -1051,21 +1051,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var name = call.getOperator().getName();
 
-            // Before the name switch, because the name is not enough to decide this one: Calcite's
-            // spatial library spells the same four functions the same way over a different geometry
-            // model. Identity says which is which; see CosmosOperators.IsSpatial.
-            if (CosmosOperators.IsSpatial(call.getOperator()))
-            {
-                WriteSpatial(builder, call, name);
-                return;
-            }
-
-            if (CosmosOperators.IsSpatialName(name))
-                throw new CosmosTranslationException(
-                    $"'{name}' is not this adapter's spatial operator. Calcite's is planar over a geometry " +
-                    "and answers in the units of the coordinate system, where Cosmos is geodesic over GeoJSON " +
-                    "and answers in metres, so it is evaluated in process rather than rendered.");
-
             switch (name)
             {
                 case "SUBSTRING":
@@ -1367,94 +1352,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             builder.Append(')');
-        }
-
-        /// <summary>
-        /// Determines whether an expression is a Cosmos <c>ST_DISTANCE</c> call.
-        /// </summary>
-        /// <remarks>
-        /// By operator identity rather than by name, unlike <see cref="IsScoringFunction"/>: nothing
-        /// else in Calcite is called <c>FULLTEXTSCORE</c>, and Calcite's own spatial library is called
-        /// <c>ST_Distance</c>. What the two mean differs in the unit of the answer, which is exactly the
-        /// kind of disagreement a name cannot show.
-        /// </remarks>
-        /// <param name="node">The expression to test.</param>
-        /// <returns><c>true</c> if it is a distance call this renders.</returns>
-        public static bool IsDistanceFunction(RexNode? node)
-        {
-            return node is RexCall call && CosmosOperators.IsDistance(call.getOperator());
-        }
-
-        /// <summary>
-        /// Writes a spatial call.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The rendered form is the SQL form: the arguments are already in the service's order, and the
-        /// name is already the service's name — these operators are this adapter's own rather than
-        /// translations of a SQL counterpart.
-        /// </para>
-        /// <para>
-        /// Every argument must be a <em>spatial expression</em>, which the reference means as either a
-        /// document path or a GeoJSON object. The document side is held to a path for the reason the
-        /// full text predicates are: an expression cannot be served from the spatial index, and the
-        /// index is why a spatial predicate is worth pushing down at all. The constant side is held to a
-        /// geometry <see cref="CosmosGeoJson"/> will emit, which is what keeps the object literal it
-        /// renders built out of validated parts rather than copied from query text.
-        /// </para>
-        /// </remarks>
-        void WriteSpatial(StringBuilder builder, RexCall call, string name)
-        {
-            var operands = call.getOperands();
-            if (operands.size() == 0)
-                throw new CosmosTranslationException($"'{name}' expects at least one spatial expression.");
-
-            builder.Append(name).Append('(');
-
-            for (var i = 0; i < operands.size(); i++)
-            {
-                if (i > 0)
-                    builder.Append(", ");
-
-                WriteSpatialOperand(builder, Operand(call, i), name);
-            }
-
-            builder.Append(')');
-        }
-
-        /// <summary>
-        /// Writes one argument of a spatial call, which is a document path or a geometry and nothing
-        /// else.
-        /// </summary>
-        void WriteSpatialOperand(StringBuilder builder, RexNode node, string name)
-        {
-            if (TryResolvePath(node, out var path) && path is not null)
-            {
-                path.WriteTo(builder);
-                return;
-            }
-
-            if (node is RexLiteral literal)
-            {
-                object? value;
-
-                try
-                {
-                    value = GetLiteralValue(literal);
-                }
-                catch (CosmosTranslationException)
-                {
-                    value = null;
-                }
-
-                if (value is string text && CosmosGeoJson.TryWrite(text, out var geometry) && geometry is not null)
-                {
-                    builder.Append(geometry);
-                    return;
-                }
-            }
-
-            throw new CosmosTranslationException($"Every argument of '{name}' must be a document path or a GeoJSON geometry literal.");
         }
 
         /// <summary>
