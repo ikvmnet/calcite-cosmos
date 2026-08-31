@@ -784,6 +784,146 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
+        // ── Ordering by a column the query does not select ────────────────────────
+        //
+        // Calcite answers this in three nodes. Ordering by a column outside the select list makes it
+        // an output first, and `RelRoot.project()` adds a projection above the sort to drop it again,
+        // leaving projection over sort over projection. Cosmos answers it in one statement, which
+        // holds one SELECT — so neither projection converts while the sort sits between them, and
+        // without a rewrite the whole query declines and the container is read to answer it.
+        //
+        // The shape stayed out of the suite because reaching it needs a sort that pushes, and a
+        // nullable key is refused on its null placement before the question is asked. `id` is not
+        // nullable, which is what exposes it.
+
+        /// <summary>
+        /// A query ordering by a column it does not select leaves as one statement.
+        /// </summary>
+        /// <remarks>
+        /// The transpose lifts the inner projection above the sort and the merge folds the two into
+        /// one, which is the shape that converts. Asserting the statement rather than the plan is
+        /// the point: planning wholly in the convention and rendering are the two things this used
+        /// to fail at, in that order.
+        /// </remarks>
+        [TestMethod]
+        public void OrderingByAColumnOutsideTheSelectListPushesAsOneStatement()
+        {
+            var best = PlanToCosmos("SELECT c.\"category\" FROM products AS c ORDER BY c.\"id\"");
+
+            Plan(best).Should().Be(
+                "CosmosProject(category=[$4])\n" +
+                "  CosmosSort(sort0=[$1], dir0=[ASC])\n" +
+                "    CosmosTableScan(table=[[products]])",
+                "the two projections fold into the one the statement has room for");
+
+            Render(best).Should().Be("SELECT VALUE { \"category\": c.category } FROM products c ORDER BY c.id ASC");
+        }
+
+
+        // ── What the subtree below has already written ────────────────────────────
+        //
+        // A statement holds one of each clause, and the service applies them in its own order rather
+        // than the plan's. An operator is therefore pushable only onto a subtree that has not written
+        // the clause it needs — and, where two clauses reorder instead of colliding, only onto one
+        // whose rows it would still be reading. Each node refuses the pairing it cannot render; what
+        // these ask is that the rule refuse it first, which is the difference between running the
+        // operator in process and failing the query after the planner has committed to the plan.
+        //
+        // The binding walk reports the clauses, so every rule reads the same answer the implementor
+        // will. Each case below reached its node and threw, bar one, which rendered.
+
+        /// <remarks>
+        /// A statement has one ORDER BY. The inner sort takes it and its page, and the outer one runs
+        /// over the rows that come back.
+        /// </remarks>
+        [TestMethod]
+        public void ASortIsNotPushedOntoASubtreeThatHasAlreadySorted()
+        {
+            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrAsyncEnumerableSort", "the second ordering stays in process: " + plan);
+            Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 5");
+        }
+
+        /// <summary>
+        /// The one that did not throw: pushed onto a page, a sort renders into a statement that
+        /// answers a different question.
+        /// </summary>
+        /// <remarks>
+        /// Cosmos applies OFFSET/LIMIT after ORDER BY, so folding this sort in asks the service to
+        /// order the container and then take five, where the plan asked for five rows in no
+        /// particular order and an ordering of those. Different rows, and nothing anywhere to say so
+        /// — which is why the answer has to be the rule's rather than the node's.
+        /// </remarks>
+        [TestMethod]
+        public void ASortIsNotPushedOntoAPushedRowLimit()
+        {
+            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("OFFSET 0 LIMIT 5");
+            sql.Should().NotContain("ORDER BY", "the page is taken first, and ordering the container before it takes other rows: " + sql);
+            Plan(best).Should().Contain("ClrAsyncEnumerableSort");
+        }
+
+        /// <remarks>
+        /// WHERE is evaluated before OFFSET/LIMIT, so a predicate cannot join a statement that has
+        /// taken its page: it would filter the container and page what survived.
+        /// </remarks>
+        [TestMethod]
+        public void AFilterIsNotPushedOntoAPushedRowLimit()
+        {
+            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x WHERE x.\"category\" = 'bikes'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("WHERE", "the predicate reads the page, not the container: " + sql);
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter");
+        }
+
+        /// <remarks>
+        /// The service joins before it orders, pages or de-duplicates, so a traversal cannot join a
+        /// statement that has done any of them — it would multiply the rows first and restrict after,
+        /// where the plan asked for the restricted rows to be multiplied. A projection below is the
+        /// pairing that is allowed, and is covered by
+        /// <see cref="UnnestOverAHoistedArrayCarriesTheElement"/>.
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayTraversalIsNotPushedOntoAPagedOrDistinctSubtree()
+        {
+            var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"id\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+
+            Plan(paged).Should().NotContain("CosmosUnnest", "the page is taken before the traversal: " + Plan(paged));
+            Render(FindCosmos(paged)).Should().Contain("OFFSET 0 LIMIT 5");
+
+            var distinct = PlanToAsync("SELECT c.\"id\" FROM (SELECT DISTINCT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+
+            Plan(distinct).Should().NotContain("CosmosUnnest", "the de-duplication happens before the traversal: " + Plan(distinct));
+            Render(FindCosmos(distinct)).Should().Contain("SELECT DISTINCT");
+        }
+
+        /// <remarks>
+        /// ORDER BY RANK is the statement's one ordering and pairs with TOP alone, and the node writes
+        /// the whole SELECT itself — so a subtree that has ordered, paged or projected leaves it
+        /// nowhere to go, and the three nodes it would have collapsed stay as they are.
+        /// </remarks>
+        [TestMethod]
+        public void AnOrderByRankIsNotPushedOntoASubtreeThatHasWrittenItsClauses()
+        {
+            var paged = PlanToAsync(
+                "SELECT y.\"id\" FROM (SELECT c.\"id\", c.\"_MAP\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 20 ROWS ONLY) AS y " +
+                "ORDER BY FULLTEXTSCORE(y.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY");
+
+            Plan(paged).Should().NotContain("CosmosRank", "the statement has already ordered and paged: " + Plan(paged));
+
+            var distinct = PlanToAsync(
+                "SELECT y.\"id\" FROM (SELECT DISTINCT c.\"id\", c.\"_MAP\" FROM products AS c) AS y " +
+                "ORDER BY FULLTEXTSCORE(y.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY");
+
+            Plan(distinct).Should().NotContain("CosmosRank", "the statement has already written its SELECT: " + Plan(distinct));
+        }
+
+
         // ── Past a projection that cannot be pushed ───────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path

@@ -45,23 +45,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out var written) == false)
                 return false;
 
-            // Binding passes through a sort, but an aggregate cannot: Cosmos rejects GROUP BY with
-            // ORDER BY in one statement, and applies GROUP BY before OFFSET/LIMIT, so grouping above
-            // a pushed row restriction would group the container rather than the restriction. The
-            // same conditions implementation refuses, decided here instead.
-            if (ReadsThroughASort(input))
-                return false;
-
-            // An aggregate over an aggregate, which binding now permits for the call-less case —
-            // a DISTINCT's output is paths, so a *sort* above one is sound. An aggregate above one
-            // is not: there is one SELECT per statement, so folding the outer in would clear the
-            // projection while leaving the DISTINCT behind, and count the rows of the container
-            // rather than the distinct values. That is the COUNT(DISTINCT) shape, whose outer half
-            // belongs outside the convention.
-            if (ReadsThroughAnAggregate(input))
+            // Binding passes through a sort and a DISTINCT, an aggregate cannot.
+            //
+            // Cosmos rejects GROUP BY with ORDER BY in one statement, and applies GROUP BY before
+            // OFFSET/LIMIT, so grouping above a pushed row restriction would group the container
+            // rather than the restriction. And a DISTINCT's output is paths, which is what lets a
+            // *sort* join one in the same statement; an aggregate cannot join it, because there is
+            // one SELECT to share and folding the outer in would clear the projection while leaving
+            // the DISTINCT behind, counting the rows of the container rather than its distinct
+            // values. That is the COUNT(DISTINCT) shape, whose outer half belongs outside the
+            // convention.
+            //
+            // The same conditions implementation refuses, decided here instead — off the binding's
+            // own walk rather than a second one beside it, so the two cannot drift.
+            if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct)) != 0)
                 return false;
 
             var groupKeys = groupSet.asList();
@@ -90,46 +90,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var index = ordinal.intValue();
             return index >= 0 && index < fields.Count && fields[index] is not null;
-        }
-
-        /// <summary>
-        /// Determines whether a sort lies on the path the aggregate's input binds through.
-        /// </summary>
-        /// <remarks>
-        /// The traversal mirrors <see cref="CosmosImplementor.TryBindOutput"/>: the same nodes are
-        /// passed through, so a sort this walk cannot see is a sort binding cannot see either.
-        /// </remarks>
-        static bool ReadsThroughASort(RelNode? node)
-        {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
-
-            return node switch
-            {
-                Sort => true,
-                Filter filter => ReadsThroughASort(filter.getInput()),
-                Project project => ReadsThroughASort(project.getInput()),
-                Correlate correlate => ReadsThroughASort(correlate.getLeft()),
-                _ => false,
-            };
-        }
-
-        /// <summary>
-        /// Determines whether an aggregate lies on the path the input binds through.
-        /// </summary>
-        static bool ReadsThroughAnAggregate(RelNode? node)
-        {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
-
-            return node switch
-            {
-                Aggregate => true,
-                Filter filter => ReadsThroughAnAggregate(filter.getInput()),
-                Project project => ReadsThroughAnAggregate(project.getInput()),
-                Correlate correlate => ReadsThroughAnAggregate(correlate.getLeft()),
-                _ => false,
-            };
         }
 
         /// <summary>

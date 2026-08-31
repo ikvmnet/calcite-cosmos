@@ -26,11 +26,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the input row type would take a projection's aliases for document properties.
         /// </para>
         /// <para>
-        /// The same walk says whether the subtree has already chosen its <c>SELECT</c>, which is the
-        /// other half of the answer: a statement has one, and Cosmos has no derived table to nest a
-        /// second in. Refusing here rather than at implementation is what makes an ordinary
-        /// <c>SELECT c."id" FROM t AS c, UNNEST(…)</c> plan at all — a host running Calcite's own rule
-        /// set hoists the traversed array into a projection below the correlate, leaving this
+        /// The same walk says which clauses the subtree has already written, and the <c>SELECT</c>
+        /// among them is the other half of the answer: a statement has one, and Cosmos has no derived
+        /// table to nest a second in. Refusing here rather than at implementation is what makes an
+        /// ordinary <c>SELECT c."id" FROM t AS c, UNNEST(…)</c> plan at all — a host running Calcite's
+        /// own rule set hoists the traversed array into a projection below the correlate, leaving this
         /// projection above one, and converting it optimistically turned that into a plan the
         /// implementor then refused rather than a projection Calcite applies itself.
         /// </para>
@@ -41,10 +41,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (projects.size() == 0)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var projected) == false)
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var written) == false)
                 return false;
 
-            if (projected)
+            if ((written & CosmosClauses.Projection) != 0)
                 return false;
 
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList());
