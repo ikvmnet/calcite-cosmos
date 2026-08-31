@@ -194,8 +194,8 @@ That default is a connection setting rather than a fact, and the other value wor
 `LOW` — nulls first ascending, last descending, which is Cosmos's own order and SQL Server's. A
 connection set that way asks for what the service already does, so the placement never conflicts and
 no predicate is needed. It is a property of the connection and not of the schema, so it changes what
-`ORDER BY` means for every schema on it; recorded here as the fact it is, with the guidance it wants
-still to be written.
+`ORDER BY` means for every schema on it, which is why it is guidance rather than a default the
+adapter could set — see the README, which carries the measurements and the trade.
 
 Two things make it sound rather than merely plausible. **Both senses of absent go.** Cosmos
 distinguishes a property holding JSON `null` from a property that is not there, and sorts
@@ -241,9 +241,17 @@ buys no smaller read in either case: with no row limit the corrective sort consu
 pushed result, so the service-side `ORDER BY` is paid on top of the same in-process sort; with a
 row limit the limit cannot ride along, because the first *n* under Cosmos's order are not the first
 *n* under the plan's, so it stays above the corrective sort and the read is unbounded again — the
-bound being exactly what the mismatch destroys. What it would buy is plan legibility: the planner
-would see and cost both alternatives instead of the adapter refusing outright. Recorded as a
-deliberate decline rather than an omission.
+bound being exactly what the mismatch destroys.
+
+**The cost model settles it rather than merely disfavouring it.** The alternative is the plan that
+exists today with a `CosmosSort` inserted beneath the same in-process sort: `CosmosSort` costs
+`Sort`'s own cost times `CosmosConvention.CostMultiplier`, which is positive, and the in-process sort
+above it costs `nLogN(rowCount)` either way — Calcite's `Sort.computeSelfCost` does not discount an
+already-collated input and `ClrAsyncEnumerableSort` does not override it. So the alternative is
+strictly dominated on every input and the planner would reject it every time it was offered. What the
+trait would buy is plan legibility — the planner seeing and costing both alternatives instead of the
+adapter refusing outright — at the price of a rule that fires constantly and never wins. Recorded as
+a deliberate decline rather than an omission.
 
 **`IS_DEFINED` and `IS_NULL` are independent**, confirming the translation of SQL `IS NULL`:
 
