@@ -355,6 +355,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [TestMethod]
         public async Task CalciteSpatialRunsOverStoredGeoJson()
         {
+            if (_container is null)
+                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
             const string triangle = "'{\"type\":\"Polygon\",\"coordinates\":[[[0,0],[1,0],[1,1],[0,0]]]}'";
 
             var within = await Run(
