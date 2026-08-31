@@ -95,7 +95,8 @@ metadata rather than *type* metadata:
 | Composite indexes (ordered, with direction) | Indexing policy | **Whether `ORDER BY` is legal at all** |
 | Unique key policy | Container definition | Unique keys |
 | Computed properties | Container definition | Named, queryable, declared paths |
-| Tuple / spatial / full-text / vector indexes | Indexing policy | Function pushdown eligibility |
+| Tuple / full-text / vector indexes | Indexing policy | Function pushdown eligibility |
+| Spatial indexes | Indexing policy | Nothing — see *Spatial is out of scope* |
 
 Two of these carry hard consequences:
 
@@ -706,6 +707,59 @@ with `GROUP BY` — one `ORDER BY` per statement, and the reference says as much
 The scoring functions are in the operator table so a query can name them, and the translator permits
 them through `TranslateRank` alone; everywhere else is a place the service rejects them, so a `WHERE`
 or a select list containing one declines.
+
+### Spatial is out of scope, and cannot be brought in
+
+The adapter translates no spatial function, and this is a closed question rather than an unbuilt
+feature. The reason is a type-system mismatch that no amount of translation reaches:
+
+> **Calcite has `GEOMETRY`. It does not have `GEOGRAPHY`.**
+
+Calcite's spatial library is planar JTS over an unprojected coordinate system, answering in the units
+of that system. Cosmos is geodesic over the WGS84 ellipsoid, answering in metres. So the two disagree
+about what their identically-named functions *mean*, and there is nowhere in Calcite's type system to
+say which one a value is.
+
+| | disagreement |
+| --- | --- |
+| `ST_DISTANCE` | geodesic metres against planar degrees |
+| `ST_WITHIN`, `ST_INTERSECTS` | a polygon edge is a great-circle arc to one, a straight line in longitude and latitude to the other |
+| `ST_ISVALID` | JTS planar topological validity is not GeoJSON validity |
+
+**The distance is not off by a factor.** The ratio varies with latitude *and* bearing — one degree of
+longitude is 111 km at the equator and 19 km at 80° north — so no conversion of the result recovers
+it, and no transformation of the inputs does either: a similarity between a curved surface and a flat
+one is what Gauss ruled out. **An ordering is worse than wrong, it is differently ordered.** From 80°
+north, a candidate one degree east and another half a degree north swap places between the two models,
+so no scalar conversion reorders the rows.
+
+That leaves only a predicate, and only as a deliberately loose bound with Calcite's own predicate
+rechecked above — which needs an in-process answer to recheck against, and there is none:
+
+**Calcite's spatial functions cannot evaluate over a container at all.** Measured. The row model
+materialises a geometry as a `java.util.LinkedHashMap`, and the conversion Calcite inserts to reach
+its GeoJSON constructor produces Java's `toString`:
+
+```
+CAST(c."_MAP"['location'] AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]}
+```
+
+which its parser refuses. Nothing in Calcite converts an `ANY` to a geometry — every constructor takes
+a typed input, and every `JSON_*` function takes JSON *text* and fails its runtime cast when handed a
+map.
+
+Two repairs were tried and are recorded as wrong rather than missing. **Rendering every document value
+as JSON** — giving the materialised map a `toString` that writes JSON — works, and changes the runtime
+type of every map in every row to serve one corner; the cost is out of all proportion to what it buys.
+**Supplying a better implementation of `ST_GEOMFROMGEOJSON`** does not work at all: `SqlUtil.lookupRoutine`
+resolves across every chained operator table by parameter match, so Calcite's `VARCHAR` overload beats
+an adapter's `ANY` one regardless of chain order. Overriding a Calcite function means rewriting the
+plan, not registering an operator.
+
+**What would reopen this** is either a geography type in Calcite, or a declared column type in the
+adapter to hang *"this path is geography"* on — the typed-column question in `TODO.md` section 6,
+which three other items already wait on. Until one of them exists, a spatial pushdown can honour
+Calcite's semantics or be useful, and not both.
 
 ### What a table tells the planner
 

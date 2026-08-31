@@ -254,12 +254,6 @@ owns the client.
 
 ## 4. Query language coverage
 
-### Ranking and search
-
-- **Spatial** — *medium.* `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID`. Calcite has a
-  spatial operator library to map from, so the mapping is mechanical; the geometry representation and
-  what a spatial index makes cheap are not.
-
 ### Subqueries
 
 - **`EXISTS` over an item-scoped subquery** — *large.* `EXISTS (SELECT VALUE t FROM t IN c.tags WHERE …)`
