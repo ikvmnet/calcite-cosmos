@@ -742,6 +742,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 "Withholding the unnest rule leaves the correlate with no implementation in the asynchronous convention at all, so the unpushed plan cannot be built. Comparing the traversal needs an oracle that reads the array in process, which is a way in rather than a rule taken away."),
         ];
 
+        /// <summary>
+        /// Statements with no oracle, whose rows are written out here instead.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="WithoutAnOracle"/> gives the weaker guarantee that a statement answers at all,
+        /// and for an array traversal that is not enough. Its defect was a row arriving with the
+        /// element missing rather than a statement that failed: a Cosmos object constructor omits a
+        /// property whose value is undefined, and an omitted property reads back as null without
+        /// complaint. Only stating the rows catches that.
+        /// </para>
+        /// <para>
+        /// The traversal is written through a sub-select on purpose. A bare planner reaches the array
+        /// straight off the scan; a host running Calcite's own rule set hoists it into a projection
+        /// below the correlate, and the traversal is then above a projection — which is the shape that
+        /// failed, and the shape every host produces. See ikvmnet/calcite-cosmos#36.
+        /// </para>
+        /// </remarks>
+        static readonly (string Sql, string[] Rows)[] WithStatedRows =
+        [
+            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t",
+                ["(\"1\", \"outdoor\")", "(\"1\", \"steel\")"]),
+        ];
+
         [TestMethod]
         public async Task EveryStatementAgreesWithTheOracle()
         {
@@ -805,6 +829,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             }
 
             failures.Should().BeEmpty("a statement with no oracle must at least answer:\n" + string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// Runs what cannot be compared but whose answer is known, and checks it against that answer.
+        /// </summary>
+        [TestMethod]
+        public async Task EveryStatementWithStatedRowsReturnsThem()
+        {
+            if (_container is null)
+                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var failures = new List<string>();
+
+            foreach (var (sql, rows) in WithStatedRows)
+            {
+                List<string> returned;
+
+                try { returned = (await Run(sql, pushdown: true)).Select(Canonical).ToList(); }
+                catch (Exception e) when (e is not AssertInconclusiveException) { failures.Add($"{sql}\n  failed to run: {e.Message}"); continue; }
+
+                returned.Sort(StringComparer.Ordinal);
+                var stated = rows.OrderBy(r => r, StringComparer.Ordinal).ToList();
+
+                if (returned.SequenceEqual(stated) == false)
+                    failures.Add($"{sql}\n  returned: [{string.Join("; ", returned)}]\n  stated:   [{string.Join("; ", stated)}]");
+            }
+
+            failures.Should().BeEmpty("a statement whose rows are stated must return them:\n" + string.Join("\n", failures));
         }
 
     }

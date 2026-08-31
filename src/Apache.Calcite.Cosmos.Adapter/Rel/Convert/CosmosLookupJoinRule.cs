@@ -184,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (IsRestrictable(right) == false)
                     return false;
 
-                if (CosmosImplementor.TryBindOutput(right, out var fields) == false)
+                if (CosmosImplementor.TryBindOutput(right, out var fields, out _) == false)
                     return false;
 
                 if (probe < 0 || probe >= fields.Count || fields[probe] is null)

@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindFilter(modify.getInput()) is not Filter filter)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
                 return false;
 
             if (Metadata.CosmosPartitionKeyExtractor.TryExtractWholePartition(filter.getCondition(), fields, table.Container, CosmosImplementor.DefaultRootAlias, out var pinned) == false)

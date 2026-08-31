@@ -411,9 +411,9 @@ CQL is likewise SQL-shaped, and Calcite still hand-builds it rather than routing
 | --- | --- | --- |
 | `CosmosTableScan` | — | ✔ Terminal. One per container; nothing composes beneath it. |
 | `CosmosFilter` | `CosmosFilterRule` | ✔ Only when every `RexNode` is translatable. Refused above a projection, since `WHERE` precedes `SELECT`. |
-| `CosmosProject` | `CosmosProjectRule` | ✔ Renders as an object constructor. Rebinds field ordinals to the projected paths, or clears them when any projection is computed. |
+| `CosmosProject` | `CosmosProjectRule` | ✔ Renders as an object constructor. Rebinds field ordinals to the projected paths, or clears them when any projection is computed. Declined where the subtree has already chosen its `SELECT`: a statement has one, and there is no derived table to nest a second in. |
 | `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable. |
-| `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. |
+| `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. Sits above a projection and adds the element to it. |
 | `CosmosAggregate` | `CosmosAggregateRule` | ✔ `COUNT(*)` always; `SUM`/`MIN`/`MAX`/`AVG` only over a non-nullable input. Blocked if a sort is present. Supersedes a path-only pruning projection. |
 
 Deliberately absent, and not to be added later without revisiting this document:
@@ -445,9 +445,19 @@ that matter:
 | `CosmosFilter` | a row limit | `WHERE` runs before `OFFSET`/`LIMIT`, so it would filter the whole set and then restrict |
 | `CosmosAggregate` | a row limit | `GROUP BY` runs before the restriction |
 | `CosmosUnnest` | a sort, grouping, or row limit | a traversal multiplies rows, so it must precede all three |
+| `CosmosUnnest` | a `DISTINCT` | `DISTINCT` de-duplicates what `SELECT` constructs, which the service does after the `JOIN`, so folding the traversal in would de-duplicate the multiplied rows |
 | `CosmosSort` | another sort, or a grouping | one `ORDER BY` per statement; Cosmos rejects it alongside `GROUP BY` |
 
 A sort *without* a restriction commutes with a filter, so that pairing stays available.
+
+**A projection is not on that list, and it used to be.** `SELECT` runs *after* `JOIN`, so a
+projection below a traversal is written into the clause the service evaluates last: the object it
+constructs is the one the plan asked for, it is simply a property short, having been written
+before the element existed. `CosmosUnnest` adds the element to it. Refusing instead refused every
+traversal a host plans — Calcite's own rule set hoists the traversed array into a projection on
+the correlate's left, so there is no traversal without one, and a feature the pushdown table
+advertised could not be reached from SQL at all. `DISTINCT` is the exception in the table above
+because it is the one projection whose *meaning* depends on running before the multiplication.
 
 ### Expression translation
 

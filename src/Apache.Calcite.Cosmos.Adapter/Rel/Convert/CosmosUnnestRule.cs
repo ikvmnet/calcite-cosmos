@@ -91,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Walked rather than read off the left's row type: above a projection those names are
             // aliases, and the array expression would resolve against paths the container has not got.
-            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out _) == false)
                 return false;
 
             // The correlate's own id: this is a lateral traversal, so the variable its array

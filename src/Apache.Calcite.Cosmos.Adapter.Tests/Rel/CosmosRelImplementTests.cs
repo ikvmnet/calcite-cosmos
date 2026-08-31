@@ -541,14 +541,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             implement.Should().Throw<CosmosTranslationException>();
         }
 
+        /// <summary>
+        /// A projection below a traversal is completed with the element rather than refused.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos evaluates <c>SELECT</c> after <c>JOIN</c>, so the object a projection below a
+        /// traversal constructs is still the right one — it is a property short, having been written
+        /// before the element existed. Adding it is the whole difference.
+        /// </para>
+        /// <para>
+        /// Not an exotic shape: Calcite's own rule set hoists the traversed array into a projection on
+        /// the correlate's left, so every array traversal a host plans arrives this way, and refusing
+        /// it refused the feature. See <c>CosmosPlannerTests.UnnestOverAHoistedArrayCarriesTheElement</c>.
+        /// </para>
+        /// </remarks>
         [TestMethod]
-        public void UnnestAboveAProjectionIsRefused()
+        public void UnnestAboveAProjectionAddsTheElementToIt()
         {
-            var project = ProjectOver(Scan(), new[] { ("theId", Ref(1)) });
+            // The document first, so that the traversed array is addressed through the projection
+            // rather than off the scan -- which is the shape being tested.
+            var project = ProjectOver(Scan(), new[] { ("doc", Ref(0)), ("theId", Ref(1)) });
             var unnest = UnnestOver(project, MapItem("tags"));
 
+            Sql(unnest, Implementor()).Should().Be("SELECT VALUE { \"doc\": c, \"theId\": c.id, \"t\": t0 } FROM products c JOIN t0 IN c.tags");
+        }
+
+        /// <summary>
+        /// A traversal above a pushed <c>DISTINCT</c> is refused.
+        /// </summary>
+        /// <remarks>
+        /// The one projection a traversal may not complete. <c>DISTINCT</c> de-duplicates what
+        /// <c>SELECT</c> constructs, and the service constructs it after the <c>JOIN</c> — so folding
+        /// the traversal in would de-duplicate the multiplied rows where the plan asked for the rows
+        /// of an already-distinct set to be multiplied. Two documents sharing a tag would yield one
+        /// row rather than two.
+        /// </remarks>
+        [TestMethod]
+        public void UnnestAboveADistinctIsRefused()
+        {
+            var distinct = new CosmosAggregate(
+                _cluster, Traits(), Scan(),
+                org.apache.calcite.util.ImmutableBitSet.of(new[] { 0 }), null, new java.util.ArrayList());
+
+            var unnest = UnnestOver(distinct, MapItem("tags"));
+
             var act = () => Sql(unnest, Implementor());
-            act.Should().Throw<CosmosTranslationException>().WithMessage("*projection*");
+            act.Should().Throw<CosmosTranslationException>().WithMessage("*DISTINCT*");
         }
 
         [TestMethod]

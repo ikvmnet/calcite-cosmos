@@ -155,10 +155,22 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         /// <param name="node">The node whose output binding is wanted.</param>
         /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="projected">
+        /// On success, whether the subtree has already chosen its <c>SELECT</c>.
+        /// <para>
+        /// A statement has one, and Cosmos has no derived table to nest a second in, so an operator
+        /// written into that clause can only be pushed onto a subtree that has not written it yet. A
+        /// projection and an aggregate write it; a filter, a sort and an array traversal pass this
+        /// through — a traversal completes an existing projection rather than starting one. Derived
+        /// on the same walk as the binding, and for the same reason: a rule that answered it some
+        /// other way would convert an operator the implementor then refuses.
+        /// </para>
+        /// </param>
         /// <returns><c>true</c> if the binding could be derived; otherwise <c>false</c>.</returns>
-        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields)
+        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out bool projected)
         {
             fields = Array.Empty<CosmosPath?>();
+            projected = false;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
@@ -177,9 +189,9 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 // Neither changes the shape of a row, so neither changes what addresses it.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields);
+                    return TryBindOutput(filter.getInput(), out fields, out projected);
                 case Sort sort:
-                    return TryBindOutput(sort.getInput(), out fields);
+                    return TryBindOutput(sort.getInput(), out fields, out projected);
 
                 // An aggregate that computes nothing is a DISTINCT, and a distinct's output is the
                 // grouping keys themselves — still document paths, because nothing was computed. So
@@ -188,8 +200,12 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out _) == false)
                         return false;
+
+                    // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
+                    // written into that SELECT afterwards without changing what is de-duplicated.
+                    projected = true;
 
                     var keys = aggregate.getGroupSet().asList();
                     var paths = new CosmosPath?[aggregate.getRowType().getFieldCount()];
@@ -206,8 +222,10 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out _) == false)
                         return false;
+
+                    projected = true;
 
                     var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList());
                     var projects = project.getProjects();
@@ -225,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // left unbound rather than named.
                 case Correlate correlate:
                 {
-                    if (TryBindOutput(correlate.getLeft(), out var left) == false)
+                    if (TryBindOutput(correlate.getLeft(), out var left, out projected) == false)
                         return false;
 
                     var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];
