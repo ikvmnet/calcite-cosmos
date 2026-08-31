@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();

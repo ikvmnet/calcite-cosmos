@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out _) == false)
                 return false;
 
             // Binding passes through a sort, but an aggregate cannot: Cosmos rejects GROUP BY with

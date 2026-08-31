@@ -468,6 +468,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags");
         }
 
+        /// <summary>
+        /// The traversal a host actually plans: the array reached through a projection below the
+        /// correlate rather than off the scan.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The test above plans the array expression straight off the scan, which is what a bare
+        /// Volcano planner produces and not what a host does. Calcite's own rule set hoists the
+        /// traversed array into a projection on the correlate's left, and the traversal is then above
+        /// a projection — which the statement can express, because Cosmos evaluates <c>SELECT</c>
+        /// after <c>JOIN</c>, as long as the element is added to the object being constructed.
+        /// </para>
+        /// <para>
+        /// A sub-select is how that shape is reached here without borrowing the host's rules. It is
+        /// the same shape and it failed the same way: while the traversal refused to sit above a
+        /// projection, no consumer could unnest an array at all, whatever the SQL said. See
+        /// ikvmnet/calcite-cosmos#36.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void UnnestOverAHoistedArrayCarriesTheElement()
+        {
+            var best = PlanToAsync("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+
+            Plan(best).Should().Contain("CosmosUnnest");
+
+            // The element is the last property, and it is the whole point: without it the statement
+            // returns the projected object the traversal was written under, one column short.
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"id\": c.id, \"_MAP\": c, \"EXPR$0\": t0 } FROM products c JOIN t0 IN c.tags");
+        }
+
         // ── Aggregation ───────────────────────────────────────────────────────────
 
         [TestMethod]

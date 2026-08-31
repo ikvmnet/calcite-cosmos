@@ -144,7 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             // Everything has to render, and against the binding implementation will use.
-            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out _) == false)
                 return null;
 
             var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList());

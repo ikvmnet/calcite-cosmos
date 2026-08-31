@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsTranslatable(Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
                 return false;
 
             var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList());
