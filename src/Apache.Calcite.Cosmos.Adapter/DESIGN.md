@@ -421,13 +421,16 @@ CQL is likewise SQL-shaped, and Calcite still hand-builds it rather than routing
 | `CosmosFilter` | `CosmosFilterRule` | ✔ Only when every `RexNode` is translatable. Refused above a projection, since `WHERE` precedes `SELECT`. |
 | `CosmosProject` | `CosmosProjectRule` | ✔ Renders as an object constructor. Rebinds field ordinals to the projected paths, or clears them when any projection is computed. Declined where the subtree has already chosen its `SELECT`: a statement has one, and there is no derived table to nest a second in. |
 | `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable. |
-| `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. Sits above a projection and adds the element to it. |
+| `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. Sits above a projection and adds the element to it. A predicate over the element is emitted beside it as a `CosmosFilter`. |
 | `CosmosAggregate` | `CosmosAggregateRule` | ✔ `COUNT(*)` always; `SUM`/`MIN`/`MAX`/`AVG` only over a non-nullable input. Blocked if a sort is present. Supersedes a path-only pruning projection. |
 
 Deliberately absent, and not to be added later without revisiting this document:
 
 - **No `CosmosJoin`.** Relational joins are inexpressible (property 1). No rule may convert a
-  `Join`. Array traversal arrives via `Uncollect`/`Correlate` instead.
+  `Join`. Array traversal arrives via `Uncollect`/`Correlate` instead. A predicate over a traversed
+  element does not weaken this: `CosmosUnnestRule` emits it as a `CosmosFilter` beside the traversal,
+  so it is a `WHERE` the service evaluates after the cross-product, never a condition on the `JOIN` —
+  which still has no predicate in the grammar and still is not given one.
 - **No `CosmosUnion` / `CosmosIntersect` / `CosmosMinus`.** No set operators exist. Calcite's
   enumerable runtime handles these in-process.
 - **No `CosmosValues`.** There is no container-independent row source.
@@ -457,6 +460,21 @@ that matter:
 | `CosmosSort` | another sort, or a grouping | one `ORDER BY` per statement; Cosmos rejects it alongside `GROUP BY` |
 
 A sort *without* a restriction commutes with a filter, so that pairing stays available.
+
+**A predicate over the traversed element is a `WHERE`, and reaching it takes two rules.** A query
+writes such a predicate above the correlate, where `CosmosUnnestRule` cannot see it and the element
+has no document path a filter above the traversal could name — so it stayed outside the statement and
+every element of every document crossed the wire to be discarded in process.
+`CoreRules.FILTER_CORRELATE` pushes it into the correlate, between the traversal and the uncollect,
+which is the shape the rule recognises; the rule lifts it back out as a `CosmosFilter` over the
+`CosmosUnnest`, addressing the element by the ordinal the traversal binds to its alias. The clause
+order does the rest: `JOIN` then `WHERE` is exactly traverse-then-restrict.
+
+A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which is why the shape the
+rule reads is the shape a host produces. It is registered here for the reason the other Calcite
+rewrites are — a bare Volcano planner has none of them, and a pushdown must not depend on which rules
+a caller happened to add. Where the predicate does not render, the untransposed plan survives the
+transformation and the traversal still pushes with the predicate above it.
 
 **A projection is not on that list, and it used to be.** `SELECT` runs *after* `JOIN`, so a
 projection below a traversal is written into the clause the service evaluates last: the object it

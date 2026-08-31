@@ -125,6 +125,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A predicate over the traversed element is written <em>above</em> the correlate, which is
+        /// why the rule cannot see it unaided.
+        /// </summary>
+        /// <remarks>
+        /// The observation that makes <c>CoreRules.FILTER_CORRELATE</c> part of the rule set rather
+        /// than a rule a caller might happen to add. <c>CosmosUnnestRule</c> reads the correlate and
+        /// what hangs beneath it; a predicate here is neither, so the traversal pushed and the
+        /// predicate did not. Transposed into the correlate it becomes the shape the rule renders as a
+        /// <c>WHERE</c> over the traversal alias.
+        /// </remarks>
+        [TestMethod]
+        public void AnElementPredicatePlansAboveTheCorrelate()
+        {
+            var plan = PlanText(UnnestSql + " WHERE CAST(t AS VARCHAR) = 'steel'");
+
+            plan.Should().Contain("LogicalFilter(condition=[=(CAST($5):VARCHAR, 'steel')])");
+            plan.IndexOf("LogicalFilter").Should().BeLessThan(plan.IndexOf("LogicalCorrelate"), "the predicate is above the correlate, not inside it");
+        }
+
+        /// <summary>
         /// The rule's shape recognition, driven from real planner output.
         /// </summary>
         [TestMethod]

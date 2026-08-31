@@ -764,6 +764,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [
             ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t",
                 ["(\"1\", \"outdoor\")", "(\"1\", \"steel\")"]),
+
+            // The same traversal with a predicate over the element, which the service applies after
+            // the JOIN. Stated rather than compared for the same reason, and it is the row the whole
+            // predicate pushdown is about: one of the two elements, not both and not none.
+            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'steel'",
+                ["(\"1\", \"steel\")"]),
         ];
 
         [TestMethod]

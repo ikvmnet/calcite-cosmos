@@ -141,6 +141,20 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             yield return CosmosUnnestRule.Create(convention);
 
+            // Calcite's own transpose again, and the one that decides whether a predicate over a
+            // traversed element is answered by the service or by the plan. A query writes that
+            // predicate above the traversal, where CosmosUnnestRule cannot see it and the element
+            // has no path for a filter to name — so it stayed outside, and the container was read
+            // whole to answer it. Pushed into the correlate it sits between the traversal and the
+            // uncollect, which is the shape the rule recognises and renders as a WHERE over the
+            // traversal alias, evaluated after the JOIN.
+            //
+            // A host on Calcite's standard rule set already has this, which is why the shape the
+            // rule reads is the shape a host produces. Registered here for the reason the rewrites
+            // above are: a bare Volcano planner has none of them, and the pushdown must not depend
+            // on which rules a caller happened to add.
+            yield return org.apache.calcite.rel.rules.CoreRules.FILTER_CORRELATE;
+
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,
             // and the planner has no complete plan to choose.
             yield return CosmosToClrAsyncEnumerableConverterRule.Create(convention);

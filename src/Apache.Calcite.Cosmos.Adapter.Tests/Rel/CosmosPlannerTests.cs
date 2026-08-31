@@ -499,6 +499,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"id\": c.id, \"_MAP\": c, \"EXPR$0\": t0 } FROM products c JOIN t0 IN c.tags");
         }
 
+        /// <summary>
+        /// A predicate over the traversed element is answered by the service rather than by the plan.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos evaluates <c>WHERE</c> after <c>JOIN</c>, so a predicate over the element is an
+        /// ordinary <c>WHERE</c> over the traversal alias. Reaching it takes two steps: a query writes
+        /// the predicate above the correlate, <c>FILTER_CORRELATE</c> pushes it inside, and
+        /// <c>CosmosUnnestRule</c> reads it back out as a <c>CosmosFilter</c> over the traversal.
+        /// </para>
+        /// <para>
+        /// Without them the predicate stayed outside and every element of every document crossed the
+        /// wire to be discarded here. See ikvmnet/calcite-cosmos#36.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void APredicateOverTheTraversedElementIsPushedAsAWhere()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
+
+            Plan(best).Should().Contain("CosmosUnnest");
+            Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
+        }
+
+        /// <summary>
+        /// An element predicate does not pin the partition key, however much it looks like one.
+        /// </summary>
+        /// <remarks>
+        /// <c>products</c> is partitioned on <c>/category</c> and <c>t0</c> is not <c>c.category</c>,
+        /// whatever the value compared to it. Routing on it would visit one partition and miss every
+        /// document holding the tag elsewhere — a wrong answer rather than a slow one, and silent. The
+        /// extractor refuses a path rooted at a traversal alias; this is that refusal reached from SQL.
+        /// </remarks>
+        [TestMethod]
+        public void APredicateOverTheElementDoesNotPinThePartitionKey()
+        {
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'bikes'"));
+
+            query.PartitionKeyValues.Should().BeNull();
+            query.Sql.Should().Contain("WHERE (t0 = @p0)");
+        }
+
+        /// <summary>
+        /// A predicate the service cannot express leaves the traversal pushed and stays above it.
+        /// </summary>
+        /// <remarks>
+        /// The control for the two rules above, and the reason they are safe to register. A
+        /// transformation adds an equivalence rather than replacing one, so the plan with the predicate
+        /// still above the correlate survives — and where the predicate does not render, that is the
+        /// plan the planner is left with. The traversal is not lost with it.
+        /// </remarks>
+        [TestMethod]
+        public void AnUntranslatablePredicateOverTheElementLeavesTheTraversalPushed()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE INITCAP(CAST(t AS VARCHAR)) = 'Steel'"));
+
+            plan.Should().Contain("CosmosUnnest");
+            plan.Should().Contain("INITCAP");
+            plan.Should().NotContain("ClrAsyncEnumerableUncollect");
+        }
+
         // ── Aggregation ───────────────────────────────────────────────────────────
 
         [TestMethod]
