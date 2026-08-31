@@ -40,12 +40,6 @@
              a disagreement here fails every query in a type initializer rather than at restore. -->
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
         <MavenReference Include="org.jooq:joou-java-6" Version="0.9.5" />
-        <!-- The geometry model Calcite's spatial library works in. Already present transitively, being
-             what calcite-core's ST_* functions are implemented over, and named here at the version core
-             resolves so the adapter can build one: a Cosmos container stores GeoJSON, and Calcite asks
-             for a Geometry, so something has to decode storage into the engine's type. See
-             CosmosGeometry. -->
-        <MavenReference Include="org.locationtech.jts:jts-core" Version="1.19.0" />
     </ItemGroup>
 
 </Project>

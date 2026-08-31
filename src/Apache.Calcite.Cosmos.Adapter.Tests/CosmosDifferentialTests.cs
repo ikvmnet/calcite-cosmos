@@ -339,12 +339,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What this proves is that the decode is load bearing.</b> Handed the materialised document
-        /// value directly, Calcite's <c>ST_WITHIN</c> fails — measured, <c>InvalidCastException: Unable
-        /// to cast object of type 'java.util.LinkedHashMap' to type
-        /// 'org.locationtech.jts.geom.Geometry'</c> — because the cast Calcite inserts between an
-        /// untyped document value and a geometry is a plain one. <c>COSMOS_GEOMETRY</c> is what turns
-        /// storage into the engine's type, and with it the whole library works against a container.
+        /// <b>Nothing of this adapter's appears in the statement.</b> The functions are Calcite's, and
+        /// the one thing that makes them work over a container is that a document value renders as the
+        /// JSON it is — so <c>ST_GEOMFROMGEOJSON</c> can read it. Before that, every route from a
+        /// stored value into Calcite's spatial functions failed at the same place: the conversion to
+        /// text answered Java's <c>{type=Point, coordinates=[0.5, 0.25]}</c>, which its parser refuses.
+        /// See <c>CosmosJsonTests.AnObjectRendersAsJson</c>.
         /// </para>
         /// <para>
         /// Run without pushdown, which is the point: this is Calcite computing the answer itself, with
@@ -361,7 +361,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             const string triangle = "'{\"type\":\"Polygon\",\"coordinates\":[[[0,0],[1,0],[1,1],[0,0]]]}'";
 
             var within = await Run(
-                $"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(\"COSMOS_GEOMETRY\"(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
+                $"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
                 pushdown: false);
 
             // Document 1 alone carries a geometry, and its point is inside the triangle. Every other
@@ -369,7 +369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             within.Should().ContainSingle().Which.ToString().Should().Be("1");
 
             var intersects = await Run(
-                $"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(\"COSMOS_GEOMETRY\"(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
+                $"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
                 pushdown: false);
 
             intersects.Should().ContainSingle().Which.ToString().Should().Be("1");

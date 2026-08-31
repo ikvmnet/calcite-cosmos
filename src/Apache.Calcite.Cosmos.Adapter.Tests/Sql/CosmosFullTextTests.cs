@@ -127,10 +127,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 // JSON conversions. The array functions are mapped instead — see the translator.
                 "REGEXMATCH",
                 "ToString", "StringToNumber", "StringToObject", "StringToArray", "StringToBoolean", "ObjectToArray",
-                // The one operator here that carries an implementation rather than naming a service
-                // function: it decodes stored GeoJSON into the geometry Calcite's own spatial library
-                // computes in. Those ST_* functions are Calcite's; this adapter defines none of them.
-                "COSMOS_GEOMETRY",
             ]);
         }
 

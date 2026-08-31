@@ -707,70 +707,65 @@ The scoring functions are in the operator table so a query can name them, and th
 them through `TranslateRank` alone; everywhere else is a place the service rejects them, so a `WHERE`
 or a select list containing one declines.
 
-### Spatial
+### Spatial, and the one thing that made it work
 
-**This adapter defines no spatial operators.** Calcite's spatial library defines `ST_DISTANCE`,
-`ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID` and about a hundred and eighty more, and a query naming
-them gets Calcite's semantics — which is the contract. See `CLAUDE.md`: an adapter operator is
-warranted where the storage offers a capability Calcite has no way to express, and duplicating what
-Calcite already provides is not that.
+**This adapter defines nothing spatial.** Calcite's spatial library defines `ST_DISTANCE`, `ST_WITHIN`,
+`ST_INTERSECTS`, `ST_ISVALID` and about a hundred and eighty more, and a query naming them gets
+Calcite's semantics, which is the contract. See `CLAUDE.md`.
 
-What Calcite could not do was *run* them here, and the reason was storage rather than semantics. A
-container holds a geometry as a GeoJSON object, the row model materialises it as a
-`java.util.LinkedHashMap` because a container declares no types, and the cast Calcite inserts between
-an untyped document value and a JTS `Geometry` is a plain one. Measured end to end, on the oracle
-path with nothing pushed down:
+What stopped them working over a container was not semantics but **rendering**. Calcite converts an
+`ANY` to text by calling `toString`, and a materialised document value answered Java's notation:
 
 ```
-InvalidCastException: Unable to cast object of type 'java.util.LinkedHashMap'
-                      to type 'org.locationtech.jts.geom.Geometry'
+CAST(c."_MAP"['location'] AS VARCHAR)  ->  {type=Point, coordinates=[0.5, 0.25]}
 ```
 
-So every spatial query against a container validated, planned, and threw at the first row.
+Not JSON, so nothing downstream could read it. Every route was measured and every one failed at that
+same point - `ST_GEOMFROMGEOJSON` reaching its parser and refusing the text, and every `JSON_*`
+function failing its runtime cast because Calcite's JSON functions take JSON *text* and were handed a
+`LinkedHashMap`. There is no built-in anywhere in Calcite that converts an `ANY` to a geometry.
 
-`COSMOS_GEOMETRY` is the decode, and with it the whole library works:
+So the fix is one property of the storage: **a document value renders as the JSON it is.**
+`CosmosJson` materialises objects and arrays as types whose `toString` writes JSON, and Calcite's own
+library does the rest:
 
 ```sql
 SELECT c."id" FROM places AS c
- WHERE ST_WITHIN(COSMOS_GEOMETRY(c."_MAP"['location']), ST_GEOMFROMGEOJSON('…'))
+ WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c."_MAP"['location']), ST_GEOMFROMGEOJSON('...'))
 ```
 
-Three things about it are deliberate.
+No cast written by the caller - Calcite inserts the `ANY` to text coercion itself - and no operator of
+this adapter's anywhere in the statement.
 
-**It is named by the query rather than sniffed from the value.** Deciding that an object is a geometry
-because it carries a `type` and `coordinates` would change what an ordinary projection of that path
-returns, and would do it on a guess. The row model refuses to infer everywhere else.
+**Objects and arrays only, and that is what keeps the text-cast equivalence.** `TryTextCastOperand`
+drops a cast around a document value compared against text, and its argument is that a stored string
+renders as itself while every other value renders as something recognisable - a number as digits, an
+object or array *with a bracket*. Rendering an object as JSON keeps the bracket; rendering a string as
+a quoted JSON string would have broken the first half. Scalars are untouched.
 
-**It answers `null` for anything that is not a geometry**, rather than throwing. A container guarantees
-nothing about what a path holds, so a spatial predicate over a document holding a string is a row that
-does not match.
+The reach is wider than spatial: every Calcite function that reads JSON text now reads a document
+value.
 
-**It is the one operator here carrying an implementation.** Everything else in `CosmosOperators` names
-a function the service runs and has no body. This one runs in process, because decoding storage into
-the engine's types is not something the service does — which also means a query using it answers
-whether or not anything pushes down.
+#### Nothing spatial is pushed down
 
-Building it took three answers `SqlUserDefinedFunction` could not give. That class reads its arity and
-its operand check off operand metadata a catalog reader would have built, and there is no catalog
-reader on this path, so a subclass supplies them; the operand check is a real answer rather than a
-stub, the decode taking whatever a document holds.
+The predicates run in process, over rows the adapter fetched - correct, and over a container read
+whole. The shape a pushdown would match is now a Calcite-native one, and worth recording because it is
+not obvious: the translator will always see a **cast** under the constructor, whether or not the query
+wrote one, and in one of two target types -
 
-#### Nothing spatial is pushed down yet
+```
+bare:      ST_GEOMFROMGEOJSON(CAST(ITEM($0, 'location')):JavaType(class java.lang.String))
+explicit:  ST_GEOMFROMGEOJSON(CAST(ITEM($0, 'location')):VARCHAR)
+```
 
-The predicates and the ordering run in process, over rows the adapter fetched — correct, and over a
-container read whole. Pushing anything down means pushing a restriction Calcite's own predicate
-*implies* and rechecking above it, which is what `CosmosFilterSplitRule` already does for casts.
-`CosmosContainerMetadata.IsPathSpatiallyIndexed` is read from the indexing policy for that step: a
-range index does not serve a spatial function, and the default policy indexes every path while
-declaring no spatial index, so the two questions have different answers exactly where it matters.
-
-Two things bound what such a step can ever do, and both are properties of the geometry rather than of
-the adapter. Cosmos is geodesic over the ellipsoid and Calcite is planar over lon/lat, so **a distance
-cannot be pushed as a value** — the ratio between the two answers varies with latitude and bearing,
-and no transformation of the inputs fixes it, a similarity between a curved surface and a flat one
-being what Gauss ruled out. **An ordering cannot be pushed at all**: from 80°N a candidate 1° east and
-another 0.5° north swap places between the two models, so the sequences genuinely differ. A
-*predicate* can be pushed, as a deliberately loose bound with the real predicate rechecked above.
+What such a step could ever do is bounded by the geometry rather than by effort. Cosmos is geodesic
+over the ellipsoid and Calcite planar over lon/lat, so **a distance cannot be pushed as a value** - the
+ratio varies with latitude and bearing, and no transformation of the inputs fixes it, a similarity
+between a curved surface and a flat one being what Gauss ruled out. **An ordering cannot be pushed at
+all**: from 80 degrees north a candidate 1 degree east and another half a degree north swap places
+between the two models. A *predicate* can, as a deliberately loose bound with Calcite's own predicate
+rechecked above - the pattern `CosmosFilterSplitRule` already uses for casts, and it now has a correct
+answer to recheck against. `IsPathSpatiallyIndexed` is read from the indexing policy for that step.
 
 ### What a table tells the planner
 

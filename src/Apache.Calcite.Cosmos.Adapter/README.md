@@ -69,9 +69,9 @@ Ranking works too. `ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRS
 
 ## Spatial
 
-Spatial is Calcite's. Chain its spatial library into the operator table and the `ST_*` functions mean what Calcite says they mean.
+Spatial is Calcite's; this adapter defines none of it. What makes it work over a container is that a document value renders as the JSON it is - Calcite converts an untyped value to text with `toString`, and a materialised map used to answer Java's `{type=Point, coordinates=[0.5, 0.25]}`, which its GeoJSON parser refuses.
 
-What this adapter adds is `COSMOS_GEOMETRY`, which decodes a stored GeoJSON value into the geometry those functions compute in — without it they validate, plan, and throw at the first row, the row model materialising a geometry as a map and the cast Calcite inserts being a plain one. `ST_WITHIN(COSMOS_GEOMETRY(c."_MAP"['location']), ST_GEOMFROMGEOJSON('…'))` works; the predicate runs in process, over rows the adapter fetched. See [DESIGN.md](DESIGN.md) for why a distance cannot be pushed as a value and an ordering cannot be pushed at all.
+`ST_WITHIN(ST_GEOMFROMGEOJSON(c."_MAP"['location']), ST_GEOMFROMGEOJSON('...'))` works, with no cast to write and nothing adapter-specific in the query; the same rendering makes Calcite's `JSON_*` functions work over document values. The predicate runs in process. See [DESIGN.md](DESIGN.md) for why a distance cannot be pushed as a value and an ordering cannot be pushed at all.
 
 ## What a query cost
 

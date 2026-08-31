@@ -228,27 +228,26 @@ ranks the rows and never appears in the result, the service not permitting it to
 
 ## Spatial
 
-Spatial is Calcite's, not this adapter's. Chain Calcite's spatial library into the operator table and
-`ST_WITHIN`, `ST_INTERSECTS`, `ST_DISTANCE` and the rest mean exactly what Calcite says they mean.
+Spatial is Calcite's. Chain its spatial library into the operator table and `ST_WITHIN`, `ST_INTERSECTS`,
+`ST_DISTANCE` and the rest mean exactly what Calcite says they mean - this adapter defines none of them.
 
-What the adapter adds is the one thing Calcite cannot do over a schemaless container: decode a stored
-GeoJSON value into the geometry those functions compute in. Without it they validate, plan, and throw
-at the first row, because the row model materialises a geometry as a map and the cast Calcite inserts
-is a plain one.
+What makes them work over a container is that **a document value renders as the JSON it is**. Calcite
+converts an untyped value to text by calling `toString`, and a materialised map used to answer Java's
+`{type=Point, coordinates=[0.5, 0.25]}`, which its GeoJSON parser refuses. Now it answers JSON, and
+Calcite's own constructor reads it:
 
 ```sql
 SELECT c."id" FROM places AS c
- WHERE ST_WITHIN(COSMOS_GEOMETRY(c."_MAP"['location']), ST_GEOMFROMGEOJSON('{"type":"Polygon","coordinates":[[[…]]]}'))
+ WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c."_MAP"['location']), ST_GEOMFROMGEOJSON('{"type":"Polygon","coordinates":[[[...]]]}'))
 ```
 
-`COSMOS_GEOMETRY` is named in the query rather than applied to everything that looks like a geometry,
-and answers `null` for a path holding anything else — a row that does not match rather than a query
-that fails.
+No cast to write and nothing adapter-specific in the query. The same rendering makes every Calcite
+`JSON_*` function work over a document value.
 
-Spatial predicates currently run **in process**, over rows the adapter fetched. See
+Spatial predicates run **in process**, over rows the adapter fetched. See
 [DESIGN.md](src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) for what a pushdown could narrow and what it
-could never do — a distance cannot be pushed as a value, and a nearest-first ordering cannot be pushed
-at all, because Cosmos is geodesic where Calcite is planar.
+never can - a distance cannot be pushed as a value, and a nearest-first ordering cannot be pushed at
+all, because Cosmos is geodesic where Calcite is planar.
 
 ## What a query cost
 

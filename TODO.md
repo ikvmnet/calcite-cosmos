@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**607 tests: 601 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**604 tests: 598 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -39,9 +39,9 @@ column as a whole-document replace), the lookup join, partial aggregates, `DISTI
 functions and the diagnostics surface are complete and covered. What remains
 below is not started.
 
-**Spatial works and pushes nothing.** Calcite's own spatial library now runs over a container —
-`COSMOS_GEOMETRY` decodes stored GeoJSON into the geometry it computes in, which is what it could not
-do before — so the answers are Calcite's and they are correct. They are also computed in process over
+**Spatial works and pushes nothing.** Calcite's own spatial library runs over a container now that a
+document value renders as the JSON it is, which is what it could not do before — the adapter defines
+nothing spatial, and the answers are Calcite's. They are also computed in process over
 a container read whole, which is the cost issue #33 opened about and is still open. Section 4 says
 what a pushdown could narrow and what it could never do.
 
@@ -264,11 +264,14 @@ owns the client.
 ### Ranking and search
 
 - **Nothing spatial is pushed down** — *medium, and the shape is settled.* Calcite's spatial library
-  runs correctly over a container now that `COSMOS_GEOMETRY` decodes storage into a geometry, but it
+  runs correctly over a container now that a document value renders as the JSON it is, but it
   runs in process over a container read whole, which is the cost issue #33 opened about. The step is
   a restriction Calcite's own predicate *implies*, pushed and rechecked above — the pattern
   `CosmosFilterSplitRule` already uses for casts — and `IsPathSpatiallyIndexed` is read from the
-  policy for it. What such a step can never do is fixed by the geometry rather than by effort: a
+  policy for it. The shape to match carries a cast under the constructor whether or not the query
+  wrote one, in either of two target types; `DESIGN.md` records both.
+
+  What such a step can never do is fixed by the geometry rather than by effort: a
   distance cannot be pushed as a *value*, the ratio between geodesic metres and planar degrees varying
   with latitude and bearing, and an *ordering* cannot be pushed at all, the two models genuinely
   sequencing rows differently. A predicate can. Recorded in `DESIGN.md` under *Spatial*.
