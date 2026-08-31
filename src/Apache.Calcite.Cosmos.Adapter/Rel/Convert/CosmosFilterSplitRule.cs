@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindTable(((Filter)call.rel(0)).getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
-            var (pushable, residual) = Split((Filter)call.rel(0));
+            var (pushable, residual) = Split((Filter)call.rel(0), _convention.Container);
 
             return pushable.Count > 0 && residual.Count > 0;
         }
@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var filter = (Filter)call.rel(0);
 
-            var (pushable, residual) = Split(filter);
+            var (pushable, residual) = Split(filter, _convention.Container);
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
@@ -138,13 +138,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// uses, so a conjunct this puts in the pushable half is one that rule would accept whole. An
         /// input whose binding cannot be derived splits into nothing, and the rule does not fire.
         /// </remarks>
-        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter)
+        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
         {
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
 
             var below = AlreadyApplied(filter.getInput());
 

@@ -220,6 +220,13 @@ SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance
 Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
 ranks the rows and never appears in the result, the service not permitting it to be projected.
 
+**The container decides which paths these reach.** A full text function pushes down only over a path
+the container declares — in its full text policy, in a full text index, or both — and `VECTORDISTANCE`
+only where one of its two vectors is a declared vector path. Over anything else the service answers a
+bodyless 400 that names neither the path nor the function, so the adapter declines while planning and
+says which path is at fault instead. This is the same shape as multi-property `ORDER BY`, which pushes
+only where a matching composite index is declared.
+
 > **This needs a planner you build yourself, for now.** The validator resolves a function name against
 > the operator table its `fun` property names, chained with the catalog reader — and the catalog reader
 > resolves the *schema's own* functions. So a connection can reach these in principle; they are simply

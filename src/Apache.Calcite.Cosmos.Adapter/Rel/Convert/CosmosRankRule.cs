@@ -153,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return null;
 
-            var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container);
 
             for (var i = 0; i < projects.size(); i++)
                 if (translator.TryTranslate((RexNode)projects.get(i), out _) == false)

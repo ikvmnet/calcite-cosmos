@@ -276,6 +276,21 @@ owns the client.
   `CAST(0.5):DOUBLE`, and declining the cast declined the predicate. A cast over a *document
   value* is refused as it always was — see `DESIGN.md` under *Casts over document values*, whose
   argument this does not touch.
+- **`ENDSWITH` and `CONTAINS` for the other two `LIKE` shapes** — *small, and might be nothing.*
+  `LIKE 'abc%'` is already rewritten into `STARTSWITH`; `LIKE '%abc'` has the same exact counterpart
+  in `ENDSWITH`, and `LIKE '%abc%'` in Cosmos's own `CONTAINS(str, substr [, ignoreCase])`, which is
+  genuine substring matching and is also what BigQuery's `CONTAINS_SUBSTR` wants. **Measure first.**
+  Both forms already render as Cosmos `LIKE` and the service already evaluates them, so the only
+  question is whether the named function is priced differently — and the `IN`/`BETWEEN` measurement
+  below is the standing warning that a native spelling often is not.
+  Two things measured while writing this down. SQL's own `CONTAINS` is **not** a candidate: it is the
+  period operator, and `c."id" CONTAINS 'steel'` fails to validate, so there is no user-facing query
+  to accelerate — `CONTAINS_SUBSTR` from the BigQuery library and `LIKE '%…%'` are the reachable
+  spellings. And Calcite's one full text precedent is a loose end rather than a pattern to copy: the
+  Elasticsearch adapter maps `SqlStdOperatorTable.CONTAINS` onto an ES `match` query
+  ([CALCITE-3437](https://issues.apache.org/jira/browse/CALCITE-3437), 1.22.0) — the period operator,
+  reused for text — with no tests, no mention in that adapter's documentation, and, per the above, no
+  way to reach it from SQL.
 - **Currently declined, admissible with work** — `SUBSTRING` without a length (`LENGTH(s)` supplies
   it); `LIKE` with `ESCAPE`, and a bracket-escaping rewrite that would lift the bracket-pattern
   decline (Cosmos `LIKE` reads `[…]` as a character range where SQL does not — measured, and why
@@ -341,6 +356,18 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
   t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
   cannot answer. Measure it against an account before binding it.
 - **Unique key policy** — *small.* Declared unique keys are keys `getStatistic` does not report.
+- **Tuple indexes** — *small, and unclaimed.* The one indexing-policy declaration
+  `CosmosContainerMetadataReader` still does not read. Nothing consults it yet, which is why it was
+  left where the full text and vector paths were not.
+- **The full text and vector gate reads the policy and the index as one list** — *small, and it is a
+  measurement rather than work.* `IsPathFullTextSearchable` and `IsPathVectorSearchable` ask whether
+  the container declared **anything** about a path, because the reference and the measurement here
+  disagree about which of the two declarations is required — the reference now calls both indexes
+  something a query benefits from, and the 400 measured here was over a path with neither. The union
+  is the weakest gate both readings agree on. What would tighten it is measuring, against a real
+  account, a full text predicate over a path named in the container's full text policy but *not*
+  indexed: if that is a 400 too, the two lists want reading separately and the gate wants both.
+  See `DESIGN.md` under *The declaration decides whether a full text or vector function pushes*.
 - **Computed properties** — *medium.* A container can declare named, queryable, indexable computed
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than living in the map column.

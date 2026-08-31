@@ -46,6 +46,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly CosmosCompositeIndex[] _compositeIndexes;
         readonly string[] _includedPaths;
         readonly string[] _excludedPaths;
+        readonly string[] _fullTextPaths;
+        readonly string[] _vectorPaths;
 
         /// <summary>
         /// Initializes a new instance.
@@ -55,6 +57,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="compositeIndexes">The composite indexes declared by the indexing policy.</param>
         /// <param name="includedPaths">The indexing policy's included path patterns.</param>
         /// <param name="excludedPaths">The indexing policy's excluded path patterns.</param>
+        /// <param name="fullTextPaths">The paths the container declares full text searchable.</param>
+        /// <param name="vectorPaths">The paths the container declares vector searchable.</param>
         /// <param name="statistics">What the service reports about the container's size, or <c>null</c> where it was not asked.</param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is <c>null</c> or empty.</exception>
         public CosmosContainerMetadata(
@@ -63,6 +67,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             IEnumerable<CosmosCompositeIndex>? compositeIndexes = null,
             IEnumerable<string>? includedPaths = null,
             IEnumerable<string>? excludedPaths = null,
+            IEnumerable<string>? fullTextPaths = null,
+            IEnumerable<string>? vectorPaths = null,
             CosmosContainerStatistics? statistics = null)
         {
             if (string.IsNullOrEmpty(name))
@@ -74,6 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _includedPaths = includedPaths is null ? Array.Empty<string>() : new List<string>(includedPaths).ToArray();
             _statistics = new Lazy<CosmosContainerStatistics?>(() => statistics, LazyThreadSafetyMode.ExecutionAndPublication);
             _excludedPaths = excludedPaths is null ? Array.Empty<string>() : new List<string>(excludedPaths).ToArray();
+            _fullTextPaths = fullTextPaths is null ? Array.Empty<string>() : new List<string>(fullTextPaths).ToArray();
+            _vectorPaths = vectorPaths is null ? Array.Empty<string>() : new List<string>(vectorPaths).ToArray();
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -200,6 +208,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         public IReadOnlyList<CosmosCompositeIndex> CompositeIndexes => _compositeIndexes;
 
+        /// <summary>
+        /// Gets the paths the container declares full text searchable.
+        /// </summary>
+        /// <remarks>
+        /// The union of the container's full text policy and the indexing policy's full text
+        /// indexes, rather than either alone — see <see cref="IsPathFullTextSearchable"/> for why
+        /// the two are read together.
+        /// </remarks>
+        public IReadOnlyList<string> FullTextPaths => _fullTextPaths;
+
+        /// <summary>
+        /// Gets the paths the container declares vector searchable.
+        /// </summary>
+        /// <remarks>
+        /// The union of the container's vector embedding policy and the indexing policy's vector
+        /// indexes — see <see cref="IsPathVectorSearchable"/>.
+        /// </remarks>
+        public IReadOnlyList<string> VectorPaths => _vectorPaths;
+
+        /// <summary>
+        /// Determines whether the container declares a path searchable by the full text functions.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A legality test rather than a cost estimate, and the second one of those here after
+        /// <see cref="IsSortSupported"/>. A full text predicate over a path the container declares
+        /// nothing about was measured against a real account as a bodyless 400 that names neither
+        /// the path nor the function, so pushing one is a defect rather than a pessimisation.
+        /// </para>
+        /// <para>
+        /// <b>Why the policy and the index together.</b> Full text search takes two declarations —
+        /// a container policy naming the searchable paths and their language, and a full text index
+        /// over them — and the reference has moved on what each is for: it now describes the index
+        /// as what a query <em>benefits from</em> rather than what it requires. The measurement
+        /// here says a path with neither declaration is refused. Those agree on exactly one thing,
+        /// so that is what this asks: has the container said anything at all about this path. It
+        /// declines least, and it still catches the case that was diagnosed.
+        /// </para>
+        /// <para>
+        /// Wildcards do not enter into it. The reference is explicit that <c>*</c> and <c>[]</c> are
+        /// not accepted in a full text policy or index, so a declared path is a literal one and
+        /// comparison is exact — unlike <see cref="IsPathIndexed"/>, where the patterns are the
+        /// whole problem.
+        /// </para>
+        /// </remarks>
+        /// <param name="policyPath">The path in policy form, such as <c>/description</c>.</param>
+        /// <returns><c>true</c> where the container declares the path; otherwise <c>false</c>.</returns>
+        public bool IsPathFullTextSearchable(string policyPath) => Declares(_fullTextPaths, policyPath);
+
+        /// <summary>
+        /// Determines whether the container declares a path searchable by <c>VECTORDISTANCE</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The same test as <see cref="IsPathFullTextSearchable"/> over the vector declarations, and
+        /// it reads the union for a sharper reason. The reference requires a <em>vector embedding
+        /// policy</em> to perform a vector search at all, and treats the vector <em>index</em> as
+        /// optional throughout — the function's own brute force argument is documented as using
+        /// "any index defined on the vector property, if it exists". So an index without a policy
+        /// cannot occur, a policy without an index runs and is merely slow, and the case worth
+        /// declining is neither.
+        /// </para>
+        /// </remarks>
+        /// <param name="policyPath">The path in policy form, such as <c>/embedding</c>.</param>
+        /// <returns><c>true</c> where the container declares the path; otherwise <c>false</c>.</returns>
+        public bool IsPathVectorSearchable(string policyPath) => Declares(_vectorPaths, policyPath);
+
+        /// <summary>
+        /// Determines whether a declared path list names the given path.
+        /// </summary>
+        static bool Declares(string[] paths, string policyPath)
+        {
+            if (string.IsNullOrEmpty(policyPath))
+                return false;
+
+            foreach (var path in paths)
+                if (string.Equals(path, policyPath, StringComparison.Ordinal))
+                    return true;
+
+            return false;
+        }
+
         Lazy<CosmosContainerStatistics?> _statistics;
 
         /// <summary>
@@ -290,7 +380,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             return statistics is null
                 ? this
-                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, statistics);
+                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, statistics);
         }
 
         Lazy<bool> _partitionKeyDelete = new(() => false, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -323,7 +413,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (probe is null)
                 throw new ArgumentNullException(nameof(probe));
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
@@ -357,7 +447,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (timeToLive is TimeSpan span && span <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeToLive), "A statistics time to live must be positive.");
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths);
             metadata._statisticsProvider = provider;
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;

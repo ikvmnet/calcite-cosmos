@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether the correlate is an array traversal whose array resolves to a path on
         /// the left input.
         /// </summary>
-        static bool IsTranslatable(Correlate correlate)
+        static bool IsTranslatable(CosmosConvention convention, Correlate correlate)
         {
             var array = GetArrayExpression(correlate);
             if (array is null)
@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // The correlate's own id: this is a lateral traversal, so the variable its array
             // expression is written against stands for the very row being scanned.
-            var translator = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), fields, new CosmosParameterList(), correlate.getCorrelationId());
+            var translator = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), fields, new CosmosParameterList(), correlate.getCorrelationId(), convention.Container);
 
             if (translator.TryResolvePath(array, out _) == false)
                 return false;
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // element to the document being traversed is expressible at the service and is not
                 // expressible by that node, so it is declined rather than rendered against bindings
                 // it does not have.
-                var predicate = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), bound, new CosmosParameterList());
+                var predicate = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), bound, new CosmosParameterList(), null, convention.Container);
 
                 if (predicate.TryTranslate(condition, out _) == false)
                     return false;
@@ -202,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosUnnestRule Create(CosmosConvention convention)
         {
             return (CosmosUnnestRule)Config.INSTANCE
-                .withConversion(typeof(Correlate), new DelegatePredicate<Correlate>(IsTranslatable), Convention.NONE, convention, "CosmosUnnestRule")
+                .withConversion(typeof(Correlate), new DelegatePredicate<Correlate>(c => IsTranslatable(convention, c)), Convention.NONE, convention, "CosmosUnnestRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosUnnestRule>(c => new CosmosUnnestRule(c)))
                 .toRule(typeof(CosmosUnnestRule));
         }

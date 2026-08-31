@@ -185,6 +185,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             container.IsSortSupported(keys).Should().BeTrue();
         }
 
+
+        // ── Full text and vector declarations ─────────────────────────────────────
+
+        /// <remarks>
+        /// An exact comparison, unlike the included and excluded path patterns: a full text policy
+        /// or index cannot name a wildcard, so a declared path is a literal one.
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredFullTextPathIsSearchable()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name", "/inventory/notes" });
+
+            container.IsPathFullTextSearchable("/name").Should().BeTrue();
+            container.IsPathFullTextSearchable("/inventory/notes").Should().BeTrue();
+            container.IsPathFullTextSearchable("/inventory").Should().BeFalse();
+            container.IsPathFullTextSearchable("/description").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// And a container declaring nothing declares nothing. This is the opposite default from
+        /// <see cref="CosmosContainerMetadata.IsPathIndexed"/>, where an empty policy means the
+        /// service's own, which indexes everything: there is no default full text policy.
+        /// </remarks>
+        [TestMethod]
+        public void AContainerDeclaringNothingSearchesNothing()
+        {
+            var container = new CosmosContainerMetadata("products");
+
+            container.IsPathFullTextSearchable("/name").Should().BeFalse();
+            container.IsPathVectorSearchable("/embedding").Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void ADeclaredVectorPathIsSearchable()
+        {
+            var container = new CosmosContainerMetadata("products", vectorPaths: new[] { "/embedding" });
+
+            container.IsPathVectorSearchable("/embedding").Should().BeTrue();
+            container.IsPathVectorSearchable("/other").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// The two lists are separate. Nothing about a text path says it holds a vector.
+        /// </remarks>
+        [TestMethod]
+        public void TheDeclarationsDoNotCrossOver()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name" }, vectorPaths: new[] { "/embedding" });
+
+            container.IsPathVectorSearchable("/name").Should().BeFalse();
+            container.IsPathFullTextSearchable("/embedding").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// The declarations survive everything attached after the definition is read — a row count,
+        /// a statistics provider, a partition delete probe. They are read once and the planner asks
+        /// for them at every one of those stages.
+        /// </remarks>
+        [TestMethod]
+        public void DeclarationsSurviveTheAttachments()
+        {
+            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name" }, vectorPaths: new[] { "/embedding" });
+
+            container.WithStatistics(new CosmosContainerStatistics(10, 100, 1)).IsPathFullTextSearchable("/name").Should().BeTrue();
+            container.WithStatisticsProvider(() => null).IsPathFullTextSearchable("/name").Should().BeTrue();
+            container.WithPartitionKeyDeleteProbe(() => true).IsPathVectorSearchable("/embedding").Should().BeTrue();
+        }
+
     }
 
 }
