@@ -1408,6 +1408,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
+        /// <remarks>
+        /// The shape the cast case exists for, reached from SQL rather than built by hand: comparing
+        /// against a function that returns a double coerces the literal, so the predicate arrives with a
+        /// cast wrapped around the bound. Declining it would decline the predicate.
+        /// </remarks>
+        [TestMethod]
+        public void AComparisonAgainstAVectorDistancePushes()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(c.\"_MAP\"['a'], c.\"_MAP\"['b']) < 0.5");
+
+            Render(best).Should().Contain("WHERE (VECTORDISTANCE(c.a, c.b) < @p0)");
+        }
+
         // ── Point lookup ──────────────────────────────────────────────────────────
 
         /// <remarks>
