@@ -58,6 +58,56 @@ namespace Apache.Calcite.Cosmos.Adapter
     public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null);
 
     /// <summary>
+    /// The clauses a subtree has already written into the statement it is building.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A statement has one of each and Cosmos has no derived table to nest a second in, so what a
+    /// subtree has written is what decides which operators may still be folded onto it. Derived on
+    /// the same walk as the binding and for the same reason: a rule answering this some other way
+    /// converts an operator the implementor then refuses — after the planner has chosen the plan,
+    /// so the query fails rather than falling back — or, where the clauses merely reorder instead
+    /// of colliding, one it renders into a statement that answers a different question.
+    /// </para>
+    /// <para>
+    /// There is no member for <c>GROUP BY</c>. A grouping aggregate's output is computed and binds
+    /// nothing, so the walk declines it and no subtree that binds at all can be carrying one; an
+    /// aggregate that computes nothing is a <c>DISTINCT</c>, which has its own member.
+    /// </para>
+    /// </remarks>
+    [Flags]
+    public enum CosmosClauses
+    {
+
+        /// <summary>
+        /// The subtree has written nothing; anything may still be folded onto it.
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// The <c>SELECT</c> list, written by a projection or by a <c>DISTINCT</c>.
+        /// </summary>
+        Projection = 1 << 0,
+
+        /// <summary>
+        /// <c>SELECT DISTINCT</c>, which de-duplicates what that <c>SELECT</c> constructs and so
+        /// implies <see cref="Projection"/>.
+        /// </summary>
+        Distinct = 1 << 1,
+
+        /// <summary>
+        /// <c>ORDER BY</c>.
+        /// </summary>
+        OrderBy = 1 << 2,
+
+        /// <summary>
+        /// <c>OFFSET</c>/<c>LIMIT</c>, applied after <c>ORDER BY</c> and before nothing.
+        /// </summary>
+        RowLimit = 1 << 3,
+
+    }
+
+    /// <summary>
     /// Accumulates the state contributed by a tree of <see cref="CosmosRel"/> nodes and renders
     /// the resulting Cosmos SQL statement.
     /// </summary>
@@ -155,22 +205,22 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         /// <param name="node">The node whose output binding is wanted.</param>
         /// <param name="fields">On success, the binding indexed by field ordinal.</param>
-        /// <param name="projected">
-        /// On success, whether the subtree has already chosen its <c>SELECT</c>.
+        /// <param name="written">
+        /// On success, the clauses the subtree has already written into the statement.
         /// <para>
-        /// A statement has one, and Cosmos has no derived table to nest a second in, so an operator
-        /// written into that clause can only be pushed onto a subtree that has not written it yet. A
-        /// projection and an aggregate write it; a filter, a sort and an array traversal pass this
-        /// through — a traversal completes an existing projection rather than starting one. Derived
-        /// on the same walk as the binding, and for the same reason: a rule that answered it some
-        /// other way would convert an operator the implementor then refuses.
+        /// A projection writes the <c>SELECT</c> and an aggregate that computes nothing writes it as
+        /// a <c>DISTINCT</c>; a sort writes the <c>ORDER BY</c>, the <c>OFFSET</c>/<c>LIMIT</c>, or
+        /// both, depending on which of them it carries. A filter and an array traversal write none of
+        /// them and pass what they were given through — a traversal completes an existing projection
+        /// rather than starting one. See <see cref="CosmosClauses"/> for what a caller does with the
+        /// answer.
         /// </para>
         /// </param>
         /// <returns><c>true</c> if the binding could be derived; otherwise <c>false</c>.</returns>
-        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out bool projected)
+        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out CosmosClauses written)
         {
             fields = Array.Empty<CosmosPath?>();
-            projected = false;
+            written = CosmosClauses.None;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
@@ -187,11 +237,25 @@ namespace Apache.Calcite.Cosmos.Adapter
                     fields = BindFields(scan.getRowType());
                     return true;
 
-                // Neither changes the shape of a row, so neither changes what addresses it.
+                // Neither changes the shape of a row, so neither changes what addresses it. A sort
+                // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
+                // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out projected);
+                    return TryBindOutput(filter.getInput(), out fields, out written);
+
                 case Sort sort:
-                    return TryBindOutput(sort.getInput(), out fields, out projected);
+                {
+                    if (TryBindOutput(sort.getInput(), out fields, out written) == false)
+                        return false;
+
+                    if (sort.getCollation().getFieldCollations().size() > 0)
+                        written |= CosmosClauses.OrderBy;
+
+                    if (sort.offset is not null || sort.fetch is not null)
+                        written |= CosmosClauses.RowLimit;
+
+                    return true;
+                }
 
                 // An aggregate that computes nothing is a DISTINCT, and a distinct's output is the
                 // grouping keys themselves — still document paths, because nothing was computed. So
@@ -200,12 +264,12 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out _) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out written) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
                     // written into that SELECT afterwards without changing what is de-duplicated.
-                    projected = true;
+                    written |= CosmosClauses.Projection | CosmosClauses.Distinct;
 
                     var keys = aggregate.getGroupSet().asList();
                     var paths = new CosmosPath?[aggregate.getRowType().getFieldCount()];
@@ -222,10 +286,10 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out _) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out written) == false)
                         return false;
 
-                    projected = true;
+                    written |= CosmosClauses.Projection;
 
                     var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList());
                     var projects = project.getProjects();
@@ -243,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // left unbound rather than named.
                 case Correlate correlate:
                 {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out projected) == false)
+                    if (TryBindOutput(correlate.getLeft(), out var left, out written) == false)
                         return false;
 
                     var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];

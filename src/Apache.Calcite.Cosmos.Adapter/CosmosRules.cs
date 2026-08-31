@@ -129,6 +129,16 @@ namespace Apache.Calcite.Cosmos.Adapter
             // untransposed plan survives and the planner costs both.
             yield return org.apache.calcite.rel.rules.CoreRules.SORT_PROJECT_TRANSPOSE;
 
+            // Its other half, and registered for the same missing-rewrite reason. The transpose
+            // leaves two projections with a sort between them where a query orders by a column it
+            // does not select: `RelRoot.project()` adds the outer one to drop the column the
+            // ordering needed, and the transpose lifts the inner one above the sort to meet it.
+            // Neither may convert -- one statement has one SELECT, and CosmosProjectRule declines a
+            // projection over a subtree that has already written it -- so without this the whole
+            // query declines and the container is read to answer it. Merged they are one projection
+            // over a sort over the scan, which is a statement.
+            yield return org.apache.calcite.rel.rules.CoreRules.PROJECT_MERGE;
+
             yield return CosmosUnnestRule.Create(convention);
 
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,

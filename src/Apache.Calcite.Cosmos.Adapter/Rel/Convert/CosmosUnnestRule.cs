@@ -91,7 +91,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Walked rather than read off the left's row type: above a projection those names are
             // aliases, and the array expression would resolve against paths the container has not got.
-            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out var written) == false)
+                return false;
+
+            // A traversal multiplies rows, and the service applies the JOIN before every clause a
+            // left side can have written. Folded onto one it would order, page or de-duplicate the
+            // multiplied rows, where the plan asked for the rows of an ordered, paged or distinct set
+            // to be multiplied. A projection is the exception, and the reason this is a mask rather
+            // than a flag: SELECT is evaluated after JOIN either way, so the object below is still
+            // the right one and the node completes it with the element.
+            if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct)) != 0)
                 return false;
 
             // The correlate's own id: this is a lateral traversal, so the variable its array

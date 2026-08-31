@@ -144,7 +144,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             // Everything has to render, and against the binding implementation will use.
-            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out var written) == false)
+                return null;
+
+            // The node writes the whole SELECT itself, and ORDER BY RANK is the statement's one
+            // ordering and pairs with TOP alone. A subtree that has written any of those leaves it
+            // nowhere to go, so the three nodes stay as they are and the ordering runs in process.
+            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return null;
 
             var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList());

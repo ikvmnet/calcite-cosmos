@@ -25,12 +25,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// Translation is attempted against a throwaway parameter list, using the binding derived by
-        /// walking the input. Deriving it from the input row type instead would read alias names as
-        /// document properties above a projection, and answer for paths the container does not have.
+        /// walking the input, which also reports what that subtree has already written. Deriving the
+        /// binding from the row type instead would read alias names as document properties above a
+        /// projection, and answer for paths the container does not have.
         /// </remarks>
         static bool IsTranslatable(Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var written) == false)
+                return false;
+
+            // WHERE is evaluated before OFFSET/LIMIT, so onto a subtree that has taken a page this
+            // filter would render into a statement that filters the container and pages the result,
+            // where the plan asked for the page to be filtered. Implementation refuses it; deciding
+            // here is what leaves the filter in process instead of failing the query.
+            if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
             var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList());

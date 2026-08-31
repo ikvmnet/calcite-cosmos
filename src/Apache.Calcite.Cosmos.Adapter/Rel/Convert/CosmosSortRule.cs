@@ -44,15 +44,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether a sort can be pushed into the given container.
         /// </summary>
         /// <remarks>
-        /// The binding is derived by walking the input, not read off its row type by name. Above a
-        /// projection the names are aliases, and binding them by name invents paths the container does
-        /// not have — which let this rule fire on a sort key that implementation then refused, and, worse,
+        /// The binding is derived by walking the input, not read off its row type by name, and the same
+        /// walk reports which clauses the subtree has already written. Above a projection the names are
+        /// aliases, and binding them by name invents paths the container does not have — which let this
+        /// rule fire on a sort key that implementation then refused, and, worse,
         /// checked a multi-key sort against the composite indexes using paths like <c>/u</c>. Deciding on
         /// the same binding implementation will use is what makes the answer here final.
         /// </remarks>
         static bool IsSupported(CosmosConvention convention, Sort sort)
         {
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var written) == false)
+                return false;
+
+            // A statement has one ORDER BY, and its OFFSET/LIMIT is applied after it rather than
+            // before. Onto a subtree that has written either, this sort is not the statement's: above
+            // an ordering it is a second one, which implementation refuses; above a page it renders
+            // into a statement that orders the container and then takes a page, where the plan asked
+            // for the page to be taken and then ordered. The second is the reason to decide it here —
+            // those are different rows, and nothing downstream would have noticed.
+            if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
             if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(sort), out var keys, out _) == false)
