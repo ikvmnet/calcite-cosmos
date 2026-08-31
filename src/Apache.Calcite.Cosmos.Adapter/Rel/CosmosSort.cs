@@ -226,10 +226,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Verified empirically against the Cosmos emulator; see <c>DESIGN.md</c>.
         /// </para>
         /// </remarks>
-        /// <param name="field">The requested field collation.</param>
-        /// <param name="nullable">Whether the key may be null in the rows being sorted.</param>
-        /// <param name="descending">On success, whether to sort descending.</param>
-        /// <returns><c>true</c> if the collation is one Cosmos can honour; otherwise <c>false</c>.</returns>
         static bool TryGetDescending(RelFieldCollation field, bool nullable, out bool descending)
         {
             switch ((RelFieldCollation.Direction.__Enum)field.getDirection().ordinal())

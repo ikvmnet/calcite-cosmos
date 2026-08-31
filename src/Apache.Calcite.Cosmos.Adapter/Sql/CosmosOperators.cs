@@ -1,6 +1,4 @@
-﻿using System;
-
-using org.apache.calcite.sql;
+﻿using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.sql.util;
 

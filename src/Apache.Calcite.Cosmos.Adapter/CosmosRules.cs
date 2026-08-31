@@ -105,7 +105,6 @@ namespace Apache.Calcite.Cosmos.Adapter
             // Ordering by a scoring function, which Calcite expresses as three nodes and Cosmos as one
             // clause — and whose middle node, a projected score, is a statement the service rejects.
             yield return CosmosRankRule.Create(convention);
-
             yield return CosmosProjectRule.Create(convention);
             yield return CosmosSortRule.Create(convention);
 

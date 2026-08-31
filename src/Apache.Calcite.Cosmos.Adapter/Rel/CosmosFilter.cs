@@ -138,10 +138,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
             var unindexed = false;
 
-            // Only container-rooted paths correspond to index paths; an element-relative one is reached
-            // through its array, which is covered separately.
-            bool IsContainerPath(CosmosPath path) => string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal);
-
             void Walk(RexNode node)
             {
                 if (unindexed)
@@ -149,7 +145,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 if (translator.TryResolvePath(node, out var path) && path is not null)
                 {
-                    if (IsContainerPath(path) && container.IsPathIndexed(path.ToPolicyPath()) == false)
+                    // Only container-rooted paths correspond to index paths; an element-relative
+                    // one is reached through its array, which is covered separately.
+                    if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) &&
+                        container.IsPathIndexed(path.ToPolicyPath()) == false)
                         unindexed = true;
 
                     return;
