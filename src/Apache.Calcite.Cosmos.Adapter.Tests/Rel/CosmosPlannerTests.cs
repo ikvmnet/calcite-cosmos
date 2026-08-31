@@ -80,7 +80,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             // nothing to resolve IS_DEFINED or FULLTEXTCONTAINS to, and this is the seam a caller wires
             // the same way.
             var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(
-                SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance);
+                SqlStdOperatorTable.instance(),
+                // Calcite's spatial library. This adapter defines none of it; what it does is recognise
+                // a shape and hand the work to the service.
+                org.apache.calcite.sql.util.SqlOperatorTables.spatialInstance(),
+                Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance);
 
             var validator = SqlValidatorUtil.newValidator(
                 operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
@@ -1407,6 +1411,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<Exception>();
         }
 
+
+        // ── Spatial, which is Calcite's ───────────────────────────────────────────
+
+        const string Polygon = "'{\"type\":\"Polygon\",\"coordinates\":[[[-123.0,47.0],[-121.0,47.0],[-121.0,48.0],[-123.0,48.0],[-123.0,47.0]]]}'";
+
+        /// <remarks>
+        /// <para>
+        /// The query names Calcite's <c>ST_WITHIN</c> and Calcite's <c>ST_GEOMFROMGEOJSON</c>; nothing
+        /// of this adapter's appears in it. What makes it pushable is the constructor over a document
+        /// path — the only way a query gets a geometry out of a schemaless container — so the
+        /// translation is to strip the constructors and let the service read the stored GeoJSON.
+        /// </para>
+        /// <para>
+        /// Note what is <em>not</em> in the statement: no cast, though Calcite put one in the tree
+        /// coercing the untyped value to text.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ASpatialPredicateOverAPathPushesToTheService()
+        {
+            var best = PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({Polygon}))");
+
+            Render(best).Should().Be(
+                "SELECT VALUE { \"id\": c.id } FROM products c " +
+                "WHERE ST_WITHIN(c.location, { \"type\": \"Polygon\", \"coordinates\": [[[-123, 47], [-121, 47], [-121, 48], [-123, 48], [-123, 47]]] })");
+        }
+
+        [TestMethod]
+        public void IntersectsPushesTheSameWay()
+        {
+            var best = PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({Polygon}))");
+
+            Render(best).Should().Contain("WHERE ST_INTERSECTS(c.location, {");
+        }
+
+        /// <remarks>
+        /// <b>A distance is not pushed.</b> Cosmos answers geodesic metres where Calcite answers planar
+        /// degrees, so a bound compared against it would mean something else entirely — the one spatial
+        /// function whose disagreement is a wrong number rather than a boundary case.
+        /// </remarks>
+        [TestMethod]
+        public void ADistancePredicateIsNotPushedDown()
+        {
+            var act = () => PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_DISTANCE(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({Polygon})) < 5000");
+
+            act.Should().Throw<Exception>();
+        }
 
         // ── Point lookup ──────────────────────────────────────────────────────────
 

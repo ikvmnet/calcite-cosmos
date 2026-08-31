@@ -335,47 +335,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <summary>
-        /// Calcite's spatial library, run over geometries stored in a container.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Nothing of this adapter's appears in the statement.</b> The functions are Calcite's, and
-        /// the one thing that makes them work over a container is that a document value renders as the
-        /// JSON it is — so <c>ST_GEOMFROMGEOJSON</c> can read it. Before that, every route from a
-        /// stored value into Calcite's spatial functions failed at the same place: the conversion to
-        /// text answered Java's <c>{type=Point, coordinates=[0.5, 0.25]}</c>, which its parser refuses.
-        /// See <c>CosmosJsonTests.AnObjectRendersAsJson</c>.
-        /// </para>
-        /// <para>
-        /// Run without pushdown, which is the point: this is Calcite computing the answer itself, with
-        /// its own planar semantics, over rows the adapter fetched. Anything pushed down later has to
-        /// agree with <em>this</em>.
-        /// </para>
-        /// </remarks>
-        [TestMethod]
-        public async Task CalciteSpatialRunsOverStoredGeoJson()
-        {
-            if (_container is null)
-                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
-
-            const string triangle = "'{\"type\":\"Polygon\",\"coordinates\":[[[0,0],[1,0],[1,1],[0,0]]]}'";
-
-            var within = await Run(
-                $"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
-                pushdown: false);
-
-            // Document 1 alone carries a geometry, and its point is inside the triangle. Every other
-            // document decodes to null and does not match, which is the answer rather than a failure.
-            within.Should().ContainSingle().Which.ToString().Should().Be("1");
-
-            var intersects = await Run(
-                $"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(ST_GEOMFROMGEOJSON(c.\"_MAP\"['location']), ST_GEOMFROMGEOJSON({triangle}))",
-                pushdown: false);
-
-            intersects.Should().ContainSingle().Which.ToString().Should().Be("1");
-        }
-
-        /// <summary>
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>

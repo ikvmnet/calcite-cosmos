@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**604 tests: 598 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**622 tests: 616 passing, 6 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -39,11 +39,11 @@ column as a whole-document replace), the lookup join, partial aggregates, `DISTI
 functions and the diagnostics surface are complete and covered. What remains
 below is not started.
 
-**Spatial works and pushes nothing.** Calcite's own spatial library runs over a container now that a
-document value renders as the JSON it is, which is what it could not do before — the adapter defines
-nothing spatial, and the answers are Calcite's. They are also computed in process over
-a container read whole, which is the cost issue #33 opened about and is still open. Section 4 says
-what a pushdown could narrow and what it could never do.
+**Spatial pushes where the query names the geometry constructor, and fails where it does not.**
+Calcite's spatial predicates translate to the service's when a query writes
+`ST_GEOMFROMGEOJSON` over a document path; outside that shape they cannot evaluate at all, because the
+row model has no way to produce a geometry. That is the sharpest open edge in the adapter and section 4
+records it.
 
 **Declared columns were built and then dropped**, and the shape of the hole they left is worth
 knowing before anyone rebuilds them. A caller-declared, typed document path promoted to a real
@@ -263,18 +263,28 @@ owns the client.
 
 ### Ranking and search
 
-- **Nothing spatial is pushed down** — *medium, and the shape is settled.* Calcite's spatial library
-  runs correctly over a container now that a document value renders as the JSON it is, but it
-  runs in process over a container read whole, which is the cost issue #33 opened about. The step is
-  a restriction Calcite's own predicate *implies*, pushed and rechecked above — the pattern
-  `CosmosFilterSplitRule` already uses for casts — and `IsPathSpatiallyIndexed` is read from the
-  policy for it. The shape to match carries a cast under the constructor whether or not the query
-  wrote one, in either of two target types; `DESIGN.md` records both.
+- **Spatial has no in-process fallback** — *large, and it is section 6 wearing a different hat.*
+  Calcite's spatial predicates push where the query writes `ST_GEOMFROMGEOJSON` over a document path,
+  and **fail** where it does not, because they cannot evaluate over a container at all: the row model
+  materialises a geometry as a map, and the conversion Calcite inserts to reach its GeoJSON
+  constructor produces Java's `toString` rather than JSON. Everywhere else in this adapter declining a
+  pushdown is safe; here it is not.
 
-  What such a step can never do is fixed by the geometry rather than by effort: a
-  distance cannot be pushed as a *value*, the ratio between geodesic metres and planar degrees varying
-  with latitude and bearing, and an *ordering* cannot be pushed at all, the two models genuinely
-  sequencing rows differently. A predicate can. Recorded in `DESIGN.md` under *Spatial*.
+  Two consequences worth having written down. A query outside the recognised shape is a failure rather
+  than a slow answer. And **no superset-and-recheck pushdown is possible** — the pattern
+  `CosmosFilterSplitRule` uses for casts, and the only sound way to push a predicate whose answer
+  Cosmos computes differently — because the recheck would have nothing to run.
+
+  What closes it is a way for the row model to produce a geometry, which is the declared-type question
+  in section 6. Two things that look like answers are not: rendering every document value as JSON
+  changes the runtime type of every map in every row to serve one corner, and an adapter conversion
+  function is an operator doing work Calcite already provides. `DESIGN.md` records both under
+  *Spatial*.
+
+- **`ST_DISTANCE` is not pushed, and an ordering over one never can be** — closed by the geometry
+  rather than open. Cosmos is geodesic in metres and Calcite planar in degrees; the ratio varies with
+  latitude and bearing, so a pushed distance is a wrong number rather than a boundary case, and the two
+  models sequence rows differently, so an ordering cannot be pushed at all. Recorded in `DESIGN.md`.
 
 ### Subqueries
 

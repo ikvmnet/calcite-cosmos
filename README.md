@@ -228,26 +228,24 @@ ranks the rows and never appears in the result, the service not permitting it to
 
 ## Spatial
 
-Spatial is Calcite's. Chain its spatial library into the operator table and `ST_WITHIN`, `ST_INTERSECTS`,
-`ST_DISTANCE` and the rest mean exactly what Calcite says they mean - this adapter defines none of them.
+Spatial is Calcite's — chain its spatial library into the operator table and `ST_WITHIN`,
+`ST_INTERSECTS` and the rest mean exactly what Calcite says they mean. This adapter defines none of
+them; what it does is recognise one shape and hand the work to the service.
 
-What makes them work over a container is that **a document value renders as the JSON it is**. Calcite
-converts an untyped value to text by calling `toString`, and a materialised map used to answer Java's
-`{type=Point, coordinates=[0.5, 0.25]}`, which its GeoJSON parser refuses. Now it answers JSON, and
-Calcite's own constructor reads it:
+The marker is `ST_GEOMFROMGEOJSON` over a document path, which is the only way a query gets a geometry
+out of a schemaless container:
 
 ```sql
 SELECT c."id" FROM places AS c
  WHERE ST_WITHIN(ST_GEOMFROMGEOJSON(c."_MAP"['location']), ST_GEOMFROMGEOJSON('{"type":"Polygon","coordinates":[[[...]]]}'))
 ```
 
-No cast to write and nothing adapter-specific in the query. The same rendering makes every Calcite
-`JSON_*` function work over a document value.
+becomes `WHERE ST_WITHIN(c.location, { … })` at the service. `ST_DISTANCE` is deliberately not pushed:
+Cosmos answers geodesic metres where Calcite answers planar degrees.
 
-Spatial predicates run **in process**, over rows the adapter fetched. See
-[DESIGN.md](src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) for what a pushdown could narrow and what it
-never can - a distance cannot be pushed as a value, and a nearest-first ordering cannot be pushed at
-all, because Cosmos is geodesic where Calcite is planar.
+> **A spatial predicate outside that shape fails rather than running slowly.** Calcite's spatial
+> functions cannot evaluate over a container in process, so unlike everything else here, declining a
+> pushdown is not safe. See [DESIGN.md](src/Apache.Calcite.Cosmos.Adapter/DESIGN.md).
 
 ## What a query cost
 

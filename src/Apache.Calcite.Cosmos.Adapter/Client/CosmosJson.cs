@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -210,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 throw new CosmosMaterializationException($"Expected a JSON object for a MAP, got {value.ValueKind}.");
 
             // Insertion-ordered, so that a map rendered back to text reads in document order.
-            var map = new JsonMap();
+            var map = new java.util.LinkedHashMap();
 
             foreach (var property in value.EnumerateObject())
                 map.put(property.Name, GetNatural(property.Value));
@@ -228,135 +227,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (value.ValueKind != JsonValueKind.Array)
                 throw new CosmosMaterializationException($"Expected a JSON array for an ARRAY, got {value.ValueKind}.");
 
-            var list = new JsonList(value.GetArrayLength());
+            var list = new java.util.ArrayList(value.GetArrayLength());
 
             foreach (var element in value.EnumerateArray())
                 list.add(GetNatural(element));
 
             return list;
-        }
-
-        /// <summary>
-        /// A map that renders as the JSON it came from.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>This is what lets Calcite's own functions read a document value.</b> Calcite converts an
-        /// <c>ANY</c> to text by calling <c>toString</c>, and a plain <c>LinkedHashMap</c> answers Java's
-        /// notation — <c>{type=Point, coordinates=[0.5, 0.25]}</c> — which is not JSON and which nothing
-        /// downstream can parse. Measured: every route from a document value into Calcite's spatial and
-        /// JSON functions failed here and only here, <c>ST_GEOMFROMGEOJSON</c> reaching its parser and
-        /// refusing the text. Rendering the JSON the value <em>is</em> turns
-        /// <c>ST_GEOMFROMGEOJSON(c."_MAP"['location'])</c> into a working expression with nothing of
-        /// this adapter's in it.
-        /// </para>
-        /// <para>
-        /// <b>Objects and arrays only.</b> A stored string still renders as itself and a number as its
-        /// digits, which the text-cast equivalence in <c>CosmosRexTranslator.TryTextCastOperand</c>
-        /// depends on: its argument is that a string renders as itself while every other value renders
-        /// as something recognisable, an object or array "with a bracket". Both halves still hold — the
-        /// bracket is still there, and what is inside it is now parseable.
-        /// </para>
-        /// </remarks>
-        sealed class JsonMap : java.util.LinkedHashMap
-        {
-
-            public override string toString()
-            {
-                var builder = new StringBuilder();
-                WriteJson(builder, this);
-                return builder.ToString();
-            }
-
-        }
-
-        /// <summary>
-        /// A list that renders as the JSON it came from, for the reason <see cref="JsonMap"/> does.
-        /// </summary>
-        sealed class JsonList : java.util.ArrayList
-        {
-
-            public JsonList(int capacity) :
-                base(capacity)
-            {
-
-            }
-
-            public override string toString()
-            {
-                var builder = new StringBuilder();
-                WriteJson(builder, this);
-                return builder.ToString();
-            }
-
-        }
-
-        /// <summary>
-        /// Writes a materialised value as JSON.
-        /// </summary>
-        /// <remarks>
-        /// Over the shapes <see cref="GetNatural"/> produces and no others: a value reaching here that
-        /// this does not know is written through <c>toString</c>, which is what it would have rendered
-        /// as anyway.
-        /// </remarks>
-        static void WriteJson(StringBuilder builder, object? value)
-        {
-            switch (value)
-            {
-                case null:
-                    builder.Append("null");
-                    break;
-                case java.util.Map map:
-                {
-                    builder.Append('{');
-                    var entries = map.entrySet().iterator();
-
-                    for (var first = true; entries.hasNext(); first = false)
-                    {
-                        var entry = (java.util.Map.Entry)entries.next();
-
-                        if (first == false)
-                            builder.Append(',');
-
-                        Sql.CosmosSql.WriteStringLiteral(builder, entry.getKey()?.ToString() ?? string.Empty);
-                        builder.Append(':');
-                        WriteJson(builder, entry.getValue());
-                    }
-
-                    builder.Append('}');
-                    break;
-                }
-                case java.util.List list:
-                {
-                    builder.Append('[');
-
-                    for (var i = 0; i < list.size(); i++)
-                    {
-                        if (i > 0)
-                            builder.Append(',');
-
-                        WriteJson(builder, list.get(i));
-                    }
-
-                    builder.Append(']');
-                    break;
-                }
-                case string text:
-                    Sql.CosmosSql.WriteStringLiteral(builder, text);
-                    break;
-                case java.lang.Boolean flag:
-                    builder.Append(flag.booleanValue() ? "true" : "false");
-                    break;
-                case java.lang.Long integral:
-                    builder.Append(integral.longValue().ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    break;
-                case java.lang.Double approximate:
-                    Sql.CosmosSql.WriteLiteral(builder, approximate.doubleValue());
-                    break;
-                default:
-                    builder.Append(value.ToString());
-                    break;
-            }
         }
 
         static bool GetBoolean(JsonElement value) => value.ValueKind switch

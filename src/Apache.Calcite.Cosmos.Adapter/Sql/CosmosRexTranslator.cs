@@ -1051,6 +1051,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var name = call.getOperator().getName();
 
+            // Calcite's spatial predicates, which this adapter does not define and does not need to:
+            // what it does is recognise the shape and hand the work to the service. See WriteSpatial.
+            if (SpatialFunctions.Contains(name))
+            {
+                WriteSpatial(builder, call, name);
+                return;
+            }
+
             switch (name)
             {
                 case "SUBSTRING":
@@ -1352,6 +1360,140 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             builder.Append(')');
+        }
+
+        /// <summary>
+        /// The spatial predicates of Calcite's library that Cosmos answers under the same name.
+        /// </summary>
+        /// <remarks>
+        /// <c>ST_DISTANCE</c> is absent, and not by oversight. It is the one whose <em>answer</em>
+        /// differs rather than only its evaluation: Cosmos is geodesic and reports metres, Calcite is
+        /// planar and reports the units of the coordinate system. A predicate over it would compare
+        /// against a bound in the wrong unit. See <c>DESIGN.md</c>.
+        /// </remarks>
+        static readonly HashSet<string> SpatialFunctions = new(StringComparer.Ordinal)
+        {
+            "ST_WITHIN",
+            "ST_INTERSECTS",
+            "ST_ISVALID",
+        };
+
+        /// <summary>
+        /// The constructor whose presence says a spatial argument is one the service can answer about.
+        /// </summary>
+        const string GeometryConstructor = "ST_GEOMFROMGEOJSON";
+
+        /// <summary>
+        /// Writes a spatial predicate, where the query wrote it in the one shape that can be pushed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The constructor is the marker.</b> Calcite's spatial functions take a geometry, and the
+        /// only way a query gets one out of a schemaless container is
+        /// <c>ST_GEOMFROMGEOJSON(&lt;document path&gt;)</c> — the path holds GeoJSON, which is what the
+        /// constructor reads. So a call whose arguments are that constructor over a path and that
+        /// constructor over a literal is a call the service can answer, and the translation is to strip
+        /// the constructors: the service reads the stored GeoJSON directly, and the literal becomes the
+        /// object it emits beside it.
+        /// </para>
+        /// <code>
+        /// ST_WITHIN(ST_GEOMFROMGEOJSON(c."_MAP"['location']), ST_GEOMFROMGEOJSON('{…}'))
+        ///   →  ST_WITHIN(c.location, { "type": "Polygon", "coordinates": […] })
+        /// </code>
+        /// <para>
+        /// Anything else declines. An argument that is not the constructor over a path or a literal is
+        /// a geometry the service has no way to be given — one Calcite computed, most likely — and the
+        /// predicate stays in the plan.
+        /// </para>
+        /// <para>
+        /// <b>What is pushed is not what Calcite would have computed.</b> Cosmos treats a polygon's
+        /// edges as great-circle arcs and Calcite as straight lines in longitude and latitude, so the
+        /// two disagree for a point near the boundary of a long edge. The service's answer is taken,
+        /// which is a deliberate choice recorded in <c>DESIGN.md</c> rather than an equivalence — and
+        /// it is why <c>ST_DISTANCE</c>, whose disagreement is a wrong <em>number</em> rather than a
+        /// boundary case, is not in this set at all.
+        /// </para>
+        /// </remarks>
+        void WriteSpatial(StringBuilder builder, RexCall call, string name)
+        {
+            var operands = call.getOperands();
+            if (operands.size() == 0)
+                throw new CosmosTranslationException($"'{name}' expects at least one spatial expression.");
+
+            var rendered = new string[operands.size()];
+
+            for (var i = 0; i < operands.size(); i++)
+                rendered[i] = WriteSpatialOperand(Operand(call, i), name);
+
+            builder.Append(name).Append('(');
+
+            for (var i = 0; i < rendered.Length; i++)
+            {
+                if (i > 0)
+                    builder.Append(", ");
+
+                builder.Append(rendered[i]);
+            }
+
+            builder.Append(')');
+        }
+
+        /// <summary>
+        /// Reads one argument of a spatial predicate, which must be the geometry constructor over a
+        /// document path or over a GeoJSON literal.
+        /// </summary>
+        /// <remarks>
+        /// The cast under the constructor is Calcite's, not the query's: an <c>ANY</c> handed to a
+        /// function taking text is coerced, and the coercion appears in the tree whether or not the
+        /// query wrote <c>CAST</c>. It arrives as <c>VARCHAR</c> where the query wrote one and as the
+        /// Java string type where Calcite inserted it, so both are looked through.
+        /// </remarks>
+        string WriteSpatialOperand(RexNode node, string name)
+        {
+            if (node is not RexCall call || string.Equals(call.getOperator().getName(), GeometryConstructor, StringComparison.Ordinal) == false || call.getOperands().size() != 1)
+                throw new CosmosTranslationException($"Every argument of '{name}' must be {GeometryConstructor} over a document path or a GeoJSON literal.");
+
+            var argument = Unwrap(Operand(call, 0));
+
+            if (TryResolvePath(argument, out var path) && path is not null)
+                return path.ToString();
+
+            if (argument is RexLiteral literal)
+            {
+                object? value;
+
+                try
+                {
+                    value = GetLiteralValue(literal);
+                }
+                catch (CosmosTranslationException)
+                {
+                    value = null;
+                }
+
+                if (value is string text && CosmosGeoJson.TryWrite(text, out var geometry) && geometry is not null)
+                    return geometry;
+            }
+
+            throw new CosmosTranslationException($"Every argument of '{name}' must be {GeometryConstructor} over a document path or a GeoJSON literal.");
+        }
+
+        /// <summary>
+        /// Looks through a cast to text, which Calcite inserts around an untyped value handed to a
+        /// function taking a string.
+        /// </summary>
+        static RexNode Unwrap(RexNode node)
+        {
+            while (node is RexCall call && call.getOperands().size() == 1)
+            {
+                var kind = KindOf(call);
+                if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                    break;
+
+                node = Operand(call, 0);
+            }
+
+            return node;
         }
 
         /// <summary>
