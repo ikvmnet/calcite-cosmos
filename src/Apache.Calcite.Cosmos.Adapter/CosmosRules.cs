@@ -105,6 +105,14 @@ namespace Apache.Calcite.Cosmos.Adapter
             // Ordering by a scoring function, which Calcite expresses as three nodes and Cosmos as one
             // clause — and whose middle node, a projected score, is a statement the service rejects.
             yield return CosmosRankRule.Create(convention);
+
+            // The same three nodes for a distance ordering, which is a different clause: an ordinary
+            // ORDER BY over the expression, and the one expression the service will map to a document
+            // path. Without it a proximity query sorts in process over a container read whole. The
+            // second instance is the two-node shape a query that also selects the distance arrives as
+            // -- legal, unlike a projected score, so it is the same node over a wider select list.
+            yield return CosmosDistanceSortRule.Create(convention);
+            yield return CosmosDistanceSortRule.CreateProjected(convention);
             yield return CosmosProjectRule.Create(convention);
             yield return CosmosSortRule.Create(convention);
 

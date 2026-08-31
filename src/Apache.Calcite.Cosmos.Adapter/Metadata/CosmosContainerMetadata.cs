@@ -46,6 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly CosmosCompositeIndex[] _compositeIndexes;
         readonly string[] _includedPaths;
         readonly string[] _excludedPaths;
+        readonly string[] _spatialIndexPaths;
 
         /// <summary>
         /// Initializes a new instance.
@@ -55,6 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="compositeIndexes">The composite indexes declared by the indexing policy.</param>
         /// <param name="includedPaths">The indexing policy's included path patterns.</param>
         /// <param name="excludedPaths">The indexing policy's excluded path patterns.</param>
+        /// <param name="spatialIndexPaths">The indexing policy's spatial index path patterns.</param>
         /// <param name="statistics">What the service reports about the container's size, or <c>null</c> where it was not asked.</param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is <c>null</c> or empty.</exception>
         public CosmosContainerMetadata(
@@ -63,6 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             IEnumerable<CosmosCompositeIndex>? compositeIndexes = null,
             IEnumerable<string>? includedPaths = null,
             IEnumerable<string>? excludedPaths = null,
+            IEnumerable<string>? spatialIndexPaths = null,
             CosmosContainerStatistics? statistics = null)
         {
             if (string.IsNullOrEmpty(name))
@@ -74,6 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _includedPaths = includedPaths is null ? Array.Empty<string>() : new List<string>(includedPaths).ToArray();
             _statistics = new Lazy<CosmosContainerStatistics?>(() => statistics, LazyThreadSafetyMode.ExecutionAndPublication);
             _excludedPaths = excludedPaths is null ? Array.Empty<string>() : new List<string>(excludedPaths).ToArray();
+            _spatialIndexPaths = spatialIndexPaths is null ? Array.Empty<string>() : new List<string>(spatialIndexPaths).ToArray();
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -88,6 +92,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Gets the indexing policy's excluded path patterns.
         /// </summary>
         public IReadOnlyList<string> ExcludedPaths => _excludedPaths;
+
+        /// <summary>
+        /// Gets the indexing policy's spatial index path patterns.
+        /// </summary>
+        /// <remarks>
+        /// The paths only, not the geometry types declared beside them. A type declaration says which
+        /// of <c>Point</c>, <c>LineString</c>, <c>Polygon</c> and <c>MultiPolygon</c> the index serves,
+        /// and what a document holds at that path is not something the container declares — so a type
+        /// could narrow the answer below only for a query whose own geometry argument named the type,
+        /// which is not what decides whether the <em>stored</em> side is indexed.
+        /// </remarks>
+        public IReadOnlyList<string> SpatialIndexPaths => _spatialIndexPaths;
+
+        /// <summary>
+        /// Determines whether a path is covered by a spatial index.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cost, never legality, exactly as <see cref="IsPathIndexed"/> is — a spatial predicate over an
+        /// unindexed path still runs, it just reads the container. What makes this a separate question
+        /// from that one is that a range index does not serve a spatial function: a container whose
+        /// default policy indexes every path has no spatial index unless the policy declares one, so the
+        /// two answers differ for exactly the paths this exists to price.
+        /// </para>
+        /// <para>
+        /// Spatial index paths are conventionally written as a subtree — <c>/location/*</c> — which
+        /// covers the geometry object at <c>/location</c>. The same pattern matching decides that as
+        /// decides an included path, so <c>/location/*</c> answers for <c>/location</c>.
+        /// </para>
+        /// </remarks>
+        /// <param name="policyPath">The path in policy form, such as <c>/location</c>.</param>
+        /// <returns><c>true</c> if the path is spatially indexed; otherwise <c>false</c>.</returns>
+        public bool IsPathSpatiallyIndexed(string policyPath)
+        {
+            if (string.IsNullOrEmpty(policyPath))
+                return false;
+
+            // No declaration means no spatial index. Unlike the included paths, whose absence means the
+            // default policy and therefore everything, a spatial index exists only where the policy
+            // names one.
+            return BestMatch(_spatialIndexPaths, policyPath) >= 0;
+        }
 
         /// <summary>
         /// Determines whether a path is covered by the container's index.
@@ -290,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             return statistics is null
                 ? this
-                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, statistics);
+                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _spatialIndexPaths, statistics);
         }
 
         Lazy<bool> _partitionKeyDelete = new(() => false, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -323,7 +369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (probe is null)
                 throw new ArgumentNullException(nameof(probe));
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _spatialIndexPaths);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
@@ -357,7 +403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (timeToLive is TimeSpan span && span <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeToLive), "A statistics time to live must be positive.");
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _spatialIndexPaths);
             metadata._statisticsProvider = provider;
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;

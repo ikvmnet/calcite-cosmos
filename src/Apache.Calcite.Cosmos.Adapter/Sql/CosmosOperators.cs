@@ -1,4 +1,6 @@
-﻿using org.apache.calcite.sql;
+﻿using System;
+
+using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.sql.util;
 
@@ -160,6 +162,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static readonly SqlFunction ObjectToArray = Value("ObjectToArray", 1, 1);
 
         /// <summary>
+        /// <c>ST_DISTANCE(&lt;spatial_expr&gt;, &lt;spatial_expr&gt;)</c> — the distance between two
+        /// geometries, <b>in metres</b>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Under its own name and not mapped from Calcite's spatial library, which spells the same four
+        /// functions the same way and answers different numbers. Cosmos's are geodesic over GeoJSON and
+        /// report metres; Calcite's are planar over JTS geometries and report the units of the
+        /// coordinate system, so over longitude and latitude its answer is in degrees. The
+        /// <c>REGEXMATCH</c> decision is the standing argument — two spellings that agree on most inputs
+        /// and disagree on some are worse than two names — and here the two do not even agree on the
+        /// unit.
+        /// </para>
+        /// <para>
+        /// Because the names <em>do</em> collide, the translator dispatches these on operator identity
+        /// rather than on the name it dispatches everything else by: a host that chains Calcite's
+        /// spatial table gets Calcite's semantics, evaluated in process, rather than these silently
+        /// rendered into a statement measuring something else.
+        /// </para>
+        /// <para>
+        /// Typed as a non-nullable double, which is what makes <c>ORDER BY ST_DISTANCE(…)</c>
+        /// expressible: a nullable sort key with a placement Cosmos will not honour is refused, and
+        /// there would then be no ascending distance ordering at all. What the declaration costs is
+        /// recorded in <c>DESIGN.md</c> under <em>Spatial</em> — a document holding no geometry sorts
+        /// first ascending, which is Cosmos's placement and not Calcite's, and the proximity predicate
+        /// that makes such a query worth pushing removes those documents anyway.
+        /// </para>
+        /// </remarks>
+        public static readonly SqlFunction StDistance = Spatial("ST_DISTANCE", ReturnTypes.DOUBLE, 2);
+
+        /// <summary>
+        /// <c>ST_WITHIN(&lt;spatial_expr&gt;, &lt;spatial_expr&gt;)</c> — whether the first geometry is
+        /// inside the second.
+        /// </summary>
+        public static readonly SqlFunction StWithin = Spatial("ST_WITHIN", ReturnTypes.BOOLEAN_NULLABLE, 2);
+
+        /// <summary>
+        /// <c>ST_INTERSECTS(&lt;spatial_expr&gt;, &lt;spatial_expr&gt;)</c> — whether the two geometries
+        /// intersect.
+        /// </summary>
+        public static readonly SqlFunction StIntersects = Spatial("ST_INTERSECTS", ReturnTypes.BOOLEAN_NULLABLE, 2);
+
+        /// <summary>
+        /// <c>ST_ISVALID(&lt;spatial_expr&gt;)</c> — whether the value is a valid GeoJSON geometry.
+        /// </summary>
+        /// <remarks>
+        /// Nullable, unlike the <c>IS_*</c> family beside it, because what the service answers for a
+        /// property that is not there has not been measured. The type tests are documented as answering
+        /// about absence and this one is documented as answering about a geometry, which is not the same
+        /// question, so it is not assumed to share their answer.
+        /// </remarks>
+        public static readonly SqlFunction StIsValid = Spatial("ST_ISVALID", ReturnTypes.BOOLEAN_NULLABLE, 1);
+
+        /// <summary>
         /// Gets an operator table carrying every Cosmos-specific function.
         /// </summary>
         public static SqlOperatorTable Instance { get; } = SqlOperatorTables.of(
@@ -169,7 +225,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 IsDefined, IsArray, IsBool, IsNull, IsNumber, IsObject, IsPrimitive, IsString,
                 RegexMatch,
                 ToStringFunction, StringToNumber, StringToObject, StringToArray, StringToBoolean, ObjectToArray,
+                StDistance, StWithin, StIntersects, StIsValid,
             ]);
+
+        /// <summary>
+        /// Determines whether an operator is one of the spatial functions defined here.
+        /// </summary>
+        /// <remarks>
+        /// By identity, and that is the whole reason the question is asked this way. Calcite's spatial
+        /// library defines <c>ST_Distance</c>, <c>ST_Within</c>, <c>ST_Intersects</c> and
+        /// <c>ST_IsValid</c>, whose names differ from these only in case — which SQL does not
+        /// distinguish — over a planar geometry model answering in different units. A name comparison
+        /// would render one as the other.
+        /// </remarks>
+        /// <param name="op">The operator to classify.</param>
+        /// <returns><c>true</c> where the operator is one of these.</returns>
+        public static bool IsSpatial(SqlOperator? op)
+        {
+            if (op is null)
+                return false;
+
+            foreach (var candidate in new[] { StDistance, StWithin, StIntersects, StIsValid })
+                if (ReferenceEquals(op, candidate))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether an operator is the one <c>ORDER BY</c> may carry as its only key.
+        /// </summary>
+        /// <remarks>
+        /// The service's documented exception to the rule that an <c>ORDER BY</c> item must map to a
+        /// document path. Measured, <c>ORDER BY UPPER(c.name)</c> is rejected with
+        /// <em>"ORDER BY item expression could not be mapped to a document path"</em> and a distance
+        /// ordering is served — and a distance ordering paired with any second key is rejected with that
+        /// same message. See <see cref="Rel.CosmosDistanceSort"/>.
+        /// </remarks>
+        /// <param name="op">The operator to classify.</param>
+        /// <returns><c>true</c> where the operator is <c>ST_DISTANCE</c>.</returns>
+        public static bool IsDistance(SqlOperator? op) => op is not null && ReferenceEquals(op, StDistance);
+
+        /// <summary>
+        /// Determines whether a function name is one of the spatial names, whoever defined the operator
+        /// wearing it.
+        /// </summary>
+        /// <remarks>
+        /// The counterpart to <see cref="IsSpatial"/>, and it exists so that the collision produces an
+        /// explanation rather than a bare <em>unsupported function</em>. A call reaching the translator
+        /// under one of these names but not one of these operators is Calcite's, and declining it is
+        /// correct — Calcite then evaluates it in process, with the planar semantics the caller asked
+        /// for by naming that operator.
+        /// </remarks>
+        /// <param name="name">The function name.</param>
+        /// <returns><c>true</c> where the name is one of the four.</returns>
+        public static bool IsSpatialName(string? name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            foreach (var candidate in new[] { StDistance, StWithin, StIntersects, StIsValid })
+                if (string.Equals(name, candidate.getName(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+            return false;
+        }
 
         /// <summary>
         /// Determines whether an operator can tell an absent property from a present one.
@@ -257,6 +377,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 name,
                 ReturnTypes.BOOLEAN_NOT_NULL,
                 OperandTypes.ANY,
+                SqlFunctionCategory.SYSTEM);
+        }
+
+        /// <summary>
+        /// Defines a spatial function of fixed arity.
+        /// </summary>
+        /// <remarks>
+        /// The operand types are left open for the reason the full text predicates leave them open:
+        /// every argument has to be a document path or a GeoJSON geometry literal, which is a question
+        /// about the <em>expression</em> rather than about its type. The validator cannot ask it and the
+        /// translator does.
+        /// </remarks>
+        static SqlFunction Spatial(string name, SqlReturnTypeInference returnType, int operands)
+        {
+            return SqlBasicFunction.create(
+                name,
+                returnType,
+                OperandTypes.variadic(SqlOperandCountRanges.between(operands, operands)),
                 SqlFunctionCategory.SYSTEM);
         }
 

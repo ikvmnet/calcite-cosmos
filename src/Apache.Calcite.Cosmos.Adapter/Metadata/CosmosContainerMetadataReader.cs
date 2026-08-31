@@ -165,7 +165,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadPartitionKeyPaths(properties),
                 ReadCompositeIndexes(properties.IndexingPolicy),
                 ReadPaths(properties.IndexingPolicy?.IncludedPaths, x => x.Path),
-                ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path));
+                ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path),
+                // The spatial index paths, read the same way and for the same kind of question the
+                // included paths answer: whether a predicate over the path is cheap or a read of the
+                // container. The declared geometry types beside each path are not read — see
+                // CosmosContainerMetadata.SpatialIndexPaths.
+                ReadPaths(properties.IndexingPolicy?.SpatialIndexes, x => x.Path));
         }
 
         /// <summary>

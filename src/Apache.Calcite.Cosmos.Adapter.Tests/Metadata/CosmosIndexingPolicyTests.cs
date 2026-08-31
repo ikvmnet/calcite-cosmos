@@ -117,6 +117,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             container.IsPathIndexed("/name").Should().BeTrue();
         }
 
+
+        // ── Spatial indexes ────────────────────────────────────────────────
+
+        /// <remarks>
+        /// A range index does not serve a spatial function, so the default policy — which indexes every
+        /// path — has no spatial index at all. That is the whole reason the question is separate from
+        /// <c>IsPathIndexed</c>: the two answers differ for exactly the paths this exists to price.
+        /// </remarks>
+        [TestMethod]
+        public void DefaultPolicyHasNoSpatialIndex()
+        {
+            var container = new CosmosContainerMetadata("products");
+
+            container.IsPathIndexed("/location").Should().BeTrue();
+            container.IsPathSpatiallyIndexed("/location").Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// Spatial index paths are conventionally written as a subtree, and the geometry sits at the
+        /// path the subtree is named for.
+        /// </remarks>
+        [TestMethod]
+        public void ASubtreeSpatialPathCoversTheGeometryUnderIt()
+        {
+            var container = new CosmosContainerMetadata("products", null, null, null, null, new[] { "/location/*" });
+
+            container.IsPathSpatiallyIndexed("/location").Should().BeTrue();
+            container.IsPathSpatiallyIndexed("/location/coordinates").Should().BeTrue();
+            container.IsPathSpatiallyIndexed("/other").Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void SpatialIndexesAreReadFromTheContainerDefinition()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath
+            {
+                Path = "/location/*",
+                SpatialTypes = { SpatialType.Point, SpatialType.Polygon },
+            });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.SpatialIndexPaths.Should().Equal("/location/*");
+            container.IsPathSpatiallyIndexed("/location").Should().BeTrue();
+            container.IsPathSpatiallyIndexed("/name").Should().BeFalse();
+        }
+
     }
 
 }

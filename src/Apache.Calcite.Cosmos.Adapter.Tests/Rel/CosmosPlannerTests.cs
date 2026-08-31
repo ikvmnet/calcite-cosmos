@@ -1408,6 +1408,120 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
+        // ── Ordering by a distance ────────────────────────────────────────────────
+
+        const string Point = "'{\"type\":\"Point\",\"coordinates\":[-122.12,47.66]}'";
+
+        const string Polygon = "'{\"type\":\"Polygon\",\"coordinates\":[[[-123.0,47.0],[-121.0,47.0],[-121.0,48.0],[-123.0,48.0],[-123.0,47.0]]]}'";
+
+        /// <remarks>
+        /// The same three nodes a score arrives as, and a different clause: an ordinary <c>ORDER BY</c>
+        /// over the expression, which is the one expression the service maps to a document path. The
+        /// distance never appears in the select list, because the query did not ask for it.
+        /// </remarks>
+        [TestMethod]
+        public void OrderingByADistanceBecomesAnOrderByOverTheExpression()
+        {
+            var best = PlanToCosmos($"SELECT c.\"id\" FROM products AS c ORDER BY ST_DISTANCE(c.\"_MAP\"['location'], {Point})");
+            var sql = Render(best);
+
+            sql.Should().Be(
+                "SELECT VALUE { \"id\": c.id } FROM products c " +
+                "ORDER BY ST_DISTANCE(c.location, { \"type\": \"Point\", \"coordinates\": [-122.12, 47.66] }) ASC");
+            sql.Should().NotContain("\"EXPR$");
+        }
+
+        /// <remarks>
+        /// A query that also selects the distance is two nodes rather than three — the sort keys on a
+        /// column the select list already carries. It collapses the same way, because Cosmos cannot
+        /// order by a projection alias and the clause has to repeat the expression; unlike a score, the
+        /// distance may be a column, so the select list simply keeps it.
+        /// </remarks>
+        [TestMethod]
+        public void ADistanceOrderingOverAQueryThatSelectsTheDistanceAlsoPushes()
+        {
+            var best = PlanToCosmos($"SELECT c.\"id\", ST_DISTANCE(c.\"_MAP\"['location'], {Point}) AS \"d\" FROM products AS c ORDER BY 2");
+
+            Render(best).Should().Be(
+                "SELECT VALUE { \"id\": c.id, \"d\": ST_DISTANCE(c.location, { \"type\": \"Point\", \"coordinates\": [-122.12, 47.66] }) } " +
+                "FROM products c " +
+                "ORDER BY ST_DISTANCE(c.location, { \"type\": \"Point\", \"coordinates\": [-122.12, 47.66] }) ASC");
+        }
+
+        /// <remarks>
+        /// Both directions are served off the spatial index, so both are pushed.
+        /// </remarks>
+        [TestMethod]
+        public void ADistanceOrderingMayBeDescending()
+        {
+            var best = PlanToCosmos($"SELECT c.\"id\" FROM products AS c ORDER BY ST_DISTANCE(c.\"_MAP\"['location'], {Point}) DESC");
+
+            Render(best).Should().EndWith("[-122.12, 47.66] }) DESC");
+        }
+
+        /// <remarks>
+        /// The query the whole feature is for: a proximity predicate bounding the scan and a
+        /// nearest-first page off the same index. Without the spatial translation both halves are
+        /// evaluated in process over a container read whole.
+        /// </remarks>
+        [TestMethod]
+        public void AProximityPredicateAndANearestFirstPagePushTogether()
+        {
+            var best = PlanToCosmos(
+                $"SELECT c.\"id\" FROM products AS c WHERE ST_DISTANCE(c.\"_MAP\"['location'], {Point}) < 5000 " +
+                $"ORDER BY ST_DISTANCE(c.\"_MAP\"['location'], {Point}) FETCH FIRST 10 ROWS ONLY");
+
+            Render(best).Should().Be(
+                "SELECT VALUE { \"id\": c.id } FROM products c " +
+                "WHERE (ST_DISTANCE(c.location, { \"type\": \"Point\", \"coordinates\": [-122.12, 47.66] }) < @p0) " +
+                "ORDER BY ST_DISTANCE(c.location, { \"type\": \"Point\", \"coordinates\": [-122.12, 47.66] }) ASC " +
+                "OFFSET 0 LIMIT 10");
+        }
+
+        /// <remarks>
+        /// <b>A distance ordering cannot carry a tiebreak.</b> Measured, <c>ORDER BY ST_DISTANCE(…),
+        /// c.name</c> is rejected with the same <em>"could not be mapped to a document path"</em> message
+        /// an ordering by any other expression gets: no index serves the pair. So the composite is
+        /// refused rather than emitted, and the sort happens in process.
+        /// </remarks>
+        [TestMethod]
+        public void ADistanceOrderingWithASecondKeyIsNotPushedDown()
+        {
+            var act = () => PlanToCosmos($"SELECT c.\"id\" FROM products AS c ORDER BY ST_DISTANCE(c.\"_MAP\"['location'], {Point}), c.\"id\"");
+
+            act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// The predicates are ordinary boolean functions and render wherever one does.
+        /// </remarks>
+        [TestMethod]
+        public void SpatialPredicatesPushIntoTheWhereClause()
+        {
+            Render(PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_WITHIN(c.\"_MAP\"['location'], {Polygon})"))
+                .Should().Contain("WHERE ST_WITHIN(c.location, { \"type\": \"Polygon\", \"coordinates\": [[[-123, 47], [-121, 47], [-121, 48], [-123, 48], [-123, 47]]] })");
+
+            Render(PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_INTERSECTS(c.\"_MAP\"['location'], {Polygon})"))
+                .Should().Contain("WHERE ST_INTERSECTS(c.location,");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE ST_ISVALID(c.\"_MAP\"['location'])"))
+                .Should().Contain("WHERE ST_ISVALID(c.location)");
+        }
+
+        /// <remarks>
+        /// The geometry is inlined and the numeric bound is bound, which is the split the design argues
+        /// for: the object is the documented form of the argument, and the radius is what varies with
+        /// what is being asked.
+        /// </remarks>
+        [TestMethod]
+        public void OnlyTheRadiusOfAProximityPredicateIsAParameter()
+        {
+            var query = Query(PlanToCosmos($"SELECT c.\"id\" FROM products AS c WHERE ST_DISTANCE(c.\"_MAP\"['location'], {Point}) < 5000"));
+
+            query.Parameters.Should().ContainSingle().Which.Value.Should().Be(5000d);
+        }
+
+
         // ── Point lookup ──────────────────────────────────────────────────────────
 
         /// <remarks>

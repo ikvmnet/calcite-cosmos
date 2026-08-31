@@ -131,24 +131,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public const double UnindexedPathPenalty = 4d;
 
         /// <summary>
-        /// Determines whether a predicate references any path outside the container's index.
+        /// Determines whether a predicate references any path outside the index that would serve it.
         /// </summary>
+        /// <remarks>
+        /// Which index that is depends on what reads the path. An ordinary comparison is served by the
+        /// range index the included paths describe; a spatial function is served only by a spatial
+        /// index, which the default policy does not declare. So a spatial call's paths are asked the
+        /// spatial question instead of the general one, and a container with a range index over
+        /// <c>/location</c> and no spatial index prices <c>ST_WITHIN(c.location, …)</c> as the read of
+        /// the container it is.
+        /// </remarks>
         static bool ReferencesUnindexedPath(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
             var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
             var unindexed = false;
+
+            // Only container-rooted paths correspond to index paths; an element-relative one is reached
+            // through its array, which is covered separately.
+            bool IsContainerPath(CosmosPath path) => string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal);
 
             void Walk(RexNode node)
             {
                 if (unindexed)
                     return;
 
+                if (node is RexCall spatial && CosmosOperators.IsSpatial(spatial.getOperator()))
+                {
+                    for (var i = 0; i < spatial.getOperands().size(); i++)
+                        if (translator.TryResolvePath((RexNode)spatial.getOperands().get(i), out var argument) && argument is not null &&
+                            IsContainerPath(argument) && container.IsPathSpatiallyIndexed(argument.ToPolicyPath()) == false)
+                            unindexed = true;
+
+                    // The geometry beside the path is a literal, and nothing under a spatial call is
+                    // read any other way.
+                    return;
+                }
+
                 if (translator.TryResolvePath(node, out var path) && path is not null)
                 {
-                    // Only container-rooted paths correspond to index paths; an element-relative
-                    // one is reached through its array, which is covered separately.
-                    if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) &&
-                        container.IsPathIndexed(path.ToPolicyPath()) == false)
+                    if (IsContainerPath(path) && container.IsPathIndexed(path.ToPolicyPath()) == false)
                         unindexed = true;
 
                     return;

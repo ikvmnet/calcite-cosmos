@@ -201,6 +201,7 @@ The key must be a constant — a Cosmos path names a property statically.
 | Aggregation | `GROUP BY` with `COUNT`, `SUM`, `MIN`, `MAX`, `AVG` |
 | Array traversal | `JOIN alias IN path` |
 | Scalar functions | string, numeric and trigonometric functions where SQL and Cosmos agree on meaning |
+| Spatial | `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID`, and `ORDER BY ST_DISTANCE(…)` as its only key |
 | Partition key | recovered from the predicate, so execution stays on one physical partition |
 | Row limits | a `FETCH` becomes the page size, so a bounded query stops paying for a full page |
 
@@ -225,6 +226,29 @@ ranks the rows and never appears in the result, the service not permitting it to
 > resolves the *schema's own* functions. So a connection can reach these in principle; they are simply
 > offered as a `SqlOperatorTable` rather than registered on the schema, which is what a connection
 > would look them up through. Everything else on this page works through the provider.
+
+## Spatial
+
+`ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and `ST_ISVALID` come from the same operator table, and
+they are the adapter's own rather than Calcite's spatial library — the names collide and the functions
+do not agree. Cosmos is geodesic over GeoJSON and answers a distance in **metres**; Calcite is planar
+over a geometry and answers in the units of the coordinate system. A query naming Calcite's operators
+gets Calcite's semantics, evaluated in process.
+
+The document side of a call is a property path and the constant side is GeoJSON text, which the adapter
+renders as the object the service expects:
+
+```sql
+SELECT c."id" FROM places AS c
+ WHERE ST_DISTANCE(c."_MAP"['location'], '{"type":"Point","coordinates":[-122.12,47.66]}') < 5000
+ ORDER BY ST_DISTANCE(c."_MAP"['location'], '{"type":"Point","coordinates":[-122.12,47.66]}')
+ FETCH FIRST 10 ROWS ONLY
+```
+
+Both clauses push, and the ordering is served off the spatial index — the one expression Cosmos will
+order by, ascending or descending. **A distance ordering must be the only one**: paired with a second
+key the service rejects it, so the adapter sorts in process instead. Declare a spatial index on the
+path; without one the predicate reads the container, and the planner prices it that way.
 
 ## What a query cost
 

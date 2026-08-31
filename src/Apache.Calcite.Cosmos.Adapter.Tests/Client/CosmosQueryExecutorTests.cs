@@ -123,14 +123,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 };
                 properties.IndexingPolicy.FullTextIndexes.Add(new FullTextIndexPath { Path = "/name" });
 
+                // The spatial functions want an index of their own: the default policy indexes every
+                // path and declares no spatial index, and a range index does not serve ST_DISTANCE.
+                // Declared as a subtree, which is the documented form and covers the geometry at
+                // /location.
+                properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath
+                {
+                    Path = "/location/*",
+                    SpatialTypes = { SpatialType.Point, SpatialType.Polygon, SpatialType.LineString, SpatialType.MultiPolygon },
+                });
+
                 try { await database.GetContainer("products").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
                 var container = (await database.CreateContainerIfNotExistsAsync(properties, cancellationToken: cts.Token)).Container;
 
                 foreach (var json in new[]
                 {
-                    """{"id":"1","category":"bikes","name":"Trail Blazer","price":120,"tags":["outdoor","steel"]}""",
+                    // Two of the four carry a geometry, one near the point the spatial cases ask about
+                    // and one across the country from it, so a distance ordering has something to
+                    // order. The other two have none, which is the case that decides where an absent
+                    // value sorts.
+                    """{"id":"1","category":"bikes","name":"Trail Blazer","price":120,"tags":["outdoor","steel"],"location":{"type":"Point","coordinates":[-122.12,47.66]}}""",
                     """{"id":"2","category":"bikes","name":"Road Runner","price":340}""",
-                    """{"id":"3","category":"shoes","name":"Sprint","price":80,"metadata":{"sku":"S-1"}}""",
+                    """{"id":"3","category":"shoes","name":"Sprint","price":80,"metadata":{"sku":"S-1"},"location":{"type":"Point","coordinates":[-71.06,42.36]}}""",
                     """{"id":"4","category":"shoes","name":"Marathon"}""",
                 })
                 {
@@ -655,6 +669,122 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 Assert.Inconclusive("This emulator does not implement full text search; none of " + string.Join(", ", rejected) + " was accepted.");
 
             string.Join(", ", rejected).Should().BeEmpty("the emulator accepted some full text forms, so the rest are genuine failures");
+        }
+
+        /// <summary>
+        /// The spatial statements this adapter emits, run against whatever account is configured.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The emulator does not implement the spatial functions at all.</b> Measured against
+        /// <c>vnext-preview</c>: every one of these answers <c>500</c> with a Postgres error rather than
+        /// a query rejection, which is the same kind of gap full text search was. So this reports
+        /// inconclusive where none is accepted, and detects the gap it skips for — an account that
+        /// implements them asserts rather than going quiet.
+        /// </para>
+        /// <para>
+        /// Two things the emulator <em>does</em> answer are asserted below instead, because they are
+        /// rejections rather than evaluations and the query engine reaches them: the composite ordering
+        /// and the aggregate over one.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task SpatialFormsAreAcceptedWhereTheAccountSupportsThem()
+        {
+            const string point = """{ "type": "Point", "coordinates": [-122.12, 47.66] }""";
+            const string polygon = """{ "type": "Polygon", "coordinates": [[[-123.0, 47.0], [-121.0, 47.0], [-121.0, 48.0], [-123.0, 48.0], [-123.0, 47.0]]] }""";
+
+            var cases = new (string Label, Action<CosmosQueryBuilder> Configure)[]
+            {
+                ("st_distance in a predicate", b => b.Where = $"ST_DISTANCE(c.location, {point}) < 60000"),
+                ("st_within", b => b.Where = $"ST_WITHIN(c.location, {polygon})"),
+                ("st_intersects", b => b.Where = $"ST_INTERSECTS(c.location, {polygon})"),
+                ("st_isvalid", b => b.Where = "ST_ISVALID(c.location)"),
+
+                // The form CosmosDistanceSort emits: a projection alongside an ORDER BY over the
+                // expression, which is the one expression the service maps to a document path.
+                ("order by st_distance", b =>
+                {
+                    b.SelectProperty("id", "c.id");
+                    b.AddOrderBy($"ST_DISTANCE(c.location, {point})", false);
+                }),
+                ("order by st_distance desc", b =>
+                {
+                    b.SelectProperty("id", "c.id");
+                    b.AddOrderBy($"ST_DISTANCE(c.location, {point})", true);
+                }),
+                ("proximity predicate with a nearest-first page", b =>
+                {
+                    b.SelectProperty("id", "c.id");
+                    b.Where = $"ST_DISTANCE(c.location, {point}) < 60000";
+                    b.AddOrderBy($"ST_DISTANCE(c.location, {point})", false);
+                    b.Fetch = 10;
+                }),
+            };
+
+            var rejected = new List<string>();
+
+            foreach (var (label, configure) in cases)
+            {
+                var builder = Builder();
+                configure(builder);
+
+                try
+                {
+                    using var iterator = Container().GetItemQueryStreamIterator(new QueryDefinition(builder.Build()));
+                    while (iterator.HasMoreResults)
+                    {
+                        using var response = await iterator.ReadNextAsync();
+                        if (response.IsSuccessStatusCode == false)
+                        {
+                            rejected.Add(label);
+                            break;
+                        }
+                    }
+                }
+                catch (CosmosException)
+                {
+                    rejected.Add(label);
+                }
+            }
+
+            if (rejected.Count == cases.Length)
+                Assert.Inconclusive("This account does not implement the spatial functions; none of " + string.Join(", ", rejected) + " was accepted.");
+
+            string.Join(", ", rejected).Should().BeEmpty("the account accepted some spatial forms, so the rest are genuine failures");
+        }
+
+        /// <summary>
+        /// A distance ordering cannot carry a second key, and this is the measurement that says so.
+        /// </summary>
+        /// <remarks>
+        /// The rejection is the query engine's rather than the spatial implementation's, so the emulator
+        /// answers it even though it evaluates none of these functions: <c>400</c>, code 2206,
+        /// <em>"Unsupported ORDER BY clause. ORDER BY item expression could not be mapped to a document
+        /// path."</em> — the same message an ordering by <c>UPPER(c.name)</c> gets. It is why
+        /// <c>CosmosDistanceSortRule</c> matches one collation key.
+        /// </remarks>
+        [TestMethod]
+        public async Task ADistanceOrderingWithASecondKeyIsRejected()
+        {
+            const string point = """{ "type": "Point", "coordinates": [-122.12, 47.66] }""";
+
+            var builder = Builder();
+            builder.SelectProperty("id", "c.id");
+            builder.AddOrderBy($"ST_DISTANCE(c.location, {point})", false);
+            builder.AddOrderBy("c.name", false);
+
+            var act = async () =>
+            {
+                using var iterator = Container().GetItemQueryStreamIterator(new QueryDefinition(builder.Build()));
+                while (iterator.HasMoreResults)
+                {
+                    using var response = await iterator.ReadNextAsync();
+                    response.EnsureSuccessStatusCode();
+                }
+            };
+
+            (await act.Should().ThrowAsync<CosmosException>()).Which.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
         }
 
         /// <summary>

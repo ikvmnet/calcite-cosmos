@@ -52,6 +52,7 @@ Omit `containers` to expose every container in the database.
 | Project | `SELECT VALUE { … }` |
 | Sort | `ORDER BY`, `OFFSET`/`LIMIT` |
 | Array traversal | `JOIN alias IN path` |
+| Spatial | `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID`; `ORDER BY ST_DISTANCE(…)` as its only key |
 
 Relational joins, `UNION`/`INTERSECT`/`EXCEPT`, and `HAVING` have no Cosmos equivalent and are evaluated in-process by Calcite. Multi-property `ORDER BY` is pushed down only when the container declares a matching composite index, since the service rejects it otherwise.
 
@@ -66,6 +67,12 @@ SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance
 `FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are then usable in a `WHERE` clause and push down to the service. The first argument must be a property path.
 
 Ranking works too. `ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. See [DESIGN.md](DESIGN.md).
+
+## Spatial
+
+`ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and `ST_ISVALID` are in the same operator table, and they are this adapter's own rather than Calcite's spatial library. The names collide and the functions do not agree: Cosmos is geodesic over GeoJSON and answers a distance in metres, Calcite is planar over a geometry and answers in the units of the coordinate system. A call under Calcite's operators declines here and is evaluated in process.
+
+The document side of a call is a property path; the constant side is GeoJSON text, rendered as the object the service expects. `WHERE ST_DISTANCE(c."_MAP"['location'], '{"type":"Point","coordinates":[-122.12,47.66]}') < 5000` and an `ORDER BY` over the same expression both push, the ordering being served off the spatial index. **A distance ordering must be the only one** — paired with a second key the service rejects it, so the adapter sorts in process instead. Declare a spatial index on the path; without one the predicate reads the container and the planner prices it that way. See [DESIGN.md](DESIGN.md).
 
 ## What a query cost
 

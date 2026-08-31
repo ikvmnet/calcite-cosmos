@@ -361,6 +361,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case SqlKind.__Enum.TRIM:
                     WriteTrim(builder, call);
                     break;
+                case SqlKind.__Enum.CAST:
+                case SqlKind.__Enum.SAFE_CAST:
+                    WriteCast(builder, call);
+                    break;
                 case SqlKind.__Enum.FLOOR:
                     RequireOperandCount(call, 1);
                     WriteFunctionCall(builder, call, "FLOOR");
@@ -701,6 +705,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Writes a cast, which is only ever a cast of a numeric literal to an approximate type.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A cast over a document value is still refused</b>, and everything said about that
+        /// elsewhere in this type stands: Calcite converts the stored value and the service compares it
+        /// as it stands, so the two select different documents. This case is disjoint from that one —
+        /// the operand has to be a literal, whose value is known while the statement is being written.
+        /// </para>
+        /// <para>
+        /// What makes it worth writing is that comparing against a function returning a double puts one
+        /// here. <c>ST_DISTANCE(c.location, …) &lt; 5000</c> arrives as
+        /// <c>&lt;(ST_DISTANCE(…), CAST(5000):DOUBLE NOT NULL)</c>, because the comparison coerces the
+        /// integer literal to the function's type; declining the cast declines the proximity predicate,
+        /// which is the predicate that makes such a query cost a page rather than a container. Calcite's
+        /// own constant reduction folds this where a host registers it, and this adapter does not
+        /// require a host to.
+        /// </para>
+        /// <para>
+        /// Only the approximate targets, because only they are reached this way and because widening an
+        /// exact literal to a double is the conversion Calcite would itself have performed. A cast to an
+        /// exact type truncates or throws depending on the value, which is a question worth answering
+        /// when something asks it.
+        /// </para>
+        /// </remarks>
+        void WriteCast(StringBuilder builder, RexCall call)
+        {
+            if (call.getOperands().size() != 1 || Operand(call, 0) is not RexLiteral literal)
+                throw new CosmosTranslationException("A cast of anything but a literal has no Cosmos equivalent.");
+
+            var target = call.getType()?.getSqlTypeName();
+            if (target != SqlTypeName.DOUBLE && target != SqlTypeName.FLOAT && target != SqlTypeName.REAL)
+                throw new CosmosTranslationException($"A cast to '{target?.getName()}' has no Cosmos equivalent.");
+
+            var value = GetLiteralValue(literal) switch
+            {
+                long l => (double)l,
+                decimal m => (double)m,
+                double d => d,
+                var other => throw new CosmosTranslationException($"A cast of '{other?.GetType().Name ?? "null"}' to a double has no Cosmos equivalent."),
+            };
+
+            builder.Append(_parameters.Add(value));
+        }
+
+        /// <summary>
         /// Writes the comparison itself, taking the one cast an equality against text may drop.
         /// </summary>
         void WriteComparand(StringBuilder builder, RexCall call, string op)
@@ -1000,6 +1050,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         void WriteNamedFunction(StringBuilder builder, RexCall call)
         {
             var name = call.getOperator().getName();
+
+            // Before the name switch, because the name is not enough to decide this one: Calcite's
+            // spatial library spells the same four functions the same way over a different geometry
+            // model. Identity says which is which; see CosmosOperators.IsSpatial.
+            if (CosmosOperators.IsSpatial(call.getOperator()))
+            {
+                WriteSpatial(builder, call, name);
+                return;
+            }
+
+            if (CosmosOperators.IsSpatialName(name))
+                throw new CosmosTranslationException(
+                    $"'{name}' is not this adapter's spatial operator. Calcite's is planar over a geometry " +
+                    "and answers in the units of the coordinate system, where Cosmos is geodesic over GeoJSON " +
+                    "and answers in metres, so it is evaluated in process rather than rendered.");
 
             switch (name)
             {
@@ -1302,6 +1367,94 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             builder.Append(')');
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a Cosmos <c>ST_DISTANCE</c> call.
+        /// </summary>
+        /// <remarks>
+        /// By operator identity rather than by name, unlike <see cref="IsScoringFunction"/>: nothing
+        /// else in Calcite is called <c>FULLTEXTSCORE</c>, and Calcite's own spatial library is called
+        /// <c>ST_Distance</c>. What the two mean differs in the unit of the answer, which is exactly the
+        /// kind of disagreement a name cannot show.
+        /// </remarks>
+        /// <param name="node">The expression to test.</param>
+        /// <returns><c>true</c> if it is a distance call this renders.</returns>
+        public static bool IsDistanceFunction(RexNode? node)
+        {
+            return node is RexCall call && CosmosOperators.IsDistance(call.getOperator());
+        }
+
+        /// <summary>
+        /// Writes a spatial call.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The rendered form is the SQL form: the arguments are already in the service's order, and the
+        /// name is already the service's name — these operators are this adapter's own rather than
+        /// translations of a SQL counterpart.
+        /// </para>
+        /// <para>
+        /// Every argument must be a <em>spatial expression</em>, which the reference means as either a
+        /// document path or a GeoJSON object. The document side is held to a path for the reason the
+        /// full text predicates are: an expression cannot be served from the spatial index, and the
+        /// index is why a spatial predicate is worth pushing down at all. The constant side is held to a
+        /// geometry <see cref="CosmosGeoJson"/> will emit, which is what keeps the object literal it
+        /// renders built out of validated parts rather than copied from query text.
+        /// </para>
+        /// </remarks>
+        void WriteSpatial(StringBuilder builder, RexCall call, string name)
+        {
+            var operands = call.getOperands();
+            if (operands.size() == 0)
+                throw new CosmosTranslationException($"'{name}' expects at least one spatial expression.");
+
+            builder.Append(name).Append('(');
+
+            for (var i = 0; i < operands.size(); i++)
+            {
+                if (i > 0)
+                    builder.Append(", ");
+
+                WriteSpatialOperand(builder, Operand(call, i), name);
+            }
+
+            builder.Append(')');
+        }
+
+        /// <summary>
+        /// Writes one argument of a spatial call, which is a document path or a geometry and nothing
+        /// else.
+        /// </summary>
+        void WriteSpatialOperand(StringBuilder builder, RexNode node, string name)
+        {
+            if (TryResolvePath(node, out var path) && path is not null)
+            {
+                path.WriteTo(builder);
+                return;
+            }
+
+            if (node is RexLiteral literal)
+            {
+                object? value;
+
+                try
+                {
+                    value = GetLiteralValue(literal);
+                }
+                catch (CosmosTranslationException)
+                {
+                    value = null;
+                }
+
+                if (value is string text && CosmosGeoJson.TryWrite(text, out var geometry) && geometry is not null)
+                {
+                    builder.Append(geometry);
+                    return;
+                }
+            }
+
+            throw new CosmosTranslationException($"Every argument of '{name}' must be a document path or a GeoJSON geometry literal.");
         }
 
         /// <summary>
