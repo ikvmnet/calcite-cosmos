@@ -187,19 +187,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// they answer the same kind of question, and a predicate that uses one is rare enough that
         /// the caution costs nothing worth measuring for.
         /// </para>
+        /// <para>
+        /// By name, not by instance. A call resolved through a schema rather than through
+        /// <see cref="Instance"/> carries an operator Calcite built around the declaration — same
+        /// name, different object — and an identity test would have quietly stopped recognising it
+        /// there. What it guards is soundness, so failing to recognise one is not a missed
+        /// optimisation: it is a weakening that keeps rows the predicate excludes.
+        /// </para>
         /// </remarks>
         /// <param name="op">The operator to classify.</param>
         /// <returns><c>true</c> where the operator observes absence.</returns>
         public static bool IsAbsenceObserving(SqlOperator? op)
         {
-            if (op is null)
-                return false;
-
-            foreach (var candidate in new[] { IsDefined, IsArray, IsBool, IsNull, IsNumber, IsObject, IsPrimitive, IsString })
-                if (ReferenceEquals(op, candidate))
-                    return true;
-
-            return false;
+            return op?.getName() switch
+            {
+                "IS_DEFINED" or "IS_ARRAY" or "IS_BOOL" or "IS_NULL" or "IS_NUMBER" or "IS_OBJECT" or "IS_PRIMITIVE" or "IS_STRING" => true,
+                _ => false,
+            };
         }
 
         /// <summary>

@@ -662,8 +662,50 @@ what it removes is the projection's ability to strand everything above it.
 ### Full text search
 
 Cosmos has full text search and SQL does not, so there is nothing in Calcite's standard operator table
-to map onto it. `CosmosOperators` defines the operators and `CosmosOperators.Instance` is the operator
-table to chain into the one the validator is built with; without it a query cannot name these at all.
+to map onto it. `CosmosOperators` defines the operators, and they are offered two ways.
+
+#### Two routes to a name, and why there are two
+
+`CosmosOperators.Instance` is an operator table, chained into the one the validator is built with.
+That is what a host does when it assembles its own planner, and for a long time it was the only route
+— which meant full text search was the one thing on the feature list an application reaching the
+adapter the documented way could not use, because a connection does not build a validator for anyone
+to chain anything into.
+
+`CosmosSchemaFunctions` is the other route: a `CosmosSchema` and a `CosmosAccountSchema` declare the
+same operators through `Schema.getFunctions`, and the catalog reader — which `Prepare` chains into
+every statement's operator table — resolves a schema's own functions. So a connection finds them
+without being told.
+
+**Declared at both levels**, and that is the decision the two-level shape forces. An unqualified name
+is resolved against the connection's default schema and the root, and nowhere else: a model naming a
+`database` roots the connection at a `CosmosSchema` with no account above it, and a model naming an
+account roots it at the `CosmosAccountSchema` while the containers live a level down. Declaring at
+both is what makes the name work wherever a query is rooted, and no arrangement searches both levels
+for one unqualified name, so nothing resolves twice.
+
+**Chaining as well is not a duplicate.** Overload resolution takes the first candidate whose arity
+fits, and the chained table comes before the catalog reader — so the operator answers and the schema's
+declaration is never reached. The README says the chaining is optional rather than required.
+
+**What arrives is not the operator.** Calcite reads a schema function's parameter list and builds a
+`SqlUserDefinedFunction` of its own around it, carrying the name and the arity. The translator and the
+rules therefore ask a call for its *name* rather than for its identity — `IsScoringFunction` always
+did, and `CosmosOperators.IsAbsenceObserving` was changed to, an identity test there having been a
+soundness hole waiting for the second route to exist.
+
+**One declaration per arity, not one with optional parameters.** A call to a function whose type
+checker has fixed parameters is padded out to the whole parameter list with `DEFAULT` before it
+reaches the plan — `SqlCallBinding.operands` does it — so a single variadic declaration produced
+`FULLTEXTCONTAINSALL(c.name, 'steel', DEFAULT(), …)` and a Cosmos statement has nothing to render
+`DEFAULT` as. Declared one arity at a time, every parameter is required and nothing is padded. The
+consequence is a bound: a schema function accepts as many operands as it declares parameters, so the
+variadic operators are declared up to `CosmosSchemaFunctions.VariadicOperandLimit`, and a query
+needing more chains the operator table, whose checker has no bound.
+
+**None of them is implementable**, deliberately. A schema function bound to a CLR method would let a
+call that cannot be pushed down plan anyway and then answer with something Cosmos never computed; with
+no body, the failure is before any row exists.
 
 Signatures are the service's, from the query language reference:
 
@@ -701,6 +743,16 @@ type for something above to read, and it would read null — the statement never
 the outer projection to discard it is how the rule knows nothing does. A consumer reaches that shape
 through `RelRoot.project()`, which is where the extra column stops being output; a plan taken from
 `RelRoot.rel` still carries it, and is then correctly refused rather than silently returning nulls.
+
+**A connection is the second of those, and that is measured.** `Prepare` plans `RelRoot.rel` and then,
+where the root's field mapping is not trivial, wraps the finished plan in a calc that applies it — so
+the projection this rule requires is built *after* every rule has run and the three-node shape never
+exists while they are running. `ORDER BY FULLTEXTSCORE(…)` through a `CalciteConnection` therefore
+plans an in-process sort over a projected score, and fails to implement, which is the refusal above
+arriving where it is least useful. Planning the same statement from `RelRoot.project()` gives
+`CosmosRank`; from `RelRoot.rel` it does not. Whether the rule should learn the second shape — and
+what it would then have to promise about the score column nothing is known to read — is open; see
+`TODO.md`.
 
 `CosmosQueryBuilder.RankBy` emits the clause and refuses to combine it with an ordinary `ORDER BY` or
 with `GROUP BY` — one `ORDER BY` per statement, and the reference says as much of `RRF` explicitly.

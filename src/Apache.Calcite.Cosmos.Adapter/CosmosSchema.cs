@@ -54,6 +54,34 @@ namespace Apache.Calcite.Cosmos.Adapter
             return _tables;
         }
 
+        /// <summary>
+        /// Declares the Cosmos functions, so that a connection can name one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The same operators <see cref="Sql.CosmosOperators.Instance"/> offers, reached the other
+        /// way: a validator resolves a name against its operator table chained with the catalog
+        /// reader, and the catalog reader resolves the schema's own functions. Chaining the table is
+        /// something a host does to a planner it built; this is what an application that opens a
+        /// connection against a model document finds without being told.
+        /// </para>
+        /// <para>
+        /// <b>Here as well as on <see cref="CosmosAccountSchema"/>, and that is the decision.</b> The
+        /// functions are account-wide in meaning, so declaring them on the account alone would be the
+        /// tidier story — but an unqualified name is resolved against the connection's default schema
+        /// and the root, and nothing else. A model naming a <c>database</c> roots the connection
+        /// here, with no account schema above it to carry them; a model naming an account roots it
+        /// there, and a query still has to be able to name one from a database it has descended into.
+        /// Declaring them at both levels is what makes the name work wherever a query is rooted, and
+        /// costs a resolution that finds the same function twice in no arrangement — the two levels
+        /// are never both searched for one unqualified name.
+        /// </para>
+        /// </remarks>
+        protected override com.google.common.collect.Multimap getFunctionMultimap()
+        {
+            return Sql.CosmosSchemaFunctions.Instance;
+        }
+
     }
 
 }
