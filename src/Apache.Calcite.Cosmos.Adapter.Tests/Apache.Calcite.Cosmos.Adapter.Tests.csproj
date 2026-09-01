@@ -30,7 +30,7 @@
              connection can resolve is not testable against a planner the test built itself. Held at
              the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
              gives about core and linq4j. -->
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.0-pre.9" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.11" />
     </ItemGroup>
 
     <ItemGroup>
