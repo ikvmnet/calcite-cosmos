@@ -82,6 +82,39 @@ jobs:
       with:
         name: tests
         path: dist/tests.tar.gz
+  # The benchmark corpus rots quietly: a statement that stops parsing, or one that stops pushing
+  # because a rule's predicate tightened, still produces a number. `verify` plans every statement in
+  # it once and fails on either — including a statement that starts pushing and is not listed as
+  # doing so, because the list is what two of the benchmark classes are run over. It also builds the
+  # project, which is the other thing this catches.
+  #
+  # It does not run benchmarks. A shared runner's timings are not comparable between runs, so
+  # measuring here would produce numbers nobody could act on.
+  benchmarks:
+    name: Benchmarks
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        submodules: recursive
+    - name: Setup .NET 9.0
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 9.0.x
+    - name: Setup .NET 10.0
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - name: Add NuGet Source (GitHub)
+      shell: pwsh
+      run: dotnet nuget add source --username USERNAME --password $env:GITHUB_TOKEN --store-password-in-clear-text --name ${{ github.repository_owner }} $env:GITHUB_REPOS
+      env:
+        GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Verify Benchmark Corpus
+      run: dotnet run --project src/Apache.Calcite.Cosmos.Benchmarks/Apache.Calcite.Cosmos.Benchmarks.csproj -c Release -f net10.0 -- verify
   test:
     strategy:
       matrix:
