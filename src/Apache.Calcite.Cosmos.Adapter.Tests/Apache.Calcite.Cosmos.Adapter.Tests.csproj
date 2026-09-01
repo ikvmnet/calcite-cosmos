@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="IKVM" Version="8.15.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.15.0" />
+        <PackageReference Include="IKVM" Version="8.16.0" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -29,7 +29,7 @@
              connection can resolve is not testable against a planner the test built itself. Held at
              the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
              gives about core and linq4j. -->
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.0-pre.7" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.0-pre.9" />
     </ItemGroup>
 
     <ItemGroup>
