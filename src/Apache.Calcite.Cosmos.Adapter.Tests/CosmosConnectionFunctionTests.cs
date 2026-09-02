@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
@@ -271,11 +271,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// Full text search, which is the capability the issue was actually about.
         /// </summary>
         /// <remarks>
-        /// The emulator rejects <c>FULLTEXTCONTAINS</c> even with a policy and an index over the
-        /// searched path — see <c>CosmosQueryExecutorTests.FullTextFormsAreAcceptedWhereTheEmulatorSupportsThem</c>,
-        /// which pins that measurement — so a rejection here is reported inconclusive. What is not
-        /// excused is the failure this issue is about: a name the planner could not resolve never
-        /// reaches the service at all, and that is asserted either way.
+        /// <para>
+        /// The emulator does not support full text search, and the shape of that matters here: it
+        /// accepts a container declaring a <c>FullTextPolicy</c> and a full text index and then
+        /// reports both back as absent, and it does not know the function names either
+        /// (<c>SC2005, 'FullTextScore' is not a recognized built-in function name</c>). Measured.
+        /// So against an emulator the declaration gate declines first and the statement is never
+        /// sent — which is a different outcome from the service refusing it, and this tells them
+        /// apart rather than calling both the second.
+        /// </para>
+        /// <para>
+        /// What is not excused either way is the failure this issue is about: a name the planner
+        /// could not resolve never reaches the service at all, and that is asserted.
+        /// </para>
         /// </remarks>
         [TestMethod]
         public async Task AFullTextPredicateResolvesAndReachesTheService()
@@ -293,7 +301,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 Describe(e).Should().NotContain("No match found for function signature",
                     "the name has to resolve whatever the service then does with the statement");
 
-                Assert.Inconclusive("The name resolved and the service refused the statement, which this emulator does: " + Describe(e));
+                var described = Describe(e);
+
+                if (described.Contains("could not be pushed down"))
+                    Assert.Inconclusive("The name resolved and the declaration gate declined, so nothing was sent — which is what an emulator gives, since it drops the policy it accepted: " + described);
+
+                Assert.Inconclusive("The name resolved and the service refused the statement: " + described);
             }
         }
 
@@ -336,11 +349,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 described.Should().NotContain("No match found for function signature",
                     "the name has to resolve whatever is then done with the statement");
 
-                if (described.Contains("must implement ImplementableFunction"))
+                if (described.Contains("could not push the whole ordering down"))
                     Assert.Inconclusive("The name resolved and the rank clause did not survive the connection's plan. " + described);
 
                 Assert.Inconclusive("The name resolved and the service refused the statement, which this emulator does: " + described);
             }
+        }
+
+        /// <summary>
+        /// Selecting a score is refused in words that say why.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Measured against an Azure account: <c>SELECT c.id, FullTextScore(c.name, 'steel') AS s</c>
+        /// comes back <c>400 SC2240</c>, <em>the FullTextScore function is only allowed in the ORDER
+        /// BY RANK clause</em>, and so does every other way of reaching the value — a bare
+        /// <c>SELECT VALUE</c>, an object literal, a <c>WHERE</c>, and a derived table that computes
+        /// it one level down. There is no statement this adapter could have emitted.
+        /// </para>
+        /// <para>
+        /// So the plan is refused rather than attempted, and the refusal has to name the reason.
+        /// Calcite's own words for it were <c>User defined function FULLTEXTSCORE must implement
+        /// ImplementableFunction</c>, which names an interface and reads as a defect here.
+        /// </para>
+        /// <para>
+        /// This asserts wherever the suite runs, emulator included: nothing reaches the service,
+        /// because the statement is refused while the plan is being turned into code.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task AProjectedScoreIsRefusedWithAReason()
+        {
+            RequireService();
+
+            var act = () => QueryAsync("""SELECT c."id", FULLTEXTSCORE(c."_MAP"['name'], 'steel') AS "s" FROM "products" AS c""");
+
+            var described = Describe((await act.Should().ThrowAsync<Exception>()).Which);
+
+            described.Should().NotContain("No match found for function signature",
+                "the name resolves; what fails is the attempt to evaluate it");
+            described.Should().NotContain("must implement ImplementableFunction",
+                "that names an interface rather than the reason");
+            described.Should().Contain("FULLTEXTSCORE");
+            described.Should().Contain("never returns one",
+                "the reason is the service's, and the message has to carry it");
         }
 
         /// <summary>
