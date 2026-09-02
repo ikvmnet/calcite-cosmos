@@ -26,8 +26,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="IKVM" Version="8.15.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.15.0" />
+        <PackageReference Include="IKVM" Version="8.16.0" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
         <!-- Not PrivateAssets, deliberately. This package ships only buildTransitive, which is the folder that
              carries build assets to consumers; marking it private disables the one mechanism it has, and a project
              that references ours then compiles and fails at run time with `Could not load file or assembly
@@ -35,7 +35,7 @@
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0" />
         <!-- Supplies the ClrAsyncEnumerable calling convention the converter targets. A prerelease, the
              conventions postdating the 1.0.3 release, but a tagged one from nuget.org. -->
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.0-pre.7" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.11" />
         <!-- Held at the version Apache.Calcite.Extensions resolves core to. Core drags linq4j in with it,
              and the two are not separable: 1.42's BuiltInMethod initializer binds against 1.42's linq4j, so
              a disagreement here fails every query in a type initializer rather than at restore. -->

@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**654 tests: 645 passing, 9 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.0-pre.7.
+**654 tests: 645 passing, 9 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.1-pre.11.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment

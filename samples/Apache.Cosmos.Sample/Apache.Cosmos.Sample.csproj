@@ -16,7 +16,7 @@
 
     <ItemGroup>
         <!-- The ADO.NET provider: what turns a model into a DbConnection. -->
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.0-pre.7" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.11" />
         <PackageReference Include="Spectre.Console" Version="0.57.2" />
     </ItemGroup>
 
@@ -28,8 +28,8 @@
              today — its metadata read calls DbDataReader.GetInt32 on columns SQL Server types as
              tinyint, so any query against a SQL Server table fails with an InvalidCastException from
              Byte to Int32. See the README beside this file. -->
-        <PackageReference Include="IKVM" Version="8.15.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.15.0" />
+        <PackageReference Include="IKVM" Version="8.16.0" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
         <!-- Not PrivateAssets, deliberately. This package ships only buildTransitive, which is the folder that
              carries build assets to consumers; marking it private disables the one mechanism it has, and a project
              that references ours then compiles and fails at run time with `Could not load file or assembly
