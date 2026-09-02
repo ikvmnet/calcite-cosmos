@@ -93,10 +93,11 @@ the reasoning.
    `Apache.Calcite.Data` offers a supported way to hand back the same schema instance.
 2. **An explicit statistics refresh** (section 1) — the time to live is in; what is missing is a way
    for a caller to say *now*, which after a bulk load is the only moment that matters.
-3. **Typed columns, if they are wanted at all** (section 6) — three items name this dependency, and
-   nothing satisfies it. Whether the answer is a `columns` operand, computed properties, or
-   something else is open again, and the fourth item's departure sharpened the case rather than
-   weakening it: read section 6's last paragraph first.
+3. **Typed columns, if they are wanted at all** (section 6) — two items name this dependency now,
+   and nothing satisfies it. Whether the answer is a `columns` operand, computed properties, or
+   something else is open. Two items have left since: the sort key, and the `UPDATE` patch tier,
+   which turned out to need a way to *write* a deep-path `SET` rather than a type at all — see
+   section 3.
 
 ---
 
@@ -220,16 +221,96 @@ constraint on where this can apply rather than a reason not to.
 Writes are item CRUD behind a `TableModify` — Cosmos SQL has no DML, and does not need to for the
 adapter to write. What each statement does and refuses is recorded in `DESIGN.md` under *Writing*.
 
-### `UPDATE`, the patch tier — *blocked on there being a typed column to target*
+### `UPDATE`, the patch tier — *medium, and the blocker is a way to write it, not a type*
 
 `SET "_MAP" = …` executes as a whole-document replace. What remains is the cheap tier: a targeted
 `SET` of a plain document property as `PatchItemAsync`, sending changed properties rather than the
-document. It has no targets: `SET` names a column, the map column is the whole document, and the
-promoted columns are `id`, the partition keys and the system properties — every one of them either
-immutable or not worth patching. So the tier is one rule-and-writer step *behind* something that
-gives a document path a column of its own; see section 6. The execution ladder above it (static
-decomposition via a mutation operator, the diff and blind-patch optimizations) is recorded in
-`DESIGN.md` under *Updating*.
+document. The execution ladder above it (static decomposition via a mutation operator, the diff and
+blind-patch optimizations) is recorded in `DESIGN.md` under *Updating*.
+
+**This entry used to say the tier was blocked on a typed column, and that was wrong.** A patch sends
+whatever value it is handed, so no type is needed, and the path is written in the *statement* rather
+than declared anywhere — a planner can see that a single-path `SET` is not a whole-document replace
+without anything being declared. What is missing is a way to *write* the statement, and there are
+three walls, each measured:
+
+1. `SET "_MAP"['data']['name'] = 'x'` does not parse. Calcite's `UPDATE` grammar accepts only `=` or
+   `.` after the target identifier — *Encountered "[" … Was expecting one of: "=" … "." …*
+2. `SET "_MAP"."data"."name" = 'x'` parses and the validator refuses it: *Unknown target column
+   `_MAP.data.name`*. A `SET` target is resolved against the row type, and a map has no fields.
+3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converts in isolation but dies through a
+   connection: `JSON_SET` returns `VARCHAR`, the column is `(VARCHAR, ANY) MAP`, and Calcite cannot
+   build a cast spec for it — *Unsupported type when convertTypeToSpec: ANY*. Calcite's SQL/JSON
+   functions follow SQL:2016, where JSON is character data, so none of the family can address a map.
+
+**What does work is a source expression already of the map type.** Measured with Spark's
+`MAP_CONCAT`, which returns a map: the statement converts, plans, and arrives as a
+`CosmosTableModify(updateColumnList=[[_MAP]])` over a calc holding the expression — the shape a patch
+rule would match, intact.
+
+**And there is no in-process fallback to be afraid of.** `TableModify` has no implementation in the
+CLR conventions at all — *Missing conversion is LogicalTableModify\[convention: NONE ->
+CLR_ASYNC_ENUMERABLE\]* — so an `UPDATE` whose expression the adapter declines fails to plan rather
+than evaluating in memory and writing a re-serialised document back.
+
+**Nor is there anything to render into a Cosmos query.** Measured against a real account: Cosmos has
+no JSON-transform function under any of a dozen names, no object spread, no `ArrayToObject` to undo
+`ObjectToArray`, and **no `UPDATE` statement** — *SC1001, syntax error near 'UPDATE'*. The targeted
+write is the item API, `PatchItemAsync` with `set`/`add`/`replace`/`remove`/`incr`, ten operations to
+a call. So a rule reads the path and the value out of the SQL expression and issues patch operations;
+nothing is rendered.
+
+**The shape chosen is a second column, `_JSON`.** Typed `VARCHAR`, over the same document, so the
+standard `JSON_SET`, `JSON_REPLACE`, `JSON_INSERT` and `JSON_REMOVE` type-check against it —
+operators every tool already knows, nothing new to name. The column is a handle rather than a
+representation: on the write path it is never built, and projected it can be handed over as the
+service returned it rather than rebuilt from the map. Its costs are that the row type carries the
+document twice, and that a statement naming both columns needs a rule saying what that means.
+
+The alternative considered and not taken was **adapter map-typed operators** — the same functions
+declared over `MAP`, one column, no cast, inheriting the refusal that a Cosmos function has no
+in-process body. Rejected for using names nobody outside this adapter knows, where the JSON family
+is already in every tool.
+
+**Reads through `_JSON` are worth more than they look, and that is the surprise.** The read side was
+first written off here on the grounds that Calcite's SQL/JSON functions are string-typed, so pushing
+`JSON_VALUE(c."_JSON", '$.price')` down as the bare path `c.price` would hit the same wall as
+projecting a cast to text — the service answering with a number where the plan declared text, which
+`CosmosJson.GetString` refuses. That is wrong: SQL:2016's `RETURNING` clause is implemented, and
+Calcite honours it. Measured:
+
+```
+JSON_VALUE(doc, '$.a')                       ->  VARCHAR(2000)
+JSON_VALUE(doc, '$.a' RETURNING INTEGER)     ->  INTEGER
+JSON_VALUE(doc, '$.a' RETURNING DOUBLE)      ->  DOUBLE
+JSON_VALUE(doc, '$.a' RETURNING BOOLEAN)     ->  BOOLEAN
+JSON_VALUE(doc, '$.a' RETURNING TIMESTAMP)   ->  TIMESTAMP(0)
+JSON_VALUE(doc, '$.a' RETURNING INTEGER) + 1 ->  INTEGER
+JSON_QUERY(doc, '$.a')                       ->  VARCHAR(2000)   genuinely text, a JSON fragment
+JSON_EXISTS(doc, '$.a')                      ->  BOOLEAN
+```
+
+So the declared type matches what the service returns, and rendering the call as a path is sound.
+The field comes out **nullable** even over a `NOT NULL` column, which is right — a path may be
+absent. And the clause survives inside a view: a model view selecting
+`JSON_VALUE(p."_etag", '$.a' RETURNING INTEGER) AS "N"` presents `N` to a `DbDataReader` as
+`INTEGER`/`Int32`, over three rows.
+
+**Which reaches past this entry.** A typed column over a document path is section 6's open question,
+and this is one written in standard SQL, in a view, with no operand and nothing declared to the
+schema. It is still the caller's word — but a wrong word fails rather than lies: `RETURNING INTEGER`
+over a path holding a string makes the service return a string where the plan declared an integer,
+and `CosmosJson` refuses to coerce it, which is the opposite failure mode from the one section 6
+declines an operand for. What it does **not** give is a `RexInputRef`: a `JSON_VALUE` call is an
+expression like `ITEM`, so predicate flow, keys and distinctness stay where they are. Section 6's
+split holds; this answers the typed half and not the reference half.
+
+**Parity is the open question, not the size.** Every node reads a document path through `ITEM` today
+— `CosmosFilter`, `CosmosProject`, `CosmosSort`, `CosmosAggregate`, `CosmosUnnest`,
+`CosmosLookupJoin`, `CosmosRank`, and partition-key resolution under `CosmosTableModify` — across
+about sixty dispatch points in the translator. Whether `_JSON` is a write handle whose reads stay in
+process, or a second front end the whole translator learns, decides how large this is, and is not
+settled here.
 
 ### Whole-partition `DELETE` — *built, and unverified on the path it exists for*
 
