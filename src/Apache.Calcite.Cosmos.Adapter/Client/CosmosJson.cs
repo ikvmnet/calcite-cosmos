@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
@@ -104,6 +104,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="value">The value to read.</param>
         /// <returns>The rendered text, or <c>null</c> where the value is JSON null or undefined.</returns>
+        /// <summary>
+        /// Reads a named property as the JSON text the service sent for it.
+        /// </summary>
+        /// <remarks>
+        /// The document as it arrived, not a re-serialisation of a parsed form: <c>GetRawText</c>
+        /// returns the original span. So the <c>_JSON</c> column costs a copy rather than a round trip,
+        /// and cannot differ from what is stored — key order, number formatting and all.
+        /// </remarks>
+        /// <param name="row">The row object.</param>
+        /// <param name="name">The property to read.</param>
+        /// <returns>The JSON text, or <c>null</c> where the property is absent or JSON null.</returns>
+        /// <exception cref="CosmosMaterializationException">The row is not an object.</exception>
+        public static string? GetJsonProperty(JsonElement row, string name)
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+                throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
+
+            if (row.TryGetProperty(name, out var value) == false || value.ValueKind == JsonValueKind.Null)
+                return null;
+
+            return value.GetRawText();
+        }
+
         public static string? GetText(JsonElement value)
         {
             return GetNatural(value) switch

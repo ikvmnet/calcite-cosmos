@@ -36,6 +36,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetTextProperty)}' is missing from {nameof(CosmosJson)}.");
 
+        static readonly System.Reflection.MethodInfo GetJsonPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonProperty), [typeof(JsonElement), typeof(string)])
+            ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetJsonProperty)}' is missing from {nameof(CosmosJson)}.");
+
         static readonly System.Reflection.MethodInfo GetExecutorMethod = typeof(CosmosSchemas).GetMethod(nameof(CosmosSchemas.GetExecutor), [typeof(org.apache.calcite.DataContext), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosSchemas.GetExecutor)}' is missing from {nameof(CosmosSchemas)}.");
 
@@ -403,6 +406,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (reading == CosmosReading.Text)
                 return Expression.Convert(
                     Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName())),
+                    typeof(object));
+
+            // The document column, read as the text the service sent rather than as the declared
+            // VARCHAR — which would refuse an object, deliberately, being the same refusal that makes
+            // a wrong RETURNING clause an error rather than a wrong answer.
+            if (reading == CosmosReading.Json)
+                return Expression.Convert(
+                    Expression.Call(null, GetJsonPropertyMethod, row, Expression.Constant(field.getName())),
                     typeof(object));
 
             return Expression.Call(null,

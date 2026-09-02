@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
@@ -75,6 +75,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];
 
+            // Read before anything rebinds them. A column passed straight through keeps how it is
+            // read: the JSON column projected under an alias is still the document, and reading it as
+            // the VARCHAR it is declared would refuse the object it carries.
+            var inputReadings = implementor.Readings;
+
             for (var i = 0; i < projects.size(); i++)
             {
                 var node = (RexNode)projects.get(i);
@@ -84,7 +89,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // CosmosRexTranslator.TryRenderedTextOperand for why that is an equivalence and not a
                 // trade, and why such a column addresses nothing afterwards.
                 implementor.Query.SelectProperty((string)names.get(i), translator.TranslateProjection(node, out var rendered));
-                readings[i] = rendered ? CosmosReading.Text : CosmosReading.Typed;
+                readings[i] = rendered ? CosmosReading.Text
+                    : node is RexInputRef reference
+                        && reference.getIndex() >= 0
+                        && reference.getIndex() < inputReadings.Count
+                            ? inputReadings[reference.getIndex()]
+                            : CosmosReading.Typed;
 
                 // Null where the projection computes rather than addresses. Nothing downstream can
                 // refer to it, because Cosmos has no name for it — a projection alias is not

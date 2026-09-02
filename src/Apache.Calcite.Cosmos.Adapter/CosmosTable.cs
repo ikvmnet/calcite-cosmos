@@ -184,6 +184,12 @@ namespace Apache.Calcite.Cosmos.Adapter
                 builder.add(name, type);
             }
 
+            // The same document again, as JSON text, so that Calcite's SQL/JSON functions have
+            // something they can address — they are typed over character strings and cannot take a
+            // map. Last, so the promoted ordinals above do not move. NOT NULL for the reason the map
+            // column is: every row is a document.
+            builder.add(CosmosImplementor.JsonColumnName, varchar);
+
             return builder.build();
         }
 

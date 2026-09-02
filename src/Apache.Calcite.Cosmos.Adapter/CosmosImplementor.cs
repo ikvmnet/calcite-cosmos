@@ -137,6 +137,30 @@ namespace Apache.Calcite.Cosmos.Adapter
         public const string MapColumnName = "_MAP";
 
         /// <summary>
+        /// The name of the column carrying the whole document as JSON text.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The same document as <see cref="MapColumnName"/>, in the shape Calcite's SQL/JSON functions
+        /// can address. They are typed over character strings — SQL:2016 has no JSON type and neither
+        /// does Calcite — so none of them can take a map, and that is what stood between an
+        /// <c>UPDATE</c> and a targeted patch. See <c>DESIGN.md</c> under <em>The one measured cost of
+        /// the substrate</em>.
+        /// </para>
+        /// <para>
+        /// It is a handle rather than a second representation. On the write path nothing is built: a
+        /// rule reads the path and the value out of the <c>JSON_SET</c> call and issues patch
+        /// operations. Projected, it is the document as the service returned it rather than the map
+        /// rendered back to text.
+        /// </para>
+        /// <para>
+        /// Last in the row type deliberately, so that promoted columns keep the ordinals
+        /// <see cref="CosmosTable.GetColumnOrdinal"/> gives them.
+        /// </para>
+        /// </remarks>
+        public const string JsonColumnName = "_JSON";
+
+        /// <summary>
         /// The field ordinal the map column occupies, which is the first.
         /// </summary>
         /// <remarks>
@@ -150,7 +174,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The map column binds to the document root; every other field is a promoted column and
+        /// The map column binds to the document root, and so does the JSON column — they are the same
+        /// document, differing only in how a row reads it. Every other field is a promoted column and
         /// binds to the property of the same name. Nested promoted paths are not expressible this
         /// way and are not currently produced.
         /// </para>
@@ -176,10 +201,41 @@ namespace Apache.Calcite.Cosmos.Adapter
             for (var i = 0; i < paths.Length; i++)
             {
                 var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
-                paths[i] = string.Equals(name, MapColumnName, StringComparison.Ordinal) ? root : root.Property(name);
+                paths[i] = string.Equals(name, MapColumnName, StringComparison.Ordinal)
+                    || string.Equals(name, JsonColumnName, StringComparison.Ordinal)
+                        ? root
+                        : root.Property(name);
             }
 
             return paths;
+        }
+
+        /// <summary>
+        /// Derives how each field of a scanned row type is to be read back.
+        /// </summary>
+        /// <remarks>
+        /// Only the JSON column differs from the declared type. It binds to the document root, as the
+        /// map column does, so nothing about the path tells them apart — and read as the <c>VARCHAR</c>
+        /// it is declared, an object would be refused. It is read as the JSON the service sent instead.
+        /// </remarks>
+        /// <param name="rowType">The row type to describe.</param>
+        /// <returns>The readings, indexed by field ordinal.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="rowType"/> is <c>null</c>.</exception>
+        public static IReadOnlyList<CosmosReading> BindReadings(org.apache.calcite.rel.type.RelDataType rowType)
+        {
+            if (rowType is null)
+                throw new ArgumentNullException(nameof(rowType));
+
+            var fields = rowType.getFieldList();
+            var readings = new CosmosReading[fields.size()];
+
+            for (var i = 0; i < readings.Length; i++)
+            {
+                var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
+                readings[i] = string.Equals(name, JsonColumnName, StringComparison.Ordinal) ? CosmosReading.Json : CosmosReading.Typed;
+            }
+
+            return readings;
         }
 
         /// <summary>
