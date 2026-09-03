@@ -104,6 +104,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="value">The value to read.</param>
         /// <returns>The rendered text, or <c>null</c> where the value is JSON null or undefined.</returns>
+        public static string? GetText(JsonElement value)
+        {
+            return GetNatural(value) switch
+            {
+                null => null,
+                string text => text,
+                var natural => natural.ToString(),
+            };
+        }
+
         /// <summary>
         /// Reads a named property as the JSON text the service sent for it.
         /// </summary>
@@ -125,16 +135,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 return null;
 
             return value.GetRawText();
-        }
-
-        public static string? GetText(JsonElement value)
-        {
-            return GetNatural(value) switch
-            {
-                null => null,
-                string text => text,
-                var natural => natural.ToString(),
-            };
         }
 
         /// <summary>
