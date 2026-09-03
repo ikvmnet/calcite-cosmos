@@ -1,4 +1,4 @@
-namespace Apache.Calcite.Cosmos.Adapter
+﻿namespace Apache.Calcite.Cosmos.Adapter
 {
 
     /// <summary>
@@ -24,6 +24,18 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// value does. See <see cref="Client.CosmosJson.GetText"/>.
         /// </summary>
         Text,
+
+        /// <summary>
+        /// Read whatever JSON arrived as its own text, exactly as the service sent it. What the
+        /// <c>_JSON</c> column is, and the reason it costs nothing: the document arrived as JSON, so
+        /// the column is that JSON rather than the map rendered back into it.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="Text"/>, which renders a value the way Calcite's cast over an
+        /// <c>ANY</c> would — <c>{x=1}</c> for an object, Java's notation rather than JSON's. That is
+        /// the right answer for a dropped cast and the wrong one for a document.
+        /// </remarks>
+        Json,
 
     }
 

@@ -1045,6 +1045,60 @@ column**, not N. This is not a compromise — the two models agree exactly:
 `ITEM` → path expression is close to 1:1, and the coercion of a flat select list into an object
 stops being an impedance mismatch — it is the identity of the column.
 
+#### The one measured cost of the substrate
+
+A map cannot be addressed by Calcite's SQL/JSON functions, which are typed over character strings,
+and that is what stands between an `UPDATE` and a targeted patch. `SET "_MAP"['a']['b'] = …` does not
+parse — the `UPDATE` grammar accepts only `=` or `.` after the target. `SET "_MAP"."a"."b" = …`
+parses and the validator refuses it, *Unknown target column*, a map having no fields.
+`SET "_MAP" = JSON_SET("_MAP", '$.a.b', …)` converts in isolation and dies through a connection,
+`JSON_SET` returning `VARCHAR` where the column is `(VARCHAR, ANY) MAP` and Calcite being unable to
+build a cast spec for it — *Unsupported type when convertTypeToSpec: ANY*. A source expression
+already *of* the map type converts and plans (measured with Spark's `MAP_CONCAT`), so the obstacle is
+the substrate mismatch and nothing else.
+
+Nor is there a Cosmos-side way round it. Measured against an account: no JSON-transform function
+under any of a dozen names, no object spread, no `ArrayToObject` to undo `ObjectToArray`, and **no
+`UPDATE` statement at all** — *SC1001, syntax error near 'UPDATE'*. Cosmos SQL is read-only; the
+targeted write is `PatchItemAsync`.
+
+Two things make this less alarming than it reads. `TableModify` has no implementation in the CLR
+conventions, so an `UPDATE` the adapter declines fails to plan rather than evaluating in memory and
+writing a re-serialised document. And `JSON_VALUE` carries SQL:2016's `RETURNING` clause, which
+Calcite honours — `RETURNING INTEGER` types the call `INTEGER`, `RETURNING TIMESTAMP` types it
+`TIMESTAMP(0)`, nullable, and the clause survives inside a view, where it presents to a
+`DbDataReader` as a real typed column. So the JSON family is not uniformly stringly typed, and a
+document path *can* be given a SQL type by the caller in standard SQL. `TODO.md` section 3 carries
+the consequence: a second `_JSON` column as the handle those functions address.
+
+#### The JSON column
+
+`_JSON` is the same document as `_MAP`, in the shape Calcite's SQL/JSON functions can address. Last in
+the row type, so the promoted ordinals do not move; `VARCHAR` and `NOT NULL`, because every row is a
+document; `STORED` in the column strategies, so Calcite refuses `INSERT INTO t (_JSON)` as a generated
+column on its own while leaving it nameable as an `UPDATE` target — measured, because the patch tier
+depends on exactly that asymmetry.
+
+It is a handle rather than a second representation. Read, it is the JSON the service sent —
+`GetRawText`, the original span — so it is a copy rather than a round trip and cannot differ from what
+is stored in key order or number formatting. `CosmosReading.Json` is what says so, distinct from
+`Text`, which renders a value the way a cast over `ANY` would and is the wrong answer for a document.
+
+**Parity with the map column is one function, not sixty.** Every pushdown that needs a document path
+resolves it through `CosmosRexTranslator.TryResolvePath`, so `JSON_VALUE(<doc>, '$.a.b')` resolving to
+the same path as `ITEM(ITEM(<doc>,'a'),'b')` gives every one of them the second spelling at once.
+Measured against a connection, `_MAP` and `_JSON` produce the identical plan for a projection, a
+filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array
+subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
+assembled at run time declines on both.
+
+The path argument must be a literal, and the grammar is `$` with `.name`, `['name']` and `[0]` steps —
+a wildcard, a descent or a filter has no Cosmos rendering and is refused. `RETURNING` is not rendered:
+it told the plan what the service will return, and a clause that disagrees with the document fails in
+materialisation rather than answering wrongly, which is what makes it worth trusting. `UNNEST` wants
+`RETURNING <type> ARRAY`; `JSON_QUERY` is `VARCHAR` even `WITH ARRAY WRAPPER` and is never an unnest
+source.
+
 #### Promoted columns
 
 A single column has one field ordinal, and Calcite's planner metadata is ordinal-based:

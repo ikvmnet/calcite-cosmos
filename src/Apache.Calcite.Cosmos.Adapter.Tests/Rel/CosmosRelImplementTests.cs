@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             for (var i = 0; i < fields.size(); i++)
                 names.Add(((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName());
 
-            names.Should().Equal("_MAP", "id", "_ts", "_etag", "category");
+            names.Should().Equal("_MAP", "id", "_ts", "_etag", "category", "_JSON");
         }
 
         /// <remarks>
@@ -474,8 +474,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var implementor = Implementor();
             UnnestOver(Scan(), MapItem("tags")).Implement(implementor);
 
-            implementor.Fields.Should().HaveCount(6);
-            implementor.Fields[5]!.ToString().Should().Be("t0");
+            implementor.Fields.Should().HaveCount(7);
+            implementor.Fields[6]!.ToString().Should().Be("t0");
         }
 
         [TestMethod]
@@ -492,7 +492,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var unnest = UnnestOver(Scan(), MapItem("tags"));
             var filter = new CosmosFilter(_cluster, Traits(), unnest,
-                _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(5), Str("outdoor")));
+                _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(6), Str("outdoor")));
 
             Sql(filter, Implementor()).Should().Be("SELECT VALUE c FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
         }

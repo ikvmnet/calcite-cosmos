@@ -102,8 +102,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Query.AddUnnest(alias, path!.ToString());
 
             // The element is addressed by its alias; the input's bindings carry through unchanged.
+            var readings = new List<CosmosReading>(implementor.Readings);
             var fields = new List<CosmosPath?>(implementor.Fields) { CosmosPath.Root(alias) };
             implementor.Fields = fields;
+
+            // And so does how each of them is read, which setting Fields has just cleared. The
+            // clearing is right in general — a rebinding usually means new output fields, and a
+            // reading inherited across one would render a value that was never cast — but this
+            // rebinding adds a column rather than replacing any, so the input's readings still
+            // describe the input's columns. Without this the JSON column loses its reading here and
+            // is read as the VARCHAR it is declared, which refuses the object it carries.
+            while (readings.Count < fields.Count - 1)
+                readings.Add(CosmosReading.Typed);
+
+            readings.Add(CosmosReading.Typed);
+            implementor.Readings = readings;
 
             // A projection below a traversal was written before the element existed, and Cosmos
             // evaluates SELECT after JOIN — so the object it constructs is still the right one, it

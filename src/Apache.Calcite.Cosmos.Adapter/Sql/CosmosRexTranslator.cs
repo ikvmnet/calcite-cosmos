@@ -187,10 +187,149 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     }
 
                     break;
+
+                // The same thing said in SQL/JSON. `JSON_VALUE(<doc>, '$.a.b')` addresses exactly what
+                // `ITEM(ITEM(<doc>,'a'),'b')` addresses, so it resolves to the same path and every
+                // clause that requires one accepts it without knowing which spelling it was written in.
+                // The document is the `_JSON` column, which binds to the root like the map column.
+                case RexCall json when IsJsonAccessor(json) && TryResolveJsonPath(json, out path):
+                    return true;
             }
 
             path = null;
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a call is one of the SQL/JSON accessors this can render as a path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// By name rather than by kind, for the reason recorded on <c>CosmosOperators</c>: a call
+        /// resolved through a schema carries an operator Calcite built around the declaration rather
+        /// than the operator itself.
+        /// </para>
+        /// <para>
+        /// <c>JSON_VALUE</c> and <c>JSON_QUERY</c> only. <c>JSON_EXISTS</c> is a predicate rather than
+        /// an accessor and is rendered as <c>IS_DEFINED</c> where it appears; the modifying family is
+        /// not an accessor at all.
+        /// </para>
+        /// </remarks>
+        static bool IsJsonAccessor(RexCall call)
+        {
+            return call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY" && call.getOperands().size() >= 2;
+        }
+
+        /// <summary>
+        /// Resolves a SQL/JSON accessor to the document path it addresses.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The path argument must be a literal, for the reason the full text functions hold their first
+        /// argument to one: a path assembled at run time names a property this cannot know, so there is
+        /// nothing to render and the call is declined rather than guessed at.
+        /// </para>
+        /// <para>
+        /// Anything beyond the plain subset — a wildcard, a descent, a filter, a function — is declined
+        /// too. Cosmos addresses a property or an array element and nothing else, so a path it cannot
+        /// express has no rendering, and answering one differently would be worse than not answering it.
+        /// </para>
+        /// <para>
+        /// Trailing operands are the <c>RETURNING</c>, <c>ON EMPTY</c> and <c>ON ERROR</c> flags.
+        /// Nothing is done with them here: the type they declare is what the plan already says the
+        /// column is, and the reading takes the service at its word — a declaration that disagrees with
+        /// the document fails in materialisation rather than answering wrongly, which is the whole
+        /// reason the clause is worth trusting.
+        /// </para>
+        /// </remarks>
+        bool TryResolveJsonPath(RexCall call, out CosmosPath? path)
+        {
+            path = null;
+
+            if (TryResolvePath(Operand(call, 0), out var basePath) == false || basePath is null)
+                return false;
+
+            if (Operand(call, 1) is not RexLiteral literal)
+                return false;
+
+            object? value;
+            try
+            {
+                value = GetLiteralValue(literal);
+            }
+            catch (CosmosTranslationException)
+            {
+                return false;
+            }
+
+            return value is string text && TryExtendByJsonPath(basePath, text, out path);
+        }
+
+        /// <summary>
+        /// Extends a path by a SQL/JSON path expression, where it is one Cosmos can address.
+        /// </summary>
+        /// <remarks>
+        /// The accepted grammar is <c>$</c> followed by any number of <c>.name</c>, <c>['name']</c> and
+        /// <c>[0]</c> steps. That is the whole of what a document path is; everything else is refused.
+        /// </remarks>
+        /// <param name="basePath">The path the document itself is at.</param>
+        /// <param name="text">The SQL/JSON path expression.</param>
+        /// <param name="path">On success, the resolved path.</param>
+        /// <returns><c>true</c> where the expression is a plain path.</returns>
+        internal static bool TryExtendByJsonPath(CosmosPath basePath, string text, out CosmosPath? path)
+        {
+            path = null;
+
+            if (basePath is null || string.IsNullOrEmpty(text) || text[0] != '$')
+                return false;
+
+            var current = basePath;
+            var i = 1;
+
+            while (i < text.Length)
+            {
+                if (text[i] == '.')
+                {
+                    // A descent, '..', names every match at any depth and is not a path.
+                    var start = ++i;
+                    while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '_'))
+                        i++;
+
+                    if (i == start)
+                        return false;
+
+                    current = current.Property(text[start..i]);
+                    continue;
+                }
+
+                if (text[i] != '[')
+                    return false;
+
+                var close = text.IndexOf(']', ++i);
+                if (close < 0)
+                    return false;
+
+                var step = text[i..close];
+                i = close + 1;
+
+                if (step.Length >= 2 && (step[0] == '\'' && step[^1] == '\'' || step[0] == '"' && step[^1] == '"'))
+                {
+                    var name = step[1..^1];
+                    if (name.Length == 0 || name.Contains('\'') || name.Contains('"'))
+                        return false;
+
+                    current = current.Property(name);
+                    continue;
+                }
+
+                if (int.TryParse(step, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index) == false)
+                    return false;
+
+                current = current.Index(index);
+            }
+
+            path = current;
+            return true;
         }
 
         /// <summary>
@@ -307,6 +446,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         void WriteCall(StringBuilder builder, RexCall call)
         {
+            // A SQL/JSON accessor over the document is the path it addresses, and is written as one.
+            // The same rendering ITEM gets, because it is the same thing said differently: the service
+            // returns the value at the path, and the RETURNING clause is what told the plan its type.
+            // Handled ahead of the kind switch so that every clause reaching here — a projection, a
+            // predicate, a sort key, an aggregate argument — gets it without a case of its own.
+            if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
+            {
+                builder.Append(jsonPath.ToString());
+                return;
+            }
+
             switch (KindOf(call))
             {
                 case SqlKind.__Enum.EQUALS:

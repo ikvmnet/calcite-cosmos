@@ -25,8 +25,8 @@
              drive Calcite's own types — a parser, a validator, a Volcano planner — rather than going
              through the ADO.NET provider, so calcite-core has to be referenced here and not merely
              inherited. -->
-        <PackageReference Include="IKVM" Version="8.15.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.15.0" />
+        <PackageReference Include="IKVM" Version="8.16.0" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -35,7 +35,7 @@
              actually asks a Cosmos query for. Planning to it is what the pushdown benchmarks
              measure: the planner has to cost the pushed form against doing the same work in
              process, and only the second of those exists without these rules. -->
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.0-pre.7" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.11" />
     </ItemGroup>
 
     <ItemGroup>

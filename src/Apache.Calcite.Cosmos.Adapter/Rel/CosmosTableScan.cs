@@ -1,4 +1,4 @@
-using org.apache.calcite.plan;
+﻿using org.apache.calcite.plan;
 using org.apache.calcite.rel.core;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel
@@ -31,6 +31,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         {
             // The scan establishes the binding every operator above it resolves against.
             implementor.Fields = CosmosImplementor.BindFields(getRowType(), implementor.RootAlias);
+
+            // Set after the binding, which clears them: the JSON column addresses the document root
+            // like the map column and differs only in how a row reads it, so the reading is the whole
+            // of what tells them apart.
+            implementor.Readings = CosmosImplementor.BindReadings(getRowType());
         }
 
     }
