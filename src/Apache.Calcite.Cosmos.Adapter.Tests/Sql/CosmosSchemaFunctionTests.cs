@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -301,16 +301,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// The declarations carry no body, and that is deliberate.
+        /// None of the declarations carries a body, and asking for one says so.
         /// </summary>
         /// <remarks>
         /// A schema function Calcite can implement is one bound to a method, and binding one here
         /// would let a call that cannot be pushed down plan anyway and then answer with something
-        /// Cosmos never computed. Declining to implement is what turns that into a failure before any
-        /// row exists.
+        /// Cosmos never computed. So there is no body — but declining the interface outright left
+        /// Calcite to report it, as <c>User defined function FULLTEXTSCORE must implement
+        /// ImplementableFunction</c>, which names an interface rather than the reason. The refusal is
+        /// the same refusal at the same moment; what this pins is that it arrives in words that name
+        /// the function and say why.
         /// </remarks>
         [TestMethod]
-        public void NoneOfThemIsImplementable()
+        public void NoneOfThemHasABody()
         {
             var schema = new CosmosSchema(new[] { Products });
             var names = ((org.apache.calcite.schema.Schema)schema).getFunctionNames();
@@ -330,8 +333,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 {
                     var function = functionIterator.next();
                     function.Should().BeAssignableTo<org.apache.calcite.schema.ScalarFunction>();
-                    function.Should().NotBeAssignableTo<org.apache.calcite.schema.ImplementableFunction>(
-                        "'{0}' exists to be rendered into a statement, not evaluated here", name);
+
+                    var implementable = function.Should()
+                        .BeAssignableTo<org.apache.calcite.schema.ImplementableFunction>(
+                            "'{0}' has to be the one that refuses, so that the refusal can say why", name)
+                        .Which;
+
+                    var act = () => implementable.getImplementor();
+
+                    act.Should().Throw<java.lang.UnsupportedOperationException>(
+                            "'{0}' exists to be rendered into a statement, not evaluated here", name)
+                        .WithMessage("*" + name + "*");
                 }
             }
         }

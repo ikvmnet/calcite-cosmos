@@ -1,4 +1,4 @@
-# Outstanding work
+﻿# Outstanding work
 
 What a complete adapter would have, sized and reasoned, so that the next session picks up an argument
 rather than a list.
@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**654 tests: 645 passing, 9 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.1-pre.11.
+**655 tests: 646 passing, 9 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.1-pre.11.
 The skips are things only a real account can answer; the suite runs against one when
 `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
 where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
@@ -282,11 +282,19 @@ owns the client.
   then fails to implement. `CosmosConnectionFunctionTests.AScoreResolvesThroughAConnection` detects
   it and reports inconclusive, telling it apart from the emulator's own refusal.
 
-  **The question is what the rule would have to promise.** Matching `Sort(Project)` alone means the
-  node's row type carries a score column the statement cannot produce, which is exactly the
-  unsoundness the three-node match exists to prevent — `DESIGN.md` records that reasoning under
-  *Full text search*. Nothing a Volcano rule can see says whether anything above reads that column.
-  Decide before building.
+  **Decided, and what is left is nothing.** Matching `Sort(Project)` alone was the candidate, and it
+  is refused by measurement rather than by argument: `SELECT id ... ORDER BY <score>` and
+  `SELECT id, <score> AS s ... ORDER BY s` reach the planner as the same plan, node for node and
+  expression for expression, differing only in the name of the output column. A rule accepting the
+  first would accept the second, whose score the service will not produce — a wrong answer where
+  there is now an error. The fact that separates them is `RelRoot.fields`, which `Prepare` applies
+  after planning, and **the prepare path is not changing**: it is `CalcitePrepareImpl`'s behaviour
+  faithfully ported, and one adapter's rule is not a reason to diverge from it
+  (`ikvmnet/calcite-dotnet#80`, closed on that).
+
+  So `ORDER BY RANK` needs a planner the host assembles, and that is a limit rather than a gap. What
+  did change is the refusal: a scoring function reaching code generation now says that Cosmos never
+  returns a relevance score, in place of Calcite's `must implement ImplementableFunction`.
 
 ### Subqueries
 

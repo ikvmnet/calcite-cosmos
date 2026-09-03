@@ -1,4 +1,4 @@
-# Apache.Calcite.Cosmos.Adapter — Design
+﻿# Apache.Calcite.Cosmos.Adapter — Design
 
 `Apache.Calcite.Cosmos.Adapter` exposes Azure Cosmos DB containers to Apache Calcite as
 relational schemas, and pushes as much of the relational plan as possible down to Cosmos by
@@ -136,6 +136,12 @@ documentation.
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
 > run. `ORDER BY t0.x` is rejected too, so it is the alias and not the arity.
+>
+> The second understates itself. The emulator does not merely reject the statements: it accepts a
+> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent,
+> and it does not know the names either — `SC2005, 'FullTextScore' is not a recognized built-in
+> function name`. So the declaration gate declines first and nothing is sent, which is a different
+> outcome from a service refusal and worth telling apart when a test reports one.
 
 **A hundred-term `IN` is served by the index.** Measured on a real account with
 `PopulateIndexMetrics`: `WHERE c.category IN (@k0, ..., @k99)` reports
@@ -762,9 +768,14 @@ consequence is a bound: a schema function accepts as many operands as it declare
 variadic operators are declared up to `CosmosSchemaFunctions.VariadicOperandLimit`, and a query
 needing more chains the operator table, whose checker has no bound.
 
-**None of them is implementable**, deliberately. A schema function bound to a CLR method would let a
-call that cannot be pushed down plan anyway and then answer with something Cosmos never computed; with
-no body, the failure is before any row exists.
+**None of them has a body**, deliberately. A schema function bound to a CLR method would let a call
+that cannot be pushed down plan anyway and then answer with something Cosmos never computed; with no
+body, the failure is before any row exists. They do nevertheless implement `ImplementableFunction`,
+and the implementation throws: declining the interface left Calcite to report it, as `User defined
+function FULLTEXTSCORE must implement ImplementableFunction`, which names an interface rather than a
+reason and reads as a defect in this adapter. The refusal is the same refusal at the same moment —
+Calcite asks for a body while generating code, so a call reaching there is one no rule pushed down —
+and what it adds is the sentence saying why.
 
 Signatures are the service's, from the query language reference:
 
@@ -781,10 +792,30 @@ them to it: a call over anything that does not resolve to a path is declined rat
 Keywords bind as `@pN` like any other literal, so statement text stays independent of what is searched
 for.
 
-**The two scoring functions are a different kind of thing.** The reference is explicit that
-`FULLTEXTSCORE` and `RRF` may appear *only* in an `ORDER BY RANK` clause and **cannot be part of a
-projection** — `SELECT FullTextScore(c.text, "kw") AS Score` is invalid. That is what makes them
-structural rather than tedious. Calcite sorts by field ordinal, so ordering by an expression outside
+**The two scoring functions are a different kind of thing.** `FULLTEXTSCORE` and `RRF` may appear
+*only* in an `ORDER BY RANK` clause and **cannot be part of a projection**. Measured against an Azure
+account, because the emulator implements none of this — every route to the value is the same refusal,
+`400`, `SC2240`, *the FullTextScore function is only allowed in the ORDER BY RANK clause*:
+
+| statement | |
+| --- | --- |
+| `SELECT c.id, FullTextScore(c.name, 'steel') AS s FROM c ORDER BY RANK FullTextScore(…)` | **SC2240** |
+| `SELECT c.id, FullTextScore(c.name, 'steel') AS s FROM c` | **SC2240** |
+| `SELECT VALUE FullTextScore(c.name, 'steel') FROM c` | **SC2240** |
+| `SELECT VALUE { "id": c.id, "s": FullTextScore(…) } FROM c ORDER BY RANK FullTextScore(…)` | **SC2240** |
+| `SELECT s.id, s.score FROM (SELECT c.id, FullTextScore(…) AS score FROM c) s` | **SC2240** |
+| `SELECT c.id FROM c WHERE FullTextScore(c.name, 'steel') > 0` | **SC2240** |
+| `SELECT VALUE { "id": c.id } FROM c ORDER BY RANK FullTextScore(c.name, 'steel')` | 3 rows |
+| `SELECT TOP 2 c.id FROM c ORDER BY RANK FullTextScore(c.name, 'steel')` | 2 rows |
+
+The object-literal row is the shape this adapter emits, and the derived table was the last way around
+it worth trying: a score computed one level down and read one level up is refused like the rest. So
+there is no statement to fall back to, which is what makes these structural rather than tedious. Two
+things fell out of the same measurement and are recorded because nothing else here says them: the
+keyword arguments are varargs and **not** an array — `FullTextScore(c.name, ['steel'])` is `SC2241`,
+whose text also documents a `{term, distance}` object form for fuzzy search that this adapter does not
+offer — and `ORDER BY RANK` **ranks without filtering**, returning every document including those with
+no match. Calcite sorts by field ordinal, so ordering by an expression outside
 the select list becomes three nodes:
 
 ```
