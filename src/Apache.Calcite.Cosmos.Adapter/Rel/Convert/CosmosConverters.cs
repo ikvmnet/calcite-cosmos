@@ -6,6 +6,8 @@ using System.Text.Json;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
+using Apache.Calcite.Geography.Rel.Type;
+
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -32,6 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         static readonly System.Reflection.MethodInfo GetPathMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetPath), [typeof(JsonElement), typeof(IReadOnlyList<CosmosPathSegment>), typeof(SqlTypeName)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetPath)}' is missing from {nameof(CosmosJson)}.");
+
+        static readonly System.Reflection.MethodInfo GetGeographyPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetGeographyProperty), [typeof(JsonElement), typeof(string)])
+            ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetGeographyProperty)}' is missing from {nameof(CosmosJson)}.");
 
         static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetTextProperty)}' is missing from {nameof(CosmosJson)}.");
@@ -404,6 +409,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return Expression.Convert(
                     Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName())),
                     typeof(object));
+
+            // A geography column holds GeoJSON and has to leave as the JTS geometry the ST_GEOG_*
+            // operators take. The declared SQL type name cannot decide this: GEOGRAPHY reports OTHER,
+            // which is also what an undeclared document value reports. The type itself is asked instead,
+            // which is a question only this side can answer — by the time the reading reaches CosmosJson
+            // there is nothing left but the name.
+            if (GeographyTypes.IsGeography(field.getType()))
+                return Expression.Call(null,
+                    GetGeographyPropertyMethod,
+                    row,
+                    Expression.Constant(field.getName()));
 
             return Expression.Call(null,
                 GetPropertyMethod,

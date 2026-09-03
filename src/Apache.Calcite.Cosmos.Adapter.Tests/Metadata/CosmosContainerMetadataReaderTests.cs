@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -117,6 +117,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// paths and the indexing policy indexes them; what the planner asks is whether the container
         /// said anything at all, so both are read into one list.
         /// </remarks>
+        /// <summary>
+        /// A spatial index names a geography path, and the wildcard it is declared with is normalized off.
+        /// </summary>
+        [TestMethod]
+        public void SpatialIndexPathsAreReadAsGeography()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath { Path = "/location/*" });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.GeographyPaths.Should().BeEquivalentTo(new[] { "/location" });
+            container.IsPathGeography("/location").Should().BeTrue();
+            container.IsPathGeography("/name").Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A container configured for geometry declares no geography, however much it indexes.
+        /// </summary>
+        /// <remarks>
+        /// <c>geospatialConfig</c> is one container-wide statement about what the coordinates mean, so it
+        /// decides this on its own rather than in union with the indexes — unlike full text and vector,
+        /// where policy and index are two halves of one declaration. Those values are planar and Calcite's
+        /// own <c>ST_*</c> already describe them correctly; typing them <c>GEOGRAPHY</c> would take a
+        /// working query away rather than enable one.
+        /// </remarks>
+        [TestMethod]
+        public void AGeometryContainerDeclaresNoGeography()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.GeospatialConfig = new GeospatialConfig(GeospatialType.Geometry);
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath { Path = "/location/*" });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.GeographyPaths.Should().BeEmpty();
+            container.IsPathGeography("/location").Should().BeFalse();
+        }
+
+        /// <summary>
+        /// No configuration at all is geography, which is the service's own default.
+        /// </summary>
+        [TestMethod]
+        public void AbsentGeospatialConfigIsGeography()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath { Path = "/location/*" });
+
+            CosmosContainerMetadataReader.FromProperties(properties).IsPathGeography("/location").Should().BeTrue();
+        }
+
         [TestMethod]
         public void FullTextPolicyAndIndexPathsAreBothRead()
         {
