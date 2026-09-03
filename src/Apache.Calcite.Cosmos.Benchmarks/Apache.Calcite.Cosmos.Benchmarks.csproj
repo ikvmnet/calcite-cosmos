@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <RootNamespace>Apache.Calcite.Cosmos.Benchmarks</RootNamespace>
+        <!-- BenchmarkDotNet refuses to run a non-optimized build, and the numbers from one would be
+             meaningless anyway. Named so that `dotnet run` without -c Release fails at the switcher
+             with its own message rather than producing a plausible-looking table. -->
+        <Optimize Condition=" '$(Configuration)' == 'Release' ">true</Optimize>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The same set the test project names, and for the same reasons it gives: the benchmarks
+             drive Calcite's own types — a parser, a validator, a Volcano planner — rather than going
+             through the ADO.NET provider, so calcite-core has to be referenced here and not merely
+             inherited. -->
+        <PackageReference Include="IKVM" Version="8.15.0" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.15.0" />
+        <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <!-- Supplies ClrAsyncEnumerableConvention and its rule set, which is the convention a host
+             actually asks a Cosmos query for. Planning to it is what the pushdown benchmarks
+             measure: the planner has to cost the pushed form against doing the same work in
+             process, and only the second of those exists without these rules. -->
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.0-pre.7" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
+        <!-- Held at the version calcite-core 1.42 resolves to, for the reason the test project's
+             file gives: a disagreement here fails at run time rather than at restore. -->
+        <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.28.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Apache.Calcite.Cosmos.Adapter\Apache.Calcite.Cosmos.Adapter.csproj" />
+    </ItemGroup>
+
+</Project>
