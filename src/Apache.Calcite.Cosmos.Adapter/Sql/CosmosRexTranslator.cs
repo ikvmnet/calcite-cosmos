@@ -1160,6 +1160,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ["IS_OBJECT"] = ("IS_OBJECT", 1, 1),
             ["IS_PRIMITIVE"] = ("IS_PRIMITIVE", 1, 1),
             ["IS_STRING"] = ("IS_STRING", 1, 1),
+            // The geography operators, whose Cosmos spellings are the unprefixed ones. The prefix exists
+            // because Calcite's own ST_* are planar and mean something else — see DESIGN.md under
+            // "Spatial needed a type Calcite does not have" — and it goes away here because the service
+            // has only the one reading, which is the geodesic one.
+            ["ST_GEOG_DISTANCE"] = ("ST_DISTANCE", 2, 2),
+            ["ST_GEOG_WITHIN"] = ("ST_WITHIN", 2, 2),
+            ["ST_GEOG_INTERSECTS"] = ("ST_INTERSECTS", 2, 2),
+            ["ST_GEOG_ISVALID"] = ("ST_ISVALID", 1, 1),
         };
 
         /// <summary>
@@ -1194,6 +1202,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case "VECTORDISTANCE":
                     WriteVectorDistance(builder, call);
                     return;
+                // Cosmos has no ST_DWITHIN and no constructor, so both are shapes rather than renames.
+                case "ST_GEOG_DWITHIN":
+                    WriteGeographyDWithin(builder, call);
+                    return;
+                case "ST_GEOG_GEOMFROMGEOJSON":
+                    WriteGeographyLiteral(builder, call);
+                    return;
+
                 case "FULLTEXTCONTAINS":
                 case "FULLTEXTCONTAINSALL":
                 case "FULLTEXTCONTAINSANY":
@@ -1223,6 +1239,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
 
             WriteFunctionCall(builder, call, mapping.Name);
+        }
+
+        /// <summary>
+        /// Writes <c>ST_GEOG_DWITHIN</c> as the comparison it is defined as.
+        /// </summary>
+        /// <remarks>
+        /// Cosmos has no <c>ST_DWITHIN</c>. It has <c>ST_DISTANCE</c>, and the reference documents a
+        /// distance compared against a constant as what its spatial index answers, so the rewritten form
+        /// is the one the service was going to want anyway rather than a fallback.
+        /// <para>
+        /// <b>The comparison is inclusive.</b> That is PostGIS's reading of <c>ST_DWithin</c>, which is
+        /// what the operator is named after. Whether the package's own in-process implementation agrees
+        /// at exactly the boundary is unverified, and it matters only once a pushed predicate is
+        /// rechecked in process — which <c>DESIGN.md</c> holds until agreement with the service has been
+        /// measured.
+        /// </para>
+        /// </remarks>
+        void WriteGeographyDWithin(StringBuilder builder, RexCall call)
+        {
+            builder.Append("ST_DISTANCE(");
+            Write(builder, Operand(call, 0));
+            builder.Append(", ");
+            Write(builder, Operand(call, 1));
+            builder.Append(") <= ");
+            Write(builder, Operand(call, 2));
+        }
+
+        /// <summary>
+        /// Writes <c>ST_GEOG_GEOMFROMGEOJSON</c> as the GeoJSON object it names.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos has no constructor to translate this into: a geography in a statement <em>is</em> a
+        /// GeoJSON object literal. So the constructor disappears and its argument is written out where
+        /// the call stood.
+        /// </para>
+        /// <para>
+        /// <b>Only a literal argument can be written</b>, and refusing the rest is the point rather than
+        /// a limitation left for later. A constructor over a document value would have to be evaluated to
+        /// be rendered, and evaluating it is what the service is being asked to do. A call this declines
+        /// leaves the filter in process, where the geography package answers it.
+        /// </para>
+        /// </remarks>
+        void WriteGeographyLiteral(StringBuilder builder, RexCall call)
+        {
+            if (Operand(call, 0) is not RexLiteral literal || GetLiteralValue(literal) is not string geoJson)
+                throw new CosmosTranslationException("A geography is only translatable where its GeoJSON is a literal.");
+
+            builder.Append(geoJson);
         }
 
         /// <summary>
