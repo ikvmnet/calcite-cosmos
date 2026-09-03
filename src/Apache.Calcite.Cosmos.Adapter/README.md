@@ -18,7 +18,9 @@ A query over a Cosmos table plans **only** when the root is asked for in `ClrAsy
 
 This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so a synchronous plan could do nothing but block a thread for a network round trip per continuation. Rather than hide that behind an `IEnumerable`, the adapter offers only the asynchronous exit.
 
-A container has no row schema, so a table is modelled as one map column carrying the whole document, plus promoted scalar columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred from sampling documents.
+A container has no row schema, so a table is modelled as one map column carrying the whole document, plus promoted columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key, and a `GEOGRAPHY` column for each spatially indexed path. Nothing is inferred from sampling documents.
+
+Geography is geodesic and Calcite's own `ST_*` are planar, so the geodesic reading has a type and an `ST_GEOG_*` operator table of its own, from [`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography). A host chains that table; there is no schema route for these, unlike the full text functions.
 
 ## Install
 
@@ -91,7 +93,7 @@ Add `"indexMetrics": true` to the operand to have the service report which index
 
 ## Status
 
-Under development. Statement generation, container metadata, the schema and table layer, the scan/filter/project/sort/unnest/aggregate/rank nodes, and execution inside a Calcite plan are in place and tested. `INSERT` and `DELETE` are supported — Cosmos SQL has no DML, so a write is item CRUD over the rows a `TableModify` supplies rather than generated text; `UPDATE` is declined until it can be a patch rather than a read-modify-write. What an insert writes when the map column and a promoted column describe the same document is recorded in [DESIGN.md](DESIGN.md) under *What an insert writes*. Every emitted statement form is executed against a live service, and the suite runs against a real account when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name one — which the emulator is not a substitute for, it having been found to accept statements the service rejects and reject features the service implements. See [DESIGN.md](DESIGN.md), including its record of assumptions still to be settled.
+Under development. Statement generation, container metadata, the schema and table layer, the scan/filter/project/sort/unnest/aggregate/rank nodes, and execution inside a Calcite plan are in place and tested. `INSERT` and `DELETE` are supported — Cosmos SQL has no DML, so a write is item CRUD over the rows a `TableModify` supplies rather than generated text; `UPDATE` is declined until it can be a patch rather than a read-modify-write. The geography operators the service evaluates — distance, within, intersects, validity and a distance bound — are translated, and are not yet rechecked in process, which the root README explains under *Geography*. What an insert writes when the map column and a promoted column describe the same document is recorded in [DESIGN.md](DESIGN.md) under *What an insert writes*. Every emitted statement form is executed against a live service, and the suite runs against a real account when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name one — which the emulator is not a substitute for, it having been found to accept statements the service rejects and reject features the service implements. See [DESIGN.md](DESIGN.md), including its record of assumptions still to be settled.
 
 ## Further reading
 
