@@ -167,7 +167,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadPaths(properties.IndexingPolicy?.IncludedPaths, x => x.Path),
                 ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path),
                 ReadFullTextPaths(properties),
-                ReadVectorPaths(properties));
+                ReadVectorPaths(properties),
+                ReadGeographyPaths(properties));
         }
 
         /// <summary>
@@ -247,6 +248,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Add(paths, properties.VectorEmbeddingPolicy?.Embeddings, x => x.Path);
             Add(paths, properties.IndexingPolicy?.VectorIndexes, x => x.Path);
+
+            return paths;
+        }
+
+        /// <summary>
+        /// Reads the paths the container declares spatial, where it reads them as geography.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The indexing policy names the spatial paths; <c>geospatialConfig</c> decides what the
+        /// coordinates in them <em>mean</em>. The two are not a union here, unlike full text and
+        /// vector: the config is a single container-wide statement, so a container reading
+        /// <c>Geometry</c> yields nothing however many spatial indexes it declares. Those values are
+        /// planar and Calcite's own <c>ST_*</c> already describe them; typing them <c>GEOGRAPHY</c>
+        /// would take a working query away rather than enable one.
+        /// </para>
+        /// <para>
+        /// No config at all is geography, because that is what the service defaults to — read from
+        /// the reference rather than assumed, and the reason the test is written against
+        /// <c>Geometry</c> instead of for <c>Geography</c>.
+        /// </para>
+        /// <para>
+        /// Only the index declares a path. There is no spatial equivalent of the full text policy —
+        /// nothing else in a container definition names a spatial path — so a container that indexes
+        /// nothing spatial has no geography columns, and its geometries stay in the map column where
+        /// they always were.
+        /// </para>
+        /// </remarks>
+        static IReadOnlyList<string> ReadGeographyPaths(ContainerProperties properties)
+        {
+            var paths = new List<string>();
+
+            if (properties.GeospatialConfig?.GeospatialType == GeospatialType.Geometry)
+                return paths;
+
+            Add(paths, properties.IndexingPolicy?.SpatialIndexes, x => x.Path);
 
             return paths;
         }

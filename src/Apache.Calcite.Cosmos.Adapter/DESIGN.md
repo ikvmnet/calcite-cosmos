@@ -98,7 +98,7 @@ metadata rather than *type* metadata:
 | Full text policy and full text indexes | Container definition, indexing policy | **Whether a full text function pushes at all** |
 | Vector embedding policy and vector indexes | Container definition, indexing policy | **Whether `VECTORDISTANCE` pushes at all** |
 | Tuple indexes | Indexing policy | Nothing yet |
-| Spatial indexes | Indexing policy | Nothing — see *Spatial is out of scope* |
+| Spatial policy and spatial indexes | Container definition, indexing policy | **Which paths carry a `GEOGRAPHY`** |
 
 Three of these carry hard consequences:
 
@@ -915,17 +915,16 @@ Calcite's own precedent does not argue otherwise. The Elasticsearch adapter maps
 reused for text. It has no tests, that adapter's documentation does not mention it, and the operator
 does not validate over strings, so no query reaches it. A loose end rather than a pattern.
 
-### Spatial is out of scope, and cannot be brought in
+### Spatial needed a type Calcite does not have, and now has one
 
-The adapter translates no spatial function, and this is a closed question rather than an unbuilt
-feature. The reason is a type-system mismatch that no amount of translation reaches:
+This was recorded as closed, on the grounds that no amount of translation reaches a type-system
+mismatch:
 
 > **Calcite has `GEOMETRY`. It does not have `GEOGRAPHY`.**
 
 Calcite's spatial library is planar JTS over an unprojected coordinate system, answering in the units
 of that system. Cosmos is geodesic over the WGS84 ellipsoid, answering in metres. So the two disagree
-about what their identically-named functions *mean*, and there is nowhere in Calcite's type system to
-say which one a value is.
+about what their identically-named functions *mean*.
 
 | | disagreement |
 | --- | --- |
@@ -940,12 +939,30 @@ one is what Gauss ruled out. **An ordering is worse than wrong, it is differentl
 north, a candidate one degree east and another half a degree north swap places between the two models,
 so no scalar conversion reorders the rows.
 
-That leaves only a predicate, and only as a deliberately loose bound with Calcite's own predicate
-rechecked above — which needs an in-process answer to recheck against, and there is none:
+None of that changed. What changed is that the missing side now exists.
+[`Apache.Calcite.Geography`](https://github.com/ikvmnet/calcite-dotnet) supplies a `GEOGRAPHY` type
+and a family of `ST_GEOG_*` operators that read coordinates as WGS84 and answer in metres. The type
+is a `RelDataType` whose runtime carrier is an ordinary JTS `Geometry` and whose type string is its
+own, and that combination buys the one property a naming scheme alone cannot: **Calcite's planar
+`ST_*` refuse a geography column at validation** rather than silently answering in degrees. Every
+function in Calcite's spatial library is a reflective binding over
+`org.locationtech.jts.geom.Geometry`, so every one of them refuses it — the harmless accessors
+included, which is why the package mirrors those too.
 
-**Calcite's spatial functions cannot evaluate over a container at all.** Measured. The row model
-materialises a geometry as a `java.util.LinkedHashMap`, and the conversion Calcite inserts to reach
-its GeoJSON constructor produces Java's `toString`:
+**What the adapter supplies is which paths hold a geography, and the container answers it.**
+`GeospatialConfig` declares whether a container is `Geography` or `Geometry`, and the indexing policy
+names the spatial paths. That is the same class of metadata already read for full text and vector
+paths — the service's own declaration rather than a caller's word — so this does not wait on the
+typed-column question in `TODO.md` section 6 the way the other items there do. A container in
+`Geometry` mode is planar, and Calcite's own `ST_*` are correct over it; no geography type is
+declared for one.
+
+**A geography has to be a promoted column rather than a path into the map** — promoted the way a
+partition key is, from what the container names, and not the *declared column* of section 6's
+question, which does not exist. The measurement that
+closed the question the first time is why. Calcite's spatial functions cannot evaluate over the map
+column at all: the row model materialises a geometry as a `java.util.LinkedHashMap`, and the
+conversion Calcite inserts to reach its GeoJSON constructor produces Java's `toString`:
 
 ```
 CAST(c."_MAP"['location'] AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]}
@@ -953,20 +970,29 @@ CAST(c."_MAP"['location'] AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]
 
 which its parser refuses. Nothing in Calcite converts an `ANY` to a geometry — every constructor takes
 a typed input, and every `JSON_*` function takes JSON *text* and fails its runtime cast when handed a
-map.
+map. So a spatial path is promoted to a column typed `GEOGRAPHY` and materialised as a `Geometry`, or
+it is not reachable.
 
-Two repairs were tried and are recorded as wrong rather than missing. **Rendering every document value
-as JSON** — giving the materialised map a `toString` that writes JSON — works, and changes the runtime
-type of every map in every row to serve one corner; the cost is out of all proportion to what it buys.
-**Supplying a better implementation of `ST_GEOMFROMGEOJSON`** does not work at all: `SqlUtil.lookupRoutine`
-resolves across every chained operator table by parameter match, so Calcite's `VARCHAR` overload beats
-an adapter's `ANY` one regardless of chain order. Overriding a Calcite function means rewriting the
-plan, not registering an operator.
+Two repairs were tried before that and are recorded as wrong rather than missing. **Rendering every
+document value as JSON** — giving the materialised map a `toString` that writes JSON — works, and
+changes the runtime type of every map in every row to serve one corner; the cost is out of all
+proportion to what it buys. **Supplying a better implementation of `ST_GEOMFROMGEOJSON`** does not
+work at all: `SqlUtil.lookupRoutine` resolves across every chained operator table by parameter match,
+so Calcite's `VARCHAR` overload beats an adapter's `ANY` one regardless of chain order. That finding
+is also why the geography operators carry their own names instead of overloading Calcite's:
+overriding a Calcite function means rewriting the plan, not registering an operator.
 
-**What would reopen this** is either a geography type in Calcite, or a declared column type in the
-adapter to hang *"this path is geography"* on — the typed-column question in `TODO.md` section 6,
-which three other items already wait on. Until one of them exists, a spatial pushdown can honour
-Calcite's semantics or be useful, and not both.
+**What is in scope is what Cosmos evaluates** — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and
+`ST_ISVALID` — with `ST_GEOG_DWITHIN` rendering as a distance comparison rather than a named
+function, Cosmos having no counterpart for it.
+
+**What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
+weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
+with the service. The geography package can compute one, and nothing has yet measured whether it
+agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a distance sitting
+exactly on a threshold — a sphere and an ellipsoid differ by tenths of a percent, which is far more
+than enough to disagree about a threshold, and a recheck that disagrees discards rows the service
+returned. Until that measurement exists these push exactly or they do not push at all.
 
 ### What a table tells the planner
 

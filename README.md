@@ -177,8 +177,10 @@ This is Calcite's own `Programs.CALC_PROGRAM` and it is a pass, not a set of rul
 
 A container has no row schema: two items may share nothing but `id`. So a table is **one map column
 holding the whole document**, named `_MAP`, plus promoted scalar columns for the paths the service
-guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is
-inferred by sampling documents, because a wrong guess yields an incorrect plan rather than a slow one.
+guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key — and a
+`GEOGRAPHY` column for each path the container declares spatially indexed, described under
+*Geography* below. Nothing is inferred by sampling documents, because a wrong guess yields an
+incorrect plan rather than a slow one.
 
 Reach anything else through the map column, to any depth:
 
@@ -268,6 +270,48 @@ sixteen operands, while the operator table's checker has no bound at all.
 > a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
 > predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
 > [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
+
+## Geography
+
+Cosmos reads coordinates as WGS84 and answers in metres. Calcite's own `ST_*` are planar JTS over an
+unprojected coordinate system and answer in the units of that system, so the two are different
+questions with the same spelling — and not off by a factor, the ratio varying with latitude and with
+bearing. The geodesic reading therefore has a type and a family of names of its own, from
+[`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography), which this
+package requires.
+
+**A spatial index makes a column.** Where a container declares a spatial index over a single-segment
+path, that path is promoted to a column typed `GEOGRAPHY` and read as a geometry rather than left in
+the map as `ANY`. That is not a convenience: nothing in Calcite converts an untyped document value
+into a geometry, so a geography that is not a column cannot be reached at all. A container whose
+`geospatialConfig` says `Geometry` is planar and gets no such column — Calcite's own `ST_*` already
+describe it correctly, and typing it `GEOGRAPHY` would take a working query away.
+
+**The operator table has to be chained**, and unlike full text there is no schema route to fall back
+on. A schema function declares its parameters by type, and Calcite's routine resolution has no
+assignment rules for the type these take, so the names are reachable only this way:
+
+```csharp
+SqlOperatorTables.chain(SqlStdOperatorTable.instance(), GeographyOperatorTable.Instance())
+```
+
+```sql
+SELECT c."id"
+FROM "products" AS c
+WHERE ST_GEOG_DWITHIN(c."location", ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'), 1000)
+```
+
+**What pushes.** `ST_GEOG_DISTANCE`, `ST_GEOG_WITHIN`, `ST_GEOG_INTERSECTS` and `ST_GEOG_ISVALID` are
+the service's own functions under another name. `ST_GEOG_DWITHIN` becomes the distance comparison the
+reference documents a spatial index as answering. A geography constant pushes only where it is
+written as `ST_GEOG_GEOMFROMGEOJSON` over a literal, because a geography in a Cosmos statement *is* a
+GeoJSON object and there is nothing else to render one from. The rest of the package — the WKT
+constructors, the conversions, the wider mirrored surface — evaluates in process.
+
+> **A pushed predicate is not rechecked in process.** These push exactly or they do not push. The
+> geography package can compute an answer in process, and whether it agrees with the service at a
+> polygon edge, across the antimeridian, at the poles, or on a distance sitting exactly on a
+> threshold has not been measured — and a recheck that disagrees discards rows the service returned.
 
 ## What a query cost
 

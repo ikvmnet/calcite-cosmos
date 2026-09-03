@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
@@ -153,6 +153,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             }
 
             return GetValue(value, typeName);
+        }
+
+        /// <summary>
+        /// Reads a property as a geography, which is the JTS geometry the <c>ST_GEOG_*</c> operators take.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Separate from <see cref="GetValue(JsonElement, SqlTypeName)"/> because the SQL type name cannot
+        /// carry the question. <c>GEOGRAPHY</c> reports <c>OTHER</c>, and so does a value with no declared
+        /// type at all, so a dispatch on the name would either miss every geography or turn every untyped
+        /// document value into a failed parse. The caller knows which it holds — it has the
+        /// <c>RelDataType</c> — so the choice is made there and this is what it chooses.
+        /// </para>
+        /// <para>
+        /// The property is handed over as the raw JSON text it arrived as. Cosmos stores a geography as a
+        /// GeoJSON object and the geography package parses exactly that, so nothing re-encodes the value on
+        /// the way through.
+        /// </para>
+        /// </remarks>
+        /// <param name="row">The row to read from.</param>
+        /// <param name="name">The property name.</param>
+        /// <returns>The geometry, or <c>null</c> where the property is absent or JSON null.</returns>
+        public static object? GetGeographyProperty(JsonElement row, string name)
+        {
+            if (row.TryGetProperty(name, out var value) == false)
+                return null;
+
+            if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                return null;
+
+            return Geography.Runtime.GeographyFunctions.FromGeoJson(value.GetRawText());
         }
 
         /// <summary>

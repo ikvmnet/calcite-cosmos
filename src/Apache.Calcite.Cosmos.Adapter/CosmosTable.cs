@@ -5,6 +5,8 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
+using Apache.Calcite.Geography.Rel.Type;
+
 using com.google.common.collect;
 
 using org.apache.calcite.plan;
@@ -130,6 +132,13 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Only declared or service-guaranteed paths qualify. Duplicates are suppressed so that a
         /// partition key of <c>/id</c> does not promote <c>id</c> twice.
         /// </remarks>
+        /// <remarks>
+        /// A spatial path is promoted for a different reason than the others. The rest are promoted
+        /// because they are cheap to name; a geography is promoted because it cannot be reached any
+        /// other way — Calcite's spatial functions take a typed geometry and nothing converts the
+        /// <c>ANY</c> a map lookup yields, which <c>DESIGN.md</c> records under <i>Spatial needed a
+        /// type Calcite does not have</i>. A container that declares no spatial index is unaffected.
+        /// </remarks>
         /// <returns>The promoted column names.</returns>
         public IReadOnlyList<string> GetPromotedColumnNames()
         {
@@ -139,6 +148,18 @@ namespace Apache.Calcite.Cosmos.Adapter
                 CosmosContainerMetadata.TimestampPropertyName,
                 CosmosContainerMetadata.ETagPropertyName,
             };
+
+            foreach (var path in _container.GeographyPaths)
+            {
+                // Only a single-segment path maps onto a column name. A nested spatial path stays in
+                // the map column, where it is readable but not typed.
+                var spatial = path.TrimStart('/');
+                if (spatial.Length == 0 || spatial.Contains('/'))
+                    continue;
+
+                if (names.Contains(spatial) == false)
+                    names.Add(spatial);
+            }
 
             foreach (var path in _container.PartitionKeyPaths)
             {
@@ -173,11 +194,17 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // in the "none" logical partition. Declaring it non-nullable would licence the
                 // planner to rewrite COUNT(x) into COUNT(*) and to reason about null placement in
                 // ways the data does not support.
+                // GeographyTypes.Of is used as it stands, and deliberately not run through
+                // createTypeWithNullability: RelDataTypeFactoryImpl answers a nullability change on any
+                // JavaType with a plain JavaType over the same class, which drops the subclass and hands
+                // back the GEOMETRY this exists to be distinguishable from. It is already nullable, which
+                // is the nullability wanted here anyway.
                 var type = name switch
                 {
                     CosmosContainerMetadata.TimestampPropertyName => typeFactory.createSqlType(SqlTypeName.BIGINT),
                     CosmosContainerMetadata.IdPropertyName => varchar,
                     CosmosContainerMetadata.ETagPropertyName => varchar,
+                    _ when _container.IsPathGeography("/" + name) => GeographyTypes.Of(typeFactory),
                     _ => typeFactory.createTypeWithNullability(any, true),
                 };
 

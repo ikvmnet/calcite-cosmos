@@ -36,6 +36,10 @@
         <!-- Supplies the ClrAsyncEnumerable calling convention the converter targets. A prerelease, the
              conventions postdating the 1.0.3 release, but a tagged one from nuget.org. -->
         <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.11" />
+        <!-- The GEOGRAPHY type and the ST_GEOG_* operators. Required rather than optional: a container
+             declaring a spatial path types that column as GEOGRAPHY, so the type has to exist wherever the
+             schema is built. Pins the same calcite-core this project does, and depends on nothing else here. -->
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.41" />
         <!-- Held at the version Apache.Calcite.Extensions resolves core to. Core drags linq4j in with it,
              and the two are not separable: 1.42's BuiltInMethod initializer binds against 1.42's linq4j, so
              a disagreement here fails every query in a type initializer rather than at restore. -->

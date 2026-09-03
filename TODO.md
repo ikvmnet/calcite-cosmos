@@ -296,6 +296,39 @@ owns the client.
   did change is the refusal: a scoring function reaching code generation now says that Cosmos never
   returns a relevance score, in place of Calcite's `must implement ImplementableFunction`.
 
+### Geography
+
+The type, the promoted column, the reading and the five translations are in place; what is left is
+verification and the surface around them.
+
+- **Nothing has been run against a live service** — *small, and it is the standing house rule rather
+  than an improvement.* Every other emitted statement form in this adapter was executed against a
+  real account before being believed. The geography forms — `ST_DISTANCE(c.location, {…})`,
+  `ST_WITHIN`, `ST_INTERSECTS`, `ST_ISVALID`, and the `ST_DISTANCE(…) <= d` that `ST_GEOG_DWITHIN`
+  becomes — are verified only as generated text. Point `COSMOS_TEST_ENDPOINT` at an account with a
+  spatially indexed container and settle it.
+- **A pushed predicate is not rechecked in process** — *medium, and it is a measurement before it is
+  work.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
+  needs an in-process answer that agrees with the service. The geography package computes one over
+  S2. Whether it agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a
+  distance sitting exactly on a threshold is unmeasured, and a recheck that disagrees discards rows
+  the service returned. A sphere and an ellipsoid differ by tenths of a percent, which is far more
+  than enough to disagree about a threshold. Measure first; the rule change is small after that.
+  The same measurement settles whether `ST_GEOG_DWITHIN` should render `<=` or `<` — it is written
+  inclusive after PostGIS, and the package's own bound has not been read against it.
+- **A nested spatial path is not promoted** — *small.* Only a single-segment path becomes a column,
+  as with a partition key, so a container declaring `/address/location/*` has a geography the
+  operators cannot reach. It stays readable through the map column and untyped, which is the same
+  place it was before any of this.
+- **The rest of the mirrored surface is not translated** — *small, and mostly correct as it stands.*
+  The WKT constructors have no Cosmos counterpart, and the conversions between the two readings are
+  re-typings with nothing to render, so all of them evaluate in process and should. What is worth a
+  look is whether any of the accessors the geography package now declares have a Cosmos spelling
+  worth pushing.
+- **A geography column cannot be an `ORDER BY` key at the service** — *not available; recorded so
+  nobody looks again.* Cosmos orders by a document path and a geometry is not an orderable value; a
+  query asking for one sorts in process over whatever the scan returns.
+
 ### Subqueries
 
 - **`EXISTS` over an item-scoped subquery** — *large.* `EXISTS (SELECT VALUE t FROM t IN c.tags WHERE …)`
