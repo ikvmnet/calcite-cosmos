@@ -305,12 +305,27 @@ declines an operand for. What it does **not** give is a `RexInputRef`: a `JSON_V
 expression like `ITEM`, so predicate flow, keys and distinctness stay where they are. Section 6's
 split holds; this answers the typed half and not the reference half.
 
-**Parity is the open question, not the size.** Every node reads a document path through `ITEM` today
-— `CosmosFilter`, `CosmosProject`, `CosmosSort`, `CosmosAggregate`, `CosmosUnnest`,
-`CosmosLookupJoin`, `CosmosRank`, and partition-key resolution under `CosmosTableModify` — across
-about sixty dispatch points in the translator. Whether `_JSON` is a write handle whose reads stay in
-process, or a second front end the whole translator learns, decides how large this is, and is not
-settled here.
+**Parity is done, and it was one change rather than sixty.** Every pushdown that needs a document
+path asks `CosmosRexTranslator.TryResolvePath` for it — a filter, a projection, a sort key, an
+aggregate argument, an unnest array, the partition key extractor, and the full text and vector
+legality gates — so teaching that one function `JSON_VALUE` and `JSON_QUERY` gave all of them the
+second spelling at once, and `WriteCall` renders the same call as the same path. Measured through a
+connection, `_MAP` against `_JSON`, node for node: projection, filter, sort, sort with fetch,
+`GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison,
+`IS NOT NULL`, `UNNEST` and the lookup join from either side all produce the identical plan, and a
+path assembled at run time declines on both sides.
+
+Two things the measurement settled that are worth keeping. `UNNEST` needs
+`JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
+spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest
+source. And the accepted path grammar is `$` followed by `.name`, `['name']` and `[0]` steps: a
+wildcard, a descent or a filter is refused rather than approximated, and the path argument must be a
+literal for the reason the full text functions' first argument must be.
+
+**What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
+`JSON_INSERT` or `JSON_REMOVE` call over `_JSON` in a `TableModify`, a `PatchItemAsync` on the
+writer, the routing in `CosmosSequences`, and the refusal of every form that cannot be rendered. The
+column and the reads are in; the write is not.
 
 ### Whole-partition `DELETE` — *built, and unverified on the path it exists for*
 

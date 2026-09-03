@@ -101,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void ScanIsProducedByTheTable()
         {
             PlanText("SELECT * FROM products").Should().Be(
-                "LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4])\n" +
+                "LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5])\n" +
                 "  CosmosTableScan(table=[[products]])");
         }
 
@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var plan = PlanText(UnnestSql + " WHERE CAST(t AS VARCHAR) = 'steel'");
 
-            plan.Should().Contain("LogicalFilter(condition=[=(CAST($5):VARCHAR, 'steel')])");
+            plan.Should().Contain("LogicalFilter(condition=[=(CAST($6):VARCHAR, 'steel')])");
             plan.IndexOf("LogicalFilter").Should().BeLessThan(plan.IndexOf("LogicalCorrelate"), "the predicate is above the correlate, not inside it");
         }
 

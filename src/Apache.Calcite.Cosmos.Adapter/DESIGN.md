@@ -1071,6 +1071,34 @@ Calcite honours — `RETURNING INTEGER` types the call `INTEGER`, `RETURNING TIM
 document path *can* be given a SQL type by the caller in standard SQL. `TODO.md` section 3 carries
 the consequence: a second `_JSON` column as the handle those functions address.
 
+#### The JSON column
+
+`_JSON` is the same document as `_MAP`, in the shape Calcite's SQL/JSON functions can address. Last in
+the row type, so the promoted ordinals do not move; `VARCHAR` and `NOT NULL`, because every row is a
+document; `STORED` in the column strategies, so Calcite refuses `INSERT INTO t (_JSON)` as a generated
+column on its own while leaving it nameable as an `UPDATE` target — measured, because the patch tier
+depends on exactly that asymmetry.
+
+It is a handle rather than a second representation. Read, it is the JSON the service sent —
+`GetRawText`, the original span — so it is a copy rather than a round trip and cannot differ from what
+is stored in key order or number formatting. `CosmosReading.Json` is what says so, distinct from
+`Text`, which renders a value the way a cast over `ANY` would and is the wrong answer for a document.
+
+**Parity with the map column is one function, not sixty.** Every pushdown that needs a document path
+resolves it through `CosmosRexTranslator.TryResolvePath`, so `JSON_VALUE(<doc>, '$.a.b')` resolving to
+the same path as `ITEM(ITEM(<doc>,'a'),'b')` gives every one of them the second spelling at once.
+Measured against a connection, `_MAP` and `_JSON` produce the identical plan for a projection, a
+filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array
+subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
+assembled at run time declines on both.
+
+The path argument must be a literal, and the grammar is `$` with `.name`, `['name']` and `[0]` steps —
+a wildcard, a descent or a filter has no Cosmos rendering and is refused. `RETURNING` is not rendered:
+it told the plan what the service will return, and a clause that disagrees with the document fails in
+materialisation rather than answering wrongly, which is what makes it worth trusting. `UNNEST` wants
+`RETURNING <type> ARRAY`; `JSON_QUERY` is `VARCHAR` even `WITH ARRAY WRAPPER` and is never an unnest
+source.
+
 #### Promoted columns
 
 A single column has one field ordinal, and Calcite's planner metadata is ordinal-based:
