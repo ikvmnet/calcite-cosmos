@@ -394,16 +394,17 @@ owns the client.
 
 ### Geography
 
-The translations, the refusal and the path pushdown are in place. What is left is verification, and
-one thing that cannot be fixed here at all.
+The translations, the refusal and the path pushdown are in place, and every form they emit has been
+executed against an account. What is left is one sort that could push and does not, one operator that
+is not offered, and one thing that cannot be fixed here at all.
 
-- **`ORDER BY` over a distance does not push** — *large, and it is a measurement before it is work.*
+- **`ORDER BY` over a distance does not push** — *medium, and no longer blocked on a measurement.*
   A distance-ordered query reads every matching document and sorts in process; a nearest-neighbour
-  search is what a spatial index is for. Whether the service accepts `ORDER BY ST_DISTANCE(…)` is the
-  question, and it cannot be assumed: an `ORDER BY` over a computed expression is answered with
-  *"ORDER BY item expression could not be mapped to a document path"* — measured, and recorded under
-  the cast column above. One query against an account settles whether spatial is special-cased there.
-  If it is, the sort pushdown already exists and this is a rule that recognises the shape.
+  search is what a spatial index is for. **The service accepts it** — `ORDER BY ST_DISTANCE(…)`,
+  including under a `WHERE` and an `OFFSET … LIMIT`, measured against an account and held by
+  `CosmosGeographyServiceTests`. That was the open question, because an `ORDER BY` over a computed
+  expression is refused (400, error 2206). What remains is a rule: `CosmosSort` pushes a sort whose
+  collation names a document path, and this one names a call, so the shape it matches has to widen.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -414,12 +415,6 @@ one thing that cannot be fixed here at all.
   declares a path's shape, and over a `Polygon` the service would return a ring array where the
   in-process answer throws — a wrong answer in place of an error, which is the trade this adapter
   refuses everywhere else.
-- **Nothing has been run against a live service** — *small, and it is the standing house rule rather
-  than an improvement.* Every other emitted statement form in this adapter was executed against a real
-  account before being believed. The geography forms — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`,
-  `ST_ISVALID`, and the `ST_DISTANCE(…) <= d` that `ST_GEOG_DWITHIN` becomes — are verified only as
-  generated text. The refusal over a container reading `Geometry` wants the same treatment: it is
-  reasoned from the reference and not measured.
 - **A pushed predicate is not rechecked in process** — *medium, and it is a measurement before it is
   work.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
   needs an in-process answer that agrees with the service. The geography package computes one over S2.

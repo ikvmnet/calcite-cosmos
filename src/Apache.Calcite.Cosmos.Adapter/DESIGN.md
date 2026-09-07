@@ -958,11 +958,21 @@ it is a property of there being one type for two readings.
 
 **What this adapter adds is the one refusal it can make.** The Cosmos spelling of every one of these
 is the *unprefixed* one, so what a rendered `ST_DISTANCE` means at the service is decided by the
-container's `geospatialConfig` and not by the name in the query. A geodesic call pushed into a
-container reading `Geometry` would come back planar, in the units of the coordinate system, with
-nothing said. So `CosmosRexTranslator` refuses to render any `ST_GEOG_*` over such a container. That
-is unlike the full text gate, which exists because the service returns an *error*; here the service
-returns an *answer*, which is the worse failure and the reason this one is checked while planning.
+container's `geospatialConfig` and not by the name in the query. So `CosmosRexTranslator` refuses to
+render any `ST_GEOG_*` over a container reading `Geometry`. That is unlike the full text gate, which
+exists because the service returns an *error*; here the service returns an *answer*, which is the
+worse failure and the reason this one is checked while planning.
+
+**Measured, and the numbers are the argument.** The same statement over the same two points, against
+two containers differing only in `geospatialConfig`:
+
+| container | `ST_DISTANCE(c.location, <point>)` |
+| --- | --- |
+| `Geography` | `1342.1433132701966` — metres |
+| `Geometry` | `0.014142135623733162` — the planar hypotenuse in degrees |
+
+Nothing in either response says which question was answered. `CosmosGeographyServiceTests` holds this
+and the rest of the forms.
 
 **A geography is not promoted to a column, and does not need to be.** The row model is unchanged: the
 map column, `_JSON`, and the columns the service guarantees. Nothing in Calcite converts the `ANY` a
@@ -1002,6 +1012,13 @@ carry their own names instead of overloading Calcite's.
 
 **What is in scope is what Cosmos evaluates** — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and
 `ST_ISVALID` — with `ST_GEOG_DWITHIN` rendering as a distance comparison, Cosmos having no counterpart.
+
+**A distance orders at the service, which is not the general rule.** `ORDER BY ST_DISTANCE(c.location,
+<point>)` is accepted, and stays accepted under a `WHERE` and an `OFFSET … LIMIT`. That had to be
+measured rather than assumed: an `ORDER BY` over a computed expression is refused with 400, error 2206,
+*"ORDER BY item expression could not be mapped to a document path"* — recorded above, under the cast
+column — so spatial is a special case in that clause rather than an instance of a rule. Nothing pushes
+a sort over one yet; what the measurement settles is that a rule doing so would work.
 
 **Two more push without being spatial calls at all.** A GeoJSON shape records its type as a `type`
 member, so `ST_GEOG_GEOMETRYTYPE` over a stored geography is `c.location.type` — an ordinary property
