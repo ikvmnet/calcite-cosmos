@@ -30,12 +30,12 @@
              connection can resolve is not testable against a planner the test built itself. Held at
              the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
              gives about core and linq4j. -->
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.11" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.64" />
         <!-- Only the tests need this. The adapter recognises an ST_GEOG_* call by name, which is what an
              adapter has to do anyway: CalciteCatalogReader.toOp builds a fresh SqlUserDefinedFunction on
              every lookup, so reference equality against the operator table never holds. The tests need the
              operators themselves to build the calls. -->
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.53" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.64" />
     </ItemGroup>
 
     <ItemGroup>

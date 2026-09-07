@@ -35,12 +35,12 @@
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0" />
         <!-- Supplies the ClrAsyncEnumerable calling convention the converter targets. A prerelease, the
              conventions postdating the 1.0.3 release, but a tagged one from nuget.org. -->
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.11" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.64" />
         <!-- The ST_GEOG_* operators. A call is matched by name rather than by instance — a schema-registered
              function is rebuilt on every lookup, so reference equality never holds — but the names and the
              arities are the operators' own to state, and taking them from the fields is what keeps this from
              re-typing a surface that lives in another repository. -->
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.53" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.64" />
         <!-- Held at the version Apache.Calcite.Extensions resolves core to. Core drags linq4j in with it,
              and the two are not separable: 1.42's BuiltInMethod initializer binds against 1.42's linq4j, so
              a disagreement here fails every query in a type initializer rather than at restore. -->

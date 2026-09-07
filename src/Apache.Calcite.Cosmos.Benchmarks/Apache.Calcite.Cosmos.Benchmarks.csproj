@@ -35,7 +35,7 @@
              actually asks a Cosmos query for. Planning to it is what the pushdown benchmarks
              measure: the planner has to cost the pushed form against doing the same work in
              process, and only the second of those exists without these rules. -->
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.11" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.64" />
     </ItemGroup>
 
     <ItemGroup>
