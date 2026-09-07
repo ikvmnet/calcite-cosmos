@@ -405,6 +405,12 @@ is not offered, and one thing that cannot be fixed here at all.
   `CosmosGeographyServiceTests`. That was the open question, because an `ORDER BY` over a computed
   expression is refused (400, error 2206). What remains is a rule: `CosmosSort` pushes a sort whose
   collation names a document path, and this one names a call, so the shape it matches has to widen.
+
+  Three things the rule has to respect, measured alongside. `DESC` is accepted, and the distance may
+  be projected beside the ordering. **A second sort key is refused** — `ORDER BY ST_DISTANCE(…), c.id`
+  answers the same 2206 — so the pushed collation carries one key and no more, which is narrower than
+  the multi-key sort the composite-index path already handles. And no spatial index is needed: a
+  container declaring none still orders, so this wants no gate of the kind full text has.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -415,13 +421,31 @@ is not offered, and one thing that cannot be fixed here at all.
   declares a path's shape, and over a `Polygon` the service would return a ring array where the
   in-process answer throws — a wrong answer in place of an error, which is the trade this adapter
   refuses everywhere else.
-- **A pushed predicate is not rechecked in process** — *medium, and it is a measurement before it is
-  work.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
-  needs an in-process answer that agrees with the service. The geography package computes one over S2.
-  Whether it agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a
-  distance sitting exactly on a threshold is unmeasured, and a recheck that disagrees discards rows the
-  service returned. The same measurement settles whether `ST_GEOG_DWITHIN` should render `<=` or `<`;
-  it is written inclusive after PostGIS and the package's own bound has not been read against it.
+- **A pushed predicate cannot be rechecked in process** — *blocked upstream, and now for a measured
+  reason.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
+  needs an in-process answer that agrees with the service. **It does not agree.** `ST_DISTANCE` beside
+  `GeographyFunctions.Distance`, same pairs, one account:
+
+  | pair | service | in process | relative |
+  | --- | --- | --- | --- |
+  | equator, 1° east | 111319.490736 | 111195.101177 | 1.1e-3 |
+  | equator, 1° north | 110574.388493 | 111195.101177 | 5.6e-3 |
+  | 47°N, short hop | 1342.143313 | 1341.006922 | 8.5e-4 |
+  | 80°N, 1° east | 19393.246802 | 19308.589000 | 4.4e-3 |
+  | antimeridian | 21927.872478 | 21901.159212 | 1.2e-3 |
+  | near the pole | 22338.795683 | 22239.020235 | 4.5e-3 |
+  | continental | 1544278.966766 | 1545986.824436 | 1.1e-3 |
+
+  The numbers say what the difference *is* rather than that there is one. 111195.101177 is one degree
+  on a sphere of mean radius 6371008.8; 111319.490736 is one degree on the WGS84 ellipsoid at the
+  equator. **The service is ellipsoidal and the package is spherical**, and the gap reaches 0.56%. A
+  recheck would discard rows whose true distance sits within half a percent of the threshold, which is
+  exactly the failure the gate exists to prevent. Nothing here fixes it — the evaluator would have to
+  answer on the ellipsoid, which is `Apache.Calcite.Geography`'s to change.
+
+  What the same run settles is the boundary: the service's comparison is exact, `<=` matching at the
+  distance it reports and `<` not, so rendering `ST_GEOG_DWITHIN` as `<=` is right rather than an
+  inference from PostGIS.
 - **A mixed expression is not refused** — *not available; recorded so nobody looks again.* There is no
   `GEOGRAPHY` type — a geography and a geometry are the same type carried by the same class — so
   `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees, measures in metres, and both halves run.
