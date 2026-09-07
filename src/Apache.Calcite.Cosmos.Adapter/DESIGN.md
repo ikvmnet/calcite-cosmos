@@ -98,7 +98,8 @@ metadata rather than *type* metadata:
 | Full text policy and full text indexes | Container definition, indexing policy | **Whether a full text function pushes at all** |
 | Vector embedding policy and vector indexes | Container definition, indexing policy | **Whether `VECTORDISTANCE` pushes at all** |
 | Tuple indexes | Indexing policy | Nothing yet |
-| Spatial indexes | Indexing policy | Nothing — see *Spatial is out of scope* |
+| `geospatialConfig` | Container definition | **Whether an `ST_GEOG_*` pushes at all** |
+| Spatial indexes | Indexing policy | Nothing — a geodesic call pushes whether or not one is declared |
 
 Three of these carry hard consequences:
 
@@ -915,17 +916,16 @@ Calcite's own precedent does not argue otherwise. The Elasticsearch adapter maps
 reused for text. It has no tests, that adapter's documentation does not mention it, and the operator
 does not validate over strings, so no query reaches it. A loose end rather than a pattern.
 
-### Spatial is out of scope, and cannot be brought in
+### Spatial is reachable, and nothing but the operator's name says which reading is meant
 
-The adapter translates no spatial function, and this is a closed question rather than an unbuilt
-feature. The reason is a type-system mismatch that no amount of translation reaches:
+This was recorded as closed on the grounds that no amount of translation reaches a type-system
+mismatch:
 
 > **Calcite has `GEOMETRY`. It does not have `GEOGRAPHY`.**
 
 Calcite's spatial library is planar JTS over an unprojected coordinate system, answering in the units
 of that system. Cosmos is geodesic over the WGS84 ellipsoid, answering in metres. So the two disagree
-about what their identically-named functions *mean*, and there is nowhere in Calcite's type system to
-say which one a value is.
+about what their identically-named functions *mean*.
 
 | | disagreement |
 | --- | --- |
@@ -940,33 +940,76 @@ one is what Gauss ruled out. **An ordering is worse than wrong, it is differentl
 north, a candidate one degree east and another half a degree north swap places between the two models,
 so no scalar conversion reorders the rows.
 
-That leaves only a predicate, and only as a deliberately loose bound with Calcite's own predicate
-rechecked above — which needs an in-process answer to recheck against, and there is none:
+None of that changed. What changed is that
+[`Apache.Calcite.Geography`](https://github.com/ikvmnet/calcite-dotnet) supplies a family of
+`ST_GEOG_*` operators that read coordinates as WGS84 and answer in metres, over S2.
 
-**Calcite's spatial functions cannot evaluate over a container at all.** Measured. The row model
-materialises a geometry as a `java.util.LinkedHashMap`, and the conversion Calcite inserts to reach
-its GeoJSON constructor produces Java's `toString`:
+**There is still no `GEOGRAPHY` type, and that is a decision rather than an omission.** A geography
+and a geometry are the same type carried by the same class, and the operator's name is the whole of
+the marking. `SqlTypeName` is a closed enum, so a type of the package's own has to impersonate one of
+Calcite's — and the enum is the key to every table that makes a type behave. A name with no entry in
+the assignment table is asserted on rather than rejected, so a function declared through a schema over
+such a type takes the validator down. Since a schema is the only way an adapter brings its functions
+with it, the type gave way to the registration.
+
+**What that costs is a mixed expression nothing refuses.** `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)`
+buffers in degrees and then measures in metres, and both halves run. This adapter cannot close that;
+it is a property of there being one type for two readings.
+
+**What this adapter adds is the one refusal it can make.** The Cosmos spelling of every one of these
+is the *unprefixed* one, so what a rendered `ST_DISTANCE` means at the service is decided by the
+container's `geospatialConfig` and not by the name in the query. A geodesic call pushed into a
+container reading `Geometry` would come back planar, in the units of the coordinate system, with
+nothing said. So `CosmosRexTranslator` refuses to render any `ST_GEOG_*` over such a container. That
+is unlike the full text gate, which exists because the service returns an *error*; here the service
+returns an *answer*, which is the worse failure and the reason this one is checked while planning.
+
+**A geography is not promoted to a column, and does not need to be.** The row model is unchanged: the
+map column, `_JSON`, and the columns the service guarantees. Nothing in Calcite converts the `ANY` a
+map lookup yields into a geometry, so a shape in a document reaches an operator by being parsed out of
+text:
+
+```sql
+ST_GEOG_DWITHIN(ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location')), …, 1000)
+```
+
+In process that is exactly what happens. **Pushed down it is not.** `JSON_QUERY` over `_JSON` already
+resolves to a document path, so the constructor collapses onto it and the statement names the property:
+`ST_DISTANCE(c.location, {…}) <= 1000`. The service reads that property as the shape, so the text and
+the parsing are a round trip it never needed. A constructor over a literal is written out as the object
+instead; over a computed string it is declined, because rendering one would mean evaluating it and
+evaluating it is what the service is being asked to do.
+
+**A prior measurement, kept because it is why the map column is not the answer.** Calcite's spatial
+functions cannot evaluate over the map column: the row model materialises a geometry as a
+`java.util.LinkedHashMap`, and the conversion Calcite inserts to reach its GeoJSON constructor
+produces Java's `toString`:
 
 ```
 CAST(c."_MAP"['location'] AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]}
 ```
 
-which its parser refuses. Nothing in Calcite converts an `ANY` to a geometry — every constructor takes
-a typed input, and every `JSON_*` function takes JSON *text* and fails its runtime cast when handed a
-map.
+which its parser refuses. Nothing converts an `ANY` to a geometry — every constructor takes a typed
+input, and every `JSON_*` function takes JSON *text* and fails its runtime cast when handed a map.
 
 Two repairs were tried and are recorded as wrong rather than missing. **Rendering every document value
 as JSON** — giving the materialised map a `toString` that writes JSON — works, and changes the runtime
 type of every map in every row to serve one corner; the cost is out of all proportion to what it buys.
 **Supplying a better implementation of `ST_GEOMFROMGEOJSON`** does not work at all: `SqlUtil.lookupRoutine`
 resolves across every chained operator table by parameter match, so Calcite's `VARCHAR` overload beats
-an adapter's `ANY` one regardless of chain order. Overriding a Calcite function means rewriting the
-plan, not registering an operator.
+an adapter's `ANY` one regardless of chain order. That finding is also why the geography operators
+carry their own names instead of overloading Calcite's.
 
-**What would reopen this** is either a geography type in Calcite, or a declared column type in the
-adapter to hang *"this path is geography"* on — the typed-column question in `TODO.md` section 6,
-which three other items already wait on. Until one of them exists, a spatial pushdown can honour
-Calcite's semantics or be useful, and not both.
+**What is in scope is what Cosmos evaluates** — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and
+`ST_ISVALID` — with `ST_GEOG_DWITHIN` rendering as a distance comparison, Cosmos having no counterpart.
+
+**What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
+weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
+with the service. The geography package computes one over S2, and nothing has measured whether it
+agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a distance sitting
+exactly on a threshold — a sphere and an ellipsoid differ by tenths of a percent, far more than enough
+to disagree about a threshold, and a recheck that disagrees discards rows the service returned. Until
+that measurement exists these push exactly or they do not push at all.
 
 ### What a table tells the planner
 

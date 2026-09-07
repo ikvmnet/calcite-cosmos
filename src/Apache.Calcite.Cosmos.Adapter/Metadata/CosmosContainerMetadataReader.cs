@@ -167,7 +167,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadPaths(properties.IndexingPolicy?.IncludedPaths, x => x.Path),
                 ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path),
                 ReadFullTextPaths(properties),
-                ReadVectorPaths(properties));
+                ReadVectorPaths(properties),
+                properties.GeospatialConfig?.GeospatialType != GeospatialType.Geometry);
         }
 
         /// <summary>

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -117,6 +117,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// paths and the indexing policy indexes them; what the planner asks is whether the container
         /// said anything at all, so both are read into one list.
         /// </remarks>
+        /// <summary>
+        /// A container says nothing about its coordinates, and the service's default is geography.
+        /// </summary>
+        [TestMethod]
+        public void AnUnconfiguredContainerReadsGeography()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath { Path = "/location/*" });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.ReadsGeography.Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A container configured for geometry reads its coordinates as a plane.
+        /// </summary>
+        /// <remarks>
+        /// <c>geospatialConfig</c> is one container-wide statement about what the coordinates mean, so it
+        /// decides this on its own rather than in union with the indexes — unlike full text and vector,
+        /// where policy and index are two halves of one declaration. Those values are planar and Calcite's
+        /// own <c>ST_*</c> already describe them correctly; typing them <c>GEOGRAPHY</c> would take a
+        /// working query away rather than enable one.
+        /// </remarks>
+        [TestMethod]
+        public void AGeometryContainerDeclaresNoGeography()
+        {
+            var properties = new ContainerProperties("products", "/pk");
+            properties.GeospatialConfig = new GeospatialConfig(GeospatialType.Geometry);
+            properties.IndexingPolicy.SpatialIndexes.Add(new SpatialPath { Path = "/location/*" });
+
+            var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+            container.ReadsGeography.Should().BeFalse();
+        }
+
         [TestMethod]
         public void FullTextPolicyAndIndexPathsAreBothRead()
         {
