@@ -515,6 +515,32 @@ Two ways past it, and they are not interchangeable.
   pushes a weakened conjunct and rechecks the original in process, so a rewrite only has to produce a
   *superset*. This is the general mechanism; what is missing is the table of supersets, not the rule.
 
+**Measured, against an account, and it splits the idea in two.** A filter takes any computed
+expression the service can evaluate; a sort takes a document path and almost nothing else.
+
+| | |
+| --- | --- |
+| `WHERE DateTimeToTicks(c.v) > <n>` | accepted |
+| `ORDER BY DateTimeToTicks(c.v)` | refused, 400, code 2206 |
+| `ORDER BY IIF(…)` | refused, 400, code 2206 |
+| `ORDER BY c.v` | accepted |
+| `ORDER BY ST_DISTANCE(…)` | accepted — see *Geography* |
+
+So the rewrite family below is a **filter** technique, and `ST_DISTANCE` in an `ORDER BY` is an
+exception the service makes rather than a rule anything else can be read into. Two computed keys were
+tried against it and both were refused with the same 2206 the cast column already gets.
+
+**The vocabulary available to a rewrite is wide.** `IS_DEFINED`, `IS_ARRAY`, `IS_BOOL`, `IS_NULL`,
+`IS_NUMBER`, `IS_INTEGER`, `IS_FINITE_NUMBER`, `IS_OBJECT`, `IS_PRIMITIVE`, `IS_STRING` and
+`IS_DATETIME`; `IIF` for a conditional; the `DateTime*` family; and arithmetic. That is enough to
+recover Calcite's meaning for most comparisons, inside a `WHERE`.
+
+**`IS_DATETIME` is a parse check and not a shape check**, which is the thing to know before reaching
+for it. Measured: `2024-01-01`, `2024-01-01T00:00:00Z`, `2024-01-01T00:00:00.500Z` and
+`2024-01-01T00:00:00+00:00` all answer `true`; `"hello"` and a number answer `false`. It says a value
+*is* a datetime, never that two values are written the same way, so it guards a comparison and does
+not establish an order.
+
 **A rewrite is a pair, and the second half is a guard.** The pushed form need not be the rewritten
 comparison alone — extra conditions can be pushed alongside it to make the service's answer mean what
 Calcite means. This adapter already does exactly that for numbers, and the shape is worth copying
@@ -538,7 +564,9 @@ returns the wrong rows, and re-sorting in process is what already happens, so a 
 sort buys nothing. It has to be guaranteed rather than approximated.
 
 A guard cannot rescue it either, and the reason is worth stating: a guard works for a filter because
-admitting a doubtful row costs one recheck, and ordering is not a per-row question. There is no
+admitting a doubtful row costs one recheck, and ordering is not a per-row question. Nor can a
+normalising key: `DateTimeToTicks` answers the same ticks for all three shapes of one instant — the
+obvious way out — and `ORDER BY DateTimeToTicks(…)` is refused, measured. There is no
 disjunct that makes a sort right for rows whose shape you could not vouch for. The nearest thing
 would be sorting the conforming rows at the service, reading the rest separately and merging the two
 in process — which is a real technique, and a larger one than this item.
