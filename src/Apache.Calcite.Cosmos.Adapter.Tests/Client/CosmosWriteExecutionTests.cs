@@ -424,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var count = await Write(CosmosWriteOperation.Insert,
                 ["""{"id":"b1","category":"bikes"}""", null, null, null, null],
                 ["""{"id":"b2","category":"bikes"}""", null, null, null, null],
-                [null, "b3", null, null, "shoes"]);
+                ["""{"id":"b3","category":"shoes"}""", null, null, null, null]);
 
             count.Should().Be(3);
 
