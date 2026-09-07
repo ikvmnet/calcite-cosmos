@@ -398,19 +398,23 @@ The translations, the refusal and the path pushdown are in place, and every form
 executed against an account. What is left is one sort that could push and does not, one operator that
 is not offered, and one thing that cannot be fixed here at all.
 
-- **`ORDER BY` over a distance does not push** — *medium, and no longer blocked on a measurement.*
-  A distance-ordered query reads every matching document and sorts in process; a nearest-neighbour
-  search is what a spatial index is for. **The service accepts it** — `ORDER BY ST_DISTANCE(…)`,
-  including under a `WHERE` and an `OFFSET … LIMIT`, measured against an account and held by
-  `CosmosGeographyServiceTests`. That was the open question, because an `ORDER BY` over a computed
-  expression is refused (400, error 2206). What remains is a rule: `CosmosSort` pushes a sort whose
-  collation names a document path, and this one names a call, so the shape it matches has to widen.
+- **`ORDER BY` over a distance now pushes** — *built; one shape left to verify.* A distance-ordered
+  query used to read every matching document and sort in process. `CosmosSort` now writes the
+  expression into the clause — twice over, once selected and once ordered, because Cosmos cannot order
+  by a projection alias — and `CosmosSortRule` admits the sort when the projection beneath it is a
+  geodesic distance.
 
-  Three things the rule has to respect, measured alongside. `DESC` is accepted, and the distance may
-  be projected beside the ordering. **A second sort key is refused** — `ORDER BY ST_DISTANCE(…), c.id`
-  answers the same 2206 — so the pushed collation carries one key and no more, which is narrower than
-  the multi-key sort the composite-index path already handles. And no spatial index is needed: a
-  container declaring none still orders, so this wants no gate of the kind full text has.
+  Narrow on purpose. Only `ST_GEOG_DISTANCE` qualifies: the service accepts it in the clause and
+  refuses `DateTimeToTicks` and `IIF` with 400, error 2206, so `CosmosProject` records that one
+  expression and nothing else. And it is the whole collation or none — a second key beside it draws
+  the same 2206 — which is narrower than the multi-key sort the composite-index path handles.
+
+  **What is not verified is the shape a connection presents.** The node and the rule are covered by
+  `CosmosRelImplementTests`, which builds `Sort(Project(scan))` directly. A connection wraps the
+  finished plan in a calc, which is what strands `ORDER BY RANK` in
+  [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46) — that case cannot project its score, and
+  this one can, so the outer projection should merely drop a column that the statement still carries.
+  Should. Plan the same statement from a `CalciteConnection` and see.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is

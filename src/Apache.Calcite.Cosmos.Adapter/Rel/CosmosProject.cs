@@ -74,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];
+            var sortable = new string?[projects.size()];
 
             // Read before anything rebinds them. A column passed straight through keeps how it is
             // read: the JSON column projected under an alias is still the document, and reading it as
@@ -88,7 +89,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // the one expression the statement carries without. See
                 // CosmosRexTranslator.TryRenderedTextOperand for why that is an equivalence and not a
                 // trade, and why such a column addresses nothing afterwards.
-                implementor.Query.SelectProperty((string)names.get(i), translator.TranslateProjection(node, out var reading));
+                var expression = translator.TranslateProjection(node, out var reading);
+                implementor.Query.SelectProperty((string)names.get(i), expression);
+
+                // A geodesic distance is the one computed expression the service admits in an ORDER BY.
+                // Recorded against the ordinal so a sort above this projection can write the expression
+                // out again -- Cosmos cannot order by the alias -- and nothing else is, because nothing
+                // else was measured to be accepted there. See CosmosImplementor.SortableExpressions.
+                sortable[i] = IsSortableAtTheService(node) ? expression : null;
                 readings[i] = reading != CosmosReading.Typed ? reading
                     : node is RexInputRef reference
                         && reference.getIndex() >= 0
@@ -113,6 +121,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // it still pushable.
             implementor.Fields = paths;
             implementor.Readings = readings;
+            implementor.SortableExpressions = sortable;
+        }
+
+
+        /// <summary>
+        /// Determines whether a projected expression is one the service will order by.
+        /// </summary>
+        /// <remarks>
+        /// By name, because a call resolved through a schema carries an operator Calcite built around
+        /// the declaration rather than the operator itself — the same reason the translator dispatches
+        /// on names. Only the geodesic distance qualifies: measured, <c>ORDER BY ST_DISTANCE(…)</c> is
+        /// accepted while <c>ORDER BY DateTimeToTicks(…)</c> and <c>ORDER BY IIF(…)</c> are refused
+        /// with 400, error 2206.
+        /// </remarks>
+        static bool IsSortableAtTheService(RexNode node)
+        {
+            return node is RexCall call
+                && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
         }
 
     }
