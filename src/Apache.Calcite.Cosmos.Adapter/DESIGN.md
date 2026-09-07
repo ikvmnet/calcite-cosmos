@@ -57,18 +57,48 @@ What it reopens, each recorded elsewhere in this document or in `TODO.md` as a l
 De-duplication is cheap in all of these because every document has an `id` and it is the one value
 guaranteed unique within a partition.
 
-### What bounds it
+### What bounds it, and what does not
 
-**Two statements are not one point in time.** Cosmos offers no snapshot across queries: session
-consistency gives monotonic reads within a session, not atomicity between two of them. So a row can
-be edited between two reads and satisfy both halves of a split, or neither. For the lookup join this
-does not arise — the batches partition the *build* side, and each probe row is read once. For a split
-of one scan it does, and a technique that halves a scan has to say what it does about a row that
-moves between the halves.
+**The obvious objection is that two statements are not one point in time.** It is true and it is
+weaker than it sounds, because *one* statement is not one point in time either. Measured: a
+paginated `ORDER BY c.id` scan, with a row written behind the cursor and another ahead of it after
+the first page, returned **both**. Cosmos does not snapshot a query across its continuations, so a
+split scan does not introduce a class of anomaly that a single scan avoids — it widens a window that
+was already open.
 
-The other two costs are ordinary and worth stating anyway: a second round trip is request units and
-latency, and a `LIMIT` cannot be pushed to either half of a split — enough has to come from both
-before the merge decides what the first *n* rows are.
+What is genuinely worse is only this: a row can be *counted twice* by a split where a single scan
+would see it once, because the two halves are separate predicates rather than one cursor. A
+technique that halves a scan owes an answer about a row that moves between the halves, and
+de-duplicating by `id` is that answer wherever the halves can overlap.
+
+**No consistency level fixes it.** Strong, Bounded Staleness, Session, Consistent Prefix and Eventual
+govern what a read sees relative to *writes* — replica staleness — not isolation between two
+statements. Strong makes the split sharper rather than safer: it guarantees each query sees the
+latest committed state at its own time, which is precisely the two states disagreeing.
+
+**A `_ts` pin buys less than it appears to.** `WHERE c._ts <= <captured>` gives *rows unchanged since
+then*, not *the state as of then*: measured, a row updated after the pin is absent from the result
+rather than present at its prior value. It also has one-second granularity. As a way of making two
+halves agree with each other it works — both see the same unchanged set — at the price of dropping
+whatever moved.
+
+**The one real snapshot is a single logical partition.** Cosmos's transactional guarantees are scoped
+to one partition key: a stored procedure executes there with isolation, and a transactional batch is
+atomic there. So a multi-statement plan confined to one logical partition could have a consistent
+view, and **the adapter already computes that precondition** —
+`CosmosImplementor.PartitionKeyValues` and `PartitionKeyIsComplete` record when a filter has pinned
+every declared path. What it would cost is real and unmeasured here: the body is JavaScript, it must
+be registered on the container rather than sent with the query, and it runs under an execution
+budget.
+
+**And the cheapest option is to be told.** Where the data is not being written — a nightly export, a
+read replica, a container that is loaded and then queried — none of this matters, and the caller
+knows. An operand saying so is a smaller thing to build than any of the above and covers the case
+that most often motivates it.
+
+Two ordinary costs sit beside all of that: a second round trip is request units and latency, and a
+`LIMIT` cannot be pushed to either half of a split — enough has to arrive from both before the merge
+knows what the first *n* rows are.
 
 None of this makes the model wrong. It makes it a technique with a stated boundary, which is what
 lets a future refusal be argued on its merits rather than on the assumption that one plan means one
