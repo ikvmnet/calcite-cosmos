@@ -363,6 +363,20 @@ cast in a projection: `JSON_VALUE` answers null for an object or an array where 
 one, so a `_JSON` view's text columns stay in process. Recorded in `DESIGN.md` under *Casts over
 document values*.
 
+**The bare accessor is a conversion, and the parity above compared plans rather than rows.** Measured
+against Calcite's runtime, `JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the *number*
+30, because SQL:2016 casts the scalar to the returning type and the default is a character string;
+pushed as `c.x = '30'` it did not. The adapter behaves like Calcite, so the equality is now held to
+the cast form's literal test: unambiguous text pushes, anything else is declined and the split rule
+pushes `IS_DEFINED`. *Open, and a decision rather than a fix:* the same reasoning reaches every other
+operator over a bare `JSON_VALUE` — `<>`, the ordering comparisons, `LIKE`, `ORDER BY`, and
+`RETURNING <number>` against a number, which is the numeric cast `_MAP` declines and bounds — since
+Calcite sees a rendered or converted value and the service sees the raw one. The consistent rule
+would be to treat `JSON_VALUE(doc, path [RETURNING T])` exactly as `CAST(<path> AS T)` in every
+clause, which is what it is; the cost is that a `_JSON` numeric comparison would push a bound rather
+than the comparison and a sort on a bare accessor would decline as a sort on a rendered cast does.
+Needs the owner's yes and a differential pass over the `typed` container before any of it is built.
+
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
 spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest

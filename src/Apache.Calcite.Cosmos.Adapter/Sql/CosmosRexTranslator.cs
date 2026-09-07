@@ -657,14 +657,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static bool IsRenderedDocumentValue(RexNode operand)
         {
-            var name = operand.getType()?.getSqlTypeName();
-            if (name == SqlTypeName.ANY)
+            if (operand.getType()?.getSqlTypeName() == SqlTypeName.ANY)
                 return true;
 
-            return operand is RexCall call
-                && call.getOperator().getName() == "JSON_VALUE"
-                && call.getOperands().size() == 2
-                && (name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR);
+            return IsTextJsonValue(operand) && ((RexCall)operand).getOperands().size() == 2;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> read as text, which is what the
+        /// accessor is without a <c>RETURNING</c> clause.
+        /// </summary>
+        /// <remarks>
+        /// Such a call is a rendering of the value at the path and not the value itself: SQL:2016 casts
+        /// the scalar to the returning type, and Calcite does — a stored number 30 arrives as the text
+        /// <c>30</c>. The path at the service holds the number. Whatever compares the two therefore has
+        /// to reason about which documents the rendering matches, which is the argument
+        /// <see cref="TryTextCastOperand"/> makes for the cast the accessor is the spelling of.
+        /// </remarks>
+        internal static bool IsTextJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            var name = call.getType()?.getSqlTypeName();
+            return name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR;
         }
 
         /// <summary>
@@ -1101,6 +1117,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// Writes the comparison itself, taking the one cast an equality against text may drop.
         /// </summary>
+        /// <remarks>
+        /// A bare <c>JSON_VALUE</c> read as text is that cast with nothing written, and an equality
+        /// over one is held to the same test. Measured, Calcite keeps a document storing the number 30
+        /// for <c>JSON_VALUE(doc, '$.x') = '30'</c>, having rendered the number; the service compares
+        /// the number as it stands and does not. So the equality pushes only against text no other
+        /// JSON value renders as, where the two select the same documents, and is declined otherwise —
+        /// against a number-like literal, against another expression, or with a behaviour clause that
+        /// substitutes a value where the path has none. The split rule then pushes what it implies.
+        /// </remarks>
         void WriteComparand(StringBuilder builder, RexCall call, string op)
         {
             var left = Operand(call, 0);
@@ -1112,9 +1137,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     left = unwrappedLeft;
                 else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
+                else if (IsTextJsonValue(left) && IsUnambiguousTextEquality(left, right) == false
+                    || IsTextJsonValue(right) && IsUnambiguousTextEquality(right, left) == false)
+                    throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
 
             WriteBinary(builder, left, right, op);
+        }
+
+        /// <summary>
+        /// Determines whether an equality over a <c>JSON_VALUE</c> read as text selects the same
+        /// documents with the accessor written as the path.
+        /// </summary>
+        static bool IsUnambiguousTextEquality(RexNode accessor, RexNode other)
+        {
+            if (((RexCall)accessor).getOperands().size() != 2)
+                return false;
+
+            if (other is not RexLiteral literal)
+                return false;
+
+            try
+            {
+                return GetLiteralValue(literal) is string text && IsUnambiguousText(text);
+            }
+            catch (CosmosTranslationException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

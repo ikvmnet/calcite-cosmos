@@ -666,6 +666,18 @@ is refused, since the cast then renders a converted value; `JSON_QUERY` is refus
 text of an object and null for a scalar; and a behaviour clause is refused, substituting a value where
 the path has none.
 
+**The bare accessor is that cast with nothing written, and it had been pushed as the path.** SQL:2016
+casts the scalar `JSON_VALUE` finds to the returning type, and Calcite does: measured,
+`JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the number 30, because the number arrives
+as the text `30`. The path at the service holds the number, and `c.x = '30'` does not keep it. That
+was a row lost in silence, and the parity measurement above did not see it because it compared plans
+rather than rows. The adapter's contract is Calcite's semantics, which here are the standard's, so an
+equality over the bare accessor is now held to the same literal test as the cast form: `= 'bikes'`
+pushes, since the two select the same documents; `= '30'`, an equality against another expression,
+and one carrying a behaviour clause are declined, and `CosmosFilterSplitRule` pushes the
+`IS_DEFINED` they imply. `TODO.md` carries what the same reasoning says about every other operator over
+the bare accessor, which is a decision rather than a fix.
+
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
 non-string value could have rendered as them. This is not caution for its own sake: in the differential

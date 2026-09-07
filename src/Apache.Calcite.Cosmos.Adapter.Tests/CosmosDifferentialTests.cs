@@ -712,6 +712,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.category') AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'", false),
 
+            // The bare accessor, which is that cast with nothing written: Calcite renders the number 30
+            // as '30' and keeps the document, the service does not. Held to the same literal test, so
+            // the first pushes and the other two are declined and decided in process.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'true'", false),
+
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
             // reader already builds, so these are asked of a field seeded to hold a string, a number, a

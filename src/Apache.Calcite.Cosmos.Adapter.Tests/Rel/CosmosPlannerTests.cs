@@ -1155,6 +1155,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().Throw<java.lang.RuntimeException>();
         }
 
+        // ── The bare accessor is that cast with nothing written ──────────────────
+        //
+        // JSON_VALUE without RETURNING is a rendering: SQL:2016 casts the scalar to the returning
+        // type, and measured, Calcite keeps a document storing the number 30 for `= '30'`. The path at
+        // the service holds the number and does not. So an equality over the bare accessor is held to
+        // the literal test the cast form is held to, and behaves like Calcite either way.
+
+        [TestMethod]
+        public void AnEqualityOverAJsonAccessorAgainstUnambiguousTextPushes()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'bikes'"))
+                .Should().Contain("WHERE (c.label = @p0)");
+        }
+
+        /// <remarks>
+        /// Declined rather than pushed, and what it implies is pushed instead: the document has the
+        /// path, whatever it renders as.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOverAJsonAccessorAgainstTextANumberRendersAsIsNotTaken()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'");
+
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($5, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
+            Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.label)");
+        }
+
+        /// <remarks>
+        /// Against anything but a literal there is no text to reason from: the other side may hold the
+        /// text a number renders as, and Calcite would match the number.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOverAJsonAccessorAgainstAnotherExpressionIsNotTaken()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = c.\"id\"");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+        }
+
+        /// <remarks>
+        /// A RETURNING clause is a different cast, with its own argument still to be made; nothing
+        /// changes for it here.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOverAConvertingJsonAccessorStillPushes()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.price' RETURNING INTEGER) = 30"))
+                .Should().Contain("WHERE (c.price = @p0)");
+        }
+
         /// <summary>
         /// The same cast in a projection is not rendered, where over the map column it is.
         /// </summary>
