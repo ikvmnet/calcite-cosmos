@@ -59,7 +59,7 @@ guaranteed unique within a partition.
 
 ### What bounds it, and what does not
 
-**The obvious objection is that two statements are not one point in time.** It is true and it is
+**The obvious objection is that several statements are not one point in time.** It is true and it is
 weaker than it sounds, because *one* statement is not one point in time either. Measured: a
 paginated `ORDER BY c.id` scan, with a row written behind the cursor and another ahead of it after
 the first page, returned **both**. Cosmos does not snapshot a query across its continuations, so a
@@ -96,12 +96,40 @@ read replica, a container that is loaded and then queried — none of this matte
 knows. An operand saying so is a smaller thing to build than any of the above and covers the case
 that most often motivates it.
 
-Two ordinary costs sit beside all of that: a second round trip is request units and latency, and a
-`LIMIT` cannot be pushed to either half of a split — enough has to arrive from both before the merge
-knows what the first *n* rows are.
+**How many statements is a number for the cost model, not a bar.** Two, or ten: each is request
+units and latency, and nothing about the count makes a plan illegal. Ten bounded reads can beat one
+that walks a container, and deciding which is what a cost model is for.
 
-None of this makes the model wrong. It makes it a technique with a stated boundary, which is what
-lets a future refusal be argued on its merits rather than on the assumption that one plan means one
+**Which is a precondition rather than a description of what exists.** Every Cosmos node costs
+Calcite's own cost times `CosmosConvention.CostMultiplier`, a flat `.8` — rows, no bytes, no request
+units, no term for a round trip. Under that model a *k*-way split is *cheaper* than the statement it
+replaces, because each branch carries a smaller row count at the same discount and the extra
+requests are free. A split built before the cost model can see them would therefore be chosen for
+the wrong reason, and the cost model is the part to build first.
+
+`CosmosLookupJoin` is both the exception and the precedent. It already issues one statement per
+batch and already charges for them, folding `ceil(buildRows / batchSize)` requests into the CPU term
+precisely because a round trip is not a row read. Generalising the toolbox past the join means
+generalising that term with it — and past a flat discount to something denominated in request units,
+which is what the statistics and cost-model items in `TODO.md` exist to reach.
+
+**A row limit does ride along.** An earlier draft of this section said it could not. That was wrong.
+Where each branch is ordered the way the merge is — which is what makes a split a split rather than
+an arbitrary set of queries — the first *n* rows of the merged result are drawn from the first *n*
+of every branch. So `LIMIT n` goes to all *k* of them and the merge takes *n* of at most *k·n* rows.
+The read stays bounded; the *k·n* fetched to return *n* is what it costs.
+
+What does not ride along is the offset. `OFFSET m LIMIT n` becomes `LIMIT m+n` on each branch with
+the offset applied after the merge — the bound survives but grows with the offset, which is the
+ordinary distributed top-*n* arithmetic and the ordinary reason deep paging is the case to watch.
+
+The genuinely unbounded case is a different one, recorded below under the declared collation trait:
+there the service's order is *not* the plan's, so the first *n* it returns are not candidates for the
+first *n* wanted, and no per-branch limit is sound. The distinction is whether each branch's order
+agrees with the merge — not whether there is more than one statement.
+
+None of this makes the model wrong. It makes it a technique with stated costs, which is what lets a
+future refusal be argued on its merits rather than on the assumption that one plan means one
 statement.
 
 ---
