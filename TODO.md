@@ -87,13 +87,11 @@ the reasoning.
 
 ### Where to start
 
-1. **A metadata cache on the schema** (section 1) — the design is settled and the cost is real:
-   every connection re-reads a container's definition, and any connection planning a
-   whole-partition `DELETE` re-probes the account. One thing to verify before building it — whether
-   `Apache.Calcite.Data` offers a supported way to hand back the same schema instance.
-2. **An explicit statistics refresh** (section 1) — the time to live is in; what is missing is a way
-   for a caller to say *now*, which after a bulk load is the only moment that matters.
-3. **Typed columns, if they are wanted at all** (section 6) — two items name this dependency now,
+1. **An explicit statistics refresh** (section 1) — the time to live is in; what is missing is a way
+   for a caller to say *now*, which after a bulk load is the only moment that matters. It matters
+   more now that a schema can be shared across connections, since a stale row count outlives the
+   connection that fetched it.
+2. **Typed columns, if they are wanted at all** (section 6) — two items name this dependency now,
    and nothing satisfies it. Whether the answer is a `columns` operand, computed properties, or
    something else is open. Two items have left since: the sort key, and the `UPDATE` patch tier,
    which turned out to need a way to *write* a deep-path `SET` rather than a type at all — see
@@ -157,9 +155,23 @@ Three facts, three lifetimes, and they are not the same:
   *Statistics refresh* below load-bearing rather than theoretical: without a time to live, one
   connection's stale row count would outlive the connection that fetched it.
 
-Worth verifying first: how a host reuses a schema through `Apache.Calcite.Data`, since the model
-path builds one per connection and the guidance is only actionable if there is a supported way to
-hand the same instance back.
+**Deferred: the shape this wants belongs to the provider, not here.**
+
+What was asked first — whether a host can reuse a schema through `Apache.Calcite.Data` — has an
+answer. `CalciteConnection.RootSchema` is public and writable, so a host builds one schema and
+registers the same instance on each connection; what is registered there survives a `Close`/`Open`
+cycle, the engine session being torn down only on dispose. A *new* connection gets a new session and
+a new root schema, so the registration is per connection while the object, and everything it learnt,
+is not. The README carries that as the way to keep the reads down today.
+
+It is a workaround rather than the design. A model-built schema is still constructed per connection,
+and making that path share anything means changing how `CalciteConnection` builds schemas — which is
+`Apache.Calcite.Data`'s to decide, in a different repository, and not something to design around from
+here.
+
+So this waits on that, and the note about *where* the cache belongs stands: on the schema, for the
+reasons above. Whatever the provider ends up offering, the schema is where the logic hangs, and
+nothing here should grow a process-wide cache in the meantime.
 
 ### An explicit statistics refresh — *medium*
 
