@@ -539,10 +539,36 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // one and render a value as text that was never cast.
                 _readings = Array.Empty<CosmosReading>();
                 _sortableExpressions = Array.Empty<string?>();
+                _renderedExpressions = Array.Empty<string?>();
             }
         }
 
         IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
+        IReadOnlyList<string?> _renderedExpressions = Array.Empty<string?>();
+
+        /// <summary>
+        /// Gets or sets what a projection rendered for each output ordinal, where that is not simply
+        /// the path the ordinal binds to.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A projection can render a value the path alone does not describe — a SQL/JSON accessor is
+        /// guarded so that an object answers null the way the function does, and the value is then
+        /// read as text. A node above it that rebuilds the select list from the binding would emit the
+        /// bare path and read the raw value, which is a different answer and, where the plan declared
+        /// text and the document holds a number, a failure rather than a difference.
+        /// </para>
+        /// <para>
+        /// So the rendering is recorded beside the binding, and a node that rewrites the select list
+        /// prefers it. <see cref="Readings"/> carries the other half — how the value that comes back
+        /// is to be read — and the two belong to the same ordinal.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<string?> RenderedExpressions
+        {
+            get => _renderedExpressions;
+            set => _renderedExpressions = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Gets or sets, per output field, the expression a sort may order by where the field is

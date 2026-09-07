@@ -1415,6 +1415,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             sql.Should().Contain("WHERE (c.label = @p0)");
         }
 
+        /// <summary>
+        /// A <c>DISTINCT</c> over an accessor keeps the guard the projection beneath it rendered.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The distinct rebuilds the select list from the binding, which is the path, and the path
+        /// holds the raw value where the column carries text. Emitting the path returned a number for
+        /// a column declared <c>VARCHAR</c> — which the reader refuses rather than coerces, so the
+        /// statement failed outright: <em>Expected a JSON string, got Number</em>.
+        /// </para>
+        /// <para>
+        /// Found by the differential oracle rather than here, which is why this test exists: the
+        /// offline suite could not see it, the fault being in what came back rather than in the plan.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADistinctOverAnAccessorKeepsTheGuard()
+        {
+            var best = PlanToCosmos("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
+
+            Render(best).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)");
+        }
+
         // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path

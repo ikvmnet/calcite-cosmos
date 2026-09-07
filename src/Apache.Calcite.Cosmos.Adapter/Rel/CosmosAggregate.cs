@@ -274,6 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         {
             var names = getRowType().getFieldNames();
             var fields = implementor.Fields;
+            var rendered = implementor.RenderedExpressions;
 
             var groupKeys = getGroupSet().asList();
             var projected = new CosmosPath?[names.size()];
@@ -285,7 +286,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     throw new CosmosTranslationException("A grouping key does not resolve to a document path.");
 
                 var path = fields[index]!;
-                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path));
+
+                // What the projection rendered, where that is not the path. A guarded accessor reads
+                // as text and the path holds the raw value, so emitting the path here would return a
+                // number for a column the plan declared VARCHAR -- which the reader refuses rather
+                // than coerces, so the statement fails rather than answering differently.
+                var expression = index < rendered.Count ? rendered[index] : null;
+
+                implementor.Query.SelectProperty((string)names.get(i), expression ?? GroupingKey(path));
 
                 // Bound to the path only where the projected value is that path. A normalised key is a
                 // computed column: the service will not order by a select-list alias, and the path
