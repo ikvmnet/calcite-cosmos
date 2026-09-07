@@ -595,22 +595,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static RexNode? TryTextCastOperand(RexNode node, RexNode other)
         {
-            if (node is not RexCall call)
-                return null;
-
-            var kind = KindOf(call);
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
-                return null;
-
-            if (call.getOperands().size() != 1)
-                return null;
-
-            var target = call.getType()?.getSqlTypeName();
-            if (target != SqlTypeName.VARCHAR && target != SqlTypeName.CHAR)
-                return null;
-
-            var operand = Operand(call, 0);
-            if (IsRenderedDocumentValue(operand) == false)
+            if (TryTextCastValue(node) is not RexNode operand)
                 return null;
 
             if (other is not RexLiteral literal)
@@ -626,7 +611,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
             }
 
-            return value is string text && IsUnambiguousText(text) ? operand : null;
+            return value is string text && IsUnambiguousTextFor(operand, text) ? operand : null;
+        }
+
+        /// <summary>
+        /// Recognises <c>CAST(&lt;document value&gt; AS VARCHAR)</c> over a value the cast renders
+        /// rather than converts, and returns the value underneath.
+        /// </summary>
+        /// <remarks>
+        /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
+        /// right, and what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not.
+        /// </remarks>
+        internal static RexNode? TryTextCastValue(RexNode node)
+        {
+            if (node is not RexCall call)
+                return null;
+
+            var kind = KindOf(call);
+            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                return null;
+
+            if (call.getOperands().size() != 1)
+                return null;
+
+            var target = call.getType()?.getSqlTypeName();
+            if (target != SqlTypeName.VARCHAR && target != SqlTypeName.CHAR)
+                return null;
+
+            var operand = Operand(call, 0);
+            return IsRenderedDocumentValue(operand) ? operand : null;
+        }
+
+        /// <summary>
+        /// Recognises a comparand that is the rendering of a document value — the value under a cast
+        /// to text, or a bare <c>JSON_VALUE</c> read as text — and returns the value.
+        /// </summary>
+        /// <param name="node">The expression to inspect.</param>
+        /// <param name="scalarOnly">
+        /// On success, whether only a scalar can render: <c>JSON_VALUE</c> answers null for an object
+        /// or an array, where the cast over <c>ANY</c> renders them with a bracket.
+        /// </param>
+        /// <returns>The value rendered, or <c>null</c> where this is not that shape.</returns>
+        internal static RexNode? TryRenderedTextValue(RexNode node, out bool scalarOnly)
+        {
+            if (TryTextCastValue(node) is RexNode operand)
+            {
+                scalarOnly = IsTextJsonValue(operand);
+                return operand;
+            }
+
+            if (IsTextJsonValue(node) && ((RexCall)node).getOperands().size() == 2)
+            {
+                scalarOnly = true;
+                return node;
+            }
+
+            scalarOnly = false;
+            return null;
+        }
+
+        /// <summary>
+        /// Determines whether text is one no JSON value other than that string renders as, for the
+        /// value it is compared against.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IsUnambiguousText"/> for a value the cast over <c>ANY</c> renders, where an
+        /// array and an object render too. A <c>JSON_VALUE</c> read as text renders scalars only — an
+        /// object, an array and a null all come back as SQL null and never match — so for it only a
+        /// number's digits and Calcite's lowercase <c>true</c> and <c>false</c> are ambiguous.
+        /// </remarks>
+        internal static bool IsUnambiguousTextFor(RexNode value, string text)
+        {
+            if (IsTextJsonValue(value))
+                return TryParseRenderedNumber(text, out _) == false && text is not ("true" or "false");
+
+            return IsUnambiguousText(text);
+        }
+
+        /// <summary>
+        /// Parses text as the number Calcite renders one as, where it is one.
+        /// </summary>
+        /// <remarks>
+        /// Java's <c>BigDecimal</c> grammar, which every rendering a stored number can take —
+        /// <c>30</c>, <c>30.7</c>, <c>1.0E30</c>, <c>1E+30</c> — satisfies, and which admits nothing
+        /// that is not a number. Read as a double because that is what the service holds; a literal
+        /// the type cannot represent exactly rounds as the stored text rounds, to the same double. A
+        /// value beyond the double range parses and comes back infinite, which the caller decides.
+        /// </remarks>
+        internal static bool TryParseRenderedNumber(string text, out double number)
+        {
+            try
+            {
+                number = new java.math.BigDecimal(text).doubleValue();
+                return true;
+            }
+            catch (java.lang.NumberFormatException)
+            {
+                number = 0;
+                return false;
+            }
         }
 
         /// <summary>
@@ -1159,7 +1242,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             try
             {
-                return GetLiteralValue(literal) is string text && IsUnambiguousText(text);
+                return GetLiteralValue(literal) is string text && IsUnambiguousTextFor(accessor, text);
             }
             catch (CosmosTranslationException)
             {

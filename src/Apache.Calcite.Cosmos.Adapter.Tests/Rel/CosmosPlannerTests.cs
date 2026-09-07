@@ -1170,8 +1170,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
-        /// Declined rather than pushed, and what it implies is pushed instead: the document has the
-        /// path, whatever it renders as.
+        /// Declined rather than pushed, and what it implies is pushed instead — see the section on the
+        /// alternatives below.
         /// </remarks>
         [TestMethod]
         public void AnEqualityOverAJsonAccessorAgainstTextANumberRendersAsIsNotTaken()
@@ -1183,7 +1183,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'");
 
             Plan(best).Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($5, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
-            Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.label)");
+        }
+
+        /// <remarks>
+        /// The accessor renders scalars only, so a literal no scalar renders as — a JSON null comes
+        /// back as SQL null, and Calcite's boolean is lowercase — is exact and pushes as it stands.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOverAJsonAccessorAgainstTextNoScalarRendersAsPushes()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'null'"))
+                .Should().Contain("WHERE (c.label = @p0)");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'TRUE'"))
+                .Should().Contain("WHERE (c.label = @p0)");
+        }
+
+        // ── What a refused text equality implies ─────────────────────────────────
+        //
+        // `= '30'` is declined as a translation because Calcite keeps the document storing the number
+        // 30, having rendered it, and the service would not. It still implies that the value is that
+        // string or that number, and the disjunction of the two pushes under the comparison Calcite
+        // makes. The looseness is one spelling: a stored 30.0 renders as `30.0`, is not matched, and
+        // crosses the wire to be discarded above. Better than the IS_DEFINED this used to push.
+
+        [TestMethod]
+        public void ATextEqualityAgainstTextANumberRendersAsPushesTheStringOrTheNumber()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'")));
+
+            query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
+            query.Parameters.Select(p => p.Value).Should().Equal("30", 30d);
+        }
+
+        [TestMethod]
+        public void TheAlternativesPushUnderTheCastFormToo()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '1.0E30'")));
+
+            query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
+            query.Parameters.Select(p => p.Value).Should().Equal("1.0E30", 1e30);
+        }
+
+        [TestMethod]
+        public void TextABooleanRendersAsPushesTheStringOrTheBoolean()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'true'")));
+
+            query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
+            query.Parameters.Select(p => p.Value).Should().Equal("true", true);
+        }
+
+        /// <remarks>
+        /// Calcite renders a boolean in lowercase, so this text matches only the string. The cast
+        /// form's literal test is case-insensitive and refuses it, and the rule pushes the string
+        /// alone, which is exact.
+        /// </remarks>
+        [TestMethod]
+        public void TextInTheWrongCasePushesTheStringAlone()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'")));
+
+            query.Sql.Should().Contain("WHERE (c.label = @p0)");
+            query.Sql.Should().NotContain(" OR ");
+        }
+
+        /// <remarks>
+        /// Over the map column an array renders with a bracket, so the literal admits arrays. Over the
+        /// accessor an array is null and never matches, so the string is exact and the translator
+        /// pushes it without this.
+        /// </remarks>
+        [TestMethod]
+        public void ABracketedLiteralAdmitsArraysOverTheMapColumnOnly()
+        {
+            var overMap = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['tags'] AS VARCHAR) = '[steel]'")));
+
+            overMap.Sql.Should().Contain("WHERE ((c.tags = @p0) OR IS_ARRAY(c.tags))");
+
+            var overAccessor = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.tags') = '[steel]'")));
+
+            overAccessor.Sql.Should().Contain("WHERE (c.tags = @p0)");
+            overAccessor.Sql.Should().NotContain("IS_ARRAY");
+        }
+
+        /// <remarks>
+        /// A number the double cannot hold has no literal to compare against, so the type test stands
+        /// in for it.
+        /// </remarks>
+        [TestMethod]
+        public void ANumberBeyondTheDoubleRangeTakesTheTypeTest()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '1E+400'")));
+
+            query.Sql.Should().Contain("WHERE ((c.label = @p0) OR IS_NUMBER(c.label))");
+        }
+
+        /// <remarks>
+        /// The alternatives are not the comparison, so the comparison is still made above them.
+        /// </remarks>
+        [TestMethod]
+        public void TheComparisonStaysAboveTheAlternatives()
+        {
+            var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'"));
+
+            plan.Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($5, '$.label'), '30')])", plan);
+            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($5, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($5, '$.label'), 30.0E0:DOUBLE))])", plan);
         }
 
         /// <remarks>

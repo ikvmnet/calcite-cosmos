@@ -367,15 +367,16 @@ document values*.
 against Calcite's runtime, `JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the *number*
 30, because SQL:2016 casts the scalar to the returning type and the default is a character string;
 pushed as `c.x = '30'` it did not. The adapter behaves like Calcite, so the equality is now held to
-the cast form's literal test: unambiguous text pushes, anything else is declined and the split rule
-pushes `IS_DEFINED`. *Open, and a decision rather than a fix:* the same reasoning reaches every other
-operator over a bare `JSON_VALUE` — `<>`, the ordering comparisons, `LIKE`, `ORDER BY`, and
-`RETURNING <number>` against a number, which is the numeric cast `_MAP` declines and bounds — since
-Calcite sees a rendered or converted value and the service sees the raw one. The consistent rule
-would be to treat `JSON_VALUE(doc, path [RETURNING T])` exactly as `CAST(<path> AS T)` in every
-clause, which is what it is; the cost is that a `_JSON` numeric comparison would push a bound rather
-than the comparison and a sort on a bare accessor would decline as a sort on a rendered cast does.
-Needs the owner's yes and a differential pass over the `typed` container before any of it is built.
+the cast form's literal test: unambiguous text pushes, and anything else is declined and the split
+rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the number, under the
+comparison Calcite makes. The same disjunction now serves the map column's cast, which used to push
+`IS_DEFINED` alone. *Settled by measurement:* `RETURNING` a non-text type converts nothing in Calcite
+— it asserts the Java class and throws on disagreement — so a comparison through one pushes exactly,
+as it did, and needs no bound; `DESIGN.md` records the measurement. *Open, and a decision rather than
+a fix:* the other operators over the bare text accessor — `<>`, the ordering comparisons, `LIKE`,
+`ORDER BY` — where Calcite sees the rendering and the service the raw value. Each has the weakening
+the text form allows, the string case exact and non-strings passed through by `NOT IS_STRING`, and a
+sort has none. Needs the owner's yes and a differential pass over the `typed` container first.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the

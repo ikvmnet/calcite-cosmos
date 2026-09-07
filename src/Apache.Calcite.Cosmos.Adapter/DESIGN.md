@@ -674,9 +674,25 @@ was a row lost in silence, and the parity measurement above did not see it becau
 rather than rows. The adapter's contract is Calcite's semantics, which here are the standard's, so an
 equality over the bare accessor is now held to the same literal test as the cast form: `= 'bikes'`
 pushes, since the two select the same documents; `= '30'`, an equality against another expression,
-and one carrying a behaviour clause are declined, and `CosmosFilterSplitRule` pushes the
-`IS_DEFINED` they imply. `TODO.md` carries what the same reasoning says about every other operator over
-the bare accessor, which is a decision rather than a fix.
+and one carrying a behaviour clause are declined, and `CosmosFilterSplitRule` pushes what they imply.
+`TODO.md` carries what the same reasoning says about every other operator over the bare accessor,
+which is a decision rather than a fix.
+
+**What a refused text equality implies is more than `IS_DEFINED`, and it is a disjunction.**
+`= '30'` keeps a stored string `'30'` and every stored number Java renders as `30`, and every such
+number has the value 30 — so the value is that string or it is that number, and the rule pushes
+`c.x = '30' OR c.x = 30` under the comparison Calcite still makes. It is implied and not exact, by one
+spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
+service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
+row crossing the wire is the whole cost, against a container read whole. The branches follow the
+rendering: a number-like literal takes the parsed number, or `IS_NUMBER` where the double cannot hold
+it; exactly `true` or `false` takes the boolean, since Calcite renders in lowercase and `'TRUE'`
+matches only the string; and over the map column, whose cast renders an array as `[x, y]` and an
+object as `{x=1}`, a literal opening with that bracket takes `IS_ARRAY` or `IS_OBJECT`. `JSON_VALUE`
+answers null for those and for a JSON null, so under it no such literal is ambiguous at all and the
+translator pushes it exactly — its literal test is the narrower one, `IsUnambiguousTextFor`. The
+branches are written against the accessor with its type discarded, which is how the translator is
+told to render the path without applying the conjunct's test to a branch that is not the conjunct.
 
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
@@ -1326,6 +1342,19 @@ it told the plan what the service will return, and a clause that disagrees with 
 materialisation rather than answering wrongly, which is what makes it worth trusting. `UNNEST` wants
 `RETURNING <type> ARRAY`; `JSON_QUERY` is `VARCHAR` even `WITH ARRAY WRAPPER` and is never an unnest
 source.
+
+That is also what Calcite does with it in process, and it is worth knowing how literally. Measured
+against Calcite's runtime, `RETURNING` a type other than text performs no conversion at all: the
+scalar is cast to the declared Java class and anything else throws. `RETURNING INTEGER` returns a
+stored `30` and throws on `30.7`, on `"30"`, on `true` and on `3000000000`, which parses as a long;
+`RETURNING DOUBLE` returns `30.0` and throws on `30`, which parses as an integer, and `RETURNING
+BIGINT` throws on `30` for the same reason; `NULL ON ERROR` does not catch any of it, and
+`DECIMAL(3, 1)` returns `30.75` unrounded. Only the text default converts. So a comparison through a
+numeric `RETURNING` pushes exactly, as it always has: for every document Calcite can evaluate, the
+declared type is the stored type and the service compares the same value. What the pushdown changes
+is the document Calcite would have thrown on, which the service excludes instead — the caller's
+declaration held rather than checked, the same asymmetry the reading side already accepts. It is why
+the numeric bound the map column's cast needs has no counterpart here.
 
 #### Promoted columns
 

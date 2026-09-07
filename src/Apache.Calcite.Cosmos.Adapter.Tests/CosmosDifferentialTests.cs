@@ -714,10 +714,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             // The bare accessor, which is that cast with nothing written: Calcite renders the number 30
             // as '30' and keeps the document, the service does not. Held to the same literal test, so
-            // the first pushes and the other two are declined and decided in process.
+            // the first pushes and the other two are declined and decided in process, over the
+            // disjunction the split rule pushes -- the string or the number, the string or the
+            // boolean. The bracketed literal is exact over the accessor, an array being null to it.
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'bikes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'true'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '[bikes]'", false),
+
+            // Over the map column the same refused literals push the disjunction too, and an array
+            // renders with a bracket, so the bracketed literal admits arrays beside the string.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '[bikes]'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'", false),
 
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
