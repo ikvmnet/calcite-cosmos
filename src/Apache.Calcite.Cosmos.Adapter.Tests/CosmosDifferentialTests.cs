@@ -741,6 +741,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> '30'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) LIKE 'b%'", false),
 
+            // A function over the rendering: CHAR_LENGTH of a stored 30 is 2 in process and undefined
+            // at the service. Declined wherever the accessor appears, the projection with it, and the
+            // predicate takes the same pass-through.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"_JSON\", '$.label')) = 2", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"_JSON\", '$.label')) = 'BIKES'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = JSON_VALUE(c.\"_JSON\", '$.name')", false),
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"_JSON\", '$.label')) FROM typed AS c", false),
+
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
             // reader already builds, so these are asked of a field seeded to hold a string, a number, a

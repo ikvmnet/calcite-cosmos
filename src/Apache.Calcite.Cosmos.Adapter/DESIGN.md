@@ -694,18 +694,25 @@ translator pushes it exactly — its literal test is the narrower one, `IsUnambi
 branches are written against the accessor with its type discarded, which is how the translator is
 told to render the path without applying the conjunct's test to a branch that is not the conjunct.
 
-**The other comparisons over the rendering have only the string case, and are held to the same
-standard.** No literal makes `<> '30'` exact — a stored 31 renders and is kept — nor `> '2'`, where a
-stored 30 renders as text that sorts after `'2'`, nor `LIKE '3%'`, which the rendering of 30 matches;
-the service compares the number and keeps none of them. So `<>`, the ordering comparisons and `LIKE`
-over a bare `JSON_VALUE` are declined as translations, and the rule pushes the string case with every
-kind that renders passed through: `c.x <> '30' OR IS_NUMBER(c.x) OR IS_BOOL(c.x)`, with `IS_ARRAY`
-and `IS_OBJECT` beside them over the map column's cast, which used to push `IS_DEFINED` alone. Named
-by type rather than as `NOT IS_STRING` so that an absent path and a null, which Calcite never keeps,
-stay behind. Looser than the equality's branches, and tight on a field that holds strings, which is
-the field a text comparison is written against. A `RETURNING` that names a type is exempt, for the
-reason recorded under *The JSON column*: Calcite converts nothing under it, so the comparison is
-exact for every document Calcite can evaluate.
+**Everything else over the rendering has only the string case, and is held to the same standard.**
+No literal makes `<> '30'` exact — a stored 31 renders and is kept — nor `> '2'`, where a stored 30
+renders as text that sorts after `'2'`, nor `LIKE '3%'`, which the rendering of 30 matches, nor
+`CHAR_LENGTH(…) = 2`, which is 2 of it; the service compares or measures the number and keeps none of
+them. So over a bare `JSON_VALUE` the other comparisons and `LIKE` are declined as translations, and a
+scalar function taking the accessor as an operand is declined wherever it appears — a projection
+stays in process with it, as the cast's does. The exemptions are the service's own functions, the
+type tests among them, which ask what the value is or have no in-process meaning to depart from, and
+are written against the value the path holds. In a predicate, `CosmosFilterSplitRule` then pushes the
+same predicate over the value with every kind that renders passed through:
+`LENGTH(c.x) = 2 OR IS_NUMBER(c.x) OR IS_BOOL(c.x)`, with `IS_ARRAY` and `IS_OBJECT` beside them over
+the map column's cast, which used to push `IS_DEFINED` alone. The argument is one line: a stored
+string renders as itself, so the predicate over the value is the predicate over the rendering, and
+anything else Calcite keeps is of a kind that renders. Named by type rather than as `NOT IS_STRING`
+so that an absent path and a null, which Calcite never keeps, stay behind — which is also why it is
+reached only for a conjunct that does not observe absence. Looser than the equality's branches, and
+tight on a field that holds strings, which is the field a text predicate is written against. A
+`RETURNING` that names a type is exempt, for the reason recorded under *The JSON column*: Calcite
+converts nothing under it, so the comparison is exact for every document Calcite can evaluate.
 
 **A null test over the accessor is exact, and different from the path's.** `JSON_VALUE` returns a
 scalar or nothing, so an object and an array are SQL null to it — measured in process, whatever the

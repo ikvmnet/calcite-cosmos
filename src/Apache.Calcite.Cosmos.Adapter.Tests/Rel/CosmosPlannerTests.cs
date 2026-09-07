@@ -1369,6 +1369,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 .Should().Contain("(c.price > @p0)");
         }
 
+        // ── A function over the rendering ────────────────────────────────────────
+        //
+        // CHAR_LENGTH of a stored 30 is 2 in Calcite and undefined at the service, UPPER of it is
+        // '30' and undefined. A function over the accessor is declined wherever it appears -- a
+        // projection stays in process with it -- and in a predicate the same pass-through applies:
+        // the function over the value, or a kind that renders.
+
+        [TestMethod]
+        public void AFunctionOverAJsonAccessorIsNotTakenAndPassesTheRenderingKindsThrough()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"_JSON\", '$.label')) = 5");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"_JSON\", '$.label')) = 5")));
+
+            query.Sql.Should().Contain("((LENGTH(c.label) = @p0) OR IS_NUMBER(c.label) OR IS_BOOL(c.label))");
+        }
+
+        [TestMethod]
+        public void AFunctionOverAJsonAccessorInAProjectionStaysInProcess()
+        {
+            var plan = Plan(PlanToAsync("SELECT UPPER(JSON_VALUE(c.\"_JSON\", '$.label')) AS \"u\" FROM products AS c"));
+
+            plan.Should().Contain("ClrAsyncEnumerableProject", plan);
+
+            Plan(PlanToAsync("SELECT UPPER(c.\"_MAP\"['label']) AS \"u\" FROM products AS c"))
+                .Should().Contain("CosmosProject", "the path itself is the value, and pushes as it did");
+        }
+
+        /// <remarks>
+        /// Against another expression there is no literal to reason from, and the pass-through is
+        /// what remains: the strings compare as they stand.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOverAJsonAccessorAgainstAnotherExpressionPassesTheKindsThrough()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = c.\"id\"")));
+
+            query.Sql.Should().Contain("((c.label = c.id) OR IS_NUMBER(c.label) OR IS_BOOL(c.label))");
+        }
+
+        /// <remarks>
+        /// Two accessors in one predicate pass their kinds through separately: either being a
+        /// non-string is enough for Calcite to have kept the row.
+        /// </remarks>
+        [TestMethod]
+        public void EveryAccessorInThePredicatePassesItsKindsThrough()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') <> JSON_VALUE(c.\"_JSON\", '$.name')")));
+
+            query.Sql.Should().Contain("IS_NUMBER(c.label) OR IS_BOOL(c.label) OR IS_NUMBER(c.name) OR IS_BOOL(c.name)");
+        }
+
+        /// <remarks>
+        /// The service's own functions ask what the value is, or have no in-process meaning at all,
+        /// and are written against the value the path holds. The split rule depends on the first.
+        /// </remarks>
+        [TestMethod]
+        public void ATypeTestOverAJsonAccessorStillPushes()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"_JSON\", '$.label'))"))
+                .Should().Contain("WHERE IS_DEFINED(c.label)");
+        }
+
         // ── A null test over the accessor counts what the accessor returns ───────
 
         /// <remarks>

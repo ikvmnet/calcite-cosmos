@@ -457,6 +457,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // A function over a JSON_VALUE read as text is a function over the rendering: Calcite
+            // gives CHAR_LENGTH of a stored 30 as 2 and UPPER of it as '30', where the service, given
+            // the number, answers undefined. Declined wherever the accessor is a direct operand, and
+            // the split rule passes the kinds that render through. The exemptions are the operators
+            // with an answer of their own -- the comparisons and LIKE, gated where they are written;
+            // the null test; and the service's own functions, which have no in-process meaning to
+            // depart from and are written against the value the path holds.
+            if (RendersAnOperand(call))
+                throw new CosmosTranslationException($"'{call.getOperator().getName()}' over JSON_VALUE read as text operates on a rendering, which the service does not hold.");
+
             switch (KindOf(call))
             {
                 case SqlKind.__Enum.EQUALS:
@@ -1583,6 +1593,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 names.Add(((org.apache.calcite.sql.SqlOperator)operators.get(i)).getName());
 
             return names;
+        }
+
+        /// <summary>
+        /// Every name the adapter's own operator table declares.
+        /// </summary>
+        /// <remarks>
+        /// By name, for the reason <see cref="CosmosOperators.IsAbsenceObserving"/> gives: a call
+        /// resolved through a schema carries an operator Calcite built around the declaration.
+        /// </remarks>
+        static readonly HashSet<string> CosmosFunctions = BuildCosmosFunctions();
+
+        static HashSet<string> BuildCosmosFunctions()
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+
+            var operators = CosmosOperators.Instance.getOperatorList();
+            for (var i = 0; i < operators.size(); i++)
+                names.Add(((org.apache.calcite.sql.SqlOperator)operators.get(i)).getName());
+
+            return names;
+        }
+
+        /// <summary>
+        /// Determines whether a call takes a <c>JSON_VALUE</c> read as text as a direct operand, in a
+        /// position where that means the rendering rather than the value.
+        /// </summary>
+        static bool RendersAnOperand(RexCall call)
+        {
+            switch (KindOf(call))
+            {
+                // Gated where they are written, with the one exact shape admitted there.
+                case SqlKind.__Enum.EQUALS:
+                case SqlKind.__Enum.NOT_EQUALS:
+                case SqlKind.__Enum.LESS_THAN:
+                case SqlKind.__Enum.LESS_THAN_OR_EQUAL:
+                case SqlKind.__Enum.GREATER_THAN:
+                case SqlKind.__Enum.GREATER_THAN_OR_EQUAL:
+                case SqlKind.__Enum.LIKE:
+                case SqlKind.__Enum.IS_NULL:
+                case SqlKind.__Enum.IS_NOT_NULL:
+                // Refused on its own account, or unwrapped before it is written.
+                case SqlKind.__Enum.CAST:
+                case SqlKind.__Enum.SAFE_CAST:
+                    return false;
+            }
+
+            if (CosmosFunctions.Contains(call.getOperator().getName()))
+                return false;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                if (IsTextJsonValue(Operand(call, i)))
+                    return true;
+
+            return false;
         }
 
         /// <summary>
