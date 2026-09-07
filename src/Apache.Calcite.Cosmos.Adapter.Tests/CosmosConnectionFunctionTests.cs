@@ -40,14 +40,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     public class CosmosConnectionFunctionTests
     {
 
-        // Well-known public emulator credentials, documented by Microsoft. Not a secret.
-        const string EmulatorEndpoint = "http://localhost:8081/";
-        const string EmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
-        static readonly string Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT") is string e && e.Length > 0 ? e : EmulatorEndpoint;
-        static readonly string Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY") is string k && k.Length > 0 ? k : EmulatorKey;
+        static string Endpoint => CosmosEmulator.Endpoint!;
+        static string Key => CosmosEmulator.Key!;
 
-        static bool IsEmulator => ReferenceEquals(Endpoint, EmulatorEndpoint);
+        static bool IsEmulator => CosmosEmulator.IsEmulator;
 
         /// <summary>
         /// The database this fixture builds, named per target framework for the reason

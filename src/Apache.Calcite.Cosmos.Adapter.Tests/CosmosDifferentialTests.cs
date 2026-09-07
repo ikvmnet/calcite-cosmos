@@ -54,13 +54,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     public class CosmosDifferentialTests
     {
 
-        // Well-known public emulator credentials, documented by Microsoft. Not a secret.
-        const string EmulatorEndpoint = "http://localhost:8081/";
-        const string EmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
-        static readonly string Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT") is string e && e.Length > 0 ? e : EmulatorEndpoint;
-        static readonly string Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY") is string k && k.Length > 0 ? k : EmulatorKey;
-        static bool IsEmulator => ReferenceEquals(Endpoint, EmulatorEndpoint);
+        static string Endpoint => CosmosEmulator.Endpoint!;
+        static string Key => CosmosEmulator.Key!;
+        static bool IsEmulator => CosmosEmulator.IsEmulator;
 
         static readonly string DatabaseName = "calcite_cosmos_diff_" +
             System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
