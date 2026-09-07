@@ -1438,6 +1438,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(best).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)");
         }
 
+        /// <summary>
+        /// A negated conjunction implies nothing about the paths inside it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The split rule pushes a restriction the predicate implies and rechecks the predicate
+        /// above, which is sound while the restriction is genuinely implied. Definedness is implied
+        /// by a bare comparison, negated or not — an absent property makes the comparison undefined
+        /// and <c>NOT undefined</c> is not true either. It is not implied by a negated
+        /// <em>conjunction</em>: where the other conjunct is false the conjunction is false whatever
+        /// the second says, so the negation is <b>true</b> and a document missing the path belongs in
+        /// the answer.
+        /// </para>
+        /// <para>
+        /// Measured as a wrong answer rather than reasoned into. The differential oracle returned
+        /// five rows where the pushdown returned three; nothing offline could see it, the plan being
+        /// well formed and the rows being what disagreed.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ANegatedConjunctionPushesNoDefinednessRestriction()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)");
+
+            var cosmos = FindCosmos(best);
+            var sql = cosmos is null ? "" : Render(cosmos);
+
+            sql.Should().NotContain("IS_DEFINED", "a negated conjunction implies no path is defined: " + sql);
+        }
+
+        /// <summary>
+        /// A negated comparison still does, which is the case the rule measured.
+        /// </summary>
+        [TestMethod]
+        public void ANegatedComparisonStillPushesItsDefinedness()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)");
+
+            Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.price)");
+        }
+
         // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path

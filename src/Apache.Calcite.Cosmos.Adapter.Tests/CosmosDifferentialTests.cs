@@ -715,10 +715,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '[bikes]'", false),
 
-            // Over the map column the same refused literals push the disjunction too, and an array
-            // renders with a bracket, so the bracketed literal admits arrays beside the string.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '[bikes]'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'", false),
+            // The same refused literals through the accessor, where no array branch is wanted: the
+            // function answers null for an array, so no stored array matches however the literal
+            // looks and the string comparison is exact.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '[bikes]'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'TRUE'", false),
 
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the

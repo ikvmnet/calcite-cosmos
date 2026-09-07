@@ -220,6 +220,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var inputRowType = getInput().getRowType();
             var names = getRowType().getFieldNames();
             var fields = implementor.Fields;
+            var rendered = implementor.RenderedExpressions;
+            var inputReadings = implementor.Readings;
+            var readings = new CosmosReading[names.size()];
             var output = 0;
 
             // Calcite orders an aggregate's output as the grouping keys followed by the calls.
@@ -230,7 +233,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (index < 0 || index >= fields.Count || fields[index] is null)
                     throw new CosmosTranslationException("A grouping key does not resolve to a document path.");
 
-                var key = GroupingKey(fields[index]!);
+                // What the projection rendered, where that is not the path -- a guarded accessor
+                // reads as text while the path holds the raw value, so grouping by the path would
+                // group different values and return one the reader refuses.
+                var expression = index < rendered.Count ? rendered[index] : null;
+                var key = GroupingKey(fields[index]!, expression);
+
+                readings[output] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
+
                 implementor.Query.AddGroupBy(key);
                 implementor.Query.SelectProperty((string)names.get(output++), key);
             }
@@ -249,7 +259,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // per ordinal rather than emptied, so a downstream reference is declined for naming a
             // computed column rather than for being out of range.
             var aggregated = new CosmosPath?[names.size()];
+
+            // Fields resets the readings, so what the grouping keys carry is restored afterwards.
+            // An aggregate's own output is computed and reads as declared, which is the default.
             implementor.Fields = aggregated;
+            implementor.Readings = readings;
         }
 
         /// <summary>
@@ -275,6 +289,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var names = getRowType().getFieldNames();
             var fields = implementor.Fields;
             var rendered = implementor.RenderedExpressions;
+            var inputReadings = implementor.Readings;
+            var readings = new CosmosReading[names.size()];
 
             var groupKeys = getGroupSet().asList();
             var projected = new CosmosPath?[names.size()];
@@ -293,7 +309,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // than coerces, so the statement fails rather than answering differently.
                 var expression = index < rendered.Count ? rendered[index] : null;
 
-                implementor.Query.SelectProperty((string)names.get(i), expression ?? GroupingKey(path));
+                readings[i] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
+
+                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, expression));
 
                 // Bound to the path only where the projected value is that path. A normalised key is a
                 // computed column: the service will not order by a select-list alias, and the path
@@ -302,7 +320,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             }
 
             implementor.Query.Distinct = true;
+
+            // Fields resets the readings, so what the projection decided is restored afterwards.
             implementor.Fields = projected;
+            implementor.Readings = readings;
         }
 
         /// <summary>
@@ -328,8 +349,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// form that an index is defined on. Those are grouped as they were.
         /// </para>
         /// </remarks>
-        static string GroupingKey(CosmosPath path)
+        static string GroupingKey(CosmosPath path, string? rendered = null)
         {
+            // What the projection beneath rendered, where that is not the path. A guarded accessor
+            // already answers null where the property is absent, so it needs no second guard.
+            if (rendered is not null)
+                return rendered;
+
             var text = path.ToString();
 
             return IsAlwaysPresent(path) ? text : $"(IS_DEFINED({text}) ? {text} : null)";

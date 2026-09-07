@@ -185,8 +185,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// against a real account: a comparison on an absent property is <em>undefined</em> rather than
         /// false, and <c>NOT undefined</c> is not true either — so neither <c>c.price &gt; 5</c> nor
         /// <c>NOT (c.price &gt; 5)</c> matches a document without a <c>price</c>, and both therefore
-        /// imply the path is defined. Polarity does not come into it, which was the guess and was
-        /// wrong.
+        /// imply the path is defined. Polarity does not come into it for a single comparison, which
+        /// was the guess and was wrong. It does come into it for a negated <em>compound</em>: see
+        /// <see cref="CollectPaths"/>, where a sibling that is merely false makes the negation true
+        /// and the paths on the other side imply nothing at all.
         /// </para>
         /// <para>
         /// The <c>IS_*</c> family is different: each returns a real boolean for an absent path, so
@@ -253,9 +255,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (node is not RexCall call)
                 return;
 
+            // A negated compound implies nothing about the paths inside it, and this is where that
+            // has to be said. `NOT (a > 1)` does imply the path is defined -- an absent property
+            // makes the comparison undefined and `NOT undefined` is not true either, which is the
+            // measurement above. `NOT (a = 1 AND b > 1)` does not: where `a = 1` is false the
+            // conjunction is false whatever `b` does, so the negation is *true* and a document with
+            // no `b` belongs in the result. Pushing `IS_DEFINED(b)` deletes it.
+            //
+            // Measured as a wrong answer rather than reasoned into: the differential oracle caught
+            // `NOT (c.category = 'bikes' AND CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) > 50)`
+            // returning three rows where Calcite returns five.
+            //
+            // The same argument covers a disjunction under the negation, and the reasoning there is
+            // subtler rather than simpler, so both are refused together.
+            if (KindOf(call) == SqlKind.__Enum.NOT
+                && call.getOperands().size() == 1
+                && ((RexNode)call.getOperands().get(0)) is RexCall inner
+                && (KindOf(inner) == SqlKind.__Enum.AND || KindOf(inner) == SqlKind.__Enum.OR))
+                return;
+
             var operands = call.getOperands();
             for (var i = 0; i < operands.size(); i++)
                 CollectPaths((RexNode)operands.get(i), translator, rootAlias, paths);
+        }
+
+        /// <summary>
+        /// The kind of a call, by name, for the reason the translator dispatches on names.
+        /// </summary>
+        static SqlKind.__Enum KindOf(RexCall call)
+        {
+            return (SqlKind.__Enum)call.getKind().ordinal();
         }
 
         /// <summary>

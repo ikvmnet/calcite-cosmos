@@ -344,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task ServicePropertiesSuppliedByARowAreReplacedByTheService()
         {
             var count = await Write(CosmosWriteOperation.Insert,
-                ["""{"id":"c1","category":"bikes","_ts":1,"_etag":"\"nonsense\","_rid":"bogus","name":"Copy"}""", null, null, null, null]);
+                ["""{"id":"c1","category":"bikes","_ts":1,"_etag":"\"nonsense\"","_rid":"bogus","name":"Copy"}""", null, null, null, null]);
 
             count.Should().Be(1);
 
