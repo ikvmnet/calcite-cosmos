@@ -397,6 +397,28 @@ owns the client.
 The translations, the refusal and the path pushdown are in place. What is left is verification, and
 one thing that cannot be fixed here at all.
 
+- **`ORDER BY` over a distance does not push** — *large, and it is a measurement before it is work.*
+  A distance-ordered query reads every matching document and sorts in process; a nearest-neighbour
+  search is what a spatial index is for. Whether the service accepts `ORDER BY ST_DISTANCE(…)` is the
+  question, and it cannot be assumed: an `ORDER BY` over a computed expression is answered with
+  *"ORDER BY item expression could not be mapped to a document path"* — measured, and recorded under
+  the cast column above. One query against an account settles whether spatial is special-cased there.
+  If it is, the sort pushdown already exists and this is a rule that recognises the shape.
+- **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
+  counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
+  operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
+  where this adapter's own operators live. It answers with a document rather than a boolean, so what
+  it is typed as wants deciding first.
+- **`ST_GEOG_ASGEOJSON` over a stored shape could be the path** — *small.* The property already holds
+  the GeoJSON, so serialising a geometry the adapter just parsed is a round trip. What makes it more
+  than a rename is the reading: the value arrives as an object and has to be rendered as text, which
+  is what `CosmosReading.Json` was added for, and readings are decided in `CosmosImplementor` rather
+  than in the translator.
+- **`ST_GEOG_X` and `ST_GEOG_Y` are not pushed** — *not available; recorded so nobody looks again.*
+  They look like `c.location.coordinates[0]` and `[1]` and are only that for a `Point`. Nothing
+  declares a path's shape, and over a `Polygon` the service would return a ring array where the
+  in-process answer throws — a wrong answer in place of an error, which is the trade this adapter
+  refuses everywhere else.
 - **Nothing has been run against a live service** — *small, and it is the standing house rule rather
   than an improvement.* Every other emitted statement form in this adapter was executed against a real
   account before being believed. The geography forms — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`,

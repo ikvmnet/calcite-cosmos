@@ -165,6 +165,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be($"ST_DISTANCE(c.location, {Point}) <= c.n");
         }
 
+
+        /// <summary>
+        /// The geometry type is a GeoJSON member, so it pushes as a path rather than as a function.
+        /// </summary>
+        /// <remarks>
+        /// No spatial function is involved and no spatial index matters — the service reads a property.
+        /// The two vocabularies agree for anything a container can hold: JTS also spells `LinearRing`,
+        /// which GeoJSON has no member for, so a stored shape cannot be one.
+        /// </remarks>
+        [TestMethod]
+        public void TheGeometryTypeIsAMemberOfTheShape()
+        {
+            Translate(GeographyOperatorTable.StGeogGeometryType, Stored()).Should().Be("c.location.type");
+        }
+
+        /// <summary>
+        /// A geometry built in the query has no path, so the member read is declined.
+        /// </summary>
+        /// <remarks>
+        /// Which is also where the two vocabularies could have differed: a `LinearRing` cannot come out
+        /// of a document, and this is the case that would have let one in.
+        /// </remarks>
+        [TestMethod]
+        public void AConstructedGeometryHasNoTypeMemberToRead()
+        {
+            var call = _rex.makeCall(GeographyOperatorTable.StGeogGeometryType, Literal());
+
+            Translator().TryTranslate(call, out _).Should().BeFalse();
+        }
+
     }
 
 }

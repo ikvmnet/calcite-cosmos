@@ -1003,6 +1003,13 @@ carry their own names instead of overloading Calcite's.
 **What is in scope is what Cosmos evaluates** — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and
 `ST_ISVALID` — with `ST_GEOG_DWITHIN` rendering as a distance comparison, Cosmos having no counterpart.
 
+**One more pushes without being a spatial call at all.** A GeoJSON shape records its type as a `type`
+member, so `ST_GEOG_GEOMETRYTYPE` over a stored geography is `c.location.type` — an ordinary property
+read, no spatial function and no spatial index involved. The vocabularies agree for anything a
+container can hold: JTS also spells `LinearRing`, which GeoJSON has no member for, so a stored shape
+cannot be one. A geometry built inside the query has no path and is declined, which is also the case
+where that difference could otherwise have appeared.
+
 **What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
 weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
 with the service. The geography package computes one over S2, and nothing has measured whether it
