@@ -191,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // The same thing said in SQL/JSON. `JSON_VALUE(<doc>, '$.a.b')` addresses exactly what
                 // `ITEM(ITEM(<doc>,'a'),'b')` addresses, so it resolves to the same path and every
                 // clause that requires one accepts it without knowing which spelling it was written in.
-                // The document is the `_JSON` column, which binds to the root like the map column.
+                // The document is the `DOC` column, which binds to the root like the map column.
                 case RexCall json when IsJsonAccessor(json) && TryResolveJsonPath(json, out path):
                     return true;
             }
@@ -862,7 +862,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
             // GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service
             // never asked for. What comes back is an object where the projection is declared VARCHAR, so
-            // it is read as the JSON the service sent — the same reading the _JSON column takes, and for
+            // it is read as the JSON the service sent — the same reading the DOC column takes, and for
             // the same reason.
             if (TryGeoJsonProjection(node, out var geography) && geography is not null)
             {
@@ -1725,7 +1725,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>The path case is what makes a stored geography reachable at all.</b> An <c>ST_GEOG_*</c>
         /// operator takes a geometry and no column has that type, so a shape in a document reaches one
-        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location'))</c>.
+        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>.
         /// In process that is exactly what happens. Pushed down it is not: the service reads the property
         /// as the shape, so the text and the parsing are a round trip it never needed, and what it wants
         /// is the path.
@@ -1742,7 +1742,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // A stored geography. The constructor disappears and the path is written where the call stood:
             // Cosmos reads the property itself as the shape, so parsing it out and handing back text is a
-            // step the service never needed. This is what JSON_QUERY(c."_JSON", '$.location') collapses to.
+            // step the service never needed. This is what JSON_QUERY(c."DOC", '$.location') collapses to.
             if (TryResolvePath(argument, out var path) && path is not null)
             {
                 builder.Append(path.ToString());

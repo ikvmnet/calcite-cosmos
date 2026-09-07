@@ -1130,15 +1130,15 @@ Nothing in either response says which question was answered. `CosmosGeographySer
 and the rest of the forms.
 
 **A geography is not promoted to a column, and does not need to be.** The row model is unchanged: the
-map column, `_JSON`, and the columns the service guarantees. Nothing in Calcite converts the `ANY` a
+map column, `DOC`, and the columns the service guarantees. Nothing in Calcite converts the `ANY` a
 map lookup yields into a geometry, so a shape in a document reaches an operator by being parsed out of
 text:
 
 ```sql
-ST_GEOG_DWITHIN(ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location')), …, 1000)
+ST_GEOG_DWITHIN(ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')), …, 1000)
 ```
 
-In process that is exactly what happens. **Pushed down it is not.** `JSON_QUERY` over `_JSON` already
+In process that is exactly what happens. **Pushed down it is not.** `JSON_QUERY` over `DOC` already
 resolves to a document path, so the constructor collapses onto it and the statement names the property:
 `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads that property as the shape, so the text and
 the parsing are a round trip it never needed. A constructor over a literal is written out as the object
@@ -1193,7 +1193,7 @@ where that difference could otherwise have appeared.
 `ST_GEOG_ASGEOJSON` is the second, and it is a projection only. The document already holds the
 GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service never asked
 for; the property is selected instead and read as the JSON the service sent — the same
-`CosmosReading.Json` the `_JSON` column takes, and for the same reason, the value being an object
+`CosmosReading.Json` the `DOC` column takes, and for the same reason, the value being an object
 where the projection is declared `VARCHAR`. In a *predicate* the call is declined, because the column
 carries text where the path carries an object and a comparison against one is not a comparison against
 the other.
@@ -1307,13 +1307,13 @@ Calcite honours — `RETURNING INTEGER` types the call `INTEGER`, `RETURNING TIM
 `TIMESTAMP(0)`, nullable, and the clause survives inside a view, where it presents to a
 `DbDataReader` as a real typed column. So the JSON family is not uniformly stringly typed, and a
 document path *can* be given a SQL type by the caller in standard SQL. `TODO.md` section 3 carries
-the consequence: a second `_JSON` column as the handle those functions address.
+the consequence: a second `DOC` column as the handle those functions address.
 
 #### The JSON column
 
-`_JSON` is the same document as `_MAP`, in the shape Calcite's SQL/JSON functions can address. Last in
+`DOC` is the same document as `_MAP`, in the shape Calcite's SQL/JSON functions can address. Last in
 the row type, so the promoted ordinals do not move; `VARCHAR` and `NOT NULL`, because every row is a
-document; `STORED` in the column strategies, so Calcite refuses `INSERT INTO t (_JSON)` as a generated
+document; `STORED` in the column strategies, so Calcite refuses `INSERT INTO t (DOC)` as a generated
 column on its own while leaving it nameable as an `UPDATE` target — measured, because the patch tier
 depends on exactly that asymmetry.
 
@@ -1325,7 +1325,7 @@ is stored in key order or number formatting. `CosmosReading.Json` is what says s
 **Parity with the map column is one function, not sixty.** Every pushdown that needs a document path
 resolves it through `CosmosRexTranslator.TryResolvePath`, so `JSON_VALUE(<doc>, '$.a.b')` resolving to
 the same path as `ITEM(ITEM(<doc>,'a'),'b')` gives every one of them the second spelling at once.
-Measured against a connection, `_MAP` and `_JSON` produce the identical plan for a projection, a
+Measured against a connection, `_MAP` and `DOC` produce the identical plan for a projection, a
 filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array
 subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
 assembled at run time declines on both.

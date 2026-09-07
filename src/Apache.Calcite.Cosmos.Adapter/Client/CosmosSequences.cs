@@ -211,8 +211,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // is where that belongs.
             var document = Array.IndexOf(updates, CosmosImplementor.MapColumnName) >= 0
                 ? Array.IndexOf(write.ColumnNames, CosmosImplementor.MapColumnName)
-                : Array.IndexOf(updates, CosmosImplementor.JsonColumnName) >= 0
-                    ? Array.IndexOf(write.ColumnNames, CosmosImplementor.JsonColumnName)
+                : Array.IndexOf(updates, CosmosImplementor.DocumentColumnName) >= 0
+                    ? Array.IndexOf(write.ColumnNames, CosmosImplementor.DocumentColumnName)
                     : -1;
 
             if (document >= 0)
@@ -227,8 +227,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // every other write path already produces.
             if (document < 0 && Array.IndexOf(write.ColumnNames, CosmosImplementor.MapColumnName) >= 0)
             {
-                var json = Array.IndexOf(write.ColumnNames, CosmosImplementor.JsonColumnName);
-                if (json >= 0 && json < count && Array.IndexOf(updates, CosmosImplementor.JsonColumnName) < 0)
+                var json = Array.IndexOf(write.ColumnNames, CosmosImplementor.DocumentColumnName);
+                if (json >= 0 && json < count && Array.IndexOf(updates, CosmosImplementor.DocumentColumnName) < 0)
                     updated[json] = null;
             }
 

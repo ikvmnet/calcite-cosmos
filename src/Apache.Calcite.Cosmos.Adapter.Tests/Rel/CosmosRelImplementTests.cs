@@ -115,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             for (var i = 0; i < fields.size(); i++)
                 names.Add(((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName());
 
-            names.Should().Equal("_MAP", "id", "_ts", "_etag", "category", "_JSON");
+            names.Should().Equal("_MAP", "id", "_ts", "_etag", "category", "DOC");
         }
 
         /// <remarks>

@@ -150,7 +150,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             PlanText("INSERT INTO products (\"id\", \"category\") VALUES ('1', 'books')").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[null:(VARCHAR NOT NULL, ANY NOT NULL) MAP], id=[$0], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$1], _JSON=[null:VARCHAR])\n" +
+                "  LogicalProject(_MAP=[null:(VARCHAR NOT NULL, ANY NOT NULL) MAP], id=[$0], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$1], DOC=[null:VARCHAR])\n" +
                 "    LogicalValues(tuples=[[{ '1', 'books' }]])");
         }
 
@@ -163,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             PlanText("INSERT INTO products (\"_MAP\") SELECT \"_MAP\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[null:ANY], _JSON=[null:VARCHAR])\n" +
+                "  LogicalProject(_MAP=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[null:ANY], DOC=[null:VARCHAR])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 
@@ -187,9 +187,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnInsertWithoutAColumnListSuppliesTheWritableColumns()
         {
-            PlanText("INSERT INTO products SELECT \"_MAP\", \"id\", \"category\", \"_JSON\" FROM archive").Should().Be(
+            PlanText("INSERT INTO products SELECT \"_MAP\", \"id\", \"category\", \"DOC\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$4], _JSON=[$5])\n" +
+                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$4], DOC=[$5])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 
@@ -226,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             PlanText("DELETE FROM products WHERE \"id\" = 'x'").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[DELETE], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5])\n" +
+                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], DOC=[$5])\n" +
                 "    LogicalFilter(condition=[=($1, 'x')])\n" +
                 "      CosmosTableScan(table=[[products]])");
         }
@@ -246,7 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             PlanText("UPDATE products SET \"category\" = 'x' WHERE \"id\" = 'y'").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[UPDATE], updateColumnList=[[category]], sourceExpressionList=[[$6]], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5], EXPR$0=['x'])\n" +
+                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], DOC=[$5], EXPR$0=['x'])\n" +
                 "    LogicalFilter(condition=[=($1, 'y')])\n" +
                 "      CosmosTableScan(table=[[products]])");
         }

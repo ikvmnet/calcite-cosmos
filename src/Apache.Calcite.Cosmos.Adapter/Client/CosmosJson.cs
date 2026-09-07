@@ -119,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         /// <remarks>
         /// The document as it arrived, not a re-serialisation of a parsed form: <c>GetRawText</c>
-        /// returns the original span. So the <c>_JSON</c> column costs a copy rather than a round trip,
+        /// returns the original span. So the <c>DOC</c> column costs a copy rather than a round trip,
         /// and cannot differ from what is stored — key order, number formatting and all.
         /// </remarks>
         /// <param name="row">The row object.</param>

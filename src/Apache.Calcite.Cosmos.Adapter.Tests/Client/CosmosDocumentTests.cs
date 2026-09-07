@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The row type as a container with promoted columns actually produces it: the map first, the
         /// promoted columns next, the JSON column last.
         /// </summary>
-        static readonly string[] BothColumns = ["_MAP", "id", "_ts", "_etag", "category", "_JSON"];
+        static readonly string[] BothColumns = ["_MAP", "id", "_ts", "_etag", "category", "DOC"];
 
         static string BuildBoth(params object?[] values) => Encoding.UTF8.GetString(CosmosDocument.Build(BothColumns, values));
 
@@ -223,14 +223,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <remarks>
         /// Worth its own test because the JSON column is not one of the service properties that get
         /// stripped by name — it is excluded by being a document column, and nothing else would
-        /// have stopped a row from writing a property literally called <c>_JSON</c> holding the
+        /// have stopped a row from writing a property literally called <c>DOC</c> holding the
         /// document's own text.
         /// </remarks>
         [TestMethod]
         public void TheJsonColumnIsNotItselfAProperty()
         {
             BuildBoth(null, "1", null, null, null, """{"name":"Trail Blazer"}""")
-                .Should().NotContain("_JSON")
+                .Should().NotContain("DOC")
                 .And.Be("""{"name":"Trail Blazer","id":"1"}""");
         }
 

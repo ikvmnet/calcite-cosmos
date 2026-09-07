@@ -327,12 +327,12 @@ map lookup yields into one — so a shape in a document reaches an operator by b
 SELECT c."id"
 FROM "products" AS c
 WHERE ST_GEOG_DWITHIN(
-        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location')),
+        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
         ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
         1000)
 ```
 
-That pushes. `JSON_QUERY` over `_JSON` resolves to a document path, so the constructor collapses onto
+That pushes. `JSON_QUERY` over `DOC` resolves to a document path, so the constructor collapses onto
 it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads
 the property as the shape, so the text and the parsing are a round trip it never needed.
 

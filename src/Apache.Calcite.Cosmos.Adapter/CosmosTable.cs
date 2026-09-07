@@ -188,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // something they can address — they are typed over character strings and cannot take a
             // map. Last, so the promoted ordinals above do not move. NOT NULL for the reason the map
             // column is: every row is a document.
-            builder.add(CosmosImplementor.JsonColumnName, varchar);
+            builder.add(CosmosImplementor.DocumentColumnName, varchar);
 
             return builder.build();
         }

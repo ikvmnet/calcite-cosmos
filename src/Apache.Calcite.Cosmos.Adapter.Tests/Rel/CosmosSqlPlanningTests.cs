@@ -101,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void ScanIsProducedByTheTable()
         {
             PlanText("SELECT * FROM products").Should().Be(
-                "LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5])\n" +
+                "LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], DOC=[$5])\n" +
                 "  CosmosTableScan(table=[[products]])");
         }
 

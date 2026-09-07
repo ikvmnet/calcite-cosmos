@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 if (string.Equals(columnNames[i], CosmosImplementor.MapColumnName, StringComparison.Ordinal))
                     mapOrdinal = i;
-                else if (string.Equals(columnNames[i], CosmosImplementor.JsonColumnName, StringComparison.Ordinal))
+                else if (string.Equals(columnNames[i], CosmosImplementor.DocumentColumnName, StringComparison.Ordinal))
                     jsonOrdinal = i;
             }
 
@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             var jsonValue = jsonOrdinal >= 0 ? values[jsonOrdinal] : null;
 
             if (mapValue is not null && jsonValue is not null)
-                throw new CosmosExecutionException($"A row supplies both '{CosmosImplementor.MapColumnName}' and '{CosmosImplementor.JsonColumnName}'. They are two descriptions of the same document, and which one to write cannot be decided here.");
+                throw new CosmosExecutionException($"A row supplies both '{CosmosImplementor.MapColumnName}' and '{CosmosImplementor.DocumentColumnName}'. They are two descriptions of the same document, and which one to write cannot be decided here.");
 
             if (mapValue is not null)
             {
@@ -154,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             else if (jsonValue is not null)
             {
                 if (jsonValue is not string text)
-                    throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column holds a {jsonValue.GetType().Name} rather than JSON text, so it does not describe a document.");
+                    throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column holds a {jsonValue.GetType().Name} rather than JSON text, so it does not describe a document.");
 
                 JsonDocument parsed;
 
@@ -164,13 +164,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 }
                 catch (JsonException e)
                 {
-                    throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column does not hold well-formed JSON: {e.Message}", e);
+                    throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column does not hold well-formed JSON: {e.Message}", e);
                 }
 
                 using (parsed)
                 {
                     if (parsed.RootElement.ValueKind != JsonValueKind.Object)
-                        throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column holds a JSON {parsed.RootElement.ValueKind.ToString().ToLowerInvariant()} rather than an object, so it does not describe a document.");
+                        throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column holds a JSON {parsed.RootElement.ValueKind.ToString().ToLowerInvariant()} rather than an object, so it does not describe a document.");
 
                     // Cloned because the element is only valid while the JsonDocument is, and the
                     // writing happens after it is disposed. A clone is also what keeps a number the

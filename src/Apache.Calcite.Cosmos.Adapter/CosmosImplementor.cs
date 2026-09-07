@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="CosmosTable.GetColumnOrdinal"/> gives them.
         /// </para>
         /// </remarks>
-        public const string JsonColumnName = "_JSON";
+        public const string DocumentColumnName = "DOC";
 
         /// <summary>
         /// The field ordinal the map column occupies, which is the first.
@@ -202,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             {
                 var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
                 paths[i] = string.Equals(name, MapColumnName, StringComparison.Ordinal)
-                    || string.Equals(name, JsonColumnName, StringComparison.Ordinal)
+                    || string.Equals(name, DocumentColumnName, StringComparison.Ordinal)
                         ? root
                         : root.Property(name);
             }
@@ -232,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             for (var i = 0; i < readings.Length; i++)
             {
                 var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
-                readings[i] = string.Equals(name, JsonColumnName, StringComparison.Ordinal) ? CosmosReading.Json : CosmosReading.Typed;
+                readings[i] = string.Equals(name, DocumentColumnName, StringComparison.Ordinal) ? CosmosReading.Json : CosmosReading.Typed;
             }
 
             return readings;
