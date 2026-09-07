@@ -454,7 +454,37 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // nodes that rebind, so that a node which does not think about readings cannot inherit
                 // one and render a value as text that was never cast.
                 _readings = Array.Empty<CosmosReading>();
+                _sortableExpressions = Array.Empty<string?>();
             }
+        }
+
+        IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
+
+        /// <summary>
+        /// Gets or sets, per output field, the expression a sort may order by where the field is
+        /// computed rather than addressed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos cannot order by a projection alias, so a sort above a projection ordinarily works by
+        /// naming the path underneath — which is what <see cref="Fields"/> carries, and why a computed
+        /// column binds to <c>null</c> there and declines the sort. This is the exception: an
+        /// expression the service will accept in the clause, recorded so the sort can write it out a
+        /// second time rather than refer to it.
+        /// </para>
+        /// <para>
+        /// <b>Only what has been measured to work goes in here.</b> The service refuses an
+        /// <c>ORDER BY</c> over a computed expression in general — 400, error 2206 — and admits
+        /// <c>ST_DISTANCE</c> as an exception; <c>DateTimeToTicks</c> and <c>IIF</c> were tried and
+        /// refused. So <see cref="Rel.CosmosProject"/> records a geodesic distance and nothing else,
+        /// and anything absent here declines the sort exactly as it did before.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>
+        public IReadOnlyList<string?> SortableExpressions
+        {
+            get => _sortableExpressions;
+            set => _sortableExpressions = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         IReadOnlyList<CosmosReading> _readings = Array.Empty<CosmosReading>();

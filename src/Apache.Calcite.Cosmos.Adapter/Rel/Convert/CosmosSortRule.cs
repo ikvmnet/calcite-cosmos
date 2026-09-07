@@ -1,3 +1,7 @@
+﻿using System;
+
+using org.apache.calcite.rex;
+
 using System.Collections.Generic;
 
 using java.util.function;
@@ -65,10 +69,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(sort), out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(sort), SortableFields(sort.getInput(), fields.Count), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
+        }
+
+        /// <summary>
+        /// Reads which output ordinals hold an expression the service will order by.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Asked of the plan rather than of a binding, because the expression itself has not been
+        /// rendered yet — this decides whether the sort <em>can</em> be pushed, and implementation
+        /// renders it from what the projection recorded. Both answer the same question about the same
+        /// ordinal, which is the property that matters.
+        /// </para>
+        /// <para>
+        /// Only a geodesic distance qualifies, and only immediately beneath the sort. A filter between
+        /// the two does not change a row's shape, so the ordinals still line up and it is walked
+        /// through; anything else is not, because an ordinal that means something different is worse
+        /// than one that means nothing.
+        /// </para>
+        /// </remarks>
+        static IReadOnlyList<bool> SortableFields(RelNode? input, int width)
+        {
+            var sortable = new bool[width];
+
+            while (true)
+            {
+                if (input is org.apache.calcite.plan.volcano.RelSubset subset)
+                    input = subset.getOriginal() ?? subset.getBest();
+
+                if (input is Filter filter)
+                {
+                    input = filter.getInput();
+                    continue;
+                }
+
+                break;
+            }
+
+            if (input is not Project project)
+                return sortable;
+
+            var projects = project.getProjects();
+            for (var i = 0; i < projects.size() && i < width; i++)
+                sortable[i] = (RexNode)projects.get(i) is RexCall call
+                    && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
+
+            return sortable;
         }
 
         /// <summary>

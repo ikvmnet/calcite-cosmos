@@ -84,6 +84,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             ? ((org.apache.calcite.rel.type.RelDataTypeField)_table.getRowType().getFieldList().get(index)).getType()
             : _cluster.getTypeFactory().createSqlType(SqlTypeName.ANY), index);
 
+        const string Here = """{"type":"Point","coordinates":[-122.33,47.61]}""";
+
+        /// <summary>
+        /// <c>ST_GEOG_DISTANCE(c.location, &lt;a literal point&gt;)</c>, the one computed expression the
+        /// service will order by.
+        /// </summary>
+        RexNode Distance() => _rex.makeCall(
+            Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance,
+            _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("location")),
+            _rex.makeCall(
+                Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson,
+                _rex.makeLiteral(Here, _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR, Here.Length))));
+
         RexNode Str(string value) => _rex.makeLiteral(value, _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR, value.Length));
 
         static string Sql(CosmosRel rel, CosmosImplementor implementor)
@@ -223,6 +236,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.DESCENDING)));
             Sql(sort, Implementor()).Should().EndWith("ORDER BY c.id DESC");
+        }
+
+        /// <summary>
+        /// A distance orders at the service, so a sort over one is written out rather than declined.
+        /// </summary>
+        /// <remarks>
+        /// The expression appears twice — once selected, once in the clause — because Cosmos cannot
+        /// order by a projection alias. That it may appear in the clause at all is the exception the
+        /// service makes for spatial, measured in <c>CosmosGeographyServiceTests</c>; a computed key of
+        /// any other kind is refused with 400, error 2206.
+        /// </remarks>
+        [TestMethod]
+        public void ASortOverADistanceRendersTheExpression()
+        {
+            var project = ProjectOver(Scan(), new[]
+            {
+                ("id", Ref(1)),
+                ("d", Distance()),
+            });
+
+            var sort = SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING)));
+
+            Sql(sort, Implementor()).Should().EndWith($"ORDER BY ST_DISTANCE(c.location, {Here}) ASC");
+        }
+
+        /// <summary>
+        /// And a second key beside it is declined, because the service refuses one.
+        /// </summary>
+        [TestMethod]
+        public void ASecondKeyBesideADistanceIsDeclined()
+        {
+            var project = ProjectOver(Scan(), new[]
+            {
+                ("id", Ref(1)),
+                ("d", Distance()),
+            });
+
+            var sort = SortOver(project, Collation(
+                (1, RelFieldCollation.Direction.ASCENDING),
+                (0, RelFieldCollation.Direction.ASCENDING)));
+
+            var implement = () => Sql(sort, Implementor());
+            implement.Should().Throw<CosmosTranslationException>();
+        }
+
+        /// <summary>
+        /// A computed key that is not a distance is declined as it always was.
+        /// </summary>
+        /// <remarks>
+        /// <c>ORDER BY UPPER(…)</c> would render into a statement the service answers with 400, error
+        /// 2206, so the projection records nothing for it and the sort has nothing to write.
+        /// </remarks>
+        [TestMethod]
+        public void AComputedKeyThatIsNotADistanceIsDeclined()
+        {
+            var project = ProjectOver(Scan(), new[]
+            {
+                ("id", Ref(1)),
+                ("u", _rex.makeCall(SqlStdOperatorTable.UPPER, Ref(1))),
+            });
+
+            var sort = SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING)));
+
+            var implement = () => Sql(sort, Implementor());
+            implement.Should().Throw<CosmosTranslationException>();
         }
 
         [TestMethod]

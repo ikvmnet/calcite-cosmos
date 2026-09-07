@@ -1018,7 +1018,15 @@ carry their own names instead of overloading Calcite's.
 measured rather than assumed: an `ORDER BY` over a computed expression is refused with 400, error 2206,
 *"ORDER BY item expression could not be mapped to a document path"* — recorded above, under the cast
 column — so spatial is a special case in that clause rather than an instance of a rule. Nothing pushes
-a sort over one yet; what the measurement settles is that a rule doing so would work.
+a sort over one now: `CosmosSort` writes the expression into the clause, and
+`CosmosSortRule` admits the sort where the projection beneath it is that distance.
+
+The expression is written **twice** — once selected, once ordered — because Cosmos cannot order by a
+projection alias, which is the same reason every other sort here names a document path. So the
+projection records the rendered text against its ordinal, in `CosmosImplementor.SortableExpressions`,
+and the sort writes it out again. Only a geodesic distance is recorded there, because only it was
+measured to be accepted; and it must be the whole collation, a second key beside it drawing the same
+2206 a computed key draws alone.
 
 **Two more push without being spatial calls at all.** A GeoJSON shape records its type as a `type`
 member, so `ST_GEOG_GEOMETRYTYPE` over a stored geography is `c.location.type` — an ordinary property
