@@ -30,6 +30,110 @@ structure that follows from it.
 
 ---
 
+## The service is a toolbox, not a counterpart
+
+A pushdown is usually read as a mapping: this Calcite operator becomes that Cosmos function, and
+where there is no counterpart the operator stays in process. Most of this document is written that
+way, and for the ordinary cases it is the right way.
+
+It is not a law, and several refusals recorded here are refusals of that *model* rather than of the
+operation. Cosmos is a storage engine with a set of operations; what the adapter owes the plan is the
+right rows in the right order, by whatever combination of those operations produces them. **A node
+may issue more than one statement and combine the results.**
+
+**This already happens once.** `CosmosLookup` renders one statement per batch of build rows and joins
+what comes back in process — the batch size fixed so the statement shape is stable, a short batch
+padded rather than re-rendered. The model exists; it has simply not been generalised past the join.
+
+What it reopens, each recorded elsewhere in this document or in `TODO.md` as a limit:
+
+| | today | as a toolbox |
+| --- | --- | --- |
+| A disjunction | weakened, pushed loose, rechecked in process | one statement per branch, concatenated and de-duplicated by `id` — exact rather than approximate |
+| A sort whose null placement disagrees | declined entirely | the non-null rows ordered, the null rows in any order, concatenated |
+| A sort over strings of one shape | needs a promise about the stored shape | the conforming rows sorted at the service, the complement read separately |
+| An item-scoped `EXISTS` | an `Unnest` that cross-products the document with its array | a second query over the distinct keys, which is the semi-join it was |
+
+De-duplication is cheap in all of these because every document has an `id` and it is the one value
+guaranteed unique within a partition.
+
+### What bounds it, and what does not
+
+**The obvious objection is that several statements are not one point in time.** It is true and it is
+weaker than it sounds, because *one* statement is not one point in time either. Measured: a
+paginated `ORDER BY c.id` scan, with a row written behind the cursor and another ahead of it after
+the first page, returned **both**. Cosmos does not snapshot a query across its continuations, so a
+split scan does not introduce a class of anomaly that a single scan avoids — it widens a window that
+was already open.
+
+What is genuinely worse is only this: a row can be *counted twice* by a split where a single scan
+would see it once, because the two halves are separate predicates rather than one cursor. A
+technique that halves a scan owes an answer about a row that moves between the halves, and
+de-duplicating by `id` is that answer wherever the halves can overlap.
+
+**No consistency level fixes it.** Strong, Bounded Staleness, Session, Consistent Prefix and Eventual
+govern what a read sees relative to *writes* — replica staleness — not isolation between two
+statements. Strong makes the split sharper rather than safer: it guarantees each query sees the
+latest committed state at its own time, which is precisely the two states disagreeing.
+
+**A `_ts` pin buys less than it appears to.** `WHERE c._ts <= <captured>` gives *rows unchanged since
+then*, not *the state as of then*: measured, a row updated after the pin is absent from the result
+rather than present at its prior value. It also has one-second granularity. As a way of making two
+halves agree with each other it works — both see the same unchanged set — at the price of dropping
+whatever moved.
+
+**The one real snapshot is a single logical partition.** Cosmos's transactional guarantees are scoped
+to one partition key: a stored procedure executes there with isolation, and a transactional batch is
+atomic there. So a multi-statement plan confined to one logical partition could have a consistent
+view, and **the adapter already computes that precondition** —
+`CosmosImplementor.PartitionKeyValues` and `PartitionKeyIsComplete` record when a filter has pinned
+every declared path. What it would cost is real and unmeasured here: the body is JavaScript, it must
+be registered on the container rather than sent with the query, and it runs under an execution
+budget.
+
+**And the cheapest option is to be told.** Where the data is not being written — a nightly export, a
+read replica, a container that is loaded and then queried — none of this matters, and the caller
+knows. An operand saying so is a smaller thing to build than any of the above and covers the case
+that most often motivates it.
+
+**How many statements is a number for the cost model, not a bar.** Two, or ten: each is request
+units and latency, and nothing about the count makes a plan illegal. Ten bounded reads can beat one
+that walks a container, and deciding which is what a cost model is for.
+
+**Which is a precondition rather than a description of what exists.** Every Cosmos node costs
+Calcite's own cost times `CosmosConvention.CostMultiplier`, a flat `.8` — rows, no bytes, no request
+units, no term for a round trip. Under that model a *k*-way split is *cheaper* than the statement it
+replaces, because each branch carries a smaller row count at the same discount and the extra
+requests are free. A split built before the cost model can see them would therefore be chosen for
+the wrong reason, and the cost model is the part to build first.
+
+`CosmosLookupJoin` is both the exception and the precedent. It already issues one statement per
+batch and already charges for them, folding `ceil(buildRows / batchSize)` requests into the CPU term
+precisely because a round trip is not a row read. Generalising the toolbox past the join means
+generalising that term with it — and past a flat discount to something denominated in request units,
+which is what the statistics and cost-model items in `TODO.md` exist to reach.
+
+**A row limit does ride along.** An earlier draft of this section said it could not. That was wrong.
+Where each branch is ordered the way the merge is — which is what makes a split a split rather than
+an arbitrary set of queries — the first *n* rows of the merged result are drawn from the first *n*
+of every branch. So `LIMIT n` goes to all *k* of them and the merge takes *n* of at most *k·n* rows.
+The read stays bounded; the *k·n* fetched to return *n* is what it costs.
+
+What does not ride along is the offset. `OFFSET m LIMIT n` becomes `LIMIT m+n` on each branch with
+the offset applied after the merge — the bound survives but grows with the offset, which is the
+ordinary distributed top-*n* arithmetic and the ordinary reason deep paging is the case to watch.
+
+The genuinely unbounded case is a different one, recorded below under the declared collation trait:
+there the service's order is *not* the plan's, so the first *n* it returns are not candidates for the
+first *n* wanted, and no per-branch limit is sound. The distinction is whether each branch's order
+agrees with the merge — not whether there is more than one statement.
+
+None of this makes the model wrong. It makes it a technique with stated costs, which is what lets a
+future refusal be argued on its merits rather than on the assumption that one plan means one
+statement.
+
+---
+
 ## The Target Language
 
 Cosmos SQL is SQL-*shaped* but is not a relational language. Its surface is closed and small.
@@ -668,8 +772,10 @@ rather than leaving it a matter of caution: `ORDER BY ToString(c.label)`, `ORDER
 `ORDER BY c.label || 'x'` each answer 400, error code 2206 — *"Unsupported ORDER BY clause. ORDER BY
 item expression could not be mapped to a document path."* `ORDER BY (c.label)` is accepted, so the
 restriction is exactly what the message says: the sort item must *be* a path. Rendering a cast into the
-clause was therefore never available, whatever it would have cost. Paging a view by one of its own cast
-columns waits on the typed column of `TODO.md` section 6, which gives the sort a path to name.
+clause was therefore never available, whatever it would have cost. So paging a view by one of its own
+cast columns reads every matching document. The one thing that would change it is a column the sort
+could name, and that surface is rejected — `TODO.md` section 6 — which makes this a standing cost of
+the row model rather than a pending item.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
@@ -704,8 +810,9 @@ one is a plain reference — so ordering by a cast column, which is not ordering
 transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
 the planner costs both.
 
-This does not make an unrenderable projection pushable and is not a substitute for the typed column
-that would; what it removes is such a projection's ability to strand everything above it. Where the
+This does not make an unrenderable projection pushable, and it is not a substitute for a column the
+sort could name — a surface the row model declines, `TODO.md` section 6. What it removes is such a
+projection's ability to strand everything above it. Where the
 cast is to text the projection pushes on its own and there is nothing left to transpose past — but the
 rule still carries the cases that do not render, and the guard is what keeps it from carrying the sort
 that must not move.
@@ -1550,8 +1657,9 @@ That gives a ladder:
    property is `PatchItemAsync`'s native input, far cheaper than a replace. But no such column
    exists: the row model's columns are all identity, placement, service bookkeeping, or the document
    itself (the enumeration below), and a path *inside* the document has no column to be named by. A
-   `columns` operand promoting caller-declared, typed paths was built for this and dropped; that
-   the tier waits on some answer of that kind is the durable part, and which answer is open.
+   `columns` operand promoting caller-declared, typed paths was built for this, dropped, and is now
+   rejected outright (`TODO.md` section 6), so the target cannot arrive by declaration. It has to
+   arrive by expression instead, which is (3).
 3. **Static decomposition — future.** A mutation operator in the Cosmos table (`JSON_SET`-style,
    the way JSON-column databases spell copy-and-modify) would let a rule read patch operations
    straight off a `SET "_MAP" = JSON_SET(…)` expression at plan time.

@@ -53,12 +53,15 @@ refusal that names the path in place of the service's bodyless 400. The second l
 `IsSortSupported`; see `DESIGN.md` under *The declaration decides whether a full text or vector
 function pushes*, and the open measurement under section 5.
 
-**Declared columns were built and then dropped**, and the shape of the hole they left is worth
-knowing before anyone rebuilds them. A caller-declared, typed document path promoted to a real
-column — through a `columns` operand — would have given three things a type to work with: a
-patchable `UPDATE` target, an argument the nullable-aggregate rewrite could fire on, and a declared
-temporal representation. Every one of those items below still names that dependency, because the
-dependency is real; what is gone is one answer to it, not the question.
+**Declared columns were built and then dropped, and they are not coming back.** A caller-declared,
+typed document path promoted to a real column — through a `columns` operand — would have given three
+things a type to work with: a patchable `UPDATE` target, an argument the nullable-aggregate rewrite
+could fire on, and a declared temporal representation. The decision against them has been taken more
+than once and is recorded in section 6. The row model is the map column and the `_JSON` column, and
+a query works off those. What answers the dependency instead is the service's own type predicates —
+`IS_NUMBER`, `IS_STRING`, `IS_DATETIME` and the rest — which say per row, at query time, what a
+declaration could only promise; see *Rewriting a typed comparison into one the service can evaluate*
+in section 4.
 
 The fourth, **a sort key that can be non-nullable**, turned out not to need a declaration at all: a
 query that removes the nulls itself settles the null placement, and the planner already carries
@@ -91,11 +94,10 @@ the reasoning.
    for a caller to say *now*, which after a bulk load is the only moment that matters. It matters
    more now that a schema can be shared across connections, since a stale row count outlives the
    connection that fetched it.
-2. **Typed columns, if they are wanted at all** (section 6) — two items name this dependency now,
-   and nothing satisfies it. Whether the answer is a `columns` operand, computed properties, or
-   something else is open. Two items have left since: the sort key, and the `UPDATE` patch tier,
-   which turned out to need a way to *write* a deep-path `SET` rather than a type at all — see
-   section 3.
+2. **Whether an RU estimate can be inferred at all** (section 1) — cheap to settle and it gates
+   two things: the cost model in RU, and the toolbox model in `DESIGN.md`, since a *k*-way split
+   currently scores *cheaper* than the statement it replaces and would be chosen for the wrong
+   reason.
 
 ---
 
@@ -196,6 +198,44 @@ The above are inputs; this is the model. Cosmos charges in RUs and the current m
 Calcite's abstract cost by constants. A model in RUs — a point read is 1, a query is 2.3 plus scanned
 size, a cross-partition query is that times the fan-out — would make pushdown decisions comparable
 with in-process alternatives on a real scale rather than a notional one.
+
+### Can an RU estimate be inferred for a plan at all? — *investigate first, then implement or not*
+
+The item above assumes a number can be produced *before* the query runs. That is not settled, and it
+is the thing to settle first, because the rest is wasted if it cannot.
+
+**What the service offers.** The charge, after the fact, which the adapter already records on
+`cosmos.request_charge`. Query metrics in the diagnostics naming what the charge was made of —
+retrieved document count and size, output count and size, index hit counts. Index metrics, already
+reachable through the `indexMetrics` operand, saying which indexes a statement used. What does not
+exist is a dry run: Cosmos has no `EXPLAIN` that prices a statement without executing it, so nothing
+can be asked, only computed.
+
+**So an estimate would be analytic over inputs the adapter already holds** — row count from
+statistics, average document size (derived and still unused, per the item above), Calcite's own
+selectivity for the pushed predicate, the projection width, and `PartitionKeyIsComplete` for the
+fan-out multiplier. The coefficients are measurable rather than guessable: fit them against a matrix
+of shapes on a real account, which is what `CosmosLookupRoutingMeasurementTests` and the *spelling is
+not a price* table already do on a smaller scale.
+
+**The bar is lower than it looks.** The planner ranks plans; it does not report a bill. An estimate
+wrong by a constant factor but right in its ordering is worth as much as an accurate one, which
+makes this far more tractable than predicting a charge.
+
+**Two ways it fails, which is why the answer may be no.**
+
+- *Comparability.* Cosmos nodes would cost in RU while the in-process side costs in Calcite's
+  abstract units, and the conversion between them is itself a guess. A wrong conversion is worse
+  than today's flat `CosmosConvention.CostMultiplier`, because it is wrong with confidence and at
+  scale.
+- *Account dependence.* If the coefficients move with indexing policy, document size distribution,
+  or serverless versus provisioned, a fit taken on one account mispredicts on another — at which
+  point *Feeding `RequestCharge` back* is the honest route, since it measures the account in hand
+  rather than assuming one.
+
+**What would settle it.** Not "how close is the estimate" but "does it order a set of real plan
+alternatives the way the measured charges do". A disagreement on ranking is the only error that
+costs anything, and the measurement is cheap given the harness that exists.
 
 ---
 
@@ -308,9 +348,9 @@ absent. And the clause survives inside a view: a model view selecting
 `JSON_VALUE(p."_etag", '$.a' RETURNING INTEGER) AS "N"` presents `N` to a `DbDataReader` as
 `INTEGER`/`Int32`, over three rows.
 
-**Which reaches past this entry.** A typed column over a document path is section 6's open question,
-and this is one written in standard SQL, in a view, with no operand and nothing declared to the
-schema. It is still the caller's word — but a wrong word fails rather than lies: `RETURNING INTEGER`
+**Which reaches past this entry.** A typed column over a document path is the surface section 6
+rejects, and this is one written in standard SQL, in a view, with no operand and nothing declared to
+the schema — which is the whole difference. It is still the caller's word — but a wrong word fails rather than lies: `RETURNING INTEGER`
 over a path holding a string makes the service return a string where the plan declared an integer,
 and `CosmosJson` refuses to coerce it, which is the opposite failure mode from the one section 6
 declines an operand for. What it does **not** give is a `RexInputRef`: a `JSON_VALUE` call is an
@@ -516,14 +556,17 @@ is not offered, and one thing that cannot be fixed here at all.
   `IS DISTINCT FROM`, expressible with the `??` operator once the null-versus-undefined semantics are
   measured.
 
-### Temporal — *large, and its prerequisite is a stated representation*
+### Temporal — *large, and the representation is discovered rather than stated*
 
 Cosmos has `DateTimeAdd`, `DateTimeDiff`, `DateTimePart`, `DateTimeBin` and tick conversions; Calcite
 has `EXTRACT`, `TIMESTAMPADD`, `TIMESTAMPDIFF`. The mapping is mechanical and the representation is
 not: a date is an ISO string or an epoch number by application convention, and `_ts` is the only value
 whose encoding the service defines. Pushing a temporal function down means knowing what the column
-*is*, and nothing in the row model says. `_ts` alone is reachable without answering that; everything
-else waits on section 6.
+*is*, and nothing in the row model says. `_ts` alone is reachable without answering that. For the
+rest the question goes to the service rather than to the caller: `IS_DATETIME` recognises an ISO 8601
+string and `IS_NUMBER` an epoch, and where the parse check is too weak a shape check is constructible
+out of `LENGTH` and `ENDSWITH` — measured, and written up under *Rewriting a typed comparison into one
+the service can evaluate* below. Section 6 records why that is the route and not a declaration.
 
 ### Rewriting a typed comparison into one the service can evaluate
 
@@ -684,14 +727,16 @@ See *Temporal* above, whose prerequisite this is a narrower statement of.
 
 ## 5. Planner
 
-### Nullable aggregates — *blocked on a column with a stated type*
+### Nullable aggregates — *the guard stands in for the type*
 
 The null-semantics refusals are the biggest source of declined aggregates: `SUM(c.v)` over a nullable
 column is `undefined` at the service where SQL skips the null. The fix is rewriting the rendered
 argument so Cosmos skips it too — aggregates skip *undefined*, and arithmetic on a JSON null yields
 it, so `SUM(c.v * 1)` is the candidate for a column known to be numeric. The rewrite is type-directed
 and cannot be applied blindly (`* 1` over a string silently drops it from `MIN`/`MAX`), and a path
-inside the map column is `ANY` — so there is nothing to fire on until section 6 has an answer.
+inside the map column is `ANY` — but the service answers the type question itself, so
+`IIF(IS_NUMBER(c.v), c.v * 1, undefined)` guards the rewrite per row where a declaration would have
+guarded it per column. Section 6 rejected the declaration; this is what stands in its place.
 Measure on the emulator before building: that the null is skipped, that an all-null group comes back
 as SQL's null does, and that `* 1` does not disturb a large integer.
 
@@ -766,16 +811,23 @@ path happens to be nullable — see the geography items in section 4, and
 
 ## 6. Row model and types
 
-- **A typed column over a document path — *large, and it is a question before it is work*.** Three
-  items converge here and none of them can move without it: the `UPDATE` patch tier (section 3), a
-  temporal basis (section 4) and the nullable-aggregate rewrite (section 5). Each needs the same
-  thing — a document path the planner can see the *type* of — and the map column gives it `ANY`. A `columns` operand
-  taking caller-declared paths was built for this and dropped; it is not the only shape. **Computed
-  properties** (section 5) are the other candidate and a materially different one: the container
-  declares them, so the adapter would be reading metadata it already trusts rather than taking a
-  caller's word, and they are indexable — but the caller must create them on the container first,
-  and their type still is not declared anywhere the adapter can read. Whichever way, this is a new
-  public surface and wants a decision recorded in `DESIGN.md` before any code.
+- **A typed column over a document path — *rejected; written down here so it stops being
+  reopened*.** The question was whether a caller could declare paths and types — a `columns` operand,
+  or the container's computed properties — so that the planner could see a type where the map column
+  gives `ANY`. The answer is no, and it has been given more than once. The row model is the map
+  column and the `_JSON` column, and a query has to work directly off those; a surface that asks the
+  caller to describe the documents before querying them is the thing being avoided, not a feature
+  that is missing.
+
+  **What replaces it is the service's own type predicates.** Cosmos will say what a value *is*, per
+  row, at query time — `IS_NUMBER`, `IS_INTEGER`, `IS_STRING`, `IS_DATETIME`, `IS_NULL`,
+  `IS_DEFINED` — with `IIF` to act on the answer, and a shape check is constructible on top of them
+  out of `LENGTH` and `ENDSWITH` where a parse check is too weak. A guard is *stronger* than a
+  declaration, because it is evaluated against the document rather than promised about it; and where
+  a guard partitions the rows rather than filtering them, the toolbox model in `DESIGN.md` admits a
+  statement for each side. The worked form is in section 4 under *Rewriting a typed comparison into
+  one the service can evaluate*. Each item that once named the declaration as its blocker still
+  needs its own measurement. None of them needs a type the caller states.
 
   **The sort key is no longer one of the four, and what it left behind reframes the other three.**
   A nullable sort key is now reachable when the query itself removes the nulls — for a promoted
@@ -785,8 +837,8 @@ path happens to be nullable — see the geography items in section 4, and
   declared column buys is not only a type the planner can see but a path that projects as a
   *reference*, at which point Calcite's whole existing metadata layer — predicates, nullability,
   keys, distinctness — begins working over it with no adapter code at all. That is a larger and
-  more concrete argument for the surface than "a type to work with", and it is the one worth
-  putting to the decision. Measured; recorded in `DESIGN.md`.
+  more concrete account of what the map row model costs than "no type to work with". It is a cost
+  the model accepts, not an argument to reopen it. Measured; recorded in `DESIGN.md`.
 
   **Paging a view by one of its own columns is the fourth thing it would buy, and the one with a
   measurement behind it.** A cast to text now projects — the value is sent as it stands and rendered
@@ -795,12 +847,14 @@ path happens to be nullable — see the geography items in section 4, and
   sorts before `9`. Nor could the rendering be put into the clause instead — measured, the service
   answers `ORDER BY ToString(c.x)` with 400, error 2206, *"ORDER BY item expression could not be
   mapped to a document path"*. So a page ordered by a cast column reads every matching document, and
-  the only thing that would change it is a column the sort can name. See `DESIGN.md` under
-  *Projecting a cast to text is a reading, not a translation*.
+  the only thing that would change it is a column the sort can name — which is the surface this
+  section declines. A standing cost of the row model, then, rather than an open item. See
+  `DESIGN.md` under *Projecting a cast to text is a reading, not a translation*.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
-  numbers; what is missing is any declared basis for deciding which a column holds.
+  numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
+  so the basis is asked of the service per row.
 
 ---
 
