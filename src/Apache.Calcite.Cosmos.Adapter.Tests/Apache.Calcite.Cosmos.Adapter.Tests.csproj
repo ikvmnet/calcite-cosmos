@@ -1,4 +1,4 @@
-﻿<Project Sdk="MSTest.Sdk/4.3.3">
+﻿<Project Sdk="MSTest.Sdk/4.4.0">
 
     <PropertyGroup>
         <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
@@ -15,7 +15,7 @@
              carries build assets to consumers; marking it private disables the one mechanism it has, and a project
              that references ours then compiles and fails at run time with `Could not load file or assembly
              'calcite.core'`. The default PrivateAssets keeps `build` to ourselves and lets buildTransitive through. -->
-        <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0" />
+        <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.10.0" />
         <!-- The workflow runs the suite by handing `dotnet test` a built assembly together with the
              trx logger, a runsettings file and a filter, which is the VSTest command line. MSTest.Sdk 3
@@ -23,7 +23,7 @@
              4 references it only under UseVSTest, and the MSTest runner it enables by default does not
              answer to those arguments. Named here so the workflow keeps working — dropping it instead
              means rewriting how CI invokes tests. -->
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
         <!-- The ADO.NET provider, which is the path the README documents and the one issue #34 is
              about: a model document, a DbConnection, a DbCommand. CosmosConnectionFunctionTests is
              the only thing here that needs it, and it needs it because a claim about what a
@@ -31,12 +31,11 @@
              the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
              gives about core and linq4j. -->
         <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.64" />
-        <!-- Only the tests need this. The adapter recognises an ST_GEOG_* call by name, which is what an
-             adapter has to do anyway: CalciteCatalogReader.toOp builds a fresh SqlUserDefinedFunction on
-             every lookup, so reference equality against the operator table never holds. The tests need the
-             operators themselves to build the calls. -->
+        <!-- The adapter references this too, and for a different reason: it recognises an ST_GEOG_* call
+             by name, which is what an adapter has to do anyway — CalciteCatalogReader.toOp builds a fresh
+             SqlUserDefinedFunction on every lookup, so reference equality against the operator table never
+             holds. The tests need the operators themselves, to build the calls. -->
         <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.64" />
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.53" />
         <!-- Starts the emulator for the tests that need a service, where one is not already running.
              Those tests were reachable only by starting a container by hand, so a run that skipped
              them reported success for a run that checked none of them — and the defects they catch

@@ -34,7 +34,7 @@
              carries build assets to consumers; marking it private disables the one mechanism it has, and a project
              that references ours then compiles and fails at run time with `Could not load file or assembly
              'calcite.core'`. The default PrivateAssets keeps `build` to ourselves and lets buildTransitive through. -->
-        <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.0" />
+        <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <!-- Held at the version the adapter resolves core to, for the reason its own project file
              gives: core and linq4j are not separable across versions. -->
         <MavenReference Include="org.apache.calcite:calcite-csv" Version="1.42.0" />
