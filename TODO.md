@@ -683,6 +683,36 @@ inside the map column is `ANY` — so there is nothing to fire on until section 
 Measure on the emulator before building: that the null is skipped, that an all-null group comes back
 as SQL's null does, and that `* 1` does not disturb a large integer.
 
+### A sort whose null placement disagrees is declined, and need not be — *medium*
+
+Today the service's null placement is a constraint on the caller: `defaultNullCollation` must say
+`LOW` or every sort over a nullable path silently declines, which the README carries as an
+integration requirement. That is the adapter asking the query to match the store rather than
+implementing what Calcite asked for.
+
+It can be implemented, because **the store is a toolbox rather than a counterpart**. Nulls all
+compare equal, so their order among themselves is free, and the requested placement is a
+concatenation:
+
+- the non-null rows, ordered, from one statement;
+- the null and absent rows, in any order, from a second — `WHERE NOT IS_DEFINED(x) OR IS_NULL(x)`;
+- read in whichever order the collation asked for.
+
+That is exact rather than approximate, and it is the same partition-and-merge shape as the guarded
+temporal sort in section 4. What it costs is a second round trip, an `OFFSET`/`LIMIT` that has to be
+split across the two halves rather than pushed to either, and a null half that is unbounded in
+principle.
+
+**What is not available is doing it in one statement.** Ordering by a computed key that puts the
+nulls where they are wanted needs an expression in the clause, and the service refuses those —
+`ORDER BY IIF(…)` answers 400, error 2206, measured. A second sort key is refused beside a distance
+for the same reason. So the two-statement shape is not one option among several; it is the option.
+
+**A distance makes this more pressing than it was.** A computed distance is always nullable, where a
+promoted `id` is not, so a distance-ordered query needs `LOW` in every case rather than only when the
+path happens to be nullable — see the geography items in section 4, and
+`CosmosDistanceSortPlanningTests`, which sets it for that reason.
+
 ### Smaller rules
 
 - **Binding the traversal element in `TryBindOutput`** — *small, and blocked on one measurement.*
