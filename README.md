@@ -177,8 +177,8 @@ This is Calcite's own `Programs.CALC_PROGRAM` and it is a pass, not a set of rul
 
 A container has no row schema: two items may share nothing but `id`. So a table is **one map column
 holding the whole document**, named `_MAP`, plus promoted scalar columns for the paths the service
-guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is
-inferred by sampling documents, because a wrong guess yields an incorrect plan rather than a slow one.
+guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred by sampling documents, because a wrong guess yields an
+incorrect plan rather than a slow one.
 
 Reach anything else through the map column, to any depth:
 
@@ -268,6 +268,64 @@ sixteen operands, while the operator table's checker has no bound at all.
 > a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
 > predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
 > [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
+
+## Geography
+
+Cosmos reads coordinates as WGS84 and answers in metres. Calcite's own `ST_*` are planar JTS over an
+unprojected coordinate system and answer in the units of that system, so the two are different
+questions with the same spelling — and not off by a factor, the ratio varying with latitude and with
+bearing. The geodesic reading comes from
+[`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography), which this
+package requires.
+
+**There is no `GEOGRAPHY` type.** A geography and a geometry are the same type carried by the same
+class, and the name of the operator applied to a value is the whole of what says which reading is
+meant — `ST_GEOG_DISTANCE` rather than `ST_DISTANCE`. Calcite's `SqlTypeName` is a closed enum and a
+type of one's own cannot be registered on a schema, which is how an adapter brings its functions with
+it, so the type gave way to the registration. The cost is that a mixed expression is not refused:
+`ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees and measures in metres, and both halves
+run.
+
+**Reaching the names.** Either register them on the root schema, or chain the table if you assemble
+your own planner:
+
+```csharp
+GeographySchema.AddTo(rootSchema);
+SqlOperatorTables.chain(SqlStdOperatorTable.instance(), GeographyOperatorTable.Instance())
+```
+
+**Reading a stored shape.** No column is typed as a geometry — nothing in Calcite converts the `ANY` a
+map lookup yields into one — so a shape in a document reaches an operator by being parsed out of text:
+
+```sql
+SELECT c."id"
+FROM "products" AS c
+WHERE ST_GEOG_DWITHIN(
+        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location')),
+        ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
+        1000)
+```
+
+That pushes. `JSON_QUERY` over `_JSON` resolves to a document path, so the constructor collapses onto
+it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads
+the property as the shape, so the text and the parsing are a round trip it never needed.
+
+**What pushes.** `ST_GEOG_DISTANCE`, `ST_GEOG_WITHIN`, `ST_GEOG_INTERSECTS` and `ST_GEOG_ISVALID` are
+the service's own functions under another name. `ST_GEOG_DWITHIN` becomes the distance comparison the
+reference documents a spatial index as answering. A geography constant is written out as the GeoJSON
+object. A constructor over a *computed* string is declined and stays in process, because rendering one
+would mean evaluating it.
+
+**A geodesic call over a planar container is refused while planning.** The Cosmos spelling is the
+unprefixed one, so what a rendered `ST_DISTANCE` means at the service is decided by the container's
+`geospatialConfig` rather than by the name in the query. Over a container reading `Geometry` the
+service would answer the planar question, in the units of the coordinate system, and say nothing about
+having done so.
+
+> **A pushed predicate is not rechecked in process.** These push exactly or they do not push. Whether
+> the package's S2 evaluator agrees with the service at a polygon edge, across the antimeridian, at
+> the poles, or on a distance sitting exactly on a threshold has not been measured, and a recheck that
+> disagrees discards rows the service returned.
 
 ## What a query cost
 

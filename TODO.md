@@ -392,6 +392,33 @@ owns the client.
   did change is the refusal: a scoring function reaching code generation now says that Cosmos never
   returns a relevance score, in place of Calcite's `must implement ImplementableFunction`.
 
+### Geography
+
+The translations, the refusal and the path pushdown are in place. What is left is verification, and
+one thing that cannot be fixed here at all.
+
+- **Nothing has been run against a live service** — *small, and it is the standing house rule rather
+  than an improvement.* Every other emitted statement form in this adapter was executed against a real
+  account before being believed. The geography forms — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`,
+  `ST_ISVALID`, and the `ST_DISTANCE(…) <= d` that `ST_GEOG_DWITHIN` becomes — are verified only as
+  generated text. The refusal over a container reading `Geometry` wants the same treatment: it is
+  reasoned from the reference and not measured.
+- **A pushed predicate is not rechecked in process** — *medium, and it is a measurement before it is
+  work.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
+  needs an in-process answer that agrees with the service. The geography package computes one over S2.
+  Whether it agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a
+  distance sitting exactly on a threshold is unmeasured, and a recheck that disagrees discards rows the
+  service returned. The same measurement settles whether `ST_GEOG_DWITHIN` should render `<=` or `<`;
+  it is written inclusive after PostGIS and the package's own bound has not been read against it.
+- **A mixed expression is not refused** — *not available; recorded so nobody looks again.* There is no
+  `GEOGRAPHY` type — a geography and a geometry are the same type carried by the same class — so
+  `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees, measures in metres, and both halves run.
+  Nothing in this adapter can see the difference, and the type that would show it cannot exist while
+  `SqlTypeName` is closed. See `DESIGN.md`.
+- **A geometry cannot be an `ORDER BY` key at the service** — *not available; recorded so nobody looks
+  again.* Cosmos orders by a document path and a geometry is not an orderable value, so a query asking
+  for one sorts in process over whatever the scan returns.
+
 ### Subqueries
 
 - **`EXISTS` over an item-scoped subquery** — *large.* `EXISTS (SELECT VALUE t FROM t IN c.tags WHERE …)`

@@ -20,6 +20,8 @@ This is a property of the service, not a limitation of the adapter. The Cosmos v
 
 A container has no row schema, so a table is modelled as one map column carrying the whole document, plus promoted scalar columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred from sampling documents.
 
+Geography is geodesic and Calcite's own `ST_*` are planar, so the geodesic reading comes from the `ST_GEOG_*` operators in [`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography). There is no `GEOGRAPHY` type: the operator's name is the whole of what says which reading is meant.
+
 ## Install
 
 ```sh
@@ -91,7 +93,7 @@ Add `"indexMetrics": true` to the operand to have the service report which index
 
 ## Status
 
-Under development. Statement generation, container metadata, the schema and table layer, the scan/filter/project/sort/unnest/aggregate/rank nodes, and execution inside a Calcite plan are in place and tested. `INSERT` and `DELETE` are supported — Cosmos SQL has no DML, so a write is item CRUD over the rows a `TableModify` supplies rather than generated text; `UPDATE` is declined until it can be a patch rather than a read-modify-write. What an insert writes when the map column and a promoted column describe the same document is recorded in [DESIGN.md](DESIGN.md) under *What an insert writes*. Every emitted statement form is executed against a live service, and the suite runs against a real account when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name one — which the emulator is not a substitute for, it having been found to accept statements the service rejects and reject features the service implements. See [DESIGN.md](DESIGN.md), including its record of assumptions still to be settled.
+Under development. Statement generation, container metadata, the schema and table layer, the scan/filter/project/sort/unnest/aggregate/rank nodes, and execution inside a Calcite plan are in place and tested. `INSERT` and `DELETE` are supported — Cosmos SQL has no DML, so a write is item CRUD over the rows a `TableModify` supplies rather than generated text; `UPDATE` is declined until it can be a patch rather than a read-modify-write. The geography operators the service evaluates — distance, within, intersects, validity and a distance bound — are translated, and a geodesic call over a container that reads its coordinates as a plane is refused while planning. A shape stored in a document is reached through `ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", …))`, which pushes as the path it names. Nothing pushed is rechecked in process; the root README explains both under *Geography*. What an insert writes when the map column and a promoted column describe the same document is recorded in [DESIGN.md](DESIGN.md) under *What an insert writes*. Every emitted statement form is executed against a live service, and the suite runs against a real account when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name one — which the emulator is not a substitute for, it having been found to accept statements the service rejects and reject features the service implements. See [DESIGN.md](DESIGN.md), including its record of assumptions still to be settled.
 
 ## Further reading
 

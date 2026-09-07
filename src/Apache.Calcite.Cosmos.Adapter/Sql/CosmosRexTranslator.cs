@@ -1310,7 +1310,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ["IS_OBJECT"] = ("IS_OBJECT", 1, 1),
             ["IS_PRIMITIVE"] = ("IS_PRIMITIVE", 1, 1),
             ["IS_STRING"] = ("IS_STRING", 1, 1),
+            // The geography operators, whose Cosmos spellings are the unprefixed ones. The prefix exists
+            // because Calcite's own ST_* are planar and mean something else — see DESIGN.md — and it goes
+            // away here because the service has only the one reading, which is the geodesic one.
+            [Geography.Sql.GeographyOperatorTable.StGeogDistance.getName()] = ("ST_DISTANCE", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.StGeogWithin.getName()] = ("ST_WITHIN", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.StGeogIntersects.getName()] = ("ST_INTERSECTS", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.StGeogIsValid.getName()] = ("ST_ISVALID", 1, 1),
         };
+
+        /// <summary>
+        /// Every name the geography package declares, whether or not this adapter translates it.
+        /// </summary>
+        /// <remarks>
+        /// Taken from the operator table rather than matched on the <c>ST_GEOG_</c> prefix, so that the
+        /// refusal over a planar container covers the whole surface the package offers — including the
+        /// names translated in process, which would otherwise be pushed past the check by not being here.
+        /// The operators cannot be compared by instance: a schema-registered function is rebuilt by
+        /// <c>CalciteCatalogReader</c> on every lookup, so only the name survives into the plan.
+        /// </remarks>
+        static readonly HashSet<string> GeographyFunctions = BuildGeographyFunctions();
+
+        static HashSet<string> BuildGeographyFunctions()
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+
+            var operators = Geography.Sql.GeographyOperatorTable.Instance().getOperatorList();
+            for (var i = 0; i < operators.size(); i++)
+                names.Add(((org.apache.calcite.sql.SqlOperator)operators.get(i)).getName());
+
+            return names;
+        }
 
         /// <summary>
         /// Writes a function whose Cosmos form differs from SQL's only in name.
@@ -1318,6 +1348,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         void WriteNamedFunction(StringBuilder builder, RexCall call)
         {
             var name = call.getOperator().getName();
+
+            if (GeographyFunctions.Contains(name))
+            {
+                RequireGeographyReading(name);
+
+                // Cosmos has no ST_DWITHIN and no constructor, so both are shapes rather than renames.
+                // Written as comparisons rather than switch labels because the names belong to the
+                // operators and a case label has to be a constant.
+                if (name == Geography.Sql.GeographyOperatorTable.StGeogDWithin.getName())
+                {
+                    WriteGeographyDWithin(builder, call);
+                    return;
+                }
+
+                if (name == Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson.getName())
+                {
+                    WriteGeographyLiteral(builder, call);
+                    return;
+                }
+            }
 
             switch (name)
             {
@@ -1373,6 +1423,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
 
             WriteFunctionCall(builder, call, mapping.Name);
+        }
+
+        /// <summary>
+        /// Writes <c>ST_GEOG_DWITHIN</c> as the comparison it is defined as.
+        /// </summary>
+        /// <remarks>
+        /// Cosmos has no <c>ST_DWITHIN</c>. It has <c>ST_DISTANCE</c>, and the reference documents a
+        /// distance compared against a constant as what its spatial index answers, so the rewritten form
+        /// is the one the service was going to want anyway rather than a fallback.
+        /// <para>
+        /// <b>The comparison is inclusive.</b> That is PostGIS's reading of <c>ST_DWithin</c>, which is
+        /// what the operator is named after. Whether the package's own in-process implementation agrees
+        /// at exactly the boundary is unverified, and it matters only once a pushed predicate is
+        /// rechecked in process — which <c>DESIGN.md</c> holds until agreement with the service has been
+        /// measured.
+        /// </para>
+        /// </remarks>
+        void WriteGeographyDWithin(StringBuilder builder, RexCall call)
+        {
+            builder.Append("ST_DISTANCE(");
+            Write(builder, Operand(call, 0));
+            builder.Append(", ");
+            Write(builder, Operand(call, 1));
+            builder.Append(") <= ");
+            Write(builder, Operand(call, 2));
+        }
+
+        /// <summary>
+        /// Writes <c>ST_GEOG_GEOMFROMGEOJSON</c> as the thing it names — a document path, or the object.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos has no constructor to translate this into: a geography in a statement <em>is</em> a
+        /// GeoJSON object, either a property of the document or a literal written out. So the constructor
+        /// disappears in both cases and its argument is written where the call stood.
+        /// </para>
+        /// <para>
+        /// <b>The path case is what makes a stored geography reachable at all.</b> An <c>ST_GEOG_*</c>
+        /// operator takes a geometry and no column has that type, so a shape in a document reaches one
+        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location'))</c>.
+        /// In process that is exactly what happens. Pushed down it is not: the service reads the property
+        /// as the shape, so the text and the parsing are a round trip it never needed, and what it wants
+        /// is the path.
+        /// </para>
+        /// <para>
+        /// Anything else is declined rather than guessed at. A constructor over a computed string would
+        /// have to be evaluated to be rendered, and evaluating it is what the service is being asked to
+        /// do; such a call stays in process, where the geography package answers it.
+        /// </para>
+        /// </remarks>
+        void WriteGeographyLiteral(StringBuilder builder, RexCall call)
+        {
+            var argument = Operand(call, 0);
+
+            // A stored geography. The constructor disappears and the path is written where the call stood:
+            // Cosmos reads the property itself as the shape, so parsing it out and handing back text is a
+            // step the service never needed. This is what JSON_QUERY(c."_JSON", '$.location') collapses to.
+            if (TryResolvePath(argument, out var path) && path is not null)
+            {
+                builder.Append(path.ToString());
+                return;
+            }
+
+            // A constant. Cosmos has no constructor to translate into either — a geography in a statement
+            // is the GeoJSON object — so the literal is written out as it stands.
+            if (argument is RexLiteral literal && GetLiteralValue(literal) is string geoJson)
+            {
+                builder.Append(geoJson);
+                return;
+            }
+
+            throw new CosmosTranslationException(
+                "A geography translates where its GeoJSON is a literal or resolves to a document path.");
         }
 
         /// <summary>
@@ -1703,6 +1826,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             throw new CosmosTranslationException(
                 $"'{name}' requires a full text policy or index on '{policyPath}'; " + Declared(_container.FullTextPaths) + ".");
+        }
+
+        /// <summary>
+        /// Refuses a geodesic call over a container that reads its coordinates as a plane.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The Cosmos spelling of every one of these is the unprefixed one, so what a rendered
+        /// <c>ST_DISTANCE</c> means at the service is decided by the container's <c>geospatialConfig</c>
+        /// and not by the name in the query. Over a container reading <c>Geometry</c> the service would
+        /// answer the planar question, in the units of the coordinate system rather than in metres, and
+        /// nothing in the response would say so.
+        /// </para>
+        /// <para>
+        /// This is unlike the full text gate above, which exists because the service returns an error.
+        /// Here the service returns an answer. That is the worse failure, and it is why this refuses
+        /// while planning rather than leaving it to be noticed.
+        /// </para>
+        /// </remarks>
+        /// <param name="name">The function being written, for the message.</param>
+        /// <exception cref="CosmosTranslationException">The container reads its coordinates as a plane.</exception>
+        void RequireGeographyReading(string name)
+        {
+            if (_container is null || _container.ReadsGeography)
+                return;
+
+            throw new CosmosTranslationException(
+                $"'{name}' is geodesic and the container reads its coordinates as a plane; its geospatialConfig says Geometry.");
         }
 
         /// <summary>

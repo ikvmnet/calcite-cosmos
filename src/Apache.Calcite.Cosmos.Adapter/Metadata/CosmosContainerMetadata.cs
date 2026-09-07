@@ -48,6 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string[] _excludedPaths;
         readonly string[] _fullTextPaths;
         readonly string[] _vectorPaths;
+        readonly bool _readsGeography;
 
         /// <summary>
         /// Initializes a new instance.
@@ -59,6 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="excludedPaths">The indexing policy's excluded path patterns.</param>
         /// <param name="fullTextPaths">The paths the container declares full text searchable.</param>
         /// <param name="vectorPaths">The paths the container declares vector searchable.</param>
+        /// <param name="readsGeography">Whether the container reads coordinates as geography rather than as a plane.</param>
         /// <param name="statistics">What the service reports about the container's size, or <c>null</c> where it was not asked.</param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is <c>null</c> or empty.</exception>
         public CosmosContainerMetadata(
@@ -69,6 +71,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             IEnumerable<string>? excludedPaths = null,
             IEnumerable<string>? fullTextPaths = null,
             IEnumerable<string>? vectorPaths = null,
+            bool readsGeography = true,
             CosmosContainerStatistics? statistics = null)
         {
             if (string.IsNullOrEmpty(name))
@@ -82,6 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _excludedPaths = excludedPaths is null ? Array.Empty<string>() : new List<string>(excludedPaths).ToArray();
             _fullTextPaths = fullTextPaths is null ? Array.Empty<string>() : new List<string>(fullTextPaths).ToArray();
             _vectorPaths = vectorPaths is null ? Array.Empty<string>() : new List<string>(vectorPaths).ToArray();
+            _readsGeography = readsGeography;
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -226,6 +230,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// indexes — see <see cref="IsPathVectorSearchable"/>.
         /// </remarks>
         public IReadOnlyList<string> VectorPaths => _vectorPaths;
+
+        /// <summary>
+        /// Gets whether the container reads coordinates as geography rather than as a plane.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>geospatialConfig</c> is declared once for a container and applies to everything in it,
+        /// so this is a container-wide fact and not a per-path one. It decides whether an
+        /// <c>ST_GEOG_*</c> call may be pushed at all: the Cosmos spelling is the unprefixed one, and
+        /// what that spelling <em>means</em> at the service is whatever this says. Pushing a geodesic
+        /// call into a container reading <c>Geometry</c> would render <c>ST_DISTANCE</c> and get a
+        /// planar answer back with nothing said.
+        /// </para>
+        /// <para>
+        /// Absent configuration is geography, which is the service's own default rather than a guess.
+        /// </para>
+        /// </remarks>
+        public bool ReadsGeography => _readsGeography;
 
         /// <summary>
         /// Determines whether the container declares a path searchable by the full text functions.
@@ -380,7 +402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             return statistics is null
                 ? this
-                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, statistics);
+                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics);
         }
 
         Lazy<bool> _partitionKeyDelete = new(() => false, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -413,7 +435,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (probe is null)
                 throw new ArgumentNullException(nameof(probe));
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
@@ -447,7 +469,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (timeToLive is TimeSpan span && span <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeToLive), "A statistics time to live must be positive.");
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
             metadata._statisticsProvider = provider;
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;
