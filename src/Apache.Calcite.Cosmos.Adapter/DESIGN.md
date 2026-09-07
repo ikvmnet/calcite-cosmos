@@ -772,8 +772,10 @@ rather than leaving it a matter of caution: `ORDER BY ToString(c.label)`, `ORDER
 `ORDER BY c.label || 'x'` each answer 400, error code 2206 — *"Unsupported ORDER BY clause. ORDER BY
 item expression could not be mapped to a document path."* `ORDER BY (c.label)` is accepted, so the
 restriction is exactly what the message says: the sort item must *be* a path. Rendering a cast into the
-clause was therefore never available, whatever it would have cost. Paging a view by one of its own cast
-columns waits on the typed column of `TODO.md` section 6, which gives the sort a path to name.
+clause was therefore never available, whatever it would have cost. So paging a view by one of its own
+cast columns reads every matching document. The one thing that would change it is a column the sort
+could name, and that surface is rejected — `TODO.md` section 6 — which makes this a standing cost of
+the row model rather than a pending item.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
@@ -808,8 +810,9 @@ one is a plain reference — so ordering by a cast column, which is not ordering
 transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
 the planner costs both.
 
-This does not make an unrenderable projection pushable and is not a substitute for the typed column
-that would; what it removes is such a projection's ability to strand everything above it. Where the
+This does not make an unrenderable projection pushable, and it is not a substitute for a column the
+sort could name — a surface the row model declines, `TODO.md` section 6. What it removes is such a
+projection's ability to strand everything above it. Where the
 cast is to text the projection pushes on its own and there is nothing left to transpose past — but the
 rule still carries the cases that do not render, and the guard is what keeps it from carrying the sort
 that must not move.
@@ -1654,8 +1657,9 @@ That gives a ladder:
    property is `PatchItemAsync`'s native input, far cheaper than a replace. But no such column
    exists: the row model's columns are all identity, placement, service bookkeeping, or the document
    itself (the enumeration below), and a path *inside* the document has no column to be named by. A
-   `columns` operand promoting caller-declared, typed paths was built for this and dropped; that
-   the tier waits on some answer of that kind is the durable part, and which answer is open.
+   `columns` operand promoting caller-declared, typed paths was built for this, dropped, and is now
+   rejected outright (`TODO.md` section 6), so the target cannot arrive by declaration. It has to
+   arrive by expression instead, which is (3).
 3. **Static decomposition — future.** A mutation operator in the Cosmos table (`JSON_SET`-style,
    the way JSON-column databases spell copy-and-modify) would let a rule read patch operations
    straight off a `SET "_MAP" = JSON_SET(…)` expression at plan time.
