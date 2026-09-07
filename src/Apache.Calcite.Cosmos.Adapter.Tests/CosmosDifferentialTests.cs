@@ -700,6 +700,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'shoes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> 'bikes'", false),
 
+            // The same equality with the accessor said in SQL/JSON, which is the cast a _JSON view
+            // writes and which was dropped over the map subscript only (#71). Over the same seven
+            // values, because the claim is the same: JSON_VALUE without RETURNING renders what the cast
+            // over ANY renders and answers null for the rest. The refused literal, the partition key
+            // through the cast, and the projection above the dropped comparison -- which stays in
+            // process over this spelling -- come with it.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'shoes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.category') AS VARCHAR) = 'b'", false),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'", false),
+
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
             // reader already builds, so these are asked of a field seeded to hold a string, a number, a

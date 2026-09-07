@@ -1083,6 +1083,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().NotContain("CosmosFilter", "the predicate reads a rendering, not a path: " + plan);
         }
 
+        // ── The same cast, the accessor said in SQL/JSON ──────────────────────────
+        //
+        // A view over the JSON column casts a JSON_VALUE where a view over the map column casts an
+        // ITEM, and the two address the same path. The cast to text is dropped over either, for the
+        // same reason: without a RETURNING clause the accessor reads the value as text, which is the
+        // rendering the cast over ANY performs, so the argument on TryTextCastOperand carries over.
+
+        [TestMethod]
+        public void ACastToTextOverAJsonAccessorPushesAsAComparison()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'"))
+                .Should().Contain("WHERE (c.label = @p0)");
+        }
+
+        [TestMethod]
+        public void ACastToTextOverAJsonAccessorToThePartitionKeyConfinesExecution()
+        {
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.category') AS VARCHAR) = 'bikes'"));
+
+            query.PartitionKeyValues.Should().Equal("bikes");
+            query.Sql.Should().Contain("WHERE (c.category = @p0)");
+        }
+
+        /// <remarks>
+        /// The literal is held to the same test as over the map column: text a stored number renders
+        /// as is refused, because the accessor renders the number too.
+        /// </remarks>
+        [TestMethod]
+        public void ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = '30'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+        }
+
+        /// <remarks>
+        /// A RETURNING clause that converts is a different value under the cast: the number it
+        /// declares renders as digits and never as this text, where the path holds whatever the
+        /// document says. The cast is not dropped over one.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextOverAConvertingJsonAccessorIsNotTaken()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.price' RETURNING INTEGER) AS VARCHAR) = 'bikes'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+        }
+
+        /// <remarks>
+        /// JSON_QUERY returns the JSON text of an object or array and nothing for a scalar, so the
+        /// cast over it matches no document that stores this text. Not an accessor the cast drops over.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextOverAJsonQueryIsNotTaken()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_QUERY(c.\"_JSON\", '$.location') AS VARCHAR) = 'bikes'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+        }
+
+        /// <remarks>
+        /// A behaviour clause substitutes a value where the path has none, which is a document the
+        /// path itself does not match. Refused, whatever the clause says.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextOverAJsonAccessorWithABehaviourClauseIsNotTaken()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label' DEFAULT 'bikes' ON EMPTY) AS VARCHAR) = 'bikes'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+        }
+
+        /// <summary>
+        /// The same cast in a projection is not rendered, where over the map column it is.
+        /// </summary>
+        /// <remarks>
+        /// A projection has no literal to exclude the cases on. Measured against Calcite's own runtime,
+        /// <c>JSON_VALUE</c> answers null for an object or an array where the reader would render one
+        /// as <c>{x=1}</c> or <c>[x, y]</c>, so a rendered column would carry text for a document the
+        /// in-process plan carries nothing for. The filter beneath it pushes regardless.
+        /// </remarks>
+        [TestMethod]
+        public void ACastToTextOverAJsonAccessorInAProjectionIsNotRendered()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST(JSON_VALUE(c.\"_JSON\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'");
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrAsyncEnumerableProject", "the rendering stays in process: " + plan);
+            plan.Should().Contain("CosmosFilter", "and the filter pushes underneath it: " + plan);
+
+            Render(FindCosmos(best)).Should().Contain("WHERE (c.label = @p0)");
+        }
+
         // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path

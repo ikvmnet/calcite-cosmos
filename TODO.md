@@ -354,6 +354,15 @@ connection, `_MAP` against `_JSON`, node for node: projection, filter, sort, sor
 `IS NOT NULL`, `UNNEST` and the lookup join from either side all produce the identical plan, and a
 path assembled at run time declines on both sides.
 
+One shape was missing from that list, and it was the one a view is made of: `CAST(… AS VARCHAR) =
+'text'` was dropped over the map subscript and not over `JSON_VALUE`, because the test was that the
+operand is typed `ANY` and Calcite types the accessor `VARCHAR(2000)` (#71). The cast is now dropped
+over either spelling, on a measurement of Calcite's own runtime that the accessor renders what the
+cast over `ANY` renders and applies no width. What is deliberately *not* carried over is the same
+cast in a projection: `JSON_VALUE` answers null for an object or an array where the reader renders
+one, so a `_JSON` view's text columns stay in process. Recorded in `DESIGN.md` under *Casts over
+document values*.
+
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
 spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest

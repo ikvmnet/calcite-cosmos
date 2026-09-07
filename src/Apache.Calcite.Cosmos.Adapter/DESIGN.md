@@ -651,6 +651,21 @@ an array or object with a bracket. `c.x = 'text'` selects exactly the same docum
 including for absent and null, which match under neither. So the cast is dropped there and only there
 — see `CosmosRexTranslator.TryTextCastOperand`.
 
+**The same cast over `JSON_VALUE` is the same cast.** A view over `_JSON` writes
+`CAST(JSON_VALUE(doc, '$.x') AS VARCHAR)` where a view over `_MAP` writes `CAST(doc['x'] AS VARCHAR)`,
+and for a while only the second was dropped, because the test was that the operand is typed `ANY` —
+which a `JSON_VALUE` without `RETURNING` is not; Calcite types it `VARCHAR(2000)`. That keyed the
+exemption off the map subscript rather than off the value, and a caller-applied equality over a `_JSON`
+view read the container whole (#71). Measured against Calcite's own runtime, the accessor renders what
+the cast over `ANY` renders — `30` as `30`, `1e30` as `1.0E30`, `true` as `true`, a string as itself —
+and answers null for an absent path, a null, an object and an array, which the comparison then does
+not keep; and it applies no width at run time, `RETURNING VARCHAR(3)` returning `'bikes'` whole. So the
+argument above holds for it unchanged, and `CosmosRexTranslator.IsRenderedDocumentValue` admits the
+two-operand `JSON_VALUE` of a character type beside a value typed `ANY`. A `RETURNING` that converts
+is refused, since the cast then renders a converted value; `JSON_QUERY` is refused, being the JSON
+text of an object and null for a scalar; and a behaviour clause is refused, substituting a value where
+the path has none.
+
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
 non-string value could have rendered as them. This is not caution for its own sake: in the differential
@@ -759,6 +774,11 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
+**Only the map column's spelling.** The cast over `JSON_VALUE` drops in a comparison, where the literal
+excludes every case that could differ; a projection has no literal, and measured, `JSON_VALUE` answers
+null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered column
+over it would carry text for a document the in-process plan carries nothing for, so it stays in
+process — the filters around it push regardless.
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw
@@ -1281,6 +1301,12 @@ Measured against a connection, `_MAP` and `_JSON` produce the identical plan for
 filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array
 subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
 assembled at run time declines on both.
+
+One shape was not on that list and did not hold: the cast to text a view writes, which was keyed off
+the operand being typed `ANY` and so off the map subscript rather than off the path (#71). It is now
+dropped over either spelling — see *The same cast over `JSON_VALUE` is the same cast* under *Casts
+over document values* — with the one asymmetry that the same cast in a projection is rendered over
+`_MAP` and not over `_JSON`, for the reason recorded there.
 
 The path argument must be a literal, and the grammar is `$` with `.name`, `['name']` and `[0]` steps —
 a wildcard, a descent or a filter has no Cosmos rendering and is refused. `RETURNING` is not rendered:

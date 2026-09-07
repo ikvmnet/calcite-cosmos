@@ -585,8 +585,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// true.
         /// </para>
         /// <para>
-        /// <b>What the conditions are for.</b> The operand must be typed <c>ANY</c>, so the cast is
-        /// reinterpreting an untyped document value rather than converting a value that already has a
+        /// <b>What the conditions are for.</b> The operand must be a document value the cast renders
+        /// rather than converts — see <see cref="IsRenderedDocumentValue"/> — so the cast is
+        /// reinterpreting what the document holds rather than converting a value that already has a
         /// type. The literal must be text — a numeric literal is a different comparison — and must be
         /// text <see cref="IsUnambiguousText"/> admits, which is where the argument above is enforced
         /// rather than assumed. A cast carrying a format is refused by arity.
@@ -609,7 +610,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
+            if (IsRenderedDocumentValue(operand) == false)
                 return null;
 
             if (other is not RexLiteral literal)
@@ -626,6 +627,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             return value is string text && IsUnambiguousText(text) ? operand : null;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a document value that a cast to text renders rather
+        /// than converts.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Two spellings say it. A path read through the map column is typed <c>ANY</c>, and Calcite's
+        /// cast over one is the value's own rendering. <c>JSON_VALUE</c> without a <c>RETURNING</c>
+        /// clause is the same value in the other column's spelling: Calcite types it <c>VARCHAR(2000)</c>
+        /// and, measured against its own runtime, renders a stored number as digits, a boolean as
+        /// <c>true</c> or <c>false</c>, and a string as itself — exactly what the cast over <c>ANY</c>
+        /// renders — and answers null for an absent path, a null, an object or an array, which the
+        /// comparison then does not keep. So the argument on <see cref="TryTextCastOperand"/> carries
+        /// over unchanged to the cast a <c>_JSON</c> view writes, which is what this was missing (#71).
+        /// The same measurement found no width applied at run time — <c>RETURNING VARCHAR(3)</c>
+        /// returns <c>'bikes'</c> whole — so a character type of any width is the same reading.
+        /// </para>
+        /// <para>
+        /// A <c>RETURNING</c> that converts — a number, a boolean, a date — is refused: the cast then
+        /// renders a converted value, and a string in the document is not it. <c>JSON_QUERY</c> is
+        /// refused with it, being the JSON text of an object or an array and null for anything else,
+        /// which is not what the path holds. Only the two-operand form: an <c>ON EMPTY</c> or
+        /// <c>ON ERROR</c> clause substitutes a value where the path has none, which is a document the
+        /// path itself does not match.
+        /// </para>
+        /// </remarks>
+        internal static bool IsRenderedDocumentValue(RexNode operand)
+        {
+            var name = operand.getType()?.getSqlTypeName();
+            if (name == SqlTypeName.ANY)
+                return true;
+
+            return operand is RexCall call
+                && call.getOperator().getName() == "JSON_VALUE"
+                && call.getOperands().size() == 2
+                && (name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR);
         }
 
         /// <summary>
@@ -658,6 +697,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// and the cast stays in process. <c>SAFE_CAST</c> is admitted beside <c>CAST</c> because the
         /// two differ only in what happens when a conversion fails, and rendering a value as text
         /// never does.
+        /// </para>
+        /// <para>
+        /// <b>Only the map column's spelling.</b> The same cast over <c>JSON_VALUE</c> drops in a
+        /// comparison — see <see cref="IsRenderedDocumentValue"/> — and does not here, because a
+        /// projection has no literal to exclude the cases on. Measured, <c>JSON_VALUE</c> answers null
+        /// for an object or an array where the reader renders one as <c>{x=1}</c> or <c>[x, y]</c>, so
+        /// a rendered column over it would carry text for a document Calcite carries nothing for. It
+        /// stays in process, and the filters around it push regardless.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression to inspect.</param>
