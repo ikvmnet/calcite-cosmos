@@ -30,6 +30,52 @@ structure that follows from it.
 
 ---
 
+## The service is a toolbox, not a counterpart
+
+A pushdown is usually read as a mapping: this Calcite operator becomes that Cosmos function, and
+where there is no counterpart the operator stays in process. Most of this document is written that
+way, and for the ordinary cases it is the right way.
+
+It is not a law, and several refusals recorded here are refusals of that *model* rather than of the
+operation. Cosmos is a storage engine with a set of operations; what the adapter owes the plan is the
+right rows in the right order, by whatever combination of those operations produces them. **A node
+may issue more than one statement and combine the results.**
+
+**This already happens once.** `CosmosLookup` renders one statement per batch of build rows and joins
+what comes back in process — the batch size fixed so the statement shape is stable, a short batch
+padded rather than re-rendered. The model exists; it has simply not been generalised past the join.
+
+What it reopens, each recorded elsewhere in this document or in `TODO.md` as a limit:
+
+| | today | as a toolbox |
+| --- | --- | --- |
+| A disjunction | weakened, pushed loose, rechecked in process | one statement per branch, concatenated and de-duplicated by `id` — exact rather than approximate |
+| A sort whose null placement disagrees | declined entirely | the non-null rows ordered, the null rows in any order, concatenated |
+| A sort over strings of one shape | needs a promise about the stored shape | the conforming rows sorted at the service, the complement read separately |
+| An item-scoped `EXISTS` | an `Unnest` that cross-products the document with its array | a second query over the distinct keys, which is the semi-join it was |
+
+De-duplication is cheap in all of these because every document has an `id` and it is the one value
+guaranteed unique within a partition.
+
+### What bounds it
+
+**Two statements are not one point in time.** Cosmos offers no snapshot across queries: session
+consistency gives monotonic reads within a session, not atomicity between two of them. So a row can
+be edited between two reads and satisfy both halves of a split, or neither. For the lookup join this
+does not arise — the batches partition the *build* side, and each probe row is read once. For a split
+of one scan it does, and a technique that halves a scan has to say what it does about a row that
+moves between the halves.
+
+The other two costs are ordinary and worth stating anyway: a second round trip is request units and
+latency, and a `LIMIT` cannot be pushed to either half of a split — enough has to come from both
+before the merge decides what the first *n* rows are.
+
+None of this makes the model wrong. It makes it a technique with a stated boundary, which is what
+lets a future refusal be argued on its merits rather than on the assumption that one plan means one
+statement.
+
+---
+
 ## The Target Language
 
 Cosmos SQL is SQL-*shaped* but is not a relational language. Its surface is closed and small.
