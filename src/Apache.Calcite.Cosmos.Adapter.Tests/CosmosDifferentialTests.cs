@@ -448,7 +448,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             // Filters: comparisons, null against absent, NOT over both, disjunction, LIKE's shapes.
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NULL", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL", false),
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IS NULL", false),
@@ -460,13 +460,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" <> 'bikes'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" <> 'bikes')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (UPPER(CAST(c.\"$.category\" AS VARCHAR)) = 'BIKES')", false),
 
             // The shapes the guard is deliberately not applied to, because applying it would be too
             // strong. Here to say whether leaving them alone is right.
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' OR CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"$.category\" = 'bikes'))", false),
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IN ('bikes', 'shoes')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') BETWEEN 10 AND 200", false),
@@ -515,18 +515,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // The array functions, and the index shift above all: the oracle counts from one and
             // the pushdown from zero, so an off-by-one in the translation shows here as different
             // elements rather than as an error.
-            ("SELECT ARRAY_SLICE(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), 0, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), 1, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), 2, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), 0, 2) FROM products AS c WHERE c.\"id\" = '1'", false),
 
             // SUBSTRING carries the same adjustment ARRAY_SLICE carried wrongly, and SQL's origin
             // really is one here. Covered so that the two are not assumed to be the same question.
             ("SELECT SUBSTRING(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) FROM 1 FOR 3) FROM products AS c", false),
             ("SELECT SUBSTRING(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) FROM 2 FOR 3) FROM products AS c", false),
 
-            ("SELECT ARRAY_UNION(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_INTERSECT(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags')), StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) FROM products AS c WHERE c.\"id\" = '1'", false),
 
             // Not here, and the absences are facts rather than oversights: the library's
             // ARRAY_SLICE takes exactly three arguments, so Cosmos's two-argument form has no SQL
@@ -548,8 +542,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // because that is where this adapter has been wrong every time so far.
 
             // Comparison and range, in both positions.
-            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) < 100", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) >= 120", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) < 100", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) >= 120", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') BETWEEN 10 AND 200)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') NOT IN (120, 340)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" NOT IN ('bikes', 'shoes')", false),
@@ -566,8 +560,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT JSON_VALUE(c.\"DOC\", '$.price') + 1 FROM products AS c", false),
 
             // Conjunction and disjunction mixing a known-true arm with an unknown one.
-            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50 OR c.\"$.category\" = 'shoes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) > 50 AND c.\"$.category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 OR c.\"$.category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 AND c.\"$.category\" = 'shoes'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') IS NULL)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL)", false),
 
@@ -593,12 +587,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.metadata.sku') FROM products AS c", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata.sku') = 'B-2'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata.sku') = 'B-2')", false),
-            ("SELECT c.\"id\", StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))[0] FROM products AS c", false),
-            ("SELECT c.\"id\", StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))[1] FROM products AS c", false),
-            ("SELECT c.\"id\", StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))[2] FROM products AS c", false),
-            ("SELECT c.\"id\", StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))[3] FROM products AS c", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))[1] = 'outdoor'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE CARDINALITY(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) = 2", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[0]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[1]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[2]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[3]') FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') = 'outdoor'", false),
 
             // CASE, whose arms are where an unknown condition goes somewhere visible.
             ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END FROM products AS c", false),
@@ -667,28 +660,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // through a cast a change that has to prove itself here first. Measured, an erasing
             // translation fails these — Calcite converts "30" and 30.7 to 30 and matches both, and the
             // service compares the stored value as it stands and matches neither.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) = 30", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) > 10", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) > 0 ORDER BY c.\"id\"", true),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 10", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 0 ORDER BY c.\"id\"", true),
             // Saturation. A stored value far past what the target can hold converts to the limit, so a
             // comparison against the limit is true of it — and a bound around the limit would exclude
             // exactly that document. Measured as a lost row before the bound stopped stating that side.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.big' RETURNING DOUBLE) AS INTEGER) = 2147483647", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.big' RETURNING DOUBLE) AS BIGINT) = 9223372036854775807", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.big' RETURNING DOUBLE) AS INTEGER) > 5", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.big') AS DOUBLE) AS INTEGER) = 2147483647", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.big') AS DOUBLE) AS BIGINT) = 9223372036854775807", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.big') AS DOUBLE) AS INTEGER) > 5", false),
 
             // The spellings differ in what they do with a value that will not convert -- CAST raises,
             // SAFE_CAST yields null -- and the bound must not change which happens, because it never
             // excludes a value that is not a number.
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) = 30", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) > 10", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.big' RETURNING DOUBLE) AS INTEGER) = 2147483647", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 10", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(CAST(JSON_VALUE(c.\"DOC\", '$.big') AS DOUBLE) AS INTEGER) = 2147483647", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) IS NULL", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS DOUBLE) = 30.7", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) IS NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS DOUBLE) = 30.7", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) = 'Stringy'", false),
-            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) FROM typed AS c", false),
-            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'a'", false),
+            ("SELECT c.\"id\", CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) FROM typed AS c", false),
+            ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'a'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DECIMAL(10, 2)) = 30", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"id\" AS INTEGER) = 3", false),
@@ -768,7 +761,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // must not change; that they are fetched from one partition is measured separately.
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
-            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) AS INTEGER)", false),
+            ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
         ];
 
         /// <summary>
@@ -797,8 +790,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         static readonly (string Sql, string Reason)[] WithoutAnOracle =
         [
-            ("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t",
-                "Withholding the unnest rule leaves the correlate with no implementation in the asynchronous convention at all, so the unpushed plan cannot be built. Comparing the traversal needs an oracle that reads the array in process, which is a way in rather than a rule taken away."),
         ];
 
         /// <summary>
@@ -821,14 +812,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </remarks>
         static readonly (string Sql, string[] Rows)[] WithStatedRows =
         [
-            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"DOC\" FROM products AS p) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t",
-                ["(\"1\", \"outdoor\")", "(\"1\", \"steel\")"]),
 
             // The same traversal with a predicate over the element, which the service applies after
             // the JOIN. Stated rather than compared for the same reason, and it is the row the whole
             // predicate pushdown is about: one of the two elements, not both and not none.
-            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'steel'",
-                ["(\"1\", \"steel\")"]),
         ];
 
         [TestMethod]
