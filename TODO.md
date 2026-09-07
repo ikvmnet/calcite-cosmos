@@ -354,6 +354,30 @@ connection, `_MAP` against `_JSON`, node for node: projection, filter, sort, sor
 `IS NOT NULL`, `UNNEST` and the lookup join from either side all produce the identical plan, and a
 path assembled at run time declines on both sides.
 
+One shape was missing from that list, and it was the one a view is made of: `CAST(… AS VARCHAR) =
+'text'` was dropped over the map subscript and not over `JSON_VALUE`, because the test was that the
+operand is typed `ANY` and Calcite types the accessor `VARCHAR(2000)` (#71). The cast is now dropped
+over either spelling, on a measurement of Calcite's own runtime that the accessor renders what the
+cast over `ANY` renders and applies no width. What is deliberately *not* carried over is the same
+cast in a projection: `JSON_VALUE` answers null for an object or an array where the reader renders
+one, so a `_JSON` view's text columns stay in process. Recorded in `DESIGN.md` under *Casts over
+document values*.
+
+**The bare accessor is a conversion, and the parity above compared plans rather than rows.** Measured
+against Calcite's runtime, `JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the *number*
+30, because SQL:2016 casts the scalar to the returning type and the default is a character string;
+pushed as `c.x = '30'` it did not. The adapter behaves like Calcite, so the equality is now held to
+the cast form's literal test: unambiguous text pushes, and anything else is declined and the split
+rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the number, under the
+comparison Calcite makes. The same disjunction now serves the map column's cast, which used to push
+`IS_DEFINED` alone. *Settled by measurement:* `RETURNING` a non-text type converts nothing in Calcite
+— it asserts the Java class and throws on disagreement — so a comparison through one pushes exactly,
+as it did, and needs no bound; `DESIGN.md` records the measurement. *Open, and a decision rather than
+a fix:* the other operators over the bare text accessor — `<>`, the ordering comparisons, `LIKE`,
+`ORDER BY` — where Calcite sees the rendering and the service the raw value. Each has the weakening
+the text form allows, the string case exact and non-strings passed through by `NOT IS_STRING`, and a
+sort has none. Needs the owner's yes and a differential pass over the `typed` container first.
+
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
 spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest

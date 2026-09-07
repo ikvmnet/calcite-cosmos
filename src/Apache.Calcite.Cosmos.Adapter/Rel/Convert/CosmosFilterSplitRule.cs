@@ -272,6 +272,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (TryBoundNumericCast(node, translator, rexBuilder, rootAlias) is RexNode bounded)
                 return bounded;
 
+            if (TryTextEqualityAlternatives(node, translator, rexBuilder, rootAlias) is RexNode alternatives)
+                return alternatives;
+
             var paths = new List<RexNode>();
             CollectPaths(node, translator, rootAlias, paths);
 
@@ -388,6 +391,120 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             whole.add(RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList { notNumber, RexUtil.composeConjunction(rexBuilder, terms) }));
 
             return RexUtil.composeConjunction(rexBuilder, whole);
+        }
+
+        /// <summary>
+        /// Pushes what an equality against text a stored value could render as implies, or returns
+        /// <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>CAST(c."_MAP"['x'] AS VARCHAR) = '30'</c> and <c>JSON_VALUE(c."_JSON", '$.x') = '30'</c>
+        /// are declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps
+        /// the document, where <c>c.x = '30'</c> at the service does not — and used to push only
+        /// <c>IS_DEFINED</c>. Each still implies something tighter: the value is that string, or it is
+        /// a value that renders as it. So the rule pushes
+        /// </para>
+        /// <code>
+        /// c.x = '30' OR c.x = 30
+        /// </code>
+        /// <para>
+        /// and the comparison itself stays above, where Calcite makes it.
+        /// </para>
+        /// <para>
+        /// <b>Why it is implied, and why it is not exact.</b> A stored string matches exactly when it is
+        /// the literal. A stored number matches when Java's rendering of it is the literal, and every
+        /// such number has the literal's numeric value — so <c>c.x = 30</c> keeps all of them. It also
+        /// keeps a stored 30.0, which Calcite renders as <c>30.0</c> and does not match: the two are one
+        /// double at the service and two spellings in the JSON text Calcite reads. That is the whole of
+        /// the looseness, and the recheck above is what pays for it. A boolean renders as Calcite's
+        /// lowercase <c>true</c> or <c>false</c>, so exactly that text takes the boolean beside the
+        /// string; any other casing is the string alone. A number the double cannot hold takes
+        /// <c>IS_NUMBER</c> instead of a value.
+        /// </para>
+        /// <para>
+        /// <b>Which values render at all depends on the spelling.</b> The cast over <c>ANY</c> renders an
+        /// array as <c>[x, y]</c> and an object as <c>{x=1}</c>, so a literal opening with that bracket
+        /// takes <c>IS_ARRAY</c> or <c>IS_OBJECT</c> beside the string. <c>JSON_VALUE</c> answers null
+        /// for both and for a JSON null, so under it only a number and a boolean ever join the string —
+        /// and where nothing does, the translator pushes the equality exactly and this is never reached.
+        /// </para>
+        /// <para>
+        /// The branches are written against the value with its type discarded, so that the translator
+        /// renders each as the path and does not apply the test it applies to the conjunct: what is
+        /// pushed here is never evaluated by Calcite, only sent.
+        /// </para>
+        /// </remarks>
+        static RexNode? TryTextEqualityAlternatives(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
+        {
+            if (node is not RexCall call || (SqlKind.__Enum)call.getKind().ordinal() != SqlKind.__Enum.EQUALS || call.getOperands().size() != 2)
+                return null;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            bool scalarOnly;
+            RexNode other;
+
+            if (CosmosRexTranslator.TryRenderedTextValue(left, out scalarOnly) is RexNode value)
+            {
+                other = right;
+            }
+            else if (CosmosRexTranslator.TryRenderedTextValue(right, out scalarOnly) is RexNode mirrored)
+            {
+                value = mirrored;
+                other = left;
+            }
+            else
+            {
+                return null;
+            }
+
+            if (other is not RexLiteral literal)
+                return null;
+
+            string text;
+            try
+            {
+                if (CosmosRexTranslator.GetLiteralValue(literal) is not string s)
+                    return null;
+
+                text = s;
+            }
+            catch (CosmosTranslationException)
+            {
+                return null;
+            }
+
+            // Rooted at the container rather than at an array-traversal alias, and addressable at all.
+            if (translator.TryResolvePath(value, out var path) == false || path is null ||
+                string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            // The accessor without the type that says it is text. The translator would otherwise hold
+            // the string branch to the test the conjunct failed, and rightly: as a translation it is
+            // not exact. As a branch of what the conjunct implies it is, and this is that.
+            if (value is RexCall accessor && CosmosRexTranslator.IsTextJsonValue(accessor))
+                value = rexBuilder.makeCall(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY), accessor.getOperator(), accessor.getOperands());
+
+            var branches = new java.util.ArrayList();
+            branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));
+
+            if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
+                branches.add(double.IsFinite(number)
+                    ? rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
+                    : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
+
+            if (text is "true" or "false")
+                branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeLiteral(text == "true")));
+
+            if (scalarOnly == false && text.Length > 0 && text[0] == '[')
+                branches.add(rexBuilder.makeCall(CosmosOperators.IsArray, new[] { value }));
+
+            if (scalarOnly == false && text.Length > 0 && text[0] == '{')
+                branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
+
+            return RexUtil.composeDisjunction(rexBuilder, branches);
         }
 
         /// <summary>

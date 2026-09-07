@@ -651,6 +651,49 @@ an array or object with a bracket. `c.x = 'text'` selects exactly the same docum
 including for absent and null, which match under neither. So the cast is dropped there and only there
 — see `CosmosRexTranslator.TryTextCastOperand`.
 
+**The same cast over `JSON_VALUE` is the same cast.** A view over `_JSON` writes
+`CAST(JSON_VALUE(doc, '$.x') AS VARCHAR)` where a view over `_MAP` writes `CAST(doc['x'] AS VARCHAR)`,
+and for a while only the second was dropped, because the test was that the operand is typed `ANY` —
+which a `JSON_VALUE` without `RETURNING` is not; Calcite types it `VARCHAR(2000)`. That keyed the
+exemption off the map subscript rather than off the value, and a caller-applied equality over a `_JSON`
+view read the container whole (#71). Measured against Calcite's own runtime, the accessor renders what
+the cast over `ANY` renders — `30` as `30`, `1e30` as `1.0E30`, `true` as `true`, a string as itself —
+and answers null for an absent path, a null, an object and an array, which the comparison then does
+not keep; and it applies no width at run time, `RETURNING VARCHAR(3)` returning `'bikes'` whole. So the
+argument above holds for it unchanged, and `CosmosRexTranslator.IsRenderedDocumentValue` admits the
+two-operand `JSON_VALUE` of a character type beside a value typed `ANY`. A `RETURNING` that converts
+is refused, since the cast then renders a converted value; `JSON_QUERY` is refused, being the JSON
+text of an object and null for a scalar; and a behaviour clause is refused, substituting a value where
+the path has none.
+
+**The bare accessor is that cast with nothing written, and it had been pushed as the path.** SQL:2016
+casts the scalar `JSON_VALUE` finds to the returning type, and Calcite does: measured,
+`JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the number 30, because the number arrives
+as the text `30`. The path at the service holds the number, and `c.x = '30'` does not keep it. That
+was a row lost in silence, and the parity measurement above did not see it because it compared plans
+rather than rows. The adapter's contract is Calcite's semantics, which here are the standard's, so an
+equality over the bare accessor is now held to the same literal test as the cast form: `= 'bikes'`
+pushes, since the two select the same documents; `= '30'`, an equality against another expression,
+and one carrying a behaviour clause are declined, and `CosmosFilterSplitRule` pushes what they imply.
+`TODO.md` carries what the same reasoning says about every other operator over the bare accessor,
+which is a decision rather than a fix.
+
+**What a refused text equality implies is more than `IS_DEFINED`, and it is a disjunction.**
+`= '30'` keeps a stored string `'30'` and every stored number Java renders as `30`, and every such
+number has the value 30 — so the value is that string or it is that number, and the rule pushes
+`c.x = '30' OR c.x = 30` under the comparison Calcite still makes. It is implied and not exact, by one
+spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
+service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
+row crossing the wire is the whole cost, against a container read whole. The branches follow the
+rendering: a number-like literal takes the parsed number, or `IS_NUMBER` where the double cannot hold
+it; exactly `true` or `false` takes the boolean, since Calcite renders in lowercase and `'TRUE'`
+matches only the string; and over the map column, whose cast renders an array as `[x, y]` and an
+object as `{x=1}`, a literal opening with that bracket takes `IS_ARRAY` or `IS_OBJECT`. `JSON_VALUE`
+answers null for those and for a JSON null, so under it no such literal is ambiguous at all and the
+translator pushes it exactly — its literal test is the narrower one, `IsUnambiguousTextFor`. The
+branches are written against the accessor with its type discarded, which is how the translator is
+told to render the path without applying the conjunct's test to a branch that is not the conjunct.
+
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
 non-string value could have rendered as them. This is not caution for its own sake: in the differential
@@ -759,6 +802,11 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
+**Only the map column's spelling.** The cast over `JSON_VALUE` drops in a comparison, where the literal
+excludes every case that could differ; a projection has no literal, and measured, `JSON_VALUE` answers
+null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered column
+over it would carry text for a document the in-process plan carries nothing for, so it stays in
+process — the filters around it push regardless.
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw
@@ -1282,12 +1330,31 @@ filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a br
 subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
 assembled at run time declines on both.
 
+One shape was not on that list and did not hold: the cast to text a view writes, which was keyed off
+the operand being typed `ANY` and so off the map subscript rather than off the path (#71). It is now
+dropped over either spelling — see *The same cast over `JSON_VALUE` is the same cast* under *Casts
+over document values* — with the one asymmetry that the same cast in a projection is rendered over
+`_MAP` and not over `_JSON`, for the reason recorded there.
+
 The path argument must be a literal, and the grammar is `$` with `.name`, `['name']` and `[0]` steps —
 a wildcard, a descent or a filter has no Cosmos rendering and is refused. `RETURNING` is not rendered:
 it told the plan what the service will return, and a clause that disagrees with the document fails in
 materialisation rather than answering wrongly, which is what makes it worth trusting. `UNNEST` wants
 `RETURNING <type> ARRAY`; `JSON_QUERY` is `VARCHAR` even `WITH ARRAY WRAPPER` and is never an unnest
 source.
+
+That is also what Calcite does with it in process, and it is worth knowing how literally. Measured
+against Calcite's runtime, `RETURNING` a type other than text performs no conversion at all: the
+scalar is cast to the declared Java class and anything else throws. `RETURNING INTEGER` returns a
+stored `30` and throws on `30.7`, on `"30"`, on `true` and on `3000000000`, which parses as a long;
+`RETURNING DOUBLE` returns `30.0` and throws on `30`, which parses as an integer, and `RETURNING
+BIGINT` throws on `30` for the same reason; `NULL ON ERROR` does not catch any of it, and
+`DECIMAL(3, 1)` returns `30.75` unrounded. Only the text default converts. So a comparison through a
+numeric `RETURNING` pushes exactly, as it always has: for every document Calcite can evaluate, the
+declared type is the stored type and the service compares the same value. What the pushdown changes
+is the document Calcite would have thrown on, which the service excludes instead — the caller's
+declaration held rather than checked, the same asymmetry the reading side already accepts. It is why
+the numeric bound the map column's cast needs has no counterpart here.
 
 #### Promoted columns
 

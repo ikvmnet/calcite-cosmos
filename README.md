@@ -219,7 +219,11 @@ A path read through the map column is typed `ANY`, which nothing expecting typed
 BI tool — can consume, so a view over a container casts. A cast to `VARCHAR` is carried: the service
 returns the value and the adapter renders it exactly as Calcite would, so the view's projection is
 evaluated by the service rather than over whole documents. `CAST(<path> AS VARCHAR) = 'text'` pushes
-as a comparison too, wherever no other JSON value could render as that text.
+as a comparison too, wherever no other JSON value could render as that text — written over the map
+column or as `CAST(JSON_VALUE(c."_JSON", '$.x') AS VARCHAR)`, which is the same value in the other
+spelling. The projection of that second form is the one thing the `_JSON` spelling does not carry:
+`JSON_VALUE` answers null for an object where the map column's rendering would carry text, so a
+`_JSON` view's text columns are evaluated in process while the filters over them still push.
 
 Two limits are worth knowing before writing the view. A cast to a **number** converts rather than
 renders — `CAST(x AS INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service
