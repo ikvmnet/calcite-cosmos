@@ -79,13 +79,13 @@ namespace Apache.Calcite.Cosmos.Adapter
             var promoted = _table.GetPromotedColumnNames();
             var index = iColumn - 1;
 
-            // The JSON column, last, and the same document as the map column. STORED for the reason
-            // _ts and _etag are: it may be read and may not be supplied, and it is genuinely stored
-            // rather than computed, so VIRTUAL would make a scan project null in its place. An insert
-            // writes a document through _MAP or the promoted columns; this one exists so that
-            // Calcite's SQL/JSON functions have something to address.
+            // The JSON column, last, and the same document as the map column. DEFAULT, like the map
+            // column: it may be read, may be supplied, and may be omitted. Not VIRTUAL, which would
+            // make a scan project null in its place, and no longer STORED, which is what _ts and
+            // _etag are and which would forbid supplying it — an insert or an update writes a whole
+            // document through either document column.
             if (index == promoted.Count)
-                return ColumnStrategy.STORED;
+                return ColumnStrategy.DEFAULT;
 
             if (index < 0 || index >= promoted.Count)
                 return base.generationStrategy(table, iColumn);

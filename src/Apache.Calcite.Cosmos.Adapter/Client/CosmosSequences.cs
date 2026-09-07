@@ -206,13 +206,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             var updated = new object?[count];
             Array.Copy(values, updated, Math.Min(count, values.Length));
 
-            var mapSet = Array.IndexOf(updates, CosmosImplementor.MapColumnName) >= 0;
-            if (mapSet)
+            // Which document column the statement is replacing, if either. The map is looked for
+            // first only because a statement setting both is refused by the document builder, which
+            // is where that belongs.
+            var document = Array.IndexOf(updates, CosmosImplementor.MapColumnName) >= 0
+                ? Array.IndexOf(write.ColumnNames, CosmosImplementor.MapColumnName)
+                : Array.IndexOf(updates, CosmosImplementor.JsonColumnName) >= 0
+                    ? Array.IndexOf(write.ColumnNames, CosmosImplementor.JsonColumnName)
+                    : -1;
+
+            if (document >= 0)
                 for (var i = 0; i < count; i++)
-                    if (i != CosmosImplementor.MapColumnOrdinal &&
+                    if (i != document &&
                         Array.IndexOf(updates, write.ColumnNames[i]) < 0 &&
                         string.Equals(write.ColumnNames[i], Metadata.CosmosContainerMetadata.IdPropertyName, StringComparison.Ordinal) == false)
                         updated[i] = null;
+
+            // Neither is being set, so the scan supplied both and they describe the same document
+            // twice — which the builder refuses. The map is the one kept, being the representation
+            // every other write path already produces.
+            if (document < 0 && Array.IndexOf(write.ColumnNames, CosmosImplementor.MapColumnName) >= 0)
+            {
+                var json = Array.IndexOf(write.ColumnNames, CosmosImplementor.JsonColumnName);
+                if (json >= 0 && json < count && Array.IndexOf(updates, CosmosImplementor.JsonColumnName) < 0)
+                    updated[json] = null;
+            }
 
             for (var j = 0; j < updates.Length; j++)
             {

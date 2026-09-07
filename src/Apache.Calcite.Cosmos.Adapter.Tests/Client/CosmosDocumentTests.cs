@@ -180,6 +180,140 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// which is a different place from the one a null key routes to. Reading both as <c>null</c>
         /// would put documents in the wrong partition rather than fail.
         /// </remarks>
+        // ── The JSON column on the write path ──────────────────────────────────────────
+        //
+        // The same document as the map column, in the encoding the service sent and Calcite's SQL/JSON
+        // functions address. It is last in the row type and the map is first, so what is being pinned
+        // here is that position in the row does not decide the order the two are applied in.
+
+        /// <summary>
+        /// The row type as a container with promoted columns actually produces it: the map first, the
+        /// promoted columns next, the JSON column last.
+        /// </summary>
+        static readonly string[] BothColumns = ["_MAP", "id", "_ts", "_etag", "category", "_JSON"];
+
+        static string BuildBoth(params object?[] values) => Encoding.UTF8.GetString(CosmosDocument.Build(BothColumns, values));
+
+        [TestMethod]
+        public void TheJsonColumnIsTheDocument()
+        {
+            BuildBoth(null, null, null, null, null, """{"id":"1","name":"Trail Blazer","price":120}""")
+                .Should().Be("""{"id":"1","name":"Trail Blazer","price":120}""");
+        }
+
+        /// <summary>
+        /// A promoted column overrides the JSON column's property in place, exactly as it overrides
+        /// the map's.
+        /// </summary>
+        /// <remarks>
+        /// The test that says the two document columns are applied before the promoted ones rather
+        /// than in the order the row type lists them. The JSON column is <em>last</em>, so a single
+        /// pass over the row would let it overwrite the promoted column instead.
+        /// </remarks>
+        [TestMethod]
+        public void APromotedColumnOverridesTheJsonsProperty()
+        {
+            BuildBoth(null, "2", null, null, "bikes", """{"id":"1","name":"Trail Blazer"}""")
+                .Should().Be("""{"id":"2","name":"Trail Blazer","category":"bikes"}""");
+        }
+
+        /// <summary>
+        /// Neither document column is a property of the document it describes.
+        /// </summary>
+        /// <remarks>
+        /// Worth its own test because the JSON column is not one of the service properties that get
+        /// stripped by name — it is excluded by being a document column, and nothing else would
+        /// have stopped a row from writing a property literally called <c>_JSON</c> holding the
+        /// document's own text.
+        /// </remarks>
+        [TestMethod]
+        public void TheJsonColumnIsNotItselfAProperty()
+        {
+            BuildBoth(null, "1", null, null, null, """{"name":"Trail Blazer"}""")
+                .Should().NotContain("_JSON")
+                .And.Be("""{"name":"Trail Blazer","id":"1"}""");
+        }
+
+        /// <summary>
+        /// Both document columns together are refused rather than resolved by precedence.
+        /// </summary>
+        /// <remarks>
+        /// They are two descriptions of one document. A rule picking a winner would silently discard
+        /// whichever it did not pick, and the row that reaches here on an update never carries both:
+        /// <c>CosmosSequences.ApplySets</c> withholds the one that is not being set.
+        /// </remarks>
+        [TestMethod]
+        public void BothDocumentColumnsTogetherAreRefused()
+        {
+            var act = () => BuildBoth(Map("id", "1"), null, null, null, null, """{"id":"2"}""");
+
+            act.Should().Throw<CosmosExecutionException>().WithMessage("*two descriptions of the same document*");
+        }
+
+        [TestMethod]
+        public void AJsonColumnHoldingSomethingElseIsRefused()
+        {
+            var act = () => BuildBoth(null, null, null, null, null, java.lang.Long.valueOf(3));
+
+            act.Should().Throw<CosmosExecutionException>().WithMessage("*rather than JSON text*");
+        }
+
+        [TestMethod]
+        public void AJsonColumnThatIsNotAnObjectIsRefused()
+        {
+            var act = () => BuildBoth(null, null, null, null, null, "[1,2,3]");
+
+            act.Should().Throw<CosmosExecutionException>().WithMessage("*rather than an object*");
+        }
+
+        [TestMethod]
+        public void AJsonColumnThatIsNotWellFormedIsRefused()
+        {
+            var act = () => BuildBoth(null, null, null, null, null, "{\"id\":");
+
+            act.Should().Throw<CosmosExecutionException>().WithMessage("*well-formed JSON*");
+        }
+
+        /// <summary>
+        /// A number written through the JSON column keeps the digits it arrived with.
+        /// </summary>
+        /// <remarks>
+        /// The reason the value is written from the <c>JsonElement</c> rather than converted to a CLR
+        /// number first: a large integer does not survive a double, and an exponential does not
+        /// survive being reformatted. Nothing about the document is reinterpreted on the way through.
+        /// </remarks>
+        [TestMethod]
+        public void TheJsonColumnKeepsTheDigitsItWasGiven()
+        {
+            BuildBoth(null, null, null, null, null, """{"big":9007199254740993,"exp":1e30,"exact":0.1000000000000000055511151231257827}""")
+                .Should().Be("""{"big":9007199254740993,"exp":1e30,"exact":0.1000000000000000055511151231257827}""");
+        }
+
+        /// <summary>
+        /// The service's own bookkeeping is stripped out of the JSON column too.
+        /// </summary>
+        /// <remarks>
+        /// Which matters more here than for the map: the JSON column is the document <em>as the
+        /// service returned it</em>, so it carries <c>_ts</c>, <c>_etag</c> and <c>_rid</c> whenever
+        /// it came from a scan. Copying a row would otherwise write another item's identity.
+        /// </remarks>
+        [TestMethod]
+        public void ServicePropertiesInsideTheJsonAreNotWritten()
+        {
+            BuildBoth(null, null, null, null, null, """{"id":"1","_ts":1700000000,"_etag":"abc","_rid":"r","_self":"s","_attachments":"a","name":"Trail Blazer"}""")
+                .Should().Be("""{"id":"1","name":"Trail Blazer"}""");
+        }
+
+        /// <summary>
+        /// Nested objects and arrays come through the JSON column whole.
+        /// </summary>
+        [TestMethod]
+        public void NestedShapesComeThroughTheJsonColumn()
+        {
+            BuildBoth(null, null, null, null, null, """{"id":"1","inventory":{"sku":"S-1","count":3},"tags":["steel","road"]}""")
+                .Should().Be("""{"id":"1","inventory":{"sku":"S-1","count":3},"tags":["steel","road"]}""");
+        }
+
         [TestMethod]
         public void AbsenceIsDistinguishedFromNull()
         {

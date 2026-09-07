@@ -77,11 +77,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <summary>
         /// Builds the document a row describes.
         /// </summary>
-        /// <param name="columnNames">The row's field names, the map column first.</param>
+        /// <remarks>
+        /// A row describes its document through one of the two document columns — the map, or the JSON
+        /// text — with promoted columns overriding individual properties. Supplying both is refused
+        /// rather than resolved by precedence: they are two descriptions of one document, and a rule
+        /// picking a winner would silently discard whichever it did not pick.
+        /// </remarks>
+        /// <param name="columnNames">The row's field names.</param>
         /// <param name="values">The row's values, in the same order.</param>
         /// <returns>The document, as UTF-8 JSON.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="columnNames"/> or <paramref name="values"/> is <c>null</c>.</exception>
-        /// <exception cref="CosmosExecutionException">A value has no JSON counterpart, or the map column does not hold a map.</exception>
+        /// <exception cref="CosmosExecutionException">A value has no JSON counterpart, a document column holds the wrong thing, or both document columns are supplied.</exception>
         public static byte[] Build(IReadOnlyList<string> columnNames, IReadOnlyList<object?> values)
         {
             if (columnNames is null)
@@ -105,37 +111,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 properties[name] = value;
             }
 
-            for (var i = 0; i < columnNames.Count && i < values.Count; i++)
+            var count = Math.Min(columnNames.Count, values.Count);
+
+            // The two document columns are found before anything is written, because they do not
+            // arrive in the order they have to be applied: the map is first in the row type and the
+            // JSON column is last, and both have to go in ahead of the promoted columns for a
+            // promoted column naming one of their properties to replace it in place.
+            var mapOrdinal = -1;
+            var jsonOrdinal = -1;
+
+            for (var i = 0; i < count; i++)
             {
-                var value = values[i];
+                if (string.Equals(columnNames[i], CosmosImplementor.MapColumnName, StringComparison.Ordinal))
+                    mapOrdinal = i;
+                else if (string.Equals(columnNames[i], CosmosImplementor.JsonColumnName, StringComparison.Ordinal))
+                    jsonOrdinal = i;
+            }
 
-                if (i == CosmosImplementor.MapColumnOrdinal)
+            var mapValue = mapOrdinal >= 0 ? values[mapOrdinal] : null;
+            var jsonValue = jsonOrdinal >= 0 ? values[jsonOrdinal] : null;
+
+            if (mapValue is not null && jsonValue is not null)
+                throw new CosmosExecutionException($"A row supplies both '{CosmosImplementor.MapColumnName}' and '{CosmosImplementor.JsonColumnName}'. They are two descriptions of the same document, and which one to write cannot be decided here.");
+
+            if (mapValue is not null)
+            {
+                if (mapValue is not java.util.Map map)
+                    throw new CosmosExecutionException($"The '{CosmosImplementor.MapColumnName}' column holds a {mapValue.GetType().Name} rather than a map, so it does not describe a document.");
+
+                var entries = map.entrySet().iterator();
+                while (entries.hasNext())
                 {
-                    if (value is null)
-                        continue;
+                    var entry = (java.util.Map.Entry)entries.next();
+                    var key = entry.getKey();
 
-                    if (value is not java.util.Map map)
-                        throw new CosmosExecutionException($"The '{CosmosImplementor.MapColumnName}' column holds a {value.GetType().Name} rather than a map, so it does not describe a document.");
+                    if (key is not string name)
+                        throw new CosmosExecutionException($"A document property is keyed by a {key?.GetType().Name ?? "null"} rather than a string.");
 
-                    var entries = map.entrySet().iterator();
-                    while (entries.hasNext())
-                    {
-                        var entry = (java.util.Map.Entry)entries.next();
-                        var key = entry.getKey();
+                    Set(name, entry.getValue());
+                }
+            }
+            else if (jsonValue is not null)
+            {
+                if (jsonValue is not string text)
+                    throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column holds a {jsonValue.GetType().Name} rather than JSON text, so it does not describe a document.");
 
-                        if (key is not string name)
-                            throw new CosmosExecutionException($"A document property is keyed by a {key?.GetType().Name ?? "null"} rather than a string.");
+                JsonDocument parsed;
 
-                        Set(name, entry.getValue());
-                    }
-
-                    continue;
+                try
+                {
+                    parsed = JsonDocument.Parse(text);
+                }
+                catch (JsonException e)
+                {
+                    throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column does not hold well-formed JSON: {e.Message}", e);
                 }
 
+                using (parsed)
+                {
+                    if (parsed.RootElement.ValueKind != JsonValueKind.Object)
+                        throw new CosmosExecutionException($"The '{CosmosImplementor.JsonColumnName}' column holds a JSON {parsed.RootElement.ValueKind.ToString().ToLowerInvariant()} rather than an object, so it does not describe a document.");
+
+                    // Cloned because the element is only valid while the JsonDocument is, and the
+                    // writing happens after it is disposed. A clone is also what keeps a number the
+                    // digits the caller sent rather than a round trip through a double.
+                    foreach (var property in parsed.RootElement.EnumerateObject())
+                        Set(property.Name, property.Value.Clone());
+                }
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                // Neither document column is a property of the document it describes.
+                if (i == mapOrdinal || i == jsonOrdinal)
+                    continue;
+
                 // A promoted column says nothing where it is null: that is how an unmentioned column
-                // arrives, and it must not overwrite what the map column supplied.
-                if (value is not null)
-                    Set(columnNames[i], value);
+                // arrives, and it must not overwrite what the document column supplied.
+                if (values[i] is not null)
+                    Set(columnNames[i], values[i]);
             }
 
             var buffer = new System.Buffers.ArrayBufferWriter<byte>();
@@ -182,6 +236,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 // from a document and a string compiled from a literal are the same object.
                 case string s:
                     writer.WriteStringValue(s);
+                    return;
+
+                // A value taken straight out of the JSON column, written back as it arrived. Nothing
+                // is reinterpreted on the way through, so a number keeps its digits and an object
+                // keeps its property order.
+                case JsonElement element:
+                    element.WriteTo(writer);
                     return;
 
                 case bool b:

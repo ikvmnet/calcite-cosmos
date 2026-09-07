@@ -181,14 +181,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <summary>
         /// With <c>_ts</c> and <c>_etag</c> excluded, a column list may be omitted and the remaining
-        /// three columns supplied positionally.
+        /// four columns supplied positionally — both document columns among them, since either may
+        /// describe the document being written.
         /// </summary>
         [TestMethod]
         public void AnInsertWithoutAColumnListSuppliesTheWritableColumns()
         {
-            PlanText("INSERT INTO products SELECT \"_MAP\", \"id\", \"category\" FROM archive").Should().Be(
+            PlanText("INSERT INTO products SELECT \"_MAP\", \"id\", \"category\", \"_JSON\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$4], _JSON=[null:VARCHAR])\n" +
+                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$4], _JSON=[$5])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 
