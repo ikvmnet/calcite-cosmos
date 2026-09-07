@@ -532,6 +532,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
         }
 
+        // ── Reaching an array through the document column ─────────────────────────────
+        //
+        // UNNEST takes an ARRAY, a MULTISET, a MAP or an ANY, and refuses a string. The map spelling
+        // works because ITEM over a MAP<VARCHAR, ANY> is typed ANY; JSON_QUERY is typed VARCHAR and is
+        // refused outright by the validator. StringToArray is the composition that gets past that, and
+        // neither call survives into the statement.
+
+        /// <summary>
+        /// An array reached through <c>DOC</c> traverses at the service, and renders the statement the
+        /// map spelling renders.
+        /// </summary>
+        /// <remarks>
+        /// Cosmos's own <c>StringToArray</c> takes a string and is <c>undefined</c> over an array, so
+        /// eliding the call is what makes the statement run rather than merely what makes it cheaper.
+        /// The path already holds the array; there is nothing at the service left to convert.
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReachedThroughTheDocumentColumnIsTraversed()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
+
+            Plan(best).Should().Contain("CosmosUnnest");
+            Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags");
+        }
+
+        /// <summary>
+        /// And a predicate over the element pushes with it, exactly as it does for the map spelling.
+        /// </summary>
+        [TestMethod]
+        public void APredicateOverAnElementReachedThroughTheDocumentColumnIsPushed()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
+
+            Plan(best).Should().Contain("CosmosUnnest");
+            Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
+        }
+
+        /// <summary>
+        /// <c>StringToArray</c> over anything but an accessor is the service's own function and is
+        /// rendered, not elided.
+        /// </summary>
+        /// <remarks>
+        /// The restriction that keeps the elision honest. A caller naming a path that genuinely holds
+        /// a string means Cosmos's function and means it to run; only the composition with an accessor
+        /// names an array that is already an array.
+        /// </remarks>
+        [TestMethod]
+        public void StringToArrayOverAnythingButAnAccessorDoesNotTraverse()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(CAST(c.\"_MAP\"['tags'] AS VARCHAR))) AS t"));
+
+            plan.Should().NotContain("CosmosUnnest", "the operand names a string, so the call is the service's own function rather than an address: " + plan);
+        }
+
         /// <summary>
         /// An element predicate does not pin the partition key, however much it looks like one.
         /// </summary>

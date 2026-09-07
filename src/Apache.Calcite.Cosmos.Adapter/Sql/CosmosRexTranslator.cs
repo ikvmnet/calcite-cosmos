@@ -194,6 +194,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // The document is the `DOC` column, which binds to the root like the map column.
                 case RexCall json when IsJsonAccessor(json) && TryResolveJsonPath(json, out path):
                     return true;
+
+                // `StringToArray(JSON_QUERY(<doc>, '$.tags'))` is the array at that path, and the
+                // composition exists because UNNEST will not take a string: `JSON_QUERY` is typed
+                // VARCHAR and is refused, while `StringToArray` is typed ANY and is accepted — the
+                // same type the map spelling `ITEM(<map>, 'tags')` already produces.
+                case RexCall array when IsArrayFromJson(array) && TryResolvePath((RexNode)array.getOperands().get(0), out path):
+                    return true;
             }
 
             path = null;
@@ -218,6 +225,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsJsonAccessor(RexCall call)
         {
             return call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY" && call.getOperands().size() >= 2;
+        }
+
+        /// <summary>
+        /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses
+        /// an array in the document rather than parsing one out of a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Neither call is rendered. The path already holds the array, so the service needs no
+        /// conversion — and would refuse the one written down, Cosmos's <c>StringToArray</c> taking a
+        /// string and being <c>undefined</c> over an array. Eliding it is therefore required for the
+        /// statement to run at all, not merely cheaper.
+        /// </para>
+        /// <para>
+        /// Restricted to an accessor operand rather than admitted over anything that resolves. A
+        /// caller writing <c>StringToArray</c> over a path that genuinely holds a string means the
+        /// service's function and means it to run; only the composition with an accessor names an
+        /// array, and only that one is elided.
+        /// </para>
+        /// </remarks>
+        static bool IsArrayFromJson(RexCall call)
+        {
+            return string.Equals(call.getOperator().getName(), "StringToArray", StringComparison.Ordinal)
+                && call.getOperands().size() == 1
+                && call.getOperands().get(0) is RexCall inner
+                && IsJsonAccessor(inner);
         }
 
         /// <summary>
