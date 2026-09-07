@@ -197,6 +197,44 @@ Calcite's abstract cost by constants. A model in RUs — a point read is 1, a qu
 size, a cross-partition query is that times the fan-out — would make pushdown decisions comparable
 with in-process alternatives on a real scale rather than a notional one.
 
+### Can an RU estimate be inferred for a plan at all? — *investigate first, then implement or not*
+
+The item above assumes a number can be produced *before* the query runs. That is not settled, and it
+is the thing to settle first, because the rest is wasted if it cannot.
+
+**What the service offers.** The charge, after the fact, which the adapter already records on
+`cosmos.request_charge`. Query metrics in the diagnostics naming what the charge was made of —
+retrieved document count and size, output count and size, index hit counts. Index metrics, already
+reachable through the `indexMetrics` operand, saying which indexes a statement used. What does not
+exist is a dry run: Cosmos has no `EXPLAIN` that prices a statement without executing it, so nothing
+can be asked, only computed.
+
+**So an estimate would be analytic over inputs the adapter already holds** — row count from
+statistics, average document size (derived and still unused, per the item above), Calcite's own
+selectivity for the pushed predicate, the projection width, and `PartitionKeyIsComplete` for the
+fan-out multiplier. The coefficients are measurable rather than guessable: fit them against a matrix
+of shapes on a real account, which is what `CosmosLookupRoutingMeasurementTests` and the *spelling is
+not a price* table already do on a smaller scale.
+
+**The bar is lower than it looks.** The planner ranks plans; it does not report a bill. An estimate
+wrong by a constant factor but right in its ordering is worth as much as an accurate one, which
+makes this far more tractable than predicting a charge.
+
+**Two ways it fails, which is why the answer may be no.**
+
+- *Comparability.* Cosmos nodes would cost in RU while the in-process side costs in Calcite's
+  abstract units, and the conversion between them is itself a guess. A wrong conversion is worse
+  than today's flat `CosmosConvention.CostMultiplier`, because it is wrong with confidence and at
+  scale.
+- *Account dependence.* If the coefficients move with indexing policy, document size distribution,
+  or serverless versus provisioned, a fit taken on one account mispredicts on another — at which
+  point *Feeding `RequestCharge` back* is the honest route, since it measures the account in hand
+  rather than assuming one.
+
+**What would settle it.** Not "how close is the estimate" but "does it order a set of real plan
+alternatives the way the measured charges do". A disagreement on ranking is the only error that
+costs anything, and the measurement is cheap given the harness that exists.
+
 ---
 
 ## 2. Execution paths
