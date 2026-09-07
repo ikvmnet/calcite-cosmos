@@ -430,6 +430,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// and where nothing does, the translator pushes the equality exactly and this is never reached.
         /// </para>
         /// <para>
+        /// <b>The other comparisons, and <c>LIKE</c>, have only the string case.</b> No literal makes
+        /// <c>&lt;&gt; '30'</c> exact — a stored 31 renders and is kept — nor <c>&gt; '2'</c>, where a
+        /// stored 30 renders as text that sorts after <c>'2'</c>. What is implied is that a stored
+        /// string satisfies the comparison as it stands, or the value is one of the kinds that render
+        /// at all: so <c>c.x &lt;&gt; '30' OR IS_NUMBER(c.x) OR IS_BOOL(c.x)</c>, with <c>IS_ARRAY</c>
+        /// and <c>IS_OBJECT</c> beside them over the map column. Named by type rather than as
+        /// <c>NOT IS_STRING</c> so that an absent path and a null, which Calcite never keeps, do not
+        /// cross the wire with the rest. Looser than the equality's branches, and tight on a field that
+        /// holds strings, which is the field a text comparison is written against.
+        /// </para>
+        /// <para>
         /// The branches are written against the value with its type discarded, so that the translator
         /// renders each as the path and does not apply the test it applies to the conjunct: what is
         /// pushed here is never evaluated by Calcite, only sent.
@@ -437,7 +448,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static RexNode? TryTextEqualityAlternatives(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
         {
-            if (node is not RexCall call || (SqlKind.__Enum)call.getKind().ordinal() != SqlKind.__Enum.EQUALS || call.getOperands().size() != 2)
+            if (node is not RexCall call || call.getOperands().size() != 2)
+                return null;
+
+            var kind = (SqlKind.__Enum)call.getKind().ordinal();
+            if (kind is not (SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS or SqlKind.__Enum.LESS_THAN or SqlKind.__Enum.GREATER_THAN
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL or SqlKind.__Enum.GREATER_THAN_OR_EQUAL or SqlKind.__Enum.LIKE))
                 return null;
 
             var left = (RexNode)call.getOperands().get(0);
@@ -445,15 +461,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             bool scalarOnly;
             RexNode other;
+            var valueOnLeft = true;
 
             if (CosmosRexTranslator.TryRenderedTextValue(left, out scalarOnly) is RexNode value)
             {
                 other = right;
             }
-            else if (CosmosRexTranslator.TryRenderedTextValue(right, out scalarOnly) is RexNode mirrored)
+            else if (kind != SqlKind.__Enum.LIKE && CosmosRexTranslator.TryRenderedTextValue(right, out scalarOnly) is RexNode mirrored)
             {
                 value = mirrored;
                 other = left;
+                valueOnLeft = false;
             }
             else
             {
@@ -488,6 +506,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 value = rexBuilder.makeCall(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY), accessor.getOperator(), accessor.getOperands());
 
             var branches = new java.util.ArrayList();
+
+            if (kind != SqlKind.__Enum.EQUALS)
+            {
+                // The other comparisons have no literal that makes them exact, only the string case:
+                // a stored string compares as it stands, and everything that renders is passed through
+                // for Calcite to decide. Named by type rather than as NOT IS_STRING, so that an absent
+                // path, a null, and -- under the accessor -- an object or an array, none of which
+                // Calcite keeps, are not passed through with them.
+                branches.add(rexBuilder.makeCall(call.getOperator(), valueOnLeft ? new[] { value, literal } : new[] { literal, value }));
+                branches.add(rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
+                branches.add(rexBuilder.makeCall(CosmosOperators.IsBool, new[] { value }));
+
+                if (scalarOnly == false)
+                {
+                    branches.add(rexBuilder.makeCall(CosmosOperators.IsArray, new[] { value }));
+                    branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
+                }
+
+                return RexUtil.composeDisjunction(rexBuilder, branches);
+            }
+
             branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));
 
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))

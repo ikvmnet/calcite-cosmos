@@ -372,11 +372,15 @@ rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the numb
 comparison Calcite makes. The same disjunction now serves the map column's cast, which used to push
 `IS_DEFINED` alone. *Settled by measurement:* `RETURNING` a non-text type converts nothing in Calcite
 — it asserts the Java class and throws on disagreement — so a comparison through one pushes exactly,
-as it did, and needs no bound; `DESIGN.md` records the measurement. *Open, and a decision rather than
-a fix:* the other operators over the bare text accessor — `<>`, the ordering comparisons, `LIKE`,
-`ORDER BY` — where Calcite sees the rendering and the service the raw value. Each has the weakening
-the text form allows, the string case exact and non-strings passed through by `NOT IS_STRING`, and a
-sort has none. Needs the owner's yes and a differential pass over the `typed` container first.
+as it did, and needs no bound; `DESIGN.md` records the measurement. The other comparisons over the
+bare text accessor — `<>`, the ordering comparisons, `LIKE` — are now held to the same standard:
+declined as translations, with the string case pushed and every kind that renders passed through by
+type; and a null test over the accessor counts an object and an array as null, which is what the
+accessor returns. *Open, and a decision rather than a fix:* `ORDER BY` a bare text accessor, which
+pushes today and sorts the raw value at the service where Calcite sorts the rendering — the same on a
+field of strings and not on a mixed one, and a sort has no weakening; and the string functions over
+one, `UPPER`, `CHAR_LENGTH`, `SUBSTRING` and the rest, which render a number in process and are
+undefined over one at the service. Each wants the owner's yes and a differential pass first.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
