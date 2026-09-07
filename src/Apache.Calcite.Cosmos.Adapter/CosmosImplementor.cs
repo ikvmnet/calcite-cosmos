@@ -132,49 +132,116 @@ namespace Apache.Calcite.Cosmos.Adapter
         public const string DefaultRootAlias = "c";
 
         /// <summary>
-        /// The name of the column carrying the whole document in the map row model.
-        /// </summary>
-        public const string MapColumnName = "_MAP";
-
-        /// <summary>
         /// The name of the column carrying the whole document as JSON text.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The same document as <see cref="MapColumnName"/>, in the shape Calcite's SQL/JSON functions
-        /// can address. They are typed over character strings — SQL:2016 has no JSON type and neither
-        /// does Calcite — so none of them can take a map, and that is what stood between an
-        /// <c>UPDATE</c> and a targeted patch. See <c>DESIGN.md</c> under <em>The one measured cost of
-        /// the substrate</em>.
+        /// The whole document, as the service sent it, in the shape Calcite's SQL/JSON functions can
+        /// address — they are typed over character strings, SQL:2016 having no JSON type and neither
+        /// does Calcite. Everything inside a document is reached from here.
         /// </para>
         /// <para>
-        /// It is a handle rather than a second representation. On the write path nothing is built: a
-        /// rule reads the path and the value out of the <c>JSON_SET</c> call and issues patch
-        /// operations. Projected, it is the document as the service returned it rather than the map
-        /// rendered back to text.
+        /// <b>It is the only column a statement writes.</b> Every other column is a projection of this
+        /// one, so a targeted change has to arrive as an expression over it —
+        /// <c>SET "DOC" = JSON_SET(c."DOC", '$.a', v)</c> — which is the form a rule can read a patch
+        /// operation off. That is what stood between an <c>UPDATE</c> and a targeted patch, and no
+        /// expression over a map could have supplied it.
         /// </para>
         /// <para>
-        /// Last in the row type deliberately, so that promoted columns keep the ordinals
-        /// <see cref="CosmosTable.GetColumnOrdinal"/> gives them.
+        /// First in the row type: it is the document, and the columns after it are derived from it.
         /// </para>
         /// </remarks>
-        public const string JsonColumnName = "_JSON";
+        public const string DocumentColumnName = "DOC";
 
         /// <summary>
-        /// The field ordinal the map column occupies, which is the first.
+        /// The field ordinal the document column occupies, which is the first.
         /// </summary>
         /// <remarks>
         /// Promoted columns begin at one, in the order <see cref="CosmosTable.GetPromotedColumnNames"/>
         /// returns them.
         /// </remarks>
-        public const int MapColumnOrdinal = 0;
+        public const int DocumentColumnOrdinal = 0;
+
+        /// <summary>
+        /// The prefix marking a column derived from a declared path.
+        /// </summary>
+        /// <remarks>
+        /// The root of a JSON path, because that is what the name is. Every resolved access in this
+        /// adapter is written <c>JSON_VALUE(c."DOC", '$.inventory.sku')</c>, and the column carrying
+        /// that path is named for the string already in that call rather than for an encoding of it.
+        /// </remarks>
+        public const string PromotedColumnPrefix = "$.";
+
+        /// <summary>
+        /// Derives the column name a declared path is promoted under.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The whole path rather than its last segment, so a nested declared path has a name at all:
+        /// <c>/inventory/sku</c> promotes as <c>$.inventory.sku</c>. Under the old last-segment rule a
+        /// nested path could not be promoted, which is why a container keyed on one reported no unique
+        /// key.
+        /// </para>
+        /// <para>
+        /// The name is the path, so deriving it is a change of spelling and nothing more — policy form
+        /// to JSON path form. A caller quotes it, <c>c."$.inventory.sku"</c>, as they would any
+        /// identifier that is not a bare word.
+        /// </para>
+        /// </remarks>
+        /// <param name="policyPath">A path in policy form, such as <c>/inventory/sku</c>.</param>
+        /// <returns>The column name.</returns>
+        public static string PromotedColumnName(string policyPath)
+        {
+            if (policyPath is null)
+                throw new ArgumentNullException(nameof(policyPath));
+
+            return PromotedColumnPrefix + string.Join(".", policyPath.Split('/', StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        /// <summary>
+        /// Reads back the property names a derived column addresses.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The derivation has to be reversible, because a derived column addresses the document and
+        /// not itself: <c>$.inventory.sku</c> binds to <c>c.inventory.sku</c>, which is what makes a
+        /// predicate or a sort over it render as the path the service knows.
+        /// </para>
+        /// <para>
+        /// A property whose own name contains a dot cannot be told from two nested ones here. Cosmos
+        /// permits such a name and the bracket form of a JSON path exists to write it; nothing
+        /// promotes one today, since a declared path is given in policy form where the separator is
+        /// the slash.
+        /// </para>
+        /// </remarks>
+        /// <param name="name">The column name.</param>
+        /// <param name="segments">The property names, outermost first.</param>
+        /// <returns><c>true</c> if the name is a derived one.</returns>
+        public static bool TryReadPromotedName(string name, out IReadOnlyList<string> segments)
+        {
+            segments = Array.Empty<string>();
+
+            if (name is null || name.StartsWith(PromotedColumnPrefix, StringComparison.Ordinal) == false)
+                return false;
+
+            var parts = name.Substring(PromotedColumnPrefix.Length).Split('.');
+            if (parts.Length == 0)
+                return false;
+
+            foreach (var part in parts)
+                if (part.Length == 0)
+                    return false;
+
+            segments = parts;
+            return true;
+        }
 
         /// <summary>
         /// Derives the ordinal-to-path binding for a row type.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The map column binds to the document root, and so does the JSON column — they are the same
+        /// The document column binds to the document root, and a derived column to the path it names — the same
         /// document, differing only in how a row reads it. Every other field is a promoted column and
         /// binds to the property of the same name. Nested promoted paths are not expressible this
         /// way and are not currently produced.
@@ -201,10 +268,27 @@ namespace Apache.Calcite.Cosmos.Adapter
             for (var i = 0; i < paths.Length; i++)
             {
                 var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
-                paths[i] = string.Equals(name, MapColumnName, StringComparison.Ordinal)
-                    || string.Equals(name, JsonColumnName, StringComparison.Ordinal)
-                        ? root
-                        : root.Property(name);
+
+                if (string.Equals(name, DocumentColumnName, StringComparison.Ordinal))
+                {
+                    paths[i] = root;
+                    continue;
+                }
+
+                // A derived column addresses the path it was derived from, however deep. Anything
+                // else names a property directly -- the service's own columns, and a projection's
+                // aliases, which are bound the same way.
+                if (TryReadPromotedName(name, out var segments))
+                {
+                    var path = root;
+                    foreach (var segment in segments)
+                        path = path.Property(segment);
+
+                    paths[i] = path;
+                    continue;
+                }
+
+                paths[i] = root.Property(name);
             }
 
             return paths;
@@ -215,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         /// <remarks>
         /// Only the JSON column differs from the declared type. It binds to the document root, as the
-        /// map column does, so nothing about the path tells them apart — and read as the <c>VARCHAR</c>
+        /// derived columns do, so nothing about the path tells them apart — and read as the <c>VARCHAR</c>
         /// it is declared, an object would be refused. It is read as the JSON the service sent instead.
         /// </remarks>
         /// <param name="rowType">The row type to describe.</param>
@@ -232,7 +316,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             for (var i = 0; i < readings.Length; i++)
             {
                 var name = ((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName();
-                readings[i] = string.Equals(name, JsonColumnName, StringComparison.Ordinal) ? CosmosReading.Json : CosmosReading.Typed;
+                readings[i] = string.Equals(name, DocumentColumnName, StringComparison.Ordinal) ? CosmosReading.Json : CosmosReading.Typed;
             }
 
             return readings;
@@ -455,10 +539,36 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // one and render a value as text that was never cast.
                 _readings = Array.Empty<CosmosReading>();
                 _sortableExpressions = Array.Empty<string?>();
+                _renderedExpressions = Array.Empty<string?>();
             }
         }
 
         IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
+        IReadOnlyList<string?> _renderedExpressions = Array.Empty<string?>();
+
+        /// <summary>
+        /// Gets or sets what a projection rendered for each output ordinal, where that is not simply
+        /// the path the ordinal binds to.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A projection can render a value the path alone does not describe — a SQL/JSON accessor is
+        /// guarded so that an object answers null the way the function does, and the value is then
+        /// read as text. A node above it that rebuilds the select list from the binding would emit the
+        /// bare path and read the raw value, which is a different answer and, where the plan declared
+        /// text and the document holds a number, a failure rather than a difference.
+        /// </para>
+        /// <para>
+        /// So the rendering is recorded beside the binding, and a node that rewrites the select list
+        /// prefers it. <see cref="Readings"/> carries the other half — how the value that comes back
+        /// is to be read — and the two belong to the same ordinal.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<string?> RenderedExpressions
+        {
+            get => _renderedExpressions;
+            set => _renderedExpressions = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Gets or sets, per output field, the expression a sort may order by where the field is

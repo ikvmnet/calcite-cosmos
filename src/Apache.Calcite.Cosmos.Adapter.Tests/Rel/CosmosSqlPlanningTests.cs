@@ -59,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var parsed = SqlParser.create(sql, parserConfig).parseQuery();
 
             var validator = SqlValidatorUtil.newValidator(
-                SqlStdOperatorTable.instance(),
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance),
                 catalogReader,
                 typeFactory,
                 SqlValidator.Config.DEFAULT);
@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             return converter.convertQuery(validated, false, true).rel;
         }
 
-        const string UnnestSql = "SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t";
+        const string UnnestSql = "SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t";
 
         /// <summary>
         /// Finds the first correlate in a plan.
@@ -101,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void ScanIsProducedByTheTable()
         {
             PlanText("SELECT * FROM products").Should().Be(
-                "LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5])\n" +
+                "LogicalProject(DOC=[$0], id=[$1], _ts=[$2], _etag=[$3], $.category=[$4])\n" +
                 "  CosmosTableScan(table=[[products]])");
         }
 
@@ -121,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             plan.Should().Contain("LogicalCorrelate(correlation=[$cor0], joinType=[inner]");
             plan.Should().Contain("Uncollect");
-            plan.Should().Contain("LogicalProject(EXPR$0=[ITEM($cor0._MAP, 'tags')])");
+            plan.Should().Contain("LogicalProject(EXPR$0=[StringToArray(JSON_QUERY($cor0.DOC, '$.tags'");
         }
 
         /// <summary>
@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var plan = PlanText(UnnestSql + " WHERE CAST(t AS VARCHAR) = 'steel'");
 
-            plan.Should().Contain("LogicalFilter(condition=[=(CAST($6):VARCHAR, 'steel')])");
+            plan.Should().Contain("LogicalFilter(condition=[=(CAST($5):VARCHAR, 'steel')])");
             plan.IndexOf("LogicalFilter").Should().BeLessThan(plan.IndexOf("LogicalCorrelate"), "the predicate is above the correlate, not inside it");
         }
 

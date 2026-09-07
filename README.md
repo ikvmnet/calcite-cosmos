@@ -138,11 +138,11 @@ await using var connection = new CalciteConnection(new CalciteConnectionStringBu
 
 | statement | default (`HIGH`) | `LOW` |
 |---|---|---|
-| `ORDER BY c."_MAP"['name']` | in-process | `ORDER BY c.name ASC` |
-| `ORDER BY c."_MAP"['name'] DESC` | in-process | `ORDER BY c.name DESC` |
-| `ORDER BY c."_MAP"['name'] FETCH NEXT 10 ROWS ONLY` | in-process | `ORDER BY c.name ASC OFFSET 0 LIMIT 10` |
-| `ORDER BY c."_MAP"['metadata']['sku']` | in-process | `ORDER BY c.metadata.sku ASC` |
-| `ORDER BY c."_MAP"['name'] NULLS LAST` | in-process | in-process |
+| `ORDER BY JSON_VALUE(c."DOC", '$.name')` | in-process | `ORDER BY c.name ASC` |
+| `ORDER BY JSON_VALUE(c."DOC", '$.name') DESC` | in-process | `ORDER BY c.name DESC` |
+| `ORDER BY JSON_VALUE(c."DOC", '$.name') FETCH NEXT 10 ROWS ONLY` | in-process | `ORDER BY c.name ASC OFFSET 0 LIMIT 10` |
+| `ORDER BY JSON_VALUE(c."DOC", '$.metadata.sku')` | in-process | `ORDER BY c.metadata.sku ASC` |
+| `ORDER BY JSON_VALUE(c."DOC", '$.name') NULLS LAST` | in-process | in-process |
 
 The row limit rides along, which is the shape that matters: a bounded page stops being a full
 container read. The last row is what says this is not a fudge — `LOW` does not weaken the rule, it
@@ -197,42 +197,78 @@ This is Calcite's own `Programs.CALC_PROGRAM` and it is a pass, not a set of rul
 
 ## The row model
 
-A container has no row schema: two items may share nothing but `id`. So a table is **one map column
-holding the whole document**, named `_MAP`, plus promoted scalar columns for the paths the service
-guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred by sampling documents, because a wrong guess yields an
-incorrect plan rather than a slow one.
-
-Reach anything else through the map column, to any depth:
+A container has no row schema: two items may share nothing but `id`. So a table is **one column
+holding the whole document as JSON**, named `DOC`, and everything inside a document is reached from
+it with SQL/JSON:
 
 ```sql
-SELECT c."_MAP"['metadata']['sku'] AS "sku"
+SELECT JSON_VALUE(c."DOC", '$.metadata.sku') AS "sku"
 FROM "products" AS c
-WHERE c."_MAP"['tags'][0] = 'steel'
+WHERE JSON_VALUE(c."DOC", '$.tags[0]') = 'steel'
 ```
 
 Those collapse to the Cosmos paths `c.metadata.sku` and `c.tags[0]` and are evaluated by the service.
-The key must be a constant — a Cosmos path names a property statically.
+The path must be a constant — a Cosmos path names a property statically.
+
+Beside `DOC` are promoted scalar columns for the paths the service guarantees or the container
+declares. **They are not another way to address the document; `DOC` already addresses all of it.**
+They exist because Calcite's planner metadata is expressed over *field ordinals* — a key is an
+`ImmutableBitSet`, and nullability and predicate flow follow a plain column reference rather than a
+function call — so a path the container declares or guarantees gets an ordinal to hang that on. The
+service's own keep the names it gives them, `id`, `_ts` and `_etag`; a declared path is named for the
+JSON path it addresses:
+
+| container | column |
+| --- | --- |
+| `"paths": ["/category"]` | `"$.category"` |
+| `"paths": ["/inventory/sku"]` | `"$.inventory.sku"` |
+
+```sql
+SELECT c."id" FROM "products" AS c ORDER BY c."id" FETCH NEXT 10 ROWS ONLY
+```
+
+`id`, `_ts` and `_etag` are declared `NOT NULL`, which is what lets a sort on one push under
+Calcite's default null placement. Nothing is inferred by sampling documents, because a wrong guess
+yields an incorrect plan rather than a slow one.
+
+**`DOC` is the only column a statement writes.** Every other one is a projection of it, so an insert
+supplies a document and an update replaces one:
+
+```sql
+INSERT INTO "products" ("DOC") VALUES ('{"id":"1","category":"bikes","name":"Trail Blazer"}')
+```
+
+Naming any other column in an `INSERT` or a `SET` is a validation error rather than something the
+adapter drops later without comment.
 
 ### Giving a column a type
 
-A path read through the map column is typed `ANY`, which nothing expecting typed columns — an ORM, a
-BI tool — can consume, so a view over a container casts. A cast to `VARCHAR` is carried: the service
-returns the value and the adapter renders it exactly as Calcite would, so the view's projection is
-evaluated by the service rather than over whole documents. `CAST(<path> AS VARCHAR) = 'text'` pushes
-as a comparison too, wherever no other JSON value could render as that text — written over the map
-column or as `CAST(JSON_VALUE(c."_JSON", '$.x') AS VARCHAR)`, which is the same value in the other
-spelling. The projection of that second form is the one thing the `_JSON` spelling does not carry:
-`JSON_VALUE` answers null for an object where the map column's rendering would carry text, so a
-`_JSON` view's text columns are evaluated in process while the filters over them still push.
+`JSON_VALUE` is typed `VARCHAR`, so a view over a container needs no cast to give a column a type
+that an ORM or a BI tool can consume, and `RETURNING` gives it another:
 
-Two limits are worth knowing before writing the view. A cast to a **number** converts rather than
-renders — `CAST(x AS INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service
-reproduces that, so it stays in-process, as does any cast carrying a width. And a cast column
-**cannot be an `ORDER BY` key at the service**: the rendering is not the path underneath, and the
-service will not order by an expression in any case, answering one with *"ORDER BY item expression
-could not be mapped to a document path"*. So a page ordered by a cast column reads every matching
-document. Order by an uncast path instead and it reads a page — subject to the null placement
-above, which `id` and the partition key are exempt from, being non-nullable.
+```sql
+CREATE VIEW "catalogue" AS
+SELECT JSON_VALUE(c."DOC", '$.name') AS "name",
+       JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) AS "price"
+FROM "products" AS c
+```
+
+Both project at the service rather than over whole documents. A cast written over one anyway
+converts nothing and is dropped.
+
+What `JSON_VALUE` means is reproduced at the service rather than approximated: it answers a scalar's
+text and null for an object or an array, so the statement carries
+`(IS_PRIMITIVE(c.name) ? c.name : null)`. Reading the raw path instead would return a number where
+the plan declared text, which the reader refuses rather than coerces.
+
+Two limits are worth knowing. A cast to a **number** converts rather than renders — `CAST(x AS
+INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service reproduces that, so it
+stays in process, as does any cast carrying a width. And a rendered column **cannot be an `ORDER BY`
+key at the service**: the rendering is not the path underneath, and the service will not order by an
+expression in any case, answering one with *"ORDER BY item expression could not be mapped to a
+document path"*. So a page ordered by such a column reads every matching document. Order by the path
+itself and it reads a page — subject to the null placement above, which `id`, `_ts` and `_etag` are
+exempt from, being non-nullable.
 
 ## What gets pushed down
 
@@ -257,7 +293,7 @@ Cosmos has full text search and SQL does not, so the functions — `FULLTEXTCONT
 them, so a connection resolves them the way it resolves a table:
 
 ```sql
-SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(c."_MAP"['name'], 'steel')
+SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.name'), 'steel')
 ```
 
 Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
@@ -327,12 +363,12 @@ map lookup yields into one — so a shape in a document reaches an operator by b
 SELECT c."id"
 FROM "products" AS c
 WHERE ST_GEOG_DWITHIN(
-        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location')),
+        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
         ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
         1000)
 ```
 
-That pushes. `JSON_QUERY` over `_JSON` resolves to a document path, so the constructor collapses onto
+That pushes. `JSON_QUERY` over `DOC` resolves to a document path, so the constructor collapses onto
 it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads
 the property as the shape, so the text and the parsing are a round trip it never needed.
 

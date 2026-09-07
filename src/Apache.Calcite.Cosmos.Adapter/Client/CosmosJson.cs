@@ -25,7 +25,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// <para>
     /// A property Cosmos does not return is absent from the object rather than present and null — the
     /// service elides <c>undefined</c>. Both read as SQL <c>NULL</c> here, which is the only available
-    /// reading: the map column aside, nothing in this adapter can distinguish a missing property from a
+    /// reading: the document column aside, nothing in this adapter can distinguish a missing property from a
     /// null one, and SQL has no third value to distinguish them with.
     /// </para>
     /// </remarks>
@@ -119,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         /// <remarks>
         /// The document as it arrived, not a re-serialisation of a parsed form: <c>GetRawText</c>
-        /// returns the original span. So the <c>_JSON</c> column costs a copy rather than a round trip,
+        /// returns the original span. So the <c>DOC</c> column costs a copy rather than a round trip,
         /// and cannot differ from what is stored — key order, number formatting and all.
         /// </remarks>
         /// <param name="row">The row object.</param>
@@ -143,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <remarks>
         /// What a point read needs, and what the projected form does not: the row is the document
         /// itself, so a field is reached by walking its path rather than by naming a property of a
-        /// constructed object. An empty path is the document — the map column.
+        /// constructed object. An empty path is the document — the document column.
         /// <para>
         /// A segment that is not there reads as SQL <c>NULL</c>, exactly as an absent property does in
         /// the projected form, because both are Cosmos returning nothing for that path.
@@ -280,7 +280,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Reads a JSON object as the <see cref="java.util.Map"/> a <c>MAP</c> column holds.
+        /// Reads a JSON object as the <see cref="java.util.Map"/> a <c>MAP</c> or <c>ANY</c> value holds.
         /// </summary>
         /// <param name="value">The value to read.</param>
         /// <returns>The map.</returns>

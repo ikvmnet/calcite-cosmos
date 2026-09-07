@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 CosmosPath.Root("c").Property("location"),   // 0 — a geography
                 CosmosPath.Root("c").Property("n"),          // 1
-                CosmosPath.Root("c"),                        // 2 — the document, as _JSON binds it
+                CosmosPath.Root("c"),                        // 2 — the document, as DOC binds it
             };
         }
 
@@ -151,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A stored geography reaches the service as the path, not as parsed-out text.
         /// </summary>
         /// <remarks>
-        /// <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location'))</c> is how a shape in a document
+        /// <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c> is how a shape in a document
         /// reaches an operator at all — no column is typed as a geometry, so it has to be parsed out of
         /// text. In process that is what happens. Pushed down it is not: Cosmos reads the property itself
         /// as the shape, so the text and the parsing are a round trip it never needed.
@@ -202,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <remarks>
         /// The document already holds the GeoJSON, so parsing it into a geometry and writing it back out
         /// is a round trip. What comes back is an object where the projection is declared <c>VARCHAR</c>,
-        /// which is the reading the <c>_JSON</c> column takes and for the same reason.
+        /// which is the reading the <c>DOC</c> column takes and for the same reason.
         /// </remarks>
         [TestMethod]
         public void SerialisingAStoredGeographyIsTheProperty()

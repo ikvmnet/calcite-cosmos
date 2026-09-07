@@ -38,8 +38,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// Public so that the shape this rule depends on can be asserted against real planner
-        /// output rather than assumed. Planning <c>… FROM products AS c, UNNEST(c."_MAP"['tags'])</c>
-        /// yields a correlate over <c>Uncollect(Project(ITEM($cor0._MAP, 'tags')))</c>, which is
+        /// output rather than assumed. Planning
+        /// <c>… FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c."DOC", '$.tags')))</c>
+        /// yields a correlate over <c>Uncollect(Project(StringToArray(JSON_QUERY($cor0.DOC, '$.tags'))))</c>, which is
         /// what this recognises.
         /// </remarks>
         /// <param name="correlate">The correlate to inspect.</param>

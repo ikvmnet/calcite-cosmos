@@ -442,35 +442,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         [
             // Projections.
             ("SELECT * FROM products", false),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c", false),
-            ("SELECT c.\"_MAP\"['metadata']['sku'] FROM products AS c", false),
-            ("SELECT c.\"_MAP\"['price'] FROM products AS c", false),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.metadata.sku') FROM products AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c", false),
 
             // Filters: comparisons, null against absent, NOT over both, disjunction, LIKE's shapes.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" = 'bikes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] > 50", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] IS NULL", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] IS NOT NULL", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" IS NULL", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" = 'bikes' OR c.\"category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IS NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' OR c.\"$.category\" = 'shoes'", false),
 
             // Negation over a path that is null in one document and absent in another. The service's
             // equality over a null is false where SQL's is unknown, and only the negation tells them
             // apart -- in a positive position false and unknown both discard the row.
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" = 'bikes')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" <> 'bikes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" <> 'bikes')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['price'] > 50)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (UPPER(CAST(c.\"category\" AS VARCHAR)) = 'BIKES')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" <> 'bikes')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (UPPER(CAST(c.\"$.category\" AS VARCHAR)) = 'BIKES')", false),
 
             // The shapes the guard is deliberately not applied to, because applying it would be too
             // strong. Here to say whether leaving them alone is right.
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" = 'bikes' AND c.\"_MAP\"['price'] > 50)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" = 'bikes' OR c.\"_MAP\"['price'] > 50)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"category\" = 'bikes'))", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" IN ('bikes', 'shoes')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] BETWEEN 10 AND 200", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"id\" = '3' AND c.\"category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' AND CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes' OR CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"$.category\" = 'bikes'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IN ('bikes', 'shoes')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') BETWEEN 10 AND 200", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"id\" = '3' AND c.\"$.category\" = 'shoes'", false),
 
             // Sorts and row restrictions, ordered by the unique id so the comparison is meaningful.
             ("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\"", true),
@@ -488,45 +488,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // absence of these from a corpus about null and absent values otherwise reads as an
             // oversight, and because the day the convention grows them is the day they belong here.
             ("SELECT SUM(c.\"_ts\") FROM products AS c", false),
-            ("SELECT COUNT(DISTINCT c.\"category\") FROM products AS c", false),
-            ("SELECT c.\"category\", COUNT(*) FROM products AS c GROUP BY c.\"category\"", false),
-            ("SELECT c.\"category\", COUNT(*) FROM products AS c GROUP BY ROLLUP(c.\"category\")", false),
-            ("SELECT c.\"category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"category\" HAVING c.\"category\" = 'bikes'", false),
+            ("SELECT COUNT(DISTINCT c.\"$.category\") FROM products AS c", false),
+            ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\"", false),
+            ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY ROLLUP(c.\"$.category\")", false),
+            ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'", false),
             ("SELECT AVG(c.\"_ts\") FROM products AS c", false),
 
             // LIKE's shapes: the prefix that becomes STARTSWITH, and the general form that stays LIKE.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['name'] LIKE 'S%'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['name'] LIKE '%Runner%'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE 'S%'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE '%Runner%'", false),
 
             // Array traversal.
 
             // The string functions mapped from a SQL counterpart, which is exactly where the two
             // could disagree — the oracle evaluates SQL's, the pushdown Cosmos's.
-            ("SELECT LEFT(CAST(c.\"_MAP\"['name'] AS VARCHAR), 3) FROM products AS c", false),
-            ("SELECT RIGHT(CAST(c.\"_MAP\"['name'] AS VARCHAR), 3) FROM products AS c", false),
-            ("SELECT REVERSE(CAST(c.\"_MAP\"['name'] AS VARCHAR)) FROM products AS c", false),
-            ("SELECT REPEAT(CAST(c.\"_MAP\"['name'] AS VARCHAR), 2) FROM products AS c", false),
+            ("SELECT LEFT(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR), 3) FROM products AS c", false),
+            ("SELECT RIGHT(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR), 3) FROM products AS c", false),
+            ("SELECT REVERSE(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR)) FROM products AS c", false),
+            ("SELECT REPEAT(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR), 2) FROM products AS c", false),
 
             // And the boundary that most often differs between dialects: a count longer than the
             // string, which both are documented to clamp rather than fail.
-            ("SELECT LEFT(CAST(c.\"_MAP\"['name'] AS VARCHAR), 99) FROM products AS c", false),
-            ("SELECT RIGHT(CAST(c.\"_MAP\"['name'] AS VARCHAR), 99) FROM products AS c", false),
+            ("SELECT LEFT(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR), 99) FROM products AS c", false),
+            ("SELECT RIGHT(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR), 99) FROM products AS c", false),
 
             // The array functions, and the index shift above all: the oracle counts from one and
             // the pushdown from zero, so an off-by-one in the translation shows here as different
             // elements rather than as an error.
-            ("SELECT ARRAY_SLICE(c.\"_MAP\"['tags'], 0, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(c.\"_MAP\"['tags'], 1, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(c.\"_MAP\"['tags'], 2, 1) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_SLICE(c.\"_MAP\"['tags'], 0, 2) FROM products AS c WHERE c.\"id\" = '1'", false),
 
             // SUBSTRING carries the same adjustment ARRAY_SLICE carried wrongly, and SQL's origin
             // really is one here. Covered so that the two are not assumed to be the same question.
-            ("SELECT SUBSTRING(CAST(c.\"_MAP\"['name'] AS VARCHAR) FROM 1 FOR 3) FROM products AS c", false),
-            ("SELECT SUBSTRING(CAST(c.\"_MAP\"['name'] AS VARCHAR) FROM 2 FOR 3) FROM products AS c", false),
+            ("SELECT SUBSTRING(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) FROM 1 FOR 3) FROM products AS c", false),
+            ("SELECT SUBSTRING(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) FROM 2 FOR 3) FROM products AS c", false),
 
-            ("SELECT ARRAY_UNION(c.\"_MAP\"['tags'], c.\"_MAP\"['tags']) FROM products AS c WHERE c.\"id\" = '1'", false),
-            ("SELECT ARRAY_INTERSECT(c.\"_MAP\"['tags'], c.\"_MAP\"['tags']) FROM products AS c WHERE c.\"id\" = '1'", false),
 
             // Not here, and the absences are facts rather than oversights: the library's
             // ARRAY_SLICE takes exactly three arguments, so Cosmos's two-argument form has no SQL
@@ -537,8 +531,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // every key. The seeded documents include a null category and an absent one, so this
             // asks the question that matters: whether the service's dedup agrees with SQL's about
             // null and undefined.
-            ("SELECT DISTINCT c.\"category\" FROM products AS c", false),
-            ("SELECT DISTINCT c.\"category\", c.\"id\" FROM products AS c", false),
+            ("SELECT DISTINCT c.\"$.category\" FROM products AS c", false),
+            ("SELECT DISTINCT c.\"$.category\", c.\"id\" FROM products AS c", false),
             ("SELECT DISTINCT c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\"", true),
 
 
@@ -548,61 +542,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // because that is where this adapter has been wrong every time so far.
 
             // Comparison and range, in both positions.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] < 100", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] >= 120", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['price'] BETWEEN 10 AND 200)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] NOT IN (120, 340)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" NOT IN ('bikes', 'shoes')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" IN ('bikes', 'shoes'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) < 100", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) >= 120", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') BETWEEN 10 AND 200)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') NOT IN (120, 340)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" NOT IN ('bikes', 'shoes')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" IN ('bikes', 'shoes'))", false),
 
             // LIKE and its negation over a path some documents lack.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['name'] NOT LIKE 'S%'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['name'] LIKE '%Runner%')", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['name'] LIKE '_prin_'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') NOT LIKE 'S%'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.name') LIKE '%Runner%')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE '_prin_'", false),
 
             // Arithmetic over a null and an absent operand, which SQL makes unknown.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] + 1 > 100", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['price'] + 1 > 100)", false),
-            ("SELECT c.\"_MAP\"['price'] + 1 FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') + 1 > 100", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') + 1 > 100)", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price') + 1 FROM products AS c", false),
 
             // Conjunction and disjunction mixing a known-true arm with an unknown one.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] > 50 OR c.\"category\" = 'shoes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] > 50 AND c.\"category\" = 'shoes'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['price'] IS NULL)", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['price'] IS NOT NULL)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 OR c.\"$.category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 AND c.\"$.category\" = 'shoes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') IS NULL)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL)", false),
 
             // Aggregates over a column that is null in one document, absent in another, and a
             // string in none -- what SUM and AVG skip is not obviously the same on both sides.
-            ("SELECT COUNT(c.\"_MAP\"['price']) FROM products AS c", false),
-            ("SELECT COUNT(c.\"category\") FROM products AS c", false),
-            ("SELECT c.\"category\", COUNT(*) FROM products AS c WHERE c.\"_MAP\"['price'] IS NOT NULL GROUP BY c.\"category\"", false),
-            ("SELECT COUNT(DISTINCT c.\"_MAP\"['name']) FROM products AS c", false),
+            ("SELECT COUNT(JSON_VALUE(c.\"DOC\", '$.price')) FROM products AS c", false),
+            ("SELECT COUNT(c.\"$.category\") FROM products AS c", false),
+            ("SELECT c.\"$.category\", COUNT(*) FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL GROUP BY c.\"$.category\"", false),
+            ("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.name')) FROM products AS c", false),
 
             // Ordering, where the placement of a null and an absent value is the whole question.
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"id\" DESC", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"id\" DESC", true),
             ("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
             ("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\" OFFSET 6 ROWS", true),
 
             // The string functions over a path some documents lack, which is where a service
             // function returning undefined and SQL returning null could part company.
-            ("SELECT c.\"id\", UPPER(CAST(c.\"_MAP\"['name'] AS VARCHAR)) FROM products AS c", false),
-            ("SELECT c.\"id\", CHAR_LENGTH(CAST(c.\"_MAP\"['name'] AS VARCHAR)) FROM products AS c", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE CHAR_LENGTH(CAST(c.\"_MAP\"['name'] AS VARCHAR)) > 6", false),
+            ("SELECT c.\"id\", UPPER(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR)) FROM products AS c", false),
+            ("SELECT c.\"id\", CHAR_LENGTH(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR)) FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CHAR_LENGTH(CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR)) > 6", false),
 
             // Nested and array-valued paths, read where they are absent.
-            ("SELECT c.\"id\", c.\"_MAP\"['metadata']['sku'] FROM products AS c", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['metadata']['sku'] = 'B-2'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"_MAP\"['metadata']['sku'] = 'B-2')", false),
-            ("SELECT c.\"id\", c.\"_MAP\"['tags'][0] FROM products AS c", false),
-            ("SELECT c.\"id\", c.\"_MAP\"['tags'][1] FROM products AS c", false),
-            ("SELECT c.\"id\", c.\"_MAP\"['tags'][2] FROM products AS c", false),
-            ("SELECT c.\"id\", c.\"_MAP\"['tags'][3] FROM products AS c", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['tags'][1] = 'outdoor'", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE CARDINALITY(c.\"_MAP\"['tags']) = 2", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.metadata.sku') FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata.sku') = 'B-2'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata.sku') = 'B-2')", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[0]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[1]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[2]') FROM products AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[3]') FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') = 'outdoor'", false),
 
             // CASE, whose arms are where an unknown condition goes somewhere visible.
-            ("SELECT c.\"id\", CASE WHEN c.\"category\" = 'bikes' THEN 1 ELSE 0 END FROM products AS c", false),
-            ("SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"category\" = 'bikes' THEN 1 ELSE 0 END) = 0", false),
+            ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END FROM products AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END) = 0", false),
 
 
             // ── A second sweep: ordering, aggregation and row restriction over a path
@@ -611,50 +604,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // Ordering by a nullable user path, both directions and both null placements. Where the
             // service's placement and Calcite's disagree the sort must decline, and declining is
             // invisible from the rows unless they are compared.
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\", c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\" DESC, c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\" NULLS FIRST, c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\" NULLS LAST, c.\"id\"", true),
-            ("SELECT c.\"id\" FROM products AS c ORDER BY c.\"_MAP\"['price'], c.\"id\"", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\", c.\"id\"", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" DESC, c.\"id\"", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" NULLS FIRST, c.\"id\"", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" NULLS LAST, c.\"id\"", true),
+            ("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.price'), c.\"id\"", true),
 
             // The same ordering once the query has removed the nulls, which is what lets it push at
             // all. The seeded categories tie — three shoes, two bikes — so the single-key form is
             // compared as a multiset: with ties the sequence is unspecified and only the rows are
             // the statement's to get right. The tie-broken form is deterministic and comparable as
             // a sequence, and does not push here for want of a composite index over two paths.
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\"", false),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" DESC", false),
-            ("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\", c.\"id\"", true),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\"", false),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" DESC", false),
+            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\", c.\"id\"", true),
 
             // A view's shape: the projection casts, so it cannot be pushed, and the ordering and row
             // limit go under it rather than staying above. The cast runs over the rows that come back,
             // which is what these compare.
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\"", true),
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c WHERE c.\"category\" = 'shoes' ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\"", true),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c WHERE c.\"$.category\" = 'shoes' ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
 
             // Row restriction combined with a predicate over a path some documents lack, where a
             // wrongly pushed TOP takes the wrong rows rather than the wrong number of them.
-            ("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['price'] IS NOT NULL ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
-            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"category\" = 'bikes') ORDER BY c.\"id\" OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY", true),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') IS NOT NULL ORDER BY c.\"id\" FETCH NEXT 2 ROWS ONLY", true),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes') ORDER BY c.\"id\" OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY", true),
 
             // The aggregate forms over a path that is null in one document and absent in another.
             // What SUM and AVG skip, and what COUNT counts, is the whole question.
-            ("SELECT COUNT(*), COUNT(c.\"_MAP\"['price']) FROM products AS c", false),
-            ("SELECT c.\"category\", COUNT(*) FROM products AS c GROUP BY c.\"category\" HAVING COUNT(*) > 1", false),
+            ("SELECT COUNT(*), COUNT(JSON_VALUE(c.\"DOC\", '$.price')) FROM products AS c", false),
+            ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\" HAVING COUNT(*) > 1", false),
 
             // Grouping by something other than the partition key, and by more than one thing.
-            ("SELECT c.\"_MAP\"['name'], COUNT(*) FROM products AS c GROUP BY c.\"_MAP\"['name']", false),
-            ("SELECT c.\"category\", c.\"_MAP\"['name'], COUNT(*) FROM products AS c GROUP BY c.\"category\", c.\"_MAP\"['name']", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.name'), COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.name')", false),
+            ("SELECT c.\"$.category\", JSON_VALUE(c.\"DOC\", '$.name'), COUNT(*) FROM products AS c GROUP BY c.\"$.category\", JSON_VALUE(c.\"DOC\", '$.name')", false),
 
             // DISTINCT over a computed column and over more than one, where the normalised key and
             // the plain one sit side by side.
-            ("SELECT DISTINCT c.\"category\", c.\"_MAP\"['name'] FROM products AS c", false),
-            ("SELECT DISTINCT c.\"_MAP\"['price'] FROM products AS c", false),
+            ("SELECT DISTINCT c.\"$.category\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c", false),
 
             // The whole document, and a document with no user properties beyond the seeded ones.
-            ("SELECT c.\"_MAP\" FROM products AS c", false),
-            ("SELECT c.\"_MAP\"['metadata'] FROM products AS c", false),
+            ("SELECT c.\"DOC\" FROM products AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.metadata') FROM products AS c", false),
 
             // Casts over document values, which is how a view gives a column a SQL type over this row
             // model. Read against the typed container, whose documents disagree with the declaration on
@@ -667,65 +660,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // through a cast a change that has to prove itself here first. Measured, an erasing
             // translation fails these — Calcite converts "30" and 30.7 to 30 and matches both, and the
             // service compares the stored value as it stands and matches neither.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) = 30", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) > 10", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) > 0 ORDER BY c.\"id\"", true),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 10", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 0 ORDER BY c.\"id\"", true),
             // Saturation. A stored value far past what the target can hold converts to the limit, so a
             // comparison against the limit is true of it — and a bound around the limit would exclude
             // exactly that document. Measured as a lost row before the bound stopped stating that side.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['big'] AS INTEGER) = 2147483647", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['big'] AS BIGINT) = 9223372036854775807", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['big'] AS INTEGER) > 5", false),
 
             // The spellings differ in what they do with a value that will not convert -- CAST raises,
             // SAFE_CAST yields null -- and the bound must not change which happens, because it never
             // excludes a value that is not a number.
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(c.\"_MAP\"['price'] AS INTEGER) = 30", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(c.\"_MAP\"['price'] AS INTEGER) > 10", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(c.\"_MAP\"['big'] AS INTEGER) = 2147483647", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'bikes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) IS NULL", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS DOUBLE) = 30.7", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['name'] AS VARCHAR) = 'Stringy'", false),
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['price'] AS INTEGER) FROM typed AS c", false),
-            ("SELECT CAST(c.\"_MAP\"['price'] AS INTEGER) FROM typed AS c WHERE c.\"category\" = 'a'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"category\" AS VARCHAR) = 'b'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['price'] AS DECIMAL(10, 2)) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) > 10", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) IS NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS DOUBLE) = 30.7", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) = 'Stringy'", false),
+            ("SELECT c.\"id\", CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) FROM typed AS c", false),
+            ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'a'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DECIMAL(10, 2)) = 30", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"id\" AS INTEGER) = 3", false),
 
             // Equality against text, which is the one cast shape that is dropped — and dropped because
             // the two forms select the same documents, not because the difference is tolerable. Asked
             // of a field holding a string, a number, a boolean, an array, an object, null and nothing.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'bikes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'shoes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'shoes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) <> 'bikes'", false),
 
-            // The same equality with the accessor said in SQL/JSON, which is the cast a _JSON view
+            // The same equality with the accessor said in SQL/JSON, which is the cast a DOC view
             // writes and which was dropped over the map subscript only (#71). Over the same seven
             // values, because the claim is the same: JSON_VALUE without RETURNING renders what the cast
             // over ANY renders and answers null for the rest. The refused literal, the partition key
             // through the cast, and the projection above the dropped comparison -- which stays in
             // process over this spelling -- come with it.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'shoes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = '30'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.category') AS VARCHAR) = 'b'", false),
-            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) FROM typed AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'shoes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR) = 'b'", false),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
 
             // The bare accessor, which is that cast with nothing written: Calcite renders the number 30
             // as '30' and keeps the document, the service does not. Held to the same literal test, so
             // the first pushes and the other two are declined and decided in process, over the
             // disjunction the split rule pushes -- the string or the number, the string or the
             // boolean. The bracketed literal is exact over the accessor, an array being null to it.
-            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'bikes'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'true'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '[bikes]'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '[bikes]'", false),
 
-            // Over the map column the same refused literals push the disjunction too, and an array
-            // renders with a bracket, so the bracketed literal admits arrays beside the string.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '[bikes]'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'", false),
+            // The same refused literals through the accessor, where no array branch is wanted: the
+            // function answers null for an array, so no stored array matches however the literal
+            // looks and the string comparison is exact.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '[bikes]'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'TRUE'", false),
 
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
@@ -733,18 +723,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // boolean, an array, an object, null and nothing — and of one holding 1e30, whose rendering
             // is the one a JSON writer would not have produced. A rendering that drifts from Calcite's
             // fails here, which is the only place it would be caught.
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
-            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
-            ("SELECT CAST(c.\"_MAP\"['big'] AS VARCHAR) FROM typed AS c", false),
-            ("SELECT SAFE_CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c", false),
-            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c WHERE c.\"category\" = 'a'", false),
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'bikes'", false),
-            ("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM typed AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.big') AS VARCHAR) FROM typed AS c", false),
+            ("SELECT SAFE_CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c", false),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c WHERE c.\"$.category\" = 'a'", false),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
+            ("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM typed AS c ORDER BY c.\"id\" FETCH NEXT 3 ROWS ONLY", true),
 
             // A width is a second conversion the reader does not perform, so these keep the cast in
             // process — and the rows are what says so: VARCHAR(3) truncates and CHAR(8) pads.
-            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR(3)) FROM typed AS c", false),
-            ("SELECT CAST(c.\"_MAP\"['label'] AS CHAR(8)) FROM typed AS c", false),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR(3)) FROM typed AS c", false),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.label') AS CHAR(8)) FROM typed AS c", false),
 
             // Ordering by a rendered column is not ordering by the path underneath — as text 10 sorts
             // before 9, and the service puts a boolean and a null before either — so the column
@@ -756,19 +746,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             // refused for that instead, saying nothing; and a row that is only the rendering makes a
             // tie between equal values invisible, so the comparison does not depend on which of two
             // identical rows came first.
-            ("SELECT CAST(c.\"_MAP\"['label'] AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
-            ("SELECT CAST(c.\"_MAP\"['price'] AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price') AS VARCHAR) FROM typed AS c ORDER BY 1 NULLS FIRST", true),
 
             // The literals that are refused, each because some other JSON value renders as them. If any
             // of these starts being dropped, these are the statements that say so.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '30'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'true'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'true'", false),
 
             // The partition key reached through a view, which is the routing this recovers. The rows
             // must not change; that they are fetched from one partition is measured separately.
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"category\" AS VARCHAR) = 'b'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"category\" AS VARCHAR) = '30'", false),
-            ("SELECT CAST(c.\"_MAP\"['price'] AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(c.\"_MAP\"['price'] AS INTEGER)", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
+            ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
         ];
 
         /// <summary>
@@ -797,8 +787,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         static readonly (string Sql, string Reason)[] WithoutAnOracle =
         [
-            ("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t",
-                "Withholding the unnest rule leaves the correlate with no implementation in the asynchronous convention at all, so the unpushed plan cannot be built. Comparing the traversal needs an oracle that reads the array in process, which is a way in rather than a rule taken away."),
         ];
 
         /// <summary>
@@ -821,14 +809,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </remarks>
         static readonly (string Sql, string[] Rows)[] WithStatedRows =
         [
-            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t",
-                ["(\"1\", \"outdoor\")", "(\"1\", \"steel\")"]),
 
             // The same traversal with a predicate over the element, which the service applies after
             // the JOIN. Stated rather than compared for the same reason, and it is the row the whole
             // predicate pushdown is about: one of the two elements, not both and not none.
-            ("SELECT c.\"id\", CAST(t AS VARCHAR) FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'steel'",
-                ["(\"1\", \"steel\")"]),
         ];
 
         [TestMethod]

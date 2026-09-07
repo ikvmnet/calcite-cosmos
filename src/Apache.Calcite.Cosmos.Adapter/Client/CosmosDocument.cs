@@ -11,19 +11,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The reverse of <see cref="CosmosJson"/>, and it has one more problem than the reading side: a row
-    /// arriving here can hold either a Java box or a CLR primitive. The reading side produces Java boxes
-    /// throughout, because everything above it is compiled Java; but a literal in a <c>VALUES</c> is
-    /// compiled by the CLR conventions and arrives as a CLR value. Both are accepted, and anything else
-    /// is refused rather than stringified.
+    /// The reverse of <see cref="CosmosJson"/>, and far the simpler half. A row describes its document
+    /// with the document column and nothing else — every other column is a projection of that one and
+    /// is declared <c>STORED</c> — so building a document is copying the JSON that arrived, minus the
+    /// properties the service owns.
     /// </para>
     /// <para>
-    /// <b>The map column is the document and a promoted column sets a property of it.</b> A promoted
-    /// column contributes only where its value is not null, because an unmentioned column arrives as
-    /// null and the alternative would overwrite the document it was handed with a row of nulls. The
-    /// consequence — that a promoted column cannot write a JSON null — is recorded in <c>DESIGN.md</c>
-    /// under <em>What an insert writes</em>; the map column can, a map distinguishing an absent key
-    /// from one holding null.
+    /// Nothing is reinterpreted on the way through. A number keeps the digits it was given rather than
+    /// a round trip through a double, and a property keeps its place. The value-by-value writer this
+    /// class used to carry, which had to accept a Java box or a CLR primitive for every JSON type,
+    /// went with the map column that produced them.
     /// </para>
     /// </remarks>
     public static class CosmosDocument
@@ -35,8 +32,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <remarks>
         /// <para>
         /// <c>_ts</c> and <c>_etag</c> cannot be named in an <c>INSERT</c> — they are declared
-        /// <c>STORED</c>, so the validator refuses — but they can still arrive <em>inside</em> the map
-        /// column, which is what <c>INSERT INTO t (_MAP) SELECT "_MAP" FROM t2</c> hands over: a whole
+        /// <c>STORED</c>, so the validator refuses — but they still arrive <em>inside</em> the document
+        /// column, which is what <c>INSERT INTO t ("DOC") SELECT "DOC" FROM t2</c> hands over: a whole
         /// document, system properties and all. Copying one document to another is the obvious use of
         /// that statement, and the service's bookkeeping is not part of what is being copied.
         /// </para>
@@ -77,11 +74,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <summary>
         /// Builds the document a row describes.
         /// </summary>
-        /// <param name="columnNames">The row's field names, the map column first.</param>
+        /// <remarks>
+        /// A row describes its document with the document column, which is the only one a statement
+        /// may write — every other column is a projection of the same document and is declared
+        /// <c>STORED</c>. The service's own properties are stripped wherever they appear, so a row
+        /// read from a scan can be written back as another document without carrying that one's
+        /// identity.
+        /// </remarks>
+        /// <param name="columnNames">The row's field names.</param>
         /// <param name="values">The row's values, in the same order.</param>
         /// <returns>The document, as UTF-8 JSON.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="columnNames"/> or <paramref name="values"/> is <c>null</c>.</exception>
-        /// <exception cref="CosmosExecutionException">A value has no JSON counterpart, or the map column does not hold a map.</exception>
+        /// <exception cref="CosmosExecutionException">The document column holds something that is not a JSON object.</exception>
         public static byte[] Build(IReadOnlyList<string> columnNames, IReadOnlyList<object?> values)
         {
             if (columnNames is null)
@@ -89,181 +93,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (values is null)
                 throw new ArgumentNullException(nameof(values));
 
-            // Insertion-ordered, and the map's own properties go in first so that a promoted column
-            // naming one of them replaces it in place rather than appending a second.
-            var properties = new Dictionary<string, object?>(StringComparer.Ordinal);
-            var order = new List<string>();
+            var count = Math.Min(columnNames.Count, values.Count);
+            var ordinal = -1;
 
-            void Set(string name, object? value)
-            {
-                if (IsServiceProperty(name))
-                    return;
+            for (var i = 0; i < count; i++)
+                if (string.Equals(columnNames[i], CosmosImplementor.DocumentColumnName, StringComparison.Ordinal))
+                    ordinal = i;
 
-                if (properties.ContainsKey(name) == false)
-                    order.Add(name);
-
-                properties[name] = value;
-            }
-
-            for (var i = 0; i < columnNames.Count && i < values.Count; i++)
-            {
-                var value = values[i];
-
-                if (i == CosmosImplementor.MapColumnOrdinal)
-                {
-                    if (value is null)
-                        continue;
-
-                    if (value is not java.util.Map map)
-                        throw new CosmosExecutionException($"The '{CosmosImplementor.MapColumnName}' column holds a {value.GetType().Name} rather than a map, so it does not describe a document.");
-
-                    var entries = map.entrySet().iterator();
-                    while (entries.hasNext())
-                    {
-                        var entry = (java.util.Map.Entry)entries.next();
-                        var key = entry.getKey();
-
-                        if (key is not string name)
-                            throw new CosmosExecutionException($"A document property is keyed by a {key?.GetType().Name ?? "null"} rather than a string.");
-
-                        Set(name, entry.getValue());
-                    }
-
-                    continue;
-                }
-
-                // A promoted column says nothing where it is null: that is how an unmentioned column
-                // arrives, and it must not overwrite what the map column supplied.
-                if (value is not null)
-                    Set(columnNames[i], value);
-            }
+            var value = ordinal >= 0 ? values[ordinal] : null;
 
             var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+
             using (var writer = new Utf8JsonWriter(buffer))
             {
                 writer.WriteStartObject();
 
-                foreach (var name in order)
+                if (value is not null)
                 {
-                    writer.WritePropertyName(name);
-                    WriteValue(writer, properties[name]);
+                    if (value is not string text)
+                        throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column holds a {value.GetType().Name} rather than JSON text, so it does not describe a document.");
+
+                    JsonDocument parsed;
+
+                    try
+                    {
+                        parsed = JsonDocument.Parse(text);
+                    }
+                    catch (JsonException e)
+                    {
+                        throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column does not hold well-formed JSON: {e.Message}", e);
+                    }
+
+                    using (parsed)
+                    {
+                        if (parsed.RootElement.ValueKind != JsonValueKind.Object)
+                            throw new CosmosExecutionException($"The '{CosmosImplementor.DocumentColumnName}' column holds a JSON {parsed.RootElement.ValueKind.ToString().ToLowerInvariant()} rather than an object, so it does not describe a document.");
+
+                        // Streamed straight through rather than collected first. Nothing overrides a
+                        // property any more -- one column describes the document -- so what is written
+                        // is what arrived, minus the service's own, in the order it arrived in. Values
+                        // are copied verbatim, which is what keeps a number the digits it was given
+                        // rather than a round trip through a double.
+                        foreach (var property in parsed.RootElement.EnumerateObject())
+                        {
+                            if (IsServiceProperty(property.Name))
+                                continue;
+
+                            writer.WritePropertyName(property.Name);
+                            property.Value.WriteTo(writer);
+                        }
+                    }
                 }
 
                 writer.WriteEndObject();
             }
 
             return buffer.WrittenSpan.ToArray();
-        }
-
-        /// <summary>
-        /// Writes one value as JSON.
-        /// </summary>
-        /// <remarks>
-        /// Both representations are accepted for each JSON type — the Java box a read produced and the
-        /// CLR primitive a literal compiles to. A type with no JSON counterpart is refused rather than
-        /// rendered as text, because a document that silently holds <c>"System.Guid"</c> is worse than a
-        /// write that failed.
-        /// </remarks>
-        /// <param name="writer">The writer.</param>
-        /// <param name="value">The value.</param>
-        /// <exception cref="CosmosExecutionException">The value has no JSON counterpart.</exception>
-        public static void WriteValue(Utf8JsonWriter writer, object? value)
-        {
-            if (writer is null)
-                throw new ArgumentNullException(nameof(writer));
-
-            switch (value)
-            {
-                case null:
-                    writer.WriteNullValue();
-                    return;
-
-                // One case, not two: IKVM maps java.lang.String onto System.String, so a string read
-                // from a document and a string compiled from a literal are the same object.
-                case string s:
-                    writer.WriteStringValue(s);
-                    return;
-
-                case bool b:
-                    writer.WriteBooleanValue(b);
-                    return;
-                case java.lang.Boolean jb:
-                    writer.WriteBooleanValue(jb.booleanValue());
-                    return;
-
-                case sbyte or short or int or long:
-                    writer.WriteNumberValue(Convert.ToInt64(value, CultureInfo.InvariantCulture));
-                    return;
-                case byte or ushort or uint:
-                    writer.WriteNumberValue(Convert.ToInt64(value, CultureInfo.InvariantCulture));
-                    return;
-                case java.lang.Byte or java.lang.Short or java.lang.Integer or java.lang.Long:
-                    writer.WriteNumberValue(((java.lang.Number)value).longValue());
-                    return;
-
-                case float or double:
-                    writer.WriteNumberValue(Convert.ToDouble(value, CultureInfo.InvariantCulture));
-                    return;
-                case java.lang.Float or java.lang.Double:
-                    writer.WriteNumberValue(((java.lang.Number)value).doubleValue());
-                    return;
-
-                case decimal d:
-                    writer.WriteNumberValue(d);
-                    return;
-                case java.math.BigDecimal bd:
-                    // Written from the digits rather than through a double, which is the point of a
-                    // decimal: what it carried is what it keeps.
-                    writer.WriteRawValue(bd.toPlainString(), skipInputValidation: false);
-                    return;
-                case java.math.BigInteger bi:
-                    writer.WriteRawValue(bi.toString(), skipInputValidation: false);
-                    return;
-
-                // JSON has no binary type; base64 in a string is what Cosmos and every JSON API use,
-                // and is what the reading side expects to find.
-                case org.apache.calcite.avatica.util.ByteString bytes:
-                    writer.WriteStringValue(Convert.ToBase64String(bytes.getBytes()));
-                    return;
-                case byte[] raw:
-                    writer.WriteStringValue(Convert.ToBase64String(raw));
-                    return;
-
-                case java.util.Map map:
-                    {
-                        writer.WriteStartObject();
-
-                        var entries = map.entrySet().iterator();
-                        while (entries.hasNext())
-                        {
-                            var entry = (java.util.Map.Entry)entries.next();
-
-                            if (entry.getKey() is not string name)
-                                throw new CosmosExecutionException($"A document property is keyed by a {entry.getKey()?.GetType().Name ?? "null"} rather than a string.");
-
-                            writer.WritePropertyName(name);
-                            WriteValue(writer, entry.getValue());
-                        }
-
-                        writer.WriteEndObject();
-                        return;
-                    }
-
-                case java.util.Collection collection:
-                    {
-                        writer.WriteStartArray();
-
-                        var elements = collection.iterator();
-                        while (elements.hasNext())
-                            WriteValue(writer, elements.next());
-
-                        writer.WriteEndArray();
-                        return;
-                    }
-
-                default:
-                    throw new CosmosExecutionException($"A value of type '{value.GetType().FullName}' has no Cosmos JSON representation and cannot be written.");
-            }
         }
 
         /// <summary>

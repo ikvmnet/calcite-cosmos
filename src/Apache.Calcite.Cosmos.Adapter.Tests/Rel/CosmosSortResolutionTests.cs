@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 _types.createTypeWithNullability(_types.createSqlType(name), true);
 
             return _types.builder()
-                .add("_MAP", Nullable(SqlTypeName.ANY))
+                .add("DOC", Nullable(SqlTypeName.ANY))
                 .add("name", Nullable(SqlTypeName.VARCHAR))
                 .add("quantity", Nullable(SqlTypeName.INTEGER))
                 .add("id", _types.createSqlType(SqlTypeName.VARCHAR))
@@ -77,10 +77,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         // ── Field binding ─────────────────────────────────────────────────────────
 
         [TestMethod]
-        public void MapColumnBindsToTheDocumentRoot()
+        public void TheDocumentColumnBindsToTheDocumentRoot()
         {
             var rowType = _types.builder()
-                .add(CosmosImplementor.MapColumnName, SqlTypeName.ANY)
+                .add(CosmosImplementor.DocumentColumnName, SqlTypeName.VARCHAR)
                 .build();
 
             CosmosImplementor.BindFields(rowType).Should().ContainSingle().Which!.ToString().Should().Be("c");
@@ -90,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void PromotedColumnsBindToTheirProperties()
         {
             var rowType = _types.builder()
-                .add(CosmosImplementor.MapColumnName, SqlTypeName.ANY)
+                .add(CosmosImplementor.DocumentColumnName, SqlTypeName.VARCHAR)
                 .add("id", SqlTypeName.VARCHAR)
                 .add("_ts", SqlTypeName.BIGINT)
                 .build();
@@ -313,7 +313,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         };
 
         org.apache.calcite.rel.type.RelDataType UnnestRowType() => _types.builder()
-            .add("_MAP", _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.ANY), true))
+            .add("DOC", _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.ANY), true))
             .add("id", _types.createSqlType(SqlTypeName.VARCHAR))
             .add("element", _types.createSqlType(SqlTypeName.VARCHAR))
             .build();

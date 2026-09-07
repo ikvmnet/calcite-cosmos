@@ -84,6 +84,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             ? ((org.apache.calcite.rel.type.RelDataTypeField)_table.getRowType().getFieldList().get(index)).getType()
             : _cluster.getTypeFactory().createSqlType(SqlTypeName.ANY), index);
 
+        /// <summary>
+        /// <c>JSON_VALUE(&lt;doc&gt;, '$.a.b')</c>, which is how a document path is addressed now that the
+        /// row model carries the document as text.
+        /// </summary>
+        /// <remarks>
+        /// Built with an explicit return type rather than through the operator's inference: two
+        /// operands is what the translator reads — the document and the path — and the full SQL form
+        /// carries four more flags describing the ON EMPTY and ON ERROR behaviour, which nothing here
+        /// is about.
+        /// </remarks>
+        static java.util.List Nodes(params RexNode[] nodes)
+        {
+            var list = new java.util.ArrayList();
+            foreach (var node in nodes)
+                list.add(node);
+            return list;
+        }
+
+        RexNode Doc(string path, RexNode? document = null) => _rex.makeCall(
+            _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR),
+            SqlStdOperatorTable.JSON_VALUE,
+            Nodes(document ?? Ref(0), Str("$." + path)));
+
+        /// <summary>
+        /// The same, for an array: <c>JSON_QUERY</c> wrapped so that <c>UNNEST</c> will take it.
+        /// </summary>
+        RexNode DocArray(string path, RexNode? document = null) => _rex.makeCall(
+            _cluster.getTypeFactory().createSqlType(SqlTypeName.ANY),
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.StringToArray,
+            Nodes(_rex.makeCall(
+                _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR),
+                SqlStdOperatorTable.JSON_QUERY,
+                Nodes(document ?? Ref(0), Str("$." + path)))));
+
         const string Here = """{"type":"Point","coordinates":[-122.33,47.61]}""";
 
         /// <summary>
@@ -92,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// </summary>
         RexNode Distance() => _rex.makeCall(
             Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance,
-            _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("location")),
+            Doc("location"),
             _rex.makeCall(
                 Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson,
                 _rex.makeLiteral(Here, _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR, Here.Length))));
@@ -108,14 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         // ── Row type ──────────────────────────────────────────────────────────────
 
         [TestMethod]
-        public void RowTypeIsTheMapColumnPlusPromotedColumns()
+        public void RowTypeIsTheDocumentColumnPlusPromotedColumns()
         {
             var names = new List<string>();
             var fields = _table.getRowType().getFieldList();
             for (var i = 0; i < fields.size(); i++)
                 names.Add(((org.apache.calcite.rel.type.RelDataTypeField)fields.get(i)).getName());
 
-            names.Should().Equal("_MAP", "id", "_ts", "_etag", "category", "_JSON");
+            names.Should().Equal("DOC", "id", "_ts", "_etag", "$.category");
         }
 
         /// <remarks>
@@ -129,14 +163,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
-        /// A nested declared path has no column name under the current name-based binding, so it
-        /// stays in the map column rather than being promoted incorrectly.
+        /// A nested declared path is promoted, under the JSON path it addresses. It could not be
+        /// while a column took a path's last segment for its name, which is why a container keyed on
+        /// one used to report no unique key at all.
         /// </remarks>
         [TestMethod]
-        public void NestedPartitionKeyIsNotPromoted()
+        public void NestedPartitionKeyIsPromoted()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("c", new[] { "/inventory/sku" }));
-            table.GetPromotedColumnNames().Should().Equal("id", "_ts", "_etag");
+            table.GetPromotedColumnNames().Should().Equal("id", "_ts", "_etag", "$.inventory.sku");
         }
 
         // ── Scan ──────────────────────────────────────────────────────────────────
@@ -172,9 +207,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         [TestMethod]
-        public void FilterOverAMapPropertyRendersAPath()
+        public void FilterOverADocumentPropertyRendersAPath()
         {
-            var item = _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("city"));
+            var item = Doc("city");
             var filter = new CosmosFilter(_cluster, Traits(), Scan(),
                 _rex.makeCall(SqlStdOperatorTable.EQUALS, item, Str("Seattle")));
 
@@ -426,11 +461,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         [TestMethod]
-        public void ProjectOfAMapPropertyRendersAPath()
+        public void ProjectOfADocumentPropertyRendersAPath()
         {
-            var project = ProjectOver(Scan(), new[] { ("city", _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("city"))) });
+            var project = ProjectOver(Scan(), new[] { ("city", Doc("city")) });
 
-            Sql(project, Implementor()).Should().Be("SELECT VALUE { \"city\": c.city } FROM products c");
+            Sql(project, Implementor()).Should().Be("SELECT VALUE { \"city\": (IS_PRIMITIVE(c.city) ? c.city : null) } FROM products c");
         }
 
         /// <remarks>
@@ -536,7 +571,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         CosmosUnnest UnnestOver(RelNode input, RexNode array, string name = "t", org.apache.calcite.rel.core.CorrelationId? correlationId = null)
             => new(_cluster, Traits(), input, array, UnnestRowType(input, name), correlationId ?? _cluster.createCorrel());
 
-        RexNode MapItem(string property) => _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str(property));
+        RexNode MapItem(string property) => Doc(property);
 
         [TestMethod]
         public void UnnestRendersJoinIn()
@@ -552,8 +587,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var implementor = Implementor();
             UnnestOver(Scan(), MapItem("tags")).Implement(implementor);
 
-            implementor.Fields.Should().HaveCount(7);
-            implementor.Fields[6]!.ToString().Should().Be("t0");
+            implementor.Fields.Should().HaveCount(6);
+            implementor.Fields[5]!.ToString().Should().Be("t0");
         }
 
         [TestMethod]
@@ -570,7 +605,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var unnest = UnnestOver(Scan(), MapItem("tags"));
             var filter = new CosmosFilter(_cluster, Traits(), unnest,
-                _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(6), Str("outdoor")));
+                _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(5), Str("outdoor")));
 
             Sql(filter, Implementor()).Should().Be("SELECT VALUE c FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
         }
@@ -584,7 +619,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var correlationId = _cluster.createCorrel();
             var correlated = _rex.makeCorrel(_table.getRowType(), correlationId);
-            var array = _rex.makeCall(SqlStdOperatorTable.ITEM, _rex.makeFieldAccess(correlated, 0), Str("tags"));
+            var array = DocArray("tags", _rex.makeFieldAccess(correlated, 0));
 
             Sql(UnnestOver(Scan(), array, correlationId: correlationId), Implementor()).Should().Be("SELECT VALUE c FROM products c JOIN t0 IN c.tags");
         }
@@ -610,7 +645,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AForeignCorrelationVariableDoesNotResolve()
         {
             var correlated = _rex.makeCorrel(_table.getRowType(), _cluster.createCorrel());
-            var array = _rex.makeCall(SqlStdOperatorTable.ITEM, _rex.makeFieldAccess(correlated, 0), Str("tags"));
+            var array = DocArray("tags", _rex.makeFieldAccess(correlated, 0));
 
             // A different variable from the one the traversal declares as its own.
             var unnest = UnnestOver(Scan(), array, correlationId: _cluster.createCorrel());

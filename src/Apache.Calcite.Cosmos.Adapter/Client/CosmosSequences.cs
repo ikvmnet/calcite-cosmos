@@ -188,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>SET</c> column's value substituted from the trailing positions the planner appends.
         /// </summary>
         /// <remarks>
-        /// Where the map column is itself being set, the other columns' old values are withheld
+        /// Where the document column is set — and it is the only column that can be — the other columns' old values are withheld
         /// rather than substituted: the document builder lets a non-null promoted column override
         /// the map's entry, which is right for an insert describing one document, and wrong here —
         /// it would silently write old values over whatever the new map says. The one deliberate
@@ -206,13 +206,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             var updated = new object?[count];
             Array.Copy(values, updated, Math.Min(count, values.Length));
 
-            var mapSet = Array.IndexOf(updates, CosmosImplementor.MapColumnName) >= 0;
-            if (mapSet)
-                for (var i = 0; i < count; i++)
-                    if (i != CosmosImplementor.MapColumnOrdinal &&
-                        Array.IndexOf(updates, write.ColumnNames[i]) < 0 &&
-                        string.Equals(write.ColumnNames[i], Metadata.CosmosContainerMetadata.IdPropertyName, StringComparison.Ordinal) == false)
-                        updated[i] = null;
+            // Every other column is STORED, so the document column is the only thing a SET can name
+            // and the old row's other values are never substituted into the replacement: they are
+            // projections of a document the statement is replacing outright.
+            for (var i = 0; i < count; i++)
+                if (i != CosmosImplementor.DocumentColumnOrdinal)
+                    updated[i] = null;
 
             for (var j = 0; j < updates.Length; j++)
             {

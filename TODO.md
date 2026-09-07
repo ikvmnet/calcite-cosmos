@@ -262,7 +262,7 @@ adapter to write. What each statement does and refuses is recorded in `DESIGN.md
 
 ### `UPDATE`, the patch tier — *medium, and the blocker is a way to write it, not a type*
 
-`SET "_MAP" = …` executes as a whole-document replace. What remains is the cheap tier: a targeted
+`SET "DOC" = …` executes as a whole-document replace. What remains is the cheap tier: a targeted
 `SET` of a plain document property as `PatchItemAsync`, sending changed properties rather than the
 document. The execution ladder above it (static decomposition via a mutation operator, the diff and
 blind-patch optimizations) is recorded in `DESIGN.md` under *Updating*.
@@ -273,18 +273,21 @@ than declared anywhere — a planner can see that a single-path `SET` is not a w
 without anything being declared. What is missing is a way to *write* the statement, and there are
 three walls, each measured:
 
+**The substrate blocker is gone.** What follows was measured against the map column, which is why
+the row model no longer has one:
+
 1. `SET "_MAP"['data']['name'] = 'x'` does not parse. Calcite's `UPDATE` grammar accepts only `=` or
    `.` after the target identifier — *Encountered "[" … Was expecting one of: "=" … "." …*
 2. `SET "_MAP"."data"."name" = 'x'` parses and the validator refuses it: *Unknown target column
    `_MAP.data.name`*. A `SET` target is resolved against the row type, and a map has no fields.
-3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converts in isolation but dies through a
+3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converted in isolation and died through a
    connection: `JSON_SET` returns `VARCHAR`, the column is `(VARCHAR, ANY) MAP`, and Calcite cannot
    build a cast spec for it — *Unsupported type when convertTypeToSpec: ANY*. Calcite's SQL/JSON
    functions follow SQL:2016, where JSON is character data, so none of the family can address a map.
 
 **What does work is a source expression already of the map type.** Measured with Spark's
 `MAP_CONCAT`, which returns a map: the statement converts, plans, and arrives as a
-`CosmosTableModify(updateColumnList=[[_MAP]])` over a calc holding the expression — the shape a patch
+`CosmosTableModify(updateColumnList=[[DOC]])` over a calc holding the expression — the shape a patch
 rule would match, intact.
 
 **And there is no in-process fallback to be afraid of.** `TableModify` has no implementation in the
@@ -299,7 +302,7 @@ write is the item API, `PatchItemAsync` with `set`/`add`/`replace`/`remove`/`inc
 a call. So a rule reads the path and the value out of the SQL expression and issues patch operations;
 nothing is rendered.
 
-**The shape chosen is a second column, `_JSON`.** Typed `VARCHAR`, over the same document, so the
+**The shape chosen is a second column, `DOC`.** Typed `VARCHAR`, over the same document, so the
 standard `JSON_SET`, `JSON_REPLACE`, `JSON_INSERT` and `JSON_REMOVE` type-check against it —
 operators every tool already knows, nothing new to name. The column is a handle rather than a
 representation: on the write path it is never built, and projected it can be handed over as the
@@ -311,9 +314,9 @@ declared over `MAP`, one column, no cast, inheriting the refusal that a Cosmos f
 in-process body. Rejected for using names nobody outside this adapter knows, where the JSON family
 is already in every tool.
 
-**Reads through `_JSON` are worth more than they look, and that is the surprise.** The read side was
+**Reads through `DOC` are worth more than they look, and that is the surprise.** The read side was
 first written off here on the grounds that Calcite's SQL/JSON functions are string-typed, so pushing
-`JSON_VALUE(c."_JSON", '$.price')` down as the bare path `c.price` would hit the same wall as
+`JSON_VALUE(c."DOC", '$.price')` down as the bare path `c.price` would hit the same wall as
 projecting a cast to text — the service answering with a number where the plan declared text, which
 `CosmosJson.GetString` refuses. That is wrong: SQL:2016's `RETURNING` clause is implemented, and
 Calcite honours it. Measured:
@@ -349,7 +352,7 @@ path asks `CosmosRexTranslator.TryResolvePath` for it — a filter, a projection
 aggregate argument, an unnest array, the partition key extractor, and the full text and vector
 legality gates — so teaching that one function `JSON_VALUE` and `JSON_QUERY` gave all of them the
 second spelling at once, and `WriteCall` renders the same call as the same path. Measured through a
-connection, `_MAP` against `_JSON`, node for node: projection, filter, sort, sort with fetch,
+connection, `_MAP` against `DOC`, node for node: projection, filter, sort, sort with fetch,
 `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison,
 `IS NOT NULL`, `UNNEST` and the lookup join from either side all produce the identical plan, and a
 path assembled at run time declines on both sides.
@@ -386,7 +389,7 @@ wildcard, a descent or a filter is refused rather than approximated, and the pat
 literal for the reason the full text functions' first argument must be.
 
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
-`JSON_INSERT` or `JSON_REMOVE` call over `_JSON` in a `TableModify`, a `PatchItemAsync` on the
+`JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the
 writer, the routing in `CosmosSequences`, and the refusal of every form that cannot be rendered. The
 column and the reads are in; the write is not.
 
@@ -814,8 +817,8 @@ path happens to be nullable — see the geography items in section 4, and
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,
   "whatever the arity", and the materializer depends on it. A single-column projection could be bare
   scalars. Reversing a recorded decision is the work; the code is trivial.
-- **`SELECT *` sends promoted columns twice** — `_MAP` is the whole document and every promoted column
-  is a path within it. Reading them out of the map value client-side would avoid it; the saving is a
+- **`SELECT *` sends promoted columns twice** — `DOC` is the whole document and every promoted column
+  is a path within it. Reading them out of the document client-side would avoid it; the saving is a
   few short scalars against a whole document, so smaller than it first looks.
 
 ---

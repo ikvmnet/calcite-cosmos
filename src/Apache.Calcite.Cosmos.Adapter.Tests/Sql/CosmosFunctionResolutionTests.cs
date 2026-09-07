@@ -95,10 +95,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AFunctionNeedsSomethingToResolveAgainst()
         {
-            var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"category\")");
+            var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"$.category\")");
             withTable.Should().NotThrow();
 
-            var without = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"category\")", withOperatorTable: false);
+            var without = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"$.category\")", withOperatorTable: false);
             without.Should().Throw<Exception>("the standard table has nothing to resolve IS_DEFINED to, and no schema here declares it");
         }
 

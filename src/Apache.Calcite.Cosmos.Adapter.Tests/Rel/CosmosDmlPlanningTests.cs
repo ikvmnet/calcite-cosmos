@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseStmt();
 
             var validator = SqlValidatorUtil.newValidator(
-                SqlStdOperatorTable.instance(), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -148,10 +148,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ColumnsMayBeOmittedFromAnInsert()
         {
-            PlanText("INSERT INTO products (\"id\", \"category\") VALUES ('1', 'books')").Should().Be(
+            PlanText("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[null:(VARCHAR NOT NULL, ANY NOT NULL) MAP], id=[$0], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$1], _JSON=[null:VARCHAR])\n" +
-                "    LogicalValues(tuples=[[{ '1', 'books' }]])");
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "    LogicalValues(tuples=[[{ '{\"id\":\"1\",\"category\":\"books\"}' }]])");
         }
 
         /// <summary>
@@ -161,9 +161,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnUnmentionedColumnArrivesAsANull()
         {
-            PlanText("INSERT INTO products (\"_MAP\") SELECT \"_MAP\" FROM archive").Should().Be(
+            PlanText("INSERT INTO products (\"DOC\") SELECT \"DOC\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[null:ANY], _JSON=[null:VARCHAR])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 
@@ -173,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ServiceMaintainedColumnsCannotBeInserted()
         {
-            var act = () => PlanText("INSERT INTO products (\"id\", \"_ts\") VALUES ('1', 5)");
+            var act = () => PlanText("INSERT INTO products (\"_ts\") VALUES (5)");
 
             act.Should().Throw<java.lang.Throwable>()
                 .Where(e => e.ToString().Contains("Cannot INSERT into generated column '_ts'"));
@@ -181,51 +181,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <summary>
         /// With <c>_ts</c> and <c>_etag</c> excluded, a column list may be omitted and the remaining
-        /// three columns supplied positionally.
+        /// four columns supplied positionally — both document columns among them, since either may
+        /// describe the document being written.
         /// </summary>
         [TestMethod]
         public void AnInsertWithoutAColumnListSuppliesTheWritableColumns()
         {
-            PlanText("INSERT INTO products SELECT \"_MAP\", \"id\", \"category\" FROM archive").Should().Be(
+            PlanText("INSERT INTO products SELECT \"DOC\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[null:BIGINT], _etag=[null:VARCHAR], category=[$4], _JSON=[null:VARCHAR])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
-
-        /// <summary>
-        /// A map literal cannot be inserted, and the limitation is Calcite's rather than the adapter's.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The validator's implicit coercion casts the source row to the target row type, and building a
-        /// <c>SqlDataTypeSpec</c> for <c>MAP&lt;VARCHAR, ANY&gt;</c> is unimplemented —
-        /// <c>SqlTypeUtil.convertTypeToSpec</c> throws on the <c>ANY</c>. An explicit <c>CAST</c> fails
-        /// the same way, for the same reason.
-        /// </para>
-        /// <para>
-        /// Recorded rather than worked around, because the shape that does work is the more useful one:
-        /// a source column already typed <c>MAP&lt;VARCHAR, ANY&gt;</c> needs no coercion, and that is
-        /// what a scan of another container supplies. See
-        /// <see cref="AnUnmentionedColumnArrivesAsANull"/>, which inserts exactly that.
-        /// </para>
-        /// </remarks>
-        [TestMethod]
-        public void AMapLiteralCannotBeInserted()
-        {
-            var act = () => PlanText("INSERT INTO products (\"_MAP\") VALUES (MAP['id', 'x'])");
-
-            act.Should().Throw<java.lang.Throwable>()
-                .Where(e => e.ToString().Contains("convertTypeToSpec: ANY"));
-        }
-
-        // ---- the shapes a rule must match ------------------------------------------------------
 
         [TestMethod]
         public void DeletePlansToAModifyOverTheRowsToDelete()
         {
             PlanText("DELETE FROM products WHERE \"id\" = 'x'").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[DELETE], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5])\n" +
+                "  LogicalProject(DOC=[$0], id=[$1], _ts=[$2], _etag=[$3], $.category=[$4])\n" +
                 "    LogicalFilter(condition=[=($1, 'x')])\n" +
                 "      CosmosTableScan(table=[[products]])");
         }
@@ -243,9 +216,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void UpdateCarriesItsSetListSeparatelyFromTheRows()
         {
-            PlanText("UPDATE products SET \"category\" = 'x' WHERE \"id\" = 'y'").Should().Be(
-                "LogicalTableModify(table=[[products]], operation=[UPDATE], updateColumnList=[[category]], sourceExpressionList=[[$6]], flattened=[false])\n" +
-                "  LogicalProject(_MAP=[$0], id=[$1], _ts=[$2], _etag=[$3], category=[$4], _JSON=[$5], EXPR$0=['x'])\n" +
+            PlanText("UPDATE products SET \"DOC\" = '{}' WHERE \"id\" = 'y'").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[UPDATE], updateColumnList=[[DOC]], sourceExpressionList=[[$5]], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[$1], _ts=[$2], _etag=[$3], $.category=[$4], EXPR$0=['{}'])\n" +
                 "    LogicalFilter(condition=[=($1, 'y')])\n" +
                 "      CosmosTableScan(table=[[products]])");
         }
@@ -264,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void InsertFromValuesIsSelectedByThePlanner()
         {
-            var modify = Find<CosmosTableModify>(Plan("INSERT INTO products (\"id\", \"category\") VALUES ('1', 'books')"));
+            var modify = Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.Insert);
@@ -292,8 +265,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void EitherContainerCanBeWrittenTo()
         {
-            Find<CosmosTableModify>(Plan("INSERT INTO products (\"id\", \"category\") VALUES ('1', 'books')")).Should().NotBeNull();
-            Find<CosmosTableModify>(Plan("INSERT INTO archive (\"id\", \"category\") VALUES ('1', 'books')")).Should().NotBeNull();
+            Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')")).Should().NotBeNull();
+            Find<CosmosTableModify>(Plan("INSERT INTO archive (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')")).Should().NotBeNull();
         }
 
         /// <summary>
@@ -306,9 +279,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <c>DELETE</c>'s do.
         /// </remarks>
         [TestMethod]
-        public void UpdateOfTheMapColumnIsSelectedAsAReplace()
+        public void UpdateOfTheDocumentColumnIsSelectedAsAReplace()
         {
-            var modify = Find<CosmosTableModify>(Plan("UPDATE products SET \"_MAP\" = \"_MAP\" WHERE \"id\" = 'y'"));
+            var modify = Find<CosmosTableModify>(Plan("UPDATE products SET \"DOC\" = \"DOC\" WHERE \"id\" = 'y'"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.Update);
@@ -326,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void UpdateOfThePartitionKeyIsDeclined()
         {
-            var act = () => Plan("UPDATE products SET \"category\" = 'x' WHERE \"id\" = 'y'");
+            var act = () => Plan("UPDATE products SET \"$.category\" = 'x' WHERE \"id\" = 'y'");
 
             act.Should().Throw<java.lang.Throwable>();
         }

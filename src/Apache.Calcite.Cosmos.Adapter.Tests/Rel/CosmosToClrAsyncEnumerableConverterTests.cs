@@ -160,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
 
             var validator = SqlValidatorUtil.newValidator(
-                SqlStdOperatorTable.instance(), catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);

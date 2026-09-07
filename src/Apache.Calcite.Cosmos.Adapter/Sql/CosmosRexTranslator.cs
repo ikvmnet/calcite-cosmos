@@ -93,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// The distinction matters because the two cases are the same shape of expression and mean
         /// opposite things. A lateral traversal correlates an input on itself, so
-        /// <c>$cor0._MAP['tags']</c> under one denotes a path of the document being scanned. A join
+        /// <c>JSON_QUERY($cor0.DOC, '$.tags')</c> under one denotes a path of the document being scanned. A join
         /// correlates it on the <em>other</em> side, and there the identical expression denotes a
         /// value of a row this statement knows nothing about — which would resolve against these
         /// bindings to a plausible, wrong document path. Where the caller has not said which variable
@@ -191,13 +191,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // The same thing said in SQL/JSON. `JSON_VALUE(<doc>, '$.a.b')` addresses exactly what
                 // `ITEM(ITEM(<doc>,'a'),'b')` addresses, so it resolves to the same path and every
                 // clause that requires one accepts it without knowing which spelling it was written in.
-                // The document is the `_JSON` column, which binds to the root like the map column.
+                // The document is the `DOC` column, which binds to the root.
                 case RexCall json when IsJsonAccessor(json) && TryResolveJsonPath(json, out path):
+                    return true;
+
+                // `StringToArray(JSON_QUERY(<doc>, '$.tags'))` is the array at that path, and the
+                // composition exists because UNNEST will not take a string: `JSON_QUERY` is typed
+                // VARCHAR and is refused, while `StringToArray` is typed ANY and is accepted — the
+                // same type the map spelling `ITEM(<map>, 'tags')` already produces.
+                case RexCall array when IsArrayFromJson(array) && TryResolvePath((RexNode)array.getOperands().get(0), out path):
                     return true;
             }
 
             path = null;
             return false;
+        }
+
+        /// <summary>
+        /// Drops a cast to <c>VARCHAR</c> that converts nothing.
+        /// </summary>
+        /// <remarks>
+        /// A view over a container used to have to cast, the row model typing every path <c>ANY</c>.
+        /// Through the document column it does not: <c>JSON_VALUE</c> is already <c>VARCHAR</c>. A
+        /// cast written over one anyway is an identity, and dropping it is what lets the accessor
+        /// underneath be rendered as itself.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns>The expression, or the value underneath a redundant cast.</returns>
+        static RexNode StripRedundantTextCast(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperands().size() != 1)
+                return node;
+
+            var kind = KindOf(call);
+            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                return node;
+
+            var type = call.getType();
+            if (type?.getSqlTypeName() != SqlTypeName.VARCHAR || type.getPrecision() != org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED)
+                return node;
+
+            var operand = (RexNode)call.getOperands().get(0);
+            return operand is RexCall inner && IsJsonAccessor(inner) ? operand : node;
         }
 
         /// <summary>
@@ -218,6 +253,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsJsonAccessor(RexCall call)
         {
             return call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY" && call.getOperands().size() >= 2;
+        }
+
+        /// <summary>
+        /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses
+        /// an array in the document rather than parsing one out of a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Neither call is rendered. The path already holds the array, so the service needs no
+        /// conversion — and would refuse the one written down, Cosmos's <c>StringToArray</c> taking a
+        /// string and being <c>undefined</c> over an array. Eliding it is therefore required for the
+        /// statement to run at all, not merely cheaper.
+        /// </para>
+        /// <para>
+        /// Restricted to an accessor operand rather than admitted over anything that resolves. A
+        /// caller writing <c>StringToArray</c> over a path that genuinely holds a string means the
+        /// service's function and means it to run; only the composition with an accessor names an
+        /// array, and only that one is elided.
+        /// </para>
+        /// </remarks>
+        static bool IsArrayFromJson(RexCall call)
+        {
+            return string.Equals(call.getOperator().getName(), "StringToArray", StringComparison.Ordinal)
+                && call.getOperands().size() == 1
+                && call.getOperands().get(0) is RexCall inner
+                && IsJsonAccessor(inner);
         }
 
         /// <summary>
@@ -725,7 +786,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>true</c> or <c>false</c>, and a string as itself — exactly what the cast over <c>ANY</c>
         /// renders — and answers null for an absent path, a null, an object or an array, which the
         /// comparison then does not keep. So the argument on <see cref="TryTextCastOperand"/> carries
-        /// over unchanged to the cast a <c>_JSON</c> view writes, which is what this was missing (#71).
+        /// over unchanged to the cast a <c>DOC</c> view writes, which is what this was missing (#71).
         /// The same measurement found no width applied at run time — <c>RETURNING VARCHAR(3)</c>
         /// returns <c>'bikes'</c> whole — so a character type of any width is the same reading.
         /// </para>
@@ -853,6 +914,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
 
+            // A cast to VARCHAR over a SQL/JSON accessor converts nothing -- the accessor is already
+            // VARCHAR -- so it is dropped here rather than treated as a rendering, and what is left
+            // is rendered as the accessor it is.
+            node = StripRedundantTextCast(node);
+
             if (TryRenderedTextOperand(node) is RexNode operand)
             {
                 reading = CosmosReading.Text;
@@ -862,7 +928,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
             // GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service
             // never asked for. What comes back is an object where the projection is declared VARCHAR, so
-            // it is read as the JSON the service sent — the same reading the _JSON column takes, and for
+            // it is read as the JSON the service sent — the same reading the DOC column takes, and for
             // the same reason.
             if (TryGeoJsonProjection(node, out var geography) && geography is not null)
             {
@@ -870,8 +936,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return geography.ToString();
             }
 
+            if (TryJsonValueProjection(node, out var guarded) && guarded is not null)
+            {
+                reading = CosmosReading.Text;
+                return guarded;
+            }
+
             reading = CosmosReading.Typed;
             return Translate(node);
+        }
+
+        /// <summary>
+        /// Renders <c>JSON_VALUE</c> over a document path as the value the function means.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The bare path is not it, and the difference is a failure rather than a discrepancy.</b>
+        /// <c>JSON_VALUE</c> is declared <c>VARCHAR</c>, so a projection of one is read as text; the
+        /// path holds whatever the document holds. Over a number the service returns a JSON number
+        /// where the plan declared a string, and <c>CosmosJson.GetString</c> refuses to coerce it, so
+        /// the pushed statement throws for data the in-process plan renders as <c>30</c>.
+        /// </para>
+        /// <para>
+        /// <b>Two rules to reproduce, and the service has both.</b> A scalar renders as its text,
+        /// which is what the <c>Text</c> reading does — the same equivalence
+        /// <see cref="TryRenderedTextOperand"/> rests on, Java's rendering of the box the reader
+        /// builds, and <c>JSON_VALUE</c>'s implicit <c>RETURNING VARCHAR</c> is that same cast. An
+        /// object or an array renders as nothing: SQL/JSON answers null there rather than writing one
+        /// out, which is the whole difference between <c>JSON_VALUE</c> and <c>JSON_QUERY</c>.
+        /// <c>IS_PRIMITIVE</c> is exactly that distinction — true of a string, a number, a boolean and
+        /// a JSON null, false of an object, an array and an absent property — so
+        /// <c>IIF(IS_PRIMITIVE(p), p, null)</c> means at the service what the function means here, for
+        /// every JSON type.
+        /// </para>
+        /// <para>
+        /// <c>JSON_QUERY</c> is the other half and is <em>not</em> handled: it answers the JSON text of
+        /// an object or an array and null for a scalar, which is the mirror guard and a separate
+        /// rendering. Until it has one it keeps the typed reading, which is wrong in the same way for
+        /// the same reason — recorded in <c>TODO.md</c>.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryJsonValueProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (node is not RexCall call)
+                return false;
+
+            if (string.Equals(call.getOperator().getName(), "JSON_VALUE", StringComparison.Ordinal) == false)
+                return false;
+
+            if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            return true;
         }
 
         /// <summary>
@@ -965,7 +1088,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
+            if (IsRenderedDocumentValue(operand) == false)
                 return null;
 
             if (target == SqlTypeName.INTEGER)
@@ -1370,7 +1493,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// SQL subscripts an array from one and Cosmos from zero, so the subscript is emitted as
         /// <c>index - 1</c>. It was passed through unchanged, which read one element early:
-        /// <c>c."_MAP"['tags'][0]</c> returned the first element where SQL returns nothing, and every
+        /// <c>JSON_QUERY(c."DOC", '$.tags')[0]</c> returned the first element where SQL returns nothing, and every
         /// subscript after it named its predecessor. Measured against the differential corpus, which
         /// carried no subscript at all until one was looked for.
         /// </para>
@@ -1725,7 +1848,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>The path case is what makes a stored geography reachable at all.</b> An <c>ST_GEOG_*</c>
         /// operator takes a geometry and no column has that type, so a shape in a document reaches one
-        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."_JSON", '$.location'))</c>.
+        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>.
         /// In process that is exactly what happens. Pushed down it is not: the service reads the property
         /// as the shape, so the text and the parsing are a round trip it never needed, and what it wants
         /// is the path.
@@ -1742,7 +1865,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // A stored geography. The constructor disappears and the path is written where the call stood:
             // Cosmos reads the property itself as the shape, so parsing it out and handing back text is a
-            // step the service never needed. This is what JSON_QUERY(c."_JSON", '$.location') collapses to.
+            // step the service never needed. This is what JSON_QUERY(c."DOC", '$.location') collapses to.
             if (TryResolvePath(argument, out var path) && path is not null)
             {
                 builder.Append(path.ToString());
@@ -1871,7 +1994,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// SQL defines <c>CARDINALITY</c> over a collection <em>or a map</em>, and Cosmos counts only an
-        /// array. Counting a map's properties has no Cosmos form — the map column is the whole document,
+        /// array. Counting an object's properties has no Cosmos form — the document column is the whole document,
         /// so the question is real and simply unanswerable here — and the map case is declined rather
         /// than emitted as an array count, which would report nothing meaningful.
         /// </remarks>

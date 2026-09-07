@@ -63,7 +63,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks
 
             // The first statement through pays for every type initializer Calcite has, which is
             // seconds and would otherwise be attributed to whichever statement came first.
-            _ = harness.PlanToAsync("""SELECT c."id" FROM products AS c WHERE c."category" = 'x'""");
+            _ = harness.PlanToAsync("""SELECT c."id" FROM products AS c WHERE c."$.category" = 'x'""");
 
             var results = new List<Result>();
 

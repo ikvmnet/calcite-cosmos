@@ -50,10 +50,10 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             if (count < 1)
                 throw new ArgumentOutOfRangeException(nameof(count));
 
-            var sql = new StringBuilder("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes'");
+            var sql = new StringBuilder("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'");
 
             for (var i = 0; i < count; i++)
-                sql.Append(CultureInfo.InvariantCulture, $" AND CAST(c.\"_MAP\"['p{i}'] AS VARCHAR) = 'v{i}'");
+                sql.Append(CultureInfo.InvariantCulture, $" AND JSON_VALUE(c.\"DOC\", '$.p{i}') = 'v{i}'");
 
             return sql.ToString();
         }
@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
                 if (i > 0)
                     sql.Append(" OR ");
 
-                sql.Append(CultureInfo.InvariantCulture, $"(c.\"category\" = 'c{i}' AND CAST(c.\"_MAP\"['p{i}'] AS VARCHAR) = 'v{i}')");
+                sql.Append(CultureInfo.InvariantCulture, $"(c.\"$.category\" = 'c{i}' AND JSON_VALUE(c.\"DOC\", '$.p{i}') = 'v{i}')");
             }
 
             return sql.ToString();
@@ -124,12 +124,12 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             if (depth < 1)
                 throw new ArgumentOutOfRangeException(nameof(depth));
 
-            var sql = new StringBuilder("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes'");
+            var sql = new StringBuilder("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'");
 
             for (var i = 0; i < depth; i++)
                 sql = new StringBuilder(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"SELECT * FROM ({sql}) AS n{i} WHERE CAST(n{i}.\"_MAP\"['p{i}'] AS VARCHAR) = 'v{i}'"));
+                    $"SELECT * FROM ({sql}) AS n{i} WHERE JSON_VALUE(n{i}.\"DOC\", '$.p{i}') = 'v{i}'"));
 
             return sql.ToString();
         }
@@ -147,9 +147,9 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             var sql = new StringBuilder("SELECT c.\"id\" FROM products AS c");
 
             for (var i = 0; i < count; i++)
-                sql.Append(CultureInfo.InvariantCulture, $", UNNEST(c.\"_MAP\"['a{i}']) AS u{i}");
+                sql.Append(CultureInfo.InvariantCulture, $", UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.a{i}'))) AS u{i}");
 
-            sql.Append(" WHERE c.\"category\" = 'bikes'");
+            sql.Append(" WHERE c.\"$.category\" = 'bikes'");
 
             for (var i = 0; i < count; i++)
                 sql.Append(CultureInfo.InvariantCulture, $" AND CAST(u{i} AS VARCHAR) = 'v{i}'");
@@ -172,9 +172,9 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
                 throw new ArgumentOutOfRangeException(nameof(count));
 
             var columns = string.Join(", ", Enumerable.Range(0, count)
-                .Select(i => string.Create(CultureInfo.InvariantCulture, $"CAST(c.\"_MAP\"['p{i}'] AS VARCHAR) AS \"c{i}\"")));
+                .Select(i => string.Create(CultureInfo.InvariantCulture, $"JSON_VALUE(c.\"DOC\", '$.p{i}') AS \"c{i}\"")));
 
-            return $"SELECT {columns} FROM products AS c WHERE c.\"category\" = 'bikes'";
+            return $"SELECT {columns} FROM products AS c WHERE c.\"$.category\" = 'bikes'";
         }
 
         /// <summary>
@@ -194,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             var ids = string.Join(", ", Enumerable.Range(0, count)
                 .Select(i => string.Create(CultureInfo.InvariantCulture, $"'k{i}'")));
 
-            return $"SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND c.\"id\" IN ({ids})";
+            return $"SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ({ids})";
         }
 
         /// <summary>
@@ -208,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
                 throw new ArgumentOutOfRangeException(nameof(count));
 
             var branches = Enumerable.Range(0, count)
-                .Select(i => string.Create(CultureInfo.InvariantCulture, $"SELECT c.\"id\" FROM products AS c WHERE c.\"category\" = 'c{i}'"));
+                .Select(i => string.Create(CultureInfo.InvariantCulture, $"SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'c{i}'"));
 
             return string.Join(" UNION ALL ", branches);
         }

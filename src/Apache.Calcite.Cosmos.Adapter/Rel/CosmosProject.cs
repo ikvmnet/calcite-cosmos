@@ -75,6 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];
             var sortable = new string?[projects.size()];
+            var rendered = new string?[projects.size()];
 
             // Read before anything rebinds them. A column passed straight through keeps how it is
             // read: the JSON column projected under an alias is still the document, and reading it as
@@ -97,6 +98,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // out again -- Cosmos cannot order by the alias -- and nothing else is, because nothing
                 // else was measured to be accepted there. See CosmosImplementor.SortableExpressions.
                 sortable[i] = IsSortableAtTheService(node) ? expression : null;
+
+                // Recorded where the rendering is not the path, so that a node above which rebuilds
+                // the select list emits what this decided rather than the path underneath. A guarded
+                // accessor is the case: the path holds the raw value and the column carries text.
+                rendered[i] = reading != CosmosReading.Typed ? expression : null;
                 readings[i] = reading != CosmosReading.Typed ? reading
                     : node is RexInputRef reference
                         && reference.getIndex() >= 0
@@ -122,6 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Fields = paths;
             implementor.Readings = readings;
             implementor.SortableExpressions = sortable;
+            implementor.RenderedExpressions = rendered;
         }
 
 

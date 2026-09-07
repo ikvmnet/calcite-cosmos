@@ -27,8 +27,8 @@
 
         /// <summary>
         /// Read whatever JSON arrived as its own text, exactly as the service sent it. What the
-        /// <c>_JSON</c> column is, and the reason it costs nothing: the document arrived as JSON, so
-        /// the column is that JSON rather than the map rendered back into it.
+        /// <c>DOC</c> column is, and the reason it costs nothing: the document arrived as JSON, so
+        /// the column is that JSON as the service sent it, rather than anything rendered back into it.
         /// </summary>
         /// <remarks>
         /// Distinct from <see cref="Text"/>, which renders a value the way Calcite's cast over an

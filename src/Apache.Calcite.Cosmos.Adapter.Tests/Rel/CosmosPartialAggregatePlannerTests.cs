@@ -68,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
 
             var validator = SqlValidatorUtil.newValidator(
-                SqlStdOperatorTable.instance(), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -109,13 +109,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void RollupPlansAsAPushedGroupByRolledUpAbove()
         {
-            var plan = Plan("SELECT c.\"category\", COUNT(*) AS n FROM products AS c GROUP BY ROLLUP(c.\"category\")");
+            var plan = Plan("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY ROLLUP(c.\"$.category\")");
 
             var pushed = Find<CosmosAggregate>(plan);
             pushed.Should().NotBeNull("the finest grouping should be pushed");
             pushed!.getGroupType().Should().Be(org.apache.calcite.rel.core.Aggregate.Group.SIMPLE);
 
-            Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"category\", COUNT(1) AS \"n\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", COUNT(1) AS \"n\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
             var text = org.apache.calcite.plan.RelOptUtil.toString(plan);
             text.Should().Contain("groups=[[{0}, {}]]", "the grouping sets are finished above");
@@ -131,13 +131,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void RollupOfSumAndMaxFinishesWithTheSameFunctions()
         {
-            var plan = Plan("SELECT c.\"category\", SUM(c.\"_ts\") AS s, MAX(c.\"_ts\") AS m FROM products AS c GROUP BY ROLLUP(c.\"category\")");
+            var plan = Plan("SELECT c.\"$.category\", SUM(c.\"_ts\") AS s, MAX(c.\"_ts\") AS m FROM products AS c GROUP BY ROLLUP(c.\"$.category\")");
 
             var pushed = Find<CosmosAggregate>(plan);
             pushed.Should().NotBeNull();
             pushed!.getAggCallList().size().Should().Be(2);
 
-            Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"category\", SUM(c._ts) AS \"s\", MAX(c._ts) AS \"m\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", SUM(c._ts) AS \"s\", MAX(c._ts) AS \"m\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
             plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
         }
@@ -173,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void RollupOfAvgIsSplitThroughSumAndCount()
         {
-            var plan = Plan("SELECT c.\"category\", AVG(c.\"_ts\") AS a FROM products AS c GROUP BY ROLLUP(c.\"category\")");
+            var plan = Plan("SELECT c.\"$.category\", AVG(c.\"_ts\") AS a FROM products AS c GROUP BY ROLLUP(c.\"$.category\")");
 
             var pushed = Find<CosmosAggregate>(plan);
             pushed.Should().NotBeNull("the reduced form's partials are pushable");
@@ -216,7 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void CountDistinctPlansAsAPushedGroupByFinishedAbove()
         {
-            var plan = Plan("SELECT COUNT(DISTINCT c.\"category\") AS n FROM products AS c");
+            var plan = Plan("SELECT COUNT(DISTINCT c.\"$.category\") AS n FROM products AS c");
 
             var pushed = Find<CosmosAggregate>(plan);
             pushed.Should().NotBeNull("the dedup half should be pushed");
@@ -229,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             // The key is normalised for the reason a grouped one is -- SQL has one null where the
             // service keeps an absent property apart from a present-and-null one, and a count of
             // distinct categories counted the two separately. See CosmosAggregate.GroupingKey.
-            Render(pushed).Should().Be("SELECT DISTINCT VALUE { \"category\": (IS_DEFINED(c.category) ? c.category : null) } FROM products c");
+            Render(pushed).Should().Be("SELECT DISTINCT VALUE { \"$.category\": (IS_DEFINED(c.category) ? c.category : null) } FROM products c");
 
             // The finishing count lives outside the Cosmos convention.
             plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
@@ -262,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var plan = Plan(
                 "SELECT COUNT(*) AS n FROM (" +
-                "SELECT c.\"category\" FROM products AS c GROUP BY c.\"category\") AS g");
+                "SELECT c.\"$.category\" FROM products AS c GROUP BY c.\"$.category\") AS g");
 
             var pushed = Find<CosmosAggregate>(plan);
             pushed.Should().NotBeNull("the inner GROUP BY should still be pushed");

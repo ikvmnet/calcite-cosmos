@@ -42,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Benchmarks
             _harness = new PlannerHarness();
             _convention = _harness.Tables["products"].Convention;
 
-            _ = _harness.PlanToAsync("""SELECT c."id" FROM products AS c WHERE c."category" = 'x'""");
+            _ = _harness.PlanToAsync("""SELECT c."id" FROM products AS c WHERE c."$.category" = 'x'""");
             _ = CosmosRules.GetRules(_convention).ToList();
         }
 

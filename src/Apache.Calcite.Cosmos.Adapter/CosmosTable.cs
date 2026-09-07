@@ -23,17 +23,18 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The row type is one map column carrying the whole document, plus promoted scalar columns
-    /// for paths the service guarantees or the container declares. A Cosmos query returns exactly
-    /// one JSON value per row, so the map column is the faithful representation; the promoted
-    /// columns exist so that planner metadata expressed over field ordinals — keys, collations,
-    /// distribution — has something to refer to.
+    /// The row type is one document column carrying the whole document, plus promoted scalar columns
+    /// for paths the service guarantees or the container declares. A Cosmos query returns exactly one
+    /// JSON value per row, so the document column is the faithful representation and everything inside
+    /// a document is addressed from it with the SQL/JSON functions; the promoted columns exist so that
+    /// planner metadata expressed over field ordinals — keys, collations, distribution — has something
+    /// to refer to, which no call can carry.
     /// </para>
     /// <para>
-    /// Nothing here is inferred from sampling documents. Only <c>id</c>, the system properties,
-    /// and single-segment declared paths are promoted. A nested partition key path such as
-    /// <c>/inventory/sku</c> is not promotable under the current name-based binding and is left to
-    /// the map column.
+    /// Nothing here is inferred from sampling documents. <c>id</c> and the system properties keep the
+    /// names the service gives them; a declared path is named for the JSON path it addresses, so a
+    /// nested one such as <c>/inventory/sku</c> promotes as <c>$.inventory.sku</c> rather than not at
+    /// all.
     /// </para>
     /// </remarks>
     public class CosmosTable : AbstractTable, TranslatableTable
@@ -124,11 +125,26 @@ namespace Apache.Calcite.Cosmos.Adapter
         public CosmosConvention Convention => _convention;
 
         /// <summary>
-        /// Returns the names of the columns promoted alongside the map column, in order.
+        /// Returns the names of the columns promoted alongside the document column, in order.
         /// </summary>
         /// <remarks>
-        /// Only declared or service-guaranteed paths qualify. Duplicates are suppressed so that a
-        /// partition key of <c>/id</c> does not promote <c>id</c> twice.
+        /// <para>
+        /// Two kinds, and they are named by different rules because they come from different places.
+        /// The service's own properties keep the names the service gives them — <c>id</c>, <c>_ts</c>,
+        /// <c>_etag</c> — which is what every caller already writes. A declared path is named for the
+        /// JSON path it addresses, <c>$.inventory.sku</c>, so that a nested one has a name at all.
+        /// </para>
+        /// <para>
+        /// A declared path that is already one of the three is not promoted twice.
+        /// </para>
+        /// <para>
+        /// <b>They exist for the planner, not for addressing.</b> Everything inside a document is
+        /// reachable through the document column with the SQL/JSON functions. What those cannot carry
+        /// is metadata: a Calcite key is an <c>ImmutableBitSet</c> over field ordinals, and
+        /// nullability and predicate flow follow a <c>RexInputRef</c> rather than a call. So a path
+        /// the container <em>declares or guarantees</em> — the only paths anything is known about —
+        /// gets an ordinal to hang that on.
+        /// </para>
         /// </remarks>
         /// <returns>The promoted column names.</returns>
         public IReadOnlyList<string> GetPromotedColumnNames()
@@ -142,13 +158,18 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             foreach (var path in _container.PartitionKeyPaths)
             {
-                // Only a single-segment path maps onto a column name.
                 var trimmed = path.TrimStart('/');
-                if (trimmed.Length == 0 || trimmed.Contains('/'))
+                if (trimmed.Length == 0)
                     continue;
 
-                if (names.Contains(trimmed) == false)
-                    names.Add(trimmed);
+                // A declared path naming one of the service's own properties is that column, not a
+                // second one under a derived name.
+                if (trimmed.Contains('/') == false && names.Contains(trimmed))
+                    continue;
+
+                var name = CosmosImplementor.PromotedColumnName(path);
+                if (names.Contains(name) == false)
+                    names.Add(name);
             }
 
             return names;
@@ -162,17 +183,19 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             var builder = typeFactory.builder();
 
-            // The document itself. Every Cosmos query returns exactly one value per row, and this
-            // is it; the promoted columns below are projections of the same document.
-            builder.add(CosmosImplementor.MapColumnName, typeFactory.createMapType(varchar, any));
+            // The document itself, and the only way into what is inside it. Every Cosmos query
+            // returns exactly one value per row and this is it; the promoted columns below are
+            // projections of the same document, carried for the planner rather than for addressing.
+            // NOT NULL because every row is a document.
+            builder.add(CosmosImplementor.DocumentColumnName, varchar);
 
             foreach (var name in GetPromotedColumnNames())
             {
                 // Only the service-generated properties are guaranteed present on every item.
-                // A partition key path is declared, but a document may omit it — such items land
-                // in the "none" logical partition. Declaring it non-nullable would licence the
-                // planner to rewrite COUNT(x) into COUNT(*) and to reason about null placement in
-                // ways the data does not support.
+                // A declared path is declared, but a document may omit it — such items land in the
+                // "none" logical partition. Declaring it non-nullable would licence the planner to
+                // rewrite COUNT(x) into COUNT(*) and to reason about null placement in ways the data
+                // does not support.
                 var type = name switch
                 {
                     CosmosContainerMetadata.TimestampPropertyName => typeFactory.createSqlType(SqlTypeName.BIGINT),
@@ -184,35 +207,34 @@ namespace Apache.Calcite.Cosmos.Adapter
                 builder.add(name, type);
             }
 
-            // The same document again, as JSON text, so that Calcite's SQL/JSON functions have
-            // something they can address — they are typed over character strings and cannot take a
-            // map. Last, so the promoted ordinals above do not move. NOT NULL for the reason the map
-            // column is: every row is a document.
-            builder.add(CosmosImplementor.JsonColumnName, varchar);
-
             return builder.build();
         }
 
         /// <summary>
-        /// Returns the ordinal of a promoted column, or <c>-1</c> if the path is not promoted.
+        /// Returns the ordinal of the column carrying a declared path, or <c>-1</c>.
         /// </summary>
         /// <remarks>
-        /// The map column occupies ordinal zero, so promoted columns begin at one.
+        /// The document column occupies ordinal zero, so promoted columns begin at one. A path is
+        /// looked up under both rules: the service's own properties keep their names, and everything
+        /// else is derived.
         /// </remarks>
-        /// <param name="policyPath">A path in policy form, such as <c>/category</c>.</param>
+        /// <param name="policyPath">A path in policy form, such as <c>/inventory/sku</c>.</param>
         /// <returns>The field ordinal, or <c>-1</c>.</returns>
         public int GetColumnOrdinal(string policyPath)
         {
             if (string.IsNullOrEmpty(policyPath))
                 return -1;
 
-            var name = policyPath.TrimStart('/');
-            if (name.Length == 0 || name.Contains('/'))
+            var trimmed = policyPath.TrimStart('/');
+            if (trimmed.Length == 0)
                 return -1;
 
+            var derived = CosmosImplementor.PromotedColumnName(policyPath);
             var promoted = GetPromotedColumnNames();
+
             for (var i = 0; i < promoted.Count; i++)
-                if (string.Equals(promoted[i], name, StringComparison.Ordinal))
+                if (string.Equals(promoted[i], trimmed, StringComparison.Ordinal)
+                    || string.Equals(promoted[i], derived, StringComparison.Ordinal))
                     return i + 1;
 
             return -1;
@@ -222,9 +244,9 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <remarks>
         /// <para>
         /// Derived entirely from declared facts. <c>id</c> is unique within a logical partition, so
-        /// the partition key together with <c>id</c> is unique across the container — but only when
-        /// every partition key path is promoted to a column, since a key is expressed over field
-        /// ordinals. A nested partition key path yields no key at all rather than a wrong one.
+        /// the partition key together with <c>id</c> is unique across the container. Every declared
+        /// path is promoted, nested ones included, so the key is expressible wherever a partition key
+        /// is declared at all — which it was not while a column name was a path's last segment.
         /// </para>
         /// <para>
         /// Row count comes from the service where the container was read from one, and is left unknown

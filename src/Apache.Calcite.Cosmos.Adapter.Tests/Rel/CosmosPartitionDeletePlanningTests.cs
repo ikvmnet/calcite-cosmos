@@ -61,7 +61,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseStmt();
-            var validator = SqlValidatorUtil.newValidator(SqlStdOperatorTable.instance(), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
+            var validator = SqlValidatorUtil.newValidator(
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -104,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APartitionKeyOnlyDeleteBecomesOneRequestWhereTheAccountAllowsIt()
         {
-            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"category\" = 'bikes'"));
+            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes'"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.DeletePartition);
@@ -118,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TheSameDeleteStaysARowAtATimeWhereTheAccountCannot()
         {
-            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: false)), "DELETE FROM products WHERE \"category\" = 'bikes'"));
+            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: false)), "DELETE FROM products WHERE \"$.category\" = 'bikes'"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.Delete);
@@ -131,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AResidualPredicateStaysARowAtATime()
         {
-            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"category\" = 'bikes' AND \"_ts\" > 5"));
+            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes' AND \"_ts\" > 5"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.Delete);
@@ -144,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ADeleteNamingAnIdStaysARowAtATime()
         {
-            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"category\" = 'bikes' AND \"id\" = 'x'"));
+            var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes' AND \"id\" = 'x'"));
 
             modify.Should().NotBeNull();
             modify!.Write.Should().Be(CosmosWriteOperation.Delete);
@@ -166,10 +167,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Plan(table, "DELETE FROM products WHERE \"id\" = 'x'");
             probes.Should().Be(0, "the predicate does not pin the partition key, so the capability cannot matter");
 
-            Plan(table, "DELETE FROM products WHERE \"category\" = 'bikes'");
+            Plan(table, "DELETE FROM products WHERE \"$.category\" = 'bikes'");
             probes.Should().Be(1, "asked once for the statement that could use it");
 
-            Plan(table, "DELETE FROM products WHERE \"category\" = 'shoes'");
+            Plan(table, "DELETE FROM products WHERE \"$.category\" = 'shoes'");
             probes.Should().Be(1, "and remembered thereafter");
         }
 

@@ -48,11 +48,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// evidence.
         /// </para>
         /// <para>
-        /// <b>This reaches promoted columns and not paths inside the map column</b>, and the reason
+        /// <b>This reaches promoted columns and not paths addressed through the document column</b>, and the reason
         /// is structural rather than about nullability. <c>RelMdPredicates</c> carries a predicate
         /// through a projection only where the projection is a <see cref="RexInputRef"/>: a
         /// promoted column projects as a plain reference and its predicate survives, while a
-        /// document path projects as <c>ITEM($0, 'name')</c> over the map column — not a reference,
+        /// document path projects as <c>JSON_VALUE($0, '$.name')</c> over the document column — not a reference,
         /// and over an input the projection does not output — so the predicate is dropped.
         /// Measured; see <c>DESIGN.md</c>.
         /// </para>
