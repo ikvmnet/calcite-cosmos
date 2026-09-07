@@ -36,6 +36,28 @@ The identity needs a Cosmos DB **data plane** role assignment. A control-plane r
 
 For anything else — a certificate, a bespoke token cache, a client your application already owns — supply `clientFactory` naming an `ICosmosClientFactory`.
 
+## Reuse the schema to keep what it learnt
+
+A schema reads each container's definition when it is built, and works out the rest — a row count, whether the account permits a whole-partition delete — the first time something asks. Those answers live on the schema, so within one they are computed once.
+
+**A model builds a new schema per connection.** `CosmosSchemaFactory` runs per model read, and in the ADO.NET path that is once per `DbConnection`, so a short-lived-connection application pays those reads again every time. Nothing is shared across them, though the `CosmosClient` can be.
+
+Build the schema yourself and register it, and the reads happen once:
+
+```csharp
+// Once, for the life of the application.
+var schema = CosmosSchemaFactory.Create(...);
+
+// Per connection.
+await using var connection = new CalciteConnection("...");
+await connection.OpenAsync();
+connection.RootSchema.add("COSMOS", schema);
+```
+
+`RootSchema` is the supported way in, and what is registered there outlives a `Close`/`Open` cycle — the engine session is torn down only when the connection is disposed. A new `CalciteConnection` gets a new session, so register the same instance again; it is the *schema object* that carries what was learnt, not the connection.
+
+**What this deliberately is not** is a process-wide cache keyed by account endpoint. Such a thing outlives every decision anyone made about it and leaks between accounts. The lifetime here is the caller's to choose, which is the same reason the lookup cache hangs off the schema too.
+
 ## Querying a container
 
 `Apache.Calcite.Data` is the ADO.NET provider. Point its `Model` at a JSON model that registers the
