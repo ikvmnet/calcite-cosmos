@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static readonly string DatabaseName = "calcite_cosmos_write_tests_" +
             System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
 
-        static readonly string[] Columns = ["DOC", "id", "_ts", "_etag", "category"];
+        static readonly string[] Columns = ["DOC", "id", "_ts", "_etag", "$.category"];
 
         static readonly string[] PartitionKeyPaths = ["/category"];
 
@@ -114,16 +114,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 Assert.Inconclusive("No Cosmos DB account reachable at " + Endpoint);
 
             return _container!;
-        }
-
-        static java.util.Map Map(params object?[] pairs)
-        {
-            var map = new java.util.LinkedHashMap();
-
-            for (var i = 0; i + 1 < pairs.Length; i += 2)
-                map.put(pairs[i], pairs[i + 1]);
-
-            return map;
         }
 
         static async IAsyncEnumerable<object?[]> Rows(params object?[][] rows)
@@ -205,8 +195,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [TestMethod]
         public async Task AWholePartitionDeleteCountsFirstAndReadsNoRows()
         {
-            await Write(CosmosWriteOperation.Insert, [Map("id", "wp1", "category", "bikes"), null, null, null, null]);
-            await Write(CosmosWriteOperation.Insert, [Map("id", "wp2", "category", "bikes"), null, null, null, null]);
+            await Write(CosmosWriteOperation.Insert, ["""{"id":"wp1","category":"bikes"}""", null, null, null, null]);
+            await Write(CosmosWriteOperation.Insert, ["""{"id":"wp2","category":"bikes"}""", null, null, null, null]);
 
             var writer = new RefusingWriter(new CosmosQueryExecutor(Container()));
             var write = new CosmosWrite(CosmosWriteOperation.DeletePartition, Columns, PartitionKeyPaths, null, new object?[] { "bikes" });
@@ -256,10 +246,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         [TestMethod]
-        public async Task ADocumentDescribedByAMapIsWritten()
+        public async Task ADocumentDescribedByTheDocumentColumnIsWritten()
         {
             var count = await Write(CosmosWriteOperation.Insert,
-                [Map("id", "m1", "category", "bikes", "name", "Trail Blazer", "price", java.lang.Long.valueOf(120)), null, null, null, null]);
+                ["""{"id":"m1","category":"bikes","name":"Trail Blazer","price":120}""", null, null, null, null]);
 
             count.Should().Be(1);
 
@@ -270,17 +260,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             written!.Value.GetProperty("price").GetInt64().Should().Be(120);
         }
 
+        /// <summary>
+        /// A row carrying only the projections describes nothing.
+        /// </summary>
+        /// <remarks>
+        /// They are <c>STORED</c>, so a statement cannot name one and the values here are the old
+        /// row's, which an update carries alongside the new document. Writing them would describe the
+        /// same document twice; the service refuses the empty document that results, which is the
+        /// loud failure the row model wants rather than a document assembled out of projections.
+        /// </remarks>
         [TestMethod]
-        public async Task ADocumentDescribedByPromotedColumnsIsWritten()
+        public async Task ARowCarryingOnlyProjectionsDescribesNothing()
         {
-            var count = await Write(CosmosWriteOperation.Insert, [null, "p1", null, null, "shoes"]);
+            var act = async () => await Write(CosmosWriteOperation.Insert, [null, "p1", null, null, "shoes"]);
 
-            count.Should().Be(1);
+            await act.Should().ThrowAsync<Exception>();
 
-            var written = await Read("p1", new PartitionKey("shoes"));
-
-            written.Should().NotBeNull();
-            written!.Value.GetProperty("category").GetString().Should().Be("shoes");
+            (await Read("p1", new PartitionKey("shoes"))).Should().BeNull();
         }
 
         /// <summary>
@@ -294,14 +290,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// afterwards, which is what distinguishes a replace from a merge.
         /// </remarks>
         [TestMethod]
-        public async Task UpdateOfTheMapReplacesTheDocument()
+        public async Task UpdateOfTheDocumentColumnReplacesTheDocument()
         {
             await Write(CosmosWriteOperation.Insert,
-                [Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(10), "old", "yes"), null, null, null, null]);
+                ["""{"id":"u1","category":"bikes","price":10,"old":"yes"}""", null, null, null, null]);
 
             var count = await WriteSets(["DOC"],
-                [Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(10), "old", "yes"), "u1", null, null, "bikes",
-                 Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(25), "note", "replaced")]);
+                ["""{"id":"u1","category":"bikes","price":10,"old":"yes"}""", "u1", null, null, "bikes",
+                 """{"id":"u1","category":"bikes","price":25,"note":"replaced"}"""]);
 
             count.Should().Be(1);
 
@@ -321,8 +317,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task UpdateOfAMissingDocumentCountsNothing()
         {
             var count = await WriteSets(["DOC"],
-                [Map("id", "u-missing", "category", "bikes"), "u-missing", null, null, "bikes",
-                 Map("id", "u-missing", "category", "bikes", "price", java.lang.Long.valueOf(1))]);
+                ["""{"id":"u-missing","category":"bikes"}""", "u-missing", null, null, "bikes",
+                 """{"id":"u-missing","category":"bikes","price":1}"""]);
 
             count.Should().Be(0);
         }
@@ -348,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task ServicePropertiesSuppliedByARowAreReplacedByTheService()
         {
             var count = await Write(CosmosWriteOperation.Insert,
-                [Map("id", "c1", "category", "bikes", "_ts", java.lang.Long.valueOf(1), "_etag", "\"nonsense\"", "_rid", "bogus", "name", "Copy"), null, null, null, null]);
+                ["""{"id":"c1","category":"bikes","_ts":1,"_etag":"\"nonsense\","_rid":"bogus","name":"Copy"}""", null, null, null, null]);
 
             count.Should().Be(1);
 
@@ -372,7 +368,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task ADocumentWithoutAPartitionKeyGoesToTheNonePartition()
         {
             var count = await Write(CosmosWriteOperation.Insert,
-                [Map("id", "n1", "name", "Unfiled"), null, null, null, null]);
+                ["""{"id":"n1","name":"Unfiled"}""", null, null, null, null]);
 
             count.Should().Be(1);
 
@@ -385,9 +381,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [TestMethod]
         public async Task ADuplicateIdIsRefused()
         {
-            await Write(CosmosWriteOperation.Insert, [Map("id", "d1", "category", "bikes", "name", "First"), null, null, null, null]);
+            await Write(CosmosWriteOperation.Insert, ["""{"id":"d1","category":"bikes","name":"First"}""", null, null, null, null]);
 
-            var act = async () => await Write(CosmosWriteOperation.Insert, [Map("id", "d1", "category", "bikes", "name", "Second"), null, null, null, null]);
+            var act = async () => await Write(CosmosWriteOperation.Insert, ["""{"id":"d1","category":"bikes","name":"Second"}""", null, null, null, null]);
 
             await act.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*409*");
 
@@ -399,9 +395,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [TestMethod]
         public async Task ADeletedDocumentIsGone()
         {
-            await Write(CosmosWriteOperation.Insert, [Map("id", "x1", "category", "shoes"), null, null, null, null]);
+            await Write(CosmosWriteOperation.Insert, ["""{"id":"x1","category":"shoes"}""", null, null, null, null]);
 
-            var count = await Write(CosmosWriteOperation.Delete, [Map("id", "x1", "category", "shoes"), null, null, null, null]);
+            var count = await Write(CosmosWriteOperation.Delete, ["""{"id":"x1","category":"shoes"}""", null, null, null, null]);
 
             count.Should().Be(1);
             (await Read("x1", new PartitionKey("shoes"))).Should().BeNull();
@@ -417,7 +413,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [TestMethod]
         public async Task DeletingWhatIsNotThereAffectsNothing()
         {
-            var count = await Write(CosmosWriteOperation.Delete, [Map("id", "absent", "category", "shoes"), null, null, null, null]);
+            var count = await Write(CosmosWriteOperation.Delete, ["""{"id":"absent","category":"shoes"}""", null, null, null, null]);
 
             count.Should().Be(0);
         }
@@ -426,8 +422,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task EveryRowIsWrittenAndCounted()
         {
             var count = await Write(CosmosWriteOperation.Insert,
-                [Map("id", "b1", "category", "bikes"), null, null, null, null],
-                [Map("id", "b2", "category", "bikes"), null, null, null, null],
+                ["""{"id":"b1","category":"bikes"}""", null, null, null, null],
+                ["""{"id":"b2","category":"bikes"}""", null, null, null, null],
                 [null, "b3", null, null, "shoes"]);
 
             count.Should().Be(3);
@@ -460,7 +456,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             });
             listener.Start();
 
-            await Write(CosmosWriteOperation.Insert, [Map("id", "r1", "category", "bikes"), null, null, null, null]);
+            await Write(CosmosWriteOperation.Insert, ["""{"id":"r1","category":"bikes"}""", null, null, null, null]);
 
             listener.RecordObservableInstruments();
 
