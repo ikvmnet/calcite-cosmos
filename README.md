@@ -431,15 +431,24 @@ That discards what was read; it does not read anything. The next plan against a 
 dotnet build Apache.Calcite.Cosmos.slnx
 ```
 
-The test suite runs against the Cosmos DB emulator, and reports inconclusive without one:
+Some of the suite runs against a Cosmos DB account, and **starts an emulator for itself** where
+Docker is available and nothing is already listening on 8081. Nothing is started unless a test asks
+for an account, so a run of the planner tests never waits on it.
+
+To use one you started, which is what CI does, start it before the run and the suite will find it:
 
 ```sh
 docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
 ```
 
-The emulator is not a substitute for the service — it has been found both to accept statements Azure
-rejects and to reject features Azure implements, full text search among them. Set
-`COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` to run the same suite against a real account.
+Without Docker and without an emulator those tests report inconclusive, so the suite stays runnable
+— though be aware of what a skipped run does not check: a pushdown that plans correctly and returns
+the *wrong rows* is invisible without a service.
+
+The emulator is not a substitute for the service either — it has been found both to accept statements
+Azure rejects and to reject features Azure implements, full text search among them. Set
+`COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` to run the same suite against a real account, which
+takes precedence over any emulator.
 
 The planner has its own benchmarks, which need no service at all:
 

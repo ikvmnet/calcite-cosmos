@@ -28,20 +28,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// Executes generated statements against a live Cosmos DB emulator.
     /// </summary>
     /// <remarks>
-    /// These are the only tests requiring a service. They report inconclusive when no emulator is
-    /// reachable, so the suite stays runnable — and meaningful — without one.
-    /// <para>
-    /// Start one with:
-    /// <c>docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview</c>
-    /// </para>
+    /// One of the four classes requiring a service. <see cref="CosmosEmulator"/> finds one, or starts
+    /// one where Docker is available and nothing is already listening; these report inconclusive only
+    /// where it can do neither.
     /// </remarks>
     [TestClass]
     public class CosmosQueryExecutorTests
     {
 
-        // Well-known public emulator credentials, documented by Microsoft. Not a secret.
-        const string EmulatorEndpoint = "http://localhost:8081/";
-        const string EmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
         /// <summary>
         /// The account to run against — a real one where the environment names it, otherwise the
@@ -53,11 +47,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// to verify against the real thing, and the checks the emulator reports inconclusive will
         /// either pass or fail properly.
         /// </remarks>
-        static readonly string Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT") is string e && e.Length > 0 ? e : EmulatorEndpoint;
+        static string Endpoint => CosmosEmulator.Endpoint!;
 
-        static readonly string Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY") is string k && k.Length > 0 ? k : EmulatorKey;
+        static string Key => CosmosEmulator.Key!;
 
-        static bool IsEmulator => ReferenceEquals(Endpoint, EmulatorEndpoint);
+        static bool IsEmulator => CosmosEmulator.IsEmulator;
 
         /// <summary>
         /// The database these tests build, named per target framework.
