@@ -535,6 +535,18 @@ tried against it and both were refused with the same 2206 the cast column alread
 `IS_DATETIME`; `IIF` for a conditional; the `DateTime*` family; and arithmetic. That is enough to
 recover Calcite's meaning for most comparisons, inside a `WHERE`.
 
+**Comparison is type-strict, and the type order is the service's own.** Measured over one path
+holding a number, the string `"5"`, `"abc"`, a boolean, a null, an array, an object and nothing at
+all: `v > 3` returns only the number, `v = 5` only the number, `v = '5'` only the string. Nothing is
+coerced across types, so a pushed comparison does not silently widen — which is why the existing
+numeric guard can *admit* non-numbers rather than needing to exclude them. `ORDER BY v` returns them
+in the service's own order: absent, null, boolean, number, string, array, object. That order is
+Cosmos's and not Calcite's, which is the standing reason a sort over a mixed path is not simply
+pushed.
+
+**`STRINGEQUALS` takes the third argument the UUID candidate needs**, measured:
+`STRINGEQUALS(c.v, 'ABC', true)` matches a stored `"abc"`.
+
 **`IS_DATETIME` is a parse check and not a shape check**, which is the thing to know before reaching
 for it. Measured: `2024-01-01`, `2024-01-01T00:00:00Z`, `2024-01-01T00:00:00.500Z` and
 `2024-01-01T00:00:00+00:00` all answer `true`; `"hello"` and a number answer `false`. It says a value
