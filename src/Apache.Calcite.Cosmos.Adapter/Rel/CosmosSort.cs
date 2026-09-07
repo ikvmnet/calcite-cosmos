@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -127,9 +127,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="keys">On success, the resolved keys in order.</param>
         /// <param name="paths">On success, the resolved paths in order.</param>
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
-        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath> paths)
+        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
-            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, out keys, out paths);
+            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, out keys, out paths);
         }
 
         /// <summary>
@@ -150,7 +150,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="keys">On success, the resolved keys in order.</param>
         /// <param name="paths">On success, the resolved paths in order.</param>
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
-        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath> paths)
+        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
@@ -161,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var typeFields = rowType.getFieldList();
             var collations = collation.getFieldCollations();
             var resolvedKeys = new CosmosSortKey[collations.size()];
-            var resolvedPaths = new CosmosPath[collations.size()];
+            var resolvedPaths = new CosmosPath?[collations.size()];
 
             for (var i = 0; i < collations.size(); i++)
             {
@@ -176,11 +176,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (TryGetDescending(field, nullable, out var descending) == false)
                     return false;
 
-                // A key over a computed projection has no path to sort by. Cosmos cannot order by a
-                // projection alias, so there is nothing to fall back to and the sort is declined.
+                // A key over a computed projection has no path to sort by, because Cosmos cannot order
+                // by a projection alias. The one exception is an expression the service accepts in the
+                // clause, which the sort writes out a second time rather than referring to — see
+                // CosmosImplementor.SortableExpressions for what qualifies and why nothing else does.
                 var path = fields[index];
                 if (path is null)
-                    return false;
+                {
+                    if (sortableFields is null || index >= sortableFields.Count || sortableFields[index] == false)
+                        return false;
+
+                    // Measured: the service refuses a second key beside one of these, with the same
+                    // 2206 a computed key gets on its own. So this is the whole collation or nothing.
+                    if (collations.size() != 1)
+                        return false;
+
+                    resolvedPaths[i] = null;
+                    resolvedKeys[i] = new CosmosSortKey(string.Empty, descending);
+                    continue;
+                }
 
                 // A path rooted at an array-traversal alias is relative to the element rather than the
                 // container, and the service refuses to order by one at all — measured against Azure,
@@ -350,14 +364,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (implementor.Query.HasGroupBy)
                 throw new CosmosTranslationException("Cosmos SQL does not support ORDER BY together with GROUP BY.");
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, out var keys, out var paths) == false)
+            var sortable = new bool[implementor.SortableExpressions.Count];
+            for (var i = 0; i < sortable.Length; i++)
+                sortable[i] = implementor.SortableExpressions[i] is not null;
+
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, out var keys, out var paths) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to document paths.");
 
             if (implementor.Container.IsSortSupported(keys) == false)
                 throw new CosmosTranslationException("The container has no composite index supporting this sort.");
 
             for (var i = 0; i < keys.Count; i++)
-                implementor.Query.AddOrderBy(paths[i].ToString(), keys[i].Descending);
+            {
+                // A path where there is one, and otherwise the expression the projection recorded,
+                // written out again because the alias is not addressable.
+                var index = ((RelFieldCollation)getCollation().getFieldCollations().get(i)).getFieldIndex();
+                var expression = paths[i]?.ToString() ?? implementor.SortableExpressions[index];
+
+                if (expression is null)
+                    throw new CosmosTranslationException("A sort key resolves to neither a path nor an expression the service will order by.");
+
+                implementor.Query.AddOrderBy(expression, keys[i].Descending);
+            }
 
             if (offset is not null)
                 implementor.Query.Offset = RexLiteral.intValue(offset);

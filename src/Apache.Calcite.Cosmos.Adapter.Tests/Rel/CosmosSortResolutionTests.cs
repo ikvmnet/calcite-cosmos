@@ -221,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", out _, out _);
 
         bool Resolves(RelCollation collation, params int[] nonNullFields) =>
-            CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", nonNullFields, out _, out _);
+            CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", nonNullFields, null, out _, out _);
 
         // ── A placement the plan has already settled ──────────────────────────────
         //
@@ -278,8 +278,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             partial.add(new RelFieldCollation(1, RelFieldCollation.Direction.ASCENDING));
             partial.add(new RelFieldCollation(2, RelFieldCollation.Direction.ASCENDING));
 
-            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1 }, out _, out _).Should().BeFalse();
-            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1, 2 }, out _, out _).Should().BeTrue();
+            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1 }, null, out _, out _).Should().BeFalse();
+            CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1, 2 }, null, out _, out _).Should().BeTrue();
         }
 
         /// <remarks>

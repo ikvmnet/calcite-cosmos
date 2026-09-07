@@ -394,16 +394,27 @@ owns the client.
 
 ### Geography
 
-The translations, the refusal and the path pushdown are in place. What is left is verification, and
-one thing that cannot be fixed here at all.
+The translations, the refusal and the path pushdown are in place, and every form they emit has been
+executed against an account. What is left is one sort that could push and does not, one operator that
+is not offered, and one thing that cannot be fixed here at all.
 
-- **`ORDER BY` over a distance does not push** — *large, and it is a measurement before it is work.*
-  A distance-ordered query reads every matching document and sorts in process; a nearest-neighbour
-  search is what a spatial index is for. Whether the service accepts `ORDER BY ST_DISTANCE(…)` is the
-  question, and it cannot be assumed: an `ORDER BY` over a computed expression is answered with
-  *"ORDER BY item expression could not be mapped to a document path"* — measured, and recorded under
-  the cast column above. One query against an account settles whether spatial is special-cased there.
-  If it is, the sort pushdown already exists and this is a rule that recognises the shape.
+- **`ORDER BY` over a distance now pushes** — *built; one shape left to verify.* A distance-ordered
+  query used to read every matching document and sort in process. `CosmosSort` now writes the
+  expression into the clause — twice over, once selected and once ordered, because Cosmos cannot order
+  by a projection alias — and `CosmosSortRule` admits the sort when the projection beneath it is a
+  geodesic distance.
+
+  Narrow on purpose. Only `ST_GEOG_DISTANCE` qualifies: the service accepts it in the clause and
+  refuses `DateTimeToTicks` and `IIF` with 400, error 2206, so `CosmosProject` records that one
+  expression and nothing else. And it is the whole collation or none — a second key beside it draws
+  the same 2206 — which is narrower than the multi-key sort the composite-index path handles.
+
+  **What is not verified is the shape a connection presents.** The node and the rule are covered by
+  `CosmosRelImplementTests`, which builds `Sort(Project(scan))` directly. A connection wraps the
+  finished plan in a calc, which is what strands `ORDER BY RANK` in
+  [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46) — that case cannot project its score, and
+  this one can, so the outer projection should merely drop a column that the statement still carries.
+  Should. Plan the same statement from a `CalciteConnection` and see.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -414,19 +425,31 @@ one thing that cannot be fixed here at all.
   declares a path's shape, and over a `Polygon` the service would return a ring array where the
   in-process answer throws — a wrong answer in place of an error, which is the trade this adapter
   refuses everywhere else.
-- **Nothing has been run against a live service** — *small, and it is the standing house rule rather
-  than an improvement.* Every other emitted statement form in this adapter was executed against a real
-  account before being believed. The geography forms — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS`,
-  `ST_ISVALID`, and the `ST_DISTANCE(…) <= d` that `ST_GEOG_DWITHIN` becomes — are verified only as
-  generated text. The refusal over a container reading `Geometry` wants the same treatment: it is
-  reasoned from the reference and not measured.
-- **A pushed predicate is not rechecked in process** — *medium, and it is a measurement before it is
-  work.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
-  needs an in-process answer that agrees with the service. The geography package computes one over S2.
-  Whether it agrees with Cosmos at a polygon edge, across the antimeridian, at the poles, or on a
-  distance sitting exactly on a threshold is unmeasured, and a recheck that disagrees discards rows the
-  service returned. The same measurement settles whether `ST_GEOG_DWITHIN` should render `<=` or `<`;
-  it is written inclusive after PostGIS and the package's own bound has not been read against it.
+- **A pushed predicate cannot be rechecked in process** — *blocked upstream, and now for a measured
+  reason.* `CosmosFilterSplitRule` pushes a weakened predicate and rechecks the original above, which
+  needs an in-process answer that agrees with the service. **It does not agree.** `ST_DISTANCE` beside
+  `GeographyFunctions.Distance`, same pairs, one account:
+
+  | pair | service | in process | relative |
+  | --- | --- | --- | --- |
+  | equator, 1° east | 111319.490736 | 111195.101177 | 1.1e-3 |
+  | equator, 1° north | 110574.388493 | 111195.101177 | 5.6e-3 |
+  | 47°N, short hop | 1342.143313 | 1341.006922 | 8.5e-4 |
+  | 80°N, 1° east | 19393.246802 | 19308.589000 | 4.4e-3 |
+  | antimeridian | 21927.872478 | 21901.159212 | 1.2e-3 |
+  | near the pole | 22338.795683 | 22239.020235 | 4.5e-3 |
+  | continental | 1544278.966766 | 1545986.824436 | 1.1e-3 |
+
+  The numbers say what the difference *is* rather than that there is one. 111195.101177 is one degree
+  on a sphere of mean radius 6371008.8; 111319.490736 is one degree on the WGS84 ellipsoid at the
+  equator. **The service is ellipsoidal and the package is spherical**, and the gap reaches 0.56%. A
+  recheck would discard rows whose true distance sits within half a percent of the threshold, which is
+  exactly the failure the gate exists to prevent. Nothing here fixes it — the evaluator would have to
+  answer on the ellipsoid, which is `Apache.Calcite.Geography`'s to change.
+
+  What the same run settles is the boundary: the service's comparison is exact, `<=` matching at the
+  distance it reports and `<` not, so rendering `ST_GEOG_DWITHIN` as `<=` is right rather than an
+  inference from PostGIS.
 - **A mixed expression is not refused** — *not available; recorded so nobody looks again.* There is no
   `GEOGRAPHY` type — a geography and a geometry are the same type carried by the same class — so
   `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees, measures in metres, and both halves run.
