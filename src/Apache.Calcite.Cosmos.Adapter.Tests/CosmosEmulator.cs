@@ -158,6 +158,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 return;
             }
 
+            // The image is published for amd64 only, so starting one anywhere else is a slow way to
+            // arrive at the same answer -- a pull that cannot succeed, or an emulated run that will
+            // not finish inside any sensible budget. CI's arm64 jobs are exactly this case.
+            if (System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.X64)
+            {
+                _unavailable = $"No Cosmos DB account reachable at {EmulatorEndpoint}, and the emulator image is published for x64 only.";
+                return;
+            }
+
             try
             {
                 // Bound to the same port rather than a mapped one. The emulator reports its own
