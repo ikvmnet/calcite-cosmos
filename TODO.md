@@ -490,6 +490,78 @@ whose encoding the service defines. Pushing a temporal function down means knowi
 *is*, and nothing in the row model says. `_ts` alone is reachable without answering that; everything
 else waits on section 6.
 
+### Rewriting a typed comparison into one the service can evaluate
+
+A family rather than an item, and it is written down because the same argument keeps being had one
+function at a time. A comparison Cosmos cannot evaluate — `CAST(<path> AS UUID) = <literal>`,
+`CAST(<path> AS TIMESTAMP) > <literal>` — can sometimes be rewritten into one it can, by rendering
+both sides into a representation the service compares natively. The value is real: these are the
+predicates a view over a container produces, and today every one of them reads whole documents.
+
+**What makes a rewrite sound is not that the type has an unambiguous string form.** It is that the
+*stored* string is in the form the literal renders to. Only one side is ours: the literal we render,
+the document we do not. A UUID written `A1B2…`, unhyphenated, or brace-wrapped parses to the same
+value and is string-equal to none of the others. That is the same objection `DESIGN.md` records under
+*Casts over document values*, and it is why this is a family of arguments rather than one rule.
+
+Two ways past it, and they are not interchangeable.
+
+- **Enumerate the renderings, where the set is finite.** UUID qualifies: hyphenated or not, braced or
+  not, and case, which Cosmos's `STRINGEQUALS(a, b, true)` collapses on its own. Four literals under
+  an `OR` and the rewrite is an *equivalence* rather than an approximation. The criterion is
+  finitely-many textual forms, which is narrower than "has a canonical form" and is what makes UUID
+  the first candidate and `TIMESTAMP` not one.
+- **Push weaker and recheck**, which needs no enumeration at all. `CosmosFilterSplitRule` already
+  pushes a weakened conjunct and rechecks the original in process, so a rewrite only has to produce a
+  *superset*. This is the general mechanism; what is missing is the table of supersets, not the rule.
+
+**A rewrite is a pair, and the second half is a guard.** The pushed form need not be the rewritten
+comparison alone — extra conditions can be pushed alongside it to make the service's answer mean what
+Calcite means. This adapter already does exactly that for numbers, and the shape is worth copying
+rather than reinventing. `CosmosFilterSplitRule` renders a numeric comparison as
+
+```
+IS_DEFINED(x) AND (NOT IS_NUMBER(x) OR (x > bound - 1 AND x < bound + 1))
+```
+
+Note which way the guard runs. It does not *exclude* the values it cannot reason about, it **admits**
+them — a non-number passes the pushed filter and is thrown out by the recheck above. Excluding them
+would have made the pushed predicate a subset, and a subset drops rows the query should have returned.
+Widening where you are unsure is what keeps it a superset, and a superset is the whole requirement.
+
+So a rewrite is: a pushed comparison, plus whatever guard admits the rows it does not describe. For
+the UUID case that is `NOT IS_STRING(x)` beside the `STRINGEQUALS` disjunction; for a temporal range,
+`NOT IS_STRING(x)` beside the string comparison.
+
+**Ordering is a different problem and does not get the escape hatch.** A wrong order under a `LIMIT`
+returns the wrong rows, and re-sorting in process is what already happens, so a maybe-wrong pushed
+sort buys nothing. It has to be guaranteed rather than approximated.
+
+A guard cannot rescue it either, and the reason is worth stating: a guard works for a filter because
+admitting a doubtful row costs one recheck, and ordering is not a per-row question. There is no
+disjunct that makes a sort right for rows whose shape you could not vouch for. The nearest thing
+would be sorting the conforming rows at the service, reading the rest separately and merging the two
+in process — which is a real technique, and a larger one than this item.
+
+Where it can be guaranteed is ISO-8601 UTC, and the condition is sharper than it looks: lexicographic
+order matches chronological order only if **every value shares one exact shape**. Mixed fractional
+precision breaks it — `…T00:00:00.500Z` sorts before `…T00:00:00Z`, because `.` is 0x2E and `Z` is
+0x5A — and so does `Z` against `+00:00`. So the promise is not "ISO-8601 UTC" but "one fixed
+ISO-8601 UTC shape, for this path".
+
+**That promise is much narrower than a type**, and worth separating from section 6 for exactly that
+reason. Not *this column is a `TIMESTAMP`*, only *these strings share a shape*. An operand could
+carry it without settling the typed-column question at all.
+
+**And the mechanism is already built.** An uncast path sorts at the service today — it is why a page
+ordered by a raw path reads a page while one ordered by a cast column reads everything, measured and
+recorded in section 6. What does not push is the cast. So the change is one rewrite: drop an
+order-preserving cast from a sort key, under that promise. Not a new sort pushdown; the existing one,
+reached through a cast it currently refuses. Range predicates over the same shape are the easier
+half — string comparisons, and those *do* have the recheck escape.
+
+See *Temporal* above, whose prerequisite this is a narrower statement of.
+
 ### Clause-level
 
 - **Native `IN` and `BETWEEN` — closed by measurement, not built.** `expandSearch` turns both into
