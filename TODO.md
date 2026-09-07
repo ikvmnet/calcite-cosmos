@@ -409,11 +409,6 @@ one thing that cannot be fixed here at all.
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
   where this adapter's own operators live. It answers with a document rather than a boolean, so what
   it is typed as wants deciding first.
-- **`ST_GEOG_ASGEOJSON` over a stored shape could be the path** — *small.* The property already holds
-  the GeoJSON, so serialising a geometry the adapter just parsed is a round trip. What makes it more
-  than a rename is the reading: the value arrives as an object and has to be rendered as text, which
-  is what `CosmosReading.Json` was added for, and readings are decided in `CosmosImplementor` rather
-  than in the translator.
 - **`ST_GEOG_X` and `ST_GEOG_Y` are not pushed** — *not available; recorded so nobody looks again.*
   They look like `c.location.coordinates[0]` and `[1]` and are only that for a `Point`. Nothing
   declares a path's shape, and over a `Polygon` the service would return a ring array where the

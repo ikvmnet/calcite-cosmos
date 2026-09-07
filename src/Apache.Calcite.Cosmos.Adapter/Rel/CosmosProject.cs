@@ -88,8 +88,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // the one expression the statement carries without. See
                 // CosmosRexTranslator.TryRenderedTextOperand for why that is an equivalence and not a
                 // trade, and why such a column addresses nothing afterwards.
-                implementor.Query.SelectProperty((string)names.get(i), translator.TranslateProjection(node, out var rendered));
-                readings[i] = rendered ? CosmosReading.Text
+                implementor.Query.SelectProperty((string)names.get(i), translator.TranslateProjection(node, out var reading));
+                readings[i] = reading != CosmosReading.Typed ? reading
                     : node is RexInputRef reference
                         && reference.getIndex() >= 0
                         && reference.getIndex() < inputReadings.Count

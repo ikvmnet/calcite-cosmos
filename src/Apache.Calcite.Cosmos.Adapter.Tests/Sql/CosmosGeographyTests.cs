@@ -195,6 +195,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Translator().TryTranslate(call, out _).Should().BeFalse();
         }
 
+
+        /// <summary>
+        /// Serialising a stored geography is the property, read as the JSON the service sent.
+        /// </summary>
+        /// <remarks>
+        /// The document already holds the GeoJSON, so parsing it into a geometry and writing it back out
+        /// is a round trip. What comes back is an object where the projection is declared <c>VARCHAR</c>,
+        /// which is the reading the <c>_JSON</c> column takes and for the same reason.
+        /// </remarks>
+        [TestMethod]
+        public void SerialisingAStoredGeographyIsTheProperty()
+        {
+            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Stored());
+
+            Translator().TranslateProjection(call, out var reading).Should().Be("c.location");
+            reading.Should().Be(CosmosReading.Json);
+        }
+
+        /// <summary>
+        /// A geography built in the query has nothing stored to select, so it is serialised in process.
+        /// </summary>
+        [TestMethod]
+        public void SerialisingAConstructedGeographyIsDeclined()
+        {
+            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Literal());
+
+            Translator().TryTranslateProjection(call, out _, out _).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// In a predicate the same call is declined: the column carries text where the path carries an
+        /// object, and a comparison against one is not a comparison against the other.
+        /// </summary>
+        [TestMethod]
+        public void SerialisingIsAProjectionOnly()
+        {
+            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Stored());
+
+            Translator().TryTranslate(call, out _).Should().BeFalse();
+        }
+
     }
 
 }

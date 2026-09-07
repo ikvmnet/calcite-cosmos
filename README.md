@@ -311,8 +311,10 @@ it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1
 the property as the shape, so the text and the parsing are a round trip it never needed.
 
 **What pushes.** `ST_GEOG_DISTANCE`, `ST_GEOG_WITHIN`, `ST_GEOG_INTERSECTS` and `ST_GEOG_ISVALID` are
-the service's own functions under another name. `ST_GEOG_GEOMETRYTYPE` pushes without being a spatial
-call at all — GeoJSON records the type as a member, so over a stored shape it is `c.location.type`. `ST_GEOG_DWITHIN` becomes the distance comparison the
+the service's own functions under another name. Two more push without being spatial calls at
+all: `ST_GEOG_GEOMETRYTYPE`, since GeoJSON records the type as a member, so over a stored shape it is
+`c.location.type`; and `ST_GEOG_ASGEOJSON` in a projection, since the document already holds the
+GeoJSON and re-serialising a shape just parsed is a round trip. `ST_GEOG_DWITHIN` becomes the distance comparison the
 reference documents a spatial index as answering. A geography constant is written out as the GeoJSON
 object. A constructor over a *computed* string is declined and stays in process, because rendering one
 would mean evaluating it.
