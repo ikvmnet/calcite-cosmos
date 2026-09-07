@@ -575,10 +575,32 @@ the UUID case that is `NOT IS_STRING(x)` beside the `STRINGEQUALS` disjunction; 
 returns the wrong rows, and re-sorting in process is what already happens, so a maybe-wrong pushed
 sort buys nothing. It has to be guaranteed rather than approximated.
 
-A guard cannot rescue it either, and the reason is worth stating: a guard works for a filter because
-admitting a doubtful row costs one recheck, and ordering is not a per-row question. Nor can a
-normalising key: `DateTimeToTicks` answers the same ticks for all three shapes of one instant — the
-obvious way out — and `ORDER BY DateTimeToTicks(…)` is refused, measured. There is no
+A normalising key cannot rescue it: `DateTimeToTicks` answers the same ticks for all three shapes of
+one instant — the obvious way out — and `ORDER BY DateTimeToTicks(…)` is refused, measured.
+
+**A guard can, and this is the part that took measuring.** A guard cannot make a doubtful row sort
+correctly, because ordering is not a per-row question. What it can do is *restrict the sort to the
+rows whose shape is known*, and the shape is checkable at the service rather than promised by a
+caller. Measured, over one path holding five datetimes in three shapes, a non-date and a null:
+
+```sql
+WHERE IS_DATETIME(c.v) AND IS_STRING(c.v) AND LENGTH(c.v) = 20 AND ENDSWITH(c.v, 'Z')
+ORDER BY c.v
+```
+
+selects exactly the fixed-shape values, excludes the fractional-precision one, the `+00:00` one, the
+non-date and the null, and orders what remains chronologically — under a page and under `DESC` as
+well. So `IS_DATETIME` being a parse check rather than a shape check is not the obstacle it looks
+like: a shape check is *constructible* out of `LENGTH`, `ENDSWITH` and the type tests.
+
+**What that leaves is a rule rather than a promise**, which is a much better place to be. The pushed
+half is the guarded sort; the other half is `WHERE NOT (<guard>)`, read separately and merged in
+process. Two things it has to get right: the complement is unbounded in principle, so a `LIMIT` cannot
+simply be pushed with the guarded half and stopped — enough has to come from both sides before the
+merge — and where nothing conforms it must degrade to what happens today rather than to nothing.
+The shape is also not one shape: `LENGTH(c.v) = 20 AND ENDSWITH(c.v, 'Z')` is seconds-and-`Z`, and a
+container written to a different fixed shape wants a different guard, which is an argument for the
+guard being derived from a sample or an operand rather than hard-coded. There is no
 disjunct that makes a sort right for rows whose shape you could not vouch for. The nearest thing
 would be sorting the conforming rows at the service, reading the rest separately and merging the two
 in process — which is a real technique, and a larger one than this item.
