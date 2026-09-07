@@ -303,6 +303,121 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             invocations.Should().Be(1);
         }
 
+        /// <summary>
+        /// A caller can say <em>now</em>, which is what a time to live cannot.
+        /// </summary>
+        /// <remarks>
+        /// The moment worth re-reading after is a bulk load, and the clock does not know when one
+        /// finished. Without this a plan uses the old number until the time to live runs out.
+        /// </remarks>
+        [TestMethod]
+        public void ARefreshMakesTheNextAskReadAgain()
+        {
+            var invocations = 0;
+
+            var container = new CosmosContainerMetadata("products")
+                .WithStatisticsProvider(() =>
+                {
+                    invocations++;
+                    return new CosmosContainerStatistics(7, 700, 2);
+                });
+
+            _ = container.Statistics;
+            _ = container.Statistics;
+            invocations.Should().Be(1, "the time to live has not run out");
+
+            container.RefreshStatistics();
+            _ = container.Statistics;
+            invocations.Should().Be(2);
+
+            _ = container.Statistics;
+            invocations.Should().Be(2, "one refresh is one re-read, not a disabled cache");
+        }
+
+        /// <summary>
+        /// It forgets rather than fetches.
+        /// </summary>
+        /// <remarks>
+        /// A container nothing plans against should not be paid for, and the count the service reports
+        /// lags the writes that produced it — so the moment a caller says the load is done is the worst
+        /// moment to capture a number.
+        /// </remarks>
+        [TestMethod]
+        public void ARefreshAsksTheServiceNothingByItself()
+        {
+            var invocations = 0;
+
+            var container = new CosmosContainerMetadata("products")
+                .WithStatisticsProvider(() =>
+                {
+                    invocations++;
+                    return new CosmosContainerStatistics(7, 700, 2);
+                });
+
+            _ = container.Statistics;
+            invocations.Should().Be(1);
+
+            container.RefreshStatistics();
+            container.RefreshStatistics();
+            container.RefreshStatistics();
+
+            invocations.Should().Be(1, "nothing has asked for the count since");
+        }
+
+        /// <summary>
+        /// Metadata with no provider has no row count to forget, and says so by doing nothing.
+        /// </summary>
+        [TestMethod]
+        public void ARefreshWithoutAProviderIsHarmless()
+        {
+            var container = new CosmosContainerMetadata("products");
+
+            var refresh = () => container.RefreshStatistics();
+
+            refresh.Should().NotThrow();
+            new CosmosTable(container).getStatistic().getRowCount().Should().BeNull();
+        }
+
+        /// <summary>
+        /// The schema is what a host holds across connections, so it is what a host says this to.
+        /// </summary>
+        [TestMethod]
+        public void ASchemaRefreshesEveryContainer()
+        {
+            var products = 0;
+            var orders = 0;
+
+            var schema = new CosmosSchema(new[]
+            {
+                new CosmosContainerMetadata("products").WithStatisticsProvider(() =>
+                {
+                    products++;
+                    return new CosmosContainerStatistics(7, 700, 2);
+                }),
+                new CosmosContainerMetadata("orders").WithStatisticsProvider(() =>
+                {
+                    orders++;
+                    return new CosmosContainerStatistics(9, 900, 2);
+                }),
+            });
+
+            void Ask()
+            {
+                _ = ((CosmosTable)schema.getTable("products")).getStatistic().getRowCount();
+                _ = ((CosmosTable)schema.getTable("orders")).getStatistic().getRowCount();
+            }
+
+            Ask();
+            products.Should().Be(1);
+            orders.Should().Be(1);
+
+            schema.RefreshStatistics();
+            Ask();
+
+            products.Should().Be(2);
+            orders.Should().Be(2);
+        }
+
         /// <remarks>
         /// An account that cannot answer leaves the planner where it would have been without one,
         /// rather than failing the query — which is what Flink does with an unavailable statistic too.

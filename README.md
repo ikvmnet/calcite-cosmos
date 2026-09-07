@@ -364,6 +364,17 @@ builder.Services.AddOpenTelemetry()
 
 `cosmos.request_charge` is measured per response and tagged with the container and with whether the request was a `query` or a `point_read`; the `cosmos.query` span carries the total across continuations. Set `"indexMetrics": true` in the operand and the service also reports which indexes each statement used.
 
+## Telling the planner the data changed
+
+A row count comes from the service and is remembered for five minutes; `"statisticsExpireSeconds"` in the operand says otherwise. A clock is the wrong instrument after a bulk load, though — the moment worth re-reading at is the one the loader knows about. A host holding the schema it registered can say so:
+
+```csharp
+schema.RefreshStatistics();
+```
+
+That discards what was read; it does not read anything. The next plan against a container pays for the round trip, and a container nothing plans against pays nothing. This matters more than it sounds, because the service's count lags its own writes — fetching at the instant a load finishes captures the number least likely to be right.
+
+
 ## Documentation
 
 - [Adapter README](src/Apache.Calcite.Cosmos.Adapter/README.md) — the package's own overview

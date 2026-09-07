@@ -90,11 +90,7 @@ the reasoning.
 
 ### Where to start
 
-1. **An explicit statistics refresh** (section 1) — the time to live is in; what is missing is a way
-   for a caller to say *now*, which after a bulk load is the only moment that matters. It matters
-   more now that a schema can be shared across connections, since a stale row count outlives the
-   connection that fetched it.
-2. **Whether an RU estimate can be inferred at all** (section 1) — cheap to settle and it gates
+1. **Whether an RU estimate can be inferred at all** (section 1) — cheap to settle and it gates
    two things: the cost model in RU, and the toolbox model in `DESIGN.md`, since a *k*-way split
    currently scores *cheaper* than the statement it replaces and would be chosen for the wrong
    reason.
@@ -122,8 +118,8 @@ that cannot.
 
 The measured charge is on the `cosmos.request_charge` histogram and the `cosmos.query` span. A
 measured charge for a query shape is worth more than the estimate that was used to choose it, but a
-cost model that learns needs somewhere to keep what it learnt — the statistics-refresh question
-below wearing a different hat.
+cost model that learns needs somewhere to keep what it learnt. Statistics now have a lifetime and a
+way for a caller to end it; what they still lack is a writer other than the service.
 
 ### Per-partition skew — *not available; recorded so nobody looks again*
 
@@ -153,9 +149,9 @@ Three facts, three lifetimes, and they are not the same:
   plane operation; cache for the life of the schema.
 - **The whole-partition delete capability** — a property of the account, changed only by a support
   request. Same treatment.
-- **Statistics** — genuinely mutable, and sharing them across connections is what makes
-  *Statistics refresh* below load-bearing rather than theoretical: without a time to live, one
-  connection's stale row count would outlive the connection that fetched it.
+- **Statistics** — genuinely mutable, which is why they carry a time to live and a
+  `RefreshStatistics()`: without both, one connection's stale row count would outlive the connection
+  that fetched it.
 
 **Deferred: the shape this wants belongs to the provider, not here.**
 
@@ -174,15 +170,6 @@ here.
 So this waits on that, and the note about *where* the cache belongs stands: on the schema, for the
 reasons above. Whatever the provider ends up offering, the schema is where the logic hangs, and
 nothing here should grow a process-wide cache in the meantime.
-
-### An explicit statistics refresh — *medium*
-
-A row count now expires and is read again — five minutes by default, `statisticsExpireSeconds` to
-say otherwise — so a long-lived schema no longer plans for ever against the first number it saw.
-What a time to live cannot do is let a caller say *now*: after a bulk load, the useful moment to
-re-read is the one the caller knows about and the clock does not. Drill's answer is a metastore that
-an explicit `ANALYZE TABLE COMPUTE STATISTICS` populates, which decouples the fetch from the query
-altogether and is the shape worth copying.
 
 ### Statistics after pushdown — *large*
 
