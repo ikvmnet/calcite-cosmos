@@ -702,37 +702,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string TranslateProjection(RexNode node, out bool rendered)
+        public string TranslateProjection(RexNode node, out CosmosReading reading)
         {
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
 
             if (TryRenderedTextOperand(node) is RexNode operand)
             {
-                rendered = true;
+                reading = CosmosReading.Text;
                 return Translate(operand);
             }
 
-            rendered = false;
+            // ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
+            // GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service
+            // never asked for. What comes back is an object where the projection is declared VARCHAR, so
+            // it is read as the JSON the service sent — the same reading the _JSON column takes, and for
+            // the same reason.
+            if (TryGeoJsonProjection(node, out var geography) && geography is not null)
+            {
+                reading = CosmosReading.Json;
+                return geography.ToString();
+            }
+
+            reading = CosmosReading.Typed;
             return Translate(node);
         }
 
-        /// <inheritdoc cref="TranslateProjection(RexNode, out bool)" />
+        /// <summary>
+        /// Determines whether a projection is <c>ST_GEOG_ASGEOJSON</c> over a stored geography.
+        /// </summary>
+        /// <remarks>
+        /// A projection only. In a predicate the same call is declined and evaluated in process, because
+        /// the column carries text where the path carries an object and a comparison against one is not a
+        /// comparison against the other.
+        /// </remarks>
+        bool TryGeoJsonProjection(RexNode node, out CosmosPath? path)
+        {
+            path = null;
+
+            return node is RexCall call
+                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.StGeogAsGeoJson.getName()
+                && call.getOperands().size() == 1
+                && TryResolveGeography(Operand(call, 0), out path);
+        }
+
+        /// <inheritdoc cref="TranslateProjection(RexNode, out CosmosReading)" />
         /// <param name="node">The projected expression.</param>
         /// <param name="expression">On success, the Cosmos SQL text.</param>
-        /// <param name="rendered">On success, whether the value must be rendered as text when read back.</param>
+        /// <param name="reading">On success, how the value is to be read back.</param>
         /// <returns><c>true</c> if the expression was translated; otherwise <c>false</c>.</returns>
-        public bool TryTranslateProjection(RexNode node, out string? expression, out bool rendered)
+        public bool TryTranslateProjection(RexNode node, out string? expression, out CosmosReading reading)
         {
             try
             {
-                expression = TranslateProjection(node, out rendered);
+                expression = TranslateProjection(node, out reading);
                 return true;
             }
             catch (CosmosTranslationException)
             {
                 expression = null;
-                rendered = false;
+                reading = CosmosReading.Typed;
                 return false;
             }
         }
@@ -1367,6 +1396,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteGeographyLiteral(builder, call);
                     return;
                 }
+
+                // GeoJSON records the geometry type as a member of the shape, so over a stored geography
+                // this is a path rather than a function and no spatial machinery is involved.
+                if (name == Geography.Sql.GeographyOperatorTable.StGeogGeometryType.getName())
+                {
+                    WriteGeographyType(builder, call);
+                    return;
+                }
             }
 
             switch (name)
@@ -1448,6 +1485,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             Write(builder, Operand(call, 1));
             builder.Append(") <= ");
             Write(builder, Operand(call, 2));
+        }
+
+        /// <summary>
+        /// Writes <c>ST_GEOG_GEOMETRYTYPE</c> as the GeoJSON member that already holds it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Not a spatial pushdown. A GeoJSON shape records its type as a <c>type</c> member, so over a
+        /// stored geography this is <c>c.location.type</c> — an ordinary property read, of the kind the
+        /// service answers without any spatial function being involved and without a spatial index
+        /// mattering.
+        /// </para>
+        /// <para>
+        /// <b>The two vocabularies agree for anything a container can hold.</b> JTS spells the types
+        /// GeoJSON spells, and one more: <c>LinearRing</c>, which GeoJSON has no member for. A stored
+        /// shape therefore cannot be one, so the rendered answer and the in-process answer cannot differ
+        /// over a value that came out of a document. A geometry built in the query — from WKT, say —
+        /// does not resolve to a path and is declined here, which is also where that difference would
+        /// otherwise have appeared.
+        /// </para>
+        /// </remarks>
+        void WriteGeographyType(StringBuilder builder, RexCall call)
+        {
+            if (TryResolveGeography(Operand(call, 0), out var path) == false || path is null)
+                throw new CosmosTranslationException(
+                    $"'{call.getOperator().getName()}' translates over a geography that resolves to a document path.");
+
+            builder.Append(path.Property("type").ToString());
+        }
+
+        /// <summary>
+        /// Resolves the document path a geography was read from, seeing through the constructor.
+        /// </summary>
+        /// <remarks>
+        /// A stored geography is written as <c>ST_GEOG_GEOMFROMGEOJSON</c> over the text a document path
+        /// yields, because no column is typed as a geometry — so the path is one level down and the
+        /// constructor has to be looked through rather than at.
+        /// </remarks>
+        bool TryResolveGeography(RexNode node, out CosmosPath? path)
+        {
+            if (node is RexCall call
+                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson.getName()
+                && call.getOperands().size() == 1)
+                node = Operand(call, 0);
+
+            return TryResolvePath(node, out path) && path is not null;
         }
 
         /// <summary>
