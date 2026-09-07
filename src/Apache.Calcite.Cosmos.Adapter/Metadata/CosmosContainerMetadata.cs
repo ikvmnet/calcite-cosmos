@@ -369,6 +369,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Forgets a fetched row count, so that the next plan to ask reads it again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A time to live answers <em>eventually</em>; this answers <em>now</em>. The moment worth
+        /// re-reading after is a bulk load, and only the caller knows when that finished — the clock
+        /// does not, and five minutes of planning against the old number is exactly the cost the
+        /// default was chosen to accept for want of being told.
+        /// </para>
+        /// <para>
+        /// <b>It forgets rather than fetches</b>, for two reasons. A container nothing plans against
+        /// should not be paid for, which is the same argument the provider is lazy for at all. And the
+        /// count the service reports lags the writes that produced it — measured, it reports zero
+        /// immediately after documents are written — so fetching at the moment a caller says the load
+        /// is done would capture the number least likely to be right.
+        /// </para>
+        /// <para>
+        /// Where no provider is attached this does nothing, which is the honest answer: metadata built
+        /// from a container definition alone has no row count to forget and nothing to ask.
+        /// </para>
+        /// </remarks>
+        public void RefreshStatistics()
+        {
+            lock (_statisticsGate)
+                _statisticsFetched = null;
+        }
+
+        /// <summary>
         /// How long a fetched row count is believed before it is read again.
         /// </summary>
         /// <remarks>

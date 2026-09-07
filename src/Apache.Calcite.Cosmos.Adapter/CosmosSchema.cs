@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -46,6 +46,31 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             foreach (var container in containers)
                 _tables.put(container.Name, new CosmosTable(container, executorFactory?.Invoke(container), lookupCacheFactory?.Invoke(container)));
+        }
+
+        /// <summary>
+        /// Forgets every container's fetched row count, so that the next plan to ask reads it again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The schema is what a host holds across connections, so it is what a host can say this to.
+        /// Per container the work is <see cref="CosmosContainerMetadata.RefreshStatistics"/>, which
+        /// forgets rather than fetches — so this costs nothing at the moment it is called and is
+        /// paid for only by the containers something goes on to plan against.
+        /// </para>
+        /// <para>
+        /// Deliberately not a SQL statement. Drill spells this <c>ANALYZE TABLE COMPUTE STATISTICS</c>
+        /// and backs it with a metastore, which decouples the fetch from the query and is the better
+        /// shape for a system that has one; here the statistic is two round trips against a live
+        /// account rather than a stored artefact, and a method on the object the caller already holds
+        /// asks for no parser extension and no new dialect to explain.
+        /// </para>
+        /// </remarks>
+        public void RefreshStatistics()
+        {
+            var tables = _tables.values().iterator();
+            while (tables.hasNext())
+                ((CosmosTable)tables.next()).Container.RefreshStatistics();
         }
 
         /// <inheritdoc />
