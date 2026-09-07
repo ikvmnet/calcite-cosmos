@@ -727,6 +727,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '[bikes]'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'", false),
 
+            // The other comparisons over the rendering, which no literal makes exact: declined, and
+            // the string case is pushed with every kind that renders passed through. The null test is
+            // exact and different: an object and an array are null to the accessor and not to the path.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') <> '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') > 'b'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') < '5'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') LIKE 'b%'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') LIKE '3%'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') IS NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) LIKE 'b%'", false),
+
             // Projecting a cast to text, which the statement sends as the value and the reader renders.
             // The claim is that Calcite's cast over an ANY value is Java's rendering of the box the
             // reader already builds, so these are asked of a field seeded to hold a string, a number, a

@@ -694,6 +694,26 @@ translator pushes it exactly — its literal test is the narrower one, `IsUnambi
 branches are written against the accessor with its type discarded, which is how the translator is
 told to render the path without applying the conjunct's test to a branch that is not the conjunct.
 
+**The other comparisons over the rendering have only the string case, and are held to the same
+standard.** No literal makes `<> '30'` exact — a stored 31 renders and is kept — nor `> '2'`, where a
+stored 30 renders as text that sorts after `'2'`, nor `LIKE '3%'`, which the rendering of 30 matches;
+the service compares the number and keeps none of them. So `<>`, the ordering comparisons and `LIKE`
+over a bare `JSON_VALUE` are declined as translations, and the rule pushes the string case with every
+kind that renders passed through: `c.x <> '30' OR IS_NUMBER(c.x) OR IS_BOOL(c.x)`, with `IS_ARRAY`
+and `IS_OBJECT` beside them over the map column's cast, which used to push `IS_DEFINED` alone. Named
+by type rather than as `NOT IS_STRING` so that an absent path and a null, which Calcite never keeps,
+stay behind. Looser than the equality's branches, and tight on a field that holds strings, which is
+the field a text comparison is written against. A `RETURNING` that names a type is exempt, for the
+reason recorded under *The JSON column*: Calcite converts nothing under it, so the comparison is
+exact for every document Calcite can evaluate.
+
+**A null test over the accessor is exact, and different from the path's.** `JSON_VALUE` returns a
+scalar or nothing, so an object and an array are SQL null to it — measured in process, whatever the
+`RETURNING` clause says — where to the path they are values. `IS NULL` over the accessor therefore
+renders as `NOT IS_PRIMITIVE(c.x) OR IS_NULL(c.x)` and `IS NOT NULL` as its complement, the plain
+`IS_DEFINED` forms staying with the path. No rendering is involved, only which values exist, so it is
+a translation and not a weakening.
+
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
 non-string value could have rendered as them. This is not caution for its own sake: in the differential

@@ -1290,6 +1290,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($5, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($5, '$.label'), 30.0E0:DOUBLE))])", plan);
         }
 
+        // ── The other comparisons over the rendering ─────────────────────────────
+        //
+        // No literal makes `<> '30'` or `> '2'` exact: a stored 31 renders and is kept by the first,
+        // a stored 30 renders as text that sorts after '2' and is kept by the second, and the service
+        // compares the number and keeps neither. Declined as translations, and what they imply is
+        // pushed: the string case as it stands, or a value of a kind that renders at all.
+
+        [TestMethod]
+        public void AnInequalityOverAJsonAccessorIsNotTakenAndPassesTheRenderingKindsThrough()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') <> '30'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') <> '30'")));
+
+            query.Sql.Should().Contain("(c.label != @p0)");
+            query.Sql.Should().Contain(" OR IS_NUMBER(c.label) OR IS_BOOL(c.label))");
+            query.Sql.Should().NotContain("IS_ARRAY");
+        }
+
+        [TestMethod]
+        public void AnOrderingComparisonOverAJsonAccessorIsWeakenedTheSameWay()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') > 'b'")));
+
+            query.Sql.Should().Contain("(c.label > @p0)");
+            query.Sql.Should().Contain(" OR IS_NUMBER(c.label) OR IS_BOOL(c.label))");
+        }
+
+        /// <remarks>
+        /// The comparison written the other way round is the same comparison, and the literal keeps
+        /// its side.
+        /// </remarks>
+        [TestMethod]
+        public void TheLiteralKeepsItsSideOfTheComparison()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE 'b' < JSON_VALUE(c.\"_JSON\", '$.label')")));
+
+            query.Sql.Should().Contain("(@p0 < c.label)");
+        }
+
+        [TestMethod]
+        public void ALikeOverAJsonAccessorIsWeakenedTheSameWay()
+        {
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') LIKE 'b%'");
+
+            plan.Should().Throw<java.lang.RuntimeException>();
+
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') LIKE 'b%'")));
+
+            query.Sql.Should().Contain("(STARTSWITH(c.label, @p0) OR IS_NUMBER(c.label) OR IS_BOOL(c.label))");
+        }
+
+        /// <remarks>
+        /// The cast over the map column renders an array and an object too, so they pass through with
+        /// the number and the boolean. It used to push IS_DEFINED alone.
+        /// </remarks>
+        [TestMethod]
+        public void TheSameOverTheCastFormPassesArraysAndObjectsThroughToo()
+        {
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) <> '30'")));
+
+            query.Sql.Should().Contain("(c.label != @p0)");
+            query.Sql.Should().Contain(" OR IS_NUMBER(c.label) OR IS_BOOL(c.label) OR IS_ARRAY(c.label) OR IS_OBJECT(c.label))");
+        }
+
+        /// <remarks>
+        /// A RETURNING clause converts nothing in Calcite — measured, it asserts the Java class and
+        /// throws on anything else — so for every document Calcite can evaluate the declared type is
+        /// the stored type, and the comparison pushes exactly, as it did.
+        /// </remarks>
+        [TestMethod]
+        public void AComparisonThroughAConvertingJsonAccessorStillPushesExactly()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.price' RETURNING INTEGER) > 10"))
+                .Should().Contain("(c.price > @p0)");
+        }
+
+        // ── A null test over the accessor counts what the accessor returns ───────
+
+        /// <remarks>
+        /// JSON_VALUE returns a scalar or nothing: an object and an array are SQL null to it, measured
+        /// in process and whatever the RETURNING clause says. So the test is written against the
+        /// scalars, which IS_PRIMITIVE names, and is exact — no rendering is involved.
+        /// </remarks>
+        [TestMethod]
+        public void ANullTestOverAJsonAccessorCountsAnObjectAsNull()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') IS NULL"))
+                .Should().Contain("WHERE (NOT IS_PRIMITIVE(c.label) OR IS_NULL(c.label))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') IS NOT NULL"))
+                .Should().Contain("WHERE (IS_PRIMITIVE(c.label) AND NOT IS_NULL(c.label))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['label'] IS NOT NULL"))
+                .Should().Contain("WHERE (IS_DEFINED(c.label) AND NOT IS_NULL(c.label))");
+        }
+
         /// <remarks>
         /// Against anything but a literal there is no text to reason from: the other side may hold the
         /// text a number renders as, and Calcite would match the number.

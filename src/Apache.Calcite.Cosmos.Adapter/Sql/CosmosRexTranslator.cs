@@ -1224,6 +1224,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     || IsTextJsonValue(right) && IsUnambiguousTextEquality(right, left) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
+            else if (IsTextJsonValue(left) || IsTextJsonValue(right))
+            {
+                // No literal makes the other comparisons exact: `<> '30'` keeps a stored 31 in Calcite,
+                // having rendered it, and `> '2'` keeps a stored 30, whose rendering sorts after '2'
+                // as text -- where the service compares the number and does neither. Declined, and
+                // the split rule pushes the string case with the non-strings passed through.
+                throw new CosmosTranslationException("A comparison over JSON_VALUE read as text compares a rendering, which the service does not hold.");
+            }
 
             WriteBinary(builder, left, right, op);
         }
@@ -1271,6 +1279,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CollectGuardPaths(Operand(call, i), paths);
         }
 
+        /// <summary>
+        /// Writes a null test.
+        /// </summary>
+        /// <remarks>
+        /// Over a path, SQL null is JSON null or an absent property. Over <c>JSON_VALUE</c> it is more:
+        /// the accessor returns a scalar or nothing, so an object and an array are SQL null to it as
+        /// well — measured, in process and whatever the <c>RETURNING</c> clause says. So the test over
+        /// an accessor is written against the scalars, which is what <c>IS_PRIMITIVE</c> names, and it
+        /// is exact rather than weakened: no rendering is involved, only which values exist.
+        /// </remarks>
         void WriteIsNull(StringBuilder builder, RexCall call, bool negated)
         {
             RequireOperandCount(call, 1);
@@ -1278,6 +1296,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var operand = new StringBuilder();
             Write(operand, Operand(call, 0));
             var text = operand.ToString();
+
+            if (Operand(call, 0) is RexCall accessor && IsJsonAccessor(accessor) && accessor.getOperator().getName() == "JSON_VALUE")
+            {
+                if (negated)
+                    builder.Append("(IS_PRIMITIVE(").Append(text).Append(") AND NOT IS_NULL(").Append(text).Append("))");
+                else
+                    builder.Append("(NOT IS_PRIMITIVE(").Append(text).Append(") OR IS_NULL(").Append(text).Append("))");
+
+                return;
+            }
 
             if (negated)
                 builder.Append("(IS_DEFINED(").Append(text).Append(") AND NOT IS_NULL(").Append(text).Append("))");
@@ -1309,6 +1337,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             if (call.getOperands().size() != 2)
                 throw new CosmosTranslationException("LIKE with an ESCAPE clause is not supported.");
+
+            // The rendering, not the value: Calcite matches a stored 30 against '3%', having rendered
+            // it, and the service does not. Declined for the reason WriteComparand declines the other
+            // comparisons, and weakened the same way by the split rule.
+            if (IsTextJsonValue(Operand(call, 0)))
+                throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, which the service does not hold.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
                 throw new CosmosTranslationException("LIKE with a computed pattern is not supported: Cosmos gives '[' a meaning SQL does not, and only a literal pattern can be checked for one.");
