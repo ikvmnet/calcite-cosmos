@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <para>
         /// Emitting the object constructor in both cases collapses that to one shape: a row is always an
         /// object whose properties are the output fields. The paths it projects are the bindings the scan
-        /// established, so <c>_MAP</c> projects the document and a promoted column projects its property —
+        /// established, so <c>DOC</c> projects the document and a promoted column projects its path —
         /// the same values the other shape would have carried.
         /// </para>
         /// </remarks>
@@ -349,7 +349,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <remarks>
         /// The point read's counterpart to <see cref="RowBuilder"/>. A read returns the document rather
         /// than the object the statement would have constructed, so a field is reached by walking the
-        /// path it addresses instead of by naming a property — <c>_MAP</c> being the empty path, which
+        /// path it addresses instead of by naming a property — <c>DOC</c> being the empty path, which
         /// is the document itself.
         /// </remarks>
         /// <param name="physType">The physical type of the rows.</param>

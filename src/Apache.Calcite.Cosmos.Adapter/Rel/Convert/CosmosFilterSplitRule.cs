@@ -293,7 +293,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <c>CAST(c."_MAP"['price'] AS INTEGER) &gt; 10</c> has no Cosmos form — Calcite converts the
+        /// <c>CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) &gt; 10</c> has no Cosmos form — Calcite converts the
         /// stored value and the service compares it as it stands, so the two select different documents
         /// — and it is therefore declined and the container read whole. It still <em>implies</em>
         /// something the service can apply, and that is what is pushed:
@@ -399,7 +399,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <c>CAST(c."_MAP"['x'] AS VARCHAR) = '30'</c> and <c>JSON_VALUE(c."_JSON", '$.x') = '30'</c>
+        /// <c>CAST(c."_MAP"['x'] AS VARCHAR) = '30'</c> and <c>JSON_VALUE(c."DOC", '$.x') = '30'</c>
         /// are declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps
         /// the document, where <c>c.x = '30'</c> at the service does not — and used to push only
         /// <c>IS_DEFINED</c>. Each still implies something tighter: the value is that string, or it is

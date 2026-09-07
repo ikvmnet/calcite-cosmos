@@ -77,11 +77,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A nested partition key path has no column ordinal, so the key cannot be expressed.
         /// Claiming one anyway would be a silently wrong plan.
         /// </remarks>
+        /// <summary>
+        /// A nested partition key yields a key, which it did not while a column name was a path's
+        /// last segment.
+        /// </summary>
+        /// <remarks>
+        /// The key is expressed over field ordinals, so it needed the path to have a column. Naming
+        /// the column for the path itself gives every declared path one, however deep.
+        /// </remarks>
         [TestMethod]
-        public void NestedPartitionKeyYieldsNoKey()
+        public void NestedPartitionKeyYieldsAKey()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/inventory/sku" }));
-            table.getStatistic().getKeys().size().Should().Be(0);
+            var keys = table.getStatistic().getKeys();
+
+            keys.size().Should().Be(1);
+
+            // 0 DOC, 1 id, 2 _ts, 3 _etag, 4 $.inventory.sku
+            ((ImmutableBitSet)keys.get(0)).Should().Be(ImmutableBitSet.of(new[] { 1, 4 }));
         }
 
         [TestMethod]

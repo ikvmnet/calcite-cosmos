@@ -262,7 +262,7 @@ adapter to write. What each statement does and refuses is recorded in `DESIGN.md
 
 ### `UPDATE`, the patch tier — *medium, and the blocker is a way to write it, not a type*
 
-`SET "_MAP" = …` executes as a whole-document replace. What remains is the cheap tier: a targeted
+`SET "DOC" = …` executes as a whole-document replace. What remains is the cheap tier: a targeted
 `SET` of a plain document property as `PatchItemAsync`, sending changed properties rather than the
 document. The execution ladder above it (static decomposition via a mutation operator, the diff and
 blind-patch optimizations) is recorded in `DESIGN.md` under *Updating*.
@@ -273,18 +273,21 @@ than declared anywhere — a planner can see that a single-path `SET` is not a w
 without anything being declared. What is missing is a way to *write* the statement, and there are
 three walls, each measured:
 
+**The substrate blocker is gone.** What follows was measured against the map column, which is why
+the row model no longer has one:
+
 1. `SET "_MAP"['data']['name'] = 'x'` does not parse. Calcite's `UPDATE` grammar accepts only `=` or
    `.` after the target identifier — *Encountered "[" … Was expecting one of: "=" … "." …*
 2. `SET "_MAP"."data"."name" = 'x'` parses and the validator refuses it: *Unknown target column
    `_MAP.data.name`*. A `SET` target is resolved against the row type, and a map has no fields.
-3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converts in isolation but dies through a
+3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converted in isolation and died through a
    connection: `JSON_SET` returns `VARCHAR`, the column is `(VARCHAR, ANY) MAP`, and Calcite cannot
    build a cast spec for it — *Unsupported type when convertTypeToSpec: ANY*. Calcite's SQL/JSON
    functions follow SQL:2016, where JSON is character data, so none of the family can address a map.
 
 **What does work is a source expression already of the map type.** Measured with Spark's
 `MAP_CONCAT`, which returns a map: the statement converts, plans, and arrives as a
-`CosmosTableModify(updateColumnList=[[_MAP]])` over a calc holding the expression — the shape a patch
+`CosmosTableModify(updateColumnList=[[DOC]])` over a calc holding the expression — the shape a patch
 rule would match, intact.
 
 **And there is no in-process fallback to be afraid of.** `TableModify` has no implementation in the
@@ -814,8 +817,8 @@ path happens to be nullable — see the geography items in section 4, and
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,
   "whatever the arity", and the materializer depends on it. A single-column projection could be bare
   scalars. Reversing a recorded decision is the work; the code is trivial.
-- **`SELECT *` sends promoted columns twice** — `_MAP` is the whole document and every promoted column
-  is a path within it. Reading them out of the map value client-side would avoid it; the saving is a
+- **`SELECT *` sends promoted columns twice** — `DOC` is the whole document and every promoted column
+  is a path within it. Reading them out of the document client-side would avoid it; the saving is a
   few short scalars against a whole document, so smaller than it first looks.
 
 ---

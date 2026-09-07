@@ -126,38 +126,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (GetWrite(modify) is not CosmosWriteOperation write)
                 return false;
 
-            return write != CosmosWriteOperation.Update || SetsOnlyMutableColumns(modify, table);
+            return write != CosmosWriteOperation.Update || SetsOnlyTheDocumentColumn(modify);
         }
 
         /// <summary>
-        /// Determines whether every column an <c>UPDATE</c> sets is one a replace may change.
+        /// Determines whether an <c>UPDATE</c> sets the document column and nothing else.
         /// </summary>
         /// <remarks>
-        /// <c>id</c> is identity and a partition key is placement; the service forbids changing
-        /// either on an existing document, so a <c>SET</c> naming one is refused here, where the
-        /// refusal is a plan that fails, rather than at the service, where it would be a request
-        /// that fails per row. The map column may still <em>carry</em> a different identity or
-        /// placement inside its value — that cannot be seen at plan time, and the service rejects
-        /// the resulting request loudly.
+        /// <para>
+        /// Every other column is a projection of the document and is declared <c>STORED</c>, which
+        /// makes naming one in an <c>INSERT</c> a validation error. An <c>UPDATE</c> is not checked
+        /// the same way — measured, Calcite admits a <c>SET</c> of a generated column — so the
+        /// refusal has to be here. Without it the value is carried into a replacement that discards
+        /// it, and the statement reports rows affected while changing nothing: a silent no-op write,
+        /// which is worse than the plan that fails.
+        /// </para>
+        /// <para>
+        /// It subsumes the older rule this replaces, which refused a <c>SET</c> of <c>id</c> or of a
+        /// partition key because the service forbids changing identity or placement on an existing
+        /// document. Those are projections too. The document column may still <em>carry</em> a
+        /// different identity or placement inside its value — that cannot be seen at plan time, and
+        /// the service rejects the resulting request loudly.
+        /// </para>
         /// </remarks>
-        static bool SetsOnlyMutableColumns(TableModify modify, CosmosTable table)
+        static bool SetsOnlyTheDocumentColumn(TableModify modify)
         {
             var columns = modify.getUpdateColumnList();
             if (columns is null || columns.size() == 0)
                 return false;
 
             for (var i = 0; i < columns.size(); i++)
-            {
-                if (columns.get(i)?.ToString() is not string name)
+                if (columns.get(i)?.ToString() is not string name
+                    || string.Equals(name, CosmosImplementor.DocumentColumnName, StringComparison.Ordinal) == false)
                     return false;
-
-                if (string.Equals(name, Metadata.CosmosContainerMetadata.IdPropertyName, StringComparison.Ordinal))
-                    return false;
-
-                foreach (var path in table.Container.PartitionKeyPaths)
-                    if (string.Equals(path.TrimStart('/'), name, StringComparison.Ordinal))
-                        return false;
-            }
 
             return true;
         }

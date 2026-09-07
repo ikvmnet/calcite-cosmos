@@ -40,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         /// <remarks>
         /// A whole-document write, because that is what the statement says: SQL assigns whole values
-        /// to named columns, and the settable column of this row model is the map column, which is
+        /// to named columns, and the settable column of this row model is the document column, which is
         /// the document. Carrying a targeted <c>SET</c> as a patch instead is a different operation
         /// with its own conditions — see <c>DESIGN.md</c> under <em>Updating</em> — and is not yet
         /// taken.
@@ -58,7 +58,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// is constant-folded into the plan is a description of the rows, not text.
     /// </remarks>
     /// <param name="Operation">What to do with each row.</param>
-    /// <param name="ColumnNames">The table's field names, the map column first. An update's input rows carry one further value per <paramref name="UpdateColumnNames"/> entry, after these.</param>
+    /// <param name="ColumnNames">The table's field names, the document column first. An update's input rows carry one further value per <paramref name="UpdateColumnNames"/> entry, after these.</param>
     /// <param name="PartitionKeyPaths">The container's declared partition key paths, in policy form and outermost first.</param>
     /// <param name="UpdateColumnNames">The columns an <c>UPDATE</c> sets, in the order their new values trail the row, or <c>null</c> for any other operation.</param>
     /// <param name="PartitionKeyValues">The partition key a whole-partition delete empties, one value per declared path, or <c>null</c> for any other operation.</param>
@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     {
 
         /// <summary>
-        /// Gets the table's field names, the map column first.
+        /// Gets the table's field names, the document column first.
         /// </summary>
         public string[] ColumnNames { get; } = ColumnNames ?? throw new ArgumentNullException(nameof(ColumnNames));
 

@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static readonly string DatabaseName = "calcite_cosmos_write_tests_" +
             System.Text.RegularExpressions.Regex.Replace(System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, "[^A-Za-z0-9]", "_");
 
-        static readonly string[] Columns = ["_MAP", "id", "_ts", "_etag", "category"];
+        static readonly string[] Columns = ["DOC", "id", "_ts", "_etag", "category"];
 
         static readonly string[] PartitionKeyPaths = ["/category"];
 
@@ -288,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <c>SET</c> value is the new map, and the result is the new document.
         /// </summary>
         /// <remarks>
-        /// The row is the shape the planner produces for <c>UPDATE … SET "_MAP" = …</c> — the
+        /// The row is the shape the planner produces for <c>UPDATE … SET "DOC" = …</c> — the
         /// table's columns holding what the scan read, then one trailing value per <c>SET</c>
         /// column. A property present in the old document and absent from the new map is gone
         /// afterwards, which is what distinguishes a replace from a merge.
@@ -299,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             await Write(CosmosWriteOperation.Insert,
                 [Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(10), "old", "yes"), null, null, null, null]);
 
-            var count = await WriteSets(["_MAP"],
+            var count = await WriteSets(["DOC"],
                 [Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(10), "old", "yes"), "u1", null, null, "bikes",
                  Map("id", "u1", "category", "bikes", "price", java.lang.Long.valueOf(25), "note", "replaced")]);
 
@@ -320,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [TestMethod]
         public async Task UpdateOfAMissingDocumentCountsNothing()
         {
-            var count = await WriteSets(["_MAP"],
+            var count = await WriteSets(["DOC"],
                 [Map("id", "u-missing", "category", "bikes"), "u-missing", null, null, "bikes",
                  Map("id", "u-missing", "category", "bikes", "price", java.lang.Long.valueOf(1))]);
 
@@ -334,7 +334,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <para>
         /// The map column of a document read from a container holds <c>_ts</c>, <c>_etag</c>,
         /// <c>_rid</c>, <c>_self</c> and <c>_attachments</c> alongside the caller's own properties, so
-        /// this is the shape <c>INSERT … SELECT "_MAP" FROM …</c> produces.
+        /// this is the shape <c>INSERT … SELECT "DOC" FROM …</c> produces.
         /// </para>
         /// <para>
         /// <b>It does not test the stripping, and it was written believing it did.</b> Probed by

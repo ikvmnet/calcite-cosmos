@@ -175,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                   "sql": [
                     "SELECT p.\"id\" AS \"ID\"",
                     "FROM \"COSMOS\".\"products\" AS p",
-                    "WHERE \"COSMOS\".\"IS_DEFINED\"(p.\"_MAP\"['price'])"
+                    "WHERE \"COSMOS\".\"IS_DEFINED\"(JSON_VALUE(p.\"DOC\", '$.price'))"
                   ]
                 },
                 {
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                   "sql": [
                     "SELECT p.\"id\" AS \"ID\"",
                     "FROM \"COSMOS\".\"products\" AS p",
-                    "WHERE IS_DEFINED(p.\"_MAP\"['price'])"
+                    "WHERE IS_DEFINED(JSON_VALUE(p.\"DOC\", '$.price'))"
                   ]
                 }
               ]
@@ -235,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             RequireService();
 
-            var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE IS_DEFINED(c."_MAP"['price'])""");
+            var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE IS_DEFINED(JSON_VALUE(c."DOC", '$.price'))""");
 
             ids.Should().Equal("1", "2");
         }
@@ -248,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             RequireService();
 
-            var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE NOT IS_DEFINED(c."_MAP"['price'])""");
+            var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE NOT IS_DEFINED(JSON_VALUE(c."DOC", '$.price'))""");
 
             ids.Should().Equal("3");
         }
@@ -262,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             RequireService();
 
-            var ids = await QueryAsync("""SELECT c."id" FROM "COSMOS"."products" AS c WHERE "COSMOS"."IS_DEFINED"(c."_MAP"['price'])""");
+            var ids = await QueryAsync("""SELECT c."id" FROM "COSMOS"."products" AS c WHERE "COSMOS"."IS_DEFINED"(JSON_VALUE(c."DOC", '$.price'))""");
 
             ids.Should().Equal("1", "2");
         }
@@ -292,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             try
             {
-                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(c."_MAP"['name'], 'steel')""");
+                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.name'), 'steel')""");
 
                 ids.Should().Equal("1");
             }
@@ -338,7 +338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             try
             {
-                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRST 2 ROWS ONLY""");
+                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 2 ROWS ONLY""");
 
                 ids.Should().NotBeEmpty();
             }
@@ -382,7 +382,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             RequireService();
 
-            var act = () => QueryAsync("""SELECT c."id", FULLTEXTSCORE(c."_MAP"['name'], 'steel') AS "s" FROM "products" AS c""");
+            var act = () => QueryAsync("""SELECT c."id", FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') AS "s" FROM "products" AS c""");
 
             var described = Describe((await act.Should().ThrowAsync<Exception>()).Which);
 

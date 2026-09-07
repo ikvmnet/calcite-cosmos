@@ -263,7 +263,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AJoinOnAnUntypedColumnIsNotALookup()
         {
-            var plan = Plan("SELECT * FROM orders o JOIN products p ON o.customer = p.category");
+            var plan = Plan("SELECT * FROM orders o JOIN products p ON o.\"$.customer\" = p.\"$.category\"");
 
             Contains<CosmosLookupJoin>(plan).Should().BeFalse("an ANY key cannot be bound as a parameter:\n" + Text(plan));
         }

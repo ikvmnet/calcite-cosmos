@@ -69,7 +69,7 @@ A host that assembles its own planner rather than opening a connection chains th
 SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
 ```
 
-Ranking works when the planner is one you built. `ORDER BY FULLTEXTSCORE(c."_MAP"['name'], 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. Through a connection the clause is not recovered, because the projection that discards the score is applied after planning; see [DESIGN.md](DESIGN.md).
+Ranking works when the planner is one you built. `ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. Through a connection the clause is not recovered, because the projection that discards the score is applied after planning; see [DESIGN.md](DESIGN.md).
 
 ## What a query cost
 

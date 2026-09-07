@@ -208,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
             cache.Set("s", "bikes", Rows("""{"v":1}"""));
 
-            var write = new CosmosWrite(CosmosWriteOperation.Insert, ["_MAP", "id", "_ts", "_etag", "category"], ["/category"]);
+            var write = new CosmosWrite(CosmosWriteOperation.Insert, ["DOC", "id", "_ts", "_etag", "category"], ["/category"]);
 
             await foreach (var _ in CosmosSequences.WriteAsync<object?[], long>(OneRow(), new NullWriter(), write, r => r!, c => c, cache))
             {

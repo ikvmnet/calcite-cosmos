@@ -162,7 +162,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverThePartitionKeyConfinesExecution()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"category\" AS VARCHAR) = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'bikes'"));
 
             query.PartitionKeyValues.Should().Equal("bikes");
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
@@ -171,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverAnOrdinaryPathPushesAsAComparison()
         {
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'bikes'"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'"))
                 .Should().Contain("WHERE (c.label = @p0)");
         }
 
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             // No plan wholly in the convention exists, which is this harness's way of saying the filter
             // declined: it stays above, and Calcite applies it to the whole container.
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"category\" AS VARCHAR) = '30'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -197,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToANumberIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) = 30");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -217,7 +217,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AComparisonThroughANumericCastPushesABoundOnTheRawValue()
         {
             var query = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) = 30")));
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30")));
 
             query.Sql.Should().Contain("IS_DEFINED(c.price)");
             query.Sql.Should().Contain("(NOT IS_NUMBER(c.price))");
@@ -240,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void TheTypeTestAdmitsNonNumbersRatherThanExcludingThem()
         {
             var sql = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) = 30"))).Sql;
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30"))).Sql;
 
             sql.Should().Contain("(NOT IS_NUMBER(c.price)) OR");
             sql.Should().NotContain("IS_NUMBER(c.price) AND");
@@ -250,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AnInequalityPushesTheBoundOnOneSideOnly()
         {
             var query = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) > 10")));
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > 10")));
 
             query.Sql.Should().Contain("(c.price > @p0)");
             query.Sql.Should().NotContain("@p1");
@@ -265,7 +265,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void TheBoundIsTheSameWithTheOperandsTheOtherWayRound()
         {
             var query = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE 10 < CAST(c.\"_MAP\"['price'] AS INTEGER)")));
+                "SELECT * FROM products AS c WHERE 10 < CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER)")));
 
             query.Sql.Should().Contain("(c.price > @p0)");
             query.Parameters.Select(p => p.Value?.ToString()).Should().Equal("9");
@@ -279,7 +279,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void ABoundWrappedInItsOwnCastIsStillRead()
         {
             var query = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS DOUBLE) <= 30.5")));
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) <= 30.5")));
 
             query.Sql.Should().Contain("(c.price < @p0)");
             query.Parameters.Select(p => p.Value?.ToString()).Should().Equal("31.5");
@@ -299,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AComparisonAtTheSaturationLimitDoesNotBoundThatSide()
         {
             var query = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS INTEGER) = 2147483647")));
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 2147483647")));
 
             query.Sql.Should().Contain("(c.price > @p0)");
             query.Sql.Should().NotContain("@p1");
@@ -323,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             foreach (var type in new[] { "SMALLINT", "TINYINT", "REAL", "FLOAT", "DECIMAL(10, 2)" })
             {
                 var sql = Query(FindCosmos(PlanToAsync(
-                    $"SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['price'] AS {type}) = 30"))).Sql;
+                    $"SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS {type}) = 30"))).Sql;
 
                 sql.Should().Contain("IS_DEFINED(c.price)", "a comparison still implies the path is defined");
                 sql.Should().NotContain("IS_NUMBER", "no bound is sound for {0}", type);
@@ -338,7 +338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void ACastWithNoBoundToStateStillPushesDefinedness()
         {
             var sql = Query(FindCosmos(PlanToAsync(
-                "SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['when'] AS DATE) = DATE '2020-01-01'"))).Sql;
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.when') AS DATE) = DATE '2020-01-01'"))).Sql;
 
             sql.Should().Contain("IS_DEFINED(c.when)");
             sql.Should().NotContain("IS_NUMBER");
@@ -353,7 +353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void PredicateOnThePartitionKeyIsRecovered()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'"));
 
             query.PartitionKeyValues.Should().Equal("bikes");
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
@@ -366,7 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void PrefixLikeIsPushedAsStartsWith()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" LIKE 'bi%'"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" LIKE 'bi%'"));
 
             query.Sql.Should().Contain("STARTSWITH(c.category, @p0)");
         }
@@ -380,7 +380,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASetOfIdsWithThePartitionKeyIsRecoveredAsABatchOfPointReads()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND c.\"id\" IN ('a', 'b')"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b')"));
 
             query.PointReadIds.Should().Equal("a", "b");
             query.PartitionKeyValues.Should().Equal("bikes");
@@ -394,7 +394,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AResidualPredicateWithdrawsTheBatchOfPointReads()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND c.\"id\" IN ('a', 'b') AND c.\"_ts\" > 5"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b') AND c.\"_ts\" > 5"));
 
             query.PointReadIds.Should().BeNull();
             query.PartitionKeyValues.Should().Equal("bikes");
@@ -444,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void FilterAndProjectPlanTogether()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"category\" = 'bikes'");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes'");
             var sql = Render(best);
 
             sql.Should().StartWith("SELECT VALUE { \"id\": c.id } FROM products c WHERE ");
@@ -471,7 +471,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void UnnestIsSelectedByThePlanner()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
 
             Plan(best).Should().Contain("CosmosUnnest");
             Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags");
@@ -499,13 +499,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void UnnestOverAHoistedArrayCarriesTheElement()
         {
-            var best = PlanToAsync("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+            var best = PlanToAsync("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"DOC\" FROM products AS p) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
 
             Plan(best).Should().Contain("CosmosUnnest");
 
             // The element is the last property, and it is the whole point: without it the statement
             // returns the projected object the traversal was written under, one column short.
-            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"id\": c.id, \"_MAP\": c, \"EXPR$0\": t0 } FROM products c JOIN t0 IN c.tags");
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"id\": c.id, \"DOC\": c, \"EXPR$0\": t0 } FROM products c JOIN t0 IN c.tags");
         }
 
         /// <summary>
@@ -526,7 +526,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APredicateOverTheTraversedElementIsPushedAsAWhere()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
 
             Plan(best).Should().Contain("CosmosUnnest");
             Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c JOIN t0 IN c.tags WHERE (t0 = @p0)");
@@ -581,7 +581,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void StringToArrayOverAnythingButAnAccessorDoesNotTraverse()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(CAST(c.\"_MAP\"['tags'] AS VARCHAR))) AS t"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(CAST(JSON_VALUE(c.\"DOC\", '$.tags') AS VARCHAR))) AS t"));
 
             plan.Should().NotContain("CosmosUnnest", "the operand names a string, so the call is the service's own function rather than an address: " + plan);
         }
@@ -598,7 +598,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APredicateOverTheElementDoesNotPinThePartitionKey()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE CAST(t AS VARCHAR) = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'bikes'"));
 
             query.PartitionKeyValues.Should().BeNull();
             query.Sql.Should().Contain("WHERE (t0 = @p0)");
@@ -616,7 +616,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnUntranslatablePredicateOverTheElementLeavesTheTraversalPushed()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(c.\"_MAP\"['tags']) AS t WHERE INITCAP(CAST(t AS VARCHAR)) = 'Steel'"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE INITCAP(CAST(t AS VARCHAR)) = 'Steel'"));
 
             plan.Should().Contain("CosmosUnnest");
             plan.Should().Contain("INITCAP");
@@ -628,7 +628,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void GroupByWithCountIsSelectedByThePlanner()
         {
-            var best = PlanToCosmos("SELECT c.\"category\", COUNT(*) FROM products AS c GROUP BY c.\"category\"");
+            var best = PlanToCosmos("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\"");
 
             Plan(best).Should().Contain("CosmosAggregate");
             Render(best).Should().Contain("GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
@@ -642,7 +642,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AggregateOverANonNullableColumnIsSelected()
         {
-            var best = PlanToCosmos("SELECT c.\"category\", MAX(c.\"_ts\") FROM products AS c GROUP BY c.\"category\"");
+            var best = PlanToCosmos("SELECT c.\"$.category\", MAX(c.\"_ts\") FROM products AS c GROUP BY c.\"$.category\"");
 
             Plan(best).Should().Contain("CosmosAggregate");
             Render(best).Should().Contain("MAX(c._ts)");
@@ -658,10 +658,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void GroupByRendersTheWholeStatement()
         {
-            var sql = Render(PlanToCosmos("SELECT c.\"category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"category\""));
+            var sql = Render(PlanToCosmos("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\""));
 
             // Flat rather than an object constructor: Cosmos rejects an aggregate inside one.
-            sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"category\", COUNT(1) AS \"n\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", COUNT(1) AS \"n\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
         }
 
         /// <remarks>
@@ -674,9 +674,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void HavingOnAGroupingKeyIsPushedAsAWhere()
         {
             var query = Query(PlanToCosmos(
-                "SELECT c.\"category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"category\" HAVING c.\"category\" = 'bikes'"));
+                "SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'"));
 
-            query.Sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            query.Sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
@@ -711,7 +711,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void CountOfANullableColumnIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT COUNT(c.\"category\") FROM products AS c");
+            var act = () => PlanToCosmos("SELECT COUNT(c.\"$.category\") FROM products AS c");
 
             act.Should().Throw<Exception>();
         }
@@ -736,7 +736,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void SumOfANullableColumnIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT SUM(c.\"category\") FROM products AS c");
+            var act = () => PlanToCosmos("SELECT SUM(c.\"$.category\") FROM products AS c");
 
             act.Should().Throw<Exception>();
         }
@@ -777,7 +777,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void SortWithoutAMatchingCompositeIndexIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT * FROM products AS c ORDER BY c.\"id\", c.\"category\"");
+            var act = () => PlanToCosmos("SELECT * FROM products AS c ORDER BY c.\"id\", c.\"$.category\"");
 
             act.Should().Throw<Exception>();
         }
@@ -798,10 +798,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnIsNotNullPredicateMakesANullableColumnASortKey()
         {
-            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\""))
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
                 .Should().Contain("ORDER BY c.category ASC");
 
-            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" DESC"))
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" DESC"))
                 .Should().Contain("ORDER BY c.category DESC");
         }
 
@@ -812,8 +812,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ThePredicateAndTheOrderingPushAsOneStatement()
         {
-            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\""))
-                .Should().Be("SELECT VALUE { \"id\": c.id, \"category\": c.category } FROM products c WHERE (IS_DEFINED(c.category) AND NOT IS_NULL(c.category)) ORDER BY c.category ASC");
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
+                .Should().Be("SELECT VALUE { \"id\": c.id, \"$.category\": c.category } FROM products c WHERE (IS_DEFINED(c.category) AND NOT IS_NULL(c.category)) ORDER BY c.category ASC");
         }
 
         /// <summary>
@@ -823,7 +823,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TheRowLimitRidesAlongWithTheOrdering()
         {
-            Render(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"category\" IS NOT NULL ORDER BY c.\"category\" FETCH NEXT 10 ROWS ONLY"))
+            Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" FETCH NEXT 10 ROWS ONLY"))
                 .Should().Contain("ORDER BY c.category ASC OFFSET 0 LIMIT 10");
         }
 
@@ -834,7 +834,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ANullableKeyIsStillRefusedWithoutTheGuarantee()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c ORDER BY c.\"category\"");
+            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\"");
 
             act.Should().Throw<Exception>();
         }
@@ -846,7 +846,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APredicateOverAnotherColumnDoesNotUnlockTheSort()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"id\" IS NOT NULL ORDER BY c.\"category\"");
+            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"id\" IS NOT NULL ORDER BY c.\"$.category\"");
 
             act.Should().Throw<Exception>();
         }
@@ -860,7 +860,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APathInsideTheMapColumnIsNotReached()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\", c.\"_MAP\"['name'] FROM products AS c WHERE c.\"_MAP\"['name'] IS NOT NULL ORDER BY c.\"_MAP\"['name']");
+            var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
 
             act.Should().Throw<Exception>();
         }
@@ -932,15 +932,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void OrderingByAColumnOutsideTheSelectListPushesAsOneStatement()
         {
-            var best = PlanToCosmos("SELECT c.\"category\" FROM products AS c ORDER BY c.\"id\"");
+            var best = PlanToCosmos("SELECT c.\"$.category\" FROM products AS c ORDER BY c.\"id\"");
 
             Plan(best).Should().Be(
-                "CosmosProject(category=[$4])\n" +
+                "CosmosProject($.category=[$4])\n" +
                 "  CosmosSort(sort0=[$1], dir0=[ASC])\n" +
                 "    CosmosTableScan(table=[[products]])",
                 "the two projections fold into the one the statement has room for");
 
-            Render(best).Should().Be("SELECT VALUE { \"category\": c.category } FROM products c ORDER BY c.id ASC");
+            Render(best).Should().Be("SELECT VALUE { \"$.category\": c.category } FROM products c ORDER BY c.id ASC");
         }
 
 
@@ -998,7 +998,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AFilterIsNotPushedOntoAPushedRowLimit()
         {
-            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x WHERE x.\"category\" = 'bikes'");
+            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x WHERE x.\"$.category\" = 'bikes'");
             var sql = Render(FindCosmos(best));
 
             sql.Should().NotContain("WHERE", "the predicate reads the page, not the container: " + sql);
@@ -1015,12 +1015,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnArrayTraversalIsNotPushedOntoAPagedOrDistinctSubtree()
         {
-            var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"id\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+            var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"id\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
 
             Plan(paged).Should().NotContain("CosmosUnnest", "the page is taken before the traversal: " + Plan(paged));
             Render(FindCosmos(paged)).Should().Contain("OFFSET 0 LIMIT 5");
 
-            var distinct = PlanToAsync("SELECT c.\"id\" FROM (SELECT DISTINCT p.\"id\", p.\"_MAP\" FROM products AS p) AS c, UNNEST(c.\"_MAP\"['tags']) AS t");
+            var distinct = PlanToAsync("SELECT c.\"id\" FROM (SELECT DISTINCT p.\"id\", p.\"DOC\" FROM products AS p) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
 
             Plan(distinct).Should().NotContain("CosmosUnnest", "the de-duplication happens before the traversal: " + Plan(distinct));
             Render(FindCosmos(distinct)).Should().Contain("SELECT DISTINCT");
@@ -1035,14 +1035,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AnOrderByRankIsNotPushedOntoASubtreeThatHasWrittenItsClauses()
         {
             var paged = PlanToAsync(
-                "SELECT y.\"id\" FROM (SELECT c.\"id\", c.\"_MAP\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 20 ROWS ONLY) AS y " +
-                "ORDER BY FULLTEXTSCORE(y.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY");
+                "SELECT y.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 20 ROWS ONLY) AS y " +
+                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
 
             Plan(paged).Should().NotContain("CosmosRank", "the statement has already ordered and paged: " + Plan(paged));
 
             var distinct = PlanToAsync(
-                "SELECT y.\"id\" FROM (SELECT DISTINCT c.\"id\", c.\"_MAP\" FROM products AS c) AS y " +
-                "ORDER BY FULLTEXTSCORE(y.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY");
+                "SELECT y.\"id\" FROM (SELECT DISTINCT c.\"id\", c.\"DOC\" FROM products AS c) AS y " +
+                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
 
             Plan(distinct).Should().NotContain("CosmosRank", "the statement has already written its SELECT: " + Plan(distinct));
         }
@@ -1054,22 +1054,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A projection whose column is a cast to text pushes, the statement carrying the path.
         /// </summary>
         /// <remarks>
-        /// Which is what a view is made of. The cast is not rendered at the service and does not need
-        /// to be: Calcite's cast over an <c>ANY</c> value is Java's rendering of the box the reader
-        /// already builds, so the value is sent as it stands and rendered as it is read — see
-        /// <c>CosmosJson.GetText</c> and <c>DESIGN.md</c>, which keeps the measurement. What changes is
-        /// that the statement stops carrying whole documents.
+        /// <para>
+        /// Which is what a view is made of — and through the document column a view no longer casts
+        /// at all: <c>JSON_VALUE</c> is already <c>VARCHAR</c>. A cast written over one anyway
+        /// converts nothing and is dropped, leaving the accessor to render as itself.
+        /// </para>
+        /// <para>
+        /// As itself means guarded. <c>JSON_VALUE</c> answers a scalar's text and null for an object
+        /// or an array, and <c>IS_PRIMITIVE</c> is that distinction at the service. The text half
+        /// rests on the same equivalence it always did: Calcite's cast over a document value is
+        /// Java's rendering of the box the reader already builds, so the value is sent as it stands
+        /// and rendered as it is read — see <c>CosmosJson.GetText</c> and <c>DESIGN.md</c>, which
+        /// keeps the measurement. What changes is that the statement stops carrying whole documents.
+        /// </para>
         /// </remarks>
         [TestMethod]
         public void ACastToTextInAProjectionPushes()
         {
-            var best = PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c");
+            var best = PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosProject", "the projection belongs at the service: " + plan);
             plan.Should().NotContain("ClrAsyncEnumerableProject", "and nothing should be left above it: " + plan);
 
-            Render(FindCosmos(best)).Should().Contain("SELECT VALUE { \"n\": c.name }");
+            Render(FindCosmos(best)).Should().Contain("SELECT VALUE { \"n\": (IS_PRIMITIVE(c.name) ? c.name : null) }");
         }
 
         /// <summary>
@@ -1084,10 +1092,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextWithAWidthIsNotRendered()
         {
-            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR(3)) AS \"n\" FROM products AS c"))
+            Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(3)) AS \"n\" FROM products AS c"))
                 .Should().Contain("ClrAsyncEnumerableProject");
 
-            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['name'] AS CHAR(8)) AS \"n\" FROM products AS c"))
+            Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS CHAR(8)) AS \"n\" FROM products AS c"))
                 .Should().Contain("ClrAsyncEnumerableProject");
         }
 
@@ -1099,7 +1107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToANumberInAProjectionIsStillDeclined()
         {
-            Plan(PlanToAsync("SELECT CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c"))
+            Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c"))
                 .Should().Contain("ClrAsyncEnumerableProject");
         }
 
@@ -1118,7 +1126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortOnARenderedCastColumnIsNotPushed()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
 
             plan.Should().Contain("CosmosProject", "the projection still pushes: " + plan);
             plan.Should().NotContain("CosmosSort", "ordering by the rendering is not ordering by the path: " + plan);
@@ -1132,7 +1140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AFilterOnARenderedCastColumnIsNotPushed()
         {
             var plan = Plan(PlanToAsync(
-                "SELECT * FROM (SELECT CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c) WHERE \"n\" = '30'"));
+                "SELECT * FROM (SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c) WHERE \"n\" = '30'"));
 
             plan.Should().NotContain("CosmosFilter", "the predicate reads a rendering, not a path: " + plan);
         }
@@ -1147,14 +1155,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverAJsonAccessorPushesAsAComparison()
         {
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'"))
                 .Should().Contain("WHERE (c.label = @p0)");
         }
 
         [TestMethod]
         public void ACastToTextOverAJsonAccessorToThePartitionKeyConfinesExecution()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.category') AS VARCHAR) = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR) = 'bikes'"));
 
             query.PartitionKeyValues.Should().Equal("bikes");
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
@@ -1167,7 +1175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = '30'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '30'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -1180,7 +1188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverAConvertingJsonAccessorIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.price' RETURNING INTEGER) AS VARCHAR) = 'bikes'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS VARCHAR) = 'bikes'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -1192,7 +1200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverAJsonQueryIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_QUERY(c.\"_JSON\", '$.location') AS VARCHAR) = 'bikes'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_QUERY(c.\"DOC\", '$.location') AS VARCHAR) = 'bikes'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -1204,7 +1212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ACastToTextOverAJsonAccessorWithABehaviourClauseIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label' DEFAULT 'bikes' ON EMPTY) AS VARCHAR) = 'bikes'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label' DEFAULT 'bikes' ON EMPTY) AS VARCHAR) = 'bikes'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -1219,7 +1227,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnEqualityOverAJsonAccessorAgainstUnambiguousTextPushes()
         {
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'bikes'"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'bikes'"))
                 .Should().Contain("WHERE (c.label = @p0)");
         }
 
@@ -1230,13 +1238,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnEqualityOverAJsonAccessorAgainstTextANumberRendersAsIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'");
 
             plan.Should().Throw<java.lang.RuntimeException>();
 
-            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'");
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'");
 
-            Plan(best).Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($5, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
         }
 
         /// <remarks>
@@ -1246,10 +1254,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnEqualityOverAJsonAccessorAgainstTextNoScalarRendersAsPushes()
         {
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'null'"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'null'"))
                 .Should().Contain("WHERE (c.label = @p0)");
 
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = 'TRUE'"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'TRUE'"))
                 .Should().Contain("WHERE (c.label = @p0)");
         }
 
@@ -1264,7 +1272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ATextEqualityAgainstTextANumberRendersAsPushesTheStringOrTheNumber()
         {
-            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'")));
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'")));
 
             query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
             query.Parameters.Select(p => p.Value).Should().Equal("30", 30d);
@@ -1273,7 +1281,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TheAlternativesPushUnderTheCastFormToo()
         {
-            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = '1.0E30'")));
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'")));
 
             query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
             query.Parameters.Select(p => p.Value).Should().Equal("1.0E30", 1e30);
@@ -1282,7 +1290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TextABooleanRendersAsPushesTheStringOrTheBoolean()
         {
-            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'true'")));
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'true'")));
 
             query.Sql.Should().Contain("WHERE ((c.label = @p0) OR (c.label = @p1))");
             query.Parameters.Select(p => p.Value).Should().Equal("true", true);
@@ -1296,28 +1304,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TextInTheWrongCasePushesTheStringAlone()
         {
-            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['label'] AS VARCHAR) = 'TRUE'")));
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'TRUE'")));
 
             query.Sql.Should().Contain("WHERE (c.label = @p0)");
             query.Sql.Should().NotContain(" OR ");
         }
 
         /// <remarks>
-        /// Over the map column an array renders with a bracket, so the literal admits arrays. Over the
-        /// accessor an array is null and never matches, so the string is exact and the translator
-        /// pushes it without this.
+        /// A bracketed literal needs no array branch. <c>JSON_VALUE</c> answers null for an array, so
+        /// no stored array matches however the literal looks, and the string comparison is exact.
+        /// The array branch existed for the map column, whose rendering wrote an array out with
+        /// brackets so that <c>'[steel]'</c> could match one; nothing renders that way now, and a
+        /// cast over the accessor is dropped rather than treated as a second rendering.
         /// </remarks>
         [TestMethod]
-        public void ABracketedLiteralAdmitsArraysOverTheMapColumnOnly()
+        public void ABracketedLiteralNeedsNoArrayBranch()
         {
-            var overMap = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(c.\"_MAP\"['tags'] AS VARCHAR) = '[steel]'")));
+            foreach (var sql in new[]
+            {
+                "SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.tags') AS VARCHAR) = '[steel]'",
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags') = '[steel]'",
+            })
+            {
+                var query = Query(FindCosmos(PlanToAsync(sql)));
 
-            overMap.Sql.Should().Contain("WHERE ((c.tags = @p0) OR IS_ARRAY(c.tags))");
-
-            var overAccessor = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.tags') = '[steel]'")));
-
-            overAccessor.Sql.Should().Contain("WHERE (c.tags = @p0)");
-            overAccessor.Sql.Should().NotContain("IS_ARRAY");
+                query.Sql.Should().Contain("WHERE (c.tags = @p0)");
+                query.Sql.Should().NotContain("IS_ARRAY");
+            }
         }
 
         /// <remarks>
@@ -1327,7 +1340,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ANumberBeyondTheDoubleRangeTakesTheTypeTest()
         {
-            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '1E+400'")));
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '1E+400'")));
 
             query.Sql.Should().Contain("WHERE ((c.label = @p0) OR IS_NUMBER(c.label))");
         }
@@ -1338,10 +1351,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TheComparisonStaysAboveTheAlternatives()
         {
-            var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = '30'"));
+            var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
 
-            plan.Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($5, '$.label'), '30')])", plan);
-            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($5, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($5, '$.label'), 30.0E0:DOUBLE))])", plan);
+            plan.Should().Contain("ClrAsyncEnumerableFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
+            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0:DOUBLE))])", plan);
         }
 
         /// <remarks>
@@ -1351,7 +1364,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnEqualityOverAJsonAccessorAgainstAnotherExpressionIsNotTaken()
         {
-            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.label') = c.\"id\"");
+            var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = c.\"id\"");
 
             plan.Should().Throw<java.lang.RuntimeException>();
         }
@@ -1363,30 +1376,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnEqualityOverAConvertingJsonAccessorStillPushes()
         {
-            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"_JSON\", '$.price' RETURNING INTEGER) = 30"))
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 30"))
                 .Should().Contain("WHERE (c.price = @p0)");
         }
 
         /// <summary>
-        /// The same cast in a projection is not rendered, where over the map column it is.
+        /// The same cast in a projection is rendered, guarded.
         /// </summary>
         /// <remarks>
-        /// A projection has no literal to exclude the cases on. Measured against Calcite's own runtime,
-        /// <c>JSON_VALUE</c> answers null for an object or an array where the reader would render one
-        /// as <c>{x=1}</c> or <c>[x, y]</c>, so a rendered column would carry text for a document the
-        /// in-process plan carries nothing for. The filter beneath it pushes regardless.
+        /// <para>
+        /// This test used to say the opposite, and the reason it did is the reason for the guard. A
+        /// projection has no literal to exclude the cases on, and measured against Calcite's own
+        /// runtime <c>JSON_VALUE</c> answers null for an object or an array where the reader would
+        /// render one as <c>{x=1}</c> or <c>[x, y]</c> — so the bare path would carry text for a
+        /// document the in-process plan carries nothing for. Leaving it in process was the safe
+        /// answer to that.
+        /// </para>
+        /// <para>
+        /// The service can state the distinction instead. <c>IS_PRIMITIVE</c> is exactly SQL/JSON's
+        /// line — true of a string, a number, a boolean and a JSON null, false of an object, an array
+        /// and an absent property — so the rendered column carries nothing for precisely the
+        /// documents the function carries nothing for, and the projection pushes.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void ACastToTextOverAJsonAccessorInAProjectionIsNotRendered()
+        public void ACastToTextOverAJsonAccessorInAProjectionIsRenderedGuarded()
         {
             var best = PlanToAsync(
-                "SELECT CAST(JSON_VALUE(c.\"_JSON\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"_JSON\", '$.label') AS VARCHAR) = 'bikes'");
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'");
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrAsyncEnumerableProject", "the rendering stays in process: " + plan);
-            plan.Should().Contain("CosmosFilter", "and the filter pushes underneath it: " + plan);
+            plan.Should().Contain("CosmosProject", "the projection belongs at the service: " + plan);
+            plan.Should().NotContain("ClrAsyncEnumerableProject", "and nothing should be left above it: " + plan);
 
-            Render(FindCosmos(best)).Should().Contain("WHERE (c.label = @p0)");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("(IS_PRIMITIVE(c.name) ? c.name : null)");
+            sql.Should().Contain("WHERE (c.label = @p0)");
         }
 
         // ── Past a projection that cannot be pushed ──────────────────────────────
@@ -1404,7 +1430,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortOnAnUncastColumnPushesPastAnUnrenderableProjection()
         {
-            var best = PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+            var best = PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosSort", "the sort belongs at the service: " + plan);
@@ -1426,7 +1452,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortOnTheCastColumnItselfDoesNotTranspose()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(c.\"_MAP\"['price'] AS INTEGER) AS \"p\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
 
             plan.Should().NotContain("CosmosSort", "ordering by the cast is not ordering by the path: " + plan);
         }
@@ -1444,8 +1470,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void APagedViewReadsAPageRatherThanTheMatchingDocuments()
         {
             var best = PlanToAsync(
-                "SELECT c.\"id\", CAST(c.\"_MAP\"['name'] AS VARCHAR) AS \"n\" FROM products AS c " +
-                "WHERE c.\"category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+                "SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c " +
+                "WHERE c.\"$.category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
 
             var plan = Plan(best);
             plan.Should().NotContain("ClrAsyncEnumerableProject", "nothing is left for the plan to do: " + plan);
@@ -1463,7 +1489,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void WithNoCastTheWholeStatementPushesAsBefore()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\", c.\"_MAP\"['name'] AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY"));
 
             plan.Should().Contain("CosmosSort");
             plan.Should().Contain("CosmosProject");
@@ -1503,7 +1529,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void RenderablePartOfAPredicateIsPushedAndTheRestRechecked()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosFilter");
@@ -1523,7 +1549,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ADisjunctionWithAnUntranslatableBranchIsWeakened()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'");
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosFilter", "something should reach the service: " + plan);
@@ -1545,7 +1571,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var best = PlanToAsync(
                 "SELECT * FROM products AS c " +
-                "WHERE c.\"category\" = 'bikes' OR (NOT IS_DEFINED(c.\"_etag\") AND INITCAP(c.\"_etag\") = 'X')");
+                "WHERE c.\"$.category\" = 'bikes' OR (NOT IS_DEFINED(c.\"_etag\") AND INITCAP(c.\"_etag\") = 'X')");
 
             var plan = Plan(best);
 
@@ -1568,7 +1594,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var best = PlanToAsync(
                 "SELECT * FROM products AS c " +
-                "WHERE c.\"id\" = 'x' OR (c.\"category\" IS NULL AND INITCAP(c.\"_etag\") = 'X')");
+                "WHERE c.\"id\" = 'x' OR (c.\"$.category\" IS NULL AND INITCAP(c.\"_etag\") = 'X')");
 
             var plan = Plan(best);
 
@@ -1589,7 +1615,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ASortAboveAPushedAggregateStaysInCalcite()
         {
-            var best = PlanToAsync("SELECT c.\"category\", COUNT(*) FROM products AS c GROUP BY c.\"category\" ORDER BY c.\"category\"");
+            var best = PlanToAsync("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\" ORDER BY c.\"$.category\"");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosAggregate", "the grouping is still worth pushing: " + plan);
@@ -1609,7 +1635,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void APredicateAboveAProjectionIsSplitToo()
         {
             var best = PlanToAsync(
-                "SELECT * FROM (SELECT c.\"category\" AS cat, c.\"id\" AS ident FROM products AS c) AS t " +
+                "SELECT * FROM (SELECT c.\"$.category\" AS cat, c.\"id\" AS ident FROM products AS c) AS t " +
                 "WHERE t.cat = 'bikes' AND INITCAP(t.ident) = 'X'");
 
             var plan = Plan(best);
@@ -1627,7 +1653,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ThePushedHalfCarriesTheRenderableConjunctAndWhatTheOtherImplies()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
             var cosmos = FindCosmos(best);
 
             var query = Query(cosmos);
@@ -1643,7 +1669,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AWhollyRenderablePredicateIsNotSplit()
         {
-            var best = PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes' AND c.\"id\" = 'x'");
+            var best = PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = 'x'");
 
             Plan(best).Split("CosmosFilter").Length.Should().Be(2);
         }
@@ -1676,17 +1702,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void NestedPropertiesResolveToASinglePath()
         {
-            var best = PlanToCosmos("SELECT c.\"_MAP\"['metadata']['sku'] AS \"sku\" FROM products AS c");
+            var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.metadata.sku') AS \"sku\" FROM products AS c");
 
-            Render(best).Should().Be("SELECT VALUE { \"sku\": c.metadata.sku } FROM products c");
+            Render(best).Should().Be("SELECT VALUE { \"sku\": (IS_PRIMITIVE(c.metadata.sku) ? c.metadata.sku : null) } FROM products c");
         }
 
         [TestMethod]
         public void ThreeLevelsResolveJustAsFar()
         {
-            var best = PlanToCosmos("SELECT c.\"_MAP\"['a']['b']['c'] AS \"deep\" FROM products AS c");
+            var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.a.b.c') AS \"deep\" FROM products AS c");
 
-            Render(best).Should().Be("SELECT VALUE { \"deep\": c.a.b.c } FROM products c");
+            Render(best).Should().Be("SELECT VALUE { \"deep\": (IS_PRIMITIVE(c.a.b.c) ? c.a.b.c : null) } FROM products c");
         }
 
         /// <remarks>
@@ -1695,11 +1721,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ArrayIndexingIsPartOfThePath()
         {
-            // Subscripted from one in SQL and from zero at the service, so the first element is
-            // [1] here and c.tags[0] there.
-            var best = PlanToCosmos("SELECT c.\"_MAP\"['tags'][1] AS \"first\" FROM products AS c");
+            // Subscripted in the path rather than around it. A JSON path carries the index, and
+            // JSON_VALUE is typed VARCHAR, so there is nothing for SQL's own subscript to apply to.
+            var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.tags[0]') AS \"first\" FROM products AS c");
 
-            Render(best).Should().Be("SELECT VALUE { \"first\": c.tags[0] } FROM products c");
+            Render(best).Should().Be("SELECT VALUE { \"first\": (IS_PRIMITIVE(c.tags[0]) ? c.tags[0] : null) } FROM products c");
         }
 
         /// <remarks>
@@ -1709,7 +1735,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ANonConstantKeyIsNotAPath()
         {
-            var act = () => PlanToCosmos("SELECT c.\"_MAP\"[c.\"id\"] AS \"dynamic\" FROM products AS c");
+            var act = () => PlanToCosmos("SELECT c.\"DOC\"[c.\"id\"] AS \"dynamic\" FROM products AS c");
 
             act.Should().Throw<Exception>();
         }
@@ -1725,7 +1751,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void IsNotNullOnAMapPropertyTestsBothCosmosStates()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"_MAP\"['metadata'] IS NOT NULL");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL");
 
             Render(best).Should().Contain("(IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata))");
         }
@@ -1737,7 +1763,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void IsDefinedTestsExistenceAlone()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['metadata'])");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.metadata'))");
 
             Render(best).Should().Contain("WHERE IS_DEFINED(c.metadata)");
         }
@@ -1748,7 +1774,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void IsDefinedReachesANestedProperty()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['metadata']['sku'])");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))");
 
             Render(best).Should().Contain("WHERE IS_DEFINED(c.metadata.sku)");
         }
@@ -1764,7 +1790,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void OrderingByAScoreBecomesOrderByRank()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
             var sql = Render(best);
 
             sql.Should().Be("SELECT TOP 10 VALUE { \"id\": c.id } FROM products c ORDER BY RANK FULLTEXTSCORE(c.name, @p0)");
@@ -1777,7 +1803,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void TheRankKeywordIsBound()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') FETCH FIRST 5 ROWS ONLY"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 5 ROWS ONLY"));
 
             query.Parameters.Should().ContainSingle().Which.Value.Should().Be("steel");
         }
@@ -1790,7 +1816,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var best = PlanToCosmos(
                 "SELECT c.\"id\" FROM products AS c " +
-                "ORDER BY RRF(FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel'), FULLTEXTSCORE(c.\"_MAP\"['tags'], 'frame')) " +
+                "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) " +
                 "FETCH FIRST 10 ROWS ONLY");
 
             Render(best).Should().Contain("ORDER BY RANK RRF(FULLTEXTSCORE(c.name, @p0), FULLTEXTSCORE(c.tags, @p1))");
@@ -1803,7 +1829,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AProjectedScoreIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') AS \"s\" FROM products AS c");
+            var act = () => PlanToCosmos("SELECT FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') AS \"s\" FROM products AS c");
 
             act.Should().Throw<Exception>();
         }
@@ -1811,7 +1837,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AScoreInAPredicateIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') > 1");
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') > 1");
 
             act.Should().Throw<Exception>();
         }
@@ -1825,7 +1851,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AComparisonAgainstAVectorDistancePushes()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(c.\"_MAP\"['a'], c.\"_MAP\"['b']) < 0.5");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(JSON_VALUE(c.\"DOC\", '$.a'), JSON_VALUE(c.\"DOC\", '$.b')) < 0.5");
 
             Render(best).Should().Contain("WHERE (VECTORDISTANCE(c.a, c.b) < @p0)");
         }
@@ -1843,7 +1869,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AFullTextPredicateOverAnUndeclaredPathIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(c.\"_MAP\"['description'], 'steel')");
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
 
             act.Should().Throw<Exception>();
         }
@@ -1854,7 +1880,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ARankOverAnUndeclaredPathIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(c.\"_MAP\"['description'], 'steel') FETCH FIRST 10 ROWS ONLY");
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') FETCH FIRST 10 ROWS ONLY");
 
             act.Should().Throw<Exception>();
         }
@@ -1867,7 +1893,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AVectorDistanceOverUndeclaredPathsIsNotPushedDown()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(c.\"_MAP\"['b'], c.\"_MAP\"['d']) < 0.5");
+            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(JSON_VALUE(c.\"DOC\", '$.b'), JSON_VALUE(c.\"DOC\", '$.d')) < 0.5");
 
             act.Should().Throw<Exception>();
         }
@@ -1881,7 +1907,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void IdAndPartitionKeyBecomeAPointRead()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"category\" = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes'"));
 
             query.PointReadId.Should().Be("x");
             query.PartitionKeyValues.Should().Equal("bikes");
@@ -1896,7 +1922,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AResidualPredicateRulesOutAPointRead()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"category\" = 'bikes' AND c.\"_ts\" > 100"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND c.\"_ts\" > 100"));
 
             query.PointReadId.Should().BeNull();
             query.PartitionKeyValues.Should().Equal("bikes");
@@ -1911,7 +1937,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APartitionKeyWithoutAnIdIsNotAPointRead()
         {
-            Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"category\" = 'bikes'")).PointReadId.Should().BeNull();
+            Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'")).PointReadId.Should().BeNull();
         }
 
         /// <remarks>
@@ -1921,7 +1947,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ARowLimitRulesOutAPointRead()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"category\" = 'bikes' FETCH FIRST 1 ROWS ONLY"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' FETCH FIRST 1 ROWS ONLY"));
 
             query.PointReadId.Should().BeNull();
         }
@@ -1933,7 +1959,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void ADisjunctionIsNotAPointRead()
         {
-            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE (c.\"id\" = 'x' AND c.\"category\" = 'bikes') OR c.\"id\" = 'y'"));
+            var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE (c.\"id\" = 'x' AND c.\"$.category\" = 'bikes') OR c.\"id\" = 'y'"));
 
             query.PointReadId.Should().BeNull();
         }
@@ -1945,7 +1971,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AProjectionOfPathsStillPointReads()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\", c.\"category\" FROM products AS c WHERE c.\"id\" = 'x' AND c.\"category\" = 'bikes'"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes'"));
 
             query.PointReadId.Should().Be("x");
         }
@@ -1984,7 +2010,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APinnedOutermostPathRoutesOnThePrefix()
         {
-            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"tenant\" = 'acme'");
+            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme'");
 
             query.PartitionKeyValues.Should().Equal("acme");
             query.PartitionKeyIsComplete.Should().BeFalse();
@@ -1993,7 +2019,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void PinningEveryPathIsACompleteKey()
         {
-            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"tenant\" = 'acme' AND c.\"user\" = 'kim'");
+            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme' AND c.\"$.user\" = 'kim'");
 
             query.PartitionKeyValues.Should().Equal("acme", "kim");
             query.PartitionKeyIsComplete.Should().BeTrue();
@@ -2006,7 +2032,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnInnerPathWithoutTheOuterRoutesNothing()
         {
-            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"user\" = 'kim'");
+            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.user\" = 'kim'");
 
             query.PartitionKeyValues.Should().BeNull();
         }
@@ -2018,7 +2044,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void APrefixCannotCarryAPointRead()
         {
-            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"tenant\" = 'acme' AND c.\"id\" = 'x'");
+            var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme' AND c.\"id\" = 'x'");
 
             query.PartitionKeyValues.Should().Equal("acme");
             query.PointReadId.Should().BeNull();

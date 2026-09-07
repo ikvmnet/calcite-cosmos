@@ -359,7 +359,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public async Task ABatchOfPointReadsReturnsTheDocumentsThatExist()
         {
             var query = new CosmosQuery(
-                "SELECT * FROM products c WHERE c.category = @p0 AND c.id IN (@p1, @p2, @p3)",
+                "SELECT * FROM products c WHERE c.\"$.category\" = @p0 AND c.id IN (@p1, @p2, @p3)",
                 new[] { new CosmosParameter("@p0", "bikes"), new CosmosParameter("@p1", "1"), new CosmosParameter("@p2", "2"), new CosmosParameter("@p3", "missing") },
                 PartitionKeyValues: new object?[] { "bikes" },
                 PartitionKeyIsComplete: true,

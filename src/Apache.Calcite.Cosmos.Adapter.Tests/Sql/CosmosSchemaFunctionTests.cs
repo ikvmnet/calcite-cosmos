@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AFunctionResolvesThroughTheSchemaAlone()
         {
-            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['price'])"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))"))
                 .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE IS_DEFINED(c.price)");
         }
 
@@ -168,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void ChainingTheOperatorTableAsWellIsNotADuplicate()
         {
-            const string Sql = "SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['price'])";
+            const string Sql = "SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))";
 
             Render(Plan(Sql, chain: true)).Should().Be(Render(Plan(Sql)));
         }
@@ -179,13 +179,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void TheFullTextPredicatesResolve()
         {
-            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(c.\"_MAP\"['name'], 'steel')"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')"))
                 .Should().Contain("FULLTEXTCONTAINS(c.name, @p0)");
 
-            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(c.\"_MAP\"['name'], 'steel', 'frame', 'road')"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(JSON_VALUE(c.\"DOC\", '$.name'), 'steel', 'frame', 'road')"))
                 .Should().Contain("FULLTEXTCONTAINSALL(c.name, @p0, @p1, @p2)");
 
-            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSANY(c.\"_MAP\"['name'], 'steel', 'frame')"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSANY(JSON_VALUE(c.\"DOC\", '$.name'), 'steel', 'frame')"))
                 .Should().Contain("FULLTEXTCONTAINSANY(c.name, @p0, @p1)");
         }
 
@@ -206,8 +206,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             static string Keywords(int count) => string.Join(", ", Enumerable.Range(0, count).Select(i => $"'k{i}'"));
 
-            var atLimit = $"SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(c.\"_MAP\"['name'], {Keywords(CosmosSchemaFunctions.VariadicOperandLimit - 1)})";
-            var past = $"SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(c.\"_MAP\"['name'], {Keywords(CosmosSchemaFunctions.VariadicOperandLimit)})";
+            var atLimit = $"SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(JSON_VALUE(c.\"DOC\", '$.name'), {Keywords(CosmosSchemaFunctions.VariadicOperandLimit - 1)})";
+            var past = $"SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINSALL(JSON_VALUE(c.\"DOC\", '$.name'), {Keywords(CosmosSchemaFunctions.VariadicOperandLimit)})";
 
             Render(Plan(atLimit)).Should().Contain("FULLTEXTCONTAINSALL(c.name");
 
@@ -228,7 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void OrderingByAScoreBecomesARankClause()
         {
-            Render(Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') FETCH FIRST 10 ROWS ONLY"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY"))
                 .Should().Be("SELECT TOP 10 VALUE { \"id\": c.id } FROM products c ORDER BY RANK FULLTEXTSCORE(c.name, @p0)");
         }
 
@@ -240,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             Render(Plan(
                     "SELECT c.\"id\" FROM products AS c " +
-                    "ORDER BY RRF(FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel'), FULLTEXTSCORE(c.\"_MAP\"['tags'], 'frame')) " +
+                    "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) " +
                     "FETCH FIRST 10 ROWS ONLY"))
                 .Should().Contain("ORDER BY RANK RRF(FULLTEXTSCORE(c.name, @p0), FULLTEXTSCORE(c.tags, @p1))");
         }
@@ -256,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AProjectedScoreIsStillRefused()
         {
-            var projected = () => Plan("SELECT FULLTEXTSCORE(c.\"_MAP\"['name'], 'steel') AS \"s\" FROM products AS c");
+            var projected = () => Plan("SELECT FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') AS \"s\" FROM products AS c");
 
             projected.Should()
                 .Throw<Exception>("Cosmos will not project a score, and there is no in-process implementation either")
@@ -276,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AnUndeclaredPathIsStillRefused()
         {
-            var undeclared = () => Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(c.\"_MAP\"['description'], 'steel')");
+            var undeclared = () => Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
 
             undeclared.Should()
                 .Throw<Exception>("the container declares nothing about the path, and the service refuses the statement")
@@ -296,7 +296,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AnAccountRootedQueryResolvesThemToo()
         {
-            Render(Plan("SELECT c.\"id\" FROM \"inventory\".\"products\" AS c WHERE IS_DEFINED(c.\"_MAP\"['price'])", account: true))
+            Render(Plan("SELECT c.\"id\" FROM \"inventory\".\"products\" AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))", account: true))
                 .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE IS_DEFINED(c.price)");
         }
 
@@ -400,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var withoutLibraries = () => Plan("SELECT REVERSE(c.\"id\") AS \"r\" FROM products AS c");
             withoutLibraries.Should().Throw<Exception>("REVERSE is a library function, so chaining them above is doing something");
 
-            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(c.\"_MAP\"['price'])", libraries: true))
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))", libraries: true))
                 .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE IS_DEFINED(c.price)");
 
             Render(Plan("SELECT c.\"id\" FROM products AS c WHERE REGEXMATCH(c.\"id\", '^a')", libraries: true))

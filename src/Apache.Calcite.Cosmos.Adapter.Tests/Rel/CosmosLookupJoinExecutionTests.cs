@@ -131,7 +131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var catalogReader = new CalciteCatalogReader(_rootSchema, java.util.Collections.emptyList(), _typeFactory, new CalciteConnectionConfigImpl(properties));
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
-            var validator = SqlValidatorUtil.newValidator(SqlStdOperatorTable.instance(), catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
+            var validator = SqlValidatorUtil.newValidator(
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -220,16 +221,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Given(
                 orders: new[]
                 {
-                    """{"_MAP":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
-                    """{"_MAP":{"id":"b"},"id":"b","_ts":1,"_etag":"e","customer":"c2"}""",
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":1,"_etag":"e","customer":"c2"}""",
                 },
                 products: new[]
                 {
-                    """{"_MAP":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""",
-                    """{"_MAP":{"id":"b"},"id":"b","_ts":1,"_etag":"e","category":"shoes"}""",
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":1,"_etag":"e","category":"shoes"}""",
                 });
 
-            var plan = Plan("SELECT o.id, p.category FROM orders o JOIN products p ON o.id = p.id");
+            var plan = Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN products p ON o.id = p.id");
 
             var rows = await Execute(plan);
             rows.Should().HaveCount(2);
@@ -259,12 +260,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Given(
                 orders: new[]
                 {
-                    """{"_MAP":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
-                    """{"_MAP":{"id":"missing"},"id":"missing","_ts":1,"_etag":"e","customer":"c2"}""",
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
+                    """{"DOC":{"id":"missing"},"id":"missing","_ts":1,"_etag":"e","customer":"c2"}""",
                 },
-                products: new[] { """{"_MAP":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""" });
+                products: new[] { """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""" });
 
-            var rows = await Execute(Plan("SELECT o.id, p.category FROM orders o JOIN products p ON o.id = p.id"));
+            var rows = await Execute(Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN products p ON o.id = p.id"));
 
             rows.Should().ContainSingle();
         }
@@ -276,9 +277,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public async Task AnEmptyBuildSideAsksTheContainerNothing()
         {
-            Given(orders: System.Array.Empty<string>(), products: new[] { """{"_MAP":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""" });
+            Given(orders: System.Array.Empty<string>(), products: new[] { """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""" });
 
-            var rows = await Execute(Plan("SELECT o.id, p.category FROM orders o JOIN products p ON o.id = p.id"));
+            var rows = await Execute(Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN products p ON o.id = p.id"));
 
             rows.Should().BeEmpty();
             _productsExecutor.Executed.Should().BeEmpty();

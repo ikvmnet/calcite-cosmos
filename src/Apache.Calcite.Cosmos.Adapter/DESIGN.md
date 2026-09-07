@@ -338,7 +338,7 @@ Measured, at rule-firing time, against a live planner:
 
 ```
 WHERE c."category" IS NOT NULL        →  {pulled[IS NOT NULL($1)]}
-WHERE c."_MAP"['name'] IS NOT NULL    →  {}
+WHERE JSON_VALUE(c."DOC", '$.name') IS NOT NULL    →  {}
 ```
 
 That is worth stating plainly, because it says something about the typed-column question that the
@@ -627,14 +627,14 @@ worth naming:
 | --- | --- | --- |
 | `ATAN2` | `ATN2` | Cosmos follows T-SQL's spelling |
 | `TRUNCATE` | `TRUNC` | one argument only; the decimal-places form is unverified and declined |
-| `CARDINALITY` | `ARRAY_LENGTH` | SQL counts a collection *or a map*, Cosmos only an array, so the map case is declined rather than answered wrongly — and `_MAP` is a map |
+| `CARDINALITY` | `ARRAY_LENGTH` | SQL counts a collection *or a map*, Cosmos only an array, so the map case is declined rather than answered wrongly |
 | `x MEMBER OF a` | `ARRAY_CONTAINS(a, x)` | the operands swap |
 | `TRIM`/`LTRIM`/`RTRIM` | same | Calcite carries `[flag, chars, string]`; the flag picks the function, and only trimming spaces is translated |
 
 #### Casts over document values
 
 The row model types every document path `ANY`, so a view can only give a column a SQL type by
-wrapping the access in a cast — `CAST(p."_MAP"['price'] AS INTEGER)`. A cast is opaque to translation,
+wrapping the access in a cast — `CAST(JSON_VALUE(p."DOC", '$.price') AS INTEGER)`. A cast is opaque to translation,
 which means every operator over a typed view column declines and the container is read whole. That is
 worth fixing, and almost every way of fixing it is wrong.
 
@@ -1151,7 +1151,7 @@ functions cannot evaluate over the map column: the row model materialises a geom
 produces Java's `toString`:
 
 ```
-CAST(c."_MAP"['location'] AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]}
+CAST(JSON_VALUE(c."DOC", '$.location') AS VARCHAR)  →  {type=Point, coordinates=[0.5, 0.25]}
 ```
 
 which its parser refuses. Nothing converts an `ANY` to a geometry — every constructor takes a typed
@@ -1246,13 +1246,12 @@ consult. And a document that disagrees with the declared type is **refused**, no
 `42` as `VARCHAR` throws rather than yielding `"42"`, because a row type that bends to the data is a
 suggestion rather than a declaration.
 
-Nesting is not truncated at the map column's one-level type: `MAP<VARCHAR, ANY>` describes the top of
-the document and the value goes as deep as the document does. Addressing is not limited either —
-`ITEM` over `ANY` is `ANY`, so `_MAP['a']['b']['c']` keeps type-checking and the translator folds the
-whole chain into one path, `c.a.b.c`, array indices included. What depth costs is planner metadata:
-nothing below `_MAP` has a type, a key or a collation, so it can be addressed but not reasoned about.
-The one limit is that a key must be constant — `_MAP[c.id]` names a property whose name is not known
-until the row is read, and is declined.
+Nesting is not truncated: the document column carries the document and the value goes as deep as the
+document does. Addressing is not limited either — `JSON_VALUE(c."DOC", '$.a.b.c')` folds the whole
+path into one Cosmos path, `c.a.b.c`, array subscripts included. What depth costs is planner
+metadata: nothing addressed this way has a type, a key or a collation, so it can be addressed but not
+reasoned about. The one limit is that the path must be a literal — a path assembled at run time names
+a property whose name is not known until the row is read, and is declined.
 
 ### The row model
 
@@ -1264,29 +1263,30 @@ What Calcite does have:
 
 | Option | Availability | Assessment |
 | --- | --- | --- |
-| `MAP<VARCHAR, ANY>` + `ITEM` | Since forever | **Chosen.** The pattern the MongoDB and Elasticsearch adapters use for a `_MAP` column. |
+| `MAP<VARCHAR, ANY>` + `ITEM` | Since forever | **Chosen, then removed.** The pattern the MongoDB and Elasticsearch adapters use for a `_MAP` column. It carried the adapter to parity and was dropped once the SQL/JSON spelling reached everything it reached — see *Why the map column went*. |
+| SQL/JSON over `VARCHAR` | SQL:2016, honoured by Calcite | **Chosen.** JSON is character data here, which reads as the wrong substrate and is the right one: it is what the service already sent, and it is the only shape `JSON_SET` can be written over. |
 | `VARIANT` | 1.41.0 (`SqlTypeName.VARIANT`, `org.apache.calcite.runtime.variant`, operators `VARIANT`/`VARIANTNULL`/`TYPEOF`) | Semantically the best fit — `item`, `cast`, `getTypeString`. No shipped adapter models a row type on it; planner pushdown through VARIANT is unproven. Revisit. |
-| `DynamicRecordType` + `DYNAMIC_STAR` | Present in 1.41.0 | Nicer ergonomics (`c.name` rather than `ITEM(_MAP,'name')`), but nested paths fall back to field access on an `ANY` anyway. Worth evaluating as a surface layer, not as the substrate. |
+| `DynamicRecordType` + `DYNAMIC_STAR` | Present in 1.41.0 | Nicer ergonomics (`c.name` rather than an accessor call), but nested paths fall back to field access on an `ANY` anyway. Worth evaluating as a surface layer, not as the substrate. |
 
-#### Base: one map column
+#### Base: one document column
 
-Every Cosmos query returns exactly one JSON value per row, so the base row type is **one
-column**, not N. This is not a compromise — the two models agree exactly:
+Every Cosmos query returns exactly one JSON value per row, so the base row type is **one column**,
+not N. This is not a compromise — the two models agree exactly:
 
 | Cosmos | Calcite |
 | --- | --- |
-| `SELECT VALUE c` | the single `_MAP` column |
-| `SELECT a, b` → `{a:…, b:…}` | a map, which is what the column already is |
-| `c.address.city` | `ITEM(ITEM(_MAP,'address'),'city')` |
-| `c["odd name"]` | `ITEM(_MAP, 'odd name')` |
+| `SELECT VALUE c` | the single `DOC` column |
+| `SELECT a, b` → `{a:…, b:…}` | a document, which is what the column already is |
+| `c.address.city` | `JSON_VALUE(DOC, '$.address.city')` |
+| `c["odd name"]` | `JSON_VALUE(DOC, '$[''odd name'']')` |
 
-`ITEM` → path expression is close to 1:1, and the coercion of a flat select list into an object
+Accessor → path expression is close to 1:1, and the coercion of a flat select list into an object
 stops being an impedance mismatch — it is the identity of the column.
 
-#### The one measured cost of the substrate
+#### Why the map column went, measured
 
 A map cannot be addressed by Calcite's SQL/JSON functions, which are typed over character strings,
-and that is what stands between an `UPDATE` and a targeted patch. `SET "_MAP"['a']['b'] = …` does not
+and that is what stood between an `UPDATE` and a targeted patch. `SET "_MAP"['a']['b'] = …` did not
 parse — the `UPDATE` grammar accepts only `=` or `.` after the target. `SET "_MAP"."a"."b" = …`
 parses and the validator refuses it, *Unknown target column*, a map having no fields.
 `SET "_MAP" = JSON_SET("_MAP", '$.a.b', …)` converts in isolation and dies through a connection,
@@ -1306,29 +1306,52 @@ writing a re-serialised document. And `JSON_VALUE` carries SQL:2016's `RETURNING
 Calcite honours — `RETURNING INTEGER` types the call `INTEGER`, `RETURNING TIMESTAMP` types it
 `TIMESTAMP(0)`, nullable, and the clause survives inside a view, where it presents to a
 `DbDataReader` as a real typed column. So the JSON family is not uniformly stringly typed, and a
-document path *can* be given a SQL type by the caller in standard SQL. `TODO.md` section 3 carries
-the consequence: a second `DOC` column as the handle those functions address.
+document path *can* be given a SQL type by the caller in standard SQL. So the map column could address a document and could not be *written* through in any shape a rule
+could read a patch operation off. The document column can be, which is the whole reason the row model
+moved: `SET "DOC" = JSON_SET(c."DOC", '$.a.b', v)` is an expression over a value the accessor family
+is typed for.
 
-#### The JSON column
+Two things then made the map column redundant rather than merely second. Parity was one function
+(below), so it addressed nothing the accessor did not. And `UNNEST` — the last thing the map reached
+that the accessor did not, `ITEM` over a map being `ANY` where `JSON_QUERY` is `VARCHAR` — is reached
+by `StringToArray(JSON_QUERY(c."DOC", '$.tags'))`, `StringToArray` being typed `ANY`; both calls
+resolve to the path and neither survives into the statement.
 
-`DOC` is the same document as `_MAP`, in the shape Calcite's SQL/JSON functions can address. Last in
-the row type, so the promoted ordinals do not move; `VARCHAR` and `NOT NULL`, because every row is a
-document; `STORED` in the column strategies, so Calcite refuses `INSERT INTO t (DOC)` as a generated
-column on its own while leaving it nameable as an `UPDATE` target — measured, because the patch tier
-depends on exactly that asymmetry.
+#### The document column
 
-It is a handle rather than a second representation. Read, it is the JSON the service sent —
+`DOC` is the document, and the only column a statement writes. First in the row type; `VARCHAR` and
+`NOT NULL`, because every row is a document; `DEFAULT` in the column strategies, every other column
+being `STORED`.
+
+Read, it is the JSON the service sent —
 `GetRawText`, the original span — so it is a copy rather than a round trip and cannot differ from what
 is stored in key order or number formatting. `CosmosReading.Json` is what says so, distinct from
 `Text`, which renders a value the way a cast over `ANY` would and is the wrong answer for a document.
 
-**Parity with the map column is one function, not sixty.** Every pushdown that needs a document path
-resolves it through `CosmosRexTranslator.TryResolvePath`, so `JSON_VALUE(<doc>, '$.a.b')` resolving to
-the same path as `ITEM(ITEM(<doc>,'a'),'b')` gives every one of them the second spelling at once.
-Measured against a connection, `_MAP` and `DOC` produce the identical plan for a projection, a
-filter, a sort, a sort with a fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array
-subscript, a numeric comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path
-assembled at run time declines on both.
+**Parity was one function, not sixty.** Every pushdown that needs a document path resolves it through
+`CosmosRexTranslator.TryResolvePath`, so `JSON_VALUE(<doc>, '$.a.b')` resolving to the same path as
+`ITEM(ITEM(<doc>,'a'),'b')` gave every one of them the second spelling at once. Measured against a
+connection, the two produced the identical plan for a projection, a filter, a sort, a sort with a
+fetch, `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric
+comparison, `IS NOT NULL`, `UNNEST` and a lookup join on either side; a path assembled at run time
+declined on both. That measurement is what made removing the map column a rename rather than a
+redesign.
+
+**A projection of an accessor is guarded, and that is not decoration.** `JSON_VALUE` answers a
+scalar's text and null for an object or an array. Pushed as the bare path it returns the raw value,
+which the reader refuses where the plan declared `VARCHAR` — a number is not a string — so the
+statement threw for data the in-process plan renders as `30`. `IS_PRIMITIVE` is exactly SQL/JSON's
+line, true of a string, a number, a boolean and a JSON null and false of an object, an array and an
+absent property, so `(IS_PRIMITIVE(p) ? p : null)` with the `Text` reading means at the service what
+the function means in process, for every JSON type. A filter needs no guard: a comparison against an
+object is false at the service and null in process, and both drop the row.
+
+**The gates that admit a document value ask for one, not for a type.** Three of them — the text cast
+and the numeric cast in a comparison, and the rendering in a projection — spelled *is this a value
+out of a document* as *is this typed `ANY`*. That was the same question while the map column was the
+only way in. It stopped being so silently: a bound the filter rule would have pushed was not pushed,
+which reads as a slower plan rather than a wrong one. `IsDocumentValue` asks the question the gates
+mean.
 
 One shape was not on that list and did not hold: the cast to text a view writes, which was keyed off
 the operand being typed `ANY` and so off the map subscript rather than off the path (#71). It is now
@@ -1360,12 +1383,21 @@ the numeric bound the map column's cast needs has no counterpart here.
 
 A single column has one field ordinal, and Calcite's planner metadata is ordinal-based:
 `Statistic` exposes `getKeys`, `getCollations`, `getDistribution`, `getReferentialConstraints`,
-and `getRowCount`, with keys and collations expressed over field ordinals. With only `_MAP`,
+and `getRowCount`, with keys and collations expressed over field ordinals. With only `DOC`,
 none of it is expressible — which is why the Mongo and Elasticsearch adapters supply no
 statistics at all.
 
+**This is the whole of why they exist.** They are not a second way to address the document; the
+document column already addresses all of it. They carry ordinals for the facts the container states,
+and nothing else, which is why they are read-only: a write goes through `DOC`.
+
+A declared path is named for the JSON path it addresses — `/inventory/sku` promotes as
+`$.inventory.sku` — so a nested one has a name at all. Under the older rule, which took a path's last
+segment, it had none and a container keyed on one reported *no unique key*. The service's own keep
+the names the service gives them.
+
 The container metadata table above is exactly the material those methods want, so the row type
-is `_MAP` **plus promoted scalar columns** for paths that are declared or service-guaranteed:
+is `DOC` **plus promoted scalar columns** for paths that are declared or service-guaranteed:
 
 | Promoted column | Type | Enables |
 | --- | --- | --- |
@@ -1524,7 +1556,7 @@ ordering, a row limit, a grouping and an array traversal each describe something
 **The projection is the interesting one.** A read returns the document; the statement would have
 returned `SELECT VALUE { … }`. Two row shapes again — and this time the answer is not to force one,
 because forcing the projected shape is exactly the query the read is avoiding. Instead the converter
-builds a second row builder that walks each output field's *path* in the returned document, `_MAP`
+builds a second row builder that walks each output field's *path* in the returned document, `DOC`
 being the empty path. It can only do that where every output field addresses a path, so a computed
 projection withdraws the read and the statement executes as the query it already is.
 
@@ -1572,32 +1604,52 @@ no `ModifiableTable`, and `DELETE` and `UPDATE` plan through that fallback uncha
 
 ### What an insert writes
 
-The row model makes this the real question. A document *is* the map column, and the promoted columns
-are paths within the same document, so an insert naming columns is describing one document twice over.
+The row model settles this. A document *is* the document column, and every other column is a path
+within the same document, so an insert naming more than one of them would be describing one document
+twice over and asking the adapter to reconcile it.
 
-**The document is `_MAP`. A promoted column sets the property it projects.** Where both are supplied
-the promoted column wins, which is the projection that produced it run backwards —
-`{…map, id: …}`. Refusing the overlap instead was considered and rejected: it would refuse
-`INSERT INTO t (_MAP, "id") SELECT doc, key FROM …`, which is the natural way to write a document
-whose id comes from somewhere else.
+**The document column is the only column a statement writes.** Everything else is `STORED`, which
+makes naming one a validation error rather than something the adapter drops later without comment:
 
-**Promoted columns alone cannot describe a useful document, and that is why the map column is
-primary.** The promoted set is `id`, `_ts`, `_etag` and the partition key paths — nothing else is
-declared, so nothing else can be promoted. An insert restricted to them could only ever write
-`{id, category}`. Every real document has properties that are not promoted columns, and the map
-column is the only route to them.
+```sql
+INSERT INTO products ("DOC") VALUES ('{"id":"1","category":"bikes","name":"Trail Blazer"}')
+```
 
-**A promoted column contributes its property only when the value is not null.** This is forced. An
-unmentioned column arrives as SQL `NULL`, so without this rule `INSERT INTO t (_MAP) VALUES (m)` would
-write `{…m, id: null, category: null}` and destroy the document it was given. The cost is that a
-promoted column cannot write a JSON null; the map column can, because a map distinguishes an absent
-key from a present one holding null. That is *undefined ≠ null* from the row model, resolved in the
-only direction that leaves the primary route working.
+**Writing a projection was possible and is refused on purpose.** A derived column addresses a path
+inside the document, so writing one means building that path into the document being written — for a
+nested declaration, several levels of it — and the document column already says all of that,
+unambiguously. `id` could have stayed writable, being a property in its own right, and did not: a
+rule with one exception is a rule a reader has to remember.
 
-**`_ts` and `_etag` cannot be written at all.** They are service-maintained, so a supplied value would
-be ignored. They are declared `ColumnStrategy.STORED`, and the validator then refuses to let one be
-named — `Cannot INSERT into generated column '_ts'` — rather than the adapter discovering it later or
-dropping it without comment.
+**It is also what the patch tier needs.** A targeted change has to arrive as an expression over the
+document — `SET "DOC" = JSON_SET(c."DOC", '$.category', 'x')` — because that is the form a rule can
+read a patch operation off. A `SET` of a projected column carries the same intent in a shape nothing
+can decompose. See *Updating* below.
+
+**An `UPDATE` is refused in the rule rather than by the validator.** Measured: Calcite checks
+`ColumnStrategy` for an `INSERT` and not for a `SET`, so a `SET` of a `STORED` column plans. The
+value would then be carried into a replacement that discards it and the statement would report rows
+affected while changing nothing — a silent no-op write, which is worse than a plan that fails.
+`CosmosTableModifyRule` requires the set list to name the document column and nothing else.
+
+**The service's own properties are stripped wherever they appear.** `_ts`, `_etag`, `_rid`, `_self`
+and `_attachments` cannot be named — they are `STORED` like everything else — but they arrive
+*inside* the document column whenever it came from a scan, which is what
+`INSERT INTO t ("DOC") SELECT "DOC" FROM t2` hands over: a whole document, system properties and all.
+Copying one document to another is the obvious use of that statement, and the service's bookkeeping is
+not part of what is being copied.
+
+**This is a decision rather than a requirement, and it was measured.** With the stripping removed, a
+document carrying a bogus `_ts`, `_etag` and `_rid` was still accepted and still came back with values
+the service had assigned — so the service does not need protecting from these. What stripping buys is
+that the document written is the document described: a new item does not silently carry another item's
+identity, and a caller reading back what they inserted is not told a value they never supplied was
+theirs.
+
+**Building the document is a copy.** Parse, write every property but those five, in the order they
+arrived. Nothing is read and re-rendered, so a large integer keeps its digits and an exponential its
+notation. The value-by-value writer this needed while a row could hand over a Java box or a CLR
+primitive for every JSON type went with the map column that produced them.
 
 > **`STORED`, not `VIRTUAL`, and the difference is not cosmetic.** Both refuse a write. `VIRTUAL`
 > additionally means *not stored*: measured, it makes `RelOptTableImpl.toRel` drop the column from the
@@ -1611,7 +1663,7 @@ choose.
 
 **The service's own properties are stripped from the document, wherever in it they appear.** `_ts`
 cannot be *named*, but it arrives inside the map column whenever one document is copied to another —
-which is what `INSERT INTO t (_MAP) SELECT "_MAP" FROM t2` hands over, and the obvious use of that
+which is what `INSERT INTO t ("DOC") SELECT "DOC" FROM t2` hands over, and the obvious use of that
 statement. **Measured, and this is a decision rather than a requirement:** with the stripping removed
 a document carrying a bogus `_ts`, `_etag` and `_rid` was still accepted, and still came back with
 values the service had assigned. What stripping buys is that the document written is the document
@@ -1619,7 +1671,7 @@ described — a new item does not silently carry another item's identity.
 
 ### A map literal cannot be inserted
 
-`INSERT INTO t (_MAP) VALUES (MAP['id', 'x'])` fails in the validator, and the limitation is Calcite's:
+`INSERT INTO t ("DOC") VALUES (MAP['id', 'x'])` fails in the validator, and the limitation is Calcite's:
 
 ```
 java.lang.UnsupportedOperationException: Unsupported type when convertTypeToSpec: ANY
@@ -1638,22 +1690,21 @@ unaffected.
 `INSERT` does not reach a rule without this, and the failure is at validation:
 
 ```
-Column '_MAP' has no default value and does not allow NULLs
+Column 'DOC' has no default value and does not allow NULLs
 ```
 
 `SqlValidatorImpl.checkFieldCount` requires every column that is neither nullable nor defaulted to be
-supplied. `_MAP` and `id` are both `NOT NULL` and both true — every document has an id, and the map
-column is the document. The row type is not going to be weakened to admit a write; a row type that
-bends to what a caller wants to omit is a suggestion rather than a declaration.
+supplied. `DOC` is `NOT NULL` and that is true — every row is a document. The row type is not going to
+be weakened to admit a write; a row type that bends to what a caller wants to omit is a suggestion
+rather than a declaration.
 
 `ColumnStrategy` says the right thing instead, separating *not null in the table* from *optional in an
-insert*. `CosmosTable` supplies an `InitializerExpressionFactory` reporting `DEFAULT` for `_MAP`, `id`
-and the partition key columns — defaulting to `NULL`, which the rules above read as "not supplied" —
-and `STORED` for `_ts` and `_etag`.
+insert*. `CosmosTable` supplies an `InitializerExpressionFactory` reporting `DEFAULT` for `DOC` and
+`STORED` for everything else.
 
 The columns a modify's input carries are unaffected by any of this: the input row type is always the
 table's whole row type, with the omitted columns as typed null literals. Only the *arity* an `INSERT`
-without a column list expects changes, the two `STORED` columns dropping out of it.
+without a column list expects changes, which is now one.
 
 ### Two rules are not bound to a convention, and neither can be
 
@@ -1715,7 +1766,7 @@ planner hands over the finished story: `updateColumnList`, `sourceExpressionList
 rows to evaluate them against. Any execution that lands that result is legitimate, chosen by cost.
 That gives a ladder:
 
-1. **Replace — implemented.** `SET "_MAP" = …` is whole-document assignment by its own words, and
+1. **Replace — implemented.** `SET "DOC" = …` is whole-document assignment by its own words, and
    `ReplaceItemAsync` is that operation, priced as what it is. Not a stand-in for a patch: when the
    named column is the document, replacing the document is the faithful reading. The read this
    requires is the scan the plan already shows — the same argument recorded for deleting — and
@@ -1729,7 +1780,8 @@ That gives a ladder:
    arrive by expression instead, which is (3).
 3. **Static decomposition — future.** A mutation operator in the Cosmos table (`JSON_SET`-style,
    the way JSON-column databases spell copy-and-modify) would let a rule read patch operations
-   straight off a `SET "_MAP" = JSON_SET(…)` expression at plan time.
+   straight off a `SET "DOC" = JSON_SET(…)` expression at plan time — which the document column now
+   admits, being `VARCHAR` and writable, where the map column admitted no such expression at all.
 4. **Optimizations, recorded not built.** A runtime diff of old against new document into patch
    operations is only equivalent to a replace under `If-Match`, and is bounded by the ten-operation
    patch limit; a *blind* patch — no read at all — is possible exactly when the predicate pins
@@ -1759,7 +1811,7 @@ Two decisions the patch tier inherits when it lands:
   written.
 - **No `If-Match`.** No write sends an ETag, matching `DELETE`: the read informs rather than
   locks, last write wins, and optimistic concurrency is a session-level surface this adapter does
-  not invent. Under that stance a replace is the honest reading of `SET "_MAP"` — the document
+  not invent. Under that stance a replace is the honest reading of `SET "DOC"` — the document
   becomes what was computed from what was read.
 
 ---
