@@ -11,48 +11,16 @@
     <ItemGroup>
         <PackageReference Include="IKVM" Version="8.16.0" />
         <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
-        <!-- Not PrivateAssets, deliberately. This package ships only buildTransitive, which is the folder that
-             carries build assets to consumers; marking it private disables the one mechanism it has, and a project
-             that references ours then compiles and fails at run time with `Could not load file or assembly
-             'calcite.core'`. The default PrivateAssets keeps `build` to ourselves and lets buildTransitive through. -->
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.10.0" />
-        <!-- The workflow runs the suite by handing `dotnet test` a built assembly together with the
-             trx logger, a runsettings file and a filter, which is the VSTest command line. MSTest.Sdk 3
-             referenced this package for every test application, so that worked without saying so;
-             4 references it only under UseVSTest, and the MSTest runner it enables by default does not
-             answer to those arguments. Named here so the workflow keeps working — dropping it instead
-             means rewriting how CI invokes tests. -->
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-        <!-- The ADO.NET provider, which is the path the README documents and the one issue #34 is
-             about: a model document, a DbConnection, a DbCommand. CosmosConnectionFunctionTests is
-             the only thing here that needs it, and it needs it because a claim about what a
-             connection can resolve is not testable against a planner the test built itself. Held at
-             the version Apache.Calcite.Extensions is at, for the reason the adapter's project file
-             gives about core and linq4j. -->
         <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.64" />
-        <!-- The adapter references this too, and for a different reason: it recognises an ST_GEOG_* call
-             by name, which is what an adapter has to do anyway — CalciteCatalogReader.toOp builds a fresh
-             SqlUserDefinedFunction on every lookup, so reference equality against the operator table never
-             holds. The tests need the operators themselves, to build the calls. -->
         <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.64" />
-        <!-- Starts the emulator for the tests that need a service, where one is not already running.
-             Those tests were reachable only by starting a container by hand, so a run that skipped
-             them reported success for a run that checked none of them — and the defects they catch
-             are pushdowns that plan correctly and return the wrong rows, which nothing offline sees.
-             The core package rather than Testcontainers.CosmosDb: that module drives the original
-             emulator over HTTPS with a certificate to trust, where the image these tests already
-             documented serves HTTP and starts in seconds. -->
         <PackageReference Include="Testcontainers" Version="4.15.0" />
     </ItemGroup>
 
     <ItemGroup>
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
-        <!-- RelBuilder.create opens an internal Calcite connection, which needs the JDBC driver.
-             Held at the version calcite-core 1.42 resolves to. Naming an older one here does not fail the
-             build — the adapter is compiled against whatever core brought — it fails at run time, the
-             moment a test touches a method whose body names an avatica type, with a FileNotFoundException
-             for the assembly the adapter was bound to. -->
         <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.28.0" />
     </ItemGroup>
 
