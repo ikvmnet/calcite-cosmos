@@ -808,6 +808,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// The service's type test for the type a <c>RETURNING</c> names, or <c>null</c> where the
+        /// comparison is not through one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>JSON_VALUE(doc, '$.v' RETURNING INTEGER)</c> is a typed extraction, not a rendering: it
+        /// participates only where the value is of that type. Calcite does not enforce that — it casts
+        /// what it extracted and throws when the cast fails, outside the <c>ON ERROR</c> handling that
+        /// would otherwise answer null. The type test is that restriction written where the service can
+        /// apply it.
+        /// </para>
+        /// <para>
+        /// A character <c>RETURNING</c> is deliberately absent. The bare accessor is already a
+        /// rendering and is handled as one, and an explicit <c>RETURNING VARCHAR</c> carries more than
+        /// two operands, so neither reaches here.
+        /// </para>
+        /// </remarks>
+        static string? TryTypeTestForReturning(RexCall call)
+        {
+            for (var i = 0; i < call.getOperands().size(); i++)
+            {
+                if ((RexNode)call.getOperands().get(i) is not RexCall operand)
+                    continue;
+
+                // By the call's type, not its operand count: RETURNING names the type of the call
+                // and adds no operand, so a bare accessor and a RETURNING INTEGER one differ only
+                // in what they are typed as.
+                if (operand.getOperator().getName() != "JSON_VALUE")
+                    continue;
+
+                switch (operand.getType()?.getSqlTypeName()?.getName())
+                {
+                    case nameof(SqlTypeName.TINYINT):
+                    case nameof(SqlTypeName.SMALLINT):
+                    case nameof(SqlTypeName.INTEGER):
+                    case nameof(SqlTypeName.BIGINT):
+                    case nameof(SqlTypeName.FLOAT):
+                    case nameof(SqlTypeName.REAL):
+                    case nameof(SqlTypeName.DOUBLE):
+                    case nameof(SqlTypeName.DECIMAL):
+                        return CosmosOperators.IsNumber.getName();
+
+                    case nameof(SqlTypeName.BOOLEAN):
+                        return CosmosOperators.IsBool.getName();
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Determines whether an expression is a <c>JSON_VALUE</c> read as text, which is what the
         /// accessor is without a <c>RETURNING</c> clause.
         /// </summary>
@@ -1263,6 +1314,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // False over a null, which discards the row here.
                     foreach (var path in paths)
                         builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
+
+                    // An inequality through a typed accessor restricts to the type it names, and it
+                    // is the only comparison that has to. Measured against a real account: the
+                    // service's ordering comparisons are *undefined* across JSON types, so
+                    // `c.v > 10` already returns no string and no boolean and a type test changes
+                    // nothing; `!=` is the exception and answers true for every value of another
+                    // type. Calcite would have thrown on those documents -- RETURNING asserts the
+                    // type rather than converting it, ikvmnet/calcite-dotnet#120 -- and SQL:2016
+                    // says they are an error condition answering null, which no comparison keeps.
+                    // Restricting is therefore what the standard asks for, and closer to it than
+                    // either the engine or the unrestricted pushdown.
+                    if (notEquals && TryTypeTestForReturning(call) is string test)
+                        foreach (var path in paths)
+                            builder.Append(test).Append('(').Append(path).Append(") AND ");
 
                     WriteComparand(builder, call, op);
                 }
