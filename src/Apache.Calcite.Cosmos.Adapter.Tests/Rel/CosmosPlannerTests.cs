@@ -1481,6 +1481,90 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.price)");
         }
 
+        // ── The comparisons over a text accessor ──────────────────────────────────────
+        //
+        // JSON_VALUE read as text renders the value at the path and Calcite compares that rendering;
+        // the service compares the raw value. They agree on a stored string, whose rendering is
+        // itself, and nowhere else -- the orders differ in kind, a boolean sorting before a number
+        // and a number before any string at the service, while as text `true` sorts after `bikes`
+        // and `30` before it. Measured over the typed container, one document per JSON type.
+
+        /// <summary>
+        /// An ordering comparison pushes where the value is a string, and admits the rest.
+        /// </summary>
+        [TestMethod]
+        public void AnOrderingComparisonOverATextAccessorIsWeakenedToTheStringCase()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'steel'")));
+
+            sql.Should().Contain("NOT IS_STRING(c.name)");
+            sql.Should().Contain("c.name > @p0");
+
+            // The absent path is the one document the escape hatch need not admit: the accessor
+            // answers null there and no comparison keeps a null.
+            sql.Should().Contain("IS_DEFINED(c.name)");
+        }
+
+        /// <summary>
+        /// And the comparison itself stays above, because the pushed form is a superset.
+        /// </summary>
+        [TestMethod]
+        public void TheOrderingComparisonStaysAboveTheWeakening()
+        {
+            var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'steel'"));
+
+            plan.Should().Contain("ClrAsyncEnumerableFilter", "the comparison is Calcite's to make: " + plan);
+        }
+
+        /// <summary>
+        /// The inequality goes with them rather than with the equality it negates.
+        /// </summary>
+        /// <remarks>
+        /// An equality against text no non-string renders as is exact; its negation is not, because
+        /// the accessor answers null for an object or an array where the raw value compares unequal
+        /// to anything. Measured: <c>label &lt;&gt; 'bikes'</c> gained the array and the object.
+        /// </remarks>
+        [TestMethod]
+        public void AnInequalityOverATextAccessorIsWeakenedToo()
+        {
+            Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') <> 'steel'")))
+                .Should().Contain("NOT IS_STRING(c.name)");
+        }
+
+        /// <summary>
+        /// <c>LIKE</c> the same, its subject being the accessor.
+        /// </summary>
+        /// <remarks>
+        /// Measured: <c>label LIKE '3%'</c> matches the stored number 30, which renders as
+        /// <c>30</c>, and the service's <c>STARTSWITH</c> over a number is undefined rather than
+        /// true.
+        /// </remarks>
+        [TestMethod]
+        public void LikeOverATextAccessorIsWeakenedToo()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE 'st%'")));
+
+            sql.Should().Contain("NOT IS_STRING(c.name)");
+            sql.Should().Contain("STARTSWITH(c.name");
+        }
+
+        /// <summary>
+        /// A comparison against a number is untouched, and that is the distinction the gate rests on.
+        /// </summary>
+        /// <remarks>
+        /// Nothing types such a call from SQL; the one that exists is built by the split rule against
+        /// the raw value on purpose, and is exactly the comparison the service should make. Declining
+        /// it made the numeric bound unrenderable and stopped it being pushed at all.
+        /// </remarks>
+        [TestMethod]
+        public void AComparisonAgainstANumberIsNotWeakened()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > 10")));
+
+            sql.Should().Contain("NOT IS_NUMBER(c.price)");
+            sql.Should().NotContain("IS_STRING");
+        }
+
         // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path
