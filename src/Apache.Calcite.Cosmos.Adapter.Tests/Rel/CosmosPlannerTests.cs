@@ -1499,6 +1499,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             sql.Should().Contain("NOT IS_STRING(c.name)");
             sql.Should().Contain("c.name > @p0");
+
+            // The absent path is the one document the escape hatch need not admit: the accessor
+            // answers null there and no comparison keeps a null.
+            sql.Should().Contain("IS_DEFINED(c.name)");
         }
 
         /// <summary>

@@ -194,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// admitted for the recheck above:
         /// </para>
         /// <code>
-        /// NOT IS_STRING(c.label) OR c.label &gt; 'bikes'
+        /// IS_DEFINED(c.label) AND (NOT IS_STRING(c.label) OR c.label &gt; 'bikes')
         /// </code>
         /// <para>
         /// Which is a superset, and that is the whole of what the split rule needs. A document
@@ -202,6 +202,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// because the rendering is the value. Every other document reaches the recheck, where
         /// Calcite decides on the rendering as it would have anyway — including the object and the
         /// array, which the accessor answers null for and which no comparison selects.
+        /// </para>
+        /// <para>
+        /// The <c>IS_DEFINED</c> is the one document the escape hatch need not admit: the accessor
+        /// answers SQL null over an absent path, every one of these operators answers null against
+        /// null, and Calcite discards the row. It is the guard
+        /// <see cref="TryBoundNumericCast"/> carries for the same reason.
         /// </para>
         /// </remarks>
         static RexNode? TryTextComparisonWeakening(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
@@ -252,7 +258,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             terms.add(notString);
             terms.add(comparison);
 
-            return RexUtil.composeDisjunction(rexBuilder, terms);
+            var whole = new java.util.ArrayList();
+            whole.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { raw }));
+            whole.add(RexUtil.composeDisjunction(rexBuilder, terms));
+
+            return RexUtil.composeConjunction(rexBuilder, whole);
         }
 
 
