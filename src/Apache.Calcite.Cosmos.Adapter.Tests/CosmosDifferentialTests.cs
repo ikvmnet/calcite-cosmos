@@ -448,6 +448,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'bi%'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE '3%'", false),
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c ORDER BY 2, c.\"id\"", true),
+            ("SELECT c.\"id\" FROM typed AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.label'), c.\"id\"", true),
 
             // Projections.
             ("SELECT * FROM products", false),
