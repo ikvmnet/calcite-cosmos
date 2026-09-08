@@ -1347,8 +1347,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     || IsTextJsonValue(right) && IsUnambiguousTextEquality(right, left) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
+            else if (IsOrdering(KindOf(call))
+                && (IsTextJsonValue(left) && IsCharacter(right) || IsTextJsonValue(right) && IsCharacter(left)))
+            {
+                // The same gap the equality has, with no exact case to carve out of it. An equality
+                // against text no non-string renders as is exact; an ordering comparison never is,
+                // because the two orders disagree in kind — Calcite compares renderings as text, and
+                // the service compares raw values across JSON types, where a boolean sorts before a
+                // number and a number before any string.
+                //
+                // Measured over the typed container, one document per JSON type. `label > 'bikes'`
+                // lost the stored `true`, which renders as `true` and sorts after `bikes` as text
+                // while sorting before every string at the service. `label >= '30'` lost the stored
+                // 30 and the stored `true` the same way. `label < 'bikes'` lost the stored 30, and
+                // `label <> 'bikes'` gained the array and the object, which the accessor answers
+                // null for and Calcite therefore excludes.
+                //
+                // So it is declined here and CosmosFilterSplitRule pushes what it implies: the
+                // comparison where the value is a string, and every non-string admitted for the
+                // recheck above.
+                throw new CosmosTranslationException("A comparison over JSON_VALUE read as text compares a rendering, and the service orders raw values across JSON types rather than their renderings.");
+            }
 
             WriteBinary(builder, left, right, op);
+        }
+
+        /// <summary>
+        /// Determines whether an expression is of a character type.
+        /// </summary>
+        /// <remarks>
+        /// What decides that a comparison is against a rendering. <c>JSON_VALUE</c> read as text is
+        /// <c>VARCHAR</c>, so a comparison against another character value is Calcite comparing two
+        /// renderings — and the service comparing a raw value against one. A comparison against a
+        /// <em>number</em> is not that: nothing types such a call from SQL, and the one that exists
+        /// is built by <c>CosmosFilterSplitRule</c> against the raw value on purpose, which is
+        /// exactly the comparison the service should make.
+        /// </remarks>
+        static bool IsCharacter(RexNode node)
+        {
+            var name = node.getType()?.getSqlTypeName();
+            return name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR;
+        }
+
+        /// <summary>
+        /// Determines whether a kind is one of the ordering comparisons, or the inequality.
+        /// </summary>
+        /// <remarks>
+        /// The inequality belongs with them rather than with the equality it negates: an equality
+        /// against unambiguous text is exact, and its negation is not, because the accessor answers
+        /// null for an object or an array where the raw value compares unequal to anything.
+        /// </remarks>
+        static bool IsOrdering(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.NOT_EQUALS
+                or SqlKind.__Enum.LESS_THAN
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN
+                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 
         /// <summary>
@@ -1432,6 +1487,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             if (call.getOperands().size() != 2)
                 throw new CosmosTranslationException("LIKE with an ESCAPE clause is not supported.");
+
+            // The rendering gap the comparisons have. Measured: `label LIKE '3%'` matches the stored
+            // number 30, which renders as `30`, and the service's STARTSWITH over a number is
+            // undefined rather than true. Declined here, and CosmosFilterSplitRule pushes the
+            // pattern where the value is a string.
+            if (IsTextJsonValue(Operand(call, 0)))
+                throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, and the service's string functions are undefined over a value that is not a string.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
                 throw new CosmosTranslationException("LIKE with a computed pattern is not supported: Cosmos gives '[' a meaning SQL does not, and only a literal pattern can be checked for one.");

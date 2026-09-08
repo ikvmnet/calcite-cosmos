@@ -437,6 +437,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </remarks>
         static readonly (string Sql, bool Ordered)[] Corpus =
         [
+            // MEASURING: the operators over the bare text accessor, where Calcite compares the
+            // rendering and the service the raw value. Over the typed container, whose label holds
+            // one document per JSON type.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') <> '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') > 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') < 'bikes'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') >= '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE 'bi%'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE '3%'", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c ORDER BY 2, c.\"id\"", true),
+
             // Projections.
             ("SELECT * FROM products", false),
             ("SELECT c.\"id\", c.\"$.category\" FROM products AS c", false),

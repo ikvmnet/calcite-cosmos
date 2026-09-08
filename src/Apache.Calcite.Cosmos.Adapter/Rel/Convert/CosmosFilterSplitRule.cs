@@ -176,6 +176,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             return (pushable, residual);
         }
 
+
+        /// <summary>
+        /// Weakens a comparison over a text accessor to the case where the two agree, or returns
+        /// <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>JSON_VALUE</c> read as text renders the value at the path, and Calcite compares that
+        /// rendering; the service compares the raw value. The two agree on exactly one kind of
+        /// document — one storing a <em>string</em>, whose rendering is itself. Everywhere else the
+        /// orders differ in kind: a boolean sorts before a number and a number before any string at
+        /// the service, while as text <c>true</c> sorts after <c>bikes</c> and <c>30</c> before it.
+        /// </para>
+        /// <para>
+        /// So the comparison is pushed where the value is a string, and every other document is
+        /// admitted for the recheck above:
+        /// </para>
+        /// <code>
+        /// NOT IS_STRING(c.label) OR c.label &gt; 'bikes'
+        /// </code>
+        /// <para>
+        /// Which is a superset, and that is the whole of what the split rule needs. A document
+        /// storing a string is selected by the pushed comparison exactly when Calcite selects it,
+        /// because the rendering is the value. Every other document reaches the recheck, where
+        /// Calcite decides on the rendering as it would have anyway — including the object and the
+        /// array, which the accessor answers null for and which no comparison selects.
+        /// </para>
+        /// </remarks>
+        static RexNode? TryTextComparisonWeakening(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
+        {
+            if (node is not RexCall call || call.getOperands().size() != 2)
+                return null;
+
+            var kind = (SqlKind.__Enum)call.getKind().ordinal();
+            if (kind is not (SqlKind.__Enum.NOT_EQUALS
+                or SqlKind.__Enum.LESS_THAN or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN or SqlKind.__Enum.GREATER_THAN_OR_EQUAL
+                or SqlKind.__Enum.LIKE))
+                return null;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            // Against a character comparand only, for the reason CosmosRexTranslator.IsCharacter
+            // gives: a comparison against a number is the raw one the bound rule builds on purpose.
+            var accessor = CosmosRexTranslator.IsTextJsonValue(left) && IsCharacter(right) ? left
+                : kind != SqlKind.__Enum.LIKE && CosmosRexTranslator.IsTextJsonValue(right) && IsCharacter(left) ? right
+                : null;
+
+            if (accessor is null)
+                return null;
+
+            // The path the accessor addresses, which is what the service compares.
+            if (translator.TryResolvePath(accessor, out var path) == false || path is null || path.ToString() == rootAlias)
+                return null;
+
+            // Re-typed as ANY, which is what says "the raw value at this path" rather than "its
+            // rendering". The comparison below is the one the service should make, and written over
+            // the accessor as it stands the translator would decline it -- rightly, since that node
+            // means the rendering everywhere else.
+            var raw = (RexNode)rexBuilder.makeCall(
+                rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY),
+                ((RexCall)accessor).getOperator(),
+                ((RexCall)accessor).getOperands());
+
+            var comparison = ReferenceEquals(accessor, left)
+                ? rexBuilder.makeCall(call.getOperator(), raw, right)
+                : rexBuilder.makeCall(call.getOperator(), left, raw);
+
+            var notString = rexBuilder.makeCall(SqlStdOperatorTable.NOT,
+                rexBuilder.makeCall(CosmosOperators.IsString, new[] { raw }));
+
+            var terms = new java.util.ArrayList();
+            terms.add(notString);
+            terms.add(comparison);
+
+            return RexUtil.composeDisjunction(rexBuilder, terms);
+        }
+
+
+        /// <summary>
+        /// Determines whether an expression is of a character type.
+        /// </summary>
+        static bool IsCharacter(RexNode node)
+        {
+            var name = node.getType()?.getSqlTypeName();
+            return name == org.apache.calcite.sql.type.SqlTypeName.VARCHAR || name == org.apache.calcite.sql.type.SqlTypeName.CHAR;
+        }
+
         /// <summary>
         /// Determines whether an expression can tell an absent property from a present one.
         /// </summary>
@@ -303,6 +392,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (TryTextEqualityAlternatives(node, translator, rexBuilder, rootAlias) is RexNode alternatives)
                 return alternatives;
+
+            if (TryTextComparisonWeakening(node, translator, rexBuilder, rootAlias) is RexNode weakened)
+                return weakened;
 
             var paths = new List<RexNode>();
             CollectPaths(node, translator, rootAlias, paths);
