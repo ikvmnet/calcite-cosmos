@@ -1565,6 +1565,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             sql.Should().NotContain("IS_STRING");
         }
 
+        // ── A comparison through RETURNING ────────────────────────────────────────────
+        //
+        // RETURNING is a typed extraction rather than a rendering: it participates only where the
+        // value is of the type it names. Calcite does not enforce that -- it casts what it extracted
+        // and throws when the cast fails, outside the ON ERROR handling that SQL:2016 says should
+        // answer null (ikvmnet/calcite-dotnet#120). So the adapter restricts, which is closer to the
+        // standard than the engine.
+
+        /// <summary>
+        /// An inequality through a typed accessor restricts to the type it names.
+        /// </summary>
+        /// <remarks>
+        /// It is the only comparison that has to. Measured against a real account: the service's
+        /// ordering comparisons are <em>undefined</em> across JSON types, so a stored string is
+        /// already absent from <c>c.v &gt; 10</c> and a type test changes nothing. <c>!=</c> is the
+        /// exception and answers true for every value of another type — a string, a boolean, an array
+        /// and an object all came back — and those are exactly the documents Calcite throws on and
+        /// the standard excludes.
+        /// </remarks>
+        [TestMethod]
+        public void AnInequalityThroughAReturningRestrictsToItsType()
+        {
+            Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) <> 30")))
+                .Should().Contain("IS_NUMBER(c.price)");
+        }
+
+        /// <summary>
+        /// And the ordering comparisons do not, because the service already restricts them.
+        /// </summary>
+        [TestMethod]
+        public void AnOrderingThroughAReturningNeedsNoTypeTest()
+        {
+            foreach (var op in new[] { ">", "<", ">=", "<=" })
+            {
+                var sql = Render(FindCosmos(PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) {op} 10")));
+
+                sql.Should().NotContain("IS_NUMBER", $"the service's {op} is undefined across types: " + sql);
+                sql.Should().Contain($"c.price {op} @p0");
+            }
+        }
+
+        /// <summary>
+        /// An equality needs none either, the service's <c>=</c> not crossing types.
+        /// </summary>
+        [TestMethod]
+        public void AnEqualityThroughAReturningNeedsNoTypeTest()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 30")));
+
+            sql.Should().NotContain("IS_NUMBER", sql);
+            sql.Should().Contain("c.price = @p0");
+        }
+
+        /// <summary>
+        /// A boolean <c>RETURNING</c> takes the boolean test.
+        /// </summary>
+        [TestMethod]
+        public void ABooleanReturningTakesTheBooleanTest()
+        {
+            Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.flag' RETURNING BOOLEAN) <> TRUE")))
+                .Should().Contain("IS_BOOL(c.flag)");
+        }
+
         // ── Past a projection that cannot be pushed ──────────────────────────────
         //
         // A view gives a container a relational shape by casting, the row model typing every path

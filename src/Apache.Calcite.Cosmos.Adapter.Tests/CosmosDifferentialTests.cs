@@ -797,6 +797,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </summary>
         static readonly (string Sql, string Reason)[] WithoutAnOracle =
         [
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) <> 30",
+                "Calcite throws rather than answering: RETURNING asserts the type instead of converting to it, and the ON ERROR clause that SQL:2016 says governs the mismatch is not consulted -- ikvmnet/calcite-dotnet#120. The typed container stores a string at this path, so the oracle cannot run. The pushdown restricts to the type the RETURNING names, which excludes exactly the documents that would have thrown and which the standard says answer null and are therefore excluded anyway. A deliberate divergence: the pushed statement succeeds where the engine fails."),
+
         ];
 
         /// <summary>
