@@ -25,12 +25,14 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**655 tests: 646 passing, 9 skipped**, on net8.0 and net10.0, against Apache.Calcite 2.0.1-pre.64.
-The skips are things only a real account can answer; the suite runs against one when
-`COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing
-where the emulator cannot — and each of them detects the gap it is skipping for, so an environment
-that closes one asserts rather than going quiet. Several facts in this file and in `DESIGN.md` were
-settled by measurement, each time with an Azure account, used and deleted.
+**731 tests: 717 passing, 14 inconclusive** on net8.0 against Apache.Calcite 2.0.1-pre.64, and the
+same suite without its six service-backed classes 660 passing on net10.0. The inconclusive ones are
+things only a service can answer; the suite runs against one when `COSMOS_TEST_ENDPOINT` and
+`COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing where the emulator cannot —
+and each of them detects the gap it is skipping for, so an environment that closes one asserts rather
+than going quiet. Several facts in this file and in `DESIGN.md` were settled by measurement, each
+time with an Azure account, used and deleted. **Not yet measured against an account:** the view
+spellings and the case folds added to the differential corpus with #83 and #84.
 
 No PRs are open and nothing is parked; `main` is where the work is and a new branch starts from it.
 
@@ -379,9 +381,11 @@ as it did, and needs no bound; `DESIGN.md` records the measurement. *Settled by 
 other operators over the bare text accessor — `<>`, the ordering comparisons and `LIKE` — diverged in
 both directions over the `typed` container, and are now declined and weakened to the case the two
 agree on, `NOT IS_STRING(x) OR <comparison>`. The string case is exact, the rendering being the
-value; every other document reaches the recheck. `ORDER BY` was measured alongside them and did not
-diverge, so nothing was done to it — which is a statement about that corpus rather than a proof, and
-a sort still has no weakening to fall back on if one is found.
+value; every other document reaches the recheck. The same holds over a *view's* column bound to the
+accessor, which is the spelling every typed caller writes and which had been pushed raw (#83);
+`DESIGN.md` records it under *Projecting a cast to text*. `ORDER BY` was measured alongside them and
+did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
+proof, and a sort still has no weakening to fall back on if one is found.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs
 `JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
@@ -571,7 +575,10 @@ is not offered, and one thing that cannot be fixed here at all.
   genuine substring matching and is also what BigQuery's `CONTAINS_SUBSTR` wants. **Measure first.**
   Both forms already render as Cosmos `LIKE` and the service already evaluates them, so the only
   question is whether the named function is priced differently — and the `IN`/`BETWEEN` measurement
-  below is the standing warning that a native spelling often is not.
+  below is the standing warning that a native spelling often is not. The case-*insensitive* forms are
+  a different question and are done: `UPPER(x) LIKE '%abc%'` has no `LIKE` spelling at the service
+  and renders as `CONTAINS(x, 'ABC', true)` — `DESIGN.md` under *A case fold under `LIKE`*, which
+  also records the ASCII line the rewrite stops at and why.
   Two things measured while writing this down. SQL's own `CONTAINS` is **not** a candidate: it is the
   period operator, and `c."id" CONTAINS 'steel'` fails to validate, so there is no user-facing query
   to accelerate — `CONTAINS_SUBSTR` from the BigQuery library and `LIKE '%…%'` are the reachable

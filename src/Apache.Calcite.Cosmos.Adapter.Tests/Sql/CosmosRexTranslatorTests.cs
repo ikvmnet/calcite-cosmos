@@ -42,6 +42,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             return new CosmosRexTranslator(_rex, _fields, _parameters);
         }
 
+        /// <summary>
+        /// A translator told that field 0 is a text rendering — a view's column, bound to the path by
+        /// the projection beneath and read as text.
+        /// </summary>
+        CosmosRexTranslator TranslatorOverARendering()
+        {
+            _parameters = new CosmosParameterList();
+            return new CosmosRexTranslator(_rex, _fields, _parameters, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
+        }
+
+        RexNode Any(RexNode node) => _rex.makeCast(_types.createSqlType(SqlTypeName.ANY), node);
+
         RexNode Ref(int index, SqlTypeName type) => _rex.makeInputRef(_types.createSqlType(type), index);
 
         RexNode Str(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, System.Math.Max(1, value.Length)));
@@ -268,6 +280,110 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Ref(0, SqlTypeName.VARCHAR)))
                 .Should().BeFalse();
+        }
+
+        // ── A case fold under LIKE ────────────────────────────────────────────────
+
+        /// <remarks>
+        /// <c>UPPER(x) LIKE '%ACADIA%'</c> is what an ORM writes for a case-insensitive contains,
+        /// and the service has one: the third argument of <c>CONTAINS</c>, <c>STARTSWITH</c> and
+        /// <c>ENDSWITH</c>. The text is bound as written, the flag making its case irrelevant.
+        /// </remarks>
+        [TestMethod]
+        public void ACaseFoldUnderASubstringPatternRendersAsCaseInsensitiveContains()
+        {
+            var t = Translator();
+            t.Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%ACADIA%")))
+                .Should().Be("CONTAINS(c.name, @p0, true)");
+
+            _parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be("ACADIA");
+        }
+
+        [TestMethod]
+        public void ACaseFoldUnderAPrefixOrSuffixPatternRendersAsCaseInsensitiveStartsOrEndsWith()
+        {
+            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("acadia%")))
+                .Should().Be("STARTSWITH(c.name, @p0, true)");
+
+            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%PARK")))
+                .Should().Be("ENDSWITH(c.name, @p0, true)");
+        }
+
+        /// <remarks>
+        /// The text has to be in the case the fold produces: <c>UPPER(x)</c> never contains a
+        /// lowercase letter, so the pattern matches nothing and is left as written, which answers
+        /// the same nothing. A <c>_</c> or an inner <c>%</c> is a pattern rather than a substring,
+        /// and text outside ASCII is where the two foldings are not known to agree; both are left as
+        /// written too.
+        /// </remarks>
+        [TestMethod]
+        public void ACaseFoldUnderAnyOtherPatternStaysLike()
+        {
+            foreach (var pattern in new[] { "%acadia%", "%ACA_IA%", "%ACA%IA%", "%ÄCADIA%", "ACADIA" })
+                Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str(pattern)))
+                    .Should().Be("(UPPER(c.name) LIKE @p0)", "for the pattern " + pattern);
+
+            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("%Acadia%")))
+                .Should().Be("(LOWER(c.name) LIKE @p0)");
+        }
+
+        // ── A field bound to a text rendering ─────────────────────────────────────
+        //
+        // A view's column: the projection beneath bound it to the path, so it addresses the
+        // document, and read it as text, so a comparison over it compares the rendering. It is
+        // held to every test the accessor itself is (#83); without the reading it was pushed raw.
+
+        [TestMethod]
+        public void LikeOverARenderedFieldIsDeclined()
+        {
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("bike%")))
+                .Should().BeFalse();
+
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR)), Str("%BIKE%")))
+                .Should().BeFalse("a fold over the rendering folds the rendering");
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("bike%")))
+                .Should().BeTrue("the same field read as its own type is the path");
+        }
+
+        [TestMethod]
+        public void AnOrderingComparisonOverARenderedFieldIsDeclined()
+        {
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.GREATER_THAN, Ref(0, SqlTypeName.VARCHAR), Str("bikes")))
+                .Should().BeFalse();
+
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.NOT_EQUALS, Str("bikes"), Ref(0, SqlTypeName.VARCHAR)))
+                .Should().BeFalse();
+        }
+
+        [TestMethod]
+        public void AnEqualityOverARenderedFieldIsHeldToTheAccessorsLiteralTest()
+        {
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes")))
+                .Should().Be("(c.name = @p0)");
+
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("30")))
+                .Should().BeFalse("a stored number renders as 30");
+        }
+
+        /// <remarks>
+        /// The split rule names the raw value at the path by casting the field to <c>ANY</c> — a cast
+        /// rather than a re-typed reference, because a host's transpose through the projection
+        /// replaces the reference and keeps a cast — and the comparison over that is the raw one.
+        /// </remarks>
+        [TestMethod]
+        public void ACastOfARenderedFieldToAnyIsTheRawValue()
+        {
+            var t = TranslatorOverARendering();
+
+            t.Translate(Call(SqlStdOperatorTable.GREATER_THAN, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes")))
+                .Should().Be("(c.name > @p0)");
+
+            t.Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))), Str("%BIKE%")))
+                .Should().Be("CONTAINS(c.name, @p1, true)");
+
+            t.Translate(Call(CosmosOperators.IsString, Any(Ref(0, SqlTypeName.VARCHAR))))
+                .Should().Be("IS_STRING(c.name)");
         }
 
         // ── Scalar functions ──────────────────────────────────────────────────────

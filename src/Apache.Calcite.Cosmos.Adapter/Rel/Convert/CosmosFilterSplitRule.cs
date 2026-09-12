@@ -140,11 +140,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
 
             var below = AlreadyApplied(filter.getInput());
 
@@ -209,6 +209,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// null, and Calcite discards the row. It is the guard
         /// <see cref="TryBoundNumericCast"/> carries for the same reason.
         /// </para>
+        /// <para>
+        /// The accessor may be a field a projection bound to one — a view's column, which is the
+        /// spelling every caller through a view writes — and under <c>LIKE</c> it may sit beneath a
+        /// case fold: <c>UPPER(label) LIKE '3%'</c> folds the rendering where the service folds the
+        /// value, and has the gap for the same reason. Both take the same guard, the fold rebuilt
+        /// over the raw value so that the translator renders it as the case-insensitive match it is.
+        /// </para>
         /// </remarks>
         static RexNode? TryTextComparisonWeakening(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
         {
@@ -227,29 +234,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Against a character comparand only, for the reason CosmosRexTranslator.IsCharacter
             // gives: a comparison against a number is the raw one the bound rule builds on purpose.
-            var accessor = CosmosRexTranslator.IsTextJsonValue(left) && IsCharacter(right) ? left
-                : kind != SqlKind.__Enum.LIKE && CosmosRexTranslator.IsTextJsonValue(right) && IsCharacter(left) ? right
-                : null;
+            RexNode subject;
+            RexNode? accessor;
 
-            if (accessor is null)
+            if (IsCharacter(right) && TryRenderedAccessor(left, translator, throughCaseFold: kind == SqlKind.__Enum.LIKE) is RexNode onLeft)
+            {
+                subject = left;
+                accessor = onLeft;
+            }
+            else if (kind != SqlKind.__Enum.LIKE && IsCharacter(left) && TryRenderedAccessor(right, translator, throughCaseFold: false) is RexNode onRight)
+            {
+                subject = right;
+                accessor = onRight;
+            }
+            else
+            {
                 return null;
+            }
 
             // The path the accessor addresses, which is what the service compares.
             if (translator.TryResolvePath(accessor, out var path) == false || path is null || path.ToString() == rootAlias)
                 return null;
 
-            // Re-typed as ANY, which is what says "the raw value at this path" rather than "its
-            // rendering". The comparison below is the one the service should make, and written over
-            // the accessor as it stands the translator would decline it -- rightly, since that node
-            // means the rendering everywhere else.
-            var raw = (RexNode)rexBuilder.makeCall(
-                rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY),
-                ((RexCall)accessor).getOperator(),
-                ((RexCall)accessor).getOperands());
+            var raw = RawValue(rexBuilder, accessor);
 
-            var comparison = ReferenceEquals(accessor, left)
-                ? rexBuilder.makeCall(call.getOperator(), raw, right)
-                : rexBuilder.makeCall(call.getOperator(), left, raw);
+            var rawSubject = ReferenceEquals(subject, accessor)
+                ? raw
+                : rexBuilder.makeCall(((RexCall)subject).getOperator(), raw);
+
+            var comparison = ReferenceEquals(subject, left)
+                ? rexBuilder.makeCall(call.getOperator(), rawSubject, right)
+                : rexBuilder.makeCall(call.getOperator(), left, rawSubject);
 
             var notString = rexBuilder.makeCall(SqlStdOperatorTable.NOT,
                 rexBuilder.makeCall(CosmosOperators.IsString, new[] { raw }));
@@ -263,6 +278,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             whole.add(RexUtil.composeDisjunction(rexBuilder, terms));
 
             return RexUtil.composeConjunction(rexBuilder, whole);
+        }
+
+        /// <summary>
+        /// Returns the rendered accessor a comparison's side reads, or <c>null</c>.
+        /// </summary>
+        /// <param name="side">The side of the comparison.</param>
+        /// <param name="translator">The translator bound to the filter's input, which knows a field bound to an accessor.</param>
+        /// <param name="throughCaseFold">Whether to look beneath <c>UPPER</c> or <c>LOWER</c>, which is the <c>LIKE</c> case.</param>
+        static RexNode? TryRenderedAccessor(RexNode side, CosmosRexTranslator translator, bool throughCaseFold)
+        {
+            if (translator.IsTextRendering(side))
+                return side;
+
+            if (throughCaseFold && CosmosRexTranslator.TryCaseFoldOperand(side, out _) is RexNode folded && translator.IsTextRendering(folded))
+                return folded;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Names the raw value at the path a rendering reads, so that a comparison written over it is
+        /// the one the service makes.
+        /// </summary>
+        /// <remarks>
+        /// Typed <c>ANY</c>, which is what says "the raw value at this path" rather than "its
+        /// rendering": written over the accessor as it stands the translator would decline the
+        /// comparison, rightly, since that node means the rendering everywhere else. An accessor is
+        /// re-typed in place. A field bound to one is cast instead: a reference re-typed says the same
+        /// thing, but a host transposing the filter through the projection replaces the reference with
+        /// the projection's expression, and the type that said it goes with it. A cast is a call of
+        /// its own and survives, and the translator renders a cast to <c>ANY</c> over a rendering as the
+        /// path.
+        /// </remarks>
+        static RexNode RawValue(RexBuilder rexBuilder, RexNode accessor)
+        {
+            var any = rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY);
+
+            return accessor is RexCall call
+                ? rexBuilder.makeCall(any, call.getOperator(), call.getOperands())
+                : rexBuilder.makeCast(any, accessor);
         }
 
 
@@ -586,6 +641,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 value = mirrored;
                 other = left;
             }
+            // A field a projection bound to the accessor, which renders what the accessor renders.
+            else if (translator.IsTextRendering(left))
+            {
+                value = left;
+                scalarOnly = true;
+                other = right;
+            }
+            else if (translator.IsTextRendering(right))
+            {
+                value = right;
+                scalarOnly = true;
+                other = left;
+            }
             else
             {
                 return null;
@@ -615,8 +683,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The accessor without the type that says it is text. The translator would otherwise hold
             // the string branch to the test the conjunct failed, and rightly: as a translation it is
             // not exact. As a branch of what the conjunct implies it is, and this is that.
-            if (value is RexCall accessor && CosmosRexTranslator.IsTextJsonValue(accessor))
-                value = rexBuilder.makeCall(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY), accessor.getOperator(), accessor.getOperands());
+            if (translator.IsTextRendering(value))
+                value = RawValue(rexBuilder, value);
 
             var branches = new java.util.ArrayList();
             branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, literal));

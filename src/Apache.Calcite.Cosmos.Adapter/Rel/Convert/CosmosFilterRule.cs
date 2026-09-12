@@ -27,11 +27,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Translation is attempted against a throwaway parameter list, using the binding derived by
         /// walking the input, which also reports what that subtree has already written. Deriving the
         /// binding from the row type instead would read alias names as document properties above a
-        /// projection, and answer for paths the container does not have.
+        /// projection, and answer for paths the container does not have. The same walk reports how
+        /// each field is read, which is what tells a view's text column from the path it binds to;
+        /// without it a comparison over the column pushed as the raw comparison the accessor's own
+        /// spelling is declined for (#83).
         /// </remarks>
         static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out var written) == false)
                 return false;
 
             // WHERE is evaluated before OFFSET/LIMIT, so onto a subtree that has taken a page this
@@ -41,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
-            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container);
+            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings);
             return translator.TryTranslate(filter.getCondition(), out _);
         }
 
