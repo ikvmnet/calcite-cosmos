@@ -344,13 +344,13 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
                 "Search.FullTextContains",
                 PlannerQueryCategory.Search,
                 """SELECT c."id" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.name'), 'steel') AND c."$.category" = 'bikes'""",
-                "A full text predicate over a declared path beside a routing one — pushable only because the container declares the path."),
+                "A full text predicate over a declared path beside a routing one — served by the full text index, which is what the declaration decides."),
 
             new PlannerQuery(
                 "Search.FullTextUndeclaredPath",
                 PlannerQueryCategory.Search,
                 """SELECT c."id" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.notes'), 'steel')""",
-                "The same predicate over a path the container says nothing about, which the service would refuse — so the rule declines it and the plan reads the container."),
+                "The same predicate over a path the container says nothing about, which the service answers by scanning — so it pushes, priced as the scan it is rather than refused (#85)."),
 
             new PlannerQuery(
                 "Search.FullTextContainsAll",
@@ -385,7 +385,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
                 "Search.VectorDistance",
                 PlannerQueryCategory.Search,
                 """SELECT c."id" FROM products AS c WHERE VECTORDISTANCE(JSON_VALUE(c."DOC", '$.embedding'), JSON_VALUE(c."DOC", '$.query')) < 0.5 AND c."$.category" = 'bikes'""",
-                "A vector predicate over a declared vector path, which is gated on the declaration the same way full text is."),
+                "A vector predicate over a declared vector path, which is still gated on the declaration — the one function that is, full text having been measured as a cost."),
 
             // ── Joins ────────────────────────────────────────────────────────────
 
@@ -708,6 +708,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             "Unnest.FilteredElement",
             "Unnest.TwoArrays",
             "Search.FullTextContains",
+            "Search.FullTextUndeclaredPath",
             "Search.FullTextContainsAll",
             "Search.RankedByScore",
             "Search.ReciprocalRankFusion",

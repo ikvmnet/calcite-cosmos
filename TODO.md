@@ -460,6 +460,22 @@ owns the client.
   did change is the refusal: a scoring function reaching code generation now says that Cosmos never
   returns a relevance score, in place of Calcite's `must implement ImplementableFunction`.
 
+- **Price a path in the full text policy but not in the index as the scan it is** — *small; measure
+  first.* The declaration gate was a refusal and is now a cost (#85), and the cost reads the union of
+  the policy and the index because `CosmosContainerMetadataReader` stores one list. A path in the
+  policy and not in the index runs — measured — and most likely scans; pricing it as one is one more
+  list on the metadata and one more read, and the measurement that decides it is an index-metrics
+  read over such a container.
+
+- **A full text call the translator still declines fails in process, not while planning** — *small,
+  and a shape rather than a translation.* The one remaining refusal is a first argument that is not
+  a path. The split rule pushes the definedness the call implies and leaves the call above the scan,
+  where a schema function has no body, so the caller sees `FULLTEXTCONTAINS is evaluated by the
+  service and has no in-process body` at execution. A planning-time refusal needs the rule to decline
+  the split where the residual carries a bodyless Cosmos function, so that the whole filter — and its
+  message — surfaces at once; recorded here rather than built, since the gate that used to produce
+  most of these is gone.
+
 ### Geography
 
 The translations, the refusal and the path pushdown are in place, and every form they emit has been

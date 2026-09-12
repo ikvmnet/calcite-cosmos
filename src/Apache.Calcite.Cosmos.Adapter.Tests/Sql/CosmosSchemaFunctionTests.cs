@@ -265,23 +265,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// And so does the gate on what the container declares.
+        /// And so does a predicate over a path the container declares nothing about, which pushes
+        /// and is priced as the scan it is rather than refused (#85).
         /// </summary>
         /// <remarks>
-        /// The other half of the same claim. A full text predicate pushes only over a path the
-        /// container declares searchable, and that check is reached from the call's name like every
-        /// other — so a call Calcite built around a schema declaration is held to it as well.
+        /// The other half of the same claim: the call is rendered from its name like every other,
+        /// so a call Calcite built around a schema declaration renders as the operator does.
         /// <c>/name</c> is declared and <c>/description</c> is not.
         /// </remarks>
         [TestMethod]
-        public void AnUndeclaredPathIsStillRefused()
+        public void AnUndeclaredPathIsReachedThroughTheSchemaToo()
         {
-            var undeclared = () => Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
-
-            undeclared.Should()
-                .Throw<Exception>("the container declares nothing about the path, and the service refuses the statement")
-                .Where(e => e.Message.Contains("No match found for function signature") == false,
-                    "the refusal has to be the planner declining a resolved call, not the name failing to resolve");
+            Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')"))
+                .Should().Contain("WHERE FULLTEXTCONTAINS(c.description, @p0)");
         }
 
         /// <summary>

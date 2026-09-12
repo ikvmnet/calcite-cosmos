@@ -299,12 +299,15 @@ SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$
 Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
 ranks the rows and never appears in the result, the service not permitting it to be projected.
 
-**The container decides which paths these reach.** A full text function pushes down only over a path
-the container declares — in its full text policy, in a full text index, or both — and `VECTORDISTANCE`
-only where one of its two vectors is a declared vector path. Over anything else the service answers a
-bodyless 400 that names neither the path nor the function, so the adapter declines while planning and
-says which path is at fault instead. This is the same shape as multi-property `ORDER BY`, which pushes
-only where a matching composite index is declared.
+**The container decides what these cost.** A full text function pushes down over any property path,
+and what the container declares about the path — in its full text policy, in a full text index, or
+both — decides the price: an index seek over a declared path, a scan over an undeclared one. Measured
+against three accounts, the service answers a full text call over an undeclared path, over a container
+with no policy at all, and on an account without the full text capability; refusing such a plan would
+turn a slow query into a failed one. `VECTORDISTANCE` is different and pushes only where one of its
+two vectors is a declared vector path, the reference requiring a vector policy to search at all; that
+gate was not measured and stands. Multi-property `ORDER BY` is the other gate that stands, pushing
+only where a matching composite index is declared, because there the service does refuse.
 
 **Where the name is looked for.** An unqualified function name is resolved against the connection's
 default schema and the root, and nowhere else — so name the Cosmos schema as `defaultSchema` in the

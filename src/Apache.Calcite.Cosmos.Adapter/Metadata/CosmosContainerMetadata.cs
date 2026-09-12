@@ -254,19 +254,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// A legality test rather than a cost estimate, and the second one of those here after
-        /// <see cref="IsSortSupported"/>. A full text predicate over a path the container declares
-        /// nothing about was measured against a real account as a bodyless 400 that names neither
-        /// the path nor the function, so pushing one is a defect rather than a pessimisation.
+        /// A cost input, and no longer a legality test. It was the second of those after
+        /// <see cref="IsSortSupported"/>, on a measurement that a full text predicate over a path the
+        /// container declares nothing about answers a bodyless 400. That does not reproduce: measured
+        /// again against three accounts and four containers (#85), the service answers the predicates
+        /// and the score over an undeclared path, over a container with no policy, and on an account
+        /// without the full text capability. So the question this answers is whether the call is
+        /// served by the full text index or by a scan, and <see cref="Rel.CosmosFilter"/> prices it.
         /// </para>
         /// <para>
         /// <b>Why the policy and the index together.</b> Full text search takes two declarations —
         /// a container policy naming the searchable paths and their language, and a full text index
-        /// over them — and the reference has moved on what each is for: it now describes the index
-        /// as what a query <em>benefits from</em> rather than what it requires. The measurement
-        /// here says a path with neither declaration is refused. Those agree on exactly one thing,
-        /// so that is what this asks: has the container said anything at all about this path. It
-        /// declines least, and it still catches the case that was diagnosed.
+        /// over them — and the reference describes the index as what a query <em>benefits from</em>
+        /// rather than what it requires. Read as one list, this says whether the container has said
+        /// anything at all about a path. A path in the policy and not in the index most likely scans
+        /// too, and pricing it as one needs the two lists read apart, which <c>TODO.md</c> carries.
         /// </para>
         /// <para>
         /// Wildcards do not enter into it. The reference is explicit that <c>*</c> and <c>[]</c> are
