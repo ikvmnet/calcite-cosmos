@@ -462,15 +462,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" = 'bikes'", false),
 
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
-            // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over the map column
-            // it renders directly. The mixed-type label is what checks the guard, and the mixed-case
-            // literal is what checks the flag.
+            // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
+            // column, which is the path and not a rendering, it renders directly. The mixed-type
+            // label is what checks the guard, and the mixed-case literal is what checks the flag.
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE '%IKE%'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE 'bik%'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE '%KES'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE '%3%'", false),
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE UPPER(p.\"Label\") LIKE '%IKE%'", false),
-            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(c.\"$.name\") LIKE '%ACT%'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(c.\"$.category\") LIKE '%A%'", false),
 
             // Projections.
             ("SELECT * FROM products", false),
