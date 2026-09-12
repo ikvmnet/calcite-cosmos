@@ -61,7 +61,7 @@ Relational joins, `UNION`/`INTERSECT`/`EXCEPT`, and `HAVING` have no Cosmos equi
 
 Cosmos has full text search and SQL does not, so the functions come from this adapter. A Cosmos schema declares them, so a connection resolves them the way it resolves a table — name the schema as the model's `defaultSchema`, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)`.
 
-`FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are usable in a `WHERE` clause and push down to the service. The first argument must be a property path, and it must be one the container declares full text searchable — in its full text policy, in a full text index, or both — since the service refuses the query otherwise. `VECTORDISTANCE` is gated the same way, on one of its two vectors being a declared vector path.
+`FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are usable in a `WHERE` clause and push down to the service. The first argument must be a property path. Whether the container declares that path full text searchable — in its full text policy, in a full text index, or both — decides what the predicate costs rather than whether it pushes: measured, the service answers a full text call over an undeclared path, and over a container with no policy, by scanning, so the planner prices it as a scan and keeps the plan. `VECTORDISTANCE` is still gated on one of its two vectors being a declared vector path; that gate was not measured.
 
 A host that assembles its own planner rather than opening a connection chains the operator table instead, and may chain it alongside a schema without a duplicate definition:
 

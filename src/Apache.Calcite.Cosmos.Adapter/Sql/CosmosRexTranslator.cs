@@ -71,11 +71,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// expression addresses this input through such a variable; nothing else does.
         /// </param>
         /// <param name="container">
-        /// What the container declares, where the caller knows it. Only the full text and vector
-        /// functions consult it — see <see cref="RequireFullTextDeclared"/> — and a caller with nothing to
-        /// translate but a path may leave it out. Where it is <c>null</c> those functions render as
-        /// they did before this was read, which is what keeps a caller that only resolves paths from
-        /// having to supply one.
+        /// What the container declares, where the caller knows it. Only the vector and the geography
+        /// functions consult it — see <see cref="DeclaresVector"/> and <see cref="RequireGeographyReading"/>
+        /// — and a caller with nothing to translate but a path may leave it out. Where it is <c>null</c>
+        /// those functions render as they did before this was read, which is what keeps a caller that
+        /// only resolves paths from having to supply one. The full text functions do not consult it:
+        /// what the container declares about their path is a cost, read by the nodes, and not a
+        /// legality — see <see cref="WriteFullTextPredicate"/>.
         /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
         public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null)
@@ -2204,6 +2206,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a full text function — a predicate or the score — whose
+        /// first argument is the path searched.
+        /// </summary>
+        /// <remarks>
+        /// By name, for the reason everything here dispatches by name. What the container declares
+        /// about that path is what the call costs, and <see cref="Rel.CosmosFilter"/> is where it is
+        /// priced.
+        /// </remarks>
+        /// <param name="node">The expression to test.</param>
+        /// <returns><c>true</c> if it is a full text function.</returns>
+        public static bool IsFullTextFunction(RexNode? node)
+        {
+            return node is RexCall call && call.getOperator().getName() switch
+            {
+                "FULLTEXTCONTAINS" or "FULLTEXTCONTAINSALL" or "FULLTEXTCONTAINSANY" or "FULLTEXTSCORE" => true,
+                _ => false,
+            };
+        }
+
+        /// <summary>
         /// Writes <c>RRF</c>, whose arguments are themselves scoring functions.
         /// </summary>
         /// <remarks>
@@ -2244,6 +2266,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// that does not resolve to one is declined rather than rendered — the service would reject it.
         /// The keywords are ordinary expressions and bind as parameters like any other literal.
         /// </para>
+        /// <para>
+        /// <b>What the container declares about the path is not asked here.</b> It was, as a refusal:
+        /// a predicate over a path with neither a full text policy nor a full text index had been
+        /// measured as a bodyless 400, so the call was declined and the refusal named the path. That
+        /// measurement does not reproduce. Measured again against three accounts and four containers
+        /// (#85), the service answers the predicate and the score over an undeclared path, over a
+        /// container with no policy at all, and on an account without the full text capability — so
+        /// the declaration decides what the call <em>costs</em>, an index seek or a scan, and
+        /// <see cref="Rel.CosmosFilter"/> and <see cref="Rel.CosmosRank"/> read it for that. Refusing
+        /// a legal plan has the worse failure of the two: the query does not get slower, it fails,
+        /// because the declined call is left above the scan with no in-process body.
+        /// </para>
         /// </remarks>
         void WriteFullTextPredicate(StringBuilder builder, RexCall call, string name)
         {
@@ -2253,8 +2287,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (TryResolvePath(Operand(call, 0), out var path) == false || path is null)
                 throw new CosmosTranslationException($"The first argument of '{name}' must be a document path.");
-
-            RequireFullTextDeclared(name, path);
 
             builder.Append(name).Append('(');
             path.WriteTo(builder);
@@ -2304,41 +2336,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         bool DeclaresVector(RexNode node)
         {
             return TryResolvePath(node, out var path) && path is not null && _container!.IsPathVectorSearchable(path.ToPolicyPath());
-        }
-
-        /// <summary>
-        /// Refuses a full text function over a path the container declares nothing about.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// This and <see cref="WriteVectorDistance"/> are where a declaration decides whether a
-        /// <em>function</em> pushes, as <c>CosmosContainerMetadata.IsSortSupported</c> is where one
-        /// decides whether a sort does. All three are legality rather than cost: a multi-key sort
-        /// with no composite index and a full text predicate over an undeclared path are each
-        /// refused by the service outright, so rendering one is a defect and not a pessimisation.
-        /// </para>
-        /// <para>
-        /// The path is compared without its alias, which is what makes this answer the same question a
-        /// container policy does. An element-rooted path — the <c>t0</c> of a traversal — reduces to
-        /// the policy path of its property, and a full text policy cannot name a path inside an array
-        /// at all, so such a call is refused unless the property happens to be declared at the root.
-        /// That last case renders as it did before and is no worse than it was.
-        /// </para>
-        /// </remarks>
-        /// <param name="name">The function being written, for the message.</param>
-        /// <param name="path">The path it is written over.</param>
-        /// <exception cref="CosmosTranslationException">The container declares nothing about the path.</exception>
-        void RequireFullTextDeclared(string name, CosmosPath path)
-        {
-            if (_container is null)
-                return;
-
-            var policyPath = path.ToPolicyPath();
-            if (_container.IsPathFullTextSearchable(policyPath))
-                return;
-
-            throw new CosmosTranslationException(
-                $"'{name}' requires a full text policy or index on '{policyPath}'; " + Declared(_container.FullTextPaths) + ".");
         }
 
         /// <summary>

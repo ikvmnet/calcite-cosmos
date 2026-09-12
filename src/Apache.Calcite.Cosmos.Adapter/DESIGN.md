@@ -214,13 +214,15 @@ Three of these carry hard consequences:
   exactly or be exactly inverted. A multi-property sort without a matching composite index is
   not a slow query — it is an invalid one.
 
-- A full text function over a path the container declares nothing about, and a `VECTORDISTANCE`
-  over two of them, are refused by the service rather than answered slowly. See *The declaration
-  decides whether a full text or vector function pushes*.
+- A `VECTORDISTANCE` over two paths the container declares nothing about is refused by the service
+  rather than answered slowly. A full text function over such a path is **answered** — measured
+  against three accounts, #85 — and is a cost rather than a legality. See *The declaration prices a
+  full text function, and still gates a vector one*.
 
 The middle point is the important one: **whether a `Sort` is pushable is a function of container
 metadata, not of the plan.** `CosmosSortRule` must read the indexing policy. The last is the same
-shape one level down — the operator is legal, the *path* is what decides.
+shape one level down for the vector function — the operator is legal, the *path* is what decides —
+and for full text the path decides the price instead.
 
 ### Verified against the emulator
 
@@ -245,8 +247,9 @@ documentation.
 > The second understates itself. The emulator does not merely reject the statements: it accepts a
 > container declaring a `FullTextPolicy` and a full text index and then reports both back as absent,
 > and it does not know the names either — `SC2005, 'FullTextScore' is not a recognized built-in
-> function name`. So the declaration gate declines first and nothing is sent, which is a different
-> outcome from a service refusal and worth telling apart when a test reports one.
+> function name`. The declaration used to decline the statement before it was sent; since #85 it is
+> a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
+> emulator's own answer, worth telling apart from the service's when a test reports one.
 
 **A hundred-term `IN` is served by the index.** Measured on a real account with
 `PopulateIndexMetrics`: `WHERE c.category IN (@k0, ..., @k99)` reports
@@ -1006,44 +1009,53 @@ The scoring functions are in the operator table so a query can name them, and th
 them through `TranslateRank` alone; everywhere else is a place the service rejects them, so a `WHERE`
 or a select list containing one declines.
 
-### The declaration decides whether a full text or vector function pushes
+### The declaration prices a full text function, and still gates a vector one
 
 The operator being nameable is not the same as the *path* being searchable, and only the container
 knows which paths are. `CosmosContainerMetadataReader` reads both declarations — the container's full
 text policy and the indexing policy's full text indexes, and likewise the vector embedding policy and
-the vector indexes — into `CosmosContainerMetadata.FullTextPaths` and `VectorPaths`, and the
-translator refuses a call over a path neither of them names. Reached from the call's *name*, like
-everything else here, so a call Calcite built around a schema declaration is held to it as well.
+the vector indexes — into `CosmosContainerMetadata.FullTextPaths` and `VectorPaths`. What is done with
+them differs, and the difference is a measurement.
 
-This is the second legality gate after `IsSortSupported`, and it is the same argument: a full text
-predicate over an undeclared path was measured against a real account as a **bodyless 400** naming
-neither the path nor the function, so rendering one is a defect and not a pessimisation. Declining
-puts the refusal where a caller can read it —
+**Full text: a cost.** The translator used to refuse a full text call over a path neither list names,
+as the second legality gate after `IsSortSupported`, on a measurement that such a predicate answered a
+**bodyless 400**. That measurement does not reproduce. Measured on 2026-09-11 against three accounts
+and four containers, all serverless, through the SDK with no adapter in the path (#85):
 
-```
-'FULLTEXTCONTAINS' requires a full text policy or index on '/description'; the container declares /name.
-```
+| account | full text capability | container policy / index | call | result |
+| --- | --- | --- | --- | --- |
+| probe | **absent** | none | `FULLTEXTCONTAINS(c.name, …)` | answered, correct row |
+| dev1, throwaway | present | `/name` only | `FULLTEXTCONTAINS(c.description, …)` — undeclared | answered, correct row |
+| dev1, throwaway | present | `/name` only | `ORDER BY RANK FULLTEXTSCORE(c.description, …)` | answered |
+| dev1 `parks` | present | **none** | the predicates and `ORDER BY RANK` | answered, sensible rows |
+| sit1 `parks` | present | none | `FULLTEXTCONTAINS`, `ORDER BY RANK` | answered |
 
-— rather than in a response body that says nothing.
+Neither candidate boundary holds: not the account capability, and not the policy as an allow-list. So
+the gate refused plans that run, and refusing had the worse failure of the two — the declined call
+was left above the scan for in-process evaluation, where it has no body, so a query that would have
+run raised `FULLTEXTCONTAINS is evaluated by the service and has no in-process body` at execution
+rather than the readable planning-time refusal the gate was designed to give. Whatever produced the
+original 400 is not the current contract.
 
-**Why the policy and the index count the same.** The reference has moved: it now describes the full
-text index as something a query *benefits from* rather than something it requires, and describes the
-vector index the same way — `VECTORDISTANCE`'s own brute-force argument is documented as using "any
-index defined on the vector property, **if it exists**". What it does still require is the container
-*policy*: performing a vector search "requires you to define a vector policy for the container", and
-the full text policy is what names a path as text at all. Against that stands the measurement here,
-which is that a path with neither declaration is refused outright. The two readings agree on exactly
-one thing — a path the container has said **nothing** about — so that is what the gate asks. It
-declines least, and it still catches the case that was diagnosed.
+What the declaration decides is therefore what the call *costs*: served by the full text index over a
+declared path, by a scan over an undeclared one. `CosmosFilter.ReferencesUndeclaredFullTextPath`
+reads the union for a predicate and `CosmosRank` for a score, and both apply `UnindexedPathPenalty`
+— the price of a scan the ordinary index does not serve, reached another way. The planner keeps the
+plan and the caller keeps the choice, which for a small container is often the right trade. Read as
+one list, the union says whether the container has said anything at all about a path; a path in the
+policy but not in the index most likely scans too, and pricing it as one needs the two lists read
+apart, which `TODO.md` carries. The translator still refuses a call whose first argument is not a
+path, since the service does; that refusal reaches a caller the same in-process way, and the same
+note records it.
 
-Consequently the gate is over the union rather than over the index alone, and a container that
-declares a path in its policy but does not index it still pushes. If that turns out to be a 400 as
-well, the fix is to read the two lists separately and require both; nothing else changes.
-
-**`VECTORDISTANCE` needs only one of its two vectors declared.** Either may be a literal — searching
-for the neighbours of a supplied embedding is the point of the function — so requiring the first
-argument to be a path, as the full text predicates do, would refuse the ordinary case. What it
-refuses instead is a call in which *neither* vector is a path the container declares.
+**Vector: still a gate, and unmeasured.** `VECTORDISTANCE` over a path the container declares nothing
+about is still refused while planning. The reference requires a vector embedding policy to perform a
+vector search at all, and describes the index as optional — the function's own brute-force argument
+is documented as using "any index defined on the vector property, **if it exists**" — so the case
+worth declining is a call in which *neither* vector is a declared path. Nothing in #85 measured it,
+and nothing above should be read as evidence about it. Either vector may be a literal — searching for
+the neighbours of a supplied embedding is the point of the function — so requiring the first argument
+to be a path, as the full text predicates do, would refuse the ordinary case.
 
 ### What is deliberately not done: inferring full text from a substring predicate
 

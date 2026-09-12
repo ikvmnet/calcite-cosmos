@@ -273,9 +273,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// accepts a container declaring a <c>FullTextPolicy</c> and a full text index and then
         /// reports both back as absent, and it does not know the function names either
         /// (<c>SC2005, 'FullTextScore' is not a recognized built-in function name</c>). Measured.
-        /// So against an emulator the declaration gate declines first and the statement is never
-        /// sent — which is a different outcome from the service refusing it, and this tells them
-        /// apart rather than calling both the second.
+        /// The declaration used to decline the statement before it was sent; since #85 it is a cost
+        /// rather than a gate, so the statement is sent whatever the container reports, and an
+        /// emulator's refusal arrives as the emulator's own <c>SC2005</c>, which is not the service's
+        /// answer and is reported as inconclusive rather than as a failure.
         /// </para>
         /// <para>
         /// What is not excused either way is the failure this issue is about: a name the planner
@@ -298,12 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 Describe(e).Should().NotContain("No match found for function signature",
                     "the name has to resolve whatever the service then does with the statement");
 
-                var described = Describe(e);
-
-                if (described.Contains("could not be pushed down"))
-                    Assert.Inconclusive("The name resolved and the declaration gate declined, so nothing was sent — which is what an emulator gives, since it drops the policy it accepted: " + described);
-
-                Assert.Inconclusive("The name resolved and the service refused the statement: " + described);
+                Assert.Inconclusive("The name resolved and the account refused the statement — an emulator does not implement full text search: " + Describe(e));
             }
         }
 

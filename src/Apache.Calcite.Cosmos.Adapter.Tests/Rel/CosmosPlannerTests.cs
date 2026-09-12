@@ -39,10 +39,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     {
 
         /// <remarks>
-        /// The full text and vector paths are declared because the functions over them are gated on
-        /// the declaration: a container that says nothing about a path is one whose full text
-        /// predicate the service refuses, so the rules decline it. Every statement here that names
-        /// one names a declared path, and <see cref="AFullTextPredicateOverAnUndeclaredPathIsNotPushedDown"/>
+        /// The full text and vector paths are declared because the declaration is what decides the
+        /// vector function's legality and the full text functions' price: a container that says
+        /// nothing about a path is one whose full text predicate the service answers by scanning,
+        /// and whose <c>VECTORDISTANCE</c> it refuses. Every statement here that names one names a
+        /// declared path, and <see cref="AFullTextPredicateOverAnUndeclaredPathIsPushedDownAndPricedAsAScan"/>
         /// is the other half.
         /// </remarks>
         static readonly CosmosContainerMetadata Products = new(
@@ -2070,32 +2071,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
-        // ── The declaration decides ───────────────────────────────────────────────
+        // ── The declaration prices a full text call, and gates a vector one ──────────
+        //
+        // A full text predicate over a path the container declares nothing about was refused, on a
+        // measurement of a bodyless 400 that no longer reproduces: measured against three accounts
+        // and four containers, the service answers the predicates and the score over an undeclared
+        // path, over a container with no policy, and on an account without the capability (#85). So
+        // the declaration decides the price -- an index seek over /name, a scan over /description --
+        // and the plan pushes either way. Refusing it had the worse failure: the declined call was
+        // left in process, where it has no body.
 
-        /// <remarks>
-        /// A full text predicate over a path the container declares nothing about is refused by the
-        /// service with a bodyless 400 that names neither the path nor the function. The rule
-        /// declines instead, so the refusal happens while planning and says which path is at fault.
-        /// <c>/description</c> is not among the container's declared paths; <c>/name</c> is, and the
-        /// tests above push.
-        /// </remarks>
+        /// <summary>
+        /// The predicate pushes over an undeclared path, and costs more than over a declared one.
+        /// </summary>
         [TestMethod]
-        public void AFullTextPredicateOverAnUndeclaredPathIsNotPushedDown()
+        public void AFullTextPredicateOverAnUndeclaredPathIsPushedDownAndPricedAsAScan()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
+            var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
+            var declared = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')");
 
-            act.Should().Throw<Exception>();
+            Render(undeclared).Should().Contain("WHERE FULLTEXTCONTAINS(c.description, @p0)");
+
+            SelfCost(Find<CosmosFilter>(declared)).isLt(SelfCost(Find<CosmosFilter>(undeclared)))
+                .Should().BeTrue("a scan costs more than an index seek");
         }
 
-        /// <remarks>
-        /// And the same for a score, which reaches the rank clause through a different rule.
-        /// </remarks>
+        /// <summary>
+        /// And the score, which reaches the rank clause through a different rule and is priced by
+        /// the node it becomes.
+        /// </summary>
         [TestMethod]
-        public void ARankOverAnUndeclaredPathIsNotPushedDown()
+        public void ARankOverAnUndeclaredPathIsPushedDownAndPricedAsAScan()
         {
-            var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') FETCH FIRST 10 ROWS ONLY");
+            var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') FETCH FIRST 10 ROWS ONLY");
+            var declared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
 
-            act.Should().Throw<Exception>();
+            Render(undeclared).Should().Contain("ORDER BY RANK FULLTEXTSCORE(c.description, @p0)");
+
+            SelfCost(Find<CosmosRank>(declared)).isLt(SelfCost(Find<CosmosRank>(undeclared)))
+                .Should().BeTrue("a scan costs more than an index seek");
+        }
+
+        /// <summary>
+        /// What a node says it costs on its own, which is where the declaration is priced.
+        /// </summary>
+        static RelOptCost SelfCost(RelNode node)
+        {
+            return node.computeSelfCost(node.getCluster().getPlanner(), node.getCluster().getMetadataQuery())!;
+        }
+
+        static T Find<T>(RelNode node) where T : RelNode
+        {
+            if (node is T found)
+                return found;
+
+            var inputs = node.getInputs();
+            for (var i = 0; i < inputs.size(); i++)
+                if (Find<T>((RelNode)inputs.get(i)) is T inner)
+                    return inner;
+
+            throw new AssertFailedException($"No {typeof(T).Name} in the plan: " + Plan(node));
         }
 
         /// <remarks>

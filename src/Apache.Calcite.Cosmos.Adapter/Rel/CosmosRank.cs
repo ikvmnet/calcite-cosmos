@@ -87,9 +87,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <inheritdoc />
+        /// <remarks>
+        /// A score over a path the container declares nothing about ranks by a scan rather than by
+        /// the full text index, and is priced as one — the same price, for the same reason, as a
+        /// predicate over such a path in <see cref="CosmosFilter"/>. It used to be refused; #85
+        /// measured the service ranking by an undeclared path and by a container with no policy at
+        /// all.
+        /// </remarks>
         public override RelOptCost? computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq)
         {
-            return base.computeSelfCost(planner, mq)?.multiplyBy(CosmosConvention.CostMultiplier);
+            var cost = base.computeSelfCost(planner, mq)?.multiplyBy(CosmosConvention.CostMultiplier);
+            if (cost is null || getConvention() is not CosmosConvention convention)
+                return cost;
+
+            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) &&
+                CosmosFilter.ReferencesUndeclaredFullTextPath(_rank, fields, convention.Container))
+                cost = cost.multiplyBy(CosmosFilter.UnindexedPathPenalty);
+
+            return cost;
         }
 
         /// <inheritdoc />

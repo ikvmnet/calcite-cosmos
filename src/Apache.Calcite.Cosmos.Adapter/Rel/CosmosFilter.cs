@@ -85,6 +85,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (ReferencesUnindexedPath(getCondition(), fields, container))
                 multiplier *= UnindexedPathPenalty;
 
+            // A full text function over a path the container declares nothing about is a scan of the
+            // same kind, and priced as one. It was refused instead, and the refusal is what #85
+            // measured out of existence.
+            if (ReferencesUndeclaredFullTextPath(getCondition(), fields, container))
+                multiplier *= UnindexedPathPenalty;
+
             return cost.multiplyBy(multiplier);
         }
 
@@ -161,6 +167,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             Walk(condition);
             return unindexed;
+        }
+
+        /// <summary>
+        /// Determines whether an expression applies a full text function to a path the container
+        /// declares nothing about — neither in its full text policy nor in a full text index.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A cost input, and until #85 it was a refusal: a predicate over such a path had been
+        /// measured as a bodyless 400, so the translator declined the call. Measured again against
+        /// three accounts and four containers, the service answers every form — the predicates and
+        /// the score, over an undeclared path, over a container with no policy, and on an account
+        /// without the full text capability — so what the declaration decides is whether the call is
+        /// served by the index or by a scan. <see cref="UnindexedPathPenalty"/> is the price of a scan
+        /// the ordinary index does not serve, and this is the same scan reached another way.
+        /// </para>
+        /// <para>
+        /// Shared with <see cref="CosmosRank"/>, whose score is the same function in the other
+        /// clause. The path is compared in policy form, without its alias, which is the form the
+        /// container declares it in.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression to inspect.</param>
+        /// <param name="fields">The binding the expression's field references resolve against.</param>
+        /// <param name="container">What the container declares.</param>
+        /// <returns><c>true</c> where a full text function reads an undeclared path.</returns>
+        internal static bool ReferencesUndeclaredFullTextPath(RexNode node, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
+        {
+            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
+            var undeclared = false;
+
+            void Walk(RexNode current)
+            {
+                if (undeclared || current is not RexCall call)
+                    return;
+
+                if (CosmosRexTranslator.IsFullTextFunction(call)
+                    && call.getOperands().size() > 0
+                    && translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path)
+                    && path is not null
+                    && container.IsPathFullTextSearchable(path.ToPolicyPath()) == false)
+                {
+                    undeclared = true;
+                    return;
+                }
+
+                for (var i = 0; i < call.getOperands().size(); i++)
+                    Walk((RexNode)call.getOperands().get(i));
+            }
+
+            Walk(node);
+            return undeclared;
         }
 
         static class RexBuilderHolder

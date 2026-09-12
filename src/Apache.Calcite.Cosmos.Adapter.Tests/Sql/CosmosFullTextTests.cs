@@ -177,9 +177,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         // ── The declaration decides ─────────────────────────────────
 
         /// <remarks>
-        /// The gate. A container declaring the path renders as it always did; the same call over a
-        /// path it declares nothing about is refused, because the service refuses it with a bodyless
-        /// 400 that names neither the path nor the function.
+        /// The declaration does not gate the call. It did, on a measurement that a predicate over a
+        /// path the container declares nothing about answers a bodyless 400; measured again against
+        /// three accounts and four containers, the service answers every form over an undeclared
+        /// path, so what the container declares is what the call costs and not whether it renders
+        /// (#85). A container declaring the path renders as it always did.
         /// </remarks>
         [TestMethod]
         public void APredicateOverADeclaredPathRenders()
@@ -191,44 +193,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         [TestMethod]
-        public void APredicateOverAnUndeclaredPathIsDeclined()
+        public void APredicateOverAnUndeclaredPathRendersToo()
         {
             var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
 
-            Translator(container).TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")), out _)
-                .Should().BeFalse();
+            Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")))
+                .Should().Be("FULLTEXTCONTAINS(c.note, @p0)");
         }
 
         /// <remarks>
-        /// Every form of the predicate, and the score, go through the same gate.
+        /// Every form of the predicate, and the score, over a container that declares nothing at all
+        /// — the dev1 <c>parks</c> row of the measurement, which answered every one of them.
         /// </remarks>
         [TestMethod]
-        public void EveryFullTextFormIsGated()
+        public void EveryFullTextFormRendersWithoutADeclaration()
         {
             var container = new CosmosContainerMetadata("products");
             var translator = Translator(container);
 
-            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("a")), out _).Should().BeFalse();
-            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAll, Text(), Keyword("a"), Keyword("b")), out _).Should().BeFalse();
-            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAny, Text(), Keyword("a"), Keyword("b")), out _).Should().BeFalse();
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("a")), out _).Should().BeTrue();
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAll, Text(), Keyword("a"), Keyword("b")), out _).Should().BeTrue();
+            translator.TryTranslate(_rex.makeCall(CosmosOperators.FullTextContainsAny, Text(), Keyword("a"), Keyword("b")), out _).Should().BeTrue();
 
-            var rank = () => translator.TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Text(), Keyword("a")));
-            rank.Should().Throw<CosmosTranslationException>();
-        }
-
-        /// <remarks>
-        /// The refusal names the path and what the container has instead, which is the whole point of
-        /// deciding this while planning rather than reading a bodyless 400 afterwards.
-        /// </remarks>
-        [TestMethod]
-        public void TheRefusalNamesThePath()
-        {
-            var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
-
-            var act = () => Translator(container).Translate(_rex.makeCall(CosmosOperators.FullTextContains, Other(), Keyword("steel")));
-
-            act.Should().Throw<CosmosTranslationException>()
-                .WithMessage("*'/note'*").WithMessage("*/text*");
+            Translator(container).TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Text(), Keyword("a")))
+                .Should().Be("FULLTEXTSCORE(c.text, @p0)");
         }
 
         /// <remarks>
@@ -263,19 +251,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
-        /// The two are declared separately: a full text path is not a vector path and the other way
-        /// round.
+        /// The two are declared separately: a full text path is not a vector path. The other way
+        /// round used to be asserted here as well and is no longer a question the translator answers
+        /// — a full text function renders over any path, and what the declarations say about it is a
+        /// price, which the planner tests check (#85).
         /// </remarks>
         [TestMethod]
-        public void TheTwoDeclarationsAreNotInterchangeable()
+        public void AFullTextDeclarationDoesNotDeclareAVectorPath()
         {
             var fullText = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
 
             Translator(fullText).TryTranslate(_rex.makeCall(CosmosOperators.VectorDistance, Text(), Text()), out _).Should().BeFalse();
-
-            var vector = new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" });
-
-            Translator(vector).TryTranslate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("steel")), out _).Should().BeFalse();
         }
 
 
