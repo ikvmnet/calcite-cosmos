@@ -815,6 +815,32 @@ service, and as text `10` sorts before `9`. Such a column binds to `null` exactl
 does, and the operators reading it decline. So the projection pushes and the ordering does not, which
 is the split the next section is about.
 
+**The accessor column is the exception, and it binds as a rendering.** A projection of `JSON_VALUE`
+read as text is rendered guarded — `(IS_PRIMITIVE(c.name) ? c.name : null)`, read as text — and,
+unlike the cast, it *binds to the path*: a view's `Name` column is `c.name` to a filter above it, so
+that `IS_DEFINED`, an exact equality and a sort keep pushing through the view. What the binding did
+not say was that the column is the rendering rather than the value, and so a comparison over the
+column was pushed raw — `p."Name" LIKE 'Acadia%'` became `STARTSWITH(c.name, 'Acadia')` with no
+guard, the very statement the accessor's own spelling is declined for. Wrong in silence under a bare
+planner; a failure under a host's, whose `FILTER_PROJECT_TRANSPOSE` copies the accepted filter below
+the projection with the accessor inlined, and the implementor then refuses what the rule had accepted
+(#83). The binding now carries how each column is read — `CosmosImplementor.TryBindOutput` reports it
+beside the paths, derived as `CosmosProject` derives it — and the translator holds a field read as
+text to every test it holds the accessor to: `CosmosRexTranslator.IsTextRendering` is the accessor
+test in both spellings. So the comparison declines over the column exactly as over the accessor, and
+`CosmosFilterSplitRule` pushes the same guard above the projection, `NOT IS_STRING(c.name) OR
+STARTSWITH(c.name, 'Acadia')`, and rechecks the pattern in process.
+
+The raw value in that guard is named differently in the two spellings, and the difference is what
+survives a host. Over the accessor the rule re-types the call `ANY`, which says "the value at this
+path" rather than "its rendering". Over the column it *casts* the field to `ANY` instead: a re-typed
+reference says the same thing, but `FILTER_PROJECT_TRANSPOSE` replaces a reference with the
+projection's expression and the type that said it goes with it — the guard would arrive below the
+projection as the rendered comparison again, and be refused again. A cast is a call of its own, is
+copied intact, and `CosmosRexTranslator.WriteCast` renders a cast to `ANY` over a rendering as the
+path. The residual half of the split needs no such care: no rule converts it, because the filter rule
+declines it in either spelling, and nothing copies a Cosmos filter that was never made.
+
 **Ordering by an expression is refused by the service anyway.** Measured, and it closes the question
 rather than leaving it a matter of caution: `ORDER BY ToString(c.label)`, `ORDER BY UPPER(c.label)` and
 `ORDER BY c.label || 'x'` each answer 400, error code 2206 — *"Unsupported ORDER BY clause. ORDER BY
@@ -1044,6 +1070,28 @@ well, the fix is to read the two lists separately and require both; nothing else
 for the neighbours of a supplied embedding is the point of the function — so requiring the first
 argument to be a path, as the full text predicates do, would refuse the ordinary case. What it
 refuses instead is a call in which *neither* vector is a path the container declares.
+
+### A case fold under `LIKE` is the service's case-insensitive match
+
+`UPPER(x) LIKE '%ACADIA%'` is what an ORM writes for a case-insensitive `contains`, and what a
+typeahead is; `CONTAINS(x, 'ACADIA', true)` is the same question asked of the function that answers
+it, `STARTSWITH` and `ENDSWITH` taking the same third argument for the prefix and suffix forms (#84).
+The rewrite is exact rather than a weakening, and it is exact only under three conditions the
+translator checks: the wildcards are one leading and one trailing `%` and nothing else, so what lies
+between is matched literally as a unit; the text is already in the case the fold produces, since
+`UPPER(x)` never contains a lowercase letter and `LIKE '%acadia%'` under it matches nothing, which the
+plain form answers just as well; and the text is ASCII. The last is where the equivalence actually
+rests — on the fold Calcite applies and the folding the service applies under the flag agreeing on
+every character — and ASCII is where that is known. Java's `toUpperCase` maps `ß` to `SS` and a
+ligature to its letters, which no case-insensitive comparison of the stored text reproduces, so
+outside ASCII the plain form stands and folds at the service under its own rules as it did.
+
+Over a text accessor the fold has the gap `LIKE` has — `UPPER(30)` is `30` in Calcite, having folded
+the rendering, and undefined at the service — so `UPPER(JSON_VALUE(…)) LIKE '%ACADIA%'` is declined
+and weakened like `LIKE`: the split rule rebuilds the fold over the raw value, and the guard's own
+comparison is what renders as `CONTAINS(c.name, 'ACADIA', true)`, under `NOT IS_STRING(c.name) OR`.
+The case-*sensitive* `'%abc%'` and `'%abc'` still render as `LIKE`; whether the named functions are
+priced differently is the measurement `TODO.md` still asks for before they change.
 
 ### What is deliberately not done: inferring full text from a substring predicate
 
@@ -2063,6 +2111,13 @@ Recorded so they are not mistaken for tested behaviour.
 requested placement, on the grounds that a key which cannot be null has no null ordering to
 disagree about. This is sound provided the declared nullability is accurate — which for the map
 row model means `id` and the system properties, whose presence the service guarantees.
+
+**The service's case-insensitive flag folds ASCII the way `UPPER` does.** `UPPER(x) LIKE '%ACADIA%'`
+is rendered as `CONTAINS(x, 'ACADIA', true)` on the reading that the flag compares the stored text
+and the argument case-insensitively, character for character, over ASCII. The reference documents the
+flag and says no more; the rewrite is confined to ASCII text so that nothing outside it is assumed,
+and the differential corpus is where the assumption would be caught — it has not yet run against an
+account with the rewrite in place.
 
 ---
 

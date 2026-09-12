@@ -41,6 +41,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly IReadOnlyList<CosmosPath?> _fields;
 
         /// <summary>
+        /// How each input field is read back, parallel to <see cref="_fields"/> and empty where the
+        /// caller did not say. What it adds to the path is whether a field is a rendering — see
+        /// <see cref="IsTextRendering"/>.
+        /// </summary>
+        readonly IReadOnlyList<CosmosReading> _readings;
+
+        /// <summary>
         /// The correlation variable whose row is the one <see cref="_fields"/> describes, where the
         /// caller has one.
         /// </summary>
@@ -77,14 +84,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// they did before this was read, which is what keeps a caller that only resolves paths from
         /// having to supply one.
         /// </param>
+        /// <param name="readings">
+        /// How each field in <paramref name="fields"/> is read back, where the caller knows. A field
+        /// bound to a document path and read as text is the rendering of the value there rather than
+        /// the value, and the comparisons hold it to the tests they hold the accessor itself to — see
+        /// <see cref="IsTextRendering"/>. Where it is <c>null</c> or shorter than the binding every
+        /// field not covered is read as its declared type, which is what a scan's fields are.
+        /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _ownRow = ownRow;
             _container = container;
+            _readings = readings ?? Array.Empty<CosmosReading>();
         }
 
         /// <summary>
@@ -743,10 +758,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static bool IsUnambiguousTextFor(RexNode value, string text)
         {
-            if (IsTextJsonValue(value))
-                return TryParseRenderedNumber(text, out _) == false && text is not ("true" or "false");
+            return IsTextJsonValue(value) ? IsUnambiguousScalarText(text) : IsUnambiguousText(text);
+        }
 
-            return IsUnambiguousText(text);
+        /// <summary>
+        /// Determines whether text is one no JSON <em>scalar</em> other than that string renders as.
+        /// </summary>
+        /// <remarks>
+        /// The test for a rendering that answers null for an object and an array — which is
+        /// <c>JSON_VALUE</c>'s, and therefore that of a field bound to one. Only a number's digits and
+        /// Calcite's lowercase <c>true</c> and <c>false</c> are ambiguous.
+        /// </remarks>
+        static bool IsUnambiguousScalarText(string text)
+        {
+            return TryParseRenderedNumber(text, out _) == false && text is not ("true" or "false");
         }
 
         /// <summary>
@@ -876,6 +901,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var name = call.getType()?.getSqlTypeName();
             return name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is the rendering of a document value as text: a
+        /// <c>JSON_VALUE</c> read as text, or a field bound to one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The second spelling is the first seen from above a projection. A view projects the accessor
+        /// under an alias, and an operator written over the alias arrives here as a field reference
+        /// the binding resolves to the path — which is right, the document being what the operator
+        /// addresses, and which said nothing about the column carrying the rendering rather than the
+        /// value. A comparison over such a field was pushed raw, the very comparison the accessor's
+        /// own spelling is declined for; and where a host then transposed the filter below the
+        /// projection, the accessor was inlined and the statement refused at implementation (#83).
+        /// The reading is what the binding carries to say it, and a field read as text is held to
+        /// every test the accessor is.
+        /// </para>
+        /// <para>
+        /// Of a character type only, in both spellings. <see cref="Rel.Convert.CosmosFilterSplitRule"/>
+        /// names the raw value at the same path by typing the accessor <c>ANY</c>, and a field bound
+        /// to one by casting it there — see <see cref="WriteCast"/> — so the type is what tells the
+        /// value from its rendering.
+        /// </para>
+        /// </remarks>
+        internal bool IsTextRendering(RexNode node)
+        {
+            if (IsTextJsonValue(node))
+                return true;
+
+            return node is RexInputRef reference
+                && IsCharacter(reference)
+                && reference.getIndex() >= 0
+                && reference.getIndex() < _readings.Count
+                && _readings[reference.getIndex()] == CosmosReading.Text;
+        }
+
+        /// <summary>
+        /// Recognises a case fold — <c>UPPER</c> or <c>LOWER</c> of one argument — and returns what it
+        /// folds.
+        /// </summary>
+        /// <remarks>
+        /// By name, for the reason the named functions are dispatched by name.
+        /// </remarks>
+        /// <param name="node">The expression to inspect.</param>
+        /// <param name="upper">On success, whether the fold is to upper case.</param>
+        /// <returns>The folded expression, or <c>null</c> where this is not a fold.</returns>
+        internal static RexNode? TryCaseFoldOperand(RexNode node, out bool upper)
+        {
+            upper = false;
+
+            if (node is not RexCall call || call.getOperands().size() != 1)
+                return null;
+
+            switch (call.getOperator().getName())
+            {
+                case "UPPER":
+                    upper = true;
+                    return (RexNode)call.getOperands().get(0);
+                case "LOWER":
+                    return (RexNode)call.getOperands().get(0);
+                default:
+                    return null;
+            }
         }
 
         /// <summary>
@@ -1367,6 +1456,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         void WriteCast(StringBuilder builder, RexCall call)
         {
+            // The raw value at a path, named over its rendering. CosmosFilterSplitRule writes the
+            // comparison it pushes against the value the service holds rather than the text Calcite
+            // renders, and says so by typing the accessor ANY -- see IsTextRendering for why the type is
+            // what decides it. A field bound to an accessor is cast to ANY instead of re-typed: a host
+            // transposing the filter through the projection replaces the reference with the
+            // projection's expression and the type that said it goes with it, where a cast is a call
+            // of its own and survives. Rendered as the path, which is what the cast names.
+            if (call.getOperands().size() == 1 && call.getType()?.getSqlTypeName() == SqlTypeName.ANY && IsTextRendering(Operand(call, 0)))
+            {
+                Write(builder, Operand(call, 0));
+                return;
+            }
+
             if (call.getOperands().size() != 1 || Operand(call, 0) is not RexLiteral literal)
                 throw new CosmosTranslationException("A cast of anything but a literal has no Cosmos equivalent.");
 
@@ -1408,12 +1510,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     left = unwrappedLeft;
                 else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
-                else if (IsTextJsonValue(left) && IsUnambiguousTextEquality(left, right) == false
-                    || IsTextJsonValue(right) && IsUnambiguousTextEquality(right, left) == false)
+                else if (IsTextRendering(left) && IsUnambiguousTextEquality(left, right) == false
+                    || IsTextRendering(right) && IsUnambiguousTextEquality(right, left) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
-                && (IsTextJsonValue(left) && IsCharacter(right) || IsTextJsonValue(right) && IsCharacter(left)))
+                && (IsTextRendering(left) && IsCharacter(right) || IsTextRendering(right) && IsCharacter(left)))
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,
@@ -1475,9 +1577,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Determines whether an equality over a <c>JSON_VALUE</c> read as text selects the same
         /// documents with the accessor written as the path.
         /// </summary>
-        static bool IsUnambiguousTextEquality(RexNode accessor, RexNode other)
+        bool IsUnambiguousTextEquality(RexNode accessor, RexNode other)
         {
-            if (((RexCall)accessor).getOperands().size() != 2)
+            // A behaviour clause substitutes a value where the path has none, which is a document
+            // the path itself does not match. Visible on the accessor; a field bound to one was
+            // bound by the path, and carries no clause to inspect.
+            if (accessor is RexCall call && call.getOperands().size() != 2)
                 return false;
 
             if (other is not RexLiteral literal)
@@ -1485,7 +1590,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             try
             {
-                return GetLiteralValue(literal) is string text && IsUnambiguousTextFor(accessor, text);
+                return GetLiteralValue(literal) is string text && (IsTextRendering(accessor) ? IsUnambiguousScalarText(text) : IsUnambiguousText(text));
             }
             catch (CosmosTranslationException)
             {
@@ -1547,17 +1652,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// A literal pattern whose only wildcard is a single trailing <c>%</c> is a prefix match,
         /// rendered as <c>STARTSWITH</c> — which the index serves, where <c>LIKE</c> is a scan.
         /// </para>
+        /// <para>
+        /// A case fold under such a pattern is a case-insensitive match, and the service has one:
+        /// <c>UPPER(x) LIKE '%ACADIA%'</c> is <c>CONTAINS(x, 'ACADIA', true)</c>, and the prefix and
+        /// suffix forms are <c>STARTSWITH</c> and <c>ENDSWITH</c> with the same flag. See
+        /// <see cref="TryCaseInsensitiveMatch"/> for what the pattern has to be.
+        /// </para>
         /// </remarks>
         void WriteLike(StringBuilder builder, RexCall call)
         {
             if (call.getOperands().size() != 2)
                 throw new CosmosTranslationException("LIKE with an ESCAPE clause is not supported.");
 
+            var subject = Operand(call, 0);
+
             // The rendering gap the comparisons have. Measured: `label LIKE '3%'` matches the stored
             // number 30, which renders as `30`, and the service's STARTSWITH over a number is
             // undefined rather than true. Declined here, and CosmosFilterSplitRule pushes the
-            // pattern where the value is a string.
-            if (IsTextJsonValue(Operand(call, 0)))
+            // pattern where the value is a string. Through a case fold as well: `UPPER(label)` is
+            // `30` in Calcite, having folded the rendering, and undefined at the service, so
+            // `UPPER(label) LIKE '3%'` has the same gap and takes the same guard.
+            if (IsTextRendering(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsTextRendering(folded))
                 throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, and the service's string functions are undefined over a value that is not a string.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
@@ -1565,6 +1680,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (pattern.IndexOfAny(new[] { '[', ']' }) >= 0)
                 throw new CosmosTranslationException("LIKE with a bracket in the pattern is not supported: Cosmos reads a character range where SQL reads the brackets literally.");
+
+            if (TryCaseFoldOperand(subject, out var upper) is RexNode value && TryCaseInsensitiveMatch(pattern, upper, out var function, out var text))
+            {
+                builder.Append(function).Append('(');
+                Write(builder, value);
+                builder.Append(", ").Append(_parameters.Add(text)).Append(", true)");
+                return;
+            }
 
             if (pattern.EndsWith("%", StringComparison.Ordinal) &&
                 pattern.IndexOfAny(new[] { '%', '_' }) == pattern.Length - 1)
@@ -1576,6 +1699,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             WriteBinary(builder, call, "LIKE");
+        }
+
+        /// <summary>
+        /// Recognises a pattern that, matched against a case fold, is a case-insensitive prefix,
+        /// suffix or substring match, and names the service function that makes it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>UPPER(x) LIKE '%ACADIA%'</c> is what an ORM writes for a case-insensitive
+        /// <c>contains</c>, and what a typeahead is; rendered as written it is a scan the service
+        /// folds and pattern-matches row by row, and <c>CONTAINS(x, 'ACADIA', true)</c> is the same
+        /// question asked of the function that answers it. <c>STARTSWITH</c> and <c>ENDSWITH</c> take
+        /// the same third argument.
+        /// </para>
+        /// <para>
+        /// <b>What the pattern has to be, and why.</b> The wildcards may only be one leading and one
+        /// trailing <c>%</c>, so that what is between them is matched literally as a unit; a <c>_</c>
+        /// or an inner <c>%</c> is a pattern and stays one. The text must already be in the case the
+        /// fold produces: <c>UPPER(x)</c> never contains a lowercase letter, so <c>LIKE '%acadia%'</c>
+        /// matches nothing under it and is left as written, which answers the same nothing. And the
+        /// text must be ASCII. The rewrite rests on the fold Calcite applies and the folding the
+        /// service applies under the flag agreeing on every character, and ASCII is where that is
+        /// known: Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c> and a ligature to its letters,
+        /// which no case-insensitive comparison of the stored text can reproduce. Outside ASCII the
+        /// plain form stands, folding at the service under its own rules as it did.
+        /// </para>
+        /// </remarks>
+        /// <param name="pattern">The literal pattern.</param>
+        /// <param name="upper">Whether the fold under the pattern is to upper case.</param>
+        /// <param name="function">On success, the service function.</param>
+        /// <param name="text">On success, the text to match, with the wildcards removed.</param>
+        /// <returns><c>true</c> if the pattern is one of the three shapes.</returns>
+        static bool TryCaseInsensitiveMatch(string pattern, bool upper, out string function, out string text)
+        {
+            function = "";
+            text = "";
+
+            var leading = pattern.StartsWith("%", StringComparison.Ordinal);
+            var trailing = pattern.EndsWith("%", StringComparison.Ordinal);
+            if (leading == false && trailing == false)
+                return false;
+
+            var start = leading ? 1 : 0;
+            var end = trailing ? pattern.Length - 1 : pattern.Length;
+            if (end <= start)
+                return false;
+
+            var core = pattern.Substring(start, end - start);
+
+            foreach (var c in core)
+            {
+                if (c is '%' or '_' || c > 0x7F)
+                    return false;
+
+                if (upper ? char.IsLower(c) : char.IsUpper(c))
+                    return false;
+            }
+
+            function = leading && trailing ? "CONTAINS" : trailing ? "STARTSWITH" : "ENDSWITH";
+            text = core;
+            return true;
         }
 
         /// <summary>

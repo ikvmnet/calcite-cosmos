@@ -359,7 +359,27 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <returns><c>true</c> if the binding could be derived; otherwise <c>false</c>.</returns>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out CosmosClauses written)
         {
+            return TryBindOutput(node, out fields, out _, out written);
+        }
+
+        /// <inheritdoc cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)" />
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">
+        /// On success, how each output field is read back, indexed by field ordinal — the same list
+        /// <see cref="Readings"/> carries once the subtree is implemented, derived the same way. What it
+        /// says that the path alone does not is which fields are <em>renderings</em>: a projection of a
+        /// SQL/JSON accessor read as text binds to the path underneath, so an operator above it can
+        /// address the document, and reads as <see cref="CosmosReading.Text"/>, because the column
+        /// carries the rendering and the path the raw value. A comparison written against such a field
+        /// is a comparison against the rendering, and the translator holds it to the same test it holds
+        /// the accessor itself to; deciding that from the path alone pushed the raw comparison (#83).
+        /// </param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out CosmosClauses written)
+        {
             fields = Array.Empty<CosmosPath?>();
+            readings = Array.Empty<CosmosReading>();
             written = CosmosClauses.None;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
@@ -375,17 +395,18 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable:
                     fields = BindFields(scan.getRowType());
+                    readings = BindReadings(scan.getRowType());
                     return true;
 
                 // Neither changes the shape of a row, so neither changes what addresses it. A sort
                 // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out written);
+                    return TryBindOutput(filter.getInput(), out fields, out readings, out written);
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out written) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out written) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -404,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out written) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out written) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -413,20 +434,23 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     var keys = aggregate.getGroupSet().asList();
                     var paths = new CosmosPath?[aggregate.getRowType().getFieldCount()];
+                    var reads = new CosmosReading[paths.Length];
 
                     for (var i = 0; i < paths.Length && i < keys.size(); i++)
                     {
                         var index = ((java.lang.Integer)keys.get(i)).intValue();
                         paths[i] = index >= 0 && index < input.Count ? input[index] : null;
+                        reads[i] = index >= 0 && index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
                     }
 
                     fields = paths;
+                    readings = reads;
                     return true;
                 }
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out written) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out written) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -434,11 +458,25 @@ namespace Apache.Calcite.Cosmos.Adapter
                     var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList());
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
+                    var reads = new CosmosReading[projects.size()];
 
                     for (var i = 0; i < paths.Length; i++)
-                        paths[i] = translator.TryResolvePath((RexNode)projects.get(i), out var path) ? path : null;
+                    {
+                        var expression = (RexNode)projects.get(i);
+                        paths[i] = translator.TryResolvePath(expression, out var path) ? path : null;
+
+                        // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
+                        // read as text is a rendering of the path it binds to, and a column passed
+                        // straight through keeps how it was read. Nothing else here is a rendering
+                        // that also binds -- a dropped cast binds to nothing, so what it is read as
+                        // can never be asked.
+                        reads[i] = paths[i] is not null && CosmosRexTranslator.IsTextJsonValue(expression) ? CosmosReading.Text
+                            : expression is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < inputReadings.Count ? inputReadings[reference.getIndex()]
+                            : CosmosReading.Typed;
+                    }
 
                     fields = paths;
+                    readings = reads;
                     return true;
                 }
 
@@ -447,14 +485,19 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // left unbound rather than named.
                 case Correlate correlate:
                 {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out written) == false)
+                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out written) == false)
                         return false;
 
                     var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];
+                    var reads = new CosmosReading[paths.Length];
                     for (var i = 0; i < paths.Length; i++)
+                    {
                         paths[i] = i < left.Count ? left[i] : null;
+                        reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
+                    }
 
                     fields = paths;
+                    readings = reads;
                     return true;
                 }
 
@@ -648,7 +691,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
         /// </remarks>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null) => new(_rexBuilder, _fields, _parameters, ownRow, _container);
+        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null) => new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings);
 
         /// <summary>
         /// Visits an input node, allowing it to contribute to this implementor.

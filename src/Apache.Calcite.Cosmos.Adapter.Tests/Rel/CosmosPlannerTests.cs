@@ -1565,6 +1565,149 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             sql.Should().NotContain("IS_STRING");
         }
 
+        // ── The same comparisons over a view's column ─────────────────────────────────
+        //
+        // A view projects the accessor under an alias, and a caller's predicate arrives over the
+        // alias: a field reference the binding resolves to the path, which is right, and which said
+        // nothing about the column being the rendering rather than the value. The comparison pushed
+        // raw -- the very one the accessor's own spelling is declined for -- and where a host
+        // transposed the filter below the projection, the accessor was inlined and implementation
+        // refused the statement (#83). The binding now carries how each column is read.
+
+        /// <summary>
+        /// A view over the container, in the shape every typed caller writes: an accessor under an
+        /// alias, restricted to one kind of document.
+        /// </summary>
+        const string View = "(SELECT JSON_VALUE(x.\"DOC\", '$.name' RETURNING VARCHAR) AS \"Name\" FROM products AS x WHERE JSON_VALUE(x.\"DOC\", '$.category' RETURNING VARCHAR) = 'bikes') AS p";
+
+        /// <summary>
+        /// <c>LIKE</c> over the view's column takes the guard the accessor takes, and stays above it.
+        /// </summary>
+        [TestMethod]
+        public void LikeOverAViewsTextColumnIsWeakenedToTheStringCase()
+        {
+            var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("NOT IS_STRING(c.name)");
+            sql.Should().Contain("STARTSWITH(c.name");
+            sql.Should().Contain("IS_DEFINED(c.name)");
+
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter", "the pattern is Calcite's to match: " + Plan(best));
+        }
+
+        /// <summary>
+        /// And under a host's rewrites, which is where it failed rather than merely erred: the filter
+        /// transposed below the projection, the accessor inlined, the statement refused.
+        /// </summary>
+        /// <remarks>
+        /// What makes it survive is that the guard names the raw value with a cast to <c>ANY</c>
+        /// rather than by re-typing the field: the transpose replaces the field with the projection's
+        /// expression and a re-typed field would lose the type that said it. See
+        /// <c>CosmosFilterSplitRule.RawValue</c>.
+        /// </remarks>
+        [TestMethod]
+        public void LikeOverAViewsTextColumnSurvivesAHostsTransposition()
+        {
+            var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'", hostRewrites: true);
+            var plan = Plan(best);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("NOT IS_STRING(c.name)");
+            sql.Should().Contain("STARTSWITH(c.name");
+
+            plan.Should().Contain("ClrAsyncEnumerableFilter", "the pattern is Calcite's to match: " + plan);
+        }
+
+        /// <summary>
+        /// The ordering comparisons the same way.
+        /// </summary>
+        [TestMethod]
+        public void AnOrderingComparisonOverAViewsTextColumnIsWeakenedToo()
+        {
+            foreach (var hostRewrites in new[] { false, true })
+            {
+                var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" > 'st'", hostRewrites);
+                var sql = Render(FindCosmos(best));
+
+                sql.Should().Contain("NOT IS_STRING(c.name)", "with host rewrites: " + hostRewrites);
+                sql.Should().Contain("c.name > @p1", "with host rewrites: " + hostRewrites);
+
+                Plan(best).Should().Contain("ClrAsyncEnumerableFilter", "the comparison is Calcite's to make: " + Plan(best));
+            }
+        }
+
+        /// <summary>
+        /// An equality against unambiguous text is exact over the accessor, so it is exact over the
+        /// column too, and nothing is left above.
+        /// </summary>
+        [TestMethod]
+        public void AnExactEqualityOverAViewsTextColumnStillPushesWhole()
+        {
+            var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = 'steel'");
+
+            Render(FindCosmos(best)).Should().Contain("(c.name = @p1)").And.NotContain("IS_STRING");
+            Plan(best).Should().NotContain("ClrAsyncEnumerableFilter", "an exact equality has nothing to recheck: " + Plan(best));
+        }
+
+        /// <summary>
+        /// And an equality against text a number renders as pushes the alternatives the accessor's
+        /// spelling pushes: the string, or the number.
+        /// </summary>
+        [TestMethod]
+        public void AnAmbiguousEqualityOverAViewsTextColumnPushesItsAlternatives()
+        {
+            var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = '30'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("(c.name = @p1) OR (c.name = @p2)");
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter", "the comparison is Calcite's to make: " + Plan(best));
+        }
+
+        // ── A case fold under LIKE ────────────────────────────────────────────────────
+        //
+        // `UPPER(x) LIKE '%STEEL%'` is what an ORM writes for a case-insensitive contains, and the
+        // service has one natively (#84). Over the accessor it has the rendering gap LIKE has, so it
+        // is declined and weakened like LIKE; the guard's own comparison is the one rendered as the
+        // native function.
+
+        [TestMethod]
+        public void ACaseFoldedContainsIsTheServicesCaseInsensitiveContains()
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("CONTAINS(c.name, @p0, true)");
+            sql.Should().Contain("NOT IS_STRING(c.name)");
+
+            Plan(best).Should().Contain("ClrAsyncEnumerableFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
+        }
+
+        [TestMethod]
+        public void ACaseFoldedPrefixOverAViewsColumnIsACaseInsensitiveStartsWith()
+        {
+            foreach (var hostRewrites in new[] { false, true })
+            {
+                var sql = Render(FindCosmos(PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE LOWER(p.\"Name\") LIKE 'st%'", hostRewrites)));
+
+                sql.Should().Contain("STARTSWITH(c.name, @p1, true)", "with host rewrites: " + hostRewrites);
+                sql.Should().Contain("NOT IS_STRING(c.name)", "with host rewrites: " + hostRewrites);
+            }
+        }
+
+        /// <summary>
+        /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
+        /// fold renders as the native function directly.
+        /// </summary>
+        [TestMethod]
+        public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+
+            Render(best).Should().Contain("ENDSWITH(c.category, @p0, true)").And.NotContain("IS_STRING");
+        }
+
         // ── A comparison through RETURNING ────────────────────────────────────────────
         //
         // RETURNING is a typed extraction rather than a rendering: it participates only where the
@@ -1716,7 +1859,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// Plans a statement, asking for the asynchronous convention so that a plan may legitimately
         /// keep some work in Calcite rather than having to be Cosmos throughout.
         /// </summary>
-        RelNode PlanToAsync(string sql)
+        RelNode PlanToAsync(string sql) => PlanToAsync(sql, hostRewrites: false);
+
+        /// <summary>
+        /// Plans a statement to the asynchronous convention, optionally under the rewrites a host
+        /// running Calcite's own rule set brings with it.
+        /// </summary>
+        /// <remarks>
+        /// The three registered are the ones that move a filter past a projection and merge what
+        /// lands together — <c>FILTER_PROJECT_TRANSPOSE</c>, <c>PROJECT_FILTER_TRANSPOSE</c> and
+        /// <c>FILTER_MERGE</c> — and they are the ones that turned a wrong plan into a failing one:
+        /// the transpose copies a Cosmos filter below a Cosmos projection with the projection's
+        /// expression inlined, and nothing rechecks what it made. A plan has to survive them because
+        /// every connection-based host has them.
+        /// </remarks>
+        RelNode PlanToAsync(string sql, bool hostRewrites)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -1726,6 +1883,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             foreach (var rule in Apache.Calcite.Extensions.Adapter.AsyncEnumerable.ClrAsyncEnumerableRules.Rules())
                 planner.addRule(rule);
+
+            if (hostRewrites)
+            {
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE);
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_FILTER_TRANSPOSE);
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_MERGE);
+            }
 
             var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.AsyncEnumerable.ClrAsyncEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
