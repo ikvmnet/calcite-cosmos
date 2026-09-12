@@ -1,6 +1,6 @@
 ﻿using Apache.Calcite.Cosmos.Adapter.Sql;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
+using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using java.util.function;
 
@@ -200,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             return (CosmosLookupJoinRule)Config.INSTANCE
-                .withConversion(typeof(Join), new DelegatePredicate<Join>(IsTranslatable), Convention.NONE, ClrAsyncEnumerableConvention.Instance, "CosmosLookupJoinRule")
+                .withConversion(typeof(Join), new DelegatePredicate<Join>(IsTranslatable), Convention.NONE, ClrEnumerableConvention.Instance, "CosmosLookupJoinRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosLookupJoinRule>(c => new CosmosLookupJoinRule(c)))
                 .toRule(typeof(CosmosLookupJoinRule));
         }
@@ -231,8 +231,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             return new CosmosLookupJoin(
                 join.getCluster(),
-                join.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance),
-                convert(left, left.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance)),
+                join.getTraitSet().replace(ClrEnumerableConvention.Instance),
+                convert(left, left.getTraitSet().replace(ClrEnumerableConvention.Instance)),
                 convert(right, right.getTraitSet().replace(table.Convention)),
                 join.getCondition(),
                 build,

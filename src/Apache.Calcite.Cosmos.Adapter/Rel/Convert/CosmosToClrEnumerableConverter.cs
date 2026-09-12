@@ -4,7 +4,6 @@ using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -18,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
     /// <summary>
     /// Relational operator that converts a tree of <see cref="CosmosConvention"/> nodes into a
-    /// <see cref="ClrAsyncEnumerableConvention"/> result by executing the generated Cosmos SQL against the
+    /// <see cref="ClrEnumerableConvention"/> result by executing the generated Cosmos SQL against the
     /// container.
     /// </summary>
     /// <remarks>
@@ -29,13 +28,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// plan above expects.
     /// </para>
     /// <para>
-    /// <b>There is no synchronous counterpart.</b> The v3 Cosmos SDK exposes no synchronous data-plane
-    /// API — a page of results arrives only by awaiting <c>FeedIterator.ReadNextAsync</c> — so a converter
-    /// into <see cref="ClrEnumerableConvention"/> could only wait on each page and block a thread for the
-    /// length of a network round trip. That is the sync-over-async pull
-    /// <see cref="ClrAsyncEnumerableConvention"/> refuses converters for, and writing one here would
-    /// reintroduce it at the leaf. The consequence is worth stating plainly: a query over a Cosmos table
-    /// plans only when the root is asked for in the asynchronous convention.
+    /// <b>The awaiting body is the real one, and the pulled body is a bridge over it.</b> The v3 Cosmos
+    /// SDK exposes no synchronous data-plane API — a page of results arrives only by awaiting
+    /// <c>FeedIterator.ReadNextAsync</c> — so there is nothing for <see cref="Implement"/> to call that
+    /// does not wait on a page. It is written as the delegation
+    /// <see cref="ClrEnumerableRelImplementor.Pulled"/> exists for, which is the shape
+    /// <see cref="ClrEnumerableRel"/> prescribes for an adapter whose client is asynchronous.
+    /// </para>
+    /// <para>
+    /// <b>What that costs is a thread per row, and it is now a caller's choice rather than a refusal.</b>
+    /// While the two conventions were separate, the absence of a converter into the pulled one was what
+    /// kept sync-over-async out of a plan: a query over a Cosmos table simply did not plan unless the root
+    /// was asked for asynchronously. One convention leaves no such gate — the plan is the same either way
+    /// and the kind is chosen by whoever calls the root — so the cost has moved from a plan that does not
+    /// exist to a thread that blocks at the leaf. A host that reads a Cosmos table through
+    /// <see cref="ClrEnumerableRelImplementor.ImplementRoot"/> rather than
+    /// <see cref="ClrEnumerableRelImplementor.ImplementRootAsync"/> pays it, and pays it per row.
     /// </para>
     /// <para>
     /// Rendering the statement, resolving the partition key and building the row builder all happen here,
@@ -43,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// path.
     /// </para>
     /// </remarks>
-    public class CosmosToClrAsyncEnumerableConverter : ConverterImpl, ClrAsyncEnumerableRel
+    public class CosmosToClrEnumerableConverter : ConverterImpl, ClrEnumerableRel
     {
 
         static readonly System.Reflection.MethodInfo ReadAsyncMethod = typeof(CosmosSequences).GetMethod(nameof(CosmosSequences.ReadAsync))
@@ -53,9 +61,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traits">The trait set, which must carry the asynchronous convention.</param>
+        /// <param name="traits">The trait set, which must carry the CLR convention.</param>
         /// <param name="input">The Cosmos subtree being converted.</param>
-        public CosmosToClrAsyncEnumerableConverter(RelOptCluster cluster, RelTraitSet traits, RelNode input) :
+        public CosmosToClrEnumerableConverter(RelOptCluster cluster, RelTraitSet traits, RelNode input) :
             base(cluster, ConventionTraitDef.INSTANCE, traits, input)
         {
 
@@ -64,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <inheritdoc />
         public override RelNode copy(RelTraitSet traitSet, java.util.List inputs)
         {
-            return new CosmosToClrAsyncEnumerableConverter(getCluster(), traitSet, (RelNode)sole(inputs));
+            return new CosmosToClrEnumerableConverter(getCluster(), traitSet, (RelNode)sole(inputs));
         }
 
         /// <inheritdoc />
@@ -72,11 +80,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var cost = base.computeSelfCost(planner, mq);
 
-            return cost == null ? null! : cost.multiplyBy(ClrAsyncEnumerableConvention.CostMultiplier);
+            return cost == null ? null! : cost.multiplyBy(ClrEnumerableConvention.CostMultiplier);
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult Implement(ClrAsyncEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        /// <remarks>
+        /// The bridge, for the reason the type's own remarks give: there is no synchronous read to write
+        /// here, so this is the awaiting body read across, and it blocks a thread per row.
+        /// </remarks>
+        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        {
+            return implementor.Pulled(ImplementAsync(implementor, pref));
+        }
+
+        /// <inheritdoc />
+        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
         {
             var input = getInput();
 
@@ -100,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             Hook.QUERY_PLAN.run(query.Sql);
 
-            return implementor.Result(physType,
+            return implementor.ResultAsync(physType,
                 Expression.Call(null,
                     ReadAsyncMethod.MakeGenericMethod(rowType),
                     CosmosConverters.ExecutorExpression(input, implementor.Root),

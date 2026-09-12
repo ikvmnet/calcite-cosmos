@@ -24,8 +24,8 @@
         <PackageReference Include="IKVM" Version="8.16.0" />
         <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.64" />
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.64" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.96" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.96" />
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
         <MavenReference Include="org.jooq:joou-java-6" Version="0.9.5" />
     </ItemGroup>

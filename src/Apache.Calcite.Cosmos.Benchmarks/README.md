@@ -69,7 +69,7 @@ at sizes from one to sixty-four, which is how the scaling benchmarks' parameters
 | Class | Measures |
 | --- | --- |
 | `PipelineBenchmarks` | Each stage as a prefix of the next — parse, then also validate, then also convert, then also rewrite, then also search. A stage's own cost is the difference between two rows. |
-| `FilterPlanningBenchmarks` and its siblings | Planning one statement the way a host asks for it: the whole pipeline, ending in a plan in the asynchronous convention. Split by area so that a change to the aggregate rules is not a reason to re-time the joins. |
+| `FilterPlanningBenchmarks` and its siblings | Planning one statement the way a host asks for it: the whole pipeline, ending in a plan in the CLR convention. Split by area so that a change to the aggregate rules is not a reason to re-time the joins. |
 | `PushdownBenchmarks` | The same statements planned for the Cosmos convention alone, with the in-process alternative removed. The difference from the row above is what having an alternative costs. |
 | `ImplementBenchmarks` | Rendering an already-chosen plan to Cosmos SQL: binding paths, translating every expression, collecting parameters, extracting the partition key. |
 | `PredicateScalingBenchmarks`, `ShapeScalingBenchmarks`, `JoinScalingBenchmarks` | How planning time grows with the size of a predicate, the shape of a statement, and the number of containers joined. |
@@ -112,7 +112,7 @@ Three things about that wiring are worth knowing when reading a number:
 - **Every container's rules are registered for every statement**, whether or not it names them. That
   is what a host does — it registers what its schema holds, not what the query turned out to touch —
   and it is why `RuleSetBenchmarks` exists.
-- **The convention asked for is `ClrAsyncEnumerableConvention`, not the Cosmos one.** Asked for
+- **The convention asked for is `ClrEnumerableConvention`, not the Cosmos one.** Asked for
   Cosmos, the planner has one way to answer and takes it. Asked for the convention a host consumes,
   it has to reach both the pushed form and the in-process form and cost them against each other,
   which is most of the work and all of the benefit.

@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// statement, and array traversal arrives via <c>Uncollect</c>/<c>Correlate</c> instead.
     /// <para>
     /// <see cref="Rel.Convert.CosmosLookupJoinRule"/> is not a counter-example. It converts a join
-    /// into <c>ClrAsyncEnumerableConvention</c>, not into this one: the join is still performed
+    /// into <c>ClrEnumerableConvention</c>, not into this one: the join is still performed
     /// outside the service, and all that reaches the statement is a restriction to the keys one side
     /// actually has.
     /// </para>
@@ -40,11 +40,12 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <b>No values rule.</b> There is no container-independent row source.
     /// </description></item>
     /// <item><description>
-    /// <b>One way out, and it is asynchronous.</b> There is no converter into
-    /// <c>ClrEnumerableConvention</c> or Calcite's <c>EnumerableConvention</c>, because the Cosmos
-    /// SDK has no synchronous data-plane API and such a converter could only block a thread per
-    /// page. A query over a Cosmos table plans only when the root is asked for in
-    /// <c>ClrAsyncEnumerableConvention</c>.
+    /// <b>One way out, and the caller decides how the rows are read.</b> The single converter
+    /// leaves for <c>ClrEnumerableConvention</c>, and there is none into Calcite's own
+    /// <c>EnumerableConvention</c>. The Cosmos SDK still has no synchronous data-plane API, so the
+    /// awaiting body is the only one that reads a page; asking the plan for its rows synchronously
+    /// bridges over it and blocks a thread. That used to be a plan the planner would not produce and
+    /// is now a cost a host chooses — see <see cref="Rel.Convert.CosmosToClrEnumerableConverter"/>.
     /// </description></item>
     /// </list>
     /// </remarks>
@@ -81,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             yield return CosmosAggregateSplitRule.Create(convention);
 
             // Registered for planability before pushdown: a grouping-set AVG cannot be implemented
-            // by the asynchronous convention at all — measured; the conversion declines it — and
+            // by the CLR convention at all — measured; the conversion declines it — and
             // hosts on Calcite's default rule set never see that because this rewrite is in it.
             // Decomposed into SUM and COUNT the rollup above both plans and splits, the partials
             // being pushable where AVG's argument is non-nullable, which is AVG's own pushdown
@@ -157,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,
             // and the planner has no complete plan to choose.
-            yield return CosmosToClrAsyncEnumerableConverterRule.Create(convention);
+            yield return CosmosToClrEnumerableConverterRule.Create(convention);
 
             // The other way out, and the only one that reads less than the whole container: a join
             // whose other side supplies the keys. It leaves the convention for the same reason the

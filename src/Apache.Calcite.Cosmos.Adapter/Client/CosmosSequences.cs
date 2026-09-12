@@ -23,8 +23,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// There is no synchronous counterpart, and that is a fact about Cosmos rather than a gap here. The
     /// v3 SDK has no synchronous data-plane API at all: a page arrives only through
     /// <c>FeedIterator.ReadNextAsync</c>. An <see cref="IEnumerable{T}"/> over it could only wait on each
-    /// page, blocking a thread for the length of a network round trip — the sync-over-async pull that
-    /// <c>ClrAsyncEnumerableConvention</c> exists to keep out of a plan.
+    /// page, blocking a thread for the length of a network round trip, so none is written. A plan that
+    /// wants its rows pulled crosses at the node instead, through
+    /// <c>ClrEnumerableRelImplementor.Pulled</c>, where the cost is written once and can be read.
     /// </para>
     /// </remarks>
     public static class CosmosSequences

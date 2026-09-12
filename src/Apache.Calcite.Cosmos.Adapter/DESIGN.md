@@ -9,7 +9,7 @@ structure that follows from it.
 
 > **Status.** Under development. Statement generation, container metadata, the schema and table
 > layer, the scan/filter/project/sort/unnest/aggregate/rank nodes with their conversion rules, and
-> the converter that hands results to `ClrAsyncEnumerableConvention` are in place and tested. Items
+> the converter that hands results to `ClrEnumerableConvention` are in place and tested. Items
 > marked ✔ below exist; the rest are specification.
 >
 > One claim still rests on documentation rather than observation and needs a real Cosmos account
@@ -369,7 +369,7 @@ bound being exactly what the mismatch destroys.
 exists today with a `CosmosSort` inserted beneath the same in-process sort: `CosmosSort` costs
 `Sort`'s own cost times `CosmosConvention.CostMultiplier`, which is positive, and the in-process sort
 above it costs `nLogN(rowCount)` either way — Calcite's `Sort.computeSelfCost` does not discount an
-already-collated input and `ClrAsyncEnumerableSort` does not override it. So the alternative is
+already-collated input and `ClrEnumerableSort` does not override it. So the alternative is
 strictly dominated on every input and the planner would reject it every time it was offered. What the
 trait would buy is plan legibility — the planner seeing and costing both alternatives instead of the
 adapter refusing outright — at the price of a rule that fires constantly and never wins. Recorded as
@@ -874,8 +874,8 @@ rule set carries because a bare Volcano planner has none. Transposed, the sort a
 the projection and push; the cast runs over the rows that come back.
 
 ```
-ClrAsyncEnumerableProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
-  CosmosToClrAsyncEnumerableConverter
+ClrEnumerableProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
+  CosmosToClrEnumerableConverter
     CosmosSort(sort0=[$1], dir0=[ASC], fetch=[10])
       CosmosTableScan(table=[[products]])
 ```
@@ -1566,17 +1566,29 @@ tested ahead of them, and is why it remains testable without one.
 
 ## Leaving the Convention
 
-A subtree of Cosmos nodes is a statement, not rows. `CosmosToClrAsyncEnumerableConverter` is where
+A subtree of Cosmos nodes is a statement, not rows. `CosmosToClrEnumerableConverter` is where
 it becomes rows: it renders the statement, executes it, and reads the JSON value each row arrives
 as into the row the plan above expects.
 
-**The exit is asynchronous, and only asynchronous.** The v3 Cosmos SDK has no synchronous
-data-plane API — a page arrives only by awaiting `FeedIterator.ReadNextAsync` — so a converter into
-`ClrEnumerableConvention` or Calcite's `EnumerableConvention` could do nothing but wait on each
-page, blocking a thread for a network round trip per continuation. That is the sync-over-async pull
-`ClrAsyncEnumerableConvention` exists to keep out of a plan, and putting one at the leaf would
-defeat it. The consequence is worth stating rather than discovering: **a query over a Cosmos table
-plans only when the root is asked for in `ClrAsyncEnumerableConvention`.**
+**The read is asynchronous, and only asynchronous — but the plan no longer is.** The v3 Cosmos SDK
+has no synchronous data-plane API: a page arrives only by awaiting `FeedIterator.ReadNextAsync`. So
+`ImplementAsync` is the converter's real body, and `Implement` is written as the delegation through
+`ClrEnumerableRelImplementor.Pulled` that `ClrEnumerableRel` prescribes for exactly this case — an
+adapter whose client is asynchronous.
+
+**What changed, and it is the part worth recording.** While the pulled and awaiting conventions were
+two, the adapter published no converter into the pulled one, and that absence was a gate: a query
+over a Cosmos table would not plan at all unless the root was asked for asynchronously, so
+sync-over-async could not appear in a plan because the plan did not exist. Calcite-dotnet merged the
+two conventions, and a plan no longer carries a mode at all — the same plan is read either way, and
+the kind is chosen by whoever calls the root. The gate is therefore gone, and there is nothing here
+to put it back with: declining in `Implement` would move the refusal from plan time to execution
+time, which is strictly worse — the same query, failing later and with less to say about why.
+
+So the cost moved rather than vanished. **A host that reads a Cosmos plan through `ImplementRoot`
+rather than `ImplementRootAsync` blocks a thread per row**, at the leaf where it is worst, and
+nothing in the plan will warn it. That is a documented cost now instead of a planning failure, and
+the README says so where a host will read it.
 
 Three things follow from the row being one JSON value:
 
@@ -1644,18 +1656,19 @@ the read path below the plan: no implementor, no statement, no `CosmosQuery`. No
 text.
 
 Which settles where the node lives. A subtree in `CosmosConvention` *is* a statement, and a write is
-not one, so `CosmosTableModify` is in `ClrAsyncEnumerableConvention` — a node whose input is rows and
+not one, so `CosmosTableModify` is in `ClrEnumerableConvention` — a node whose input is rows and
 whose effect is a sequence of SDK calls. That makes it the same shape as `CosmosLookupJoin`: a node
 that knows about a container without being inside the convention that renders one.
 
 Two consequences worth stating because neither is obvious.
 
-**Neither Clr convention has a modify node**, so this is the first. Calcite's own
+**The Clr convention has no modify node**, so this is the first. Calcite's own
 `EnumerableTableModify` is not a model to copy: it writes through
 `ModifiableTable.getModifiableCollection()`, calling `Collection.add` and `Collection.remove` on
 whatever the table hands back. For Cosmos that collection would have to block on `CreateItemAsync`
-per element, which is the sync-over-async pull the asynchronous convention exists to keep out of a
-plan — at the leaf, where it is worst.
+per element — and it would block wherever the plan happened to put it, with nothing in the signature
+saying a write was waiting on a round trip. The awaiting body keeps that in one place instead, at the
+node boundary a caller asked for.
 
 **`ModifiableTable` is therefore not implemented, and is not needed.** Measured:
 `SqlToRelConverter.createModify` falls back to `LogicalTableModify.create` when the target unwraps to
@@ -1949,7 +1962,7 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   still differs — so a divergence that closes fails the suite and is meant to be promoted back into
   the corpus rather than sit there looking settled. Nothing belongs there as a decision. A statement
   with no oracle at all — the array traversal, whose unpushed form has no implementation in the
-  asynchronous convention — is listed separately with the reason, and is at least required to run.
+  CLR convention — is listed separately with the reason, and is at least required to run.
 - **The corpus leans into the semantics that have bitten**: null against absent, `NOT` over both,
   grouping by a key some documents lack, `LIKE`'s shapes, and the aggregate forms. It needs the
   emulator and reports inconclusive without one, like every test that needs a service.

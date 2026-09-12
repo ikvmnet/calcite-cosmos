@@ -59,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// </para>
         /// <para>
         /// <c>CosmosLookupJoinRule</c> is the reason that distinction now matters. It is a join rule,
-        /// and it converts into <c>ClrAsyncEnumerableConvention</c> — the join is still performed
+        /// and it converts into <c>ClrEnumerableConvention</c> — the join is still performed
         /// outside the service, and what reaches the statement is only a restriction to the keys the
         /// other side has. A rule converting a join <em>into</em> the Cosmos convention would be
         /// claiming the service can join, which it cannot.
@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 .OfType<Adapter.Rel.Convert.CosmosLookupJoinRule>()
                 .Should().ContainSingle().Subject;
 
-            rule.getOutConvention().Should().BeSameAs(Apache.Calcite.Extensions.Adapter.AsyncEnumerable.ClrAsyncEnumerableConvention.Instance);
+            rule.getOutConvention().Should().BeSameAs(Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableConvention.Instance);
         }
 
     }

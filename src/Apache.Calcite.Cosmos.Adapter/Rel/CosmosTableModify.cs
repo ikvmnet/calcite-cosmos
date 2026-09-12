@@ -4,7 +4,6 @@ using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -26,23 +25,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// oversight.</b> A subtree in that convention is a Cosmos SQL statement, and a write is not one:
     /// the query language has no DML, so the write goes through the SDK's item CRUD. Nothing below here
     /// renders text, and no implementor runs. What the node needs is rows, which is what
-    /// <c>ClrAsyncEnumerableConvention</c> supplies — the same position <see cref="CosmosLookupJoin"/>
+    /// <c>ClrEnumerableConvention</c> supplies — the same position <see cref="CosmosLookupJoin"/>
     /// occupies for the same reason.
     /// </para>
     /// <para>
     /// <b>Calcite's own <c>EnumerableTableModify</c> is not the model.</b> It writes through
     /// <c>ModifiableTable.getModifiableCollection()</c>, calling <c>add</c> and <c>remove</c> on a
     /// collection the table hands back. For Cosmos that collection would have to block on
-    /// <c>CreateItemAsync</c> per element, which is the sync-over-async pull the asynchronous convention
-    /// exists to keep out of a plan. Neither Clr convention has a modify node at all, so this is the
-    /// first, and it is free to be shaped by what the service actually offers.
+    /// <c>CreateItemAsync</c> per element, and it would do so wherever the plan put it, with nothing
+    /// in the signature to say a write was waiting on a round trip. Writing the awaiting body here
+    /// instead keeps the blocking in one place, at the node boundary a caller asked for. The CLR
+    /// convention has no modify node of its own at all, so this is the first, and it is free to be
+    /// shaped by what the service actually offers.
     /// </para>
     /// <para>
     /// The row type is Calcite's DML row type — one <c>BIGINT</c> count — so the node yields exactly one
     /// row, and yields it only once every write has completed.
     /// </para>
     /// </remarks>
-    public class CosmosTableModify : TableModify, ClrAsyncEnumerableRel
+    public class CosmosTableModify : TableModify, ClrEnumerableRel
     {
 
         static readonly System.Reflection.MethodInfo WriteAsyncMethod = typeof(CosmosSequences).GetMethod(nameof(CosmosSequences.WriteAsync))
@@ -55,10 +56,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traitSet">The trait set, which must carry the asynchronous convention.</param>
+        /// <param name="traitSet">The trait set, which must carry the CLR convention.</param>
         /// <param name="table">The container being written to.</param>
         /// <param name="catalogReader">The catalog the target was resolved through.</param>
-        /// <param name="input">The rows to write, in <see cref="ClrAsyncEnumerableConvention"/>.</param>
+        /// <param name="input">The rows to write, in <see cref="ClrEnumerableConvention"/>.</param>
         /// <param name="operation">Which statement this stands for.</param>
         /// <param name="updateColumnList">The columns an <c>UPDATE</c> sets, or <c>null</c>.</param>
         /// <param name="sourceExpressionList">The values an <c>UPDATE</c> sets them to, or <c>null</c>.</param>
@@ -123,14 +124,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             return planner.getCostFactory()
                 .makeCost(rows, rows, rows)
-                .multiplyBy(ClrAsyncEnumerableConvention.CostMultiplier);
+                .multiplyBy(ClrEnumerableConvention.CostMultiplier);
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult Implement(ClrAsyncEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        /// <remarks>
+        /// The bridge rather than a body: every write is a request the SDK only awaits,
+        /// so there is no pulled read to write here. Delegating through
+        /// <see cref="ClrEnumerableRelImplementor.Pulled"/> blocks a thread per row, which is the
+        /// cost of asking a Cosmos plan for its rows synchronously.
+        /// </remarks>
+        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        {
+            return implementor.Pulled(ImplementAsync(implementor, pref));
+        }
+
+        /// <inheritdoc />
+        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
         {
             var input = getInput();
-            var inputResult = implementor.VisitChild(this, 0, (ClrAsyncEnumerableRel)input, pref);
+            var inputResult = implementor.VisitChildAsync(this, 0, (ClrEnumerableRel)input, pref);
 
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
 
@@ -161,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var write = new CosmosWrite(_write, names, paths, updates, _partitionKey);
 
-            return implementor.Result(physType,
+            return implementor.ResultAsync(physType,
                 Expression.Call(null,
                     WriteAsyncMethod.MakeGenericMethod(inputResult.PhysType.RowType, physType.RowType),
                     inputResult.Expression,

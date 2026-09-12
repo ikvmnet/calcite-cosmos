@@ -6,7 +6,6 @@ using System.Threading;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -38,13 +37,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <c>asyncLookup(RowData)</c> receives there.
     /// </para>
     /// <para>
-    /// Its left input is in <see cref="ClrAsyncEnumerableConvention"/> and its right in
+    /// Its left input is in <see cref="ClrEnumerableConvention"/> and its right in
     /// <see cref="CosmosConvention"/>, which makes it a converter as much as a join — the same shape as
-    /// <see cref="Convert.CosmosToClrAsyncEnumerableConverter"/>, and for the same reason: below it is a
+    /// <see cref="Convert.CosmosToClrEnumerableConverter"/>, and for the same reason: below it is a
     /// statement, above it are rows.
     /// </para>
     /// </remarks>
-    public class CosmosLookupJoin : Join, ClrAsyncEnumerableRel
+    public class CosmosLookupJoin : Join, ClrEnumerableRel
     {
 
         static readonly System.Reflection.MethodInfo JoinAsyncMethod = typeof(CosmosLookup).GetMethod(nameof(CosmosLookup.JoinAsync))
@@ -93,8 +92,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traitSet">The trait set, which must carry the asynchronous convention.</param>
-        /// <param name="build">The side whose keys are pushed down, in <see cref="ClrAsyncEnumerableConvention"/>.</param>
+        /// <param name="traitSet">The trait set, which must carry the CLR convention.</param>
+        /// <param name="build">The side whose keys are pushed down, in <see cref="ClrEnumerableConvention"/>.</param>
         /// <param name="probe">The container subtree being restricted, in <see cref="CosmosConvention"/>.</param>
         /// <param name="condition">The join condition, which is one equality on the keys below.</param>
         /// <param name="buildKey">The ordinal of the join key in <paramref name="build"/>'s row.</param>
@@ -154,16 +153,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             return planner.getCostFactory()
                 .makeCost(rows, buildRows + requests, rows)
-                .multiplyBy(ClrAsyncEnumerableConvention.CostMultiplier);
+                .multiplyBy(ClrEnumerableConvention.CostMultiplier);
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult Implement(ClrAsyncEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        /// <remarks>
+        /// The bridge rather than a body: the join's build side is read by awaiting it, and the probe side is the container,
+        /// so there is no pulled read to write here. Delegating through
+        /// <see cref="ClrEnumerableRelImplementor.Pulled"/> blocks a thread per row, which is the
+        /// cost of asking a Cosmos plan for its rows synchronously.
+        /// </remarks>
+        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        {
+            return implementor.Pulled(ImplementAsync(implementor, pref));
+        }
+
+        /// <inheritdoc />
+        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
         {
             var build = getLeft();
             var probe = getRight();
 
-            var buildResult = implementor.VisitChild(this, 0, (ClrAsyncEnumerableRel)build, pref);
+            var buildResult = implementor.VisitChildAsync(this, 0, (ClrEnumerableRel)build, pref);
 
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
@@ -176,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var probeType = probePhysType.RowType;
             var rowType = physType.RowType;
 
-            return implementor.Result(physType,
+            return implementor.ResultAsync(physType,
                 Expression.Call(null,
                     JoinAsyncMethod.MakeGenericMethod(buildType, probeType, rowType),
                     buildResult.Expression,

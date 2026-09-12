@@ -10,7 +10,6 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -49,7 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// expression tree.
     /// </remarks>
     [TestClass]
-    public class CosmosToClrAsyncEnumerableConverterTests
+    public class CosmosToClrEnumerableConverterTests
     {
 
         static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
@@ -172,10 +171,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// Plans a statement and asks for the best plan in the asynchronous convention, which is what a
-        /// caller of this adapter must ask for.
+        /// Plans a statement and asks for the best plan in the CLR convention, which is what a
+        /// caller of this adapter asks for however it then reads the rows.
         /// </summary>
-        RelNode PlanToAsync(string sql)
+        RelNode PlanToClr(string sql)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -183,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -194,14 +193,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// </summary>
         async Task<List<object>> Execute(RelNode rel)
         {
-            var implementor = new ClrAsyncEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRoot((ClrAsyncEnumerableRel)rel, ClrEnumerablePrefer.Array);
+            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
 
             var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
 
             var rows = new List<object>();
             await foreach (var row in run(context))
+                rows.Add(row);
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Compiles the same planned tree the other way, and reads every row it produces.
+        /// </summary>
+        /// <remarks>
+        /// <c>ImplementRoot</c> rather than <c>ImplementRootAsync</c>, which for a Cosmos plan is the
+        /// bridge over the awaiting body rather than a second implementation of it. It blocks a thread
+        /// per row; the test using it is about the rows, not about the cost.
+        /// </remarks>
+        List<object> ExecutePulled(RelNode rel)
+        {
+            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            var lambda = implementor.ImplementRoot((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
+
+            var run = (Func<DataContext, IEnumerable<object>>)lambda.Compile();
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+
+            var rows = new List<object>();
+            foreach (var row in run(context))
                 rows.Add(row);
 
             return rows;
@@ -214,11 +236,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// of, and the planner has no complete plan to return.
         /// </remarks>
         [TestMethod]
-        public void ThePlannerReachesTheAsynchronousConventionThroughTheConverter()
+        public void ThePlannerReachesTheClrConventionThroughTheConverter()
         {
-            var plan = PlanToAsync("SELECT \"id\" FROM products AS c");
+            var plan = PlanToClr("SELECT \"id\" FROM products AS c");
 
-            plan.Should().BeOfType<CosmosToClrAsyncEnumerableConverter>();
+            plan.Should().BeOfType<CosmosToClrEnumerableConverter>();
             plan.getInput(0).getConvention().Should().BeSameAs(_table.Convention);
         }
 
@@ -226,14 +248,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// A one-column result is the value rather than a one-element row, which is what
-        /// <c>ImplementRoot</c> arranges and what every caller of a query expects.
+        /// <c>ImplementRootAsync</c> arranges and what every caller of a query expects.
         /// </remarks>
         [TestMethod]
         public async Task ShouldReadASingleColumnAsTheValueItself()
         {
             Given("""{ "id": "a" }""", """{ "id": "b" }""");
 
-            var rows = await Execute(PlanToAsync("SELECT \"id\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT \"id\" FROM products AS c"));
+
+            rows.Should().Equal("a", "b");
+        }
+
+        /// <remarks>
+        /// <b>The plan carries no mode, so the same tree reads either way.</b> While there were two Clr
+        /// conventions this could not be written at all: the adapter published no converter into the
+        /// pulled one, so a synchronous root found no plan. One convention removes that gate, and what
+        /// is left is a bridge at the converter — so the thing to hold is that the bridge does not
+        /// change the answer.
+        /// <para>
+        /// It says nothing about what the bridge costs, which is a blocked thread per row and is
+        /// documented rather than asserted. A test cannot tell a blocked thread from a fast one.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ShouldReadTheSameRowsWhenThePlanIsPulledRatherThanAwaited()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var rows = ExecutePulled(PlanToClr("SELECT \"id\" FROM products AS c"));
 
             rows.Should().Equal("a", "b");
         }
@@ -247,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "id": "a" }""");
 
-            await Execute(PlanToAsync("SELECT \"id\" FROM products AS c"));
+            await Execute(PlanToClr("SELECT \"id\" FROM products AS c"));
 
             _executor.Executed!.Value.Sql.Should().Contain("SELECT VALUE {").And.Contain("\"id\": c.id");
         }
@@ -261,7 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "id": "a" }""", """{ }""");
 
-            var rows = await Execute(PlanToAsync("SELECT \"id\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT \"id\" FROM products AS c"));
 
             rows.Should().Equal(new object[] { "a", null! });
         }
@@ -271,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "id": "a", "_ts": 17 }""");
 
-            var rows = await Execute(PlanToAsync("SELECT \"id\", \"_ts\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT \"id\", \"_ts\" FROM products AS c"));
 
             rows.Should().HaveCount(1);
             ((object[])rows[0]).Should().Equal("a", java.lang.Long.valueOf(17L));
@@ -286,7 +329,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             GivenNoExecutor();
 
-            var plan = PlanToAsync("SELECT \"id\" FROM products AS c");
+            var plan = PlanToClr("SELECT \"id\" FROM products AS c");
 
             var act = async () => await Execute(plan);
             (await act.Should().ThrowAsync<CosmosExecutionException>()).WithMessage("*has no query executor*");

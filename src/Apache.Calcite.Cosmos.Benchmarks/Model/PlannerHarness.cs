@@ -6,7 +6,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
+using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
@@ -231,12 +231,12 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         }
 
         /// <summary>
-        /// Registers the asynchronous convention's rules on a planner.
+        /// Registers the CLR convention's rules on a planner.
         /// </summary>
         /// <param name="planner">The planner.</param>
         public static void AddAsyncRules(RelOptPlanner planner)
         {
-            foreach (var rule in ClrAsyncEnumerableRules.Rules())
+            foreach (var rule in ClrEnumerableRules.Rules())
                 planner.addRule(rule);
 
             // The window rule above matches a LogicalWindow, and the converter does not produce one:
@@ -248,10 +248,10 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         }
 
         /// <summary>
-        /// Plans a statement for the asynchronous convention, with every rule a host would have.
+        /// Plans a statement for the CLR convention, with every rule a host would have.
         /// </summary>
         /// <remarks>
-        /// The measurement that matters. A host asks for <c>ClrAsyncEnumerableConvention</c>, never for
+        /// The measurement that matters. A host asks for <c>ClrEnumerableConvention</c>, never for
         /// the Cosmos one, so the planner has to reach the pushed form and the in-process form both,
         /// cost them against each other, and choose — which is the work these benchmarks exist to
         /// time. It also cannot fail for want of a plan: reading the container and doing everything
@@ -273,7 +273,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
             if (reorderJoins)
                 AddJoinOrderRules(planner);
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();

@@ -25,12 +25,13 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**731 tests: 717 passing, 14 inconclusive** on net8.0 against Apache.Calcite 2.0.1-pre.64, and the
-same suite without its six service-backed classes 660 passing on net10.0. The inconclusive ones are
-things only a service can answer; the suite runs against one when `COSMOS_TEST_ENDPOINT` and
-`COSMOS_TEST_KEY` name it, and reports inconclusive rather than passing where the emulator cannot —
-and each of them detects the gap it is skipping for, so an environment that closes one asserts rather
-than going quiet. Several facts in this file and in `DESIGN.md` were settled by measurement, each
+**660 passing on net8.0 and net10.0 alike** against Apache.Calcite 2.0.1-pre.96, with the six
+service-backed classes excluded — no account and no emulator, so that run says nothing about them and
+they were not run at all. The last full run, at 2.0.1-pre.64, was **731 tests: 717 passing, 14
+inconclusive**; the inconclusive ones are things only a service can answer. The suite runs against one
+when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name it, and reports inconclusive rather than
+passing where the emulator cannot — and each of them detects the gap it is skipping for, so an
+environment that closes one asserts rather than going quiet. Several facts in this file and in `DESIGN.md` were settled by measurement, each
 time with an Azure account, used and deleted. **Not yet measured against an account:** the view
 spellings and the case folds added to the differential corpus with #83 and #84.
 

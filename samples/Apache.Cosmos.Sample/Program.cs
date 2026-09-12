@@ -242,18 +242,19 @@ namespace Apache.Cosmos.Sample
         /// </para>
         /// <para>
         /// This showed the <em>logical</em> plan for anything touching Cosmos until
-        /// Apache.Calcite 2.0.0-pre.2, and the reason was a corner with no answer on either path. The
-        /// convention a statement is planned into follows the method used to run it —
-        /// <c>ExecuteReader</c> asks for <c>ClrEnumerableConvention</c> and <c>ExecuteReaderAsync</c>
-        /// for <c>ClrAsyncEnumerableConvention</c> — and neither worked: read asynchronously the
+        /// Apache.Calcite 2.0.0-pre.2, and the reason was a corner with no answer on either path. There
+        /// were two Clr conventions then, and the one a statement was planned into followed the method
+        /// used to run it — <c>ExecuteReader</c> asking for the pulled convention and
+        /// <c>ExecuteReaderAsync</c> for the awaiting one. Neither worked: read asynchronously the
         /// <c>EXPLAIN</c> was refused, its own result being the plan text rather than an asynchronous
-        /// node; read synchronously the <em>explained</em> query was planned into the synchronous
+        /// node; read synchronously the <em>explained</em> query was planned into the pulled
         /// convention, which a Cosmos table had no converter into.
         /// </para>
         /// <para>
-        /// Both halves landed together: <c>ClrExplainBindable</c> now binds on either path, and the two
-        /// Clr conventions have a converter each way, so a Cosmos table reached from the synchronous
-        /// side converts rather than failing to plan. The physical tree is what prints now, and naming
+        /// Both halves landed together: <c>ClrExplainBindable</c> binds on either path, and a Cosmos
+        /// table reached from the synchronous side converts rather than failing to plan. There is one
+        /// Clr convention now, so the second half is structural rather than a pair of converters — a
+        /// plan carries no mode at all. The physical tree is what prints, and naming
         /// <c>CosmosLookupJoin</c> is the whole point of printing it.
         /// </para>
         /// </remarks>
