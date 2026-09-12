@@ -3,7 +3,7 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
+using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
@@ -103,10 +103,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // A projection the statement cannot carry is left above the sort and evaluated in process,
             // so the plan needs the rules that implement one in the CLR convention as well.
-            foreach (var rule in ClrAsyncEnumerableRules.Rules())
+            foreach (var rule in ClrEnumerableRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();

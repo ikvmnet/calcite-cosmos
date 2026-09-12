@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Benchmarks
         }
 
         /// <summary>
-        /// Constructs a planner and registers the asynchronous convention's rules.
+        /// Constructs a planner and registers the CLR convention's rules.
         /// </summary>
         /// <returns>The planner.</returns>
         [Benchmark(Description = "planner + CLR rules")]

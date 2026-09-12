@@ -9,14 +9,16 @@ Rather than going through ADO.NET or JDBC, the adapter translates the relational
 1. A Cosmos database is registered with Calcite as a schema, one table per container.
 2. Calcite's planner converts as much of the plan as possible into the Cosmos calling convention (`CosmosConvention`).
 3. Nodes in that convention are rendered to Cosmos SQL and executed by the Cosmos query engine.
-4. Results leave the convention as an `IAsyncEnumerable`, into the `ClrAsyncEnumerableConvention` provided by [`Apache.Calcite.Extensions`](https://www.nuget.org/packages/Apache.Calcite.Extensions).
+4. Results leave the convention as an `IAsyncEnumerable`, into the `ClrEnumerableConvention` provided by [`Apache.Calcite.Extensions`](https://www.nuget.org/packages/Apache.Calcite.Extensions).
 5. Anything Cosmos cannot express is executed in-process by Calcite, under that convention.
 
-## Queries are asynchronous
+## Read a Cosmos table asynchronously
 
-A query over a Cosmos table plans **only** when the root is asked for in `ClrAsyncEnumerableConvention`.
+A query over a Cosmos table plans either way, and **only the asynchronous route is free**. Reading one synchronously blocks a thread per row.
 
-This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so a synchronous plan could do nothing but block a thread for a network round trip per continuation. Rather than hide that behind an `IEnumerable`, the adapter offers only the asynchronous exit.
+This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so there is no synchronous read for the adapter to call. Asked for its rows synchronously, the converter bridges over the asynchronous one and waits, which costs a blocked thread for a network round trip per continuation and nothing in the plan will say so.
+
+Earlier versions made this a planning failure: the adapter published no converter into the synchronous convention, so a synchronous plan was simply not found. `Apache.Calcite.Extensions` now has one CLR convention rather than two, a plan carries no mode, and the choice belongs to the caller — so the guidance is a cost to know about rather than an error you cannot miss.
 
 A container has no row schema, so a table is modelled as one map column carrying the whole document, plus promoted scalar columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred from sampling documents.
 

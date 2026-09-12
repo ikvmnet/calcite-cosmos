@@ -9,7 +9,6 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -148,11 +147,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrAsyncEnumerableRules.Rules())
+            foreach (var rule in ClrEnumerableRules.Rules())
                 planner.addRule(rule);
 
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return ToCalc(planner.findBestExp());
@@ -165,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <para>
         /// This is Calcite's <c>Programs.CALC_PROGRAM</c>, and it is a pass <em>after</em> the planner
         /// rather than rules given to it. That distinction is the whole of it:
-        /// <c>ClrAsyncEnumerableProject</c> throws when implemented — as
+        /// <c>ClrEnumerableProject</c> throws when implemented — as
         /// <c>EnumerableProject.implement()</c> does upstream, saying "EnumerableCalcRel is always
         /// better" — and it is also the cheaper node, since <c>Calc</c>'s inherited cost counts one
         /// unit per expression and <c>Project</c>'s does not. Handed to Volcano, the two compete and
@@ -181,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
 
-            foreach (var rule in ClrAsyncEnumerableRules.CalcRules())
+            foreach (var rule in ClrEnumerableRules.CalcRules())
                 program.addRuleInstance(rule);
 
             var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
@@ -192,8 +191,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         async Task<List<object>> Execute(RelNode rel)
         {
-            var implementor = new ClrAsyncEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRoot((ClrAsyncEnumerableRel)rel, ClrEnumerablePrefer.Array);
+            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
 
             var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);

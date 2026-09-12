@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks
         /// <param name="Query">The statement.</param>
         /// <param name="Stage">The last stage that succeeded, or the one that threw.</param>
         /// <param name="Failure">The failure, or <c>null</c>.</param>
-        /// <param name="PlanMilliseconds">What planning to the asynchronous convention took, unwarmed.</param>
+        /// <param name="PlanMilliseconds">What planning to the CLR convention took, unwarmed.</param>
         /// <param name="Pushes">Whether the chosen plan puts anything in the Cosmos convention.</param>
         /// <param name="PushesWhole">Whether the statement also plans wholly in the Cosmos convention.</param>
         /// <param name="Sql">The Cosmos statement a wholly pushed plan renders to, or <c>null</c>.</param>

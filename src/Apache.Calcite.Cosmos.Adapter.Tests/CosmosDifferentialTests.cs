@@ -10,7 +10,6 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -294,24 +293,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             if (pushdown == false)
                 planner.setRuleDescExclusionFilter(java.util.regex.Pattern.compile(string.Join("|", pushdownRules)));
 
-            foreach (var rule in ClrAsyncEnumerableRules.Rules())
+            foreach (var rule in ClrEnumerableRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             var best = planner.findBestExp();
 
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
-            foreach (var rule in ClrAsyncEnumerableRules.CalcRules())
+            foreach (var rule in ClrEnumerableRules.CalcRules())
                 program.addRuleInstance(rule);
 
             var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
             hep.setRoot(best);
             best = hep.findBestExp();
 
-            var implementor = new ClrAsyncEnumerableRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRoot((ClrAsyncEnumerableRel)best, ClrEnumerablePrefer.Array);
+            var implementor = new ClrEnumerableRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
+            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)best, ClrEnumerablePrefer.Array);
 
             var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(rootSchema.plus(), typeFactory);
@@ -331,7 +330,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// subtree readable at all and which the oracle needs for the scan; and not Calcite's own
         /// rewrites, which the convention registers because a bare Volcano planner has no logical rule
         /// set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable by
-        /// the asynchronous convention in the first place.
+        /// the CLR convention in the first place.
         /// </remarks>
         static bool IsPushdown(org.apache.calcite.plan.RelOptRule rule)
         {
@@ -513,7 +512,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT MIN(c.\"_ts\"), MAX(c.\"_ts\") FROM products AS c", false),
 
             // Over _ts rather than a user path, and that is a limit rather than a choice. MIN, MAX,
-            // SUM and AVG over an ANY column have no implementation in the asynchronous convention,
+            // SUM and AVG over an ANY column have no implementation in the CLR convention,
             // and the aggregate rule declines to push one -- so a statement naming any of them forms
             // no plan in either mode and cannot be compared or even run. Measured, on all four.
             // Nothing about pushdown; there is simply nothing to execute. Written down because the

@@ -1,7 +1,7 @@
 ﻿using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
-using Apache.Calcite.Extensions.Adapter.AsyncEnumerable;
+using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// <c>COUNT(DISTINCT x)</c> is the case that exists today: Calcite's own
     /// <c>AGGREGATE_EXPAND_DISTINCT_AGGREGATES</c> rewrites it into an aggregate over an aggregate,
     /// the inner half is a plain <c>GROUP BY</c> the Cosmos rules push, and the count finishes
-    /// outside. These tests plan for the asynchronous convention — unlike
+    /// outside. These tests plan for the CLR convention — unlike
     /// <see cref="CosmosPlannerTests"/> — because a finishing aggregate needs somewhere outside the
     /// Cosmos convention to live.
     /// </remarks>
@@ -81,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// Plans for the asynchronous convention, with the container's rules and the CLR ones.
+        /// Plans for the CLR convention, with the container's rules and the CLR ones.
         /// </summary>
         RelNode Plan(string sql)
         {
@@ -91,10 +91,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrAsyncEnumerableRules.Rules())
+            foreach (var rule in ClrEnumerableRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrAsyncEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -121,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             text.Should().Contain("groups=[[{0}, {}]]", "the grouping sets are finished above");
             text.Should().Contain("$SUM0", "a partial count is summed, not recounted");
 
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         /// <remarks>
@@ -139,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", SUM(c._ts) AS \"s\", MAX(c._ts) AS \"m\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         /// <remarks>
@@ -161,13 +161,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             Render(pushed!).Should().Contain("SUM(c._ts)").And.Contain("COUNT(1)").And.NotContain("AVG(");
 
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         /// <remarks>
         /// An average of averages weights every group equally, so <c>AVG</c> has no finishing form
         /// of its own — and unreduced, a grouping-set <c>AVG</c> cannot be implemented by the
-        /// asynchronous convention at all. <c>AGGREGATE_REDUCE_FUNCTIONS</c> decomposes it into
+        /// CLR convention at all. <c>AGGREGATE_REDUCE_FUNCTIONS</c> decomposes it into
         /// <c>SUM</c> and <c>COUNT</c>, whose partials push and finish, with the division above.
         /// </remarks>
         [TestMethod]
@@ -182,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             // to COUNT(*) before any rule sees it.
             Render(pushed!).Should().Contain("SUM(c._ts)").And.Contain("COUNT(1)").And.Contain("GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         static T? Find<T>(RelNode rel) where T : class
@@ -232,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Render(pushed).Should().Be("SELECT DISTINCT VALUE { \"$.category\": (IS_DEFINED(c.category) ? c.category : null) } FROM products c");
 
             // The finishing count lives outside the Cosmos convention.
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         /// <remarks>
@@ -248,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             Find<CosmosAggregate>(plan).Should().BeNull("grouping happens before the limit at the service");
             Find<CosmosSort>(plan).Should().NotBeNull("the limit itself is still pushed");
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
         /// <remarks>
@@ -269,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             pushed!.getInput().Should().NotBeOfType<CosmosAggregate>();
             pushed.getAggCallList().size().Should().Be(0);
 
-            plan.getConvention().Should().Be(ClrAsyncEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
         }
 
     }
