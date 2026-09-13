@@ -186,8 +186,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     // Counts the partition a whole-partition delete is about to empty; unused by
                     // every other operation, whose count is the rows it wrote.
                     Rel.Convert.CosmosConverters.PartitionCounterExpression(getTable(), implementor.Root),
-                    // As everywhere else on this path: Calcite's cancellation is a flag on the
-                    // DataContext rather than a token, and a request in flight would not observe one.
+                    // As everywhere else on this path: the default written here is what lets the
+                    // reader's token reach WriteAsync, so a request in flight is cancellable -- though a
+                    // write already sent is not undone by cancelling the sequence that sent it.
                     Expression.Constant(CancellationToken.None)));
         }
 

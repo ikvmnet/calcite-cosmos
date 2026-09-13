@@ -124,9 +124,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     CosmosConverters.ExecutorExpression(input, implementor.Root),
                     Expression.Constant(query),
                     rowBuilder,
-                    // Calcite's cancellation is an AtomicBoolean on the DataContext rather than a token,
-                    // and polling one between pages would not interrupt a page in flight. Enumerating the
-                    // result is what cancels this, by not asking for the next page.
+                    // Default on purpose, and load-bearing. An expression tree applies no optional
+                    // default, so the token has to be written here; writing the *default* one is what
+                    // lets [EnumeratorCancellation] substitute the token the reader gave
+                    // GetAsyncEnumerator, which the operators hand down to this leaf. So the plan
+                    // carries no token, is reusable across executions, and each enumeration supplies
+                    // its own -- reaching ReadNextAsync, where it cancels a page already in flight.
+                    // ShouldCarryTheReadersTokenIntoTheExecutor holds that.
+                    //
+                    // A plan read synchronously gets none of it: IEnumerable has no token to hand down,
+                    // so there cancellation really is only declining to ask for the next page.
                     Expression.Constant(CancellationToken.None)));
         }
 
