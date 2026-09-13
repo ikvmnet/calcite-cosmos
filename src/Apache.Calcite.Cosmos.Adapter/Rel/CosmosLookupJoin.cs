@@ -201,9 +201,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     ResultSelector(physType, buildResult.PhysType, buildType, probePhysType, probeType),
                     Expression.Constant(DefaultCacheSize),
                     CosmosConverters.LookupCacheExpression(probe, implementor.Root),
-                    // As for the converter: Calcite's cancellation is a flag on the DataContext rather
-                    // than a token, and a batch in flight would not observe one. Not asking for the next
-                    // batch is what stops this.
+                    // As for the converter: the default written here is what lets the reader's own
+                    // token reach this, by way of [EnumeratorCancellation] on JoinAsync, so a batch in
+                    // flight is cancellable. Read synchronously there is no token to hand down, and
+                    // not asking for the next batch is all that stops it.
                     Expression.Constant(CancellationToken.None)));
         }
 

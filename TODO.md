@@ -25,7 +25,7 @@ rejecting the full text search Azure runs — so "the reference says" is not a m
 
 ## 0. Resuming
 
-**660 passing on net8.0 and net10.0 alike** against Apache.Calcite 2.0.1-pre.96, with the six
+**661 passing on net8.0 and net10.0 alike** against Apache.Calcite 2.0.1-pre.103, with the six
 service-backed classes excluded — no account and no emulator, so that run says nothing about them and
 they were not run at all. The last full run, at 2.0.1-pre.64, was **731 tests: 717 passing, 14
 inconclusive**; the inconclusive ones are things only a service can answer. The suite runs against one

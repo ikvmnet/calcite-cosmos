@@ -69,9 +69,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             public CosmosQuery? Executed { get; private set; }
 
+            /// <summary>
+            /// The token the executor was called with, which is the one the plan handed down rather
+            /// than the one baked into it.
+            /// </summary>
+            public CancellationToken Token { get; private set; }
+
             public async IAsyncEnumerable<JsonElement> ExecuteAsync(CosmosQuery query, PartitionKey? partitionKey = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
             {
                 Executed = query;
+                Token = cancellationToken;
 
                 foreach (var document in _documents)
                 {
@@ -279,6 +286,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var rows = ExecutePulled(PlanToClr("SELECT \"id\" FROM products AS c"));
 
             rows.Should().Equal("a", "b");
+        }
+
+        /// <remarks>
+        /// <b>The reader's token reaches the service call, and the plan is what makes that possible by
+        /// not carrying one.</b> The call site bakes in <c>default</c>, so
+        /// <c>[EnumeratorCancellation]</c> substitutes whatever <c>GetAsyncEnumerator</c> was given and
+        /// the operators hand it down to the leaf. A page in flight is therefore cancellable, rather
+        /// than cancellation meaning only that nobody asks for the next one.
+        /// <para>
+        /// The discriminator is <c>CanBeCanceled</c>: it is <c>false</c> for the
+        /// <c>CancellationToken.None</c> the expression tree holds, so this fails if the substitution
+        /// ever stops happening and the baked-in token is what arrives.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldCarryTheReadersTokenIntoTheExecutor()
+        {
+            Given("""{ "id": "a" }""");
+
+            var rel = PlanToClr("SELECT \"id\" FROM products AS c");
+
+            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
+
+            var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+
+            using var cts = new CancellationTokenSource();
+
+            await foreach (var _ in run(context).WithCancellation(cts.Token))
+                break;
+
+            _executor.Token.CanBeCanceled.Should().BeTrue("the reader's token should reach the executor, not the default the plan holds");
+
+            cts.Cancel();
+            _executor.Token.IsCancellationRequested.Should().BeTrue("the token the executor holds should be the reader's own");
         }
 
         /// <remarks>
