@@ -47,6 +47,13 @@
 
     <PropertyGroup>
         <MavenAdditionalRepositories>$(MavenAdditionalRepositories);jboss=https://repository.jboss.org/nexus/content/groups/public;</MavenAdditionalRepositories>
+        <!--
+        Calcite 1.43 is not released. The Apache.Calcite.* packages resolve calcite-core 1.43.0-SNAPSHOT,
+        so the build needs the repository Apache publishes its snapshots to; central and jboss carry
+        1.42.0 and stop there. A snapshot is a moving target rather than a reproducible pin, so remove
+        this the day 1.43.0 reaches central.
+        -->
+        <MavenAdditionalRepositories>$(MavenAdditionalRepositories);apache-snapshots=https://repository.apache.org/content/repositories/snapshots;</MavenAdditionalRepositories>
     </PropertyGroup>
 
 </Project>
