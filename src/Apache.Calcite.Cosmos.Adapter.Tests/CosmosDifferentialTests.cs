@@ -721,11 +721,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) <> 'bikes'", false),
 
             // The same equality with the accessor said in SQL/JSON, which is the cast a DOC view
-            // writes and which was dropped over the map subscript only (#71). Over the same seven
-            // values, because the claim is the same: JSON_VALUE without RETURNING renders what the cast
-            // over ANY renders and answers null for the rest. The refused literal, the partition key
-            // through the cast, and the projection above the dropped comparison -- which stays in
-            // process over this spelling -- come with it.
+            // writes (#71). Over the same seven values, because the claim is the same: JSON_VALUE
+            // without RETURNING renders what the cast over ANY renders and answers null for the rest.
+            // The refused literal, the partition key through the cast, and the projection above the
+            // dropped comparison -- which stays in process over this spelling -- come with it.
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'shoes'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '30'", false),

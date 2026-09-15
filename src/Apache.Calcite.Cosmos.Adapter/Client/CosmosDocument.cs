@@ -18,9 +18,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// </para>
     /// <para>
     /// Nothing is reinterpreted on the way through. A number keeps the digits it was given rather than
-    /// a round trip through a double, and a property keeps its place. The value-by-value writer this
-    /// class used to carry, which had to accept a Java box or a CLR primitive for every JSON type,
-    /// went with the map column that produced them.
+    /// a round trip through a double, and a property keeps its place.
     /// </para>
     /// </remarks>
     public static class CosmosDocument

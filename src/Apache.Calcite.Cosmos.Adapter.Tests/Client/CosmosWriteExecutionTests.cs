@@ -278,12 +278,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// The replace path end to end: the old row identifies the document, the trailing
-        /// <c>SET</c> value is the new map, and the result is the new document.
+        /// <c>SET</c> value is the new document, and the result is that document.
         /// </summary>
         /// <remarks>
         /// The row is the shape the planner produces for <c>UPDATE … SET "DOC" = …</c> — the
         /// table's columns holding what the scan read, then one trailing value per <c>SET</c>
-        /// column. A property present in the old document and absent from the new map is gone
+        /// column. A property present in the old document and absent from the new one is gone
         /// afterwards, which is what distinguishes a replace from a merge.
         /// </remarks>
         [TestMethod]
@@ -325,9 +325,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The map column of a document read from a container holds <c>_ts</c>, <c>_etag</c>,
-        /// <c>_rid</c>, <c>_self</c> and <c>_attachments</c> alongside the caller's own properties, so
-        /// this is the shape <c>INSERT … SELECT "DOC" FROM …</c> produces.
+        /// A document read from a container holds <c>_ts</c>, <c>_etag</c>, <c>_rid</c>, <c>_self</c>
+        /// and <c>_attachments</c> alongside the caller's own properties, so this is the shape
+        /// <c>INSERT … SELECT "DOC" FROM …</c> produces.
         /// </para>
         /// <para>
         /// <b>It does not test the stripping, and it was written believing it did.</b> Probed by

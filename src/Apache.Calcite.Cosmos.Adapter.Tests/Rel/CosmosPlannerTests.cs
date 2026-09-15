@@ -535,14 +535,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         // ── Reaching an array through the document column ─────────────────────────────
         //
-        // UNNEST takes an ARRAY, a MULTISET, a MAP or an ANY, and refuses a string. The map spelling
-        // works because ITEM over a MAP<VARCHAR, ANY> is typed ANY; JSON_QUERY is typed VARCHAR and is
-        // refused outright by the validator. StringToArray is the composition that gets past that, and
-        // neither call survives into the statement.
+        // UNNEST takes an ARRAY, a MULTISET, a MAP or an ANY, and refuses a string. JSON_QUERY is typed
+        // VARCHAR and is refused outright by the validator. StringToArray is the composition that gets
+        // past that, being typed ANY, and neither call survives into the statement.
 
         /// <summary>
-        /// An array reached through <c>DOC</c> traverses at the service, and renders the statement the
-        /// map spelling renders.
+        /// An array reached through <c>DOC</c> traverses at the service.
         /// </summary>
         /// <remarks>
         /// Cosmos's own <c>StringToArray</c> takes a string and is <c>undefined</c> over an array, so
@@ -559,7 +557,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// And a predicate over the element pushes with it, exactly as it does for the map spelling.
+        /// And a predicate over the element pushes with it.
         /// </summary>
         [TestMethod]
         public void APredicateOverAnElementReachedThroughTheDocumentColumnIsPushed()
@@ -853,13 +851,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
-        /// A path inside the map column is not reached, and the reason is structural: it projects as
-        /// <c>ITEM($0, 'name')</c> rather than as a reference, and <c>RelMdPredicates</c> carries a
-        /// predicate through a projection only where the projection is a reference. Recorded as the
-        /// boundary of what this reaches — see <c>TODO.md</c> section 6, where the fix is a column.
+        /// An unpromoted document path is not reached, and the reason is structural: it projects as
+        /// an accessor call rather than as a reference, and <c>RelMdPredicates</c> carries a predicate
+        /// through a projection only where the projection is a reference. Recorded as the boundary of
+        /// what this reaches — see <c>TODO.md</c> section 6, where the fix is a column.
         /// </remarks>
         [TestMethod]
-        public void APathInsideTheMapColumnIsNotReached()
+        public void AnUnpromotedDocumentPathIsNotReached()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
 
@@ -1146,12 +1144,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().NotContain("CosmosFilter", "the predicate reads a rendering, not a path: " + plan);
         }
 
-        // ── The same cast, the accessor said in SQL/JSON ──────────────────────────
+        // ── The cast to text over a SQL/JSON accessor ─────────────────────────────
         //
-        // A view over the JSON column casts a JSON_VALUE where a view over the map column casts an
-        // ITEM, and the two address the same path. The cast to text is dropped over either, for the
-        // same reason: without a RETURNING clause the accessor reads the value as text, which is the
-        // rendering the cast over ANY performs, so the argument on TryTextCastOperand carries over.
+        // A view over DOC casts a JSON_VALUE. The cast to text is dropped over it: without a RETURNING
+        // clause the accessor reads the value as text, which is the rendering the cast over ANY
+        // performs, so the argument on TryTextCastOperand carries over.
 
         [TestMethod]
         public void ACastToTextOverAJsonAccessorPushesAsAComparison()
@@ -1170,8 +1167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
-        /// The literal is held to the same test as over the map column: text a stored number renders
-        /// as is refused, because the accessor renders the number too.
+        /// Text a stored number renders as is refused, because the accessor renders the number too.
         /// </remarks>
         [TestMethod]
         public void ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor()
@@ -1313,9 +1309,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// A bracketed literal needs no array branch. <c>JSON_VALUE</c> answers null for an array, so
-        /// no stored array matches however the literal looks, and the string comparison is exact.
-        /// The array branch existed for the map column, whose rendering wrote an array out with
-        /// brackets so that <c>'[steel]'</c> could match one; nothing renders that way now, and a
+        /// no stored array matches however the literal looks, and the string comparison is exact. A
         /// cast over the accessor is dropped rather than treated as a second rendering.
         /// </remarks>
         [TestMethod]
@@ -2073,9 +2067,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         // ── Navigating the document ───────────────────────────────────────────────
 
         /// <remarks>
-        /// The map column's type is one level — MAP&lt;VARCHAR, ANY&gt; — and the document beneath it is
-        /// not. Depth still resolves because ITEM over ANY is ANY, so the chain type-checks, and the
-        /// translator folds the whole chain into one path rather than nesting accessors.
+        /// A document path of any depth resolves, and the translator folds the whole path into one
+        /// Cosmos path rather than nesting accessors.
         /// </remarks>
         [TestMethod]
         public void NestedPropertiesResolveToASinglePath()
@@ -2127,7 +2120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// lacks the property.
         /// </remarks>
         [TestMethod]
-        public void IsNotNullOnAMapPropertyTestsBothCosmosStates()
+        public void IsNotNullOnADocumentPropertyTestsBothCosmosStates()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL");
 

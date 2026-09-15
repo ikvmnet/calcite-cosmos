@@ -491,7 +491,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("((c.price > @p0) ? @p1 : @p2)");
         }
 
-        // ── ITEM, the operator the map row model depends on ───────────────────────
+        // ── ITEM, which reaches into a value typed ANY ────────────────────────────
 
         [TestMethod]
         public void ItemBecomesAPathExtension()

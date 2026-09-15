@@ -141,9 +141,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// The reason <see cref="CosmosColumnStrategies"/> exists, pinned as the behaviour it produces.
         /// </summary>
         /// <remarks>
-        /// Without the strategies this statement does not reach a rule at all: <c>_MAP</c> and <c>id</c>
-        /// are both declared <c>NOT NULL</c>, and the validator refuses an insert that omits a column
-        /// which is neither nullable nor defaulted.
+        /// Without the strategies this statement does not reach a rule at all: <c>DOC</c> is declared
+        /// <c>NOT NULL</c>, and the validator refuses an insert that omits a column which is neither
+        /// nullable nor defaulted.
         /// </remarks>
         [TestMethod]
         public void ColumnsMayBeOmittedFromAnInsert()
@@ -270,10 +270,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// An <c>UPDATE</c> of the map column is a whole-document assignment, carried as a replace.
+        /// An <c>UPDATE</c> of the document column is a whole-document assignment, carried as a replace.
         /// </summary>
         /// <remarks>
-        /// SQL assigns whole values to named columns, and the map column is the document — so the
+        /// SQL assigns whole values to named columns, and <c>DOC</c> is the document — so the
         /// statement means "the document becomes this expression of the old one", and a replace is
         /// that, priced as what it is. The rows arrive from the scan the plan shows, exactly as a
         /// <c>DELETE</c>'s do.

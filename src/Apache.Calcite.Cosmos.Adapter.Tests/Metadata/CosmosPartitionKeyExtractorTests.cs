@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static readonly CosmosPath[] Fields =
         {
-            CosmosPath.Root("c"),                             // 0 — map column
+            CosmosPath.Root("c"),                             // 0 — document column
             CosmosPath.Root("c").Property("category"),        // 1
             CosmosPath.Root("c").Property("tenant"),          // 2
             CosmosPath.Root("c").Property("id"),              // 3
