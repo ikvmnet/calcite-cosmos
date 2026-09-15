@@ -180,6 +180,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// The chain the issue is written around, end to end, now that a residual no longer costs the
+        /// read: a comparison with no Cosmos form lowers to a string equality, the equality pins the
+        /// partition key, and the discriminator that licensed it is held back rather than pushed.
+        /// </summary>
+        /// <remarks>
+        /// The guard is what used to end the chain one step early. A point read applies no predicate,
+        /// so <c>TryExtractPointRead</c> refuses any conjunct that is not an <c>id</c> or partition-key
+        /// equality — and the discriminator conjunct is exactly such a conjunct. What changed is that
+        /// <c>CosmosPointReadSplitRule</c> partitions the conjunction instead of relaxing the standard.
+        /// </remarks>
+        [TestMethod]
+        public void ALoweredComparisonUnderAGuardStillReachesAPointRead()
+        {
+            var container = Declared(true);
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'B' AND JSON_VALUE(c."DOC", '$.id') = 'x' AND {Ref} = UUID'{Canonical}'""",
+                container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.PartitionKeyValues.Should().ContainSingle().Which.Should().Be(Canonical,
+                "the lowered equality is what pins the key");
+
+            query.PointReadId.Should().Be("x",
+                "and the guard that licensed the lowering is held back rather than disqualifying the read");
+        }
+
+        /// <summary>
         /// A declared type closes the gap an ordering comparison over the accessor has: the refusal
         /// rests on the service ordering raw values across JSON types while Calcite orders their
         /// renderings, and where the container says the path holds a string there is no second type

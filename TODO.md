@@ -884,6 +884,19 @@ sibling keywords are dropped, which is Draft 7's rule and conservative under 202
 readable as a type plus a nullability claim rather than as nothing. What is missing is the claim, and
 a consumer that cares about the difference.
 
+### A point read on a discriminated container — *done, by #92 rather than by anything here*
+
+Written down because this branch's design note called it blocked and it is not. A point read applies
+no predicate, so `TryExtractPointRead` refuses any conjunct that is not an `id` or partition-key
+equality — and the discriminator conjunct that licenses a guarded fact is exactly such a conjunct, so
+the chain used to end one step early at a routed query.
+
+`CosmosPointReadSplitRule` closed it without relaxing that standard: it *partitions* the conjunction,
+so the pinned equalities reach the read and the discriminator is held back and applied above. The two
+features compose without either knowing about the other — by the time the rule runs, a lowered
+comparison is an ordinary string equality. `ALoweredComparisonUnderAGuardStillReachesAPointRead` is
+the proof.
+
 ### The fan-out measurement — *the number the whole feature is priced on, and it is not taken*
 
 What a declaration is worth was measured on a serverless container with one physical partition, which
@@ -897,11 +910,8 @@ container with several physical partitions, `WHERE c.pk = '<lower>'` against
 container above the throughput at which Cosmos splits; the probe account is serverless and cannot
 answer.
 
-### Two smaller ones
+### One smaller one
 
-- **A point read on a discriminated container** is out of reach while `CoversExactly` refuses any
-  conjunct that is not an `id` or partition-key equality — and the discriminator conjunct that
-  licenses the fact is exactly such a conjunct. #92's read-then-filter is what would open it.
 - **A schema carried by reference** rather than inline. Inline is the right default and the README
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
