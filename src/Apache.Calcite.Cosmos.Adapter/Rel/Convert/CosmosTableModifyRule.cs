@@ -104,15 +104,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         static Filter? FindFilter(RelNode? node)
         {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
+            return FindFilter(node, CosmosPlanMembers.NewSeen());
+        }
 
-            return node switch
+        /// <inheritdoc cref="FindFilter(RelNode?)" />
+        /// <remarks>
+        /// Every member, because one may present a <c>Filter</c> where another has pushed the
+        /// predicate into the scan — and the whole point of asking is to read the predicate off the
+        /// member that still carries it. See <see cref="CosmosPlanMembers"/>.
+        /// </remarks>
+        /// <param name="node">The subtree.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        static Filter? FindFilter(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            foreach (var member in CosmosPlanMembers.Of(node))
             {
-                Filter filter => filter,
-                Project project => FindFilter(project.getInput()),
-                _ => null,
-            };
+                if (seen.Add(member) == false)
+                    continue;
+
+                var found = member switch
+                {
+                    Filter filter => filter,
+                    Project project => FindFilter(project.getInput(), seen),
+                    _ => null,
+                };
+
+                if (found is not null)
+                    return found;
+            }
+
+            return null;
         }
 
         /// <summary>
