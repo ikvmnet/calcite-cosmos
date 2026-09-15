@@ -396,6 +396,228 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A set of ids over a declared path reaches the service, and reaches the batch read. #99.
+        /// </summary>
+        /// <remarks>
+        /// An <c>IN</c> arrives folded into a <c>SEARCH</c> over a <c>Sarg</c>, which is one node
+        /// rather than the equalities it stands for — so the lowering that an <c>=</c> gets was
+        /// passing it by, and the membership fell to a client-side recheck over a scan. Expanded it is
+        /// a disjunction of equalities, each lowered the way a lone one is.
+        /// </remarks>
+        [TestMethod]
+        public void ASetOfIdsOverADeclaredPathReachesTheService()
+        {
+            const string Ids = """
+            { "type": "object",
+              "properties": { "id": { "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }
+            """;
+
+            var container = new CosmosContainerMetadata("items", new[] { "/k" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Ids)));
+
+            const string Other = "123e4567-e89b-12d3-a456-426614174001";
+
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.k') = 'p' AND CAST(JSON_VALUE(c."DOC", '$.id') AS UUID) IN (UUID'{Canonical}', UUID'{Other}')""",
+                container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.id = @", "each point of the set lowers the way a lone equality does");
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical);
+            query.Parameters.Should().Contain(p => (p.Value as string) == Other);
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                "and the membership is not left to a client-side recheck: " + PlanText(best));
+
+            query.PointReadIds.Should().BeEquivalentTo(new[] { Canonical, Other },
+                "which is what makes the batch read reachable through a typed column at all");
+        }
+
+        /// <summary>
+        /// The schema of a catalog row: an identifier stored as a UUID, and a name that is always
+        /// there so that a sort on it is not refused for null placement.
+        /// </summary>
+        const string Catalog = """
+        { "type": "object",
+          "required": ["ref", "name"],
+          "properties": {
+            "ref": { "type": "string",
+                     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+            "name": { "type": "string" } } }
+        """;
+
+        /// <summary>
+        /// The same, with the identifier left undeclared, so that the only difference between the two
+        /// plans is whether the projected cast has a stored form to render as.
+        /// </summary>
+        const string CatalogWithoutTheIdentifier = """
+        { "type": "object",
+          "required": ["name"],
+          "properties": { "name": { "type": "string" } } }
+        """;
+
+        /// <summary>
+        /// A container over the given schema.
+        /// </summary>
+        /// <param name="schema">The declared JSON Schema.</param>
+        /// <returns>The container metadata.</returns>
+        static CosmosContainerMetadata Container(string schema) =>
+            new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+
+        /// <summary>
+        /// Selecting a declared UUID renders, so the sort and the page beneath it reach the service. #100.
+        /// </summary>
+        /// <remarks>
+        /// The read side of the reasoning the filter already leans on. Until the cast rendered, a
+        /// projection carrying one stayed in process, and a sort cannot be pushed through a projection
+        /// that did not convert — so a query selecting an identifier and ordering by a name read the
+        /// container whole and sorted it in memory, while the same query without the identifier pushed
+        /// both. Every query that returns an entity selects its identifier.
+        /// </remarks>
+        [TestMethod]
+        public void ProjectingADeclaredUuidLetsTheSortAndThePagePush()
+        {
+            const string Sql = """
+            SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id", JSON_VALUE(c."DOC", '$.name') AS "Name"
+            FROM items AS c ORDER BY 2 FETCH NEXT 20 ROWS ONLY
+            """;
+
+            var declared = Container(Catalog);
+            var with = PlanToCosmos(Sql, declared, out _);
+            var query = Query(FindCosmos(with), declared);
+
+            query.Sql.Should().Contain("IS_PRIMITIVE(c.ref) ? c.ref : null",
+                "the path is sent under the accessor's own guard, the cast being put back by the reader");
+            query.Sql.Should().Contain("ORDER BY c.name", "which is what the projection was blocking: " + query.Sql);
+            query.MaxItemCount.Should().Be(20, "and the page rides on the sort");
+
+            PlanText(with).Should().NotContain("ClrEnumerableSort",
+                "so nothing sorts the container in memory: " + PlanText(with));
+        }
+
+        /// <summary>
+        /// And it is the declaration doing it: the same query over a container that says nothing about
+        /// the identifier keeps the cast, and with it the sort, in process.
+        /// </summary>
+        [TestMethod]
+        public void WithoutTheDeclarationTheProjectedCastStillHoldsTheSortBack()
+        {
+            const string Sql = """
+            SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id", JSON_VALUE(c."DOC", '$.name') AS "Name"
+            FROM items AS c ORDER BY 2 FETCH NEXT 20 ROWS ONLY
+            """;
+
+            var declared = Container(CatalogWithoutTheIdentifier);
+            var best = PlanToCosmos(Sql, declared, out _);
+
+            Query(FindCosmos(best), declared).Sql.Should().NotContain("ORDER BY",
+                "nothing says what the stored text is, so the cast has no form to render as");
+
+            PlanText(best).Should().Contain("ClrEnumerableSort",
+                "and the sort stays above the projection that did not convert: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// Dropping the identifier from the select list is what used to be needed, and is the plan the
+        /// declared one now matches.
+        /// </summary>
+        /// <remarks>
+        /// The control for the pair above. Both halves of the query were always pushable on their own;
+        /// what the issue was about is that selecting the identifier gave up the other half.
+        /// </remarks>
+        [TestMethod]
+        public void TheSameQueryWithoutTheIdentifierAlwaysPushed()
+        {
+            const string Sql = """
+            SELECT JSON_VALUE(c."DOC", '$.name') AS "Name" FROM items AS c ORDER BY 1 FETCH NEXT 20 ROWS ONLY
+            """;
+
+            var declared = Container(CatalogWithoutTheIdentifier);
+            var query = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
+
+            query.Sql.Should().Contain("ORDER BY c.name");
+            query.MaxItemCount.Should().Be(20);
+        }
+
+        /// <summary>
+        /// An uppercase container is addressable on the same terms, the projection asking only that
+        /// the stored text be a UUID rather than which spelling it is.
+        /// </summary>
+        [TestMethod]
+        public void AnUppercaseContainerProjectsOnTheSameTerms()
+        {
+            const string Upper = """
+            { "type": "object",
+              "required": ["ref", "name"],
+              "properties": {
+                "ref": { "type": "string",
+                         "pattern": "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" },
+                "name": { "type": "string" } } }
+            """;
+
+            const string Sql = """
+            SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id", JSON_VALUE(c."DOC", '$.name') AS "Name"
+            FROM items AS c ORDER BY 2
+            """;
+
+            var declared = Container(Upper);
+            Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared).Sql
+                .Should().Contain("ORDER BY c.name");
+        }
+
+        /// <summary>
+        /// A rendered identifier addresses nothing afterwards, so ordering <em>by</em> it is still
+        /// refused.
+        /// </summary>
+        /// <remarks>
+        /// The scope line. Equality is all the form was asked for; whether the lexical order of the
+        /// stored strings is the order Calcite compares UUIDs in is a separate claim, and the guarded
+        /// path is not the value either way. The column binding to no path is what keeps the question
+        /// from being asked at all.
+        /// </remarks>
+        [TestMethod]
+        public void OrderingByTheRenderedIdentifierIsStillRefused()
+        {
+            const string Sql = """
+            SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id" FROM items AS c ORDER BY 1
+            """;
+
+            var declared = Container(Catalog);
+            Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared).Sql
+                .Should().NotContain("ORDER BY", "the projected column resolves to no path to order by");
+        }
+
+        /// <summary>
+        /// A fact that holds only under a guard does not render a projection, even where the query
+        /// discharges the guard.
+        /// </summary>
+        /// <remarks>
+        /// Where the scope line falls, and it falls short of what is provable. A projection carries no
+        /// predicate of its own, so what it may lean on is what the declaration states outright; the
+        /// <c>kind = 'B'</c> beneath it does discharge the guard for every row that arrives, and
+        /// reading that off the subtree is a further step this does not take. The filter still pushes,
+        /// and the projection stays in process.
+        /// </remarks>
+        [TestMethod]
+        public void AGuardedFormDoesNotRenderAProjection()
+        {
+            var container = Declared(true);
+
+            var best = PlanToCosmos(
+                $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'B'""",
+                container, out _);
+
+            Query(FindCosmos(best), container).Sql
+                .Should().NotContain("IS_PRIMITIVE(c.ref)", "the form is declared only of the documents the guard admits");
+
+            PlanText(best).Should().Contain("ClrEnumerableProject(Id=[CAST(JSON_VALUE(",
+                "so the cast is still computed in process: " + PlanText(best));
+        }
+
+        /// <summary>
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>

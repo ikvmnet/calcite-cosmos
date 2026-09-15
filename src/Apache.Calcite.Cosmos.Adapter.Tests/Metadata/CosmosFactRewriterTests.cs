@@ -151,13 +151,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "the value is the same however the query spelled it, and the stored form is the canonical one");
         }
 
+        /// <summary>
+        /// A disjunction is descended into, and an earlier draft refused to on a reason that does not
+        /// hold.
+        /// </summary>
+        /// <remarks>
+        /// The worry was that a fact proven from the conjuncts beside a branch does not hold of the
+        /// rows that branch keeps. It does: a conditional fact is proven from the <em>top-level</em>
+        /// conjuncts, which hold of every row the whole predicate keeps. Over a row where the guard
+        /// fails the conjunction is false however the branch reads, and over one where it holds the
+        /// fact holds too. Refusing cost the <c>IN</c> case, which is a disjunction once expanded.
+        /// </remarks>
         [TestMethod]
-        public void OnlyAConjunctionIsDescendedInto()
+        public void ADisjunctionIsDescendedInto()
         {
             var disjunction = _rex.makeCall(SqlStdOperatorTable.OR, UuidEquality(), KindIs("B"));
 
-            Rewrite(disjunction, Unconditional).Should().Be(disjunction.ToString(),
-                "a fact is proven from the conjuncts beside it, and under a disjunction those do not hold of every row a branch keeps");
+            Rewrite(disjunction, Unconditional).Should().Be($"OR(=($0, '{Canonical}'), =($1, 'B'))",
+                "the fact holds of every document, so it holds inside a branch");
+
+            // And a guarded fact still needs its guard, wherever the comparison sits.
+            Rewrite(disjunction, Discriminated).Should().Contain("CAST",
+                "nothing proved the branch applies, so there is no fact to lower with");
+
+            Rewrite(And(KindIs("B"), disjunction), Discriminated).Should().Be(
+                $"AND(=($1, 'B'), OR(=($0, '{Canonical}'), =($1, 'B')))",
+                "and the conjunct that proves it holds of every row the predicate keeps, branch or no branch");
         }
 
         [TestMethod]

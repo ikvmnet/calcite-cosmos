@@ -69,8 +69,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var names = getRowType().getFieldNames();
 
             // Bound to the input field bindings; the rebinding below happens only once every
-            // expression has been translated against them.
-            var translator = implementor.CreateTranslator();
+            // expression has been translated against them. Given the container's unconditional facts,
+            // because a projection may render a stored form as the value the plan declared -- a path
+            // declared a UUID spelling among them -- and has no predicate of its own to prove a
+            // guarded fact from.
+            var translator = implementor.CreateTranslator(null, implementor.UnconditionalFacts);
 
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];

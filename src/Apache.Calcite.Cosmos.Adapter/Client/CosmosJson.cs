@@ -217,6 +217,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 case nameof(SqlTypeName.CHAR):
                 case nameof(SqlTypeName.VARCHAR):
                     return GetString(value);
+                case nameof(SqlTypeName.UUID):
+                    return GetUuid(value);
                 case nameof(SqlTypeName.BINARY):
                 case nameof(SqlTypeName.VARBINARY):
                     return GetBinary(value);
@@ -331,6 +333,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 throw new CosmosMaterializationException($"Expected a JSON string, got {value.ValueKind}.");
 
             return value.GetString()!;
+        }
+
+        /// <summary>
+        /// Reads a JSON string as the <c>java.util.UUID</c> a <c>UUID</c> value holds.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The read side of a container's declared facts. Cosmos has no UUID type, so a column the
+        /// plan types <c>UUID</c> is a string property whose spelling a declaration pinned; reading it
+        /// back is the conversion Calcite's own <c>CAST(… AS UUID)</c> performs, and it is literally
+        /// that function rather than a second implementation of it, so the pushed statement and the
+        /// in-process plan cannot answer differently.
+        /// </para>
+        /// <para>
+        /// A value that is not a string, or a string that is not a UUID, is a failure and not a null.
+        /// The declaration said what the property holds and a document contradicting it is the one
+        /// thing the fact model cannot check in advance, so the two readings agree here as well:
+        /// Calcite's cast throws over the same values. Answering null instead would turn a wrong
+        /// declaration into wrong rows, which is the trade this adapter refuses everywhere else.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The value to read.</param>
+        /// <returns>The value.</returns>
+        /// <exception cref="CosmosMaterializationException">The value is not a UUID.</exception>
+        static java.util.UUID GetUuid(JsonElement value)
+        {
+            var text = GetString(value);
+
+            try
+            {
+                return org.apache.calcite.runtime.SqlFunctions.stringToUuid(text);
+            }
+            catch (java.lang.IllegalArgumentException e)
+            {
+                throw new CosmosMaterializationException($"A value read as a UUID is not one: '{text}'.", e);
+            }
         }
 
         static double GetDouble(JsonElement value)
