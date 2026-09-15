@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -154,6 +155,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly CosmosFactRule[] _rules;
         readonly Dictionary<CosmosDocumentPath, List<int>> _mentioning;
         readonly int[] _unconditional;
+        readonly Lazy<CosmosFactSet> _stated;
+        readonly bool _conditional;
+        readonly bool _representations;
 
         /// <summary>
         /// Initializes a new instance.
@@ -189,7 +193,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             _unconditional = unconditional.ToArray();
+            _conditional = _unconditional.Length != _rules.Length;
+
+            foreach (var rule in _rules)
+                if (rule.Head.Claim is CosmosClaim.Represents)
+                    _representations = true;
+
+            // What holds before a query proves anything is the same answer every time, and every
+            // container has one now that the service's own guarantees are in here. Computed once.
+            _stated = new Lazy<CosmosFactSet>(() => Close(null), LazyThreadSafetyMode.ExecutionAndPublication);
         }
+
+        /// <summary>
+        /// Gets whether every rule holds outright, so that nothing a query proves can add to them.
+        /// </summary>
+        /// <remarks>
+        /// The question a caller asks before going to the trouble of reading facts off a predicate.
+        /// A container that declares no schema is in exactly this state — what the service guarantees
+        /// is conditional on nothing — so the common path does no work at all.
+        /// </remarks>
+        public bool IsUnconditional => _conditional == false;
+
+        /// <summary>
+        /// Gets whether anything here states a stored form, as distinct from a type or a value.
+        /// </summary>
+        /// <remarks>
+        /// Asked by the rewrite, which has nothing to do without one: the service's guarantees say
+        /// what a property <em>is</em> and never how it is written.
+        /// </remarks>
+        public bool HasRepresentations => _representations;
 
         /// <summary>
         /// Gets the compiled rules.
@@ -212,6 +244,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="established">What the query proved, which may be empty.</param>
         /// <returns>The closure.</returns>
         public CosmosFactSet Derive(IEnumerable<CosmosFact>? established)
+        {
+            if (established is null || established is ICollection<CosmosFact> { Count: 0 })
+                return _stated.Value;
+
+            return Close(established);
+        }
+
+        CosmosFactSet Close(IEnumerable<CosmosFact>? established)
         {
             if (_rules.Length == 0 && established is null)
                 return CosmosFactSet.Empty;

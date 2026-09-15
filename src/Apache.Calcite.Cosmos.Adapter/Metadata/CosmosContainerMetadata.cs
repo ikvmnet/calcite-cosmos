@@ -509,7 +509,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return metadata;
         }
 
-        CosmosFactTheory _facts = CosmosFactTheory.Empty;
+        // Seeded rather than empty: what the service guarantees about id, _ts and _etag is true of
+        // every container and is not delivered through any schema. A model's schema adds to these.
+        CosmosFactTheory _facts = ServiceFacts;
+
+        static readonly CosmosFactTheory ServiceFacts = new(CosmosServiceFacts.Rules);
 
         /// <summary>
         /// Gets what is known about the documents this container holds, compiled to rules.

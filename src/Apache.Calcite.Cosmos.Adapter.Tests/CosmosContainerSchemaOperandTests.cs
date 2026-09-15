@@ -165,8 +165,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             metadata.Facts.IsEmpty.Should().BeFalse();
             metadata.PartitionKeyPaths.Should().ContainSingle("attaching facts keeps everything the definition said");
 
-            new CosmosContainerMetadata("parks").Facts.IsEmpty.Should().BeTrue(
-                "a container that declares nothing carries an empty theory rather than a null one");
+            // A container that declares nothing still knows what the service guarantees, so a
+            // schema adds to that rather than being the whole of it.
+            var bare = new CosmosContainerMetadata("parks");
+            var id = CosmosDocumentPath.Root.Property("id");
+
+            bare.Facts.IsUnconditional.Should().BeTrue();
+            bare.Facts.Derive(null).Knows(new CosmosFact(id, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
+
+            metadata.Facts.Rules.Count.Should().BeGreaterThan(bare.Facts.Rules.Count,
+                "the schema's facts are added to the service's rather than replacing them");
         }
 
     }
