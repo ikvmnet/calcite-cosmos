@@ -163,19 +163,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var plan = Plan(Lookup);
 
-            // What is true today: the rule fires, the split is sound, and the planner declines it. The
-            // residual sits below the projection, so the only convention it can be implemented in is the
-            // one the projection above it requires — Cosmos — and a Cosmos filter merges straight back
-            // into the one it was split from. Reaching the plan this test wants means pulling the
-            // residual above the projection so it can live outside the convention, which is a rewrite
-            // this rule does not do.
+            // The rule fires, lifts the residual above the projection, and registers the alternative in
+            // every convention the plan could use it in — verified by instrumenting onMatch, and by the
+            // fact that exaggerating the request unit gap makes the planner take it and this test pass.
+            // What decides against it is calibration, not mechanism: the measured gap between a read and
+            // the query it replaces is about 1.9 RU, and the plan only flips when a request unit is
+            // weighted at roughly fifteen abstract units. That number is not measured and would be a
+            // constant reverse-engineered from this assertion, so it is not applied. See the remarks on
+            // the class for what would settle it.
             Find<CosmosFilter>(plan).Should().NotBeNull();
 
             Assert.Inconclusive(
-                "CosmosPointReadSplitRule offers the split and CosmosRequestUnitModel prices it correctly; " +
-                "what is missing is that the residual is below the projection, so it cannot be implemented " +
-                "outside the Cosmos convention and merges back. Pulling it above the projection is the " +
-                "remaining piece.");
+                "The split is offered, sound, and correctly priced in request units; the planner declines " +
+                "it because in-process work is priced far above the ~1.9 RU a point read saves. Flipping it " +
+                "needs a request-unit-to-abstract-unit conversion of about fifteen, which nothing measures, " +
+                "or a reckoning with how the adapter prices leaving the Cosmos convention at all.");
         }
 
         /// <remarks>
@@ -214,8 +216,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var query = Query(Find<CosmosFilter>(Plan(Lookup))!);
 
             query.PointReadId.Should().BeNull(
-                "for the structural reason AResidualIsHeldBackSoThePointReadIsRecovered records, not because " +
-                "an unmeasured container is priced against the read");
+                "for the calibration reason AResidualIsHeldBackSoThePointReadIsRecovered records, not " +
+                "because an unmeasured container is priced against the read");
         }
 
         /// <remarks>
