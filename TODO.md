@@ -956,25 +956,33 @@ untouched. A fact says how a value is *stored*, which is a narrower thing than a
 thing `TODO.md` already asked an operand to carry under *Rewriting a typed comparison into one the
 service can evaluate*.
 
-### Consumers for `PreservesOrder` — *medium, and the largest thing left*
+### Consumers for `PreservesOrder` — *partly built in #106; what is left is below*
 
-Two bits are set per representation and only one is read. `PreservesOrder` says the lexical order of
-the stored strings is the order Calcite compares in, and nothing consults it, so a container
-declaring a fixed-shape ISO-8601 path gets equality and not ordering.
+Two bits are set per representation and, until #106, only one was read. `PreservesOrder` says the
+lexical order of the stored strings is the order Calcite compares in.
 
-What it unlocks, in rough order of value:
+The full account of what #106 built, measured and deliberately left — including the wrong answer it
+turned out to be fixing rather than a feature it was adding — is under *Rewriting a typed comparison
+into one the service can evaluate* in section 4, which is where the argument lives. In this section's
+terms:
 
-- **`ORDER BY` with a `FETCH`** — the difference between reading a page and reading the container,
-  which is the largest number in this whole area. Not the case #100 closed: there the sort key is an
-  ordinary path and what held it back was a *projected* cast keeping the whole projection in process.
-  Here the sort key is itself a *chain* rather than a cast —
-  `PARSE_DATETIME`, `TO_TIMESTAMP`, or the `REPLACE`/`SUBSTRING`/`CAST` a view writes — and the
-  rewrite is to drop an order-preserving chain from the key, leaving the raw path the service will
-  order by. `CosmosSortRule` is the site, and the condition is the statement-wide one rather than the
-  sibling-conjunct one: nothing rechecks a sort.
 - **Range comparisons** against a temporal literal, lowered to string comparisons with the literal
-  rendered into the declared stored shape.
-- **`MIN` and `MAX`**, which are the same argument over an aggregate.
+  rendered into the declared stored shape — **built**. `=`, `<>`, `<`, `<=`, `>` and `>=` over
+  `CAST(<path> AS TIMESTAMP)` and over `JSON_VALUE(…, RETURNING TIMESTAMP)`. A literal finer than the
+  stored shape is refused rather than truncated, truncation not being an equivalence.
+- **`ORDER BY` with a `FETCH`** — the difference between reading a page and reading the container,
+  which is the largest number in this whole area. **Half built, and the half that was missing was
+  not the half this entry expected.** `JSON_VALUE(…, RETURNING TIMESTAMP)` already resolved to a path,
+  so a sort over one was already pushing — *ungated*, as a lexical string sort the plan believed was
+  chronological, which is a wrong answer over any path whose shape is not fixed.
+  `CosmosSort.OrderIsLexical` now gates it. What is still not built is this entry's original case: a
+  sort key that is a *chain* rather than a path — a `CAST`, or `PARSE_DATETIME`, `TO_TIMESTAMP`, or
+  the `REPLACE`/`SUBSTRING`/`CAST` a view writes — where the rewrite is to drop the order-preserving
+  chain and leave the raw path. See *Ordering by a rendered column* below, which turns out to be the
+  same mechanism at a different site and is the cheaper way in.
+- **`MIN` and `MAX`**, which are the same argument over an aggregate — **not built**. The site is
+  `CosmosAggregate` rather than the sort or the rewriter, and the condition is the statement-wide one
+  for the same reason a sort's is: nothing rechecks an aggregate either.
 
 ### Ordering by a rendered column — *small, and it is the other half of #100*
 
@@ -984,6 +992,17 @@ correctly, since the guarded accessor is not the value and a UUID's stored order
 order only where the form says so. Binding it would mean recording that an ordinal addresses a path
 *for ordering only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked
 at a different site.
+
+**#106 found the temporal half of exactly this, which makes the entry worth more than it looks.**
+`ORDER BY CAST(<path> AS TIMESTAMP)` does not push either — measured, a bare scan under a
+`ClrEnumerableSort` — and for the identical structural reason: the key is a computed projection, so
+`fields[index]` is null and it is refused before its form is ever asked about. The range rewrite
+reaches its spelling only because a filter's predicate is rewritten before the split rule reads it,
+and a sort key is not a predicate. So one mechanism closes both: the implementor carrying a binding
+per ordinal that says *this ordinal addresses this path, for ordering only*, recorded by
+`CosmosProject.Implement` the way it already records `SortableExpressions`, so that the rule and the
+implementation decide on the same binding rather than deriving it twice. UUID and instant then differ
+only in which bit is consulted, and both are already set.
 
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 
