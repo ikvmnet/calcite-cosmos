@@ -86,7 +86,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             void State(CosmosClaim claim) => rules.Add(new CosmosFactRule(guard, new CosmosFact(path, claim)));
 
-            if (ReadType(node) is CosmosJsonType type)
+            var declared = ReadType(node);
+
+            if (declared is CosmosJsonType type)
                 State(new CosmosClaim.OfType(type));
 
             if (node.get("const") is JsonNode constant && TryLiteral(constant, out var constantValue))
@@ -95,7 +97,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (ReadEnum(node) is IReadOnlyList<object?> domain)
                 State(new CosmosClaim.OneOf(domain));
 
-            if (CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
+            // A pattern constrains a string and is vacuous for anything else, so one written beside no
+            // declared type says nothing: a document storing the number 30 at that path conforms to it.
+            // Reading it as a stored form anyway would claim the value is a string -- Represents entails
+            // as much -- and the guard that admits a non-string would then be dropped from a comparison
+            // that still has to decide one. The same shape as properties being vacuous for an absent
+            // path, one level over.
+            if (declared == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
 
             // required names the children that are there whenever this object is. The claim is about

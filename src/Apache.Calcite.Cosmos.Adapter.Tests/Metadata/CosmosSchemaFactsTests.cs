@@ -151,6 +151,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// render its literal into.
         /// </summary>
         /// <summary>
+        /// A pattern beside no declared type states nothing, because a pattern constrains a string and
+        /// is vacuous for everything else.
+        /// </summary>
+        /// <remarks>
+        /// The same shape as <c>properties</c> being vacuous for an absent path, one level over: a
+        /// document storing the number 30 conforms to a bare <c>pattern</c>, and a stored form would
+        /// have claimed the value is a string -- which is what deletes the guard admitting non-strings
+        /// from a comparison that still has to decide one.
+        /// </remarks>
+        [TestMethod]
+        public void APatternStatesNothingWithoutADeclaredStringType()
+        {
+            var reference = CosmosDocumentPath.Root.Property("ref");
+            const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
+            Compile("""{ "properties": { "ref": { "pattern": "PATTERN" } } }""".Replace("PATTERN", Uuid))
+                .Derive(null).RepresentationOf(reference).Should().BeNull(
+                    "a document storing a number conforms to it, and would have been claimed a string");
+
+            Compile("""{ "properties": { "ref": { "type": "string", "pattern": "PATTERN" } } }""".Replace("PATTERN", Uuid))
+                .Derive(null).RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalLower,
+                    "and says it once the type is there to make it say anything");
+        }
+
+        /// <summary>
         /// The spellings people actually write, which vary along more axes than the shape does.
         /// </summary>
         /// <remarks>
