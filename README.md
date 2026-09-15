@@ -382,9 +382,29 @@ yields no fact:
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` | equality and ordering |
 | the same with `.[0-9]{3}` or `.[0-9]{6}` before the `Z` | equality and ordering |
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | equality and ordering |
+| `^[0-9]{5}$` — a fixed width | equality **and** ordering |
+| `^(0\|[1-9][0-9]*)$` — no leading zero | equality |
+| `^[0-9]+$` — any run of digits | nothing: `42` and `042` are both admitted |
 | anything else | nothing |
 
 `\d` and `[0-9]` are the same thing here, and whitespace is ignored; everything else must match.
+
+**A number stored as a string is worth declaring, and the padding decides how much.** Cosmos has
+numbers, so this is about the path that holds `"00042"` rather than `42` — a code, an account number,
+a padded sequence. `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 42` has no Cosmos form and reads the
+container whole; with a pattern it becomes a comparison the service can make, and the literal goes out
+in the container's own spelling:
+
+```
+with ^[0-9]{5}$              c.n = '00042', and c.n > '00100' for a range — both equality and ordering
+with ^(0|[1-9][0-9]*)$       c.n = '42' — equality only, because '9' sorts after '42'
+with ^[0-9]+$                nothing, because '42' and '042' would both be forty-two
+```
+
+The last line is the one to watch. Writing `^[0-9]+$` is the natural way to say "digits", and it gives
+one value two spellings — so the adapter reads it as saying nothing rather than pushing a comparison
+that would miss half your documents. Say `^[0-9]{5}$` if the values are padded, or
+`^(0|[1-9][0-9]*)$` if they are not.
 
 **Why a UUID pattern does not always give you ordering**, which is the surprising row above. SQL
 compares two UUIDs as two *signed* 64-bit halves, so the order of the canonical strings is not the

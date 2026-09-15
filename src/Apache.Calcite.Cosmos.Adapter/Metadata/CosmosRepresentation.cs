@@ -35,6 +35,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// pushed beneath a sort. Implies <see cref="PreservesEquality"/> is worth nothing on its own —
     /// the two are set independently.
     /// </param>
-    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder);
+    /// <param name="Width">
+    /// The number of characters every stored spelling occupies, where the form fixes one, and
+    /// <c>null</c> where it does not. Only a form that pins the width can say what a value looks like
+    /// stored — <c>42</c> is <c>00042</c> at width five — so a rewrite rendering a literal into the
+    /// stored shape has to read it, and a form without one renders the value as it stands.
+    /// </param>
+    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder, int? Width = null);
 
 }

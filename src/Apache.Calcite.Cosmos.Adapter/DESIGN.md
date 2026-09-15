@@ -328,6 +328,66 @@ the notion it needs is that an expression is **form-preserving for a relation**:
 representation, comparing the expression's results agrees with comparing the raw stored strings. A
 cast to `UUID` is the degenerate one-link chain.
 
+#### A number spelled as a string, and what the spelling has to promise
+
+Cosmos has numbers, so a path holding one needs nothing here. What needs it is the very common path
+holding a **string** that spells one — an account number, a product code, a zero-padded sequence —
+which a caller reaches through `CAST(… AS INTEGER)` and which was read whole, the cast having no
+Cosmos form.
+
+**What the cast accepts is the whole problem, and it is measured.** Calcite reads every one of these
+as forty-two:
+
+| stored | `CAST(… AS INTEGER)` |
+|---|---|
+| `'42'` | 42 |
+| `'042'`, `'0042'` | 42 |
+| `'+42'` | 42 |
+| `' 42'`, `'42 '` | 42 |
+| `'-0'` | 0 |
+
+and for `DECIMAL` also `'1.50'` = `'1.5'` = `'01.5'` = `'+1.5'`, and `'1e2'` = 100. The consequence is
+one line:
+
+```
+CAST('042' AS DECIMAL) = CAST('42' AS DECIMAL)   is true,   while   '042' = '42'   is false
+```
+
+So a form admitting two spellings of one value cannot have its equality lowered to a string equality:
+the comparison would miss every document written the other way.
+
+**Two families are injective, and only one of them is ordered.**
+
+| declared `pattern` | what it proves |
+|---|---|
+| `^(0\|[1-9][0-9]*)$`, `^[1-9][0-9]*$` | equality |
+| `^[0-9]{n}$` | equality **and** ordering |
+| `^[0-9]+$`, `^\d+$`, anything signed | nothing |
+
+Forbidding the leading zero gives one spelling per value, which is all equality asks. Ordering asks
+that the lexical order of the stored strings be the numeric order, and a lexical comparison decides on
+the first differing character — which compares digits at equal significance only when the strings are
+the same length. Unpadded, `'9'` sorts after `'42'`. Padded to a fixed width, it does not, and the
+service's ordinal string comparison is what makes that the numeric order (measured under *A container
+settles the null placement*).
+
+**`^[0-9]+$` is the trap and is read as saying nothing.** It looks like the obvious way to write "a
+number" and it admits `42` and `042` alike. The sign is refused by the same test rather than a
+separate one: `'-0'` casts to zero, so a signed form gives zero two spellings before ordering is even
+asked about.
+
+**The width is carried on the form because rendering needs it.** A literal is written into the
+container's own spelling — `42` is `'00042'` at width five — and a value that has no spelling there is
+declined rather than approximated: six digits beside five-character strings would compare by length
+rather than by value, and a negative has no spelling in an unsigned form at all.
+
+**What the equality still carries, and why.** The pushed comparison keeps a second disjunct reading
+the path as a stored *number*, because a stored `42` and a stored `"00042"` both satisfy the cast in
+Calcite and pushing one alone would drop rows. That disjunction is a superset, so the lowered equality
+is rechecked above — the cast itself is gone from the plan either way. A declared `type: string`
+ought to delete the numeric disjunct and does not yet; `TODO.md` records it beside the same gap the
+parameter work found.
+
 #### Atoms, clauses, and why asking is linear
 
 One atom kind, `(path, claim)`. A claim a query can establish — a discriminator holding a value — and a

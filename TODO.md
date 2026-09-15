@@ -1041,6 +1041,19 @@ rather than consulting the fact set, so a value that is not there fails it whate
 says. Measured on the parameter work for #103; `ADeclaredTypeRecoversTheExactComparison` was written,
 failed, and removed rather than enshrined.
 
+### The numeric forms stop at whole numbers — *small, and deliberate*
+
+A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical
+order is numeric order, by the same argument the padded integer uses, so it belongs beside them. It
+is not built because it needs a second dimension on the form (a scale as well as a width) and its own
+rendering, and nothing has asked yet. The approximate types are a different matter and are refused on
+purpose: a stored spelling maps to one `DOUBLE`, but a `DOUBLE` maps back to many, so a literal could
+not be written into the container's shape without changing which documents match.
+
+Also open beside it: a declared `type: string` ought to delete the stored-number disjunct the lowered
+equality still carries, and does not — the same shape as the entry above, the exactness test reading
+the literal rather than the fact set.
+
 ### Facts about array elements — *small, and waiting for a consumer*
 
 `CosmosDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
