@@ -396,6 +396,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A set of ids over a declared path reaches the service, and reaches the batch read. #99.
+        /// </summary>
+        /// <remarks>
+        /// An <c>IN</c> arrives folded into a <c>SEARCH</c> over a <c>Sarg</c>, which is one node
+        /// rather than the equalities it stands for — so the lowering that an <c>=</c> gets was
+        /// passing it by, and the membership fell to a client-side recheck over a scan. Expanded it is
+        /// a disjunction of equalities, each lowered the way a lone one is.
+        /// </remarks>
+        [TestMethod]
+        public void ASetOfIdsOverADeclaredPathReachesTheService()
+        {
+            const string Ids = """
+            { "type": "object",
+              "properties": { "id": { "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }
+            """;
+
+            var container = new CosmosContainerMetadata("items", new[] { "/k" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Ids)));
+
+            const string Other = "123e4567-e89b-12d3-a456-426614174001";
+
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.k') = 'p' AND CAST(JSON_VALUE(c."DOC", '$.id') AS UUID) IN (UUID'{Canonical}', UUID'{Other}')""",
+                container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.id = @", "each point of the set lowers the way a lone equality does");
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical);
+            query.Parameters.Should().Contain(p => (p.Value as string) == Other);
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                "and the membership is not left to a client-side recheck: " + PlanText(best));
+
+            query.PointReadIds.Should().BeEquivalentTo(new[] { Canonical, Other },
+                "which is what makes the batch read reachable through a typed column at all");
+        }
+
+        /// <summary>
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>
