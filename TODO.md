@@ -1122,15 +1122,33 @@ something to resolve by routing.
 three conclusions a declared value supports are now read; what none of them has is a number from a
 container with more than one physical partition.
 
-### A declared type does not yet make a parameterised comparison exact — *small, and measured*
+### A declared type makes a parameterised comparison exact — *built, and it took the sibling with it*
 
-`WHERE <path> = ?` is weakened to a definedness test even where the container declares the path a
-string, and it should not be: the weakening exists because the accessor renders every JSON scalar as
-text, and a declared `type: string` says there is no other type to render into that text — which is
-exactly the argument that deletes the guard for a literal. The exactness test reads the literal
-rather than consulting the fact set, so a value that is not there fails it whatever the container
-says. Measured on the parameter work for #103; `ADeclaredTypeRecoversTheExactComparison` was written,
-failed, and removed rather than enshrined.
+`WHERE <path> = ?` was weakened to a definedness test even where the container declared the path a
+string. The weakening exists because the accessor renders every JSON scalar as text, so an equality
+against text is exact only where the text is one no number and no boolean renders as — a fact about
+the *value*, and a parameter has none. A declared `type: string` settles it from the other side: if
+the path holds a string and nothing else, the rendering *is* the stored value and the comparand need
+not be inspected at all. The equality branch of `WriteComparand` now makes the move the ordering
+branch beside it has made since #93.
+
+**The sibling in the entry below went with it.** A literal `= '30'` against an undeclared path pushes
+as `(c.t = '30') OR (c.t = 30)`, the alternative covering a stored number the accessor renders as
+`'30'`. Where the container says the path holds a string there is no such document, and the same
+check deletes the alternative.
+
+**And it is worth recording what it cost to get right, because the first attempt was unsound.**
+`IsDeclaredString` reads the translator's fact set, which is the declaration *closed under what the
+query's own conjuncts proved* — and `CosmosFact.Entails` reads `EqualTo v` as `OfType` of `v`'s type.
+So over `JSON_VALUE(…, '$.label') = '30'` the extractor records `EqualTo "30"`, that entails
+`OfType String`, and the comparison certifies **itself** exact: precisely the conflation the guard
+exists to prevent. Four tests in `CosmosPlannerTests` caught it.
+
+The fix asks `Derive(null)` instead. Note this is not an argument against the derived set generally —
+the ordering branch is right to use it, because there the fact comes from a *sibling* conjunct which
+reaches the service too, so the rows the ordering sees are rows the equality already confined to a
+string. The circularity is only where the fact comes from the conjunct being translated, which cannot
+confine anything it is itself the test of.
 
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 

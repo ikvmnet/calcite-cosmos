@@ -1280,6 +1280,89 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             query.PointReadId.Should().BeNull();
         }
 
+
+        const string Parameterised = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t') = ?""";
+
+        /// <summary>
+        /// A declared type makes a parameterised comparison exact, where the value cannot.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The accessor renders every JSON scalar as text, so an equality against text is exact only
+        /// where the text is one no number and no boolean renders as — a fact about the <em>value</em>,
+        /// and a parameter has none to inspect. That is why one is weakened to a definedness test and
+        /// rechecked above, which <c>CosmosParameterPlanningTests</c> pins for an undeclared path.
+        /// </para>
+        /// <para>
+        /// A declared <c>type: string</c> settles it from the other side: if the path holds a string
+        /// and nothing else, the rendering <em>is</em> the stored value and there is no second type for
+        /// the two to disagree over — so the comparand need not be inspected at all. The same move the
+        /// ordering branch has made since #93, which is why <c>IsDeclaredString</c> was already there
+        /// to call.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredTypeMakesAParameterisedComparisonExact()
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": "string" } } }""");
+            var best = PlanToCosmos(Parameterised, container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().Contain("c.t = @",
+                "the equality itself reaches the service, not the definedness it implies");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                "so nothing is left above to recheck it: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// The same declaration deletes the stored-number alternative a literal comparison carries.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The sibling this section records beside the entry above, and it turns out to be the same
+        /// fix. Against an undeclared path, <c>= '30'</c> pushes as
+        /// <c>(c.t = '30') OR (c.t = 30)</c> — the alternative covering a stored number, which the
+        /// accessor renders as <c>'30'</c> and Calcite therefore matches. Where the container says the
+        /// path holds a string there is no such document, and the alternative is dead weight on every
+        /// row the service reads.
+        /// </para>
+        /// <para>
+        /// <c>CosmosPlannerTests</c> pins the undeclared shape, so this is only the other side.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredTypeDeletesTheStoredNumberAlternative()
+        {
+            const string Sql = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t') = '30'""";
+
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": "string" } } }""");
+            var sql = Query(FindCosmos(PlanToCosmos(Sql, container, out _)), container).Sql;
+
+            sql.Should().Contain("c.t = @", "the equality reaches the service");
+            sql.Should().NotContain(" OR ", "and no alternative is carried for a number the path cannot hold: " + sql);
+        }
+
+        /// <summary>
+        /// Without the declaration the same comparison is weakened, exactly as it was.
+        /// </summary>
+        /// <remarks>
+        /// The direction that has to hold: nothing rules out a stored number at the path, which the
+        /// accessor renders as digits, so the equality might select a document the service would not.
+        /// Weakening is sound and the rows are right either way — it is the plan that is worse.
+        /// </remarks>
+        [TestMethod]
+        public void WithoutADeclaredTypeTheParameterIsStillWeakened()
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos(Parameterised, container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().Contain("IS_DEFINED(c.t)",
+                "the restriction the comparison implies still reaches the service");
+
+            PlanText(best).Should().Contain("ClrEnumerableFilter",
+                "and the equality itself is rechecked above: " + PlanText(best));
+        }
+
     }
 
 }
