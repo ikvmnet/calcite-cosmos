@@ -76,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), convention.Container, OrderingPaths(convention, candidates), out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(candidates), convention.Container, OrderingPaths(convention, candidates), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -87,43 +87,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Asked of the plan rather than of a binding, because the expression itself has not been
-        /// rendered yet — this decides whether the sort <em>can</em> be pushed, and implementation
-        /// renders it from what the projection recorded. Both answer the same question about the same
-        /// ordinal, which is the property that matters.
+        /// <b>No walk of its own.</b> This used to find the projection beneath the sort by walking to
+        /// it, unwrapping a <c>RelSubset</c> on the way and reading the operator name off whichever
+        /// member came back. That is a question about which expression sits at an ordinal, and two
+        /// walks can answer it differently: the members of a subset are equivalent, which licenses
+        /// deriving a <em>binding</em> from any one of them and says nothing about which expressions
+        /// one representative happens to carry. A rule that read one member while implementation read
+        /// another would fire on a key implementation then refused.
         /// </para>
         /// <para>
-        /// Only a geodesic distance qualifies, and only immediately beneath the sort. A filter between
-        /// the two does not change a row's shape, so the ordinals still line up and it is walked
-        /// through; anything else is not, because an ordinal that means something different is worse
-        /// than one that means nothing.
+        /// So it is derived on the one walk <see cref="CosmosImplementor.TryBindOutput"/> makes,
+        /// beside the binding and the ordering candidate, and this is only the projection of that
+        /// answer onto the shape <see cref="CosmosSort.TryResolveSortKeys"/> takes.
         /// </para>
         /// </remarks>
-        static IReadOnlyList<bool> SortableFields(RelNode? input, int width)
+        /// <param name="ordering">What the binding derived per ordinal.</param>
+        /// <returns>Whether each ordinal holds such an expression.</returns>
+        static IReadOnlyList<bool> SortableFields(IReadOnlyList<CosmosOrdering> ordering)
         {
-            var sortable = new bool[width];
+            var sortable = new bool[ordering.Count];
 
-            while (true)
-            {
-                if (input is org.apache.calcite.plan.volcano.RelSubset subset)
-                    input = subset.getOriginal() ?? subset.getBest();
-
-                if (input is Filter filter)
-                {
-                    input = filter.getInput();
-                    continue;
-                }
-
-                break;
-            }
-
-            if (input is not Project project)
-                return sortable;
-
-            var projects = project.getProjects();
-            for (var i = 0; i < projects.size() && i < width; i++)
-                sortable[i] = (RexNode)projects.get(i) is RexCall call
-                    && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
+            for (var i = 0; i < ordering.Count; i++)
+                sortable[i] = ordering[i].Expression;
 
             return sortable;
         }
@@ -151,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="convention">The convention, carrying the container.</param>
         /// <param name="candidates">The candidates the binding derived.</param>
         /// <returns>The path per ordinal, or <c>null</c> where the container licenses none.</returns>
-        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, IReadOnlyList<Sql.CosmosPath?> candidates)
+        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, IReadOnlyList<CosmosOrdering> candidates)
         {
             var ordering = new Sql.CosmosPath?[candidates.Count];
 
@@ -163,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var facts = container.Facts.Derive(null);
 
             for (var i = 0; i < candidates.Count; i++)
-                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i]) ? candidates[i] : null;
+                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i].Path) ? candidates[i].Path : null;
 
             return ordering;
         }
