@@ -281,7 +281,20 @@ that is what keeps some comparisons in process. Cosmos stores a UUID as a *strin
 type; and without knowing how the string is written, the adapter cannot turn one comparison into the
 other. The same is true of an instant, which Cosmos stores as text.
 
-You can tell it, by giving a listed container a **JSON Schema**:
+You can tell it, by giving a listed container a **JSON Schema**. The `containers` operand has always
+named the containers to expose as tables; an entry may now be an object carrying that name and a
+schema beside it, instead of the name on its own:
+
+```json
+"containers": [
+  "orders",
+  { "name": "shipments", "schema": { } }
+]
+```
+
+Both entries name a container to expose, and there are two containers there: `orders`, only listed,
+and `shipments`, listed and described. The rest of this section describes one container and shows only
+that one. In full, in place:
 
 ```json
 {
@@ -292,7 +305,6 @@ You can tell it, by giving a listed container a **JSON Schema**:
     "endpoint": "https://account.documents.azure.com:443/",
     "database": "inventory",
     "containers": [
-      "orders",
       {
         "name": "shipments",
         "schema": {
@@ -312,8 +324,15 @@ You can tell it, by giving a listed container a **JSON Schema**:
 }
 ```
 
-Names and described containers mix freely in one list. A container you only name declares nothing,
-which is what every container does today and costs nothing.
+Two different `name` keys are in play there and they are unrelated: the outer one is the Calcite
+schema's name, which is what a query qualifies a table with, and the inner one is the Cosmos
+container's. A container you only name declares nothing, which is what every container does today and
+costs nothing.
+
+One thing to know before you add the first schema: **naming any container turns off discovery.**
+`containers` has always been all-or-nothing, so the model above exposes `shipments` and nothing else.
+A model that relied on the database listing its own containers has to enumerate every container it
+wants exposed once it describes one of them — which is why the two forms mix in one list.
 
 **What it buys.** With the schema above, a comparison against a UUID reaches the service — and
 because the value is now pinned, the query runs against one partition instead of every one:
