@@ -85,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// projection or a traversal as easily as above the scan — the split is the same argument
         /// either way, and <see cref="Split"/> already binds through them.
         /// </remarks>
-        static CosmosTable? FindTable(RelNode? node)
+        internal static CosmosTable? FindTable(RelNode? node)
         {
             if (node is org.apache.calcite.plan.volcano.RelSubset subset)
                 node = subset.getOriginal() ?? subset.getBest();

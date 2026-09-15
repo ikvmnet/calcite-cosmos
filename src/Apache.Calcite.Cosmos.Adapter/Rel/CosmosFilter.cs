@@ -42,6 +42,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <inheritdoc />
         /// <remarks>
         /// <para>
+        /// A predicate pinning a complete partition key and an <c>id</c> addresses one document, and
+        /// saying so is the difference between the planner comparing mechanisms and comparing invented
+        /// row counts. Calcite's default is a fixed selectivity per conjunct, which for a by-id lookup
+        /// over a container of any size produces a number unrelated to the single document there is:
+        /// the nodes around the lookup — a converter, a filter finishing above it — are then costed on
+        /// that number, and their difference swamps the difference between a read and a query.
+        /// </para>
+        /// <para>
+        /// It is <em>at most</em> one, and the estimate is one rather than a fraction because a row
+        /// count of zero prices a plan at nothing and makes everything containing it look free.
+        /// </para>
+        /// </remarks>
+        public override double estimateRowCount(RelMetadataQuery mq)
+        {
+            if (getConvention() is CosmosConvention convention &&
+                CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) &&
+                CosmosPartitionKeyExtractor.PinsAtMostOneDocument(getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias))
+                return 1d;
+
+            return base.estimateRowCount(mq);
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// <para>
         /// Two properties of the predicate dominate what a Cosmos query costs, and neither is
         /// visible in the shape of the plan:
         /// </para>
@@ -91,7 +116,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (ReferencesUndeclaredFullTextPath(getCondition(), fields, container))
                 multiplier *= UnindexedPathPenalty;
 
-            return cost.multiplyBy(multiplier);
+            // What the route costs, added rather than multiplied. A multiplier scales with the rows and
+            // the difference between a read and a query does not: it is a per-statement constant of
+            // about two request units, which against the single row a by-id lookup returns a multiplier
+            // rounds away entirely. This is the axis CosmosPointReadSplitRule offers a choice on.
+            return cost.multiplyBy(multiplier)
+                .plus(planner.getCostFactory().makeCost(RequestUnits(container, mq), 0d, 0d));
+        }
+
+        /// <summary>
+        /// Returns what this filter's route is estimated to cost in request units.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A predicate that says nothing beyond a complete <c>id</c> and partition key is answered by a
+        /// point read rather than by the query engine, and the two are not priced alike:
+        /// <see cref="CosmosRequestUnitModel"/> carries the measured coefficients, and the short version
+        /// is that a read skips the query floor but pays for the document body at about six times a
+        /// query's rate. So the read wins on a container of records and loses on one of large bodies,
+        /// and which container this is decides it rather than a rule asserting that one shape is better.
+        /// </para>
+        /// <para>
+        /// <b>Added to the cost rather than multiplied into it, which is a commitment worth naming.</b>
+        /// Calcite costs in abstract units and Cosmos charges in request units, and adding one to the
+        /// other says a request unit is worth about as much as moving a row in process. That conversion
+        /// is a judgement and nobody has measured it. It is made because the alternative is worse: the
+        /// difference between a read and a query is a per-statement constant, so multiplied into the
+        /// one-row cost of a by-id lookup it rounds the whole distinction away — and the planner's bar is
+        /// ordering rather than accuracy. This orders the routes the way the measured charges do, which
+        /// a multiplier demonstrably does not.
+        /// </para>
+        /// <para>
+        /// The fan-out is left to <see cref="PartitionDiscount"/>, which already prices it, so the model
+        /// is asked about one partition here and the two do not double-count.
+        /// </para>
+        /// <para>
+        /// Where the service was never asked for statistics the size is zero, which prices a read at its
+        /// floor and makes it look best. That is the right way round: a container nobody has measured is
+        /// far likelier to hold records than blobs, and being wrong costs the query floor while being
+        /// right saves without bound.
+        /// </para>
+        /// </remarks>
+        double RequestUnits(CosmosContainerMetadata container, RelMetadataQuery mq)
+        {
+            var size = CosmosRequestUnitModel.AverageDocumentSizeInBytes(container);
+
+            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) &&
+                CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, out _, out _))
+                return CosmosRequestUnitModel.PointRead(size);
+
+            return CosmosRequestUnitModel.Query(mq.getRowCount(this).doubleValue(), size);
         }
 
         /// <summary>
