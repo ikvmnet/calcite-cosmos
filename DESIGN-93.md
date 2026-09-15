@@ -83,10 +83,24 @@ actually stores raises:
 | `2024-01-02T03:04:05+00:00` | raises |
 | `2024-01-02T03:04:05Z` as `TIMESTAMP WITH LOCAL TIME ZONE` | raises — *not in format `yyyy-MM-dd HH:mm:ss zone`* |
 
-So for a date path there is no bare cast to recognise. What a view writes is a *reshaping chain* —
-`CAST(REPLACE(SUBSTRING(p, 1, 19), 'T', ' ') AS TIMESTAMP)` or some cousin of it — which is exactly the
-"manual `REPLACE`/`SUBSTRING`/`CAST` reshaping" the issue mentions in passing. The rewrite therefore
-operates on a *chain*, not a cast, and the general notion the model needs is:
+So for a date path there is no bare *cast* to recognise — but there is plenty else, and an earlier
+draft of this section overstated it as "Calcite cannot turn an ISO-8601 `Z` string into a `TIMESTAMP`
+at all". It can, three ways, measured with the function libraries enabled:
+
+| | |
+| --- | --- |
+| `PARSE_TIMESTAMP('%Y-%m-%d''T''%H:%M:%S''Z''', …)` | `TIMESTAMP WITH LOCAL TIME ZONE` |
+| `PARSE_DATETIME(` same format `, …)` | `TIMESTAMP` |
+| `TO_TIMESTAMP('…Z', 'YYYY-MM-DD''T''HH24:MI:SS''Z''')` | `TIMESTAMP` |
+| `CAST(REPLACE(SUBSTRING(p, 1, 19), 'T', ' ') AS TIMESTAMP)` | `TIMESTAMP`, and it compares |
+
+The functions were never the obstacle; the literal `T` and `Z` are. They need Java-style quoting,
+doubled for SQL, and without it every one of them raises *Illegal pattern character 'T'* — which is
+what made the first reading look like a wall. So a typed temporal expression over a stored ISO string
+is something a view can write and a caller does write, and `PreservesOrder` has a consumer.
+
+What all four have in common is that the rewrite operates on a *chain* rather than on a cast, and the
+general notion the model needs is:
 
 > an expression over a path is **form-preserving for a relation** when, under the path's representation
 > fact, comparing the expression's results agrees with comparing the raw stored strings.

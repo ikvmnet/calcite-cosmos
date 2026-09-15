@@ -274,6 +274,118 @@ document path"*. So a page ordered by such a column reads every matching documen
 itself and it reads a page — subject to the null placement above, which `id`, `_ts` and `_etag` are
 exempt from, being non-nullable.
 
+### Describing what a container holds
+
+A Cosmos container has no row schema, so the adapter cannot know what a document path holds — and
+that is what keeps some comparisons in process. Cosmos stores a UUID as a *string*; SQL has a `UUID`
+type; and without knowing how the string is written, the adapter cannot turn one comparison into the
+other. The same is true of an instant, which Cosmos stores as text.
+
+You can tell it, by giving a listed container a **JSON Schema**:
+
+```json
+{
+  "name": "COSMOS",
+  "type": "custom",
+  "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
+  "operand": {
+    "endpoint": "https://account.documents.azure.com:443/",
+    "database": "inventory",
+    "containers": [
+      "orders",
+      {
+        "name": "shipments",
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "carrier": { "type": "string" },
+            "trackingId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+Names and described containers mix freely in one list. A container you only name declares nothing,
+which is what every container does today and costs nothing.
+
+**What it buys.** With the schema above, a comparison against a UUID reaches the service — and
+because the value is now pinned, the query runs against one partition instead of every one:
+
+```
+WHERE CAST(JSON_VALUE(c."DOC", '$.trackingId') AS UUID) = UUID'123e4567-e89b-12d3-a456-426614174000'
+
+without a schema   the container is read whole and the comparison is made in process
+with one          WHERE c.trackingId = @p0, routed to the partition holding it
+```
+
+A declared `type` earns its keep on its own. A comparison over a document path is normally pushed
+*weakened* — `IS_DEFINED(c.carrier) AND (NOT IS_STRING(c.carrier) OR c.carrier >= @p0)` — and
+rechecked in process, because the service orders values across JSON types where SQL orders their
+renderings. Where the schema says the path holds a string there is no second type to disagree over,
+so the comparison is pushed exactly, nothing is rechecked, and a `FETCH` can be pushed with it.
+
+**The pattern is what does the work, not `format`.** JSON Schema calls `format` an annotation rather
+than an assertion, and RFC 9562 dropped the lowercase-output rule, so `"format": "uuid"` does not say
+how the value is written. A `pattern` does, and the adapter recognises a fixed set of spellings
+rather than interpreting arbitrary regular expressions — a pattern it does not recognise simply
+yields no fact:
+
+| declared `pattern` | what it proves |
+|---|---|
+| `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` | equality, `IN`, `DISTINCT`, routing, point reads |
+| the same with the variant nibble `[89ab]` or a version digit pinned | the same |
+| `^[0-7][0-9a-f]{7}-…-[89ab][0-9a-f]{3}-…$` — first digit confined | the above **and** ordering |
+| `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` | equality and ordering |
+| the same with `.[0-9]{3}` or `.[0-9]{6}` before the `Z` | equality and ordering |
+| `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | equality and ordering |
+| anything else | nothing |
+
+`\d` and `[0-9]` are the same thing here, and whitespace is ignored; everything else must match.
+
+**Why a UUID pattern does not always give you ordering**, which is the surprising row above. SQL
+compares two UUIDs as two *signed* 64-bit halves, so the order of the canonical strings is not the
+order of the values — `UUID'80000000-…' > UUID'00000000-…'` is **false**. The two agree only where
+the top bit of each half is constant across your values: the 1st and 17th hex digits confined to one
+side of `8`. RFC 4122 pins the 17th for you; the first digit is version-dependent, and UUIDv7 keeps
+it under `8` for any timestamp you will store. So a v7 pattern is sortable and a v4 pattern is not,
+and the adapter will not push a sort it cannot vouch for.
+
+**A container that holds more than one kind of document** describes them with `oneOf` and a
+discriminating `const`, or with `if`/`then`/`else`:
+
+```json
+{
+  "oneOf": [
+    { "properties": { "kind": { "const": "order" } } },
+    { "properties": { "kind": { "const": "shipment" },
+                      "trackingId": { "type": "string", "pattern": "^[0-9a-f]{8}-…$" } } }
+  ]
+}
+```
+
+A fact declared inside a branch is used **only when the query has proven the branch applies** —
+`WHERE JSON_VALUE(c."DOC", '$.kind') = 'shipment' AND …` — because an order may not carry
+`trackingId` at all. Without that conjunct the adapter uses only what it can prove unconditionally,
+which is the safe answer rather than a missing feature.
+
+**A schema is a promise, and the adapter believes it.** This is the one thing in the model file that
+can change which rows a query returns. Everything else the adapter knows about a container comes from
+the container's own definition or is guaranteed by the service; a schema does not, and it is trusted
+the way the partition key is trusted. A document that contradicts it is a data-integrity problem, not
+something checked per row — so a schema that is wrong by one character drops rows, with no error and
+a plan that looks correct. Describe what you actually store.
+
+Being *incomplete* is free, though: keywords the adapter does not understand are ignored rather than
+refused, an unrecognised pattern yields no fact, and a schema it cannot read at all leaves the
+container working exactly as it did. The only cost of under-describing is a pushdown you do not get.
+
 ## What gets pushed down
 
 | | |
@@ -285,6 +397,7 @@ exempt from, being non-nullable.
 | Array traversal | `JOIN alias IN path` |
 | Scalar functions | string, numeric and trigonometric functions where SQL and Cosmos agree on meaning |
 | Partition key | recovered from the predicate, so execution stays on one physical partition |
+| Declared facts | a container's JSON Schema, where one is given — see *Describing what a container holds* |
 | Row limits | a `FETCH` becomes the page size, so a bounded query stops paying for a full page |
 
 Relational joins, `UNION`/`INTERSECT`/`EXCEPT` and `HAVING` have no Cosmos equivalent and run
