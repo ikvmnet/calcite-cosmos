@@ -100,8 +100,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 expanded = condition;
             }
 
+            // What holds of every document in the container, whatever this query proved. A
+            // conjunct is redundant only against that, never against a fact the query's own
+            // conjuncts unlocked -- see IsAlwaysTrue.
+            var outright = container.Facts.Derive(null);
+
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
-            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder);
+            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder, fields, outright);
 
             return rewritten ?? condition;
         }
@@ -126,10 +131,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// batch point read becomes reachable through a typed column.
         /// </para>
         /// </remarks>
-        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright)
         {
             if (node is not RexCall call)
                 return null;
+
+            // A comparison the container already guarantees decides nothing, so the equivalent
+            // predicate is the one without it. RexUtil drops a TRUE from a conjunction and collapses a
+            // disjunction carrying one, so answering the constant here is the whole of it.
+            if (IsAlwaysTrue(call, fields, rootAlias, outright))
+                return rexBuilder.makeLiteral(true);
 
             // By name rather than by ordinal: a kind's position among SqlKind's 355 values is
             // not an API, and a cast from the ordinal keeps compiling when one is inserted.
@@ -143,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 for (var i = 0; i < call.getOperands().size(); i++)
                 {
                     var operand = (RexNode)call.getOperands().get(i);
-                    var rewritten = Apply(operand, translator, known, rootAlias, rexBuilder);
+                    var rewritten = Apply(operand, translator, known, rootAlias, rexBuilder, fields, outright);
 
                     operands.add(rewritten ?? operand);
                     changed |= rewritten is not null;
@@ -185,6 +196,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(left, right, comparison, translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
+        }
+
+        /// <summary>
+        /// Determines whether a comparison is one every document in the container satisfies, so that
+        /// asking it decides nothing.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two claims, and the second is what makes it an equivalence rather than a weakening.</b>
+        /// A declared value says what a path holds <em>if it holds anything</em> — the same reading
+        /// <see cref="CosmosFact.Entails"/> is careful about, where nothing entails
+        /// <see cref="CosmosClaim.Present"/>. So a container declaring <c>kind</c> is <c>"A"</c> and
+        /// nothing more still admits a document with no <c>kind</c> at all, over which
+        /// <c>kind = 'A'</c> is unknown and the row is dropped. Removing the conjunct would keep that
+        /// row. Only a path declared <em>present</em> as well has no such document, and only then is
+        /// the comparison true of everything.
+        /// </para>
+        /// <para>
+        /// <b>Outright, never under a guard.</b> A guarded fact holds of the rows a sibling conjunct
+        /// keeps, which is enough to <em>rewrite</em> a comparison and not enough to delete one: the
+        /// conjunct being deleted may be the very one that proved the guard, and the predicate left
+        /// behind would then prove less than it did. Asking only what
+        /// <c>Derive(null)</c> knows sidesteps the question rather than reasoning about it.
+        /// </para>
+        /// <para>
+        /// <b>Exactly an equality, and nothing looser.</b> The shape is read here rather than through
+        /// <see cref="CosmosFactExtractor"/>, which is deliberately incomplete — it reports what a
+        /// predicate <em>proves</em>, and under-reporting is harmless when proving a guard and fatal
+        /// when deleting a conjunct, since the part it did not report still constrains.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The conjunct.</param>
+        /// <param name="fields">The ordinal-to-path binding.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="outright">What holds of every document, whatever the query proved.</param>
+        /// <returns><c>true</c> where every document satisfies it.</returns>
+        static bool IsAlwaysTrue(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, CosmosFactSet outright)
+        {
+            if (call.getKind().name() != nameof(SqlKind.__Enum.EQUALS) || call.getOperands().size() != 2)
+                return false;
+
+            if (CosmosFactExtractor.TryComparison(call, fields, rootAlias, out var path, out var value) == false || path is null)
+                return false;
+
+            return outright.Knows(new CosmosFact(path, new CosmosClaim.Present()))
+                && outright.Knows(new CosmosFact(path, new CosmosClaim.EqualTo(value)));
         }
 
         /// <summary>
