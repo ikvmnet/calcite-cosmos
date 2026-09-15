@@ -108,6 +108,36 @@ namespace Apache.Calcite.Cosmos.Adapter
     }
 
     /// <summary>
+    /// How one output ordinal may take part in an <c>ORDER BY</c>, where it binds to no path of its
+    /// own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both members answer a question about <em>which expression sits at this ordinal</em>, which is
+    /// the part that depends on which tree is looked at. Deriving them on the one walk
+    /// <see cref="CosmosImplementor.TryBindOutput"/> makes is what keeps a rule and the implementation
+    /// from answering differently — a rule that read one member of a <c>RelSubset</c> while
+    /// implementation read another would fire on a key implementation then refused, after the planner
+    /// had committed to the plan.
+    /// </para>
+    /// <para>
+    /// Neither says whether the container <em>licenses</em> anything. That is a pure lookup over the
+    /// path and the declared facts, which cannot disagree with itself, and each site makes it for
+    /// itself — see <see cref="Rel.CosmosProject.IsOrderable"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="Path">
+    /// The path a sort may order by, where the ordinal projects a conversion over one; otherwise
+    /// <c>null</c>. Structural only — see <see cref="Rel.CosmosProject.OrderingCandidateOf"/>.
+    /// </param>
+    /// <param name="Expression">
+    /// Whether the ordinal holds an expression the service will order by, written out a second time
+    /// rather than referred to. Only a geodesic distance qualifies — see
+    /// <see cref="CosmosImplementor.SortableExpressions"/> for what was measured and refused.
+    /// </param>
+    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression);
+
+    /// <summary>
     /// Accumulates the state contributed by a tree of <see cref="CosmosRel"/> nodes and renders
     /// the resulting Cosmos SQL statement.
     /// </summary>
@@ -395,11 +425,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="Rel.CosmosProject.IsOrderable"/> for the half left to the caller.
         /// </param>
         /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
-        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosPath?> ordering, out CosmosClauses written)
+        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
-            ordering = Array.Empty<CosmosPath?>();
+            ordering = Array.Empty<CosmosOrdering>();
             written = CosmosClauses.None;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
@@ -416,7 +446,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable:
                     fields = BindFields(scan.getRowType());
                     readings = BindReadings(scan.getRowType());
-                    ordering = new CosmosPath?[fields.Count];
+                    ordering = new CosmosOrdering[fields.Count];
                     return true;
 
                 // Neither changes the shape of a row, so neither changes what addresses it. A sort
@@ -466,7 +496,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     fields = paths;
                     readings = reads;
-                    ordering = new CosmosPath?[paths.Length];
+                    ordering = new CosmosOrdering[paths.Length];
                     return true;
                 }
 
@@ -481,17 +511,19 @@ namespace Apache.Calcite.Cosmos.Adapter
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
-                    var candidates = new CosmosPath?[projects.size()];
+                    var candidates = new CosmosOrdering[projects.size()];
 
                     for (var i = 0; i < paths.Length; i++)
                     {
                         var expression = (RexNode)projects.get(i);
                         paths[i] = translator.TryResolvePath(expression, out var path) ? path : null;
 
-                        // Derived here because here is where the walk is. Only the structural half —
-                        // whether the container licenses it is the caller's pure lookup. See
-                        // CosmosProject.OrderingCandidateOf.
-                        candidates[i] = paths[i] ?? CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias);
+                        // Derived here because here is where the walk is -- both halves of it are
+                        // questions about which expression sits at this ordinal. Whether the container
+                        // licenses the path is the caller's pure lookup. See CosmosOrdering.
+                        candidates[i] = new CosmosOrdering(
+                            paths[i] ?? CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias),
+                            CosmosProject.IsSortableAtTheService(expression));
 
                         // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
                         // read as text is a rendering of the path it binds to, and a column passed
@@ -527,7 +559,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     fields = paths;
                     readings = reads;
-                    ordering = new CosmosPath?[paths.Length];
+                    ordering = new CosmosOrdering[paths.Length];
                     return true;
                 }
 

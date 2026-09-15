@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// accepted while <c>ORDER BY DateTimeToTicks(…)</c> and <c>ORDER BY IIF(…)</c> are refused
         /// with 400, error 2206.
         /// </remarks>
-        static bool IsSortableAtTheService(RexNode node)
+        public static bool IsSortableAtTheService(RexNode node)
         {
             return node is RexCall call
                 && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
