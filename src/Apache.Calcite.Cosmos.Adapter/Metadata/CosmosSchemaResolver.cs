@@ -33,6 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     {
 
         readonly JsonSchema? _schema;
+        readonly bool _rebased;
 
         /// <summary>
         /// Initializes a new instance.
@@ -40,6 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="root">The schema document.</param>
         public CosmosSchemaResolver(JsonNode root)
         {
+            _rebased = Rebases(root, top: true);
+
             try
             {
                 _schema = JsonSchemaFactory.getInstance(DialectOf(root)).getSchema(root);
@@ -51,6 +54,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // add pushdowns into a reason a query stops working.
                 _schema = null;
             }
+        }
+
+        /// <summary>
+        /// Determines whether anything below the root moves the base a reference resolves against.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A nested <c>$id</c> starts a new base URI, and a fragment written under it means a fragment
+        /// of <em>that</em> document rather than of the one it is embedded in. Resolution here is
+        /// against the root, so under a nested <c>$id</c> the same pointer can name a different node
+        /// — and a reference resolved to the wrong node is the one failure mode worth refusing
+        /// outright, since it yields facts about the wrong path rather than none.
+        /// </para>
+        /// <para>
+        /// <c>$anchor</c> and the dynamic pair go with it: both are resolved against a base this does
+        /// not track. Rare in the schemas anyone writes by hand, and cheap to detect.
+        /// </para>
+        /// </remarks>
+        static bool Rebases(JsonNode? node, bool top)
+        {
+            if (node is null)
+                return false;
+
+            if (node.isArray())
+            {
+                for (var i = 0; i < node.size(); i++)
+                    if (Rebases(node.get(i), top: false))
+                        return true;
+
+                return false;
+            }
+
+            if (node.isObject() == false)
+                return false;
+
+            // Keyword names and property names share one namespace in this walk, which is the trap
+            // here: a schema describing a property called `id` is not a schema that rebases, and
+            // Draft 4 spelled the keyword exactly that. So only the `$` forms are looked for. A
+            // document with a property actually called `$id` would be read as rebasing and simply
+            // follow no references, which loses facts rather than stating wrong ones.
+            if (top == false && node.has("$id"))
+                return true;
+
+            if (node.has("$anchor") || node.has("$dynamicAnchor") || node.has("$dynamicRef") || node.has("$recursiveRef"))
+                return true;
+
+            var fields = node.fields();
+            while (fields.hasNext())
+                if (Rebases((JsonNode?)((java.util.Map.Entry)fields.next()).getValue(), top: false))
+                    return true;
+
+            return false;
         }
 
         /// <summary>
@@ -87,7 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The target, or <c>null</c> where it could not be reached.</returns>
         public JsonNode? Resolve(string? reference)
         {
-            if (_schema is null || string.IsNullOrEmpty(reference))
+            if (_schema is null || _rebased || string.IsNullOrEmpty(reference))
+                return null;
+
+            // A root-relative JSON pointer and nothing else. That is what resolution here can answer
+            // correctly; an absolute URI, a relative document, or a bare anchor would be resolved
+            // against a base this does not track, and a reference pointed at the wrong node states
+            // facts about the wrong path.
+            if (reference!.StartsWith("#/", StringComparison.Ordinal) == false)
                 return null;
 
             try

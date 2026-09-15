@@ -241,6 +241,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             derived.Knows(new CosmosFact(status, new CosmosClaim.NotEqualTo("archived"))).Should().BeTrue();
         }
 
+        /// <summary>
+        /// An OpenAPI discriminator, which is how a generated document writes a multi-type container:
+        /// the branches are bare references that repeat no <c>const</c>, and a mapping says which
+        /// value selects which.
+        /// </summary>
+        [TestMethod]
+        public void AnOpenApiDiscriminatorSelectsABranchThroughItsMapping()
+        {
+            const string Mapped = """
+            {
+              "$defs": {
+                "Order": { "properties": { "placed": { "type": "string" } } },
+                "Shipment": { "properties": { "ref": { "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }
+              },
+              "oneOf": [ { "$ref": "#/$defs/Order" }, { "$ref": "#/$defs/Shipment" } ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": { "order": "#/$defs/Order", "shipment": "#/$defs/Shipment" }
+              }
+            }
+            """;
+
+            var theory = Compile(Mapped);
+            var reference = CosmosDocumentPath.Root.Property("ref");
+            var kind = CosmosDocumentPath.Root.Property("kind");
+
+            theory.Derive(null).RepresentationOf(reference).Should().BeNull();
+            theory.Derive(new[] { Equals(kind, "order") }).RepresentationOf(reference).Should().BeNull();
+            theory.Derive(new[] { Equals(kind, "shipment") }).RepresentationOf(reference)
+                .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+        }
+
+        /// <summary>
+        /// And with no mapping, OpenAPI's implicit rule: the value is the schema's own name.
+        /// </summary>
+        [TestMethod]
+        public void AnOpenApiDiscriminatorWithNoMappingUsesTheSchemaName()
+        {
+            const string Implicit = """
+            {
+              "$defs": {
+                "Order": { "properties": { "placed": { "type": "string" } } },
+                "Shipment": { "properties": { "ref": { "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } }
+              },
+              "oneOf": [ { "$ref": "#/$defs/Order" }, { "$ref": "#/$defs/Shipment" } ],
+              "discriminator": { "propertyName": "kind" }
+            }
+            """;
+
+            Compile(Implicit).Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "Shipment") })
+                .RepresentationOf(CosmosDocumentPath.Root.Property("ref"))
+                .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+        }
+
+        /// <summary>
+        /// A nested <c>$id</c> moves the base a reference resolves against, and resolution here is
+        /// against the root — so nothing is followed at all rather than followed to the wrong node.
+        /// </summary>
+        [TestMethod]
+        public void ASchemaThatRebasesItsReferencesIsNotFollowed()
+        {
+            const string Rebased = """
+            {
+              "$defs": { "inner": { "$id": "https://example.test/inner",
+                                    "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } },
+              "properties": { "at": { "$ref": "#/$defs/inner" } }
+            }
+            """;
+
+            Compile(Rebased).Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("at"))
+                .Should().BeNull("a reference resolved against the wrong base states facts about the wrong path");
+        }
+
         [TestMethod]
         public void ARecursiveReferenceTerminates()
         {

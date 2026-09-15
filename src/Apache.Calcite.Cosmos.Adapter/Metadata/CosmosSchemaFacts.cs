@@ -184,12 +184,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 for (var i = 0; i < branches.size(); i++)
                 {
-                    var branch = resolver.Follow(branches.get(i));
-                    if (branch is null || DiscriminatorValue(branch, discriminator, resolver) is not object value)
+                    // The branch as written, not as resolved: a mapping names its target by the
+                    // reference, which following it would have thrown away.
+                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver) is not object value)
                         continue;
 
-                    var extended = new List<CosmosFact>(guard) { new(path.Property(discriminator), new CosmosClaim.EqualTo(value)) };
-                    Walk(branches.get(i), path, extended, rules, resolver, visiting);
+                    Walk(branches.get(i), path, Extend(guard, new CosmosFact(path.Property(discriminator), new CosmosClaim.EqualTo(value))), rules, resolver, visiting);
                 }
 
                 return;
@@ -370,18 +370,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the property every branch pins to a different constant, or <c>null</c>.
+        /// Returns the property that says which branch a document is in, or <c>null</c>.
         /// </summary>
         /// <remarks>
-        /// OpenAPI's <c>discriminator.propertyName</c> is honoured where it is given, and otherwise the
-        /// property is inferred: every branch must pin the same single property, and no two branches
-        /// may pin it to the same value — two branches a discriminator cannot tell apart is not a
-        /// discriminator.
+        /// <para>
+        /// Two ways a schema says it, and real documents use both. A branch may pin the property with
+        /// a <c>const</c> of its own, which is plain JSON Schema and needs no OpenAPI. Or an OpenAPI
+        /// <c>discriminator</c> names the property and a <c>mapping</c> says which value selects which
+        /// branch — which is how a generated document writes it, the branches being bare <c>$ref</c>s
+        /// that repeat nothing.
+        /// </para>
+        /// <para>
+        /// <b>The second leans on the discriminator being a declaration.</b> Where a branch carries a
+        /// <c>const</c>, proving the property refutes every other branch and <c>oneOf</c> does the rest.
+        /// A mapping proves nothing that way — validation alone could not tell the branches apart — so
+        /// what licenses it is that the author said so, which is the same footing the whole schema is
+        /// trusted on.
+        /// </para>
+        /// <para>
+        /// Either way no two branches may be selected by the same value: branches a discriminator
+        /// cannot tell apart are not discriminated.
+        /// </para>
         /// </remarks>
         static string? FindDiscriminator(JsonNode branches, JsonNode parent, CosmosSchemaResolver resolver)
         {
             if (parent.get("discriminator")?.get("propertyName") is JsonNode named && named.isTextual())
-                return Pins(branches, named.asText(), resolver) ? named.asText() : null;
+                return Pins(branches, parent, named.asText(), resolver) ? named.asText() : null;
 
             var first = resolver.Follow(branches.get(0));
             if (first?.get("properties") is not JsonNode properties || properties.isObject() == false)
@@ -389,22 +403,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var candidates = properties.fieldNames();
             while (candidates.hasNext())
-                if (candidates.next()?.ToString() is string name && Pins(branches, name, resolver))
+                if (candidates.next()?.ToString() is string name && Pins(branches, parent, name, resolver))
                     return name;
 
             return null;
         }
 
-        static bool Pins(JsonNode branches, string name, CosmosSchemaResolver resolver)
+        static bool Pins(JsonNode branches, JsonNode parent, string name, CosmosSchemaResolver resolver)
         {
             var seen = new List<object?>();
 
             for (var i = 0; i < branches.size(); i++)
             {
-                if (resolver.Follow(branches.get(i)) is not JsonNode branch)
+                if (branches.get(i) is not JsonNode branch)
                     return false;
 
-                if (DiscriminatorValue(branch, name, resolver) is not object value || CosmosClaim.OneOf.Contains(seen, value))
+                if (DiscriminatorValue(branch, parent, name, resolver) is not object value || CosmosClaim.OneOf.Contains(seen, value))
                     return false;
 
                 seen.Add(value);
@@ -413,14 +427,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return true;
         }
 
-        static object? DiscriminatorValue(JsonNode branch, string name, CosmosSchemaResolver resolver)
+        /// <summary>
+        /// Returns the value of <paramref name="name"/> that selects this branch, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// The branch's own <c>const</c> first, and an OpenAPI mapping second. A mapping entry names
+        /// its target either as a reference or as the bare schema name, and both spellings are in use;
+        /// where no entry names this branch, OpenAPI's implicit rule applies and the value is the
+        /// schema's own name — the last segment of the reference.
+        /// </remarks>
+        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, CosmosSchemaResolver resolver)
         {
-            var subschema = resolver.Follow(branch.get("properties")?.get(name));
-
-            if (subschema?.get("const") is JsonNode constant && TryLiteral(constant, out var value) && value is not null)
+            if (resolver.Follow(branch)?.get("properties")?.get(name) is JsonNode declared &&
+                resolver.Follow(declared)?.get("const") is JsonNode constant &&
+                TryLiteral(constant, out var value) && value is not null)
                 return value;
 
-            return null;
+            if (parent.get("discriminator") is not JsonNode discriminator ||
+                discriminator.get("propertyName")?.asText() != name ||
+                Text(branch, "$ref") is not string reference)
+                return null;
+
+            if (discriminator.get("mapping") is JsonNode mapping && mapping.isObject())
+            {
+                var entries = mapping.fields();
+                while (entries.hasNext())
+                {
+                    var entry = (java.util.Map.Entry)entries.next();
+                    var target = ((JsonNode?)entry.getValue())?.asText();
+
+                    if (target == reference || target == LastSegment(reference))
+                        return entry.getKey()?.ToString();
+                }
+            }
+
+            return LastSegment(reference);
+        }
+
+        static string LastSegment(string reference)
+        {
+            var slash = reference.LastIndexOf('/');
+            return slash < 0 ? reference : reference.Substring(slash + 1);
         }
 
         static CosmosJsonType? ReadType(JsonNode node)
