@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// Mutually exclusive with <see cref="Offset"/> and <see cref="Fetch"/>.
         /// </remarks>
-        public int? Top { get; set; }
+        public CosmosRowLimit? Top { get; set; }
 
         /// <summary>
         /// Gets or sets the rendered <c>WHERE</c> predicate, or <c>null</c> for none.
@@ -81,12 +81,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Cosmos spells skip and take as a single <c>OFFSET n LIMIT m</c> clause and requires
         /// both, so setting either causes both to be emitted.
         /// </remarks>
-        public int? Offset { get; set; }
+        public CosmosRowLimit? Offset { get; set; }
 
         /// <summary>
         /// Gets or sets the maximum number of rows to return, or <c>null</c> for none.
         /// </summary>
-        public int? Fetch { get; set; }
+        public CosmosRowLimit? Fetch { get; set; }
 
         /// <summary>
         /// Gets or sets whether the projection is written as a flat select list rather than an
@@ -289,11 +289,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Top is not null && (Offset is not null || Fetch is not null))
                 throw new InvalidOperationException("Cosmos SQL does not support TOP together with OFFSET/LIMIT.");
 
-            if (Top is < 0)
+            if (Top?.Count is < 0)
                 throw new InvalidOperationException("TOP cannot be negative.");
-            if (Offset is < 0)
+            if (Offset?.Count is < 0)
                 throw new InvalidOperationException("OFFSET cannot be negative.");
-            if (Fetch is < 0)
+            if (Fetch?.Count is < 0)
                 throw new InvalidOperationException("LIMIT cannot be negative.");
 
             var builder = new StringBuilder();
@@ -315,8 +315,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Distinct)
                 builder.Append(" DISTINCT");
 
-            if (Top is int top)
-                builder.Append(" TOP ").Append(top.ToString(CultureInfo.InvariantCulture));
+            if (Top is CosmosRowLimit top)
+                builder.Append(" TOP ").Append(top.ToString());
 
             if (_valueExpression is not null)
             {
@@ -417,8 +417,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // Cosmos requires both halves of the clause even when only one is meaningful.
             builder
-                .Append(" OFFSET ").Append((Offset ?? 0).ToString(CultureInfo.InvariantCulture))
-                .Append(" LIMIT ").Append((Fetch ?? int.MaxValue).ToString(CultureInfo.InvariantCulture));
+                .Append(" OFFSET ").Append(Offset?.ToString() ?? "0")
+                .Append(" LIMIT ").Append(Fetch?.ToString() ?? int.MaxValue.ToString(CultureInfo.InvariantCulture));
         }
 
     }

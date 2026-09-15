@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Query.RankBy = translator.TranslateRank(_rank);
 
             if (_fetch is not null)
-                implementor.Query.Top = RexLiteral.intValue(_fetch);
+                implementor.Query.Top = implementor.RowLimit(_fetch);
 
             // The score is not a column and the projections are computed, so nothing above addresses
             // any of this as a path.

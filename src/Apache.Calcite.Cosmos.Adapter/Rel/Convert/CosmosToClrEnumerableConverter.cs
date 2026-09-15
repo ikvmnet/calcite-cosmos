@@ -122,6 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 Expression.Call(null,
                     ReadAsyncMethod.MakeGenericMethod(rowType),
                     CosmosConverters.ExecutorExpression(input, implementor.Root),
+                    implementor.Root,
                     Expression.Constant(query),
                     rowBuilder,
                     // Default on purpose, and load-bearing. An expression tree applies no optional
