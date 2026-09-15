@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// 8. RFC 4122 and 9562 pin the 17th to <c>8</c>–<c>b</c> for every conforming value, so the low
     /// half always agrees; the first digit is what varies, and a pattern that confines it is the
     /// difference between an equality-only form and a sortable one. Measured; see
-    /// <c>DESIGN-93.md</c> §1.
+    /// <c>DESIGN.md</c> under <em>A fact says which relations it preserves</em>.
     /// </para>
     /// </remarks>
     public static class CosmosStoredForms

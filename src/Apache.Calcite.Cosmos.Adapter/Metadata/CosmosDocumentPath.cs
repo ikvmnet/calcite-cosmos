@@ -22,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// Property names only. A schema can describe array elements and one day the facts should reach
     /// them, but nothing consults an element fact yet and a path model that admits indices would have
     /// to answer what <c>$.tags[0]</c> means against a fact declared for <c>items</c>. See
-    /// <c>DESIGN-93.md</c> under <em>Deliberately not in the first cut</em>.
+    /// <c>TODO.md</c> under <em>Facts about array elements</em>.
     /// </para>
     /// </remarks>
     public sealed class CosmosDocumentPath : IEquatable<CosmosDocumentPath>

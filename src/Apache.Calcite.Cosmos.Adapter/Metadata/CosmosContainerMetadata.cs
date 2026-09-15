@@ -532,7 +532,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// came from a model file does not: it is trusted the way the partition key is trusted, so a
         /// document violating it is a data-integrity problem rather than something defended against per
         /// row — which means a schema wrong by one character drops rows, with no error and a plan that
-        /// looks correct. Recorded in <c>DESIGN-93.md</c> §5 rather than left to be discovered.
+        /// looks correct. Recorded in <c>DESIGN.md</c> under <em>A declaration is trusted, and that is a change in kind</em> rather than left to be discovered.
         /// </para>
         /// <para>
         /// Empty where nothing is known, which is every container today, and an empty theory proves

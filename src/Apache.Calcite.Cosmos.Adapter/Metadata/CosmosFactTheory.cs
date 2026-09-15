@@ -15,7 +15,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// theory, and that is not a stylistic choice — it is what keeps asking it a linear-time question
     /// rather than a satisfiability one. The moment a rule could conclude "A or B" the theory leaves
     /// Horn and entailment becomes intractable, so an undiscriminated <c>anyOf</c> contributes only
-    /// the facts every branch agrees on rather than a disjunction. See <c>DESIGN-93.md</c> §2.
+    /// the facts every branch agrees on rather than a disjunction. See <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
     /// </para>
     /// <para>
     /// An empty body is the ordinary case: a fact the schema states unconditionally.

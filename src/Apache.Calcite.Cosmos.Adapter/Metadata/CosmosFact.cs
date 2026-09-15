@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// order of the canonical string is not the order Calcite sorts in — while equality agrees for all
     /// of them. A date-time at one fixed ISO-8601 UTC shape preserves both. So the two properties are
     /// independent and a representation has to carry them separately, or a sort gets pushed that
-    /// returns the wrong rows. Measured; see <c>DESIGN-93.md</c> §1.
+    /// returns the wrong rows. Measured; see <c>DESIGN.md</c> under <em>A fact says which relations it preserves</em>.
     /// </para>
     /// <para>
     /// Both are claims about the <em>stored</em> string against the <em>logical</em> value Calcite
@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// property holding a particular value — and a claim a rewrite can consume — a path holding a
     /// canonical lowercase UUID — are the same kind of thing, and keeping them the same kind is what
     /// lets a schema express facts that are conditional on other facts without a second mechanism. See
-    /// <c>DESIGN-93.md</c> §2.
+    /// <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
     /// </remarks>
     public abstract record CosmosClaim
     {
@@ -185,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Subsumption lives here rather than in the theory's clauses, and that is a size decision
         /// rather than a taste one: <c>EqualTo v</c> entails <c>OneOf S</c> for every set containing
         /// <c>v</c>, so materialising the entailments would be unbounded where asking is a switch.
-        /// See <c>DESIGN-93.md</c> §2.
+        /// See <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
         /// </para>
         /// <para>
         /// Only claims about the same path relate. Nothing here crosses paths; that is what the

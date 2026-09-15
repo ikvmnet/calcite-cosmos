@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// compiled once into the facts a pushdown can prove against — that a path holds a canonical UUID,
     /// or an instant at one fixed shape, and under which discriminator it does. It is a declaration
     /// the adapter trusts rather than checks, so a document that violates it is a data-integrity
-    /// problem; see <c>DESIGN-93.md</c>. Declaring nothing is what every container does today and
+    /// problem; see <c>DESIGN.md</c> under <em>What a caller may declare beyond it</em>. Declaring nothing is what every container does today and
     /// costs nothing.
     /// </para>
     /// <para>

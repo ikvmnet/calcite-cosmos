@@ -380,11 +380,30 @@ can change which rows a query returns. Everything else the adapter knows about a
 the container's own definition or is guaranteed by the service; a schema does not, and it is trusted
 the way the partition key is trusted. A document that contradicts it is a data-integrity problem, not
 something checked per row — so a schema that is wrong by one character drops rows, with no error and
-a plan that looks correct. Describe what you actually store.
+a plan that looks correct.
 
-Being *incomplete* is free, though: keywords the adapter does not understand are ignored rather than
-refused, an unrecognised pattern yields no fact, and a schema it cannot read at all leaves the
-container working exactly as it did. The only cost of under-describing is a pushdown you do not get.
+**It has to describe every document in the container, not the ones you query.** This is the part that
+catches people, and it is a stronger obligation than "describe it accurately". A fact stated outside a
+branch is a claim about *all* of them, so a schema saying
+
+```json
+{ "properties": { "trackingId": { "type": "string", "pattern": "^[0-9a-f]{8}-…$" } } }
+```
+
+says that every document in the container stores a canonical lowercase UUID at `$.trackingId`. If the
+container also holds documents that put something else there, a query filtering on it will silently
+miss them — the adapter believed you and pushed an exact comparison.
+
+So putting a schema on an existing container means describing the **whole** mix, not the part you care
+about. Use `oneOf` with a discriminating `const`, or `if`/`then`/`else`, and a fact declared inside a
+branch is used only once a query has proven the branch applies. If you are not sure what a container
+holds, describe less: a path you say nothing about is a path the adapter reasons about exactly as it
+did before.
+
+Incompleteness of the *other* kind is free. Keywords the adapter does not understand are ignored
+rather than refused, an unrecognised pattern yields no fact, and a schema it cannot read at all leaves
+the container working exactly as it did. Saying nothing about a path costs a pushdown; saying
+something untrue about it costs rows.
 
 ## What gets pushed down
 

@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// unsound rather than merely incomplete.
     /// </para>
     /// <para>
-    /// See <c>DESIGN-93.md</c> §3 for the keyword table and the reasoning behind each entry.
+    /// See <c>DESIGN.md</c> under <em>Reading a schema: recognition, not inference</em> for the keyword table and the reasoning behind each entry.
     /// </para>
     /// </remarks>
     public static class CosmosSchemaFacts
