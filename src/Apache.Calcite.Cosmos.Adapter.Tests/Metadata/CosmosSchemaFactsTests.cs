@@ -334,6 +334,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Be(CosmosStoredForms.Iso8601Date);
         }
 
+        /// <summary>
+        /// Keywords that constrain nothing this model can state, and one that quietly unstates a type.
+        /// </summary>
+        [TestMethod]
+        public void WhatIsNotInterpretedStatesNothing()
+        {
+            // OpenAPI 3.0 puts nullability beside the type rather than inside it.
+            Compile("""{ "properties": { "a": { "type": "string", "nullable": true } } }""")
+                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Should().BeFalse("a stored null conforms to it, so the type is not what the schema claimed");
+
+            // 2020-12 spells the same thing as a union, and a union states only what its members agree on.
+            Compile("""{ "properties": { "a": { "type": ["string", "null"] } } }""")
+                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Should().BeFalse();
+
+            // $defs is a place to put schemas, not a constraint on the document, so nothing under it
+            // becomes a fact about a path of the same name.
+            Compile("""{ "$defs": { "a": { "type": "string" } } }""")
+                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Should().BeFalse();
+
+            // Constraints with no claim in the model, and applicators not interpreted, are ignored
+            // rather than refused -- a schema carrying them still yields what it does say.
+            var mixed = Compile("""
+            {
+              "properties": { "a": { "type": "string", "minLength": 3 },
+                              "b": { "type": "integer", "minimum": 0 } },
+              "additionalProperties": false,
+              "patternProperties": { "^x": { "type": "string" } },
+              "dependentRequired": { "a": ["b"] },
+              "not": { "properties": { "c": { "type": "string" } } }
+            }
+            """).Derive(null);
+
+            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
+            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("b"), new CosmosClaim.OfType(CosmosJsonType.Integer))).Should().BeTrue();
+            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("c"), new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse(
+                "a negated schema states nothing, and reading it as though it did would invert the claim");
+        }
+
         [TestMethod]
         public void AnUnreadableSchemaIsNoFactsRatherThanAFailure()
         {

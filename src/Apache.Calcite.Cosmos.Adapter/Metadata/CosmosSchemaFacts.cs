@@ -472,6 +472,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         static CosmosJsonType? ReadType(JsonNode node)
         {
+            // OpenAPI 3.0 says a value may be null with a keyword beside the type rather than inside
+            // it, so `{"type": "string", "nullable": true}` describes a path a stored null conforms
+            // at. Claiming the type there would be claiming what the schema declined to.
+            if (node.get("nullable") is JsonNode nullable && nullable.isBoolean() && nullable.asBoolean())
+                return null;
+
             var type = node.get("type");
 
             // A union type states only what its members agree on, which is nothing. The idiomatic

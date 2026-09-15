@@ -233,6 +233,53 @@ fact if the pattern accepts one. Cheap, and it turns a mistyped canonical patter
 than a wrong one. It wants a `Regex` match timeout — an author-supplied pattern run at registration is a
 catastrophic-backtracking target — and a note that .NET's `RegexOptions.ECMAScript` is not ECMA-262.
 
+### The audit, keyword by keyword
+
+Written down because the trap is uniform: a keyword that *looks* like an assertion about a document
+is often an assertion about a document **if something else holds**, and reading the first as the
+second states facts the schema declined to state. Four were found this way, three of them live.
+
+| keyword | what it actually asserts | what is read |
+| --- | --- | --- |
+| `properties` | the value **if the path has one** | the value; **nothing about presence** |
+| `required` | these children exist **if this object does** | presence, guarded by the parent's presence |
+| `type` | the type, unless `nullable` or a union widens it | the type; nothing for a union or under `nullable: true` |
+| `const`, `enum` | the value if present; scalars only | value and domain |
+| `pattern` | a regular expression | a stored form, only for recognised spellings |
+| `format` | an annotation, not an assertion | nothing |
+| `allOf` | every branch applies | every branch, same guard |
+| `oneOf` / `anyOf`, discriminated | the branch the discriminator selects | the branch, guarded by that value |
+| `oneOf` / `anyOf`, undiscriminated | one of them applies | the meet |
+| `if` / `then` / `else` | a conditional | a guard, only where the whole condition is read |
+| `$ref` | the target, and **siblings too** under 2020-12 | the target; siblings dropped, which is Draft 7's rule |
+| `$defs`, `definitions` | a place to keep schemas | nothing — they constrain no path |
+| `not` | a negation | nothing |
+| `additionalProperties`, `patternProperties`, `propertyNames` | constrain paths that cannot be named here | nothing |
+| `dependentSchemas`, `dependentRequired` | conditionals keyed on presence | nothing yet; both are expressible and would fit |
+| `items`, `prefixItems`, `contains` | constrain elements | nothing — see §7 |
+| `minimum`, `maxLength`, … | bounds | nothing — no claim in the model is about an interval |
+
+**The three that were wrong and are fixed.** A value claim entailed presence, so `const`, `enum` and a
+recognised `pattern` all said a path existed; `required` stated presence wherever it appeared, rather
+than conditionally on its own object; and `nullable: true` beside a type was ignored, so a path a
+stored null conforms at was claimed to be a string.
+
+**One more, and it is about resolution rather than about a keyword.** A nested `$id` starts a new base
+URI, and a pointer written under it names a fragment of *that* document. Resolution here is against
+the root, so the same pointer can reach a different node — the one failure mode that yields facts
+about the **wrong path** rather than none. A schema that rebases now follows nothing, and only a
+root-relative JSON pointer is followed at all. The detector's first draft also looked for Draft 4's
+`id`, and fired on every schema describing a property *called* `id`: keyword names and property names
+share one namespace in a walk like this, which is worth remembering before adding another such check.
+
+**And two that read as unsound and are not.** The guard taken from an `if` is *stronger* than the `if`
+itself — `{properties: {k: {const: "B"}}}` is satisfied vacuously by a document with no `k`, while the
+guard demands one — so the `then` branch is applied to fewer documents than the schema allows, not
+more. And the meet holds under `oneOf` and `anyOf` alike: a fact every branch states is true whether
+exactly one of them validates or at least one does.
+
+---
+
 ---
 
 ## 4. Asking the question
