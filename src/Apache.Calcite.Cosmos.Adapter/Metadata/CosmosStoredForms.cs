@@ -344,16 +344,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The stored spelling, or <c>null</c> where this form does not store a UUID.</returns>
         public static string? RenderUuid(CosmosRepresentation representation, Guid value)
         {
-            if (string.Equals(representation.Name, UuidCanonicalLower.Name, StringComparison.Ordinal) ||
-                string.Equals(representation.Name, UuidCanonicalLowerSortable.Name, StringComparison.Ordinal))
+            if (IsLowerUuid(representation))
                 return value.ToString("D");
 
-            if (string.Equals(representation.Name, UuidCanonicalUpper.Name, StringComparison.Ordinal) ||
-                string.Equals(representation.Name, UuidCanonicalUpperSortable.Name, StringComparison.Ordinal))
+            if (IsUpperUuid(representation))
                 return value.ToString("D").ToUpperInvariant();
 
             return null;
         }
+
+        /// <summary>
+        /// Determines whether a form spells a UUID, in either case.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Asked where the spelling does not matter but the type does — a projection reading the
+        /// stored text back as the <c>UUID</c> the plan declared, which needs to know only that the
+        /// text is one. Both forms are the canonical hyphenated 36 characters, which is what
+        /// <c>java.util.UUID.fromString</c> reads, so either parses to the value the container means.
+        /// </para>
+        /// <para>
+        /// Sortability is not consulted and must not be: it says whether the lexical order of the
+        /// stored strings is the order Calcite compares the values in, which a projection never asks.
+        /// </para>
+        /// </remarks>
+        /// <param name="representation">The path form.</param>
+        /// <returns><c>true</c> where the form stores a UUID.</returns>
+        public static bool IsUuid(CosmosRepresentation representation) => IsLowerUuid(representation) || IsUpperUuid(representation);
+
+        /// <summary>
+        /// Determines whether a form spells a UUID in lowercase.
+        /// </summary>
+        /// <param name="representation">The path form.</param>
+        /// <returns><c>true</c> where the form stores a lowercase UUID.</returns>
+        static bool IsLowerUuid(CosmosRepresentation representation) =>
+            string.Equals(representation.Name, UuidCanonicalLower.Name, StringComparison.Ordinal) ||
+            string.Equals(representation.Name, UuidCanonicalLowerSortable.Name, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Determines whether a form spells a UUID in uppercase.
+        /// </summary>
+        /// <param name="representation">The path form.</param>
+        /// <returns><c>true</c> where the form stores an uppercase UUID.</returns>
+        static bool IsUpperUuid(CosmosRepresentation representation) =>
+            string.Equals(representation.Name, UuidCanonicalUpper.Name, StringComparison.Ordinal) ||
+            string.Equals(representation.Name, UuidCanonicalUpperSortable.Name, StringComparison.Ordinal);
 
         /// <summary>
         /// Writes an instant the way a path in this form stores it, or returns <c>null</c> where the

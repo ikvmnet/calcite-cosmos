@@ -466,6 +466,44 @@ non-numbers; it does not make the comparison exact, because the cast still *conv
 is still the whole unit either side that `Casts over document values` argues for. Two different
 things are being weakened there, and only one of them is a guard.
 
+#### A form reads back as well as it compares
+
+Every use above is a *predicate*: the fact says the stored string is a faithful stand-in for the
+value, so a comparison written against the string answers what a comparison against the value would.
+The select list asks the mirror question — not which documents match, but what each one returns — and
+the same fact answers it, because a spelling that is exact enough to compare is exact enough to parse.
+
+The case that forced it is `CAST(JSON_VALUE(doc, '$.ref') AS UUID)` in a projection. Without a form
+there is nothing to send: the service holds a string and the plan wants a `UUID`, and no Cosmos
+expression converts one to the other. With one, the statement sends the guarded path and
+`CosmosJson` reads the text back as `java.util.UUID` — using Calcite's own `stringToUuid`, so the
+pushed projection and the in-process cast it replaced are not two implementations that could drift.
+
+**What it costs to leave a cast untranslated is not the cast.** A projection that does not convert
+stays in the client, and a sort cannot be pushed through one — `SORT_PROJECT_TRANSPOSE` has nothing to
+transpose below. So a query selecting an identifier and ordering by a name read the container whole
+and sorted it in memory, while the identical query *without* the identifier pushed both the `ORDER BY`
+and the page. Every query that returns an entity selects its identifier, so the untranslated cast was
+paid for by the whole sorted-list path rather than by the one column.
+
+**The guard is the accessor's, not a new one.** `JSON_VALUE` answers null for an object, an array and
+an absent path; the bare path answers the object. `IIF(IS_PRIMITIVE(p), p, null)` is that distinction,
+which is already how a bare accessor is projected, so the two sides agree for every JSON type —
+including a document that contradicts the declaration, where both answer null. A stored scalar that is
+not a UUID is the other case, and there the two agree by both failing: reading refuses it exactly as
+Calcite's cast does, rather than answering a null the query would read as a missing value.
+
+**Equality is the whole of what is asked.** A cast resolves to no path, so the projected column binds
+to none and nothing above it orders, groups or filters on it. Whether the lexical order of the stored
+strings is the order Calcite compares the values in is therefore never consulted, and the sortable
+forms are admitted here on the same terms as the rest. Ordering *by* such a column needs the column to
+address something, which is a different piece of work.
+
+**And only an unconditional fact.** A projection carries no predicate, so it can discharge no guard.
+Where a form is declared inside a branch the cast stays in process even for a query whose filter does
+prove the branch — reading that off the subtree is a further step, and the filter half pushes either
+way.
+
 #### A declaration is trusted, and that is a change in kind
 
 Every other row of *What a container declares* is sourced from the container definition or a service
@@ -1583,13 +1621,18 @@ first Calcite operator that casts it, a long way from where it was produced.
 
 | JSON | as `ANY` / inside `MAP` | as a declared type |
 | --- | --- | --- |
-| string | `string` | `CHAR`, `VARCHAR` |
+| string | `string` | `CHAR`, `VARCHAR`; `UUID` where a container declared the spelling |
 | number, whole | `java.lang.Long` | `TINYINT`…`BIGINT` as their boxes, `DECIMAL` from the raw digits |
 | number, fractional | `java.lang.Double` | `REAL`, `FLOAT`, `DOUBLE` |
 | `true` / `false` | `java.lang.Boolean` | `BOOLEAN` |
 | object | `java.util.LinkedHashMap` | `MAP` |
 | array | `java.util.ArrayList` | `ARRAY`, `MULTISET` |
 | `null`, or absent | `null` | `null` |
+
+`UUID` is the one row of that column a container has to earn. Cosmos has no such type, so the value is
+a string whose spelling a declared form pinned; the conversion is Calcite's own `stringToUuid`, which
+is what makes a pushed projection and the in-process cast it replaced the same conversion rather than
+two of them. See *A form reads back as well as it compares*.
 
 Two choices worth stating. A whole number reads as a `Long` rather than a `Double` so that an
 identifier or a count does not surface as `42.0`; the choice is the value's, there being no schema to

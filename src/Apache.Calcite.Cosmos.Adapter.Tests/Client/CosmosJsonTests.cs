@@ -116,6 +116,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             Read("null", SqlTypeName.VARCHAR).Should().BeNull();
         }
 
+        /// <remarks>
+        /// Cosmos has no UUID type, so a column the plan types one is a string property whose spelling
+        /// a container's declared facts pinned. The box is <c>java.util.UUID</c> because that is what
+        /// Calcite holds a <c>UUID</c> in, and the conversion is Calcite's own, so a pushed projection
+        /// and the in-process cast it replaced cannot answer differently.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldReadStringAsJavaUuid()
+        {
+            Read("\"123e4567-e89b-12d3-a456-426614174000\"", SqlTypeName.UUID)
+                .Should().BeOfType<java.util.UUID>()
+                .And.Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
+        }
+
+        /// <remarks>
+        /// Either spelling reads, which is what lets a container written in uppercase be projected on
+        /// the same terms as one written in lowercase. The value is the same value.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldReadEitherSpellingAsTheSameUuid()
+        {
+            Read("\"123E4567-E89B-12D3-A456-426614174000\"", SqlTypeName.UUID)
+                .Should().Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
+        }
+
+        [TestMethod]
+        public void ShouldReadNullAsNullUuid()
+        {
+            Read("null", SqlTypeName.UUID).Should().BeNull();
+        }
+
+        /// <remarks>
+        /// A document contradicting the declaration is the one thing the fact model cannot check in
+        /// advance, so it fails rather than answering a null the query would take for a missing value.
+        /// Calcite's own cast fails over the same input, which is the agreement that matters.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldRefuseAStringThatIsNotAUuid()
+        {
+            var act = () => Read("\"bikes\"", SqlTypeName.UUID);
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*not one*");
+        }
+
+        [TestMethod]
+        public void ShouldRefuseANumberAsUuid()
+        {
+            var act = () => Read("30", SqlTypeName.UUID);
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
+        }
+
         [TestMethod]
         public void ShouldReadObjectAsJavaMapPreservingDocumentOrder()
         {

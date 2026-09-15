@@ -965,7 +965,9 @@ declaring a fixed-shape ISO-8601 path gets equality and not ordering.
 What it unlocks, in rough order of value:
 
 - **`ORDER BY` with a `FETCH`** — the difference between reading a page and reading the container,
-  which is the largest number in this whole area. The sort key is a *chain* rather than a cast —
+  which is the largest number in this whole area. Not the case #100 closed: there the sort key is an
+  ordinary path and what held it back was a *projected* cast keeping the whole projection in process.
+  Here the sort key is itself a *chain* rather than a cast —
   `PARSE_DATETIME`, `TO_TIMESTAMP`, or the `REPLACE`/`SUBSTRING`/`CAST` a view writes — and the
   rewrite is to drop an order-preserving chain from the key, leaving the raw path the service will
   order by. `CosmosSortRule` is the site, and the condition is the statement-wide one rather than the
@@ -973,6 +975,15 @@ What it unlocks, in rough order of value:
 - **Range comparisons** against a temporal literal, lowered to string comparisons with the literal
   rendered into the declared stored shape.
 - **`MIN` and `MAX`**, which are the same argument over an aggregate.
+
+### Ordering by a rendered column — *small, and it is the other half of #100*
+
+Projecting `CAST(<path> AS UUID)` renders as of #100, so a sort on a *neighbouring* column pushes.
+The column itself still binds to no path, a cast resolving to none, so `ORDER BY` on it is refused —
+correctly, since the guarded accessor is not the value and a UUID's stored order is the compared
+order only where the form says so. Binding it would mean recording that an ordinal addresses a path
+*for ordering only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked
+at a different site.
 
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 

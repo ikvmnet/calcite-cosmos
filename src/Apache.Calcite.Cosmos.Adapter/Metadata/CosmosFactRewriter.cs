@@ -79,8 +79,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var established = CosmosFactExtractor.Extract(condition, fields, rootAlias);
             var known = container.Facts.Derive(established);
 
+            // An IN arrives folded into a SEARCH over a Sarg, which is one node rather than the
+            // equalities it stands for, so nothing below would recognise it. Expanded, it is the
+            // disjunction translation would have rendered anyway -- and the expansion is kept only if
+            // something was actually lowered, so a predicate this has no opinion about reaches the
+            // planner in the shape it arrived.
+            RexNode expanded;
+            try
+            {
+                expanded = RexUtil.expandSearch(rexBuilder, null, condition);
+            }
+            catch (Exception)
+            {
+                expanded = condition;
+            }
+
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
-            var rewritten = Apply(condition, translator, known, rootAlias, rexBuilder);
+            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder);
 
             return rewritten ?? condition;
         }
@@ -89,10 +104,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Rewrites what it can, returning <c>null</c> where nothing below changed.
         /// </summary>
         /// <remarks>
-        /// Conjunctions are descended into and nothing else is. A rewrite is an equivalence only under
-        /// the declared fact, and the fact was proven from the conjuncts beside it; under a
-        /// disjunction those conjuncts do not hold of every row the branch keeps, so the proof does
-        /// not reach there.
+        /// <para>
+        /// Conjunctions and disjunctions alike, and the reason it reaches into a disjunction is worth
+        /// stating. A rewrite is an equivalence only under the declared fact, and a conditional fact
+        /// was proven from the <em>top-level</em> conjuncts — which hold of every row the whole
+        /// predicate keeps, whatever shape the rest of it has. So inside <c>A AND (B OR C)</c> the
+        /// proof of <c>A</c> is as good in <c>B</c> as it is beside it: over a row where <c>A</c>
+        /// fails the conjunction is false however the branch reads, and over one where it holds the
+        /// fact holds too.
+        /// </para>
+        /// <para>
+        /// Which is what makes an <c>IN</c> work. Expanded, it is a disjunction of equalities over one
+        /// path, each lowered the way a lone equality is — and once the points are stored spellings
+        /// rather than casts, <c>CosmosPartitionKeyExtractor</c> can recover them as a set and the
+        /// batch point read becomes reachable through a typed column.
+        /// </para>
         /// </remarks>
         static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
@@ -103,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // not an API, and a cast from the ordinal keeps compiling when one is inserted.
             var kind = call.getKind().name();
 
-            if (kind == nameof(SqlKind.__Enum.AND))
+            if (kind == nameof(SqlKind.__Enum.AND) || kind == nameof(SqlKind.__Enum.OR))
             {
                 var operands = new java.util.ArrayList();
                 var changed = false;
@@ -117,7 +143,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     changed |= rewritten is not null;
                 }
 
-                return changed ? RexUtil.composeConjunction(rexBuilder, operands) : null;
+                if (changed == false)
+                    return null;
+
+                return kind == nameof(SqlKind.__Enum.AND)
+                    ? RexUtil.composeConjunction(rexBuilder, operands)
+                    : RexUtil.composeDisjunction(rexBuilder, operands);
             }
 
             if (call.getOperands().size() != 2)
