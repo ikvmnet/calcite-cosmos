@@ -1093,10 +1093,34 @@ plain:     ClrEnumerableFilter(condition=[=(JSON_VALUE($0, '$.kind'), 'A')])
 A plan node and a per-row test rather than a request. Smaller than this entry claimed, and still worth
 taking — and the statement sent is one predicate shorter either way.
 
-**Still not built: a `const` partition key routes every query.** Every document being in one logical
-partition means `PartitionKeyValues` could be supplied for a query that pins nothing, which is the
-fan-out saving without the predicate. `CosmosPartitionKeyExtractor` does not consult the declaration
-at all today. It would also give the fan-out measurement below something to be priced against.
+**Also built: a declared partition key routes.** `CosmosPartitionKeyExtractor` now seeds its pinned
+map from what the container declares outright, for the paths the predicate did not pin itself — so a
+query pinning only an `id` supplies the key and reaches a **point read**, which is the saving the
+tautology entry above was predicted to have and does not. Measured, over the same query:
+
+```
+const + required:  pointRead=[x]  pk=[<value>]  complete=True
+const alone:       pointRead=<null>  pk=<null>
+nothing declared:  pointRead=<null>  pk=<null>
+```
+
+About 1 RU against 2.3 at best for the query, before the fan-out the query would also have paid.
+
+**The presence claim matters more here than anywhere else it is asked.** A partition key *routes and
+does not filter*, so supplying a value some document does not hold does not return fewer rows — it
+returns rows from the wrong partitions, which is to say none of the right ones. A `const` without
+`required` still admits a document with no such property, which Cosmos places in its own partition,
+and routing past it would lose it. Outright only, and for a sharper reason than elsewhere too: the
+routing applies to the whole statement while a guarded fact holds only of the rows a sibling conjunct
+keeps, so a key pinned from one would route away documents the statement had not excluded.
+
+**What the predicate pinned still wins.** A declaration disagreeing with the predicate describes a
+document the predicate excludes, which is the contradiction `CosmosFactRewriter` settles rather than
+something to resolve by routing.
+
+**Which leaves the fan-out measurement below as the thing this is priced on, still untaken.** All
+three conclusions a declared value supports are now read; what none of them has is a number from a
+container with more than one physical partition.
 
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 

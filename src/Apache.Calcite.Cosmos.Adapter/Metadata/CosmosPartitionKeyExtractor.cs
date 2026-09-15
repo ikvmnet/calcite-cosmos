@@ -60,6 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // sense than routing needs. TryExtractPrefix, which only routes, is where that is admitted.
             var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
             Collect(condition, fields, rootAlias, pinned, throughText: false);
+            Declared(container, pinned);
 
             var resolved = new object?[container.PartitionKeyPaths.Count];
 
@@ -110,6 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
             Collect(condition, fields, rootAlias, pinned, throughText: true);
+            Declared(container, pinned);
 
             var prefix = new List<object?>();
 
@@ -168,6 +170,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
             Collect(condition, fields, rootAlias, pinned, throughText: false);
+            Declared(container, pinned);
 
             // Cosmos types id as a string. Anything else pinned to it is a predicate that matches
             // nothing, and is not something to turn into a read.
@@ -399,6 +402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
             Collect(condition, fields, rootAlias, pinned, throughText: false);
+            Declared(container, pinned);
 
             return pinned.TryGetValue("/" + CosmosContainerMetadata.IdPropertyName, out var value) && value is string;
         }
@@ -506,6 +510,93 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return;
 
             TryPin(right, left, fields, rootAlias, pinned, throughText);
+        }
+
+        /// <summary>
+        /// Pins whatever the container declares of its own partition key, for the paths the predicate
+        /// did not pin itself.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A partition key routes and does not filter</b>, which is what makes this worth doing and
+        /// also what makes it dangerous: supplying a value no document has does not return fewer rows,
+        /// it returns rows from the wrong partitions — which is to say none of the right ones. So the
+        /// value has to be one <em>every</em> document holds, and that is two claims rather than one.
+        /// </para>
+        /// <para>
+        /// <b>Both claims, for the reason <see cref="CosmosFact.Entails"/> is careful about.</b> A
+        /// declared <c>const</c> says what a path holds <em>if it holds anything</em>; a container
+        /// whose partition key is declared constant but not <c>required</c> may still hold a document
+        /// with no such property, which Cosmos places in its own partition. Routing past that document
+        /// would lose it. Only a path declared present as well has no such document.
+        /// </para>
+        /// <para>
+        /// <b>Outright, never under a guard</b>, and here the reason is sharper than elsewhere: the
+        /// routing applies to the whole statement, while a guarded fact holds only of the rows a
+        /// sibling conjunct keeps. A key pinned from a guarded fact would route away documents the
+        /// statement had not excluded.
+        /// </para>
+        /// <para>
+        /// <b>What the predicate pinned wins.</b> A declaration that disagrees with the predicate
+        /// describes a document the predicate excludes, so the two cannot both be satisfied — which is
+        /// the contradiction <c>CosmosFactRewriter</c> settles, and not something to resolve by
+        /// routing.
+        /// </para>
+        /// </remarks>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="pinned">The map the predicate has already filled, added to in place.</param>
+        static void Declared(CosmosContainerMetadata container, Dictionary<string, object?> pinned)
+        {
+            if (container.Facts.IsEmpty)
+                return;
+
+            CosmosFactSet? outright = null;
+
+            foreach (var policy in container.PartitionKeyPaths)
+            {
+                if (pinned.ContainsKey(policy))
+                    continue;
+
+                if (DocumentPathOf(policy) is not CosmosDocumentPath path)
+                    continue;
+
+                outright ??= container.Facts.Derive(null);
+
+                if (outright.Knows(new CosmosFact(path, new CosmosClaim.Present())) == false)
+                    continue;
+
+                foreach (var claim in outright.ClaimsFor(path))
+                {
+                    if (claim is not CosmosClaim.EqualTo equality)
+                        continue;
+
+                    pinned[policy] = equality.Value;
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads a policy path — <c>/tenant/user</c> — as the document path the facts are keyed by.
+        /// </summary>
+        /// <param name="policy">The declared path.</param>
+        /// <returns>The path, or <c>null</c> where it names nothing this model can address.</returns>
+        static CosmosDocumentPath? DocumentPathOf(string policy)
+        {
+            if (string.IsNullOrEmpty(policy) || policy[0] != '/')
+                return null;
+
+            var path = CosmosDocumentPath.Root;
+
+            foreach (var segment in policy.Split('/'))
+            {
+                if (segment.Length == 0)
+                    continue;
+
+                path = path.Property(segment);
+            }
+
+            return ReferenceEquals(path, CosmosDocumentPath.Root) ? null : path;
         }
 
         /// <summary>
