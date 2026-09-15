@@ -1031,6 +1031,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             query.Sql.Should().NotContain("c.n = @", "no stored string is six characters: " + query.Sql);
         }
 
+
+        /// <summary>
+        /// A container whose declared schema is the given JSON.
+        /// </summary>
+        /// <param name="schema">The schema.</param>
+        /// <returns>The container.</returns>
+        static CosmosContainerMetadata Declaring(string schema) =>
+            new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+
+        const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
+
+        /// <summary>
+        /// A predicate the declaration contradicts keeps nothing, and the plan says so.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The container declares a domain and the query asks for a value outside it. A document
+        /// satisfying the predicate would have to hold a value the declaration says it does not, so
+        /// there is none — and the equivalent predicate is the constant.
+        /// </para>
+        /// <para>
+        /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a
+        /// plan. The claims were produced from the schema and used as <em>premises</em>, to unlock a
+        /// guarded fact the query proved its way into; nothing read one as a statement about the data.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AContradictedPredicateIsReducedToTheConstant()
+        {
+            foreach (var schema in new[]
+            {
+                """{ "type": "object", "properties": { "status": { "enum": ["active", "archived"] } } }""",
+                """{ "type": "object", "properties": { "status": { "const": "active" } } }""",
+            })
+            {
+                var container = Declaring(schema);
+                var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
+
+                PlanText(best).Should().Contain("condition=[false]",
+                    "no document satisfies it, for " + schema + ": " + PlanText(best));
+
+                Query(FindCosmos(best), container).Sql.Should().NotContain("c.status =",
+                    "so the comparison itself is not worth sending, for " + schema);
+            }
+        }
+
+        /// <summary>
+        /// A predicate the declaration admits is left exactly as it was.
+        /// </summary>
+        /// <remarks>
+        /// The direction that has to hold or the feature is worse than useless: a value inside the
+        /// declared domain contradicts nothing, and the comparison reaches the service unchanged.
+        /// </remarks>
+        [TestMethod]
+        public void ASatisfiablePredicateIsUntouched()
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "status": { "enum": ["active", "archived"] } } }""");
+            var best = PlanToCosmos(string.Format(Status, "active"), container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().Contain("c.status = @",
+                "the value is in the declared domain, so nothing is settled by the declaration");
+
+            PlanText(best).Should().NotContain("condition=[false]", PlanText(best));
+        }
+
+        /// <summary>
+        /// A container declaring nothing settles nothing, whatever the query asks for.
+        /// </summary>
+        [TestMethod]
+        public void WithNothingDeclaredNoPredicateIsContradicted()
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
+
+            PlanText(best).Should().NotContain("condition=[false]",
+                "nothing says what the path holds, so nothing rules the value out");
+        }
+
     }
 
 }

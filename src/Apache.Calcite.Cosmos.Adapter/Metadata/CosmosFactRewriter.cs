@@ -79,6 +79,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var established = CosmosFactExtractor.Extract(condition, fields, rootAlias);
             var known = container.Facts.Derive(established);
 
+            // Where the query's own conjuncts and the container's declaration cannot both hold, no
+            // document satisfies the predicate -- so the equivalent predicate is the constant, and
+            // every rule that reduces one takes it from there. See CosmosFactSet.IsContradictory.
+            if (known.IsContradictory)
+                return rexBuilder.makeLiteral(false);
+
             // An IN arrives folded into a SEARCH over a Sarg, which is one node rather than the
             // equalities it stands for, so nothing below would recognise it. Expanded, it is the
             // disjunction translation would have rendered anyway -- and the expansion is kept only if
