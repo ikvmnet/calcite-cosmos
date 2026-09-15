@@ -1200,6 +1200,86 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 "a declared constant refutes every other value: " + PlanText(best));
         }
 
+
+        /// <summary>
+        /// A schema declaring the partition key path a constant, present or not.
+        /// </summary>
+        /// <param name="present">Whether <c>ref</c> is declared <c>required</c>.</param>
+        /// <returns>The container.</returns>
+        static CosmosContainerMetadata PartitionKey(bool present)
+        {
+            var required = present ? "\"required\": [\"ref\"], " : "";
+
+            return Declaring("{ \"type\": \"object\", " + required
+                + "\"properties\": { \"ref\": { \"const\": \"" + Canonical + "\" } } }");
+        }
+
+        const string ById = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.id') = 'x'""";
+
+        /// <summary>
+        /// A container that declares its own partition key routes a query that pins only an
+        /// <c>id</c> — and a routed read of one document is a point read.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the saving the tautology entry was predicted to have and does not: a query that
+        /// pinned no partition key fanned out across every partition, and pinning it is what
+        /// <c>TryExtractPointRead</c> was waiting for. The predicate says only <c>id = 'x'</c>, which
+        /// is exactly what a point read accounts for, so with the key supplied from the declaration
+        /// the read is reachable — about 1 RU against 2.3 at best for the query, before the fan-out.
+        /// </para>
+        /// <para>
+        /// Sound because a point read applies no predicate of its own: it takes an <c>id</c> and a key
+        /// and returns that document. The key is one every document holds, and the predicate was
+        /// nothing but the <c>id</c>, so the document returned is the document asked for.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredPartitionKeyRoutesAQueryThatPinsOnlyAnId()
+        {
+            var container = PartitionKey(present: true);
+            var query = Query(FindCosmos(PlanToCosmos(ById, container, out _)), container);
+
+            query.PartitionKeyValues.Should().ContainSingle().Which.Should().Be(Canonical,
+                "every document holds that value, so the statement need not visit the other partitions");
+
+            query.PartitionKeyIsComplete.Should().BeTrue("the container has one path and the declaration pins it");
+            query.PointReadId.Should().Be("x", "and an id beside a complete key is a point read");
+        }
+
+        /// <summary>
+        /// Without a presence claim the key is not pinned, and the reason is sharper here than
+        /// elsewhere.
+        /// </summary>
+        /// <remarks>
+        /// A partition key routes and does not filter, so supplying a value some document does not
+        /// hold does not return fewer rows — it returns rows from the wrong partitions. A
+        /// <c>const</c> without <c>required</c> still admits a document with no such property, which
+        /// Cosmos places in its own partition, and routing past it would lose it.
+        /// </remarks>
+        [TestMethod]
+        public void WithoutAPresenceClaimTheKeyIsNotPinned()
+        {
+            var container = PartitionKey(present: false);
+            var query = Query(FindCosmos(PlanToCosmos(ById, container, out _)), container);
+
+            query.PartitionKeyValues.Should().BeNull("a document with no key at all is admitted, and routing would lose it");
+            query.PointReadId.Should().BeNull("so there is no complete key for a read to use");
+        }
+
+        /// <summary>
+        /// And a container declaring nothing routes nothing, as before.
+        /// </summary>
+        [TestMethod]
+        public void WithNothingDeclaredTheKeyIsNotPinned()
+        {
+            var container = Declared(false);
+            var query = Query(FindCosmos(PlanToCosmos(ById, container, out _)), container);
+
+            query.PartitionKeyValues.Should().BeNull();
+            query.PointReadId.Should().BeNull();
+        }
+
     }
 
 }
