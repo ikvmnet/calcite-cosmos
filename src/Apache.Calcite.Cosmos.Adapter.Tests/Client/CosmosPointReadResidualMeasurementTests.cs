@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+
 using Azure.Identity;
 
 using FluentAssertions;
@@ -71,6 +73,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>The partition holding the large documents, which price a body against the floor.</summary>
         const string LargePartition = "kbig";
+
+        /// <summary>The partition holding the size ladder.</summary>
+        const string SizePartition = "ksize";
+
+        /// <summary>Body sizes in kilobytes, spanning the break-even the two-point fit predicts.</summary>
+        static readonly int[] SizeLadder = { 1, 4, 8, 16, 24, 32, 48, 64 };
+
+        static string SizeId(int kilobytes) => "size-" + kilobytes.ToString(CultureInfo.InvariantCulture);
 
         static CosmosClient? _client;
         static Container? _container;
@@ -145,6 +155,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 var padding = new string('x', 100 * 1024);
                 await Seed(LargePartition, "{\"id\":\"big-live\",\"k\":\"" + LargePartition + "\",\"deleteUtcTime\":null,\"pad\":\"" + padding + "\"}");
                 await Seed(LargePartition, "{\"id\":\"big-dead\",\"k\":\"" + LargePartition + "\",\"deleteUtcTime\":\"2026-01-01T00:00:00Z\",\"pad\":\"" + padding + "\"}");
+
+                // A ladder of sizes, so the break-even rests on a fitted line rather than on the two
+                // points at either end of it.
+                foreach (var kilobytes in SizeLadder)
+                    await Seed(SizePartition,
+                        "{\"id\":\"" + SizeId(kilobytes) + "\",\"k\":\"" + SizePartition + "\",\"deleteUtcTime\":null,\"pad\":\"" +
+                        new string('x', kilobytes * 1024) + "\"}");
 
                 _client = client;
                 _container = container;
@@ -404,6 +421,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 : $"Crossover at N={crossover}: at and above it the single query is cheaper than the batch read.");
 
             readings[0].Many.Should().BeLessThan(readings[0].Query, "one id is the single-document case, where the read wins");
+        }
+
+        /// <summary>
+        /// Sweeps document size, which is what the whole gate turns on, and reads the crossing off a
+        /// line rather than off two points.
+        /// </summary>
+        [TestMethod]
+        public async Task TheCrossingIsWhereTheTwoPointFitSaysItIs()
+        {
+            Say("");
+            Say("## Point read against query, by document size");
+            Say("   KB   read    query   cheaper");
+
+            double? crossing = null;
+            var previous = (Kilobytes: 0, Read: 0d, QueryCharge: 0d);
+
+            foreach (var kilobytes in SizeLadder)
+            {
+                var id = SizeId(kilobytes);
+
+                var read = await Mean(() => PointRead(id, SizePartition));
+                var query = await Mean(async () => (await Query(LookupQuery(id, SizePartition), SizePartition)).Charge);
+
+                Say($"{kilobytes,5}  {read,6:F2}  {query,6:F2}   {(read < query ? "read" : "query")}");
+
+                // Linear interpolation between the last size where the read won and the first where it
+                // lost, which is a better reading of the crossing than either endpoint.
+                if (crossing is null && read > query && previous.Kilobytes > 0)
+                {
+                    var before = previous.QueryCharge - previous.Read;
+                    var after = query - read;
+                    crossing = previous.Kilobytes + (kilobytes - previous.Kilobytes) * (before / (before - after));
+                }
+
+                previous = (kilobytes, read, query);
+            }
+
+            Say(crossing is double point
+                ? $"crossing interpolated at {point:F1} KB; the model says {CosmosRequestUnitModel.BreakEvenDocumentSizeInBytes / 1024d:F1} KB"
+                : "no crossing inside the ladder");
+
+            crossing.Should().NotBeNull("the ladder should span the crossing");
+            crossing!.Value.Should().BeApproximately(CosmosRequestUnitModel.BreakEvenDocumentSizeInBytes / 1024d, 8d,
+                "the model's slope is chosen so its crossing lands on the measured one");
+        }
+
+        /// <summary>A statement returning one field rather than the document.</summary>
+        static QueryDefinition NarrowQuery(string id, string key) =>
+            new QueryDefinition("SELECT c.id FROM c WHERE c.id = @id AND c.k = @k AND IS_NULL(c.deleteUtcTime)")
+                .WithParameter("@id", id)
+                .WithParameter("@k", key);
+
+        /// <summary>
+        /// Prices a projection, which the model does not carry and which moves the break-even if it
+        /// matters: a query can return one field where a point read always returns the document whole.
+        /// </summary>
+        [TestMethod]
+        public async Task AProjectionCostsTheQueryLessAndTheReadNothing()
+        {
+            var smallWide = await Mean(async () => (await Query(LookupQuery(D(0), Partition), Partition)).Charge);
+            var smallNarrow = await Mean(async () => (await Query(NarrowQuery(D(0), Partition), Partition)).Charge);
+
+            var largeWide = await Mean(async () => (await Query(LookupQuery("big-live", LargePartition), LargePartition)).Charge);
+            var largeNarrow = await Mean(async () => (await Query(NarrowQuery("big-live", LargePartition), LargePartition)).Charge);
+
+            // The read is the control: it applies no projection, so its charge cannot move.
+            var read = await Mean(() => PointRead("big-live", LargePartition));
+
+            Say("");
+            Say("## Projection width (SELECT * against SELECT c.id)");
+            Say($"small document, SELECT *     : {smallWide:F2} RU");
+            Say($"small document, SELECT c.id  : {smallNarrow:F2} RU");
+            Say($"large document, SELECT *     : {largeWide:F2} RU");
+            Say($"large document, SELECT c.id  : {largeNarrow:F2} RU");
+            Say($"large document, point read   : {read:F2} RU (no projection to apply)");
+            Say($"what the projection saves    : {largeWide - largeNarrow:F2} RU on a large document, " +
+                $"{smallWide - smallNarrow:F2} on a small one");
+
+            // Whatever the numbers, a projection cannot make a query more expensive than returning the
+            // whole document, and cannot change the read at all.
+            smallNarrow.Should().BeLessThanOrEqualTo(smallWide * 1.1);
+            largeNarrow.Should().BeLessThanOrEqualTo(largeWide * 1.1);
         }
 
         /// <summary>

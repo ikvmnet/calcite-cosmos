@@ -22,8 +22,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// A point read costs <c>1.00 RU</c> for a small document and <c>9.95 RU</c> for one of ~100 KB —
-    /// a floor of one and about <c>0.090 RU</c> per kilobyte of body.
+    /// A point read costs <c>1.00 RU</c> for a small document and rises with the body — <c>1.67</c> at
+    /// 16 KB, <c>2.19</c> at 32, <c>4.76</c> at 48, <c>9.95</c> at 100. A floor of one and about
+    /// <c>0.064 RU</c> per kilobyte, on which see the note below: the real curve is not a line.
     /// </description></item>
     /// <item><description>
     /// A query costs a floor near <c>2.90 RU</c>, plus about <c>0.058 RU</c> per document returned and
@@ -53,6 +54,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// costing, which is in abstract units: a ratio has no units to disagree about.
     /// </para>
     /// <para>
+    /// <b>The point read curve is not a line, and this one is fitted to the crossing.</b> Swept over a
+    /// ladder of bodies from 1 to 100 KB the measured charge is convex and visibly stepped — 24 KB and
+    /// 32 KB both cost 2.19, 48 KB and 64 KB both cost 4.76 — so no straight line predicts it. A first
+    /// fit taken from the two endpoints alone gave <c>0.090 RU</c> per kilobyte, which over-prices the
+    /// middle of the range badly enough to <em>mis-order</em> a 32 KB document: it called for the query
+    /// where the charges say the read is cheaper by 1.26 RU. The slope here is chosen instead so the
+    /// model's crossing lands on the measured one, near 40 KB, and it orders every rung of the ladder
+    /// the way the charges do. It will not predict a charge — at 100 KB it says 7.4 where the service
+    /// says 9.95 — and that is the trade the class is for: ordering is the bar, and a line that orders
+    /// correctly everywhere measured beats one that fits two points and gets the middle wrong.
+    /// </para>
+    /// <para>
     /// <b>Where the batch fit stops holding.</b> It is taken over two to thirty-two documents, where
     /// its residuals are under <c>0.02 RU</c>. Past that the measured charge bends upward — the marginal
     /// cost rises from <c>0.225</c> to about <c>0.29 RU</c> per document by 128, most likely paging —
@@ -60,6 +73,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// it flatters the batch, and the batch has already lost to a query by fourfold there, so no
     /// ordering turns on it. The range that <em>is</em> fitted tightly is the one where the two curves
     /// actually cross, which is between one document and two.
+    /// </para>
+    /// <para>
+    /// <b>A projection is not modelled, and the error it leaves is bounded.</b> Every charge here was
+    /// taken with <c>SELECT *</c>. A point read has no projection to apply — it returns the document
+    /// whole — while a query can return one field, and measured, that is worth <c>1.35 RU</c> on a
+    /// 100 KB body and nothing at all on a small one. So a projection only ever removes part of the
+    /// query's returned-bytes term, which is <see cref="QueryPerKilobyteReturned"/>, and the model can
+    /// only ever over-price a projected query by that much. Near the crossing that is about
+    /// <c>0.6 RU</c> against a decision the two routes are within <c>2 RU</c> of — enough to move the
+    /// threshold by a few kilobytes, never enough to flip a decision that was not already close to
+    /// free. It is left out because carrying it would mean knowing at the filter what the projection
+    /// above it keeps, which is a great deal of machinery for a correction smaller than the spread
+    /// between the fit and the charges it is fitted to.
     /// </para>
     /// <para>
     /// <b>What was not measured, and is therefore a guess.</b> The fan-out multiplier is reasoned rather
@@ -77,8 +103,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>What a point read costs before its body is counted.</summary>
         public const double PointReadFloor = 1.00d;
 
-        /// <summary>What a point read costs per kilobyte of document body.</summary>
-        public const double PointReadPerKilobyte = 0.090d;
+        /// <summary>
+        /// What a point read costs per kilobyte of document body, chosen so the line crosses the query
+        /// where the measured charges cross rather than to predict either of them.
+        /// </summary>
+        public const double PointReadPerKilobyte = 0.064d;
 
         /// <summary>What a query costs before anything it returns is counted.</summary>
         public const double QueryFloor = 2.90d;
@@ -167,9 +196,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// Below it the point read wins, by up to the 2 RU query floor; above it the query wins, without
-        /// bound, because only the read's charge grows with the body. It is about 26 KB, which is large
-        /// for a document and small for a blob — so the answer is genuinely container-dependent rather
-        /// than one side always being right.
+        /// bound, because only the read's charge grows with the body. It is about 40 KB — measured by
+        /// sweeping the size ladder and interpolating, which put the crossing at 40.5 KB — and that is
+        /// large for a document and small for a blob, so the answer is genuinely container-dependent
+        /// rather than one side always being right.
         /// </remarks>
         public static double BreakEvenDocumentSizeInBytes
         {

@@ -31,10 +31,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         const double Tolerance = 0.9d;
 
         [TestMethod]
-        public void TheModelReproducesTheMeasuredPointReadCharges()
+        public void TheModelReproducesTheMeasuredPointReadChargeForASmallDocument()
         {
             CosmosRequestUnitModel.PointRead(SmallDocument).Should().BeApproximately(1.00d, Tolerance);
-            CosmosRequestUnitModel.PointRead(LargeDocument).Should().BeApproximately(9.95d, Tolerance);
+        }
+
+        /// <summary>
+        /// The contract the point read fit actually makes: not the charge, but which route is cheaper.
+        /// </summary>
+        /// <remarks>
+        /// The measured curve is convex and stepped, so no line predicts it, and the first fit — taken
+        /// from the two endpoints — mis-ordered a 32 KB document. These are the swept charges, and what
+        /// is asserted is that the model agrees on the winner at every one of them.
+        /// </remarks>
+        [TestMethod]
+        public void TheModelOrdersEveryMeasuredSizeTheWayTheChargesDo()
+        {
+            // kilobytes, measured point read, measured query
+            var ladder = new[]
+            {
+                (1, 1.00d, 3.03d), (4, 1.14d, 3.08d), (8, 1.33d, 3.13d), (16, 1.67d, 3.24d),
+                (24, 2.19d, 3.35d), (32, 2.19d, 3.45d), (48, 4.76d, 3.64d), (64, 4.76d, 3.96d),
+                (100, 9.95d, 4.51d),
+            };
+
+            foreach (var (kilobytes, read, query) in ladder)
+            {
+                var bytes = kilobytes * 1024d;
+
+                var modelPrefersRead = CosmosRequestUnitModel.PointRead(bytes) < CosmosRequestUnitModel.Query(1, bytes);
+
+                modelPrefersRead.Should().Be(read < query,
+                    $"at {kilobytes} KB the service charges {read:F2} for the read and {query:F2} for the query");
+            }
         }
 
         [TestMethod]
@@ -108,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var read = CosmosRequestUnitModel.PointRead(LargeDocument);
             var query = CosmosRequestUnitModel.Query(1, LargeDocument);
 
-            read.Should().BeGreaterThan(query, "a point read is charged for the body at roughly six times the query's rate");
+            read.Should().BeGreaterThan(query, "a point read is charged for the body at several times the query's rate");
         }
 
         [TestMethod]
@@ -116,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var breakEven = CosmosRequestUnitModel.BreakEvenDocumentSizeInBytes;
 
-            breakEven.Should().BeInRange(20d * 1024d, 32d * 1024d, "the fitted crossing is about 26 KB");
+            breakEven.Should().BeInRange(34d * 1024d, 48d * 1024d, "the swept crossing was interpolated at 40.5 KB");
 
             // Either side of it, the ordering is the one the break-even claims.
             CosmosRequestUnitModel.PointRead(breakEven * 0.5)
