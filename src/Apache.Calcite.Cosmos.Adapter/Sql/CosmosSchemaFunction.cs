@@ -19,14 +19,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// statement, and the name is the whole of what rendering needs.
     /// </para>
     /// <para>
-    /// <b>Implementable, and the implementation refuses.</b> These have no in-process body and are not
-    /// going to acquire one: the point of every one of them is that the service evaluates it, and
-    /// binding a CLR method here would let a call that cannot be pushed down plan anyway and then
-    /// answer with something Cosmos never computed. Declining the interface said the same thing, but
-    /// Calcite says it on this type's behalf — <c>User defined function FULLTEXTSCORE must implement
+    /// <b>Implementable, and most of the implementations refuse.</b> The objection to binding a CLR
+    /// method here is that it lets a call which cannot be pushed down plan anyway, and then answer with
+    /// something Cosmos never computed. Declining the interface said as much, but Calcite then says it
+    /// on this type's behalf — <c>User defined function FULLTEXTSCORE must implement
     /// ImplementableFunction</c> — which names an interface rather than the reason and reads as a
-    /// defect in the adapter. Implementing it and throwing puts the refusal in the same place, at
-    /// prepare time, in words a caller can act on.
+    /// defect in the adapter. Implementing it and throwing puts the refusal at prepare time, in words a
+    /// caller can act on.
+    /// </para>
+    /// <para>
+    /// <b>The type tests are the exception, and they earned it by measurement rather than by argument.</b>
+    /// "It might answer differently from the service" is a question with an answer, and
+    /// <c>CosmosTypeTestDifferentialTests</c> asks it: Cosmos and <see cref="CosmosFunctionBodies"/> are
+    /// given the same question about a document of every JSON kind — including the two the whole thing
+    /// turns on, a path holding null and a path that is absent — and they agree on every one. So those
+    /// eight are implemented and everything else still refuses, which makes this a decision per function
+    /// rather than a rule about the family. <c>FULLTEXTCONTAINS</c> would need the service's analyzer,
+    /// and <c>FULLTEXTSCORE</c> a score the service computes while ordering and never returns; neither
+    /// is a body anybody can write.
     /// </para>
     /// </remarks>
     sealed class CosmosSchemaFunction : ScalarFunction, ImplementableFunction
@@ -83,18 +93,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Refuses to supply an in-process body, saying why.
+        /// Supplies an in-process body where one exists, and says why where none does.
         /// </summary>
         /// <remarks>
         /// Calcite asks for this while generating code for a plan, so a call that survived to here is
-        /// one no rule pushed down and the statement cannot be answered. Throwing is the same outcome
-        /// as not implementing the interface at all, at the same moment; what it adds is the reason.
+        /// one no rule pushed down. For a type test that is fine — it can be answered from the document
+        /// the row already carries. For everything else the statement cannot be answered, and throwing
+        /// is the same outcome as not implementing the interface at all, at the same moment; what it
+        /// adds is the reason.
         /// </remarks>
-        /// <returns>Never returns.</returns>
-        /// <exception cref="java.lang.UnsupportedOperationException">Always.</exception>
+        /// <returns>The body, for a function that has one.</returns>
+        /// <exception cref="java.lang.UnsupportedOperationException">Where the function has no body.</exception>
         public CallImplementor getImplementor()
         {
-            throw new java.lang.UnsupportedOperationException(Refusal(_operator.getName()));
+            var name = _operator.getName();
+
+            // A type test over a document path has a body, and it answers what the service answers —
+            // held to that by CosmosTypeTestDifferentialTests, which asks Cosmos and the body the same
+            // question about a document of every JSON kind. Everything else refuses here, at prepare
+            // time, rather than later and less legibly.
+            if (CosmosTypeTestImplementor.Answers(name))
+                return new CosmosTypeTestImplementor(name);
+
+            throw new java.lang.UnsupportedOperationException(Refusal(name));
         }
 
         /// <summary>
@@ -107,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="name">The function's name.</param>
         /// <returns>The message.</returns>
-        static string Refusal(string name)
+        internal static string Refusal(string name)
         {
             return name is "FULLTEXTSCORE" or "RRF"
                 ? name + " has no value this adapter can produce. Cosmos computes a relevance score "

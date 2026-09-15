@@ -236,9 +236,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// A residual only the service can evaluate cannot be lifted, however cheap the read would be.
-        /// <c>IS_STRING</c>, like the rest of <c>CosmosOperators</c>, has no CLR implementation, so a
-        /// plan that leaves it above the converter cannot be generated at all — Calcite fails only at
-        /// code generation, with "Unable to implement", which is how CI found this.
+        /// <c>REGEXMATCH</c> has no in-process body, so a plan that leaves it above the converter cannot
+        /// be generated at all — Calcite fails only at code generation, with "Unable to implement",
+        /// which is how CI found this. The type tests used to be in the same position and no longer are;
+        /// see <c>ATypeTestResidualIsLiftedBecauseItHasABody</c>.
         /// The rule has to decline rather than offer a plan that is cheaper and impossible.
         /// </remarks>
         [TestMethod]
@@ -246,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Use(SmallDocuments());
 
-            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(c.\"$.category\")");
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND REGEXMATCH(c.\"$.category\", 'b.*')");
 
             Text(plan).Should().NotContain("ClrEnumerableFilter",
                 "a Cosmos function has no CLR implementation, so a filter carrying it cannot be implemented above the converter");
@@ -254,7 +255,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var query = Query(Find<CosmosFilter>(plan)!);
 
             query.PointReadId.Should().BeNull("the whole predicate has to stay with the service");
-            query.Sql.Should().Contain("IS_STRING");
+            query.Sql.Should().Contain("REGEXMATCH");
+        }
+
+        /// <remarks>
+        /// A type test is liftable, because <c>CosmosFunctionBodies</c> answers it in process and
+        /// answers what the service answers — see <c>CosmosTypeTestDifferentialTests</c>. So the
+        /// soft-delete shape issue #92 was really about, which asks <c>IS_NULL</c> rather than SQL's
+        /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query.
+        /// </remarks>
+        [TestMethod]
+        public void ATypeTestResidualIsLiftedBecauseItHasABody()
+        {
+            Use(SmallDocuments());
+
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(c.\"$.category\")");
+
+            var query = Query(Find<CosmosFilter>(plan)!);
+
+            query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
+            query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
+            Text(plan).Should().Contain("ClrEnumerableFilter", "and finishes in process");
         }
 
         /// <remarks>

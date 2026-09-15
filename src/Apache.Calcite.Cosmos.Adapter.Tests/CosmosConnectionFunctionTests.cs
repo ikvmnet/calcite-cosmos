@@ -238,6 +238,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <summary>
+        /// The shape issue #92 is about, executed: a by-id lookup whose residual is a type test.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the only test that runs the generated code for a type test. Everything else about
+        /// <c>CosmosFunctionBodies</c> can be checked without a service — the bodies against Cosmos in
+        /// <c>CosmosTypeTestDifferentialTests</c>, the plan in
+        /// <c>CosmosPointReadResidualPlannerTests</c> — but whether Calcite can <em>emit</em> a call to a
+        /// body written in C# is only answered by executing one.
+        /// </para>
+        /// <para>
+        /// Pinning <c>id</c> and the partition key makes the point read recoverable, so the type test is
+        /// held back and finishes in process rather than being pushed. That is the plan the bodies exist
+        /// for, and it is worth executing rather than merely planning.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ATypeTestFinishesInProcessOverAPointRead()
+        {
+            RequireService();
+
+            var kept = await QueryAsync("""
+                SELECT c."id" FROM "products" AS c
+                WHERE c."id" = '1'
+                  AND JSON_VALUE(c."DOC", '$.category') = 'bikes'
+                  AND IS_DEFINED(JSON_VALUE(c."DOC", '$.price'))
+                """);
+
+            // Equal(params) would read a because-message as another expected element.
+            kept.Should().Equal(new[] { "1" });
+        }
+
+        /// <summary>
+        /// And the same shape where the residual rejects, which is what a dropped predicate looks like.
+        /// </summary>
+        /// <remarks>
+        /// The document exists and the pinned half selects it, so a point read returns it and only the
+        /// residual excludes it. If the residual were lost on the way out of the Cosmos convention this
+        /// would answer with the row rather than with nothing, which is the failure worth a test of its
+        /// own — it is silent, and it is wrong rather than slow.
+        /// </remarks>
+        [TestMethod]
+        public async Task ATypeTestThatRejectsRemovesTheRowItWasReadFrom()
+        {
+            RequireService();
+
+            var dropped = await QueryAsync("""
+                SELECT c."id" FROM "products" AS c
+                WHERE c."id" = '3'
+                  AND JSON_VALUE(c."DOC", '$.category') = 'shoes'
+                  AND IS_DEFINED(JSON_VALUE(c."DOC", '$.price'))
+                """);
+
+            dropped.Should().BeEmpty("document 3 has no price, so the residual must exclude it");
+        }
+
+        /// <summary>
         /// The negation, so that the predicate is doing something.
         /// </summary>
         [TestMethod]
