@@ -99,8 +99,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
 
-            derived.Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue();
+            derived.Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse(
+                "required constrains an object and says nothing where there is no object, so a nested one waits on its parent");
+
+            Compile(Parks)
+                .Derive(new[] { Equals(Type, "ParkMap"), new CosmosFact(Data, new CosmosClaim.Present()) })
+                .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue("and holds once the parent is known to be there");
             derived.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeTrue();
+            derived.Knows(new CosmosFact(At, new CosmosClaim.Present())).Should().BeFalse(
+                "properties says what a value is, not that there is one; only required says that");
 
             Compile(Parks).Derive(new[] { Equals(Type, "Park") })
                 .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();

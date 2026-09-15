@@ -98,12 +98,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
 
-            // required names the children that are always there. The claim is about the child, not
-            // about this node.
+            // required names the children that are there whenever this object is. The claim is about
+            // the child, and it is conditional on the parent: `required` constrains an object, and
+            // says nothing at all where there is no object to constrain. So a nested one carries the
+            // parent's own presence in its guard, which chains the whole way up; the document itself
+            // needs no such guard, being what every path is read out of.
             if (node.get("required") is JsonNode required && required.isArray())
+            {
+                var carrier = path.IsRoot
+                    ? guard
+                    : Extend(guard, new CosmosFact(path, new CosmosClaim.Present()));
+
                 for (var i = 0; i < required.size(); i++)
                     if (required.get(i)?.isTextual() == true)
-                        rules.Add(new CosmosFactRule(guard, new CosmosFact(path.Property(required.get(i).asText()), new CosmosClaim.Present())));
+                        rules.Add(new CosmosFactRule(carrier, new CosmosFact(path.Property(required.get(i).asText()), new CosmosClaim.Present())));
+            }
 
             if (node.get("properties") is JsonNode properties && properties.isObject())
             {
@@ -125,6 +134,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             WalkBranches(node.get("oneOf"), node, path, guard, rules, resolver, visiting);
             WalkBranches(node.get("anyOf"), node, path, guard, rules, resolver, visiting);
             WalkConditional(node, path, guard, rules, resolver, visiting);
+        }
+
+        /// <summary>
+        /// Returns a guard with one more fact in it.
+        /// </summary>
+        static IReadOnlyList<CosmosFact> Extend(IReadOnlyList<CosmosFact> guard, CosmosFact fact)
+        {
+            var extended = new List<CosmosFact>(guard.Count + 1);
+            extended.AddRange(guard);
+            extended.Add(fact);
+
+            return extended;
         }
 
         /// <summary>

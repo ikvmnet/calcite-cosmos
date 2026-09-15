@@ -66,7 +66,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var set = CosmosFactTheory.Empty.Derive(new[] { Equals(Type, "ParkMap") });
 
-            set.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeTrue();
             set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
             set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("Park"))).Should().BeTrue(
                 "an else branch's guard is discharged by an equality to a different value, with no closed world needed");
@@ -81,7 +80,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var set = CosmosFactTheory.Empty.Derive(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) });
 
-            set.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeTrue();
             set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue(
                 "every member is a string, so the type is settled even though the value is not");
             set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("Trail"))).Should().BeTrue();
@@ -94,11 +92,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var theory = new CosmosFactTheory(new[]
             {
-                new CosmosFactRule(new[] { new CosmosFact(Type, new CosmosClaim.Present()) }, Represents(ParkId, UuidLower)),
+                new CosmosFactRule(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, UuidLower)),
             });
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(UuidLower,
-                "an equality establishes presence, so the guard holds without the query having said so");
+                "an equality establishes membership, so the guard holds without the query having said so");
+        }
+
+        /// <summary>
+        /// A claim about a value says nothing about whether the path has one.
+        /// </summary>
+        /// <remarks>
+        /// A schema's <c>properties</c> constrains what a path holds if it holds anything; only
+        /// <c>required</c> says it holds something. Reading the first as the second would claim of
+        /// every document what the schema claimed of none — and a grouping key drops its
+        /// <c>IS_DEFINED</c> normalisation on the strength of it.
+        /// </remarks>
+        [TestMethod]
+        public void NoClaimAboutAValueImpliesThePathHasOne()
+        {
+            var set = CosmosFactTheory.Empty.Derive(new[]
+            {
+                Equals(Type, "ParkMap"),
+                Represents(ParkId, UuidLower),
+                new CosmosFact(At, new CosmosClaim.OfType(CosmosJsonType.String)),
+            });
+
+            set.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeFalse();
+            set.Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();
+            set.Knows(new CosmosFact(At, new CosmosClaim.Present())).Should().BeFalse();
+
+            CosmosFactTheory.Empty.Derive(new[] { new CosmosFact(ParkId, new CosmosClaim.Present()) })
+                .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue("which required states outright");
         }
 
         [TestMethod]

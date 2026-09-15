@@ -202,23 +202,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (Claim.Equals(other.Claim))
                 return true;
 
+            // Nothing here entails Present, and that is the whole of what a claim about a value means.
+            // A schema's `properties` constrains the value a path holds *if it holds one*; only
+            // `required` says it holds one at all. Reading "this is a canonical UUID" as "this is
+            // there" would claim of every document what the schema claimed of none, which is exactly
+            // the mistake a container holding more than one kind of document punishes.
             return (Claim, other.Claim) switch
             {
-                // A known value settles membership, type, presence and every disequality but its own.
+                // A known value settles membership, type and every disequality but its own.
                 (CosmosClaim.EqualTo a, CosmosClaim.OneOf b) => CosmosClaim.OneOf.Contains(b.Values, a.Value),
                 (CosmosClaim.EqualTo a, CosmosClaim.OfType b) => TypeOf(a.Value) == b.Type,
-                (CosmosClaim.EqualTo, CosmosClaim.Present) => true,
                 (CosmosClaim.EqualTo a, CosmosClaim.NotEqualTo b) => Equals(a.Value, b.Value) == false,
 
-                // A domain settles presence, settles a type where every member shares one, and
-                // refutes anything outside it.
-                (CosmosClaim.OneOf, CosmosClaim.Present) => true,
+                // A domain settles a type where every member shares one, and refutes anything
+                // outside it.
                 (CosmosClaim.OneOf a, CosmosClaim.OfType b) => AllOfType(a.Values, b.Type),
                 (CosmosClaim.OneOf a, CosmosClaim.NotEqualTo b) => CosmosClaim.OneOf.Contains(a.Values, b.Value) == false,
 
-                // A stored form is a string, and a string is there.
+                // A stored form is a string.
                 (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String,
-                (CosmosClaim.Represents, CosmosClaim.Present) => true,
 
                 _ => false,
             };

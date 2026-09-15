@@ -138,10 +138,16 @@ An atom is *known* when a known atom entails it. Materialising the entailments a
 theory up (`Equals v` entails `OneOf S` for every `S ∋ v`), so it lives in the lookup instead:
 
 ```
-Equals v         ⊨ OneOf S (v ∈ S), Type (typeof v), Defined, NotEquals w (w ≠ v)
-OneOf S          ⊨ Type t (all of S is t), Defined, NotEquals w (w ∉ S)
-Representation r ⊨ Type String, Defined
+Equals v         ⊨ OneOf S (v ∈ S), Type (typeof v), NotEquals w (w ≠ v)
+OneOf S          ⊨ Type t (all of S is t), NotEquals w (w ∉ S)
+Representation r ⊨ Type String
 ```
+
+**Nothing entails `Defined`**, and an earlier draft had all three doing so. A schema's `properties`
+constrains the value a path holds *if it holds one*; only `required` says it holds one. Reading "this
+is a canonical UUID" as "this is there" would claim of every document what the schema claimed of
+none — which is the same mistake, one level down, as describing only some of the kinds a container
+holds.
 
 That keeps the clause set linear in the size of the schema.
 
