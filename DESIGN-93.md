@@ -297,35 +297,98 @@ right. There is no cheap detection — checking means reading documents, which i
 
 ## 6. The library
 
-A `$ref` resolver is the hard part and hand-rolling it is a bug farm, so: a library. The candidates,
-with what each actually costs here.
+### The BCL writes JSON Schema and does not read it
 
-| | license | dialects | cost here |
+Worth stating first, because it is the thing you would expect to exist. .NET **does** have an official
+JSON Schema API — `System.Text.Json.Schema`, shipped in .NET 9 and available on `net8.0` through the
+`System.Text.Json` 9.x package. Reflected over the shipped assembly, it is exactly three types:
+
+```
+JsonSchemaExporter, JsonSchemaExporterOptions, JsonSchemaExporterContext
+JsonSchemaExporter statics: GetJsonSchemaAsNode
+```
+
+A .NET type in, a `JsonNode` schema out. That is the whole surface, and it is the wrong direction: it is
+what the AI tool-calling and OpenAPI-generation paths use, which is why so many Microsoft APIs *emit*
+JSON Schema. Nothing in the box reads one. The asymmetry is the answer — writing a schema from a type is
+mechanical, and reading one means `$ref`, `$id`, `$anchor`, dialects and vocabularies.
+
+### Measured against the real candidates
+
+Parsing the parks schema from §3 — `oneOf` with `const` discriminators, `$defs` + `$ref`, `format` and
+`pattern`, an `if`/`then`, and an unknown `x-` keyword — with each:
+
+| | licence | JSON stack | result |
 | --- | --- | --- | --- |
-| **`com.networknt:json-schema-validator` 1.5.6** (Java, `MavenReference`) | **Apache 2.0** | 4 → 2020-12 | **recommended** |
-| `NJsonSchema` 11.6 | MIT | 4–7, partial 2020-12 | .NET; Newtonsoft-based, drags `Namotion.Reflection`; needs the operand serialised to text |
-| `JsonSchema.Net` | MIT **through 8.x**, OSMF EULA from 9.0.0 | 6 → 2020-12 | pinning 8.x works and is a dead end |
-| `LateApexEarlySpeed.Json.Schema` 4.2 | BSD-3 | 7 → 2020-12 | small user base; drags `Microsoft.Extensions.Http` |
-| `Newtonsoft.Json.Schema` | AGPL / commercial | all | **out** — this repository is Apache 2.0 |
+| **`Microsoft.OpenApi` 2.12.2** | **MIT** | `System.Text.Json`, and nothing else | **recommended** — read everything |
+| `JsonSchema.Net` | MIT **through 8.x**, OSMF EULA from 9.0.0 | `System.Text.Json` | read side is awkward — the fluent `OneOf()`/`If()`/`Const()` names are *builder* extensions, and `JsonSchema` exposes only `BoolValue`, `BaseUri`, `Root` |
+| `LateApexEarlySpeed.Json.Schema` 4.2 | BSD-3 | `System.Text.Json` | validator-shaped; constructs from the schema but exposes no traversable model |
+| `Corvus.Json.Validator` 5.6 | Apache-2.0 | `System.Text.Json` | drags `Microsoft.CodeAnalysis.CSharp` — Roslyn in a database adapter, out |
+| `com.networknt:json-schema-validator` 1.5.6 | Apache-2.0 | Jackson, via `MavenReference` | viable; see below |
+| `NJsonSchema` 11.6 | MIT | Newtonsoft | out — no Newtonsoft |
+| `Newtonsoft.Json.Schema` | AGPL / commercial | Newtonsoft | out twice over |
 
-**Why the Java one.** Apache 2.0 matches the repository. Its required dependencies are *already compiled
-into the build* — `jackson.databind.dll`, `jackson.core.dll`, `jackson.dataformat.yaml.dll` and slf4j are
-in the output directory today, dragged in by calcite-core; the only new jars are the validator (1.5 MB,
-389 classes) and `com.ethlo.time:itu`. `joni` and `graalvm-js`, the two frightening entries in its POM,
-are `<optional>true</optional>` and stay out. And the operand arrives from Calcite's `ModelHandler` as a
-`java.util.Map`, which `ObjectMapper.valueToTree` turns into the `JsonNode` the library takes — no
-serialise/parse round trip, and no second JSON object model living in the adapter beside Jackson's.
+### `Microsoft.OpenApi`, measured
 
-**Use it to resolve, not to walk.** It has a walker (`JsonSchemaWalker`, `WalkEvent`,
-`JsonSchemaWalkListener`) but it is shaped for walking an *instance* against a schema, and our traversal
-wants every branch under a guard rather than the branch an instance selects. So: the library parses,
-validates the schema document is legal for its dialect, and resolves `$ref`/`$id`/`$anchor`; §3's walk
-runs over the resolved structure.
+One dependency, `System.Text.Json`. `net8.0` and `netstandard2.0`. MIT, which an Apache-2.0 project can
+consume. `OpenApiSchema` models the whole 2020-12 keyword surface — and my first reading of it, off a
+strings scan of 2.0.0, was wrong:
 
-**Name the dialect.** The issue says "plain JSON Schema (OpenAPI Schema Object)", which names two
-different things — OpenAPI 3.0's Schema Object is *not* JSON Schema and has no `if`/`then`/`else` at all,
-which is the keyword the discriminated-container argument rests on. OpenAPI 3.1 is JSON Schema 2020-12.
-Pick 2020-12, accept 2019-09 and Draft 7, and say so in the operand's documentation.
+```
+Title, Schema, Id, Comment, Vocabulary, DynamicRef, DynamicAnchor, Definitions, Anchor,
+Type, Const, Format, Pattern, Enum, Default, AllOf, OneOf, AnyOf, Not, Required, Items,
+Contains, Properties, PatternProperties, AdditionalProperties, Discriminator,
+UnevaluatedProperties, PropertyNames, DependentSchemas, DependentRequired,
+If, Then, Else, Extensions, UnrecognizedKeywords, …
+```
+
+`If`, `Then` and `Else` are there. So is `Definitions` for `$defs`, `Anchor` for `$anchor`, and
+**`UnrecognizedKeywords`** — which is exactly the "ignore what you do not understand, do not fail"
+behaviour the issue asks for, already modelled. Parsing the §3 schema:
+
+| | |
+| --- | --- |
+| diagnostic errors | 0 |
+| `oneOf` branches | 2 |
+| `if` / `then` | present / present |
+| `oneOf[1].properties.type.Const` | `ParkMap` |
+| `oneOf[1].required` | `type` |
+| `…data.parkId` | `OpenApiSchemaReference` — a reference node, not a silent null |
+| `…data.at` | `format=date-time`, `pattern=^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$` |
+| a **bare** schema, no document wrapper | parses — `OpenApiModelFactory.Parse<OpenApiSchema>(json, OpenApi3_1, …)` |
+
+That last row matters: the operand can carry a schema rather than an OpenAPI document. And `$ref`
+arriving as a distinct `OpenApiSchemaReference` rather than an inlined copy is the right shape for a
+compiler — the walk sees a reference, resolves it, and can cycle-detect at that point.
+
+**Pin at or above 2.7.5.** `Microsoft.OpenApi` 2.0.0–2.7.4 carries GHSA-v5pm-xwqc-g5wc, high severity,
+and its subject is *circular schema references may terminate OpenAPI parsing* — independent
+corroboration that `$ref` cycles are the hazard §3 flags.
+
+### The one thing the Java option still wins
+
+The operand arrives from Calcite's `ModelHandler` as a `java.util.Map`, so a .NET reader needs it as
+text: Jackson `writeValueAsString` out, `System.Text.Json` in. `com.networknt` would read the map
+directly through `ObjectMapper.valueToTree` with no round trip, is Apache-2.0, and its required
+dependencies are *already compiled into this build* — `jackson.databind.dll`, `jackson.core.dll`,
+`jackson.dataformat.yaml.dll` and `org.slf4j.dll` are in the output directory today, dragged in by
+calcite-core; `joni` and `graalvm-js` are `<optional>` and stay out.
+
+It still loses. The fact compiler is C#, and walking a Java schema model through IKVM makes every
+property access a bridge call against a Java-shaped object graph. One serialise/parse of a schema
+document, once per container at registration, is not a cost worth a Java dependency to avoid.
+
+**And it need not be paid at all.** If the operand carries the schema as a *reference* — a path or a URL
+— rather than as an inline object, the text goes straight to `System.Text.Json` and there is no bridge
+and no round trip. That is also the answer to §7's complaint that a real schema inline in a model file is
+unreadable. Two problems, one decision.
+
+### Name the dialect
+
+The issue says "plain JSON Schema (OpenAPI Schema Object)", which names two different things — OpenAPI
+3.0's Schema Object is *not* JSON Schema. OpenAPI 3.1 **is** JSON Schema 2020-12, which is what
+`Microsoft.OpenApi` reads under `OpenApiSpecVersion.OpenApi3_1`. Pick 2020-12, say so in the operand's
+documentation, and the two names stop disagreeing.
 
 ---
 
