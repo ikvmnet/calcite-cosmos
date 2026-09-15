@@ -378,10 +378,10 @@ It still loses. The fact compiler is C#, and walking a Java schema model through
 property access a bridge call against a Java-shaped object graph. One serialise/parse of a schema
 document, once per container at registration, is not a cost worth a Java dependency to avoid.
 
-**And it need not be paid at all.** If the operand carries the schema as a *reference* — a path or a URL
-— rather than as an inline object, the text goes straight to `System.Text.Json` and there is no bridge
-and no round trip. That is also the answer to §7's complaint that a real schema inline in a model file is
-unreadable. Two problems, one decision.
+An earlier draft argued the round trip away by saying the operand should carry a *reference* to the
+schema rather than the schema itself. That was circular — the reference form was justified by a claim
+about inline schemas that does not hold, see §7 — so the round trip is left standing on its own. It is
+one serialise per container at schema registration, and it is small.
 
 ### Name the dialect
 
@@ -405,7 +405,16 @@ documentation, and the two names stop disagreeing.
 - **Where the schema physically lives.** `containers` is a list of strings today — `GetStrings` calls
   `ToString` on whatever it finds — so per-container configuration means teaching it objects,
   `{"name": "parks", "schema": {…}}`, which is the first time a container has had configuration of its
-  own. A large schema inline in a model file is unreadable, so a file reference wants deciding too.
+  own.
+
+  **Inline is the better default, and an earlier draft had this backwards.** A model file is JSON and a
+  schema is JSON, so nesting one in the other costs indentation and nothing else — it reads as it would
+  standalone. What would be unreadable is a schema as an escaped JSON *string*, which nothing here
+  proposes: the operand delivers nested maps. Inline also keeps the schema in one file, versioned with
+  the connection it describes, with no path to resolve relative to something unstated and no fetch at
+  registration — which this section already declines. The real cost is that a long schema buries the
+  endpoint and database beside it, which is an argument for *offering* a reference, not for preferring
+  one.
 
 ---
 
