@@ -173,7 +173,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ]);
 
         /// <summary>
-        /// Determines whether an expression names any function only the service can evaluate.
+        /// Determines whether a function can be evaluated in process.
+        /// </summary>
+        /// <remarks>
+        /// True of the type tests and nothing else. They ask what kind of thing a document holds at a
+        /// path, which is answerable from the document the row already carries, and
+        /// <see cref="CosmosFunctionBodies"/> answers it the way the service does — see
+        /// <c>CosmosTypeTestDifferentialTests</c>. Everything else either needs state only the service
+        /// has, or has simply not been given a body.
+        /// </remarks>
+        /// <param name="name">The function's name.</param>
+        /// <returns><c>true</c> where a body exists.</returns>
+        public static bool HasInProcessBody(string? name)
+        {
+            return CosmosTypeTestImplementor.Answers(name);
+        }
+
+        /// <summary>
+        /// Determines whether an expression names any function that only the service can evaluate.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -207,7 +224,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return false;
         }
 
-        /// <summary>The names in <see cref="Instance"/>, which is what a rendered call is matched by.</summary>
+        /// <summary>
+        /// The names in <see cref="Instance"/> that have no in-process body, which is what a rendered
+        /// call is matched by.
+        /// </summary>
+        /// <remarks>
+        /// The type tests are excluded because <see cref="CosmosFunctionBodies"/> answers them, and
+        /// answers what the service answers — so a predicate naming one is no longer pinned to the
+        /// Cosmos convention. What remains is the full text family, which needs the service's analyzer,
+        /// the scoring functions, which read a value the service never returns, and the conversions and
+        /// <c>REGEXMATCH</c>, which could each acquire a body and have not been given one.
+        /// </remarks>
         static readonly System.Collections.Generic.HashSet<string> ServiceOnly = Names();
 
         static System.Collections.Generic.HashSet<string> Names()
@@ -216,7 +243,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var operators = Instance.getOperatorList();
             for (var i = 0; i < operators.size(); i++)
-                names.Add(((SqlOperator)operators.get(i)).getName());
+            {
+                var name = ((SqlOperator)operators.get(i)).getName();
+
+                if (CosmosTypeTestImplementor.Answers(name) == false)
+                    names.Add(name);
+            }
 
             return names;
         }

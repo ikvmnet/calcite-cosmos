@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
+
 namespace Apache.Calcite.Cosmos.Adapter.Client
 {
 
@@ -208,6 +210,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     continue;
 
                 if (value.ValueKind != JsonValueKind.Object || value.TryGetProperty(segment, out value) == false)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Reads what a document holds at a path, distinguishing an absent path from one holding null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Takes a <see cref="CosmosPath"/> rather than a policy path because a policy path cannot say
+        /// <em>which</em> element of an array is meant — <see cref="CosmosPath.ToPolicyPath"/> renders a
+        /// subscript as the <c>/[]</c> wildcard, since an indexing policy addresses elements
+        /// collectively. Evaluating a predicate is the opposite problem: <c>$.tags[0]</c> means that one.
+        /// </para>
+        /// <para>
+        /// Absence is an answer rather than a failure to answer, which is what separates this from
+        /// <see cref="Read"/>. That one flattens a JSON null and an absent path both to <c>null</c>,
+        /// which is right for a partition key value and wrong for anything that has to tell them apart —
+        /// and telling them apart is exactly what <c>IS_DEFINED</c> and <c>IS_NULL</c> are for.
+        /// </para>
+        /// </remarks>
+        /// <param name="document">The document.</param>
+        /// <param name="path">The path, relative to the document.</param>
+        /// <param name="value">On success, the element at the path.</param>
+        /// <returns><c>true</c> where the path is present, whatever it holds.</returns>
+        public static bool TryRead(JsonElement document, CosmosPath path, out JsonElement value)
+        {
+            value = document;
+
+            if (path is null)
+                return false;
+
+            foreach (var segment in path.Segments)
+            {
+                if (segment.IsIndex)
+                {
+                    if (value.ValueKind != JsonValueKind.Array || segment.ArrayIndex >= value.GetArrayLength())
+                        return false;
+
+                    value = value[segment.ArrayIndex];
+                    continue;
+                }
+
+                if (value.ValueKind != JsonValueKind.Object || value.TryGetProperty(segment.Name!, out value) == false)
                     return false;
             }
 

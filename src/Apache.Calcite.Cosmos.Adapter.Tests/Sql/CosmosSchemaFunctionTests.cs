@@ -297,19 +297,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// None of the declarations carries a body, and asking for one says so.
+        /// A type test carries a body; everything else refuses, in words that say why.
         /// </summary>
         /// <remarks>
-        /// A schema function Calcite can implement is one bound to a method, and binding one here
-        /// would let a call that cannot be pushed down plan anyway and then answer with something
-        /// Cosmos never computed. So there is no body — but declining the interface outright left
-        /// Calcite to report it, as <c>User defined function FULLTEXTSCORE must implement
-        /// ImplementableFunction</c>, which names an interface rather than the reason. The refusal is
-        /// the same refusal at the same moment; what this pins is that it arrives in words that name
+        /// <para>
+        /// Binding a body to a schema function lets a call that cannot be pushed down plan anyway and
+        /// then answer with something Cosmos never computed — which is a reason to refuse unless the
+        /// body demonstrably answers what the service answers. For the type tests it does:
+        /// <c>CosmosTypeTestDifferentialTests</c> asks Cosmos and <c>CosmosFunctionBodies</c> the same
+        /// question about a document of every JSON kind and they agree throughout. So those have a body
+        /// and the rest do not, which is a decision per function.
+        /// </para>
+        /// <para>
+        /// For the rest, declining the interface outright left Calcite to report it as <c>User defined
+        /// function FULLTEXTSCORE must implement ImplementableFunction</c>, which names an interface
+        /// rather than the reason. What this pins is that the refusal instead arrives in words that name
         /// the function and say why.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void NoneOfThemHasABody()
+        public void OnlyTheTypeTestsHaveABody()
         {
             var schema = new CosmosSchema(new[] { Products });
             var names = ((org.apache.calcite.schema.Schema)schema).getFunctionNames();
@@ -336,6 +343,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                         .Which;
 
                     var act = () => implementable.getImplementor();
+
+                    if (Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.HasInProcessBody(name))
+                    {
+                        // A type test: it has a body, because it can be answered from the document the
+                        // row already carries.
+                        act.Should().NotThrow("'{0}' is answered in process by CosmosFunctionBodies", name);
+                        continue;
+                    }
 
                     act.Should().Throw<java.lang.UnsupportedOperationException>(
                             "'{0}' exists to be rendered into a statement, not evaluated here", name)
