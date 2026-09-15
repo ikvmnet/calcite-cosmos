@@ -1,4 +1,5 @@
-﻿using org.apache.calcite.sql;
+﻿using org.apache.calcite.rex;
+using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.sql.util;
 
@@ -170,6 +171,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 RegexMatch,
                 ToStringFunction, StringToNumber, StringToObject, StringToArray, StringToBoolean, ObjectToArray,
             ]);
+
+        /// <summary>
+        /// Determines whether an expression names any function only the service can evaluate.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Everything in <see cref="Instance"/> is declared for the validator's benefit and rendered
+        /// into Cosmos SQL; none of it has a CLR implementation, because none of it was ever meant to
+        /// run anywhere but the service. A plan that leaves one of these above the converter cannot be
+        /// generated at all — Calcite raises <c>Unable to implement</c> when it comes to emit the code —
+        /// so a rule that moves a predicate out of the Cosmos convention has to ask this first.
+        /// </para>
+        /// <para>
+        /// <c>IS_NULL</c> is worth distinguishing from SQL's own <c>IS NULL</c>, which is an ordinary
+        /// operator Calcite evaluates perfectly well. The one here is the Cosmos function that asks what
+        /// a document holds at a path, and it is not the same question.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression to examine.</param>
+        /// <returns><c>true</c> where the expression names a Cosmos-only function anywhere within it.</returns>
+        public static bool ReferencesServiceOnlyFunction(RexNode node)
+        {
+            if (node is not RexCall call)
+                return false;
+
+            if (ServiceOnly.Contains(call.getOperator().getName()))
+                return true;
+
+            var operands = call.getOperands();
+            for (var i = 0; i < operands.size(); i++)
+                if (ReferencesServiceOnlyFunction((RexNode)operands.get(i)))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>The names in <see cref="Instance"/>, which is what a rendered call is matched by.</summary>
+        static readonly System.Collections.Generic.HashSet<string> ServiceOnly = Names();
+
+        static System.Collections.Generic.HashSet<string> Names()
+        {
+            var names = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+            var operators = Instance.getOperatorList();
+            for (var i = 0; i < operators.size(); i++)
+                names.Add(((SqlOperator)operators.get(i)).getName());
+
+            return names;
+        }
 
         /// <summary>
         /// Determines whether an operator can tell an absent property from a present one.

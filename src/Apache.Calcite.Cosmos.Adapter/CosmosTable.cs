@@ -311,6 +311,16 @@ namespace Apache.Calcite.Cosmos.Adapter
         public RelNode toRel(RelOptTable.ToRelContext context, RelOptTable relOptTable)
         {
             var cluster = context.getCluster();
+
+            // The seam where a Cosmos table first reaches a plan, and so the place to correct what the
+            // planner believes about a by-id lookup: Calcite guesses a filter's selectivity per conjunct
+            // and a pinned id with a complete partition key returns one document, not a fraction of the
+            // container. Installed here rather than left to the host because every plan that reads this
+            // table is costed with it, and a host that builds its own cluster has nowhere obvious to
+            // learn it is needed. Idempotent, and everything that is not a Cosmos filter is answered the
+            // way Calcite would answer it. See Rel.CosmosRelMetadataQuery.
+            Rel.CosmosRelMetadataQuery.Install(cluster);
+
             return new CosmosTableScan(cluster, cluster.traitSetOf(_convention), relOptTable);
         }
 

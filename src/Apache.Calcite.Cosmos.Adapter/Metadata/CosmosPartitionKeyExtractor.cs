@@ -364,6 +364,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Determines whether a predicate can match more than one document.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A complete partition key and a pinned <c>id</c> identify at most one document — <c>id</c> is
+        /// unique within a partition — and that stays true however much else the predicate says, because
+        /// a further conjunct can only remove the one row, never add another. So unlike
+        /// <see cref="TryExtractPointRead"/> this does not ask whether the predicate says anything else.
+        /// It is not a routing question at all: it is the row count, and the distinction matters because
+        /// a residual changes which mechanism may answer and cannot change how many documents there are
+        /// to answer with.
+        /// </para>
+        /// <para>
+        /// Calcite would otherwise estimate this the way it estimates any conjunction of equalities, at
+        /// a fixed selectivity per conjunct, and arrive at a number of rows that has nothing to do with
+        /// the one document actually addressed. Costing the plans around such a lookup — a converter, a
+        /// filter finishing above it — then turns on an invented row count rather than on the mechanism,
+        /// which is what <c>CosmosPointReadSplitRule</c> needs the planner to be comparing.
+        /// </para>
+        /// </remarks>
+        /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="container">The container being read.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns><c>true</c> where the predicate addresses at most one document.</returns>
+        public static bool PinsAtMostOneDocument(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container, string rootAlias)
+        {
+            if (condition is null || fields is null || container is null)
+                return false;
+
+            if (TryExtract(condition, fields, container, rootAlias, out _) == false)
+                return false;
+
+            var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
+            Collect(condition, fields, rootAlias, pinned, throughText: false);
+
+            return pinned.TryGetValue("/" + CosmosContainerMetadata.IdPropertyName, out var value) && value is string;
+        }
+
+        /// <summary>
+        /// Determines whether a single conjunct is one a point read accounts for — an equality pinning
+        /// <c>id</c> or one of the container's declared partition key paths.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="CoversExactly"/>'s question asked of one conjunct rather than of a whole
+        /// predicate, so that a caller can <em>partition</em> a conjunction into the part a point read
+        /// answers and the part it does not, instead of only being told that a rest exists. Exposed for
+        /// <c>CosmosPointReadSplitRule</c>, which uses it to build a pushed predicate that then satisfies
+        /// <see cref="TryExtractPointRead"/> unchanged — the rule relaxes nothing here, it restructures
+        /// the plan so that this rule's existing standard is met.
+        /// </remarks>
+        /// <param name="conjunct">One top-level conjunct of a predicate.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="container">The container being read.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns><c>true</c> where a point read accounts for the conjunct.</returns>
+        public static bool IsPointReadConjunct(RexNode conjunct, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container, string rootAlias)
+        {
+            if (conjunct is null || fields is null || container is null)
+                return false;
+
+            var accounted = new HashSet<string>(container.PartitionKeyPaths, StringComparer.Ordinal)
+            {
+                "/" + CosmosContainerMetadata.IdPropertyName,
+            };
+
+            return CoversExactly(conjunct, fields, rootAlias, accounted);
+        }
+
+        /// <summary>
         /// Determines whether every top-level conjunct is an equality pinning one of the given paths.
         /// </summary>
         /// <remarks>

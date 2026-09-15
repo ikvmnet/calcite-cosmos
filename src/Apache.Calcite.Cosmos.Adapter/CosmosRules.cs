@@ -103,6 +103,12 @@ namespace Apache.Calcite.Cosmos.Adapter
             // that part rather than the plan declining the whole thing and scanning the container.
             yield return CosmosFilterSplitRule.Create(convention);
 
+            // The other reason to split a predicate: not that part of it will not render, but that
+            // holding part of it back recovers a point read for the rest. Offered as an alternative and
+            // priced in RU against the query it replaces, because which one wins depends on how large
+            // the container's documents are. See issue #92.
+            yield return CosmosPointReadSplitRule.Create(convention);
+
             // Ordering by a scoring function, which Calcite expresses as three nodes and Cosmos as one
             // clause — and whose middle node, a projected score, is a statement the service rejects.
             yield return CosmosRankRule.Create(convention);
