@@ -864,6 +864,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// comparison is refused there exactly as it was.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// Determines whether the <em>container</em> says this path holds a string, taking nothing
+        /// the query established.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The difference from <see cref="IsDeclaredString"/> is not caution, it is soundness, and
+        /// it was measured.</b> The fact set a translator carries is the declaration closed under what
+        /// the query's own conjuncts proved, and <see cref="Metadata.CosmosFact.Entails"/> reads
+        /// <c>EqualTo v</c> as <c>OfType</c> of <c>v</c>'s type. So over
+        /// <c>JSON_VALUE(…, '$.label') = '30'</c> the extractor records <c>EqualTo "30"</c>, that
+        /// entails <c>OfType String</c>, and the comparison certifies <em>itself</em> exact — which
+        /// is precisely the conflation this guard exists to prevent, the stored number <c>30</c>
+        /// rendering as <c>'30'</c> and matching at Calcite where it would not at the service.
+        /// </para>
+        /// <para>
+        /// <b>Which is not an argument against the derived set generally, and the ordering branch is
+        /// right to use it.</b> There the fact would come from a <em>sibling</em> conjunct —
+        /// <c>label = 'x' AND label &gt; 'bikes'</c> — and the sibling reaches the service too, so the
+        /// rows the ordering sees are rows the equality already confined to a string. The circularity
+        /// here is that the fact comes from the conjunct <em>being translated</em>, which cannot
+        /// confine anything it is itself the test of.
+        /// </para>
+        /// <para>
+        /// Asking <c>Derive(null)</c> takes the declaration alone, which no conjunct can have
+        /// contributed to — the same "outright, never under a guard" discipline
+        /// <c>CosmosFactRewriter</c> and <c>CosmosPartitionKeyExtractor</c> apply wherever a fact
+        /// licenses something the predicate cannot re-establish.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns><c>true</c> where the container declares the path a string.</returns>
+        bool IsDeclaredStringOutright(RexNode node)
+        {
+            if (_container is null || _container.Facts.IsEmpty)
+                return false;
+
+            if (IsTextRendering(node) == false)
+                return false;
+
+            if (TryResolvePath(node, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            _declared ??= _container.Facts.Derive(null);
+
+            return _declared.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true)));
+        }
+
+        /// <summary>
+        /// What the container declares outright, derived once per translator and only where asked.
+        /// </summary>
+        Metadata.CosmosFactSet? _declared;
+
         bool IsDeclaredString(RexNode node)
         {
             if (IsTextRendering(node) == false)
@@ -1678,8 +1734,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     left = unwrappedLeft;
                 else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
-                else if (IsTextRendering(left) && IsUnambiguousTextEquality(left, right) == false
+                else if ((IsTextRendering(left) && IsUnambiguousTextEquality(left, right) == false
                     || IsTextRendering(right) && IsUnambiguousTextEquality(right, left) == false)
+                    // Unless the container itself says the path holds a string and nothing else, in
+                    // which case the rendering *is* the stored value and the comparand need not be
+                    // inspected at all -- which is what lets a parameter through.
+                    && (IsDeclaredStringOutright(left) || IsDeclaredStringOutright(right)) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
