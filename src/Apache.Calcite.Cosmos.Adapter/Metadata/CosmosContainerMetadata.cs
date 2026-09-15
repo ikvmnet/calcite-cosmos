@@ -470,6 +470,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
+            metadata._facts = _facts;
 
             // Not expiring, and deliberately: a capability changes when someone enables a preview
             // on the account, which is not something a running process can observe happening.
@@ -504,6 +505,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = _facts;
+            return metadata;
+        }
+
+        CosmosFactTheory _facts = CosmosFactTheory.Empty;
+
+        /// <summary>
+        /// Gets what the caller declared about the documents this container holds, compiled to rules.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The one thing here the service did not say.</b> Every other member of this type comes
+        /// from the container definition or is guaranteed by the service; this comes from the model
+        /// file, and it is trusted the way the partition key is trusted. A document that violates it is
+        /// a data-integrity problem rather than something the adapter defends against per row — which
+        /// means a schema that is wrong drops rows, with no error and a plan that looks correct. That
+        /// is a real change in kind and is recorded in <c>DESIGN-93.md</c> §5 rather than left to be
+        /// discovered.
+        /// </para>
+        /// <para>
+        /// Empty where nothing was declared, which is every container today, and an empty theory proves
+        /// nothing and costs nothing to ask.
+        /// </para>
+        /// </remarks>
+        public CosmosFactTheory DeclaredFacts => _facts;
+
+        /// <summary>
+        /// Returns the same metadata carrying what the caller declared about its documents.
+        /// </summary>
+        /// <param name="facts">The compiled schema.</param>
+        /// <returns>The metadata.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
+        public CosmosContainerMetadata WithDeclaredFacts(CosmosFactTheory facts)
+        {
+            if (facts is null)
+                throw new ArgumentNullException(nameof(facts));
+
+            if (facts.IsEmpty)
+                return this;
+
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
+            metadata._statistics = _statistics;
+            metadata._statisticsProvider = _statisticsProvider;
+            metadata._statisticsTimeToLive = _statisticsTimeToLive;
+            metadata._time = _time;
+            metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = facts;
             return metadata;
         }
 
