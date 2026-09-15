@@ -353,7 +353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var pointReadIds))
                 implementor.PointReadSetCandidate = pointReadIds;
 
-            var condition = implementor.Translate(getCondition());
+            var condition = implementor.TranslateCondition(getCondition());
 
             // Stacked filters are normally merged by the planner, but conjoin defensively rather
             // than silently discarding one.

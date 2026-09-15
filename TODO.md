@@ -60,7 +60,7 @@ function pushes*, and the open measurement under section 5.
 typed document path promoted to a real column — through a `columns` operand — would have given three
 things a type to work with: a patchable `UPDATE` target, an argument the nullable-aggregate rewrite
 could fire on, and a declared temporal representation. The decision against them has been taken more
-than once and is recorded in section 6. The row model is the document column, `DOC`, and a query
+than once and is recorded in section 7. The row model is the document column, `DOC`, and a query
 works off that. What answers the dependency instead is the service's own type predicates —
 `IS_NUMBER`, `IS_STRING`, `IS_DATETIME` and the rest — which say per row, at query time, what a
 declaration could only promise; see *Rewriting a typed comparison into one the service can evaluate*
@@ -70,7 +70,7 @@ The fourth, **a sort key that can be non-nullable**, turned out not to need a de
 query that removes the nulls itself settles the null placement, and the planner already carries
 that fact. It is done for the promoted columns and out of reach for an unpromoted document path —
 and *why* it is out of reach says more about the surface than the original argument did. See
-section 6.
+section 7.
 
 ### Running the sample
 
@@ -327,11 +327,11 @@ absent. And the clause survives inside a view: a model view selecting
 `JSON_VALUE(p."_etag", '$.a' RETURNING INTEGER) AS "N"` presents `N` to a `DbDataReader` as
 `INTEGER`/`Int32`, over three rows.
 
-**Which reaches past this entry.** A typed column over a document path is the surface section 6
+**Which reaches past this entry.** A typed column over a document path is the surface section 7
 rejects, and this is one written in standard SQL, in a view, with no operand and nothing declared to
 the schema — which is the whole difference. It is still the caller's word — but a wrong word fails rather than lies: `RETURNING INTEGER`
 over a path holding a string makes the service return a string where the plan declared an integer,
-and `CosmosJson` refuses to coerce it, which is the opposite failure mode from the one section 6
+and `CosmosJson` refuses to coerce it, which is the opposite failure mode from the one section 7
 declines an operand for. What it does **not** give is a `RexInputRef`: a `JSON_VALUE` call is an
 expression like `ITEM`, so predicate flow, keys and distinctness stay where they are. Section 6's
 split holds; this answers the typed half and not the reference half.
@@ -712,13 +712,13 @@ precision breaks it — `…T00:00:00.500Z` sorts before `…T00:00:00Z`, becaus
 0x5A — and so does `Z` against `+00:00`. So the promise is not "ISO-8601 UTC" but "one fixed
 ISO-8601 UTC shape, for this path".
 
-**That promise is much narrower than a type**, and worth separating from section 6 for exactly that
+**That promise is much narrower than a type**, and worth separating from section 7 for exactly that
 reason. Not *this column is a `TIMESTAMP`*, only *these strings share a shape*. An operand could
 carry it without settling the typed-column question at all.
 
 **And the mechanism is already built.** An uncast path sorts at the service today — it is why a page
 ordered by a raw path reads a page while one ordered by a cast column reads everything, measured and
-recorded in section 6. What does not push is the cast. So the change is one rewrite: drop an
+recorded in section 7. What does not push is the cast. So the change is one rewrite: drop an
 order-preserving cast from a sort key, under that promise. Not a new sort pushdown; the existing one,
 reached through a cast it currently refuses. Range predicates over the same shape are the easier
 half — string comparisons, and those *do* have the recheck escape.
@@ -735,13 +735,13 @@ See *Temporal* above, whose prerequisite this is a narrower statement of.
   unindexed path, so the reference's "index-friendly" is a property of the path rather than of the
   spelling. Emitting the native form would be a change with no effect.
 - **`DISTINCT` with `ORDER BY` reaches promoted columns and not unpromoted document paths** —
-  *small, and what is left of it waits on section 6.* The null-placement rule refuses a nullable sort
+  *small, and what is left of it waits on section 7.* The null-placement rule refuses a nullable sort
   key, and a query that removes the nulls itself now satisfies it: `WHERE c.category IS NOT NULL
   ORDER BY c.category` pushes, read from `RelMdPredicates` at the rule. That covers the promoted
   columns. It does not reach an unpromoted document path, and not for want of a type — such a path
   projects as an accessor call rather than as a reference, and `RelMdPredicates` carries a predicate
   through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
-  a total order over JSON types*, and section 6 below, whose case this sharpens.
+  a total order over JSON types*, and section 7 below, whose case this sharpens.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
@@ -832,7 +832,93 @@ path happens to be nullable — see the geography items in section 4, and
 
 ---
 
-## 6. Row model and types
+## 6. A container's declared facts
+
+Built, #93: a JSON Schema on the `containers` operand, compiled to a Horn theory of
+`(path, claim)` atoms the planner asks. `DESIGN.md` under *What a caller may declare beyond it* is
+the design record — the model, the measurements, the keyword audit and the trust boundary. What is
+below is what it does not do yet.
+
+**This does not reopen the typed column**, which section 7 records as rejected and which stays
+rejected. Nothing here gives a path a SQL type or promotes it to a column; the row model is
+untouched. A fact says how a value is *stored*, which is a narrower thing than a type and is the
+thing `TODO.md` already asked an operand to carry under *Rewriting a typed comparison into one the
+service can evaluate*.
+
+### Consumers for `PreservesOrder` — *medium, and the largest thing left*
+
+Two bits are set per representation and only one is read. `PreservesOrder` says the lexical order of
+the stored strings is the order Calcite compares in, and nothing consults it, so a container
+declaring a fixed-shape ISO-8601 path gets equality and not ordering.
+
+What it unlocks, in rough order of value:
+
+- **`ORDER BY` with a `FETCH`** — the difference between reading a page and reading the container,
+  which is the largest number in this whole area. The sort key is a *chain* rather than a cast —
+  `PARSE_DATETIME`, `TO_TIMESTAMP`, or the `REPLACE`/`SUBSTRING`/`CAST` a view writes — and the
+  rewrite is to drop an order-preserving chain from the key, leaving the raw path the service will
+  order by. `CosmosSortRule` is the site, and the condition is the statement-wide one rather than the
+  sibling-conjunct one: nothing rechecks a sort.
+- **Range comparisons** against a temporal literal, lowered to string comparisons with the literal
+  rendered into the declared stored shape.
+- **`MIN` and `MAX`**, which are the same argument over an aggregate.
+
+### Facts about array elements — *small, and waiting for a consumer*
+
+`CosmosDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
+path model has room for an element segment and `ARRAY_CONTAINS` and the traversal are the rules that
+would read one. Not built because nothing asks yet, and a path model that admits an index has to
+answer what `$.tags[0]` means against a fact declared for `items`.
+
+### The keywords still not read — *small each, and none of them blocked*
+
+`additionalProperties`, `patternProperties` and `propertyNames` constrain paths that cannot be named
+in this path model. `minimum`, `maxLength` and the rest are bounds, and no claim in the model is
+about an interval — adding one means adding the rule that reads it at the same time. A `$ref`'s
+sibling keywords are dropped, which is Draft 7's rule and conservative under 2020-12.
+
+### A nullability claim — *small, and it would recover a common case*
+
+`{"type": ["string", "null"]}` and OpenAPI 3.0's `nullable: true` both state nothing today, because
+`OfType` would be a claim a stored null violates. Both are extremely common, and both would be
+readable as a type plus a nullability claim rather than as nothing. What is missing is the claim, and
+a consumer that cares about the difference.
+
+### A point read on a discriminated container — *done, by #92 rather than by anything here*
+
+Written down because this branch's design note called it blocked and it is not. A point read applies
+no predicate, so `TryExtractPointRead` refuses any conjunct that is not an `id` or partition-key
+equality — and the discriminator conjunct that licenses a guarded fact is exactly such a conjunct, so
+the chain used to end one step early at a routed query.
+
+`CosmosPointReadSplitRule` closed it without relaxing that standard: it *partitions* the conjunction,
+so the pinned equalities reach the read and the discriminator is held back and applied above. The two
+features compose without either knowing about the other — by the time the rule runs, a lowered
+comparison is an ordinary string equality. `ALoweredComparisonUnderAGuardStillReachesAPointRead` is
+the proof.
+
+### The fan-out measurement — *the number the whole feature is priced on, and it is not taken*
+
+What a declaration is worth was measured on a serverless container with one physical partition, which
+prices the index question and not the routing one: 33.55 RU read whole, 3.12 with a schema-free
+weakening, 2.82 exact, 1.00 as a point read. The case-insensitive form **used the index**, so most of
+the saving is in pushing anything at all.
+
+What is unmeasured is the fan-out, which is where the exactness should earn a large number: on a
+container with several physical partitions, `WHERE c.pk = '<lower>'` against
+`WHERE STRINGEQUALS(c.pk, '<UPPER>', true)`, in RU and partitions contacted. It needs a provisioned
+container above the throughput at which Cosmos splits; the probe account is serverless and cannot
+answer.
+
+### One smaller one
+
+- **A schema carried by reference** rather than inline. Inline is the right default and the README
+  says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
+  being a fetch at schema registration.
+
+---
+
+## 7. Row model and types
 
 - **A typed column over a document path — *rejected; written down here so it stops being
   reopened*.** The question was whether a caller could declare paths and types — a `columns` operand,
@@ -880,7 +966,7 @@ path happens to be nullable — see the geography items in section 4, and
 
 ---
 
-## 7. Provider and integration
+## 8. Provider and integration
 
 - **Connection options as operands** — *small.* Consistency level, preferred regions, application name,
   for callers who do not want to write a factory.
@@ -894,7 +980,7 @@ path happens to be nullable — see the geography items in section 4, and
 
 ---
 
-## 8. Observability
+## 9. Observability
 
 - **`CosmosDiagnostics`** — *small.* The one signal not surfaced: a large JSON blob per response, so
   it wants a switch of its own rather than to ride on the `cosmos.query` span.
@@ -903,7 +989,7 @@ path happens to be nullable — see the geography items in section 4, and
 
 ---
 
-## 9. Testing
+## 10. Testing
 
 - **A real account in CI** — *medium.* The emulator accepts statements Azure rejects and rejects
   features Azure implements; both have been found by hand. A nightly job against a real account is
@@ -927,7 +1013,7 @@ path happens to be nullable — see the geography items in section 4, and
 
 ---
 
-## 10. Unsettled questions
+## 11. Unsettled questions
 
 These are not features. They are things believed but not measured, and each one is a defect waiting
 for the right query.
@@ -936,7 +1022,7 @@ for the right query.
 
 ---
 
-## 11. Read off Flink's connector SPI
+## 12. Read off Flink's connector SPI
 
 Flink is the most complete Calcite-based connector framework in the open, and its source and sink
 *ability* interfaces are a catalogue of what a pushdown-capable connector can offer. Each row below is

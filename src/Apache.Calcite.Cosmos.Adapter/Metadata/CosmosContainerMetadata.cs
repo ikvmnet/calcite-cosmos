@@ -470,6 +470,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
+            metadata._facts = _facts;
 
             // Not expiring, and deliberately: a capability changes when someone enables a preview
             // on the account, which is not something a running process can observe happening.
@@ -504,6 +505,72 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = _facts;
+            return metadata;
+        }
+
+        // Seeded rather than empty: what the service guarantees about id, _ts and _etag is true of
+        // every container and is not delivered through any schema. A model's schema adds to these.
+        CosmosFactTheory _facts = ServiceFacts;
+
+        static readonly CosmosFactTheory ServiceFacts = new(CosmosServiceFacts.Rules);
+
+        /// <summary>
+        /// Gets what is known about the documents this container holds, compiled to rules.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A schema is a source of facts rather than the thing facts are made of.</b> A model file's
+        /// JSON Schema is one; what the service guarantees about the properties it maintains itself is
+        /// another, and neither is privileged in the rules. They have to share one theory rather than
+        /// sit in two, because a rule's body may be satisfied by a fact from the other source and
+        /// forward chaining only fires such a rule when it sees both at once.
+        /// </para>
+        /// <para>
+        /// <b>Which leaves the trust boundary to be stated rather than typed.</b> Every other member of
+        /// this type comes from the container definition or is guaranteed by the service. A fact that
+        /// came from a model file does not: it is trusted the way the partition key is trusted, so a
+        /// document violating it is a data-integrity problem rather than something defended against per
+        /// row — which means a schema wrong by one character drops rows, with no error and a plan that
+        /// looks correct. Recorded in <c>DESIGN.md</c> under <em>A declaration is trusted, and that is a change in kind</em> rather than left to be discovered.
+        /// </para>
+        /// <para>
+        /// Empty where nothing is known, which is every container today, and an empty theory proves
+        /// nothing and costs nothing to ask.
+        /// </para>
+        /// </remarks>
+        public CosmosFactTheory Facts => _facts;
+
+        /// <summary>
+        /// Returns the same metadata knowing these facts as well as the ones it already knew.
+        /// </summary>
+        /// <remarks>
+        /// Additive, because facts come from more than one place — a model file's schema, and what the
+        /// service guarantees about the properties it maintains itself — and they have to end up in
+        /// one theory. Two theories asked separately would lose any derivation whose rule is stated by
+        /// one source and whose body is satisfied by the other.
+        /// </remarks>
+        /// <param name="facts">The rules to add.</param>
+        /// <returns>The metadata.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
+        public CosmosContainerMetadata WithFacts(IEnumerable<CosmosFactRule> facts)
+        {
+            if (facts is null)
+                throw new ArgumentNullException(nameof(facts));
+
+            var combined = new List<CosmosFactRule>(_facts.Rules);
+            combined.AddRange(facts);
+
+            if (combined.Count == _facts.Rules.Count)
+                return this;
+
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
+            metadata._statistics = _statistics;
+            metadata._statisticsProvider = _statisticsProvider;
+            metadata._statisticsTimeToLive = _statisticsTimeToLive;
+            metadata._time = _time;
+            metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = new CosmosFactTheory(combined);
             return metadata;
         }
 

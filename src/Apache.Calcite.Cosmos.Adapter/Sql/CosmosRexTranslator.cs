@@ -65,6 +65,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// against.
         /// </summary>
         readonly Metadata.CosmosContainerMetadata? _container;
+        readonly Metadata.CosmosFactSet _facts = Metadata.CosmosFactSet.Empty;
+
+        /// <summary>
+        /// Gets what is known about the container's documents, closed under what the predicate proved.
+        /// </summary>
+        /// <remarks>
+        /// Read by the rules that weaken a conjunct this declines, so that a guard is injected only
+        /// where a fact has not already ruled out what it exists to admit. Empty where a caller
+        /// supplied nothing, which is every site but the filter rules.
+        /// </remarks>
+        internal Metadata.CosmosFactSet Facts => _facts;
 
         /// <summary>
         /// Initializes a new instance.
@@ -94,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// field not covered is read as its declared type, which is what a scan's fields are.
         /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, Metadata.CosmosFactSet? facts = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
@@ -102,6 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _ownRow = ownRow;
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
+            _facts = facts ?? Metadata.CosmosFactSet.Empty;
         }
 
         /// <summary>
@@ -796,6 +808,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 number = 0;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Determines whether what is known about the container says this path holds a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What the refusal above rests on is that the service orders raw values <em>across</em> JSON
+        /// types while Calcite orders their renderings, so the two disagree wherever a path holds more
+        /// than one type. Where the container says it holds a string and nothing else, there is no
+        /// second type for them to disagree over: the rendering of a string is the string, and the
+        /// comparison is exact rather than a weakening.
+        /// </para>
+        /// <para>
+        /// Told, not assumed. An empty fact set is every container that declares nothing, and the
+        /// comparison is refused there exactly as it was.
+        /// </para>
+        /// </remarks>
+        bool IsDeclaredString(RexNode node)
+        {
+            if (IsTextRendering(node) == false)
+                return false;
+
+            if (TryResolvePath(node, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            // OrNull, because a null need not be excluded for the two orders to agree: a JSON null at
+            // the path is dropped by the service, which orders it before every string, and dropped by
+            // Calcite, whose accessor answers SQL null for it. What the guard existed to admit is a
+            // value of some *other* type, and that is what the claim rules out.
+            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true)));
         }
 
         /// <summary>
@@ -1515,7 +1561,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
-                && (IsTextRendering(left) && IsCharacter(right) || IsTextRendering(right) && IsCharacter(left)))
+                && (IsTextRendering(left) && IsCharacter(right) || IsTextRendering(right) && IsCharacter(left))
+                && (IsDeclaredString(left) || IsDeclaredString(right)) == false)
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,

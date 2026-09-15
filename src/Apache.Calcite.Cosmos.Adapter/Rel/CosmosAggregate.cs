@@ -237,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // reads as text while the path holds the raw value, so grouping by the path would
                 // group different values and return one the reader refuses.
                 var expression = index < rendered.Count ? rendered[index] : null;
-                var key = GroupingKey(fields[index]!, expression);
+                var key = GroupingKey(fields[index]!, implementor.Container.Facts.Derive(null), expression);
 
                 readings[output] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
 
@@ -311,12 +311,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 readings[i] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
 
-                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, expression));
+                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, implementor.Container.Facts.Derive(null), expression));
 
                 // Bound to the path only where the projected value is that path. A normalised key is a
                 // computed column: the service will not order by a select-list alias, and the path
                 // underneath sorts an absent property somewhere the projected null does not.
-                projected[i] = IsAlwaysPresent(path) ? path : null;
+                projected[i] = IsAlwaysPresent(path, implementor.Container.Facts.Derive(null)) ? path : null;
             }
 
             implementor.Query.Distinct = true;
@@ -344,12 +344,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// different absences.
         /// </para>
         /// <para>
-        /// <b>Only where it is needed.</b> A path the service guarantees — <c>id</c>, <c>_ts</c>,
-        /// <c>_etag</c> — is never absent, so normalising it would buy nothing and cost the plain path
-        /// form that an index is defined on. Those are grouped as they were.
+        /// <b>Only where it is needed.</b> A path known to be present on every document is never
+        /// absent, so normalising it would buy nothing and cost the plain path form that an index is
+        /// defined on. Those are grouped as they were. What is known comes from the container rather
+        /// than from a list here: the service guarantees <c>id</c>, <c>_ts</c> and <c>_etag</c>, and a
+        /// declared schema's <c>required</c> says the same of an application's own property — which
+        /// the list this replaced could never have reached.
         /// </para>
         /// </remarks>
-        static string GroupingKey(CosmosPath path, string? rendered = null)
+        static string GroupingKey(CosmosPath path, Metadata.CosmosFactSet facts, string? rendered = null)
         {
             // What the projection beneath rendered, where that is not the path. A guarded accessor
             // already answers null where the property is absent, so it needs no second guard.
@@ -358,20 +361,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var text = path.ToString();
 
-            return IsAlwaysPresent(path) ? text : $"(IS_DEFINED({text}) ? {text} : null)";
+            return IsAlwaysPresent(path, facts) ? text : $"(IS_DEFINED({text}) ? {text} : null)";
         }
 
         /// <summary>
-        /// Determines whether the service guarantees a path is present on every document.
+        /// Determines whether a path is known to be present on every document.
         /// </summary>
-        static bool IsAlwaysPresent(CosmosPath path)
-        {
-            var policy = path.ToPolicyPath();
-
-            return string.Equals(policy, "/" + CosmosContainerMetadata.IdPropertyName, StringComparison.Ordinal)
-                || string.Equals(policy, "/" + CosmosContainerMetadata.TimestampPropertyName, StringComparison.Ordinal)
-                || string.Equals(policy, "/_etag", StringComparison.Ordinal);
-        }
+        static bool IsAlwaysPresent(CosmosPath path, Metadata.CosmosFactSet facts) =>
+            Metadata.CosmosDocumentPath.From(path) is Metadata.CosmosDocumentPath document &&
+            facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.Present()));
 
         string Render(AggregateCall call, IReadOnlyList<CosmosPath?> fields)
         {

@@ -224,6 +224,257 @@ metadata, not of the plan.** `CosmosSortRule` must read the indexing policy. The
 shape one level down for the vector function — the operator is legal, the *path* is what decides —
 and for full text the path decides the price instead.
 
+### What a caller may declare beyond it, and what it is worth
+
+Everything above comes from the container definition or is guaranteed by the service. A caller may
+also describe the documents themselves, with a JSON Schema on the `containers` operand, and that is
+the one input here whose source is the model file. #93.
+
+**Why anything is gained by it.** Cosmos stores strings where Calcite has `UUID` and `TIMESTAMP`, so a
+comparison against one has no form the service can evaluate and the container is read whole. What
+closes the gap is a proof about the *stored* form: if every value at a path is the canonical spelling
+of its UUID, then comparing the stored strings answers exactly what comparing the values answers, and
+the comparison lowers to a string equality. Everything after that is machinery that already existed —
+the translator renders it, the index serves it, `CosmosPartitionKeyExtractor` pins a partition from
+it, and a point read follows where the predicate says nothing else.
+
+**What it is worth, measured.** On a serverless container of 2000 documents, one matching:
+
+| | RU | rows |
+| --- | --- | --- |
+| `SELECT * FROM c` — what the predicate costs with nothing declared | 33.55 | 2000 |
+| `STRINGEQUALS(c.u, '<UPPER>', true)` — the case-insensitive fallback | 3.12 | 1 |
+| `c.u = '<lower>'` — what a declaration unlocks | 2.82 | 1 |
+| `ReadItemStreamAsync` | 1.00 | 1 |
+
+Two things to read off it. The case-insensitive form **used the index** — it is not the scan it is
+easy to assume — so most of the available saving comes from pushing *anything*, and the declaration's
+share is the exactness, the routing and the point read. And this container has one physical partition,
+so it prices the index question and not the fan-out one; *The lookup restriction is already routed* is
+what says the fan-out difference is real, the router pruning from an equality in the predicate where a
+case-insensitive call names no value to prune on.
+
+**What a caller writes to reach it.** Two spellings, and a third that looks like the obvious one and
+cannot work. `CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)` and
+`CAST(JSON_VALUE(c."DOC", '$.ref' RETURNING VARCHAR) AS UUID)` both lower, the path underneath being
+the same path either way. `JSON_VALUE(…, '$.ref' RETURNING UUID)` does not: `RETURNING` *asserts* the
+extracted type rather than converting to it, and JSON has no UUID, so the extraction always yields a
+string and the assertion always fails. Measured — it validates, plans, and throws
+`InvalidCastException` at run time whatever the document holds. It is a landmine rather than an
+alternative, and the same shape as the `RETURNING` defect recorded under *Casts over document values*,
+with the mismatch now unavoidable rather than merely possible.
+
+#### A fact says which relations it preserves, not what type it is
+
+The obvious model — a path "is a UUID" — is wrong, and one measurement kills it. **Calcite orders
+UUIDs as two signed 64-bit halves** (`java.util.UUID.compareTo`):
+
+| | |
+| --- | --- |
+| `UUID'80000000-…' > UUID'00000000-…'` | **False** |
+| `ORDER BY` over four values | `8000…`, `ffff…`, `0000…`, `7fff…` |
+| the same four as text | `0000…`, `7fff…`, `8000…`, `ffff…` |
+
+So for half of all v4 UUIDs the lexical order of the canonical string is not Calcite's order. A proof
+of canonical form licenses `=`, `IN`, `DISTINCT` and routing, and licenses **nothing** about `<`,
+`ORDER BY`, `MIN` or `MAX`.
+
+**And the condition under which it does is expressible as a `pattern`**, which is the argument for
+taking the whole vocabulary rather than a flag. The orders agree exactly when the top bit of each half
+is constant across the values — the 1st and 17th hex digits confined to one side of `8`. Measured:
+`UUID'…-0000-…' < UUID'…-a000-…'` is **False** though `0000` sorts before `a000` as text, because the
+17th digit decides the sign of the low half; with both in the RFC variant range `8`–`b` it is
+**True**. RFC 4122 and 9562 pin that digit for every conforming value, so the low half always agrees.
+The first digit is what varies: v4 spreads it over `0`–`f`, and v7 confines it to `0`–`7` for every
+realistic timestamp.
+
+So a representation carries two independent bits — whether comparing the stored strings for *equality*
+answers what comparing the values answers, and whether their *order* does — and `CosmosStoredForms`
+sets them per recognised pattern.
+
+| representation | equality | order |
+| --- | --- | --- |
+| canonical lowercase UUID, any version | ✔ | ✘ |
+| the same, first digit `0`–`7` | ✔ | ✔ |
+| ISO-8601 UTC at one fixed precision | ✔ | ✔ |
+| ISO-8601 at mixed precision or mixed `Z`/offset | ✘ | ✘ |
+| an `enum` of strings | ✔ | ✘ |
+
+**The temporal case needs its own measurement, and it moves what to look for.** `CAST(<string> AS
+TIMESTAMP)` accepts only `yyyy-MM-dd HH:mm:ss`; every ISO-8601 form a document stores raises. But the
+function libraries do parse one — `PARSE_TIMESTAMP`, `PARSE_DATETIME` and `TO_TIMESTAMP` all read
+`2024-01-02T03:04:05Z` once the literal `T` and `Z` are given Java-style quoting, doubled for SQL, and
+without it each raises *Illegal pattern character 'T'*. So does the `REPLACE`/`SUBSTRING`/`CAST` chain
+a view writes by hand. What a rewrite has to recognise is therefore a *chain* rather than a cast, and
+the notion it needs is that an expression is **form-preserving for a relation**: under the path's
+representation, comparing the expression's results agrees with comparing the raw stored strings. A
+cast to `UUID` is the degenerate one-link chain.
+
+#### Atoms, clauses, and why asking is linear
+
+One atom kind, `(path, claim)`. A claim a query can establish — a discriminator holding a value — and a
+claim a rewrite can consume — a path holding a canonical UUID — are the same kind of thing, and keeping
+them one kind is what lets a schema state facts conditional on other facts without a second mechanism.
+Subsumption is a function on a fact rather than more clauses, because materialising it would be
+unbounded: `EqualTo v` entails `OneOf S` for every set containing `v`.
+
+A rule is a conjunctive body and a single-atom head, which makes the compiled schema a **definite
+propositional Horn theory** — entailment linear in the theory, by forward chaining with a counter per
+clause (Dowling and Gallier, 1984). The counter form is adapted to re-scan the body when a fact about a
+path it mentions arrives, because a body atom is satisfied by anything that *entails* it, and bodies
+are one or two atoms long.
+
+**The rule that keeps it there: never a disjunctive head.** A branch yielding "A or B" leaves Horn and
+entailment becomes intractable, so an undiscriminated `anyOf` contributes the **meet** — the facts
+every branch states — which is a sound under-approximation and free.
+
+**Nothing entails presence.** A schema's `properties` constrains the value a path holds *if it holds
+one*; only `required` says it holds one. Reading the first as the second would claim of every document
+what the schema claimed of none.
+
+#### A schema is one source of facts, and not the only one
+
+What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,
+`_etag` a string, each always present — is not delivered through any schema and is true of every
+container. `CosmosServiceFacts` states it, `CosmosSchemaFacts` reads a model's, and
+`CosmosContainerMetadata.Facts` is the assembly.
+
+**They have to share one theory rather than sit in two**, and that is correctness rather than tidiness:
+a rule stated by one source may have a body satisfied by a fact from the other, and forward chaining
+fires such a rule only when it sees both at once. Two theories asked separately would lose the
+derivation silently.
+
+It also removed a duplicate. `CosmosAggregate` carried a hard-coded list of the three service
+properties to decide whether a grouping key needs its `IS_DEFINED` normalisation; asking the fact set
+answers for a schema's `required` paths too, which the list could never have reached.
+
+#### Reading a schema: recognition, not inference
+
+A `pattern` yields a stored form only by being one of a table of canonical spellings. The tempting
+alternative is to probe — generate a canonical sample and an uppercased one, and conclude from which is
+accepted — and it is evidence rather than proof. The conclusion needed is universal, that *every*
+string the pattern accepts is canonical, and two samples say nothing about the rest: a pattern with one
+group left case-insensitive accepts the lowercase sample, rejects the fully uppercased one, and still
+admits `123e4567-E89B-12d3-…`, which conforms to the schema and would be dropped by the equality the
+probe licensed. An unanchored pattern fails the same way.
+
+`format` yields nothing on its own: JSON Schema calls it an annotation rather than an assertion, and
+RFC 9562 dropped the lowercase-output rule RFC 4122 §3 had.
+
+**The audit, keyword by keyword.** Written down because the trap is uniform — a keyword that *looks*
+like an assertion about a document is often an assertion about a document **if something else holds**.
+
+| keyword | what it asserts | what is read |
+| --- | --- | --- |
+| `properties` | the value **if the path has one** | the value; nothing about presence |
+| `required` | these children exist **if this object does** | presence, guarded by the parent's |
+| `type` | the type, unless `nullable` or a union widens it | nothing for a union or under `nullable: true` |
+| `const`, `enum` | the value if present; scalars only | value and domain |
+| `pattern` | a regular expression | a stored form, for recognised spellings only |
+| `format` | an annotation | nothing |
+| `allOf` | every branch applies | every branch, same guard |
+| `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the value |
+| `oneOf`/`anyOf`, undiscriminated | one of them applies | the meet |
+| `if`/`then`/`else` | a conditional | a guard, only where the whole condition is read |
+| `dependentRequired`, `dependentSchemas` | conditionals keyed on presence | the same, guarded by the trigger |
+| `not` | a negation | one property under one `const` or `enum`; otherwise nothing |
+| `$ref` | the target, and siblings too under 2020-12 | the target; siblings dropped, which is Draft 7's rule |
+| `$defs`, `definitions` | a place to keep schemas | nothing — they constrain no path |
+| `additionalProperties`, `patternProperties`, `propertyNames` | constrain paths that cannot be named here | nothing |
+| `items`, `prefixItems`, `contains` | constrain elements | nothing |
+| `minimum`, `maxLength`, … | bounds | nothing — no claim is about an interval |
+
+An OpenAPI `discriminator` is read alongside a branch's own `const`, and the two rest on different
+ground. A branch that pins the property refutes every other branch, and `oneOf` does the rest. A
+`mapping` refutes nothing — validation alone could not tell the branches apart — so what carries it is
+that the author declared it, which is the footing the whole schema is trusted on anyway.
+
+**Two readings that look unsound and are not.** The guard taken from an `if` is *stronger* than the
+`if` — `{properties: {k: {const: "B"}}}` is satisfied vacuously by a document with no `k`, while the
+guard demands one — so `then` is applied to fewer documents than the schema allows, not more. And the
+meet holds under `oneOf` and `anyOf` alike: a fact every branch states is true whether exactly one
+validates or at least one does.
+
+**And one about resolution rather than a keyword.** A nested `$id` starts a new base URI, so a pointer
+written under it names a fragment of *that* document; resolution here is against the root, and the same
+pointer can reach a different node. It is the one failure that yields facts about the **wrong path**
+rather than none, so a schema that rebases follows nothing and only a root-relative JSON pointer is
+followed at all. The detector's first draft also looked for Draft 4's `id` and fired on every schema
+describing a property *called* `id` — keyword names and property names share one namespace in a walk
+like this, which is worth remembering before adding another such check.
+
+**The library is `com.networknt`**, Apache-2.0, and it resolves rather than walks: its own walker
+follows the branch an *instance* selects, where the compiler wants every branch under the guard that
+selects it. `Microsoft.OpenApi` was the better-looking candidate and does not resolve a JSON Schema
+`$ref` at all — given `#/$defs/x` it rebases the pointer onto the current node and resolves nothing,
+that being OpenAPI's `$ref` rather than JSON Schema's. The BCL's own `System.Text.Json.Schema` is an
+*exporter*: a type in, a schema out, which is why so many Microsoft APIs emit JSON Schema and none
+reads one.
+
+#### A guard exists to admit what a fact would have excluded
+
+Which is the general statement of what a declaration is for here, and it applies to every guard the
+adapter injects rather than to the one comparison the feature started with.
+
+A weakening pushes what a predicate *implies* and admits everything it cannot reason about, so that
+the recheck above decides those rows rather than the service dropping them. That admission is a
+guard, and every guard names a set of values. A fact that says the path holds no such value makes the
+guard admit nothing that exists, and it comes out.
+
+| guard | injected to admit | deleted by |
+| --- | --- | --- |
+| `NOT IS_STRING(x)` | a value of some other kind | `OfType(String)`, nullable or not |
+| `NOT IS_NUMBER(x)` | a non-number | `OfType(Number)` or `OfType(Integer)` |
+| `IS_DEFINED(x)` | nothing — it *excludes* an absent path | the type guard going, or `Present` |
+
+The definedness test is the one worth reading twice. It is not there to admit anything: it is there
+because the disjunction it guards is *true* of an absent path — `IS_STRING` of nothing is false, so
+the negation is true — and without it the weakening would admit every document lacking the property.
+So it exists for the type guard's sake, and dropping the type guard drops the need for it. A declared
+`required` drops it independently.
+
+**What this buys is not a shorter statement.** Each guard admits documents the service returns for the
+recheck to throw away, so deleting one is fewer documents over the wire. And a conjunct that needed
+none of them is *exact*, which is what lets a row limit travel with it — a weakening cannot carry a
+`FETCH`, because the recheck above may discard what the page already counted.
+
+**It pays without a schema.** `id`, `_ts` and `_etag` are typed and always present on every container
+by the service's own guarantee, so a comparison over one of them is exact today whether or not anyone
+has described anything. The declaration extends the same mechanism to an application's own paths
+rather than introducing it.
+
+**And the numeric bound stays a bound.** Knowing the type deletes the disjunct that admitted
+non-numbers; it does not make the comparison exact, because the cast still *converts* and the window
+is still the whole unit either side that `Casts over document values` argues for. Two different
+things are being weakened there, and only one of them is a guard.
+
+#### A declaration is trusted, and that is a change in kind
+
+Every other row of *What a container declares* is sourced from the container definition or a service
+guarantee. A schema is neither, and it is trusted the way the partition key is trusted: a document
+violating it is a data-integrity problem rather than something defended against per row. So this is the
+first input anywhere in the adapter that can silently change **which rows a query returns** — a schema
+wrong by one character drops rows, with no error and a plan that looks correct. There is no cheap
+detection, since checking would mean reading the documents, which is the inference
+`CosmosContainerMetadata` exists to refuse.
+
+**Which makes completeness the caller's obligation and not merely accuracy.** An unconditional fact is
+a claim about *every* document in the container, so describing only the kind you query is not
+under-describing — it is mis-describing the rest. A container holding several kinds has to say so, with
+`oneOf` and a discriminator or with `if`/`then`, at which point a fact inside a branch is used only
+once a query has proven the branch applies. Being incomplete in the other direction is free: keywords
+not understood are ignored, an unrecognised pattern yields no fact, and a schema that cannot be read at
+all leaves the container working exactly as it did.
+
+**Where a guard is enough, and where it is not.** A fact may be conditional, and the conjunct that
+proves it is usually a sibling of the one it licenses. For a filter rewrite that is enough on its own:
+the guard conjunct stays in the predicate, so over a document the fact was never claimed for, it has
+already excluded the row. For anything decided before a row is seen — a sort, routing, a point read, a
+pushed `LIMIT` — nothing rechecks, and the condition becomes that the statement's *pushed* predicate
+entails the guard. `CosmosFilterSplitRule` therefore establishes facts only from the conjuncts that
+translate unaided, those being the ones certain to be pushed; taking them from the whole predicate
+would push a comparison whose guard stayed above it in the residual.
+
 ### Verified against the emulator
 
 The following were established empirically against the Cosmos DB emulator
@@ -848,7 +1099,7 @@ item expression could not be mapped to a document path."* `ORDER BY (c.label)` i
 restriction is exactly what the message says: the sort item must *be* a path. Rendering a cast into the
 clause was therefore never available, whatever it would have cost. So paging a view by one of its own
 cast columns reads every matching document. The one thing that would change it is a column the sort
-could name, and that surface is rejected — `TODO.md` section 6 — which makes this a standing cost of
+could name, and that surface is rejected — `TODO.md` section 7 — which makes this a standing cost of
 the row model rather than a pending item.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
@@ -885,7 +1136,7 @@ transformation adds an equivalence rather than replacing one, so the untranspose
 the planner costs both.
 
 This does not make an unrenderable projection pushable, and it is not a substitute for a column the
-sort could name — a surface the row model declines, `TODO.md` section 6. What it removes is such a
+sort could name — a surface the row model declines, `TODO.md` section 7. What it removes is such a
 projection's ability to strand everything above it. Where the
 cast is to text the projection pushes on its own and there is nothing left to transpose past — but the
 rule still carries the cases that do not render, and the guard is what keeps it from carrying the sort
@@ -1793,7 +2044,7 @@ That gives a ladder:
    exists: the row model's columns are all identity, placement, service bookkeeping, or the document
    itself (the enumeration below), and a path *inside* the document has no column to be named by. A
    `columns` operand promoting caller-declared, typed paths was built for this, dropped, and is now
-   rejected outright (`TODO.md` section 6), so the target cannot arrive by declaration. It has to
+   rejected outright (`TODO.md` section 7), so the target cannot arrive by declaration. It has to
    arrive by expression instead, which is (3).
 3. **Static decomposition — future.** A mutation operator in the Cosmos table (`JSON_SET`-style,
    the way JSON-column databases spell copy-and-modify) would let a rule read patch operations

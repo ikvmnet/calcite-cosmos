@@ -28,6 +28,7 @@
         <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.116" />
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
         <MavenReference Include="org.jooq:joou-java-6" Version="0.9.5" />
+        <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.6" />
     </ItemGroup>
 
 </Project>

@@ -691,7 +691,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
         /// </remarks>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null) => new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings);
+        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosFactSet? facts = null) =>
+            new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings, facts);
 
         /// <summary>
         /// Visits an input node, allowing it to contribute to this implementor.
@@ -717,6 +718,27 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
         public string Translate(RexNode node) => CreateTranslator().Translate(node);
+
+        /// <summary>
+        /// Renders a <em>predicate</em>, which may lean on what the container knows about the
+        /// documents it keeps.
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="Translate(RexNode)"/> because the facts a node establishes are
+        /// only established by a predicate. The equality in <c>SELECT x = 'B'</c> asserts nothing
+        /// about <c>x</c>; the same equality in a <c>WHERE</c> asserts it of every row that survives,
+        /// and reading the first as the second would prove things the query never said.
+        /// </remarks>
+        /// <param name="condition">The predicate.</param>
+        /// <returns>The rendered condition.</returns>
+        public string TranslateCondition(RexNode condition)
+        {
+            var facts = _container is null
+                ? Metadata.CosmosFactSet.Empty
+                : _container.Facts.Derive(Metadata.CosmosFactExtractor.Extract(condition, _fields, RootAlias));
+
+            return CreateTranslator(null, facts).Translate(condition);
+        }
 
         /// <summary>
         /// Renders the accumulated statement.

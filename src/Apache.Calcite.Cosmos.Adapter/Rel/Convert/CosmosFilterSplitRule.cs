@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
@@ -42,6 +43,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <para>
     /// The split terminates. It fires only when both parts are non-empty, and neither of the two filters
     /// it produces has that property — the inner is wholly renderable, the outer wholly not.
+    /// </para>
+    /// <para>
+    /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
+    /// one once the declared stored form is taken into account, and the fact that says so is usually
+    /// conditional on a sibling conjunct — so the whole condition is rewritten before it is taken apart,
+    /// while the conjunct that proves the condition is still beside the one it licenses. See
+    /// <see cref="Metadata.CosmosFactRewriter"/>.
     /// </para>
     /// </remarks>
     public class CosmosFilterSplitRule : RelOptRule
@@ -144,11 +152,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-
             var below = AlreadyApplied(filter.getInput());
 
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
+            // Lowered before it is split, and that order is the point: a fact is usually conditional,
+            // and the conjunct that proves the condition is a sibling of the one being lowered. Split
+            // first and each conjunct would be weighed on its own, with nothing left to prove the
+            // guard from.
+            var condition = Metadata.CosmosFactRewriter.Rewrite(
+                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
+
+            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
+
+            // What the container knows, closed under the conjuncts that reach the service on their
+            // own. Those and no others, because a fact licenses a comparison only where the conjunct
+            // that proved it is applied beside it: a guard left above in the residual would leave the
+            // service deciding rows the guard was meant to have excluded. Admitting more can only
+            // grow the pushable half, so every conjunct this pass is derived from is still pushed.
+            var facts = Establish(conjuncts, fields, container, rexBuilder, readings);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
 
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
@@ -176,6 +197,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             return (pushable, residual);
         }
 
+
+        /// <summary>
+        /// Closes the container's facts under the conjuncts that translate unaided.
+        /// </summary>
+        /// <remarks>
+        /// The first of two passes, and the reason there are two. A conjunct may translate only
+        /// <em>because</em> of a fact, and that fact may hold only because of another conjunct — so
+        /// the facts have to be established before the split and from conjuncts that are certain to be
+        /// pushed. One that translates with no help is certain; one that needed help is not, until the
+        /// split says so. Deriving from the whole predicate instead would push a comparison whose
+        /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
+        /// </remarks>
+        static Metadata.CosmosFactSet Establish(
+            java.util.List conjuncts,
+            IReadOnlyList<CosmosPath?> fields,
+            Metadata.CosmosContainerMetadata container,
+            RexBuilder rexBuilder,
+            IReadOnlyList<CosmosReading>? readings)
+        {
+            if (container.Facts.IsEmpty)
+                return Metadata.CosmosFactSet.Empty;
+
+            var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
+            var established = new List<Metadata.CosmosFact>();
+
+            for (var i = 0; i < conjuncts.size(); i++)
+                if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
+                    established.AddRange(Metadata.CosmosFactExtractor.Extract((RexNode)conjuncts.get(i), fields, CosmosImplementor.DefaultRootAlias));
+
+            return container.Facts.Derive(established);
+        }
+
+        /// <summary>
+        /// Assembles a weakened conjunct, injecting only the guards the container has not already
+        /// ruled out the need for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A guard exists to admit what a fact would have excluded, so a fact deletes it.</b> The
+        /// type test admits a value of some other kind, for the recheck above to decide; a container
+        /// that says the path holds that kind has no such value, and the test admits nothing that
+        /// exists. The definedness test is there only because of the type test — the disjunction it
+        /// guards is <em>true</em> for an absent path, <c>IS_STRING</c> of nothing being false — so
+        /// dropping the type test drops the need for it, and a declared presence drops it anyway.
+        /// </para>
+        /// <para>
+        /// What it buys is not a shorter statement. Each guard admits documents the service then
+        /// returns for the recheck to throw away, so deleting one is fewer documents over the wire;
+        /// and a conjunct that needed none of them is exact, which is what lets a row limit travel
+        /// with it.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The raw document value the comparison reads.</param>
+        /// <param name="comparison">The comparison to push, already written against that value.</param>
+        /// <param name="typeTest">The service predicate that answers whether the value is of the admitted kind.</param>
+        /// <param name="admits">The claims that would make the type test admit nothing that exists; any one of them suffices.</param>
+        /// <param name="translator">Resolves the path, and carries what the container knows.</param>
+        /// <param name="rexBuilder">Builds the guard nodes.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The weakened conjunct.</returns>
+        static RexNode Guarded(
+            RexNode value,
+            RexNode comparison,
+            SqlOperator typeTest,
+            IReadOnlyList<Metadata.CosmosClaim> admits,
+            CosmosRexTranslator translator,
+            RexBuilder rexBuilder,
+            string rootAlias)
+        {
+            var known = Known(value, translator, rootAlias);
+
+            var typed = known is not null && admits.Any(claim => translator.Facts.Knows(new Metadata.CosmosFact(known, claim)));
+            if (typed)
+                return comparison;
+
+            var present = known is not null && translator.Facts.Knows(new Metadata.CosmosFact(known, new Metadata.CosmosClaim.Present()));
+
+            var admitted = RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList
+            {
+                rexBuilder.makeCall(SqlStdOperatorTable.NOT, rexBuilder.makeCall(typeTest, new[] { value })),
+                comparison,
+            });
+
+            if (present)
+                return admitted;
+
+            return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList
+            {
+                rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { value }),
+                admitted,
+            });
+        }
+
+        /// <summary>
+        /// Returns the document path a value reads, or <c>null</c> where it reads none this knows
+        /// facts about.
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <param name="translator">Resolves the path.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        static Metadata.CosmosDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
+        {
+            if (translator.TryResolvePath(value, out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            return Metadata.CosmosDocumentPath.From(path);
+        }
 
         /// <summary>
         /// Weakens a comparison over a text accessor to the case where the two agree, or returns
@@ -266,18 +398,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 ? rexBuilder.makeCall(call.getOperator(), rawSubject, right)
                 : rexBuilder.makeCall(call.getOperator(), left, rawSubject);
 
-            var notString = rexBuilder.makeCall(SqlStdOperatorTable.NOT,
-                rexBuilder.makeCall(CosmosOperators.IsString, new[] { raw }));
-
-            var terms = new java.util.ArrayList();
-            terms.add(notString);
-            terms.add(comparison);
-
-            var whole = new java.util.ArrayList();
-            whole.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { raw }));
-            whole.add(RexUtil.composeDisjunction(rexBuilder, terms));
-
-            return RexUtil.composeConjunction(rexBuilder, whole);
+            return Guarded(
+                raw,
+                comparison,
+                CosmosOperators.IsString,
+                new[] { new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true) },
+                translator,
+                rexBuilder,
+                rootAlias);
         }
 
         /// <summary>
@@ -570,13 +698,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (terms.isEmpty())
                 return null;
 
-            var notNumber = rexBuilder.makeCall(SqlStdOperatorTable.NOT, rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
-
-            var whole = new java.util.ArrayList();
-            whole.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { value }));
-            whole.add(RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList { notNumber, RexUtil.composeConjunction(rexBuilder, terms) }));
-
-            return RexUtil.composeConjunction(rexBuilder, whole);
+            // Either numeric claim serves: the service's IS_NUMBER is true of both, JSON drawing no
+            // line between them and `integer` being a number with no fractional part rather than a
+            // type of its own.
+            return Guarded(
+                value,
+                RexUtil.composeConjunction(rexBuilder, terms),
+                CosmosOperators.IsNumber,
+                new[]
+                {
+                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Number, OrNull: true),
+                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Integer, OrNull: true),
+                },
+                translator,
+                rexBuilder,
+                rootAlias);
         }
 
         /// <summary>

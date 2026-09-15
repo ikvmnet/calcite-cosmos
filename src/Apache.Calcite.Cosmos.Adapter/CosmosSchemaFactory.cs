@@ -41,6 +41,15 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// and never inferred from the documents it holds.
     /// </para>
     /// <para>
+    /// <b>A listed container may carry a JSON Schema instead of being named alone.</b> Write
+    /// <c>{ "name": "orders", "schema": { … } }</c> in place of <c>"orders"</c>, and the schema is
+    /// compiled once into the facts a pushdown can prove against — that a path holds a canonical UUID,
+    /// or an instant at one fixed shape, and under which discriminator it does. It is a declaration
+    /// the adapter trusts rather than checks, so a document that violates it is a data-integrity
+    /// problem; see <c>DESIGN.md</c> under <em>What a caller may declare beyond it</em>. Declaring nothing is what every container does today and
+    /// costs nothing.
+    /// </para>
+    /// <para>
     /// <b>Omit <c>database</c> to expose the account instead.</b> Cosmos nests account → database →
     /// container and Calcite nests schema → subschema → table, so the schema then carries one
     /// subschema per database and a query names a container as <c>"inventory"."products"</c>. One
@@ -95,7 +104,21 @@ namespace Apache.Calcite.Cosmos.Adapter
         public const string DatabaseOperand = "database";
 
         /// <summary>The operand listing the containers to expose. Omit to discover them.</summary>
+        /// <remarks>
+        /// Each entry is a name, or an object carrying a name and a <see cref="SchemaOperand"/>.
+        /// </remarks>
         public const string ContainersOperand = "containers";
+
+        /// <summary>
+        /// The key, inside a <see cref="ContainersOperand"/> entry, carrying the container's JSON Schema.
+        /// </summary>
+        /// <remarks>
+        /// A schema object, written inline the way the rest of the model is written — a model file is
+        /// JSON and a schema is JSON, so nesting one in the other costs indentation and nothing else.
+        /// Anything the compiler does not understand is ignored rather than refused, so a richer schema
+        /// stays legal and simply yields the facts that can be read from it.
+        /// </remarks>
+        public const string SchemaOperand = "schema";
 
         /// <summary>The operand selecting the connection mode, <c>gateway</c> or <c>direct</c>.</summary>
         public const string ConnectionModeOperand = "connectionMode";
@@ -155,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // The client is owned by the schema for the life of the process. Schemas are created
             // once per connection and Calcite offers no disposal hook to release it on.
             var client = CreateClient(operand);
-            var containers = GetStrings(operand, ContainersOperand);
+            var containers = ReadContainerDeclarations(operand);
             var indexMetrics = GetBoolean(operand, IndexMetricsOperand);
 
             var lookupCache = ReadLookupCache(operand);
@@ -239,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// useful where they share container names. Omitting it, which is the ordinary case here,
         /// exposes every container of every database.
         /// </remarks>
-        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<string> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, TimeSpan? statisticsTimeToLive = null)
+        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<CosmosContainerDeclaration> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, TimeSpan? statisticsTimeToLive = null)
         {
             var databases = new List<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>>();
 
@@ -391,14 +414,16 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Reads metadata for the named containers, or for every container in the database when
         /// none are named.
         /// </summary>
-        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<string> names, TimeSpan? statisticsTimeToLive = null)
+        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<CosmosContainerDeclaration> declared, TimeSpan? statisticsTimeToLive = null)
         {
             var containers = new List<CosmosContainerMetadata>();
 
-            if (names.Count > 0)
+            if (declared.Count > 0)
             {
-                foreach (var container in names)
-                    containers.Add(CosmosContainerMetadataReader.ReadAsync(database.GetContainer(container), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult());
+                foreach (var declaration in declared)
+                    containers.Add(CosmosContainerMetadataReader
+                        .ReadAsync(database.GetContainer(declaration.Name), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult()
+                        .WithFacts(declaration.Facts));
 
                 return containers;
             }
@@ -427,27 +452,75 @@ namespace Apache.Calcite.Cosmos.Adapter
             var other => bool.TryParse(other.ToString(), out var parsed) && parsed,
         };
 
-        static IReadOnlyList<string> GetStrings(java.util.Map operand, string name)
-        {
-            var values = new List<string>();
+        static readonly com.fasterxml.jackson.databind.ObjectMapper Mapper = new();
 
-            switch (operand.get(name))
+        /// <summary>
+        /// Reads the containers to expose, and whatever each one declares about its documents.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An entry is a name, or an object carrying a name and a <see cref="SchemaOperand"/>. The two
+        /// forms mix freely in one list, because declaring a schema is something a caller does for the
+        /// container it matters for rather than for all of them.
+        /// </para>
+        /// <para>
+        /// A model may also deliver the list as one comma-separated string, depending on how it was
+        /// parsed, and that form carries names only — there is nowhere in it to put a schema.
+        /// </para>
+        /// </remarks>
+        /// <param name="operand">The model's operand map.</param>
+        /// <returns>The declarations, in the order given.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="operand"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException">An entry names no container, or carries a schema that is not an object.</exception>
+        public static IReadOnlyList<CosmosContainerDeclaration> ReadContainerDeclarations(java.util.Map operand)
+        {
+            if (operand is null)
+                throw new ArgumentNullException(nameof(operand));
+
+            var declarations = new List<CosmosContainerDeclaration>();
+
+            switch (operand.get(ContainersOperand))
             {
                 case null:
                     break;
                 case java.util.List list:
                     for (var i = 0; i < list.size(); i++)
-                        if (list.get(i)?.ToString() is string value && value.Length > 0)
-                            values.Add(value);
+                        if (ReadDeclaration(list.get(i)) is CosmosContainerDeclaration declaration)
+                            declarations.Add(declaration);
                     break;
                 case var single:
                     foreach (var value in single.ToString()!.Split(','))
                         if (value.Trim().Length > 0)
-                            values.Add(value.Trim());
+                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<Metadata.CosmosFactRule>()));
                     break;
             }
 
-            return values;
+            return declarations;
+        }
+
+        /// <summary>
+        /// Reads one entry of the container list.
+        /// </summary>
+        static CosmosContainerDeclaration? ReadDeclaration(object? entry)
+        {
+            if (entry is null)
+                return null;
+
+            if (entry is not java.util.Map map)
+                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<Metadata.CosmosFactRule>()) : null;
+
+            if (map.get("name")?.ToString() is not string name || name.Length == 0)
+                throw new ArgumentException($"Every object in '{ContainersOperand}' must carry a 'name'.");
+
+            if (map.get(SchemaOperand) is not object schema)
+                return new CosmosContainerDeclaration(name, System.Array.Empty<Metadata.CosmosFactRule>());
+
+            // A schema is an object. A string there would be a path or a document and this has decided
+            // neither, so it is a model mistake rather than something to guess at.
+            if (schema is not java.util.Map)
+                throw new ArgumentException($"Operand '{SchemaOperand}' on container '{name}' must be a JSON Schema object.");
+
+            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaFacts.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)));
         }
 
     }
