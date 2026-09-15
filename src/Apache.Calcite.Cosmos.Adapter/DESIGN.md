@@ -288,6 +288,24 @@ is constant across the values — the 1st and 17th hex digits confined to one si
 The first digit is what varies: v4 spreads it over `0`–`f`, and v7 confines it to `0`–`7` for every
 realistic timestamp.
 
+**Why two digits decide it, and why it is about the set rather than the value.** Lexical order of the
+canonical string compares the same two halves as *unsigned*: the dashes sit at fixed positions so they
+never decide anything, and the hex characters sort in value order. Signed and unsigned comparison of
+two 64-bit values agree exactly when their top bits match — so the two orders coincide over a *set* of
+values only where the top bit of each half is constant across all of them. The top bit of `mostSigBits`
+is the top bit of the 1st hex digit, which `[0-7]` pins to 0; the top bit of `leastSigBits` is the top
+bit of the 17th, which RFC 4122's `10xx` variant pins to 1 for every conforming value. Pin both and
+the orders are the same order. It is an argument about two bits, not about the value being a UUID, and
+it is why a v4 pattern is not sortable while a v7 one is: v4 leaves the first digit free, so the sign
+of the high half varies across the container.
+
+**And the service orders strings by code point, measured.** The whole argument is about *lexical*
+order, which is the adapter's word for what Cosmos will do — so it was worth asking rather than
+assuming. Over values chosen to separate an ordinal comparison from a linguistic one, `ORDER BY`
+matched `StringComparer.Ordinal` exactly and differed from `InvariantCulture` on every case that
+distinguishes them: `B` before `a`, `a-b` before `a_b`, and `0000000A-…` before `0000000a-…`. So a
+collation is not quietly reordering what the sign-bit argument rests on.
+
 So a representation carries two independent bits — whether comparing the stored strings for *equality*
 answers what comparing the values answers, and whether their *order* does — and `CosmosStoredForms`
 sets them per recognised pattern.
