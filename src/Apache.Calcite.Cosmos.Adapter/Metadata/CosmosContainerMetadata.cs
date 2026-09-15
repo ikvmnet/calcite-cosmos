@@ -512,37 +512,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         CosmosFactTheory _facts = CosmosFactTheory.Empty;
 
         /// <summary>
-        /// Gets what the caller declared about the documents this container holds, compiled to rules.
+        /// Gets what is known about the documents this container holds, compiled to rules.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>The one thing here the service did not say.</b> Every other member of this type comes
-        /// from the container definition or is guaranteed by the service; this comes from the model
-        /// file, and it is trusted the way the partition key is trusted. A document that violates it is
-        /// a data-integrity problem rather than something the adapter defends against per row — which
-        /// means a schema that is wrong drops rows, with no error and a plan that looks correct. That
-        /// is a real change in kind and is recorded in <c>DESIGN-93.md</c> §5 rather than left to be
-        /// discovered.
+        /// <b>A schema is a source of facts rather than the thing facts are made of.</b> A model file's
+        /// JSON Schema is one; what the service guarantees about the properties it maintains itself is
+        /// another, and neither is privileged in the rules. They have to share one theory rather than
+        /// sit in two, because a rule's body may be satisfied by a fact from the other source and
+        /// forward chaining only fires such a rule when it sees both at once.
         /// </para>
         /// <para>
-        /// Empty where nothing was declared, which is every container today, and an empty theory proves
+        /// <b>Which leaves the trust boundary to be stated rather than typed.</b> Every other member of
+        /// this type comes from the container definition or is guaranteed by the service. A fact that
+        /// came from a model file does not: it is trusted the way the partition key is trusted, so a
+        /// document violating it is a data-integrity problem rather than something defended against per
+        /// row — which means a schema wrong by one character drops rows, with no error and a plan that
+        /// looks correct. Recorded in <c>DESIGN-93.md</c> §5 rather than left to be discovered.
+        /// </para>
+        /// <para>
+        /// Empty where nothing is known, which is every container today, and an empty theory proves
         /// nothing and costs nothing to ask.
         /// </para>
         /// </remarks>
-        public CosmosFactTheory DeclaredFacts => _facts;
+        public CosmosFactTheory Facts => _facts;
 
         /// <summary>
-        /// Returns the same metadata carrying what the caller declared about its documents.
+        /// Returns the same metadata knowing these facts as well as the ones it already knew.
         /// </summary>
-        /// <param name="facts">The compiled schema.</param>
+        /// <remarks>
+        /// Additive, because facts come from more than one place — a model file's schema, and what the
+        /// service guarantees about the properties it maintains itself — and they have to end up in
+        /// one theory. Two theories asked separately would lose any derivation whose rule is stated by
+        /// one source and whose body is satisfied by the other.
+        /// </remarks>
+        /// <param name="facts">The rules to add.</param>
         /// <returns>The metadata.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
-        public CosmosContainerMetadata WithDeclaredFacts(CosmosFactTheory facts)
+        public CosmosContainerMetadata WithFacts(IEnumerable<CosmosFactRule> facts)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
 
-            if (facts.IsEmpty)
+            var combined = new List<CosmosFactRule>(_facts.Rules);
+            combined.AddRange(facts);
+
+            if (combined.Count == _facts.Rules.Count)
                 return this;
 
             var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
@@ -551,7 +566,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
-            metadata._facts = facts;
+            metadata._facts = new CosmosFactTheory(combined);
             return metadata;
         }
 

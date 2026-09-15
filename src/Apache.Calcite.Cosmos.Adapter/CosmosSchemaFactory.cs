@@ -423,7 +423,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 foreach (var declaration in declared)
                     containers.Add(CosmosContainerMetadataReader
                         .ReadAsync(database.GetContainer(declaration.Name), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult()
-                        .WithDeclaredFacts(declaration.Facts));
+                        .WithFacts(declaration.Facts));
 
                 return containers;
             }
@@ -491,7 +491,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case var single:
                     foreach (var value in single.ToString()!.Split(','))
                         if (value.Trim().Length > 0)
-                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), Metadata.CosmosFactTheory.Empty));
+                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<Metadata.CosmosFactRule>()));
                     break;
             }
 
@@ -507,20 +507,20 @@ namespace Apache.Calcite.Cosmos.Adapter
                 return null;
 
             if (entry is not java.util.Map map)
-                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, Metadata.CosmosFactTheory.Empty) : null;
+                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<Metadata.CosmosFactRule>()) : null;
 
             if (map.get("name")?.ToString() is not string name || name.Length == 0)
                 throw new ArgumentException($"Every object in '{ContainersOperand}' must carry a 'name'.");
 
             if (map.get(SchemaOperand) is not object schema)
-                return new CosmosContainerDeclaration(name, Metadata.CosmosFactTheory.Empty);
+                return new CosmosContainerDeclaration(name, System.Array.Empty<Metadata.CosmosFactRule>());
 
             // A schema is an object. A string there would be a path or a document and this has decided
             // neither, so it is a model mistake rather than something to guess at.
             if (schema is not java.util.Map)
                 throw new ArgumentException($"Operand '{SchemaOperand}' on container '{name}' must be a JSON Schema object.");
 
-            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaCompiler.Compile((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)));
+            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaFacts.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)));
         }
 
     }

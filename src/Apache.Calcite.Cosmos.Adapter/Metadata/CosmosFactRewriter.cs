@@ -65,11 +65,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // The ordinary case, and the one that has to cost nothing: a container that declares
             // nothing proves nothing, and asking is a field read.
-            if (container is null || container.DeclaredFacts.IsEmpty)
+            if (container is null || container.Facts.IsEmpty)
                 return condition;
 
             var established = CosmosFactExtractor.Extract(condition, fields, rootAlias);
-            var known = container.DeclaredFacts.Derive(established);
+            var known = container.Facts.Derive(established);
 
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
             var rewritten = Apply(condition, translator, known, rootAlias, rexBuilder);

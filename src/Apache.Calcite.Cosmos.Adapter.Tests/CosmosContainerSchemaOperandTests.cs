@@ -71,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             declared.Should().HaveCount(2);
             declared[0].Name.Should().Be("products");
-            declared[0].Facts.IsEmpty.Should().BeTrue("naming a container declares nothing about it");
+            declared[0].Facts.Should().BeEmpty("naming a container declares nothing about it");
             declared[1].Name.Should().Be("orders");
         }
 
@@ -91,9 +91,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List("products", Entry("parks", ParksSchema))));
 
             declared.Should().HaveCount(2);
-            declared[0].Facts.IsEmpty.Should().BeTrue();
+            declared[0].Facts.Should().BeEmpty();
             declared[1].Name.Should().Be("parks");
-            declared[1].Facts.IsEmpty.Should().BeFalse();
+            declared[1].Facts.Should().NotBeEmpty();
         }
 
         [TestMethod]
@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var parkId = CosmosDocumentPath.Root.Property("data").Property("parkId");
             var type = CosmosDocumentPath.Root.Property("type");
 
-            var facts = declared[0].Facts;
+            var facts = new CosmosFactTheory(declared[0].Facts);
 
             facts.Derive(null).RepresentationOf(parkId).Should().BeNull();
             facts.Derive(new[] { new CosmosFact(type, new CosmosClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         public void AnEntryWithNoSchemaDeclaresNothing()
         {
             CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks")))).Should()
-                .ContainSingle().Which.Facts.IsEmpty.Should().BeTrue();
+                .ContainSingle().Which.Facts.Should().BeEmpty();
         }
 
         [TestMethod]
@@ -152,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var declared = CosmosSchemaFactory.ReadContainerDeclarations(
                 Operand(List(Entry("parks", """{ "properties": { "a": { "minimum": 3 } } }"""))));
 
-            declared[0].Facts.IsEmpty.Should().BeTrue(
+            declared[0].Facts.Should().BeEmpty(
                 "an unreadable schema loses pushdowns; it must never be a reason a container stops working");
         }
 
@@ -160,12 +160,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         public void TheCompiledFactsReachTheContainerMetadata()
         {
             var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks", ParksSchema))));
-            var metadata = new CosmosContainerMetadata("parks", new[] { "/data/parkId" }).WithDeclaredFacts(declared[0].Facts);
+            var metadata = new CosmosContainerMetadata("parks", new[] { "/data/parkId" }).WithFacts(declared[0].Facts);
 
-            metadata.DeclaredFacts.IsEmpty.Should().BeFalse();
+            metadata.Facts.IsEmpty.Should().BeFalse();
             metadata.PartitionKeyPaths.Should().ContainSingle("attaching facts keeps everything the definition said");
 
-            new CosmosContainerMetadata("parks").DeclaredFacts.IsEmpty.Should().BeTrue(
+            new CosmosContainerMetadata("parks").Facts.IsEmpty.Should().BeTrue(
                 "a container that declares nothing carries an empty theory rather than a null one");
         }
 

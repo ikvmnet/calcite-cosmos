@@ -7,9 +7,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// Walks a declared JSON Schema once and compiles what it can prove into rules.
+    /// A JSON Schema, read as a source of facts about a container's documents.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>One source among others.</b> What a model file declares is not the only thing knowable about
+    /// a container — what the service guarantees about the properties it maintains itself is knowable
+    /// too — so this yields <em>rules</em> rather than a theory, and
+    /// <see cref="CosmosFactTheory"/> is what a container assembles out of every source it has. They
+    /// have to end up in one theory rather than several: a rule's body may be satisfied by a fact
+    /// another source stated, and forward chaining only fires such a rule when it sees both at once.
+    /// </para>
     /// <para>
     /// The walk carries a <em>guard</em> — the facts that must hold for the branch being walked to be
     /// the one that applies — and every fact it reads becomes a rule with that guard as its body. A
@@ -26,16 +34,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// See <c>DESIGN-93.md</c> §3 for the keyword table and the reasoning behind each entry.
     /// </para>
     /// </remarks>
-    public static class CosmosSchemaCompiler
+    public static class CosmosSchemaFacts
     {
 
         /// <summary>
-        /// Compiles a declared schema.
+        /// Reads the facts a declared schema states.
         /// </summary>
         /// <param name="schema">The schema document, as the tree the model delivered.</param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <c>null</c>.</exception>
-        public static CosmosFactTheory Compile(JsonNode schema)
+        public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema)
         {
             if (schema is null)
                 throw new ArgumentNullException(nameof(schema));
@@ -45,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Walk(schema, CosmosDocumentPath.Root, Array.Empty<CosmosFact>(), rules, resolver, new HashSet<string>(StringComparer.Ordinal));
 
-            return new CosmosFactTheory(rules);
+            return rules;
         }
 
         /// <summary>

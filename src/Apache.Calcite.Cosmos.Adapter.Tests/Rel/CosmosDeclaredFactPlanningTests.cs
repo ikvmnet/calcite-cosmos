@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         static CosmosContainerMetadata Declared(bool declares) =>
             declares
                 ? new CosmosContainerMetadata("items", new[] { "/ref" })
-                    .WithDeclaredFacts(CosmosSchemaCompiler.Compile(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Schema)))
+                    .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Schema)))
                 : new CosmosContainerMetadata("items", new[] { "/ref" });
 
         const string Ref = """CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)""";

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
@@ -18,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// fact about that path is unusable until the query has proven which kind it is filtering.
     /// </remarks>
     [TestClass]
-    public class CosmosSchemaCompilerTests
+    public class CosmosSchemaFactsTests
     {
 
         static readonly CosmosDocumentPath Type = CosmosDocumentPath.Root.Property("type");
@@ -26,8 +27,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly CosmosDocumentPath ParkId = Data.Property("parkId");
         static readonly CosmosDocumentPath At = Data.Property("at");
 
-        static CosmosFactTheory Compile(string json) =>
-            CosmosSchemaCompiler.Compile(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+        static IReadOnlyList<CosmosFactRule> Read(string json) =>
+            CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+
+        /// <summary>The facts a schema states, assembled into the theory a container would ask.</summary>
+        static CosmosFactTheory Compile(string json) => new(Read(json));
 
         static CosmosFact Equals(CosmosDocumentPath path, object? value) => new(path, new CosmosClaim.EqualTo(value));
 
@@ -251,8 +255,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [TestMethod]
         public void AnUnreadableSchemaIsNoFactsRatherThanAFailure()
         {
-            CosmosSchemaCompiler.Compile(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))
-                .IsEmpty.Should().BeTrue("a declaration meant to add pushdowns must never be a reason a query stops working");
+            CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))
+                .Should().BeEmpty("a declaration meant to add pushdowns must never be a reason a query stops working");
 
             Compile("""{ "type": "object", "properties": { "a": { "minimum": 3, "maxLength": 9 } } }""")
                 .Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("a")).Should().BeNull();

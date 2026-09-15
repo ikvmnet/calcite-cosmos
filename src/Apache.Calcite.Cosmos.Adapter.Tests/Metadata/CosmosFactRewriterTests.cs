@@ -64,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             schema is null
                 ? new CosmosContainerMetadata("items", new[] { "/ref" })
                 : new CosmosContainerMetadata("items", new[] { "/ref" })
-                    .WithDeclaredFacts(CosmosSchemaCompiler.Compile(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                    .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
 
         RexNode Ref(int index, SqlTypeName type) => _rex.makeInputRef(_types.createSqlType(type), index);
 
