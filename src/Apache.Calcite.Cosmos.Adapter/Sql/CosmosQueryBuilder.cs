@@ -141,8 +141,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Projects a single unwrapped value, emitting <c>SELECT VALUE &lt;expression&gt;</c>.
         /// </summary>
         /// <remarks>
-        /// This is the natural projection for the single-column map row model: the result of the
-        /// query is the document itself rather than an object wrapping it.
+        /// This is the natural projection for the single-column row model: the result of the query
+        /// is the document itself rather than an object wrapping it.
         /// </remarks>
         /// <param name="expression">The rendered expression to project.</param>
         /// <exception cref="ArgumentException"><paramref name="expression"/> is <c>null</c> or empty.</exception>

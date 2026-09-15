@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             return new CosmosCompositeIndex(list);
         }
 
-        // Row type ordinals: 0 _MAP, 1 id, 2 _ts, 3 _etag, then declared paths.
+        // Row type ordinals: 0 DOC, 1 id, 2 _ts, 3 _etag, then declared paths.
 
         [TestMethod]
         public void PromotedColumnsResolveToOrdinals()
@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/tenant", "/user" }));
             var keys = table.getStatistic().getKeys();
 
-            // 0 _MAP, 1 id, 2 _ts, 3 _etag, 4 tenant, 5 user
+            // 0 DOC, 1 id, 2 _ts, 3 _etag, 4 tenant, 5 user
             ((ImmutableBitSet)keys.get(0)).Should().Be(ImmutableBitSet.of(new[] { 1, 4, 5 }));
         }
 
@@ -138,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <remarks>
-        /// A composite index over a path inside the map column names nothing the planner can address,
+        /// A composite index over an unpromoted document path names nothing the planner can address,
         /// and remains valid for the sort guard regardless.
         /// </remarks>
         [TestMethod]

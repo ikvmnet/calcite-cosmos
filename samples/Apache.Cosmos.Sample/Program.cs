@@ -135,7 +135,7 @@ namespace Apache.Cosmos.Sample
 
             await Section(connection, watcher,
                 "The Cosmos side on its own",
-                """SELECT "id", "category" FROM "COSMOS"."products" ORDER BY "id" """);
+                """SELECT "id", "$.category" FROM "COSMOS"."products" ORDER BY "id" """);
 
             await Section(connection, watcher,
                 "The view — joined across both adapters",
@@ -351,9 +351,9 @@ namespace Apache.Cosmos.Sample
                   "name": "PRODUCT_SUPPLIERS",
                   "type": "view",
                   "sql": [
-                    "SELECT p.\"id\" AS \"PRODUCT\", p.\"category\" AS \"CATEGORY\",",
-                    "       CAST(p.\"_MAP\"['name'] AS VARCHAR) AS \"NAME\",",
-                    "       CAST(p.\"_MAP\"['price'] AS INTEGER) AS \"PRICE\",",
+                    "SELECT p.\"id\" AS \"PRODUCT\", p.\"$.category\" AS \"CATEGORY\",",
+                    "       JSON_VALUE(p.\"DOC\", '$.name') AS \"NAME\",",
+                    "       JSON_VALUE(p.\"DOC\", '$.price' RETURNING INTEGER) AS \"PRICE\",",
                     "       s.\"SUPPLIER\", s.\"LEAD_DAYS\"",
                     "FROM \"COSMOS\".\"products\" AS p",
                     "JOIN \"SUPPLIERS\".\"SUPPLIERS\" AS s ON p.\"id\" = s.\"PRODUCT\""

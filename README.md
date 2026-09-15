@@ -125,8 +125,8 @@ compile a synchronous read is no longer protected by that.
 default. Cosmos sorts a null or absent property first ascending and last descending, and offers no
 control over it. So a sort on a nullable key is declined for disagreeing with a placement the caller
 never wrote, and the refusal is silent: the ordering runs in-process over a full container read
-rather than failing. Everything reachable through the map column is nullable, so out of the box that
-is every document path.
+rather than failing. Everything reachable through the document column is nullable, so out of the box
+that is every document path.
 
 `defaultNullCollation=LOW` asks for the placement Cosmos already implements — nulls low, first
 ascending and last descending — and the sort pushes:
@@ -163,7 +163,7 @@ trade; for a mixed one it is a decision, and there is no per-schema lever to mak
 Leaving the connection alone, two things reach the same pushdown from inside a query: state the
 placement — `ORDER BY … NULLS FIRST` ascending, `ORDER BY … DESC NULLS LAST` — or remove the nulls,
 since `WHERE c."category" IS NOT NULL ORDER BY c."category"` has no placement left to disagree
-about. The second reaches promoted columns only; a path inside the map column projects as an
+about. The second reaches promoted columns only; an unpromoted document path projects as an
 expression rather than a reference, and the guarantee does not survive that.
 
 > **A view whose columns are `CAST(…)` does not benefit yet.** A sort written directly on a

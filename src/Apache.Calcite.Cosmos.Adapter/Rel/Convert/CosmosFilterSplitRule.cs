@@ -92,7 +92,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// projection or a traversal as easily as above the scan — the split is the same argument
         /// either way, and <see cref="Split"/> already binds through them.
         /// </remarks>
-        static CosmosTable? FindTable(RelNode? node)
+        internal static CosmosTable? FindTable(RelNode? node)
         {
             if (node is org.apache.calcite.plan.volcano.RelSubset subset)
                 node = subset.getOriginal() ?? subset.getBest();
@@ -636,11 +636,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <c>CAST(c."_MAP"['x'] AS VARCHAR) = '30'</c> and <c>JSON_VALUE(c."DOC", '$.x') = '30'</c>
-        /// are declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps
-        /// the document, where <c>c.x = '30'</c> at the service does not — and used to push only
-        /// <c>IS_DEFINED</c>. Each still implies something tighter: the value is that string, or it is
-        /// a value that renders as it. So the rule pushes
+        /// <c>JSON_VALUE(c."DOC", '$.x') = '30'</c> and <c>CAST(c."$.x" AS VARCHAR) = '30'</c> are
+        /// declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps the
+        /// document, where <c>c.x = '30'</c> at the service does not. Each still implies something
+        /// tighter: the value is that string, or it is a value that renders as it. So the rule pushes
         /// </para>
         /// <code>
         /// c.x = '30' OR c.x = 30

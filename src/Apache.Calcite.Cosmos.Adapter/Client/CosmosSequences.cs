@@ -189,14 +189,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>SET</c> column's value substituted from the trailing positions the planner appends.
         /// </summary>
         /// <remarks>
-        /// Where the document column is set — and it is the only column that can be — the other columns' old values are withheld
-        /// rather than substituted: the document builder lets a non-null promoted column override
-        /// the map's entry, which is right for an insert describing one document, and wrong here —
-        /// it would silently write old values over whatever the new map says. The one deliberate
-        /// exception is <c>id</c>: identity is not the statement's to change, and keeping the old
-        /// value makes a new map that omits it still describe the same document — while a new map
-        /// that <em>contradicts</em> it produces a body the service rejects loudly, which is the
-        /// correct fate for an update trying to rename a document.
+        /// The document column is the only column a <c>SET</c> can name, every other being
+        /// <c>STORED</c>, so the other columns' old values are withheld rather than substituted: they
+        /// are projections of a document the statement is replacing outright, and carrying them
+        /// forward would describe a document the <c>SET</c> did not write. A new document that
+        /// contradicts the old identity or placement is rejected loudly by the service, which is the
+        /// correct fate for an update trying to rename or move a document.
         /// </remarks>
         static object?[] ApplySets(CosmosWrite write, object?[] values)
         {

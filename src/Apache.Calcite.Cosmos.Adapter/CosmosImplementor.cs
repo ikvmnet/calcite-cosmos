@@ -530,7 +530,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             _query = new CosmosQueryBuilder(container.Name, alias);
 
             // Until a scan binds the row type, the sole field is the document itself. This is the
-            // binding the single-column map row model starts from.
+            // binding the row model starts from.
             _fields = new[] { CosmosPath.Root(alias) };
         }
 
