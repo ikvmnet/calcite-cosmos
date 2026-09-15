@@ -104,6 +104,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <see cref="IsTextRendering"/>. Where it is <c>null</c> or shorter than the binding every
         /// field not covered is read as its declared type, which is what a scan's fields are.
         /// </param>
+        /// <param name="facts">
+        /// What is known of the documents this expression will be evaluated over, which a rewrite may
+        /// lean on: that a path holds a string, that it is always there, that its text spells a value
+        /// of some other type. Which facts a caller may pass depends on what the expression is — a
+        /// predicate establishes its own and a projection establishes none — so the decision is the
+        /// caller's and not this one's. Where it is <c>null</c> nothing is known and every rewrite
+        /// resting on one declines.
+        /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
         public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, Metadata.CosmosFactSet? facts = null)
         {
@@ -1089,9 +1097,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// shows up as a projection accepted by the planner and refused during implementation.
         /// </remarks>
         /// <param name="node">The projected expression.</param>
-        /// <param name="rendered">
-        /// On return, whether the cast was dropped and the value must be rendered as text when it is
-        /// read back. See <see cref="TryRenderedTextOperand"/>.
+        /// <param name="reading">
+        /// On return, how the value is to be read back — as the field's declared type, or as one of
+        /// the renderings a dropped cast leaves to the reader. See <see cref="TryRenderedTextOperand"/>.
         /// </param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
@@ -1122,6 +1130,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return geography.ToString();
             }
 
+            // A cast to UUID over a path the container declared a UUID spelling for. The service sends
+            // the stored text and the reader parses it, which is the read side of the same reasoning a
+            // filter already leans on -- see TryStoredUuidProjection.
+            if (TryStoredUuidProjection(node, out var stored) && stored is not null)
+            {
+                reading = CosmosReading.Typed;
+                return stored;
+            }
+
             if (TryJsonValueProjection(node, out var guarded) && guarded is not null)
             {
                 reading = CosmosReading.Text;
@@ -1130,6 +1147,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             reading = CosmosReading.Typed;
             return Translate(node);
+        }
+
+        /// <summary>
+        /// Renders a cast to <c>UUID</c> over a path the container declared a UUID spelling for, as
+        /// the path itself.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The read side of what the filter already does.</b> A declared stored form lets a
+        /// comparison against a <c>UUID</c> become a comparison of stored strings, because the form
+        /// says a value has exactly one spelling — see <see cref="Metadata.CosmosFactRewriter"/>. The
+        /// same form says the stored text <em>is</em> a UUID, and that is what a projection needs: the
+        /// service sends the text it holds and <see cref="Client.CosmosJson.GetValue"/> reads it back
+        /// as the <c>UUID</c> the plan declared, which is the very conversion Calcite's cast performs.
+        /// Nothing is computed at the service and nothing is approximated here.
+        /// </para>
+        /// <para>
+        /// <b>Why it is worth rendering at all.</b> A cast left untranslated keeps the whole projection
+        /// in process, and a projection in process is one a sort cannot be pushed through — so a query
+        /// selecting an identifier and ordering by something else read the container whole and sorted
+        /// it in memory, while the same query without the identifier pushed both. Every query that
+        /// returns an entity selects its identifier, which is what made this the common case.
+        /// </para>
+        /// <para>
+        /// <b>The guard is the same one, for the same reason.</b> The cast is written over
+        /// <c>JSON_VALUE</c>, which answers null for an object, an array and an absent path;
+        /// the bare path answers the object. <c>IS_PRIMITIVE</c> is exactly that distinction, so the
+        /// guarded path means what the accessor means for every JSON type — including a document that
+        /// contradicts the declaration, where both sides then agree on null. Where the stored value is
+        /// a scalar that is not a UUID the two agree as well, by both failing.
+        /// </para>
+        /// <para>
+        /// <b>Equality is all that is asked.</b> The column binds to no path afterwards, a cast
+        /// resolving to none, so nothing above orders or groups by it; whether the stored order is the
+        /// order Calcite compares UUIDs in is therefore never consulted, and the sortable forms are
+        /// admitted here on the same terms as the others.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryStoredUuidProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (node is not RexCall call)
+                return false;
+
+            var kind = KindOf(call);
+            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                return false;
+
+            if (call.getType()?.getSqlTypeName() != SqlTypeName.UUID || call.getOperands().size() != 1)
+                return false;
+
+            // A view over a container may write the cast over one to text, which converts nothing.
+            var operand = StripRedundantTextCast(Operand(call, 0));
+            if (operand is not RexCall accessor || IsJsonAccessor(accessor) == false)
+                return false;
+
+            if (TryResolvePath(operand, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
+                return false;
+
+            if (Metadata.CosmosStoredForms.IsUuid(representation) == false)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            return true;
         }
 
         /// <summary>

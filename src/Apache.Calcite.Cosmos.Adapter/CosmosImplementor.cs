@@ -720,6 +720,17 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string Translate(RexNode node) => CreateTranslator().Translate(node);
 
         /// <summary>
+        /// The facts that hold of every document the container keeps, whatever a query says.
+        /// </summary>
+        /// <remarks>
+        /// What an expression that is not a predicate may lean on. A projection proves nothing — see
+        /// <see cref="TranslateCondition"/> for why the same expression means one thing there and
+        /// another in a <c>WHERE</c> — so the only facts open to it are the ones a declaration states
+        /// outright, with no guard left to discharge.
+        /// </remarks>
+        public Metadata.CosmosFactSet UnconditionalFacts => _container?.Facts.Derive(null) ?? Metadata.CosmosFactSet.Empty;
+
+        /// <summary>
         /// Renders a <em>predicate</em>, which may lean on what the container knows about the
         /// documents it keeps.
         /// </summary>

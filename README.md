@@ -350,6 +350,24 @@ rechecked in process, because the service orders values across JSON types where 
 renderings. Where the schema says the path holds a string there is no second type to disagree over,
 so the comparison is pushed exactly, nothing is rechecked, and a `FETCH` can be pushed with it.
 
+**And selecting the column pushes too, which is usually the larger half.** A UUID is normally in the
+select list rather than only in the `WHERE`, and until the spelling was pinned there was nothing to
+send for it — so the whole projection stayed in process, and a sort could not be pushed through a
+projection the service never ran. That made a plain catalog page read the container whole:
+
+```
+SELECT CAST(JSON_VALUE(c."DOC", '$.trackingId') AS UUID) AS "Id",
+       JSON_VALUE(c."DOC", '$.carrier') AS "Carrier"
+  FROM "shipments" AS c ORDER BY 2 FETCH NEXT 20 ROWS ONLY
+
+without a schema   the container is read whole, then sorted and paged in memory
+with one           ORDER BY c.carrier at the service, 20 documents returned
+```
+
+The service sends the stored text and the adapter parses it back to a UUID on the way out, which is
+exact for the same reason the comparison was: the schema said which spelling is stored. Sorting *by*
+such a column is still declined — that is the ordering question below, and it is a different claim.
+
 **The pattern is what does the work, not `format`.** JSON Schema calls `format` an annotation rather
 than an assertion, and RFC 9562 dropped the lowercase-output rule, so `"format": "uuid"` does not say
 how the value is written. A `pattern` does, and the adapter recognises a fixed set of spellings
