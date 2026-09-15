@@ -583,11 +583,44 @@ namespace Apache.Calcite.Cosmos.Adapter
                 _readings = Array.Empty<CosmosReading>();
                 _sortableExpressions = Array.Empty<string?>();
                 _renderedExpressions = Array.Empty<string?>();
+                _orderingPaths = Array.Empty<CosmosPath?>();
             }
         }
 
         IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
         IReadOnlyList<string?> _renderedExpressions = Array.Empty<string?>();
+        IReadOnlyList<CosmosPath?> _orderingPaths = Array.Empty<CosmosPath?>();
+
+        /// <summary>
+        /// Gets or sets, per output field, the path a sort may order by where the field is computed
+        /// and so binds to none in <see cref="Fields"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A weaker claim than a binding, and deliberately so.</b> <see cref="Fields"/> says an
+        /// ordinal <em>is</em> a path, which licenses every operator that can name one. This says only
+        /// that ordering by the path orders the rows the way ordering by the column would — which is
+        /// true of a conversion the stored form preserves the order of, and of nothing else. A filter
+        /// or a partition key must not read it: <c>CAST(&lt;path&gt; AS UUID) = …</c> has its own
+        /// rewrite, and the guarded accessor the column renders as is not the raw value the path
+        /// holds.
+        /// </para>
+        /// <para>
+        /// <b>Two conditions, and the second is easy to miss.</b> The path's form has to preserve
+        /// order, which is what <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> says. And
+        /// the guard the projection renders has to be vacuous — measured, the column comes back as
+        /// <c>IS_PRIMITIVE(c.ref) ? c.ref : null</c>, so over a document holding an object there the
+        /// column is null while the path is the object, and Cosmos sorts an object above every scalar
+        /// while null sorts below them. A path declared present and a scalar has no such document, and
+        /// that is the same claim the null-placement rule already makes of any sort key.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>
+        public IReadOnlyList<CosmosPath?> OrderingPaths
+        {
+            get => _orderingPaths;
+            set => _orderingPaths = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>
         /// Gets or sets what a projection rendered for each output ordinal, where that is not simply

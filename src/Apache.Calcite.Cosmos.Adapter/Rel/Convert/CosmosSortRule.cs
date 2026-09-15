@@ -76,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), convention.Container, out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), convention.Container, OrderingPaths(convention, sort, fields.Count), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -126,6 +126,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
 
             return sortable;
+        }
+
+        /// <summary>
+        /// Reads which output ordinals hold a conversion the container licenses ordering by the path
+        /// underneath.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The same walk and the same reason as <see cref="SortableFields"/>: asked of the plan,
+        /// because the decision has to be the one <see cref="CosmosProject.Implement"/> will record,
+        /// and both call <see cref="CosmosProject.OrderingPathOf"/> so the two cannot drift apart.
+        /// </para>
+        /// <para>
+        /// The binding is the projection's <em>input</em>, not its output — the expression being
+        /// classified is written over the input's ordinals, which is the same binding
+        /// <c>Implement</c> builds its translator over.
+        /// </para>
+        /// </remarks>
+        /// <param name="convention">The convention, carrying the container.</param>
+        /// <param name="sort">The sort being tested.</param>
+        /// <param name="width">The number of output fields.</param>
+        /// <returns>The path per ordinal, or <c>null</c> where the ordinal licenses none.</returns>
+        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, Sort sort, int width)
+        {
+            var ordering = new Sql.CosmosPath?[width];
+
+            if (convention?.Container is not Metadata.CosmosContainerMetadata container || container.Facts.IsEmpty)
+                return ordering;
+
+            var input = sort.getInput();
+
+            while (true)
+            {
+                if (input is org.apache.calcite.plan.volcano.RelSubset subset)
+                    input = subset.getOriginal() ?? subset.getBest();
+
+                if (input is Filter filter)
+                {
+                    input = filter.getInput();
+                    continue;
+                }
+
+                break;
+            }
+
+            if (input is not Project project)
+                return ordering;
+
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var inputFields, out _) == false)
+                return ordering;
+
+            // Only what holds outright, for the reason NonNullFields gives: a sort carries no
+            // predicate of its own to prove a guarded fact from.
+            var facts = container.Facts.Derive(null);
+            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), inputFields, new Sql.CosmosParameterList());
+            var projects = project.getProjects();
+
+            for (var i = 0; i < projects.size() && i < width; i++)
+                ordering[i] = CosmosProject.OrderingPathOf((RexNode)projects.get(i), translator, facts, CosmosImplementor.DefaultRootAlias);
+
+            return ordering;
         }
 
         /// <summary>
@@ -195,26 +256,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// removing the nulls itself makes, settled by the container instead of by the predicate.
         /// </para>
         /// </remarks>
-        static bool NeverNull(Metadata.CosmosFactSet facts, Metadata.CosmosDocumentPath path)
-        {
-            if (facts.Knows(new Metadata.CosmosFact(path, new Metadata.CosmosClaim.Present())) == false)
-                return false;
-
-            foreach (var claim in facts.ClaimsFor(path))
-                if (claim is Metadata.CosmosClaim.OfType { OrNull: false } typed && IsScalar(typed.Type))
-                    return true;
-
-            return false;
-        }
-
-        /// <summary>
-        /// Determines whether a JSON type is one the accessor answers a value for rather than null.
-        /// </summary>
-        /// <param name="type">The type.</param>
-        /// <returns><c>true</c> for a scalar.</returns>
-        static bool IsScalar(Metadata.CosmosJsonType type) =>
-            type is Metadata.CosmosJsonType.String or Metadata.CosmosJsonType.Number
-                 or Metadata.CosmosJsonType.Integer or Metadata.CosmosJsonType.Boolean;
+        static bool NeverNull(Metadata.CosmosFactSet facts, Metadata.CosmosDocumentPath path) =>
+            facts.IsAlwaysScalar(path);
 
         /// <summary>
         /// Initializes a new instance using the supplied rule configuration.

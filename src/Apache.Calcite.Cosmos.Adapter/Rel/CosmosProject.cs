@@ -79,6 +79,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var readings = new CosmosReading[projects.size()];
             var sortable = new string?[projects.size()];
             var rendered = new string?[projects.size()];
+            var ordering = new CosmosPath?[projects.size()];
+
+            // Only what holds outright. A projection carries no predicate of its own, so there is
+            // nothing here to prove a guarded fact from -- the same argument, and the same
+            // Derive(null), that CosmosSortRule makes for the null placement.
+            var facts = implementor.Container?.Facts.Derive(null);
 
             // Read before anything rebinds them. A column passed straight through keeps how it is
             // read: the JSON column projected under an alias is still the document, and reading it as
@@ -119,6 +125,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // reason it is rendered: the column carries text and the path carries the raw value,
                 // so an operator written against the path would mean something else.
                 paths[i] = translator.TryResolvePath(node, out var path) ? path : null;
+
+                // A computed column that converts a path the container confines to one stored shape
+                // may still be ordered by that path, even though it addresses none. A weaker claim
+                // than a binding and recorded apart from one -- see CosmosImplementor.OrderingPaths.
+                ordering[i] = paths[i] ?? OrderingPathOf(node, translator, facts, implementor.RootAlias);
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -132,6 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Readings = readings;
             implementor.SortableExpressions = sortable;
             implementor.RenderedExpressions = rendered;
+            implementor.OrderingPaths = ordering;
         }
 
 
@@ -150,6 +162,77 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             return node is RexCall call
                 && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
         }
+
+        /// <summary>
+        /// Returns the path a sort may order by where a projection converts one, or <c>null</c> where
+        /// the projection is not such a conversion or the container does not license it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Asked twice, from the plan and from the statement, and it has to answer the same both
+        /// times.</b> <see cref="Convert.CosmosSortRule"/> decides whether a sort may be pushed at all
+        /// and <see cref="Implement"/> records what it decided; if the two disagreed the rule would
+        /// fire on a key implementation then refused. So the decision lives here and both call it,
+        /// which is the arrangement <see cref="IsSortableAtTheService"/> already has.
+        /// </para>
+        /// <para>
+        /// <b>Only a conversion to a type Cosmos has no equivalent of.</b> A <c>UUID</c> and a
+        /// <c>TIMESTAMP</c> are both strings at the service, so the ordering question is about the
+        /// stored spelling and <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> answers it.
+        /// A cast between two types the service compares natively is not this rewrite's business and
+        /// gets no entry.
+        /// </para>
+        /// <para>
+        /// <b>And the guard has to be vacuous</b>, which is the condition a reading of
+        /// <c>TODO.md</c> alone would miss — see <see cref="CosmosImplementor.OrderingPaths"/> for
+        /// what the column renders as and why an object at the path would otherwise sort on the wrong
+        /// side of every scalar.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="translator">Resolves an expression to the path it addresses.</param>
+        /// <param name="facts">What the container declares, already derived.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        public static CosmosPath? OrderingPathOf(RexNode node, CosmosRexTranslator translator, Metadata.CosmosFactSet? facts, string rootAlias)
+        {
+            if (node is not RexCall call || facts is null || translator is null)
+                return null;
+
+            var kind = call.getKind().name();
+            if (kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.CAST) && kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.SAFE_CAST))
+                return null;
+
+            if (call.getOperands().size() != 1 || IsStoredAsText(call.getType()?.getSqlTypeName()) == false)
+                return null;
+
+            if (translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return null;
+
+            if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
+                return null;
+
+            return facts.IsAlwaysScalar(document) ? path : null;
+        }
+
+        /// <summary>
+        /// Determines whether a SQL type is one Cosmos has no equivalent of and stores as a string.
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <returns><c>true</c> where the service holds the value as text.</returns>
+        static bool IsStoredAsText(org.apache.calcite.sql.type.SqlTypeName? type) =>
+            type == org.apache.calcite.sql.type.SqlTypeName.UUID
+            || type == org.apache.calcite.sql.type.SqlTypeName.DATE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
 
     }
 

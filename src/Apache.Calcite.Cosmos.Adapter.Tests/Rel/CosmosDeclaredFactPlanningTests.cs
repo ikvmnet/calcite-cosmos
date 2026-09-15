@@ -762,6 +762,144 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
 
+
+        /// <summary>
+        /// A container declaring a path present, a scalar, and confined to one sortable spelling.
+        /// </summary>
+        /// <param name="pattern">The declared <c>pattern</c>.</param>
+        /// <param name="required">Whether the path is declared present.</param>
+        /// <returns>The container.</returns>
+        static CosmosContainerMetadata Reference(string pattern, bool required = true)
+        {
+            var presence = required ? "\"required\": [\"ref\"], " : "";
+            var json = "{ \"type\": \"object\", " + presence
+                + "\"properties\": { \"ref\": { \"type\": \"string\", \"pattern\": \""
+                + pattern.Replace("\\", "\\\\") + "\" } } }";
+
+            return new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)));
+        }
+
+        const string SortableUuid = "^[0-7][0-9a-f]{7}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+        const string PlainUuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
+        const string OrderByRendered = """SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "id" FROM items AS c ORDER BY 1""";
+
+        /// <summary>
+        /// A sort on a converted column orders by the path underneath, where the form preserves order.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The column addresses no path — a cast resolves to none — so before this the sort stayed in
+        /// process and, with a <c>FETCH</c>, took the whole container with it. What licenses ordering
+        /// by the raw path is that the conversion preserves order, which is a claim about the stored
+        /// spelling rather than about the column.
+        /// </para>
+        /// <para>
+        /// The <c>FETCH</c> row is the one that matters. A page read at the service against a whole
+        /// container read in process is the largest difference in this area.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ASortOnAConvertedColumnOrdersByThePathUnderneath()
+        {
+            var container = Reference(SortableUuid);
+
+            var plain = PlanToCosmos(OrderByRendered, container, out _);
+            Query(FindCosmos(plain), container).Sql.Should().Contain("ORDER BY c.ref",
+                "the conversion preserves order, so the path orders the rows the column would");
+            PlanText(plain).Should().NotContain("ClrEnumerableSort", "and nothing is left to sort in process");
+
+            var paged = PlanToCosmos(OrderByRendered + " FETCH NEXT 5 ROWS ONLY", container, out _);
+            Query(FindCosmos(paged), container).Sql.Should().Contain("LIMIT 5",
+                "which is what lets the page be taken at the service rather than after reading everything");
+            PlanText(paged).Should().NotContain("ClrEnumerableLimit", "so the container is not read whole: " + PlanText(paged));
+        }
+
+        /// <summary>
+        /// The same sort over a form that preserves equality and not order is refused.
+        /// </summary>
+        /// <remarks>
+        /// An unconfined canonical UUID has one spelling per value, so equality is exact — and Calcite
+        /// compares UUIDs as two <em>signed</em> 64-bit halves, so for half of all values the lexical
+        /// order of that spelling is not the order it sorts in. Nothing about the ordering follows from
+        /// the equality, which is why the two bits are separate.
+        /// </remarks>
+        [TestMethod]
+        public void AFormThatOnlyPreservesEqualityCarriesNoSuchSort()
+        {
+            var container = Reference(PlainUuid);
+
+            Query(FindCosmos(PlanToCosmos(OrderByRendered, container, out _)), container).Sql
+                .Should().NotContain("ORDER BY", "the stored order is not the compared order for this form");
+        }
+
+        /// <summary>
+        /// And so is a sort over a path the container does not promise holds a scalar.
+        /// </summary>
+        /// <remarks>
+        /// The condition that is easy to miss. Measured, the column renders as
+        /// <c>IS_PRIMITIVE(c.ref) ? c.ref : null</c>, so over a document holding an object at the path
+        /// the column is null while the path is the object — and Cosmos sorts an object above every
+        /// scalar while null sorts below them. Ordering by the path would then not order the rows the
+        /// column would. A path declared present and a scalar admits no such document; without the
+        /// declaration nothing rules one out.
+        /// </remarks>
+        [TestMethod]
+        public void AGuardThatMightDecideSomethingCarriesNoSuchSort()
+        {
+            var container = Reference(SortableUuid, required: false);
+
+            Query(FindCosmos(PlanToCosmos(OrderByRendered, container, out _)), container).Sql
+                .Should().NotContain("ORDER BY", "nothing says the guard is vacuous, so the path is not the column");
+        }
+
+        /// <summary>
+        /// The temporal spelling is <em>not</em> closed by the same mechanism, and the obstacle is a
+        /// step earlier than the sort.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Recorded because the obvious reading is wrong. <c>ORDER BY CAST(&lt;path&gt; AS TIMESTAMP)</c>
+        /// looks like the UUID case with a different type, and the sort machinery would indeed carry
+        /// it — <see cref="CosmosProject.OrderingPathOf"/> admits a temporal cast, and the form
+        /// licenses the order. What is missing is upstream: the projection itself does not push, so
+        /// there is no <c>CosmosProject</c> to record the binding on. Measured:
+        /// </para>
+        /// <code>
+        /// ClrEnumerableSort(sort0=[$0], dir0=[ASC])
+        ///   ClrEnumerableProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
+        ///     CosmosToClrEnumerableConverter
+        ///       CosmosTableScan
+        /// </code>
+        /// <para>
+        /// #100 made the <c>UUID</c> cast renderable, as a guarded accessor; nothing has done that for
+        /// a temporal one, and section 6 records why it is not the same job — <c>CAST(&lt;string&gt; AS
+        /// TIMESTAMP)</c> accepts only <c>yyyy-MM-dd HH:mm:ss</c> and raises on every ISO-8601 form a
+        /// document stores, so what such a column reads back as is its own question.
+        /// </para>
+        /// <para>
+        /// A temporal sort is not unavailable meanwhile: the <c>RETURNING TIMESTAMP</c> spelling binds
+        /// to the path directly and pushes, gated on the same bit — see
+        /// <c>AFixedIsoShapeCarriesATemporalSort</c>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheTemporalCastSpellingIsBlockedBeforeTheSort()
+        {
+            var container = Instant(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$");
+
+            const string Sql = """SELECT CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP) AS "at" FROM items AS c ORDER BY 1""";
+
+            var best = PlanToCosmos(Sql, container, out _);
+
+            PlanText(best).Should().Contain("ClrEnumerableProject",
+                "the projection is what does not push, and the sort follows it out: " + PlanText(best));
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("ORDER BY",
+                "so there is no CosmosProject to record an ordering path on");
+        }
+
     }
 
 }

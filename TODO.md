@@ -984,7 +984,7 @@ terms:
   `CosmosAggregate` rather than the sort or the rewriter, and the condition is the statement-wide one
   for the same reason a sort's is: nothing rechecks an aggregate either.
 
-### Ordering by a rendered column — *small, and it is the other half of #100*
+### Ordering by a rendered column — *built; the temporal spelling is not, and the reason is recorded*
 
 Projecting `CAST(<path> AS UUID)` renders as of #100, so a sort on a *neighbouring* column pushes.
 The column itself still binds to no path, a cast resolving to none, so `ORDER BY` on it is refused —
@@ -993,16 +993,43 @@ order only where the form says so. Binding it would mean recording that an ordin
 *for ordering only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked
 at a different site.
 
-**#106 found the temporal half of exactly this, which makes the entry worth more than it looks.**
-`ORDER BY CAST(<path> AS TIMESTAMP)` does not push either — measured, a bare scan under a
-`ClrEnumerableSort` — and for the identical structural reason: the key is a computed projection, so
-`fields[index]` is null and it is refused before its form is ever asked about. The range rewrite
-reaches its spelling only because a filter's predicate is rewritten before the split rule reads it,
-and a sort key is not a predicate. So one mechanism closes both: the implementor carrying a binding
-per ordinal that says *this ordinal addresses this path, for ordering only*, recorded by
-`CosmosProject.Implement` the way it already records `SortableExpressions`, so that the rule and the
-implementation decide on the same binding rather than deriving it twice. UUID and instant then differ
-only in which bit is consulted, and both are already set.
+**Built.** `CosmosImplementor.OrderingPaths` carries, per ordinal, a path a sort may order by where
+the ordinal binds to none — recorded by `CosmosProject.Implement` the way it already records
+`SortableExpressions`, and decided by `CosmosProject.OrderingPathOf`, which `CosmosSortRule` calls
+too so the rule and the implementation cannot drift apart. Measured, with a `FETCH`:
+
+```
+SELECT VALUE { "id": (IS_PRIMITIVE(c.ref) ? c.ref : null) } FROM items c ORDER BY c.ref ASC OFFSET 0 LIMIT 5
+```
+
+— a page read at the service, against a whole container read in process before.
+
+**Two conditions, and the second was not in this entry's original statement.** The form has to
+preserve order, which is the two-bit question above. And the guard the projection renders has to be
+*vacuous*: the column comes back as `IS_PRIMITIVE(c.ref) ? c.ref : null`, so over a document holding
+an object at the path the column is null while the path is the object — and Cosmos sorts an object
+above every scalar while null sorts below them. A path declared present and a scalar admits no such
+document, which is the same claim the null-placement rule already makes of any sort key;
+`CosmosFactSet.IsAlwaysScalar` is now where both ask it.
+
+**The temporal spelling is _not_ closed by this, and the obvious reading that it is was wrong.**
+`ORDER BY CAST(<path> AS TIMESTAMP)` looks like the UUID case with a different type, and the sort
+machinery would carry it — `OrderingPathOf` admits a temporal cast and the form licenses the order.
+The obstacle is a step earlier: the projection does not push, so there is no `CosmosProject` to
+record the binding on. Measured:
+
+```
+ClrEnumerableSort(sort0=[$0], dir0=[ASC])
+  ClrEnumerableProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
+    CosmosToClrEnumerableConverter
+      CosmosTableScan
+```
+
+#100 made the `UUID` cast renderable as a guarded accessor; nothing has done that for a temporal one,
+and section 6 records why it is not the same job — `CAST(<string> AS TIMESTAMP)` accepts only
+`yyyy-MM-dd HH:mm:ss` and raises on every ISO-8601 form a document stores, so what such a column reads
+back as is its own question. A temporal sort is not unavailable meanwhile: the `RETURNING TIMESTAMP`
+spelling binds to the path directly and pushes, gated on the same bit.
 
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 
