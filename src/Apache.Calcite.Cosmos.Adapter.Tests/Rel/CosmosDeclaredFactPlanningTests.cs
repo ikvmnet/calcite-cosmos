@@ -269,6 +269,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A guard exists to admit what a fact would have excluded, so a fact deletes it.
+        /// </summary>
+        /// <remarks>
+        /// The numeric bound is still a bound with the type known -- the cast converts, so the window
+        /// stays and the recheck with it. What goes is the disjunct admitting non-numbers, which is
+        /// every document the service would otherwise return for the recheck to throw away.
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredTypeDeletesTheGuardThatAdmittedTheOtherTypes()
+        {
+            const string Numeric = """{ "properties": { "n": { "type": "integer" } } }""";
+
+            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Numeric)));
+
+            const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
+
+            var with = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
+            with.Sql.Should().Contain("c.n > @").And.Contain("c.n < @", "the bound is still a bound: the cast converts");
+            with.Sql.Should().NotContain("IS_NUMBER", "and nothing at that path is not a number");
+
+            var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
+            without.Sql.Should().Contain("NOT IS_NUMBER(c.n)", "where nothing says so, the guard stays");
+        }
+
+        /// <summary>
+        /// And a declared presence deletes the definedness test, which is there only to stop the type
+        /// guard admitting every document that lacks the path.
+        /// </summary>
+        [TestMethod]
+        public void ADeclaredPresenceDeletesTheDefinednessTest()
+        {
+            // required without a type: presence known, kind not, so the type guard stays and the
+            // definedness test that exists for its sake does not.
+            const string Present = """{ "required": ["n"] }""";
+
+            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Present)));
+
+            const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
+
+            var with = Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared);
+            with.Sql.Should().Contain("NOT IS_NUMBER(c.n)", "the kind is still unknown");
+            with.Sql.Should().NotContain("IS_DEFINED(c.n)", "but nothing lacks the path");
+
+            var without = Query(FindCosmos(PlanToCosmos(Sql, Declared(false), out _)), Declared(false));
+            without.Sql.Should().Contain("IS_DEFINED(c.n)");
+        }
+
+        /// <summary>
+        /// And the whole of it pays on a container that declares nothing, because the service's own
+        /// guarantees are facts too.
+        /// </summary>
+        [TestMethod]
+        public void TheServiceGuaranteesPayWithNoSchemaAtAll()
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.id') >= 'x'""", container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.id >= @");
+            query.Sql.Should().NotContain("IS_STRING", "id is a string, and the service says so");
+            query.Sql.Should().NotContain("IS_DEFINED", "and is always there");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                "so the comparison is exact and nothing is left above: " + PlanText(best));
+        }
+
+        /// <summary>
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>

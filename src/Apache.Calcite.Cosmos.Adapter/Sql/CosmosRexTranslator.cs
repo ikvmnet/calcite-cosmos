@@ -68,6 +68,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         readonly Metadata.CosmosFactSet _facts = Metadata.CosmosFactSet.Empty;
 
         /// <summary>
+        /// Gets what is known about the container's documents, closed under what the predicate proved.
+        /// </summary>
+        /// <remarks>
+        /// Read by the rules that weaken a conjunct this declines, so that a guard is injected only
+        /// where a fact has not already ruled out what it exists to admit. Empty where a caller
+        /// supplied nothing, which is every site but the filter rules.
+        /// </remarks>
+        internal Metadata.CosmosFactSet Facts => _facts;
+
+        /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="rexBuilder">Used to expand <c>SEARCH</c> nodes back into comparison trees.</param>

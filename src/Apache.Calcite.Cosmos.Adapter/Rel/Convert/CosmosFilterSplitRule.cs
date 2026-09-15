@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
@@ -229,6 +230,86 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
+        /// Assembles a weakened conjunct, injecting only the guards the container has not already
+        /// ruled out the need for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A guard exists to admit what a fact would have excluded, so a fact deletes it.</b> The
+        /// type test admits a value of some other kind, for the recheck above to decide; a container
+        /// that says the path holds that kind has no such value, and the test admits nothing that
+        /// exists. The definedness test is there only because of the type test — the disjunction it
+        /// guards is <em>true</em> for an absent path, <c>IS_STRING</c> of nothing being false — so
+        /// dropping the type test drops the need for it, and a declared presence drops it anyway.
+        /// </para>
+        /// <para>
+        /// What it buys is not a shorter statement. Each guard admits documents the service then
+        /// returns for the recheck to throw away, so deleting one is fewer documents over the wire;
+        /// and a conjunct that needed none of them is exact, which is what lets a row limit travel
+        /// with it.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The raw document value the comparison reads.</param>
+        /// <param name="comparison">The comparison to push, already written against that value.</param>
+        /// <param name="typeTest">The service predicate that answers whether the value is of the admitted kind.</param>
+        /// <param name="admits">The claims that would make the type test admit nothing that exists; any one of them suffices.</param>
+        /// <param name="translator">Resolves the path, and carries what the container knows.</param>
+        /// <param name="rexBuilder">Builds the guard nodes.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The weakened conjunct.</returns>
+        static RexNode Guarded(
+            RexNode value,
+            RexNode comparison,
+            SqlOperator typeTest,
+            IReadOnlyList<Metadata.CosmosClaim> admits,
+            CosmosRexTranslator translator,
+            RexBuilder rexBuilder,
+            string rootAlias)
+        {
+            var known = Known(value, translator, rootAlias);
+
+            var typed = known is not null && admits.Any(claim => translator.Facts.Knows(new Metadata.CosmosFact(known, claim)));
+            if (typed)
+                return comparison;
+
+            var present = known is not null && translator.Facts.Knows(new Metadata.CosmosFact(known, new Metadata.CosmosClaim.Present()));
+
+            var admitted = RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList
+            {
+                rexBuilder.makeCall(SqlStdOperatorTable.NOT, rexBuilder.makeCall(typeTest, new[] { value })),
+                comparison,
+            });
+
+            if (present)
+                return admitted;
+
+            return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList
+            {
+                rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { value }),
+                admitted,
+            });
+        }
+
+        /// <summary>
+        /// Returns the document path a value reads, or <c>null</c> where it reads none this knows
+        /// facts about.
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <param name="translator">Resolves the path.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        static Metadata.CosmosDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
+        {
+            if (translator.TryResolvePath(value, out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            return Metadata.CosmosDocumentPath.From(path);
+        }
+
+        /// <summary>
         /// Weakens a comparison over a text accessor to the case where the two agree, or returns
         /// <c>null</c>.
         /// </summary>
@@ -317,18 +398,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 ? rexBuilder.makeCall(call.getOperator(), rawSubject, right)
                 : rexBuilder.makeCall(call.getOperator(), left, rawSubject);
 
-            var notString = rexBuilder.makeCall(SqlStdOperatorTable.NOT,
-                rexBuilder.makeCall(CosmosOperators.IsString, new[] { raw }));
-
-            var terms = new java.util.ArrayList();
-            terms.add(notString);
-            terms.add(comparison);
-
-            var whole = new java.util.ArrayList();
-            whole.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { raw }));
-            whole.add(RexUtil.composeDisjunction(rexBuilder, terms));
-
-            return RexUtil.composeConjunction(rexBuilder, whole);
+            return Guarded(
+                raw,
+                comparison,
+                CosmosOperators.IsString,
+                new[] { new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true) },
+                translator,
+                rexBuilder,
+                rootAlias);
         }
 
         /// <summary>
@@ -621,13 +698,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (terms.isEmpty())
                 return null;
 
-            var notNumber = rexBuilder.makeCall(SqlStdOperatorTable.NOT, rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
-
-            var whole = new java.util.ArrayList();
-            whole.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { value }));
-            whole.add(RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList { notNumber, RexUtil.composeConjunction(rexBuilder, terms) }));
-
-            return RexUtil.composeConjunction(rexBuilder, whole);
+            // Either numeric claim serves: the service's IS_NUMBER is true of both, JSON drawing no
+            // line between them and `integer` being a number with no fractional part rather than a
+            // type of its own.
+            return Guarded(
+                value,
+                RexUtil.composeConjunction(rexBuilder, terms),
+                CosmosOperators.IsNumber,
+                new[]
+                {
+                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Number, OrNull: true),
+                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Integer, OrNull: true),
+                },
+                translator,
+                rexBuilder,
+                rootAlias);
         }
 
         /// <summary>

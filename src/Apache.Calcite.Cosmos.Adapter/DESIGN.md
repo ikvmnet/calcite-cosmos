@@ -411,6 +411,43 @@ that being OpenAPI's `$ref` rather than JSON Schema's. The BCL's own `System.Tex
 *exporter*: a type in, a schema out, which is why so many Microsoft APIs emit JSON Schema and none
 reads one.
 
+#### A guard exists to admit what a fact would have excluded
+
+Which is the general statement of what a declaration is for here, and it applies to every guard the
+adapter injects rather than to the one comparison the feature started with.
+
+A weakening pushes what a predicate *implies* and admits everything it cannot reason about, so that
+the recheck above decides those rows rather than the service dropping them. That admission is a
+guard, and every guard names a set of values. A fact that says the path holds no such value makes the
+guard admit nothing that exists, and it comes out.
+
+| guard | injected to admit | deleted by |
+| --- | --- | --- |
+| `NOT IS_STRING(x)` | a value of some other kind | `OfType(String)`, nullable or not |
+| `NOT IS_NUMBER(x)` | a non-number | `OfType(Number)` or `OfType(Integer)` |
+| `IS_DEFINED(x)` | nothing — it *excludes* an absent path | the type guard going, or `Present` |
+
+The definedness test is the one worth reading twice. It is not there to admit anything: it is there
+because the disjunction it guards is *true* of an absent path — `IS_STRING` of nothing is false, so
+the negation is true — and without it the weakening would admit every document lacking the property.
+So it exists for the type guard's sake, and dropping the type guard drops the need for it. A declared
+`required` drops it independently.
+
+**What this buys is not a shorter statement.** Each guard admits documents the service returns for the
+recheck to throw away, so deleting one is fewer documents over the wire. And a conjunct that needed
+none of them is *exact*, which is what lets a row limit travel with it — a weakening cannot carry a
+`FETCH`, because the recheck above may discard what the page already counted.
+
+**It pays without a schema.** `id`, `_ts` and `_etag` are typed and always present on every container
+by the service's own guarantee, so a comparison over one of them is exact today whether or not anyone
+has described anything. The declaration extends the same mechanism to an application's own paths
+rather than introducing it.
+
+**And the numeric bound stays a bound.** Knowing the type deletes the disjunct that admitted
+non-numbers; it does not make the comparison exact, because the cast still *converts* and the window
+is still the whole unit either side that `Casts over document values` argues for. Two different
+things are being weakened there, and only one of them is a guard.
+
 #### A declaration is trusted, and that is a change in kind
 
 Every other row of *What a container declares* is sourced from the container definition or a service
