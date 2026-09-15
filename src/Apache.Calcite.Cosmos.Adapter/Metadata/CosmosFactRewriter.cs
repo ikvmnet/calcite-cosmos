@@ -176,7 +176,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return null;
 
             return TryLowerInstant(left, right, comparison, translator, known, rootAlias, rexBuilder)
-                ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
+                ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
+                ?? TryLowerNumber(left, right, comparison, translator, known, rootAlias, rexBuilder)
+                ?? TryLowerNumber(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
         }
 
         /// <summary>
@@ -308,6 +310,148 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return null;
 
             return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+        }
+
+        /// <summary>
+        /// Lowers a comparison between a number read out of a path and a numeric literal into a
+        /// comparison between the stored strings, where the path's declared form licenses it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A string spelling a number is the case this exists for.</b> Cosmos has numbers, so a
+        /// path holding one needs none of this; what needs it is the very common path holding a
+        /// <em>string</em> that spells one — an account number, a code, a zero-padded sequence — which
+        /// a caller reaches through <c>CAST(… AS INTEGER)</c> and which was read whole because the
+        /// cast has no Cosmos form.
+        /// </para>
+        /// <para>
+        /// <b>The whole question is whether the spelling is faithful, and a pattern can say so.</b>
+        /// Measured, Calcite's cast reads <c>'042'</c>, <c>'+42'</c>, <c>' 42'</c> and <c>'42'</c> as
+        /// the same number, so a form admitting any two of them gives one value two spellings and a
+        /// string equality would miss documents. A pattern that forbids the padding, or fixes it,
+        /// admits exactly one — which is what <see cref="CosmosStoredForms.IntegerUnpadded"/> and
+        /// <see cref="CosmosStoredForms.IntegerFixedWidth"/> record.
+        /// </para>
+        /// <para>
+        /// <b>Ordering asks the stronger question and only the padded form answers it.</b> A lexical
+        /// comparison compares the first differing character, which is a comparison of digits at equal
+        /// significance only when the strings are the same length; unpadded, <c>'9'</c> sorts after
+        /// <c>'42'</c>. So the two are gated separately on the two properties the form carries, exactly
+        /// as the temporal lowering gates them.
+        /// </para>
+        /// </remarks>
+        /// <param name="numericNode">The operand that may read a path as a number.</param>
+        /// <param name="literalNode">The operand that may be the literal.</param>
+        /// <param name="comparison">The operator, already reversed where the operands were read backwards.</param>
+        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="rootAlias">The alias a path must be rooted at.</param>
+        /// <param name="rexBuilder">Builds the lowered comparison.</param>
+        /// <returns>The lowered comparison, or <c>null</c>.</returns>
+        static RexNode? TryLowerNumber(RexNode numericNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        {
+            if (literalNode is not RexLiteral literal || IntegerOf(literal) is not long value)
+                return null;
+
+            if (NumericAccessorOf(numericNode) is not RexNode accessor)
+                return null;
+
+            if (translator.TryResolvePath(accessor, out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+                return null;
+
+            if (known.RepresentationOf(document) is not CosmosRepresentation representation)
+                return null;
+
+            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
+
+            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+                return null;
+
+            if (CosmosStoredForms.RenderInteger(representation, value) is not string stored)
+                return null;
+
+            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+        }
+
+        /// <summary>
+        /// Returns the accessor answering the stored text underneath an expression that reads a path
+        /// as an exact number, or <c>null</c> where the expression is not one of those.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Only the cast, and only over the text. <c>RETURNING INTEGER</c> is not a second spelling
+        /// here the way <c>RETURNING VARCHAR</c> is for a UUID: <c>RETURNING</c> asserts the extracted
+        /// type rather than converting to it, and a path holding a string never extracts as a number,
+        /// so the clause fails at run time rather than naming this shape.
+        /// </para>
+        /// <para>
+        /// The approximate types are absent deliberately. A stored spelling maps to one
+        /// <c>DOUBLE</c>, but a <c>DOUBLE</c> maps back to many spellings — the value is rounded
+        /// before it is compared — so the literal could not be rendered into the container's shape
+        /// without changing which documents match.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns>The text accessor, or <c>null</c>.</returns>
+        static RexNode? NumericAccessorOf(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperands().size() != 1)
+                return null;
+
+            var kind = call.getKind().name();
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
+                return null;
+
+            var type = call.getType()?.getSqlTypeName();
+            if (type != SqlTypeName.TINYINT && type != SqlTypeName.SMALLINT && type != SqlTypeName.INTEGER
+                && type != SqlTypeName.BIGINT && type != SqlTypeName.DECIMAL)
+                return null;
+
+            return (RexNode)call.getOperands().get(0);
+        }
+
+        /// <summary>
+        /// Reads the whole number a numeric literal carries, or <c>null</c> where it carries none.
+        /// </summary>
+        /// <remarks>
+        /// A value with a fractional part has no spelling in an integer form, so it is refused here
+        /// rather than rounded into one — the comparison would then select different documents. A
+        /// decimal literal that happens to be whole is accepted, <c>42.0</c> and <c>42</c> being the
+        /// same number however the query wrote it.
+        /// </remarks>
+        /// <param name="literal">The literal.</param>
+        /// <returns>The value, or <c>null</c>.</returns>
+        static long? IntegerOf(RexLiteral literal)
+        {
+            if (literal.isNull())
+                return null;
+
+            var type = literal.getTypeName();
+            if (type != SqlTypeName.DECIMAL && type != SqlTypeName.INTEGER && type != SqlTypeName.BIGINT
+                && type != SqlTypeName.SMALLINT && type != SqlTypeName.TINYINT)
+                return null;
+
+            try
+            {
+                return literal.getValue() switch
+                {
+                    java.math.BigDecimal d => d.stripTrailingZeros().scale() <= 0 ? d.longValueExact() : null,
+                    java.lang.Long l => l.longValue(),
+                    java.lang.Integer i => (long)i.intValue(),
+                    _ => null,
+                };
+            }
+            catch (java.lang.ArithmeticException)
+            {
+                // Beyond a long, which no stored spelling this renders could match anyway.
+                return null;
+            }
         }
 
         /// <summary>

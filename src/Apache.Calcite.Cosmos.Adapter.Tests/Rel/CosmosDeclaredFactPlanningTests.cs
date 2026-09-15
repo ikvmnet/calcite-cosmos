@@ -900,6 +900,137 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 "so there is no CosmosProject to record an ordering path on");
         }
 
+        /// <summary>
+        /// A path storing a zero-padded number is comparable as a number, and the literal goes to the
+        /// service in the container's own spelling.
+        /// </summary>
+        /// <remarks>
+        /// The cast has no Cosmos form, so this read the container whole. What the declaration adds is
+        /// that the stored string is a faithful spelling of the value, at which point comparing the
+        /// strings answers what comparing the numbers answers.
+        ///
+        /// The statement keeps a second disjunct reading the path as a stored <em>number</em>, which
+        /// is the adapter declining to assume the JSON type rather than a miss: a stored <c>42</c> and
+        /// a stored <c>"00042"</c> both satisfy the cast in Calcite, so pushing one alone would drop
+        /// rows. What the declaration changed is the spelling of the text disjunct, from the digits
+        /// the query wrote to the digits the container holds.
+        ///
+        /// That disjunction is a superset, so the lowered equality is rechecked above — as the
+        /// <em>lowered</em> comparison rather than the cast, the rewrite having run before the split.
+        /// The cast is gone from the plan altogether, which is the thing worth asserting.
+        /// </remarks>
+        [TestMethod]
+        public void AZeroPaddedNumberComparesAsANumber()
+        {
+            const string Padded = """
+            { "type": "object", "properties": { "n": { "type": "string", "pattern": "^[0-9]{5}$" } } }
+            """;
+
+            var container = Container(Padded);
+
+            var best = PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 42""", container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.n = @", "the comparison reaches the service: " + query.Sql);
+            query.Parameters.Should().Contain(p => (p.Value as string) == "00042",
+                "written in the container's own spelling rather than as the digits the query wrote");
+
+            PlanText(best).Should().NotContain("CAST(",
+                "and the cast is gone from the plan entirely, a string comparison standing where it was: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// And the padding is what makes it orderable, so a range comparison lowers too.
+        /// </summary>
+        /// <remarks>
+        /// The service compares strings ordinally — measured — so over equal-length digit strings a
+        /// lexical comparison compares digits at equal significance, which is numeric comparison.
+        /// </remarks>
+        [TestMethod]
+        public void AZeroPaddedNumberOrdersAsANumber()
+        {
+            const string Padded = """
+            { "type": "object", "properties": { "n": { "type": "string", "pattern": "^[0-9]{5}$" } } }
+            """;
+
+            var container = Container(Padded);
+
+            var best = PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 100""", container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.n > @", "the range comparison reaches the service: " + query.Sql);
+            query.Parameters.Should().ContainSingle().Which.Value.Should().Be("00100",
+                "and the ordering carries no second reading, a form that orders having settled what the path holds");
+        }
+
+        /// <summary>
+        /// Without the padding the equality still lowers and the ordering does not, which is the two
+        /// properties being asked separately.
+        /// </summary>
+        [TestMethod]
+        public void WithoutPaddingOnlyTheEqualityLowers()
+        {
+            const string Unpadded = """
+            { "type": "object", "properties": { "n": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" } } }
+            """;
+
+            var container = Container(Unpadded);
+
+            var equality = Query(FindCosmos(PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 42""", container, out _)), container);
+            equality.Sql.Should().Contain("c.n = @");
+            equality.Parameters.Should().Contain(p => (p.Value as string) == "42", "there is no width to pad to");
+
+            var ordering = Query(FindCosmos(PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 100""", container, out _)), container);
+            ordering.Sql.Should().Contain("NOT IS_NUMBER(c.n)",
+                "the ordering falls back to the weakening every uncast comparison gets: " + ordering.Sql);
+            ordering.Parameters.Should().NotContain(p => (p.Value as string) == "100",
+                "'9' sorts after '42', so the lexical order is not the numeric one and no spelling is written");
+        }
+
+        /// <summary>
+        /// The pattern that looks like the obvious way to say "a number" licenses nothing.
+        /// </summary>
+        /// <remarks>
+        /// <c>^[0-9]+$</c> admits <c>42</c> and <c>042</c> alike, so a string equality would miss
+        /// every document written the other way. The declaration is read as saying nothing rather
+        /// than as saying that.
+        /// </remarks>
+        [TestMethod]
+        public void AnyRunOfDigitsLicensesNothing()
+        {
+            const string Loose = """
+            { "type": "object", "properties": { "n": { "type": "string", "pattern": "^[0-9]+$" } } }
+            """;
+
+            var container = Container(Loose);
+
+            var query = Query(FindCosmos(PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 42""", container, out _)), container);
+
+            query.Sql.Should().NotContain("c.n = @",
+                "one value has two spellings, so comparing the strings is not comparing the values: " + query.Sql);
+        }
+
+        /// <summary>
+        /// A value the container cannot spell is declined rather than approximated.
+        /// </summary>
+        /// <remarks>
+        /// Six digits have no five-character spelling, and writing them anyway would compare strings
+        /// of different lengths — which answers by length rather than by value.
+        /// </remarks>
+        [TestMethod]
+        public void AValueTooWideForTheContainerIsDeclined()
+        {
+            const string Padded = """
+            { "type": "object", "properties": { "n": { "type": "string", "pattern": "^[0-9]{5}$" } } }
+            """;
+
+            var container = Container(Padded);
+
+            var query = Query(FindCosmos(PlanToCosmos("""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 100000""", container, out _)), container);
+
+            query.Sql.Should().NotContain("c.n = @", "no stored string is six characters: " + query.Sql);
+        }
+
     }
 
 }
