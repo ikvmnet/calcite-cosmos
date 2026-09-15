@@ -134,6 +134,118 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             WalkBranches(node.get("oneOf"), node, path, guard, rules, resolver, visiting);
             WalkBranches(node.get("anyOf"), node, path, guard, rules, resolver, visiting);
             WalkConditional(node, path, guard, rules, resolver, visiting);
+            WalkDependencies(node, path, guard, rules, resolver, visiting);
+            WalkNegation(node, path, guard, rules, resolver);
+        }
+
+        /// <summary>
+        /// Walks the two keywords that key a constraint on a property merely being there.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>dependentRequired</c> says which children come together; <c>dependentSchemas</c> says
+        /// what else holds once one of them appears. Both are conditionals whose condition is a
+        /// presence, which the guard already expresses, so neither needs anything new.
+        /// </para>
+        /// <para>
+        /// Neither carries the parent's presence the way <c>required</c> has to. The trigger is a
+        /// child of this object, and a child cannot be there unless the object is — so the guard
+        /// already says everything the vacuity would have needed.
+        /// </para>
+        /// </remarks>
+        static void WalkDependencies(
+            JsonNode node,
+            CosmosDocumentPath path,
+            IReadOnlyList<CosmosFact> guard,
+            List<CosmosFactRule> rules,
+            CosmosSchemaResolver resolver,
+            HashSet<string> visiting)
+        {
+            if (node.get("dependentRequired") is JsonNode dependent && dependent.isObject())
+            {
+                var entries = dependent.fields();
+                while (entries.hasNext())
+                {
+                    var entry = (java.util.Map.Entry)entries.next();
+                    if (entry.getKey()?.ToString() is not string trigger || (JsonNode?)entry.getValue() is not JsonNode names || names.isArray() == false)
+                        continue;
+
+                    var when = Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present()));
+
+                    for (var i = 0; i < names.size(); i++)
+                        if (names.get(i)?.isTextual() == true)
+                            rules.Add(new CosmosFactRule(when, new CosmosFact(path.Property(names.get(i).asText()), new CosmosClaim.Present())));
+                }
+            }
+
+            if (node.get("dependentSchemas") is JsonNode schemas && schemas.isObject())
+            {
+                var entries = schemas.fields();
+                while (entries.hasNext())
+                {
+                    var entry = (java.util.Map.Entry)entries.next();
+                    if (entry.getKey()?.ToString() is not string trigger)
+                        continue;
+
+                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present())), rules, resolver, visiting);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reads a <c>not</c>, in the one shape whose negation is a conjunction.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The negation has to be taken of the schema, not of the atoms read from it.</b>
+        /// <c>{properties: {k: {const: "A"}}}</c> is satisfied by a document with no <c>k</c> at all,
+        /// so failing it means <c>k</c> is there <em>and</em> is not <c>"A"</c> — two positive claims.
+        /// Negating the atom instead would give "absent or not A", a disjunction with no conjunctive
+        /// body and a weaker statement than the truth.
+        /// </para>
+        /// <para>
+        /// Which is also why almost nothing else qualifies. Failing a <c>type</c> needs a claim that a
+        /// value is not of a type, failing a <c>required</c> needs one that a path is absent, and
+        /// failing a schema with two constraints is a disjunction over which of them failed. One
+        /// property constrained by one <c>const</c> or one <c>enum</c> is the whole of what this
+        /// reads; anything else yields nothing.
+        /// </para>
+        /// </remarks>
+        static void WalkNegation(
+            JsonNode node,
+            CosmosDocumentPath path,
+            IReadOnlyList<CosmosFact> guard,
+            List<CosmosFactRule> rules,
+            CosmosSchemaResolver resolver)
+        {
+            if (resolver.Follow(node.get("not")) is not JsonNode negated || negated.isObject() == false)
+                return;
+
+            if (negated.size() != 1 || negated.get("properties") is not JsonNode properties || properties.isObject() == false || properties.size() != 1)
+                return;
+
+            var field = (java.util.Map.Entry)properties.fields().next();
+            if (field.getKey()?.ToString() is not string name || resolver.Follow((JsonNode?)field.getValue()) is not JsonNode subschema)
+                return;
+
+            if (subschema.size() != 1)
+                return;
+
+            var child = path.Property(name);
+            var excluded = new List<object?>();
+
+            if (subschema.get("const") is JsonNode constant && TryLiteral(constant, out var value))
+                excluded.Add(value);
+            else if (ReadEnum(subschema) is IReadOnlyList<object?> domain)
+                excluded.AddRange(domain);
+            else
+                return;
+
+            // Failing the inner schema means the property is there and is none of what it named.
+            rules.Add(new CosmosFactRule(guard, new CosmosFact(child, new CosmosClaim.Present())));
+
+            foreach (var member in excluded)
+                rules.Add(new CosmosFactRule(guard, new CosmosFact(child, new CosmosClaim.NotEqualTo(member))));
         }
 
         /// <summary>

@@ -335,6 +335,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
+        /// The two keywords that key a constraint on a property merely being there, and the one shape
+        /// of <c>not</c> whose negation is a conjunction.
+        /// </summary>
+        [TestMethod]
+        public void PresenceKeyedConditionalsAndANegationAreRead()
+        {
+            var a = CosmosDocumentPath.Root.Property("a");
+            var b = CosmosDocumentPath.Root.Property("b");
+            var k = CosmosDocumentPath.Root.Property("k");
+
+            // dependentRequired: b is there whenever a is, and not before.
+            var dependent = Compile("""{ "dependentRequired": { "a": ["b"] } }""");
+
+            dependent.Derive(null).Knows(new CosmosFact(b, new CosmosClaim.Present())).Should().BeFalse();
+            dependent.Derive(new[] { new CosmosFact(a, new CosmosClaim.Present()) })
+                .Knows(new CosmosFact(b, new CosmosClaim.Present())).Should().BeTrue();
+
+            // dependentSchemas: the same trigger, carrying a whole subschema.
+            var schemas = Compile("""
+            { "dependentSchemas": { "a": { "properties": { "b": { "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } } } }
+            """);
+
+            schemas.Derive(null).RepresentationOf(b).Should().BeNull();
+            schemas.Derive(new[] { new CosmosFact(a, new CosmosClaim.Present()) }).RepresentationOf(b)
+                .Should().Be(CosmosStoredForms.Iso8601Date);
+
+            // not: failing {properties: {k: {const: "A"}}} means k is there and is not "A" -- the
+            // negation of the schema, which is vacuous on an absent k, rather than of the atom.
+            var negated = Compile("""{ "not": { "properties": { "k": { "const": "A" } } } }""").Derive(null);
+
+            negated.Knows(new CosmosFact(k, new CosmosClaim.Present())).Should().BeTrue();
+            negated.Knows(new CosmosFact(k, new CosmosClaim.NotEqualTo("A"))).Should().BeTrue();
+            negated.Knows(new CosmosFact(k, new CosmosClaim.NotEqualTo("B"))).Should().BeFalse();
+
+            // Two constraints under a not is a disjunction over which of them failed, and yields none.
+            Compile("""{ "not": { "properties": { "k": { "const": "A" }, "j": { "const": "B" } } } }""")
+                .Derive(null).Knows(new CosmosFact(k, new CosmosClaim.Present())).Should().BeFalse();
+        }
+
+        /// <summary>
         /// Keywords that constrain nothing this model can state, and one that quietly unstates a type.
         /// </summary>
         [TestMethod]
