@@ -318,70 +318,70 @@ mechanical, and reading one means `$ref`, `$id`, `$anchor`, dialects and vocabul
 Parsing the parks schema from §3 — `oneOf` with `const` discriminators, `$defs` + `$ref`, `format` and
 `pattern`, an `if`/`then`, and an unknown `x-` keyword — with each:
 
-| | licence | JSON stack | result |
-| --- | --- | --- | --- |
-| **`Microsoft.OpenApi` 2.12.2** | **MIT** | `System.Text.Json`, and nothing else | **recommended** — read everything |
-| `JsonSchema.Net` | MIT **through 8.x**, OSMF EULA from 9.0.0 | `System.Text.Json` | read side is awkward — the fluent `OneOf()`/`If()`/`Const()` names are *builder* extensions, and `JsonSchema` exposes only `BoolValue`, `BaseUri`, `Root` |
-| `LateApexEarlySpeed.Json.Schema` 4.2 | BSD-3 | `System.Text.Json` | validator-shaped; constructs from the schema but exposes no traversable model |
-| `Corvus.Json.Validator` 5.6 | Apache-2.0 | `System.Text.Json` | drags `Microsoft.CodeAnalysis.CSharp` — Roslyn in a database adapter, out |
-| `com.networknt:json-schema-validator` 1.5.6 | Apache-2.0 | Jackson, via `MavenReference` | viable; see below |
-| `NJsonSchema` 11.6 | MIT | Newtonsoft | out — no Newtonsoft |
-| `Newtonsoft.Json.Schema` | AGPL / commercial | Newtonsoft | out twice over |
+| | licence | result |
+| --- | --- | --- |
+| **`com.networknt:json-schema-validator` 1.5.6** | **Apache-2.0** | **recommended** — read everything, and resolved `$ref` |
+| `Microsoft.OpenApi` 2.12.2 | MIT | reads every keyword and **does not resolve JSON Schema `$ref`** — see below |
+| `JsonSchema.Net` | MIT **through 8.x**, OSMF EULA from 9.0.0 | the fluent `OneOf()`/`If()`/`Const()` names are *builder* extensions; `JsonSchema` exposes only `BoolValue`, `BaseUri`, `Root` |
+| `LateApexEarlySpeed.Json.Schema` 4.2 | BSD-3 | validator-shaped; constructs from the schema but exposes no traversable model |
+| `Corvus.Json.Validator` 5.6 | Apache-2.0 | drags `Microsoft.CodeAnalysis.CSharp` — Roslyn in a database adapter, out |
+| `NJsonSchema` 11.6 | MIT | Newtonsoft — out |
+| `Newtonsoft.Json.Schema` | AGPL / commercial | out twice over |
 
-### `Microsoft.OpenApi`, measured
+### `Microsoft.OpenApi` reads the keywords and is not a JSON Schema processor
 
-One dependency, `System.Text.Json`. `net8.0` and `netstandard2.0`. MIT, which an Apache-2.0 project can
-consume. `OpenApiSchema` models the whole 2020-12 keyword surface — and my first reading of it, off a
-strings scan of 2.0.0, was wrong:
+It looked like the answer, and its keyword surface is complete — `If`, `Then`, `Else`, `Definitions`
+for `$defs`, `Anchor`, `Discriminator`, and `UnrecognizedKeywords`, which is the "ignore what you do not
+understand" behaviour already modelled. It parses a bare schema with no document wrapper. What it does
+not do is resolve a JSON Schema `$ref`. Given `"$ref": "#/$defs/uuidLower"` — an absolute JSON Pointer
+from the document root — measured:
+
+| | the reference it constructed | `.Target` |
+| --- | --- | --- |
+| wrapped in a 3.1.1 document | `#/components/schemas/doc/$defs/uuidLower` | null |
+| bare schema | `#/oneOf/properties/data/$defs/uuidLower` | null |
+
+It rebased the pointer onto the current node and resolved nothing. That is *OpenAPI's* `$ref` — which in
+practice is `#/components/schemas/Name` — not JSON Schema's. Since `$ref` resolution is the reason to
+take a library at all, this disqualifies it, however pleasant the object model.
+
+### `com.networknt`, measured end to end
+
+Apache-2.0, matching the repository. Its required dependencies are *already compiled into this build* —
+`jackson.databind.dll`, `jackson.core.dll`, `jackson.dataformat.yaml.dll` and `org.slf4j.dll` are in the
+output directory today, dragged in by calcite-core; `joni` and `graalvm-js` are `<optional>` and stay
+out. Adding the `MavenReference` brought in exactly two new assemblies, `json.schema.validator.dll` and
+`itu.dll`.
+
+Driven from C# against a map shaped the way Calcite's `ModelHandler` shapes one:
 
 ```
-Title, Schema, Id, Comment, Vocabulary, DynamicRef, DynamicAnchor, Definitions, Anchor,
-Type, Const, Format, Pattern, Enum, Default, AllOf, OneOf, AnyOf, Not, Required, Items,
-Contains, Properties, PatternProperties, AdditionalProperties, Discriminator,
-UnevaluatedProperties, PropertyNames, DependentSchemas, DependentRequired,
-If, Then, Else, Extensions, UnrecognizedKeywords, …
+operand map type            : java.util.LinkedHashMap
+valueToTree(map) node type  : ObjectNode
+schema built                : True
+getRefSchemaNode($defs)     : {"type":"string","pattern":"^[0-9a-f]{8}-[0-9a-f]{4}-…"}
+validate(bad)  messages     : 4
+validate(good) messages     : 0
+root keys on the node       : $schema,$defs,oneOf,if,then,x-cosmos-note
 ```
 
-`If`, `Then` and `Else` are there. So is `Definitions` for `$defs`, `Anchor` for `$anchor`, and
-**`UnrecognizedKeywords`** — which is exactly the "ignore what you do not understand, do not fail"
-behaviour the issue asks for, already modelled. Parsing the §3 schema:
+`$ref` resolves to its target with the `pattern` intact, and validation applies it — a document whose
+`parkId` is not a canonical UUID is rejected, one whose `parkId` is canonical passes. Unknown keywords
+survive on the raw node. And the operand needs no conversion: Calcite parses the model with Jackson, so
+the map already *is* a Jackson map and `ObjectMapper.valueToTree` hands it over as a tree with no
+serialisation.
 
-| | |
-| --- | --- |
-| diagnostic errors | 0 |
-| `oneOf` branches | 2 |
-| `if` / `then` | present / present |
-| `oneOf[1].properties.type.Const` | `ParkMap` |
-| `oneOf[1].required` | `type` |
-| `…data.parkId` | `OpenApiSchemaReference` — a reference node, not a silent null |
-| `…data.at` | `format=date-time`, `pattern=^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$` |
-| a **bare** schema, no document wrapper | parses — `OpenApiModelFactory.Parse<OpenApiSchema>(json, OpenApi3_1, …)` |
+**An earlier draft argued against this on the grounds that walking a Java model from C# means a bridge
+call per property. That is wrong — IKVM transpiles the jar to IL, so it is an ordinary .NET call against
+an ordinary .NET assembly.** The probe above is C# calling `com.networknt.schema.JsonSchemaFactory`
+directly, and the UUID measurements in §1 call `java.util.UUID.fromString` the same way. There is no
+marshalling and no penalty, and the argument that rested on one is withdrawn.
 
-That last row matters: the operand can carry a schema rather than an OpenAPI document. And `$ref`
-arriving as a distinct `OpenApiSchemaReference` rather than an inlined copy is the right shape for a
-compiler — the walk sees a reference, resolves it, and can cycle-detect at that point.
-
-**Pin at or above 2.7.5.** `Microsoft.OpenApi` 2.0.0–2.7.4 carries GHSA-v5pm-xwqc-g5wc, high severity,
-and its subject is *circular schema references may terminate OpenAPI parsing* — independent
-corroboration that `$ref` cycles are the hazard §3 flags.
-
-### The one thing the Java option still wins
-
-The operand arrives from Calcite's `ModelHandler` as a `java.util.Map`, so a .NET reader needs it as
-text: Jackson `writeValueAsString` out, `System.Text.Json` in. `com.networknt` would read the map
-directly through `ObjectMapper.valueToTree` with no round trip, is Apache-2.0, and its required
-dependencies are *already compiled into this build* — `jackson.databind.dll`, `jackson.core.dll`,
-`jackson.dataformat.yaml.dll` and `org.slf4j.dll` are in the output directory today, dragged in by
-calcite-core; `joni` and `graalvm-js` are `<optional>` and stay out.
-
-It still loses. The fact compiler is C#, and walking a Java schema model through IKVM makes every
-property access a bridge call against a Java-shaped object graph. One serialise/parse of a schema
-document, once per container at registration, is not a cost worth a Java dependency to avoid.
-
-An earlier draft argued the round trip away by saying the operand should carry a *reference* to the
-schema rather than the schema itself. That was circular — the reference form was justified by a claim
-about inline schemas that does not hold, see §7 — so the round trip is left standing on its own. It is
-one serialise per container at schema registration, and it is small.
+**Use it to resolve, not to walk.** It has a walker (`JsonSchemaWalker`, `WalkEvent`,
+`JsonSchemaWalkListener`) but it is shaped for walking an *instance* against a schema, and §3's traversal
+wants every branch under a guard rather than the branch an instance selects. So: the library parses,
+checks the document is legal for its dialect, and resolves `$ref`/`$id`/`$anchor`; the compiler walks the
+resolved nodes.
 
 ### Name the dialect
 
