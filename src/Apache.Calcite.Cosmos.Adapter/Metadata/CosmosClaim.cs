@@ -25,7 +25,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// The value at the path is of the named JSON type.
         /// </summary>
         /// <param name="Type">The type.</param>
-        public sealed record OfType(CosmosJsonType Type) : CosmosClaim;
+        /// <param name="OrNull">
+        /// Whether a JSON null is admitted beside that type. Nullability is an axis of its own rather
+        /// than the absence of a type: a schema writes it as <c>["string", "null"]</c> under 2020-12
+        /// and as <c>nullable: true</c> under OpenAPI 3.0, and both are the commonest shape there is.
+        /// A claim that admits null is weaker than one that does not, and is the one most consumers
+        /// want — a JSON null and an absent path are dropped by every comparison on both sides.
+        /// </param>
+        public sealed record OfType(CosmosJsonType Type, bool OrNull = false) : CosmosClaim;
 
         /// <summary>
         /// The path is present in the document.

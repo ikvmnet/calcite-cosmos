@@ -88,8 +88,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var declared = ReadType(node);
 
-            if (declared is CosmosJsonType type)
-                State(new CosmosClaim.OfType(type));
+            if (declared is var (type, orNull))
+                State(new CosmosClaim.OfType(type, orNull));
 
             if (node.get("const") is JsonNode constant && TryLiteral(constant, out var constantValue))
                 State(new CosmosClaim.EqualTo(constantValue));
@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // as much -- and the guard that admits a non-string would then be dropped from a comparison
             // that still has to decide one. The same shape as properties being vacuous for an absent
             // path, one level over.
-            if (declared == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
+            if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
 
             // required names the children that are there whenever this object is. The claim is about
@@ -480,8 +480,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         found.Add(new CosmosFact(path, new CosmosClaim.OneOf(domain)));
                         break;
 
-                    case "type" when ReadType(subschema) is CosmosJsonType type:
-                        found.Add(new CosmosFact(path, new CosmosClaim.OfType(type)));
+                    case "type" when ReadType(subschema) is var (type, orNull):
+                        found.Add(new CosmosFact(path, new CosmosClaim.OfType(type, orNull)));
                         break;
 
                     case "$comment":
@@ -612,35 +612,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Reads a <c>type</c>, where it states one thing.
+        /// Reads a <c>type</c>, and whether a null is admitted beside it.
         /// </summary>
         /// <param name="node">The schema node.</param>
-        /// <returns>The type, or <c>null</c> where none is stated or the schema widens it.</returns>
-        static CosmosJsonType? ReadType(JsonNode node)
+        /// <returns>The type and whether a null is admitted, or <c>null</c> where none is stated or two types are.</returns>
+        static (CosmosJsonType Type, bool OrNull)? ReadType(JsonNode node)
         {
-            // OpenAPI 3.0 says a value may be null with a keyword beside the type rather than inside
-            // it, so `{"type": "string", "nullable": true}` describes a path a stored null conforms
-            // at. Claiming the type there would be claiming what the schema declined to.
-            if (node.get("nullable") is JsonNode nullable && nullable.isBoolean() && nullable.asBoolean())
-                return null;
-
+            // OpenAPI 3.0 writes nullability beside the type; 2020-12 writes it inside, as a union with
+            // "null". Both are the same statement and neither is an absence of type -- a nullable
+            // string is still a string wherever it is not null, which is what a stored form is about
+            // and what every comparison here decides on.
+            var orNull = node.get("nullable") is JsonNode nullable && nullable.isBoolean() && nullable.asBoolean();
             var type = node.get("type");
 
-            // A union type states only what its members agree on, which is nothing. The idiomatic
-            // ["t", "null"] is the one that looks like an exception and is not: a document storing a
-            // JSON null conforms to it and is not of type t, so claiming t would be a fact the schema
-            // never stated. Nullability wants a claim of its own before this can say anything.
             if (type is not null && type.isArray())
+            {
+                string? single = null;
+
+                for (var i = 0; i < type.size(); i++)
+                {
+                    var name = type.get(i)?.asText();
+
+                    if (name == "null")
+                    {
+                        orNull = true;
+                        continue;
+                    }
+
+                    // Two types beside each other state only what both agree on, which is nothing.
+                    if (single is not null)
+                        return null;
+
+                    single = name;
+                }
+
+                return single is null ? null : Parse(single) is CosmosJsonType parsed ? (parsed, orNull) : null;
+            }
+
+            if (type is null || type.isTextual() == false)
                 return null;
 
-            return type is not null && type.isTextual() ? Parse(type.asText()) : null;
+            return Parse(type.asText()) is CosmosJsonType only ? (only, orNull) : null;
         }
 
-        /// <summary>
-        /// Maps a JSON Schema type name onto the JSON types a claim can be about.
-        /// </summary>
-        /// <param name="name">The declared name.</param>
-        /// <returns>The type, or <c>null</c> where it is not one of them.</returns>
         static CosmosJsonType? Parse(string name) => name switch
         {
             "string" => CosmosJsonType.String,

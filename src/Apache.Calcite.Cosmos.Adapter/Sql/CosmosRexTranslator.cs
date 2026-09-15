@@ -827,7 +827,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
                 return false;
 
-            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String)));
+            // OrNull, because a null need not be excluded for the two orders to agree: a JSON null at
+            // the path is dropped by the service, which orders it before every string, and dropped by
+            // Calcite, whose accessor answers SQL null for it. What the guard existed to admit is a
+            // value of some *other* type, and that is what the claim rules out.
+            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true)));
         }
 
         /// <summary>

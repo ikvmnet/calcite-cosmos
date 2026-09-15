@@ -46,16 +46,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 // A known value settles membership, type and every disequality but its own.
                 (CosmosClaim.EqualTo a, CosmosClaim.OneOf b) => CosmosClaim.OneOf.Contains(b.Values, a.Value),
-                (CosmosClaim.EqualTo a, CosmosClaim.OfType b) => TypeOf(a.Value) == b.Type,
+                (CosmosClaim.EqualTo a, CosmosClaim.OfType b) => TypeOf(a.Value) == b.Type || b.OrNull && TypeOf(a.Value) == CosmosJsonType.Null,
                 (CosmosClaim.EqualTo a, CosmosClaim.NotEqualTo b) => Equals(a.Value, b.Value) == false,
 
                 // A domain settles a type where every member shares one, and refutes anything
                 // outside it.
-                (CosmosClaim.OneOf a, CosmosClaim.OfType b) => AllOfType(a.Values, b.Type),
+                (CosmosClaim.OneOf a, CosmosClaim.OfType b) => AllOfType(a.Values, b.Type, b.OrNull),
                 (CosmosClaim.OneOf a, CosmosClaim.NotEqualTo b) => CosmosClaim.OneOf.Contains(a.Values, b.Value) == false,
 
                 // A stored form is a string.
-                (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String,
+                // A stored form says what the strings at a path look like, and says nothing about
+                // whether a null is there beside them -- so it entails only the claim that admits one.
+                (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String && b.OrNull,
+
+                // Admitting a null is weaker than not admitting one.
+                (CosmosClaim.OfType a, CosmosClaim.OfType b) => a.Type == b.Type && b.OrNull,
 
                 _ => false,
             };
@@ -70,14 +75,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="values">The domain.</param>
         /// <param name="type">The type to test for.</param>
+        /// <param name="orNull">Whether a JSON null counts as a member.</param>
         /// <returns><c>true</c> where every member is of that type.</returns>
-        static bool AllOfType(IReadOnlyList<object?> values, CosmosJsonType type)
+        static bool AllOfType(IReadOnlyList<object?> values, CosmosJsonType type, bool orNull)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var value in values)
-                if (TypeOf(value) != type)
+                if (TypeOf(value) != type && (orNull == false || TypeOf(value) != CosmosJsonType.Null))
                     return false;
 
             return true;

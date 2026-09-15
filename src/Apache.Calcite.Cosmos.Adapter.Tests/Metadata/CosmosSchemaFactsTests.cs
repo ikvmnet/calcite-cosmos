@@ -151,6 +151,77 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// render its literal into.
         /// </summary>
         /// <summary>
+        /// The keywords that bear on a stored form, in combination.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Written as a table because the interactions are the whole difficulty and each was got wrong
+        /// once. A <c>pattern</c> constrains a string and is vacuous for anything else, so it says
+        /// nothing without a type. A <c>format</c> is an annotation and says nothing at all. Two types
+        /// beside each other state only what both agree on. And a nullable string is still a string
+        /// wherever it is not null, which is a weaker claim rather than no claim.
+        /// </para>
+        /// <para>
+        /// The two type columns are the point of the nullability axis: a consumer that does not care
+        /// whether a null is there asks the weaker question and gets an answer, while one that does
+        /// care is not told something the schema did not say.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheKeywordsThatBearOnAStoredFormInCombination()
+        {
+            const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+            const string Loose = "^[0-9a-fA-F]{8}-.*$";
+
+            var lower = CosmosStoredForms.UuidCanonicalLower;
+
+            //     the subschema for $.v                                  form    string  string-or-null
+            var cases = new (string Subschema, CosmosRepresentation? Form, bool Strict, bool OrNull)[]
+            {
+                ("{}",                                                    null,   false,  false),
+                ("{ 'type': 'string' }",                                  null,   true,   true),
+                ("{ 'type': 'string', 'pattern': 'P' }",                  lower,  true,   true),
+                ("{ 'pattern': 'P' }",                                    null,   false,  false),
+                ("{ 'format': 'uuid' }",                                  null,   false,  false),
+                ("{ 'format': 'uuid', 'pattern': 'P' }",                  null,   false,  false),
+                ("{ 'type': 'string', 'format': 'uuid' }",                null,   true,   true),
+                ("{ 'type': 'string', 'format': 'uuid', 'pattern': 'P' }", lower, true,   true),
+
+                // Nullable, both spellings. A weaker type claim, and the form survives: a null is not
+                // a string and so is not a counterexample to how the strings are written.
+                ("{ 'type': ['string','null'], 'pattern': 'P' }",         lower,  false,  true),
+                ("{ 'type': 'string', 'nullable': true, 'pattern': 'P' }", lower, false,  true),
+                ("{ 'type': ['null','string'] }",                         null,   false,  true),
+                ("{ 'type': 'string', 'nullable': false, 'pattern': 'P' }", lower, true,  true),
+
+                // Two real types agree on nothing, so neither is stated and the pattern goes with them.
+                ("{ 'type': ['string','number'], 'pattern': 'P' }",       null,   false,  false),
+
+                // A type that is not a string, and a pattern that is not one this knows.
+                ("{ 'type': 'integer', 'pattern': 'P' }",                 null,   false,  false),
+                ("{ 'type': 'string', 'pattern': 'L' }",                  null,   true,   true),
+            };
+
+            var v = CosmosDocumentPath.Root.Property("v");
+
+            foreach (var (subschema, form, strict, orNull) in cases)
+            {
+                var json = ("{ 'properties': { 'v': " + subschema + " } }")
+                    .Replace("'P'", "\"" + Uuid + "\"")
+                    .Replace("'L'", "\"" + Loose + "\"")
+                    .Replace('\'', '"');
+
+                var derived = Compile(json).Derive(null);
+
+                derived.RepresentationOf(v).Should().Be(form, "form for " + subschema);
+                derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String)))
+                    .Should().Be(strict, "strict string for " + subschema);
+                derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true)))
+                    .Should().Be(orNull, "string-or-null for " + subschema);
+            }
+        }
+
+        /// <summary>
         /// A pattern beside no declared type states nothing, because a pattern constrains a string and
         /// is vacuous for everything else.
         /// </summary>
