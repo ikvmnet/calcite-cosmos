@@ -129,7 +129,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // A computed column that converts a path the container confines to one stored shape
                 // may still be ordered by that path, even though it addresses none. A weaker claim
                 // than a binding and recorded apart from one -- see CosmosImplementor.OrderingPaths.
-                ordering[i] = paths[i] ?? OrderingPathOf(node, translator, facts, implementor.RootAlias);
+                var candidate = paths[i] ?? OrderingCandidateOf(node, translator, implementor.RootAlias);
+                ordering[i] = paths[i] is not null || IsOrderable(facts, candidate) ? candidate : null;
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -164,39 +165,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <summary>
-        /// Returns the path a sort may order by where a projection converts one, or <c>null</c> where
-        /// the projection is not such a conversion or the container does not license it.
+        /// Returns the path underneath a projection that converts one, or <c>null</c> where the
+        /// projection is not such a conversion.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Asked twice, from the plan and from the statement, and it has to answer the same both
-        /// times.</b> <see cref="Convert.CosmosSortRule"/> decides whether a sort may be pushed at all
-        /// and <see cref="Implement"/> records what it decided; if the two disagreed the rule would
-        /// fire on a key implementation then refused. So the decision lives here and both call it,
-        /// which is the arrangement <see cref="IsSortableAtTheService"/> already has.
+        /// <b>The structural half of the question, and it is split from the other half on purpose.</b>
+        /// Which ordinal holds which candidate depends on <em>which tree is looked at</em> — a rule
+        /// reading one member of a <c>RelSubset</c> and the implementation another would disagree,
+        /// and a rule that decided differently from implementation fires on a key implementation then
+        /// refuses. So this is derived once, on the walk
+        /// <see cref="CosmosImplementor.TryBindOutput"/> already makes, and never by a second walk of
+        /// its own. Whether the container licenses the candidate is <see cref="IsOrderable"/>, which
+        /// is a pure lookup and cannot disagree with itself.
         /// </para>
         /// <para>
         /// <b>Only a conversion to a type Cosmos has no equivalent of.</b> A <c>UUID</c> and a
         /// <c>TIMESTAMP</c> are both strings at the service, so the ordering question is about the
-        /// stored spelling and <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> answers it.
-        /// A cast between two types the service compares natively is not this rewrite's business and
-        /// gets no entry.
-        /// </para>
-        /// <para>
-        /// <b>And the guard has to be vacuous</b>, which is the condition a reading of
-        /// <c>TODO.md</c> alone would miss — see <see cref="CosmosImplementor.OrderingPaths"/> for
-        /// what the column renders as and why an object at the path would otherwise sort on the wrong
-        /// side of every scalar.
+        /// stored spelling. A cast between two types the service compares natively is not this
+        /// rewrite's business and gets no entry.
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
         /// <param name="translator">Resolves an expression to the path it addresses.</param>
-        /// <param name="facts">What the container declares, already derived.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The path, or <c>null</c>.</returns>
-        public static CosmosPath? OrderingPathOf(RexNode node, CosmosRexTranslator translator, Metadata.CosmosFactSet? facts, string rootAlias)
+        public static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
         {
-            if (node is not RexCall call || facts is null || translator is null)
+            if (node is not RexCall call || translator is null)
                 return null;
 
             var kind = call.getKind().name();
@@ -209,16 +205,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
-                return null;
+            return string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) ? path : null;
+        }
+
+        /// <summary>
+        /// Determines whether the container licenses ordering by a candidate path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two conditions.</b> The stored form has to preserve order, which is what
+        /// <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> says and which a form preserving
+        /// equality alone does not give.
+        /// </para>
+        /// <para>
+        /// <b>And the guard the projection renders has to be vacuous</b>, which is the condition a
+        /// reading of <c>TODO.md</c> alone would miss — see
+        /// <see cref="CosmosImplementor.OrderingPaths"/> for what the column renders as and why an
+        /// object at the path would otherwise sort on the wrong side of every scalar.
+        /// </para>
+        /// <para>
+        /// A pure function of the path and the facts, which is what lets the rule and the
+        /// implementation each ask it without a walk between them.
+        /// </para>
+        /// </remarks>
+        /// <param name="facts">What the container declares, already derived.</param>
+        /// <param name="path">The candidate path, or <c>null</c>.</param>
+        /// <returns><c>true</c> where a sort may order by the path.</returns>
+        public static bool IsOrderable(Metadata.CosmosFactSet? facts, CosmosPath? path)
+        {
+            if (facts is null || path is null)
+                return false;
 
             if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
-                return null;
+                return false;
 
             if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
-                return null;
+                return false;
 
-            return facts.IsAlwaysScalar(document) ? path : null;
+            return facts.IsAlwaysScalar(document);
         }
 
         /// <summary>

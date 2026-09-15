@@ -64,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsSupported(CosmosConvention convention, Sort sort)
         {
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _, out var candidates, out var written) == false)
                 return false;
 
             // A statement has one ORDER BY, and its OFFSET/LIMIT is applied after it rather than
@@ -76,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), convention.Container, OrderingPaths(convention, sort, fields.Count), out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), convention.Container, OrderingPaths(convention, candidates), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -129,62 +129,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Reads which output ordinals hold a conversion the container licenses ordering by the path
-        /// underneath.
+        /// Reads which output ordinals the container licenses ordering by, where the ordinal binds to
+        /// no path of its own.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The same walk and the same reason as <see cref="SortableFields"/>: asked of the plan,
-        /// because the decision has to be the one <see cref="CosmosProject.Implement"/> will record,
-        /// and both call <see cref="CosmosProject.OrderingPathOf"/> so the two cannot drift apart.
+        /// <b>No walk of its own, and that is the point.</b> Which ordinal holds which candidate is
+        /// derived on the one walk <see cref="CosmosImplementor.TryBindOutput"/> makes — the walk being
+        /// the part that depends on which member of a <c>RelSubset</c> is looked at, and therefore the
+        /// part a second traversal could answer differently from the first. An earlier version of this
+        /// did walk, and unwrapped a subset a second time on a justification weaker than the one
+        /// <c>TryBindOutput</c> states: that any member <em>binds</em> the same because members are
+        /// equivalent, which is a claim about the binding and not about which expressions one
+        /// representative happens to carry.
         /// </para>
         /// <para>
-        /// The binding is the projection's <em>input</em>, not its output — the expression being
-        /// classified is written over the input's ordinals, which is the same binding
-        /// <c>Implement</c> builds its translator over.
+        /// What is left here is a pure lookup, which cannot disagree with the same lookup made during
+        /// implementation however the planner has moved on.
         /// </para>
         /// </remarks>
         /// <param name="convention">The convention, carrying the container.</param>
-        /// <param name="sort">The sort being tested.</param>
-        /// <param name="width">The number of output fields.</param>
-        /// <returns>The path per ordinal, or <c>null</c> where the ordinal licenses none.</returns>
-        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, Sort sort, int width)
+        /// <param name="candidates">The candidates the binding derived.</param>
+        /// <returns>The path per ordinal, or <c>null</c> where the container licenses none.</returns>
+        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, IReadOnlyList<Sql.CosmosPath?> candidates)
         {
-            var ordering = new Sql.CosmosPath?[width];
+            var ordering = new Sql.CosmosPath?[candidates.Count];
 
             if (convention?.Container is not Metadata.CosmosContainerMetadata container || container.Facts.IsEmpty)
-                return ordering;
-
-            var input = sort.getInput();
-
-            while (true)
-            {
-                if (input is org.apache.calcite.plan.volcano.RelSubset subset)
-                    input = subset.getOriginal() ?? subset.getBest();
-
-                if (input is Filter filter)
-                {
-                    input = filter.getInput();
-                    continue;
-                }
-
-                break;
-            }
-
-            if (input is not Project project)
-                return ordering;
-
-            if (CosmosImplementor.TryBindOutput(project.getInput(), out var inputFields, out _) == false)
                 return ordering;
 
             // Only what holds outright, for the reason NonNullFields gives: a sort carries no
             // predicate of its own to prove a guarded fact from.
             var facts = container.Facts.Derive(null);
-            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), inputFields, new Sql.CosmosParameterList());
-            var projects = project.getProjects();
 
-            for (var i = 0; i < projects.size() && i < width; i++)
-                ordering[i] = CosmosProject.OrderingPathOf((RexNode)projects.get(i), translator, facts, CosmosImplementor.DefaultRootAlias);
+            for (var i = 0; i < candidates.Count; i++)
+                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i]) ? candidates[i] : null;
 
             return ordering;
         }

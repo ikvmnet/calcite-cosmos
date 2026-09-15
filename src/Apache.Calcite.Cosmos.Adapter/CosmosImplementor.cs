@@ -359,7 +359,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <returns><c>true</c> if the binding could be derived; otherwise <c>false</c>.</returns>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out CosmosClauses written)
         {
-            return TryBindOutput(node, out fields, out _, out written);
+            return TryBindOutput(node, out fields, out _, out _, out written);
         }
 
         /// <inheritdoc cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)" />
@@ -375,11 +375,31 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// is a comparison against the rendering, and the translator holds it to the same test it holds
         /// the accessor itself to; deciding that from the path alone pushed the raw comparison (#83).
         /// </param>
-        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        /// <inheritdoc cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)" />
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each output field is read back.</param>
+        /// <param name="written">On success, the clauses the subtree has already written.</param>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out CosmosClauses written)
+        {
+            return TryBindOutput(node, out fields, out readings, out _, out written);
+        }
+
+        /// <param name="ordering">
+        /// On success, per ordinal, the path a sort may order by where the ordinal binds to none —
+        /// the structural half of the question only, with nothing about the container consulted. What
+        /// makes it worth deriving here rather than by a second walk is that the walk is the part that
+        /// depends on <em>which</em> tree is looked at: a rule reading one equivalent and the
+        /// implementation another would disagree, while the facts half is a pure lookup that cannot.
+        /// See <see cref="Rel.CosmosProject.OrderingCandidateOf"/> for what qualifies and
+        /// <see cref="Rel.CosmosProject.IsOrderable"/> for the half left to the caller.
+        /// </param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosPath?> ordering, out CosmosClauses written)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
+            ordering = Array.Empty<CosmosPath?>();
             written = CosmosClauses.None;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
@@ -396,17 +416,18 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable:
                     fields = BindFields(scan.getRowType());
                     readings = BindReadings(scan.getRowType());
+                    ordering = new CosmosPath?[fields.Count];
                     return true;
 
                 // Neither changes the shape of a row, so neither changes what addresses it. A sort
                 // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out readings, out written);
+                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written);
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out written) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -425,7 +446,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out written) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -445,12 +466,13 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     fields = paths;
                     readings = reads;
+                    ordering = new CosmosPath?[paths.Length];
                     return true;
                 }
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out written) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -459,11 +481,17 @@ namespace Apache.Calcite.Cosmos.Adapter
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
+                    var candidates = new CosmosPath?[projects.size()];
 
                     for (var i = 0; i < paths.Length; i++)
                     {
                         var expression = (RexNode)projects.get(i);
                         paths[i] = translator.TryResolvePath(expression, out var path) ? path : null;
+
+                        // Derived here because here is where the walk is. Only the structural half —
+                        // whether the container licenses it is the caller's pure lookup. See
+                        // CosmosProject.OrderingCandidateOf.
+                        candidates[i] = paths[i] ?? CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias);
 
                         // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
                         // read as text is a rendering of the path it binds to, and a column passed
@@ -477,6 +505,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     fields = paths;
                     readings = reads;
+                    ordering = candidates;
                     return true;
                 }
 
@@ -485,7 +514,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // left unbound rather than named.
                 case Correlate correlate:
                 {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out written) == false)
+                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out _, out written) == false)
                         return false;
 
                     var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];
@@ -498,6 +527,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     fields = paths;
                     readings = reads;
+                    ordering = new CosmosPath?[paths.Length];
                     return true;
                 }
 
