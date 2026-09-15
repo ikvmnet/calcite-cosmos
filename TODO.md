@@ -60,16 +60,17 @@ function pushes*, and the open measurement under section 5.
 typed document path promoted to a real column — through a `columns` operand — would have given three
 things a type to work with: a patchable `UPDATE` target, an argument the nullable-aggregate rewrite
 could fire on, and a declared temporal representation. The decision against them has been taken more
-than once and is recorded in section 6. The row model is the map column and the `_JSON` column, and
-a query works off those. What answers the dependency instead is the service's own type predicates —
+than once and is recorded in section 6. The row model is the document column, `DOC`, and a query
+works off that. What answers the dependency instead is the service's own type predicates —
 `IS_NUMBER`, `IS_STRING`, `IS_DATETIME` and the rest — which say per row, at query time, what a
 declaration could only promise; see *Rewriting a typed comparison into one the service can evaluate*
 in section 4.
 
 The fourth, **a sort key that can be non-nullable**, turned out not to need a declaration at all: a
 query that removes the nulls itself settles the null placement, and the planner already carries
-that fact. It is done for the promoted columns and out of reach inside the map column — and *why*
-it is out of reach says more about the surface than the original argument did. See section 6.
+that fact. It is done for the promoted columns and out of reach for an unpromoted document path —
+and *why* it is out of reach says more about the surface than the original argument did. See
+section 6.
 
 ### Running the sample
 
@@ -109,7 +110,7 @@ knows, or the model those reads deserve.
 ### Document size into the cost model — *small*
 
 Average document size is already derived from the container's resource usage and not yet used. It is
-what a row costs to move, which for a map row model carrying whole documents dominates.
+what a row costs to move, which for a row model carrying whole documents dominates.
 
 ### Provisioned throughput — *small*
 
@@ -276,20 +277,8 @@ than declared anywhere — a planner can see that a single-path `SET` is not a w
 without anything being declared. What is missing is a way to *write* the statement, and there are
 three walls, each measured:
 
-**The substrate blocker is gone.** What follows was measured against the map column, which is why
-the row model no longer has one:
-
-1. `SET "_MAP"['data']['name'] = 'x'` does not parse. Calcite's `UPDATE` grammar accepts only `=` or
-   `.` after the target identifier — *Encountered "[" … Was expecting one of: "=" … "." …*
-2. `SET "_MAP"."data"."name" = 'x'` parses and the validator refuses it: *Unknown target column
-   `_MAP.data.name`*. A `SET` target is resolved against the row type, and a map has no fields.
-3. `SET "_MAP" = JSON_SET("_MAP", '$.data.name', 'x')` converted in isolation and died through a
-   connection: `JSON_SET` returns `VARCHAR`, the column is `(VARCHAR, ANY) MAP`, and Calcite cannot
-   build a cast spec for it — *Unsupported type when convertTypeToSpec: ANY*. Calcite's SQL/JSON
-   functions follow SQL:2016, where JSON is character data, so none of the family can address a map.
-
-**What does work is a source expression already of the map type.** Measured with Spark's
-`MAP_CONCAT`, which returns a map: the statement converts, plans, and arrives as a
+**The substrate is not the blocker.** `DOC` is `VARCHAR`, so Calcite's SQL/JSON family type-checks
+over it: `SET "DOC" = JSON_SET(c."DOC", '$.data.name', 'x')` converts and plans, arriving as a
 `CosmosTableModify(updateColumnList=[[DOC]])` over a calc holding the expression — the shape a patch
 rule would match, intact.
 
@@ -305,17 +294,14 @@ write is the item API, `PatchItemAsync` with `set`/`add`/`replace`/`remove`/`inc
 a call. So a rule reads the path and the value out of the SQL expression and issues patch operations;
 nothing is rendered.
 
-**The shape chosen is a second column, `DOC`.** Typed `VARCHAR`, over the same document, so the
-standard `JSON_SET`, `JSON_REPLACE`, `JSON_INSERT` and `JSON_REMOVE` type-check against it —
-operators every tool already knows, nothing new to name. The column is a handle rather than a
-representation: on the write path it is never built, and projected it can be handed over as the
-service returned it rather than rebuilt from the map. Its costs are that the row type carries the
-document twice, and that a statement naming both columns needs a rule saying what that means.
+**The shape chosen is the document column, `DOC`.** Typed `VARCHAR`, so the standard `JSON_SET`,
+`JSON_REPLACE`, `JSON_INSERT` and `JSON_REMOVE` type-check against it — operators every tool already
+knows, nothing new to name. The column is a handle rather than a representation: on the write path it
+is never built, and projected it is handed over as the service returned it.
 
-The alternative considered and not taken was **adapter map-typed operators** — the same functions
-declared over `MAP`, one column, no cast, inheriting the refusal that a Cosmos function has no
-in-process body. Rejected for using names nobody outside this adapter knows, where the JSON family
-is already in every tool.
+The alternative considered and not taken was **adapter-declared operators over a non-standard type** —
+one family of functions nobody outside this adapter knows, where the JSON family is already in every
+tool.
 
 **Reads through `DOC` are worth more than they look, and that is the surprise.** The read side was
 first written off here on the grounds that Calcite's SQL/JSON functions are string-typed, so pushing
@@ -350,34 +336,31 @@ declines an operand for. What it does **not** give is a `RexInputRef`: a `JSON_V
 expression like `ITEM`, so predicate flow, keys and distinctness stay where they are. Section 6's
 split holds; this answers the typed half and not the reference half.
 
-**Parity is done, and it was one change rather than sixty.** Every pushdown that needs a document
-path asks `CosmosRexTranslator.TryResolvePath` for it — a filter, a projection, a sort key, an
-aggregate argument, an unnest array, the partition key extractor, and the full text and vector
-legality gates — so teaching that one function `JSON_VALUE` and `JSON_QUERY` gave all of them the
-second spelling at once, and `WriteCall` renders the same call as the same path. Measured through a
-connection, `_MAP` against `DOC`, node for node: projection, filter, sort, sort with fetch,
-`GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison,
-`IS NOT NULL`, `UNNEST` and the lookup join from either side all produce the identical plan, and a
-path assembled at run time declines on both sides.
+**Every pushdown resolves its path in one place.** A filter, a projection, a sort key, an aggregate
+argument, an unnest array, the partition key extractor, and the full text and vector legality gates
+all ask `CosmosRexTranslator.TryResolvePath` for a document path, and `WriteCall` renders the call as
+that path. Measured through a connection: projection, filter, sort, sort with fetch, `GROUP BY`,
+`DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison, `IS NOT NULL`,
+`UNNEST` and the lookup join from either side all push, and a path assembled at run time is declined
+for all of them at once.
 
-One shape was missing from that list, and it was the one a view is made of: `CAST(… AS VARCHAR) =
-'text'` was dropped over the map subscript and not over `JSON_VALUE`, because the test was that the
-operand is typed `ANY` and Calcite types the accessor `VARCHAR(2000)` (#71). The cast is now dropped
-over either spelling, on a measurement of Calcite's own runtime that the accessor renders what the
-cast over `ANY` renders and applies no width. What is deliberately *not* carried over is the same
-cast in a projection: `JSON_VALUE` answers null for an object or an array where the reader renders
-one, so a `_JSON` view's text columns stay in process. Recorded in `DESIGN.md` under *Casts over
-document values*.
+The shape a view is made of took its own measurement: `CAST(… AS VARCHAR) = 'text'` over a
+`JSON_VALUE` was not dropped, because the test was that the operand is typed `ANY` and Calcite types
+the accessor `VARCHAR(2000)` (#71). The cast is now dropped over it too, on a measurement of
+Calcite's own runtime that the accessor renders what the cast over `ANY` renders and applies no
+width. What is deliberately *not* carried over is the same cast in a projection: `JSON_VALUE` answers
+null for an object or an array where the reader renders one, so a view's text columns stay in
+process. Recorded in `DESIGN.md` under *Casts over document values*.
 
-**The bare accessor is a conversion, and the parity above compared plans rather than rows.** Measured
+**The bare accessor is a conversion, and the measurement above compared plans rather than rows.** Measured
 against Calcite's runtime, `JSON_VALUE(doc, '$.x') = '30'` keeps the document storing the *number*
 30, because SQL:2016 casts the scalar to the returning type and the default is a character string;
 pushed as `c.x = '30'` it did not. The adapter behaves like Calcite, so the equality is now held to
 the cast form's literal test: unambiguous text pushes, and anything else is declined and the split
 rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the number, under the
-comparison Calcite makes. The same disjunction now serves the map column's cast, which used to push
-`IS_DEFINED` alone. *Settled by measurement:* `RETURNING` a non-text type converts nothing in Calcite
-— it asserts the Java class and throws on disagreement — so a comparison through one pushes exactly,
+comparison Calcite makes. The same disjunction serves the cast form. *Settled by measurement:*
+`RETURNING` a non-text type converts nothing in Calcite — it asserts the Java class and throws on
+disagreement — so a comparison through one pushes exactly,
 as it did, and needs no bound; `DESIGN.md` records the measurement. *Settled by the same measurement:* the
 other operators over the bare text accessor — `<>`, the ordering comparisons and `LIKE` — diverged in
 both directions over the `typed` container, and are now declined and weakened to the case the two
@@ -751,12 +734,12 @@ See *Temporal* above, whose prerequisite this is a narrower statement of.
   `BETWEEN` costs exactly what its two comparisons do (7.90 RU). Neither form used an index on an
   unindexed path, so the reference's "index-friendly" is a property of the path rather than of the
   spelling. Emitting the native form would be a change with no effect.
-- **`DISTINCT` with `ORDER BY` reaches promoted columns and not the map column** — *small, and what
-  is left of it waits on section 6.* The null-placement rule refuses a nullable sort key, and a
-  query that removes the nulls itself now satisfies it: `WHERE c.category IS NOT NULL ORDER BY
-  c.category` pushes, read from `RelMdPredicates` at the rule. That covers the promoted columns.
-  It does not reach a path inside the map column, and not for want of a type — such a path projects
-  as `ITEM($0, 'name')` rather than as a reference, and `RelMdPredicates` carries a predicate
+- **`DISTINCT` with `ORDER BY` reaches promoted columns and not unpromoted document paths** —
+  *small, and what is left of it waits on section 6.* The null-placement rule refuses a nullable sort
+  key, and a query that removes the nulls itself now satisfies it: `WHERE c.category IS NOT NULL
+  ORDER BY c.category` pushes, read from `RelMdPredicates` at the rule. That covers the promoted
+  columns. It does not reach an unpromoted document path, and not for want of a type — such a path
+  projects as an accessor call rather than as a reference, and `RelMdPredicates` carries a predicate
   through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
   a total order over JSON types*, and section 6 below, whose case this sharpens.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
@@ -773,8 +756,8 @@ The null-semantics refusals are the biggest source of declined aggregates: `SUM(
 column is `undefined` at the service where SQL skips the null. The fix is rewriting the rendered
 argument so Cosmos skips it too — aggregates skip *undefined*, and arithmetic on a JSON null yields
 it, so `SUM(c.v * 1)` is the candidate for a column known to be numeric. The rewrite is type-directed
-and cannot be applied blindly (`* 1` over a string silently drops it from `MIN`/`MAX`), and a path
-inside the map column is `ANY` — but the service answers the type question itself, so
+and cannot be applied blindly (`* 1` over a string silently drops it from `MIN`/`MAX`), and a
+document path has no declared type — but the service answers the type question itself, so
 `IIF(IS_NUMBER(c.v), c.v * 1, undefined)` guards the rewrite per row where a declaration would have
 guarded it per column. Section 6 rejected the declaration; this is what stands in its place.
 Measure on the emulator before building: that the null is skipped, that an all-null group comes back
@@ -836,7 +819,7 @@ path happens to be nullable — see the geography items in section 4, and
   See `DESIGN.md` under *The declaration decides whether a full text or vector function pushes*.
 - **Computed properties** — *medium.* A container can declare named, queryable, indexable computed
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
-  with real index awareness rather than living in the map column.
+  with real index awareness rather than being reached as ordinary document paths.
 
 ### Recorded decisions worth revisiting
 
@@ -853,11 +836,10 @@ path happens to be nullable — see the geography items in section 4, and
 
 - **A typed column over a document path — *rejected; written down here so it stops being
   reopened*.** The question was whether a caller could declare paths and types — a `columns` operand,
-  or the container's computed properties — so that the planner could see a type where the map column
-  gives `ANY`. The answer is no, and it has been given more than once. The row model is the map
-  column and the `_JSON` column, and a query has to work directly off those; a surface that asks the
-  caller to describe the documents before querying them is the thing being avoided, not a feature
-  that is missing.
+  or the container's computed properties — so that the planner could see a type where a document path
+  gives none. The answer is no, and it has been given more than once. The row model is the document
+  column, `DOC`, and a query has to work directly off it; a surface that asks the caller to describe
+  the documents before querying them is the thing being avoided, not a feature that is missing.
 
   **What replaces it is the service's own type predicates.** Cosmos will say what a value *is*, per
   row, at query time — `IS_NUMBER`, `IS_INTEGER`, `IS_STRING`, `IS_DATETIME`, `IS_NULL`,
@@ -873,12 +855,12 @@ path happens to be nullable — see the geography items in section 4, and
   A nullable sort key is now reachable when the query itself removes the nulls — for a promoted
   column. It is not reachable for a document path, and the obstacle turned out not to be the type
   at all: `RelMdPredicates` carries a predicate through a projection only where the projection is a
-  `RexInputRef`, and a document path projects as `ITEM($0, 'name')` over the map column. So what a
-  declared column buys is not only a type the planner can see but a path that projects as a
-  *reference*, at which point Calcite's whole existing metadata layer — predicates, nullability,
-  keys, distinctness — begins working over it with no adapter code at all. That is a larger and
-  more concrete account of what the map row model costs than "no type to work with". It is a cost
-  the model accepts, not an argument to reopen it. Measured; recorded in `DESIGN.md`.
+  `RexInputRef`, and a document path projects as an accessor call. So what a declared column buys is
+  not only a type the planner can see but a path that projects as a *reference*, at which point
+  Calcite's whole existing metadata layer — predicates, nullability, keys, distinctness — begins
+  working over it with no adapter code at all. That is a larger and more concrete account of what the
+  row model costs than "no type to work with". It is a cost the model accepts, not an argument to
+  reopen it. Measured; recorded in `DESIGN.md`.
 
   **Paging a view by one of its own columns is the fourth thing it would buy, and the one with a
   measurement behind it.** A cast to text now projects — the value is sent as it stands and rendered
@@ -969,7 +951,7 @@ project references.
 | `SupportsPartitionPushDown` | **worth taking.** Hands the planner the list of partitions. `GetFeedRangesAsync` gives the physical ones. |
 | `SupportsDynamicFiltering`, `SupportsLookupCustomShuffle` | **closed by measurement** — the service's query router already prunes an `IN` over the partition key to the partitions owning the values, cross-partition execution already fans out per feed range, and per-key routing costs the per-query floor times the key count. See *The lookup restriction is already routed* in `DESIGN.md`; `CosmosLookupRoutingMeasurementTests` reruns the evidence against any real account. |
 | `SupportsReadingMetadata` | **small.** Metadata columns declared rather than always promoted: `_rid`, `_self`, `_attachments`, and the per-item `ttl`. Would also let `_ts`/`_etag` stop occupying ordinary column ordinals. |
-| `SupportsRowLevelModificationScan` | **worth taking.** The scan is told it is feeding an `UPDATE`/`DELETE`, so it can read only what the modification needs. Both are implemented and read whole documents to use two paths out of them — `id` and the partition key — which for a map row model is the whole cost of the statement. |
+| `SupportsRowLevelModificationScan` | **worth taking.** The scan is told it is feeding an `UPDATE`/`DELETE`, so it can read only what the modification needs. Both are implemented and read whole documents to use two paths out of them — `id` and the partition key — which for a row model carrying whole documents is the whole cost of the statement. |
 | `SupportsWatermarkPushDown`, `SupportsSourceWatermark` | **only with the change feed.** Streaming concepts; the change feed is the analogue, and `_ts` the natural watermark. See *change feed*. |
 
 ### Lookup abilities

@@ -29,8 +29,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// The composite index is declared over <c>/id</c> and <c>/_ts</c> because collations
-        /// address fields by ordinal, so only promoted columns can be sorted on. A path inside the
-        /// map column would require an <c>ITEM</c> call, which a collation cannot express.
+        /// address fields by ordinal, so only promoted columns can be sorted on. An unpromoted
+        /// document path would require an accessor call, which a collation cannot express.
         /// </remarks>
         static readonly CosmosContainerMetadata Products = new(
             "products",
@@ -183,7 +183,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         [TestMethod]
-        public void ScanBindsMapColumnToRootAndPromotedColumnsToProperties()
+        public void ScanBindsDocumentColumnToRootAndPromotedColumnsToProperties()
         {
             var implementor = Implementor();
             Scan().Implement(implementor);
@@ -630,10 +630,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <remarks>
         /// <para>
         /// The same shape of expression means opposite things depending on what the variable stands
-        /// for. A lateral traversal correlates an input on itself, so <c>$cor0._MAP['tags']</c> under
-        /// one is a path of the document being scanned — the test above. A join correlates it on the
-        /// <em>other</em> side, and there the identical expression is a value of a row this statement
-        /// knows nothing about.
+        /// for. A lateral traversal correlates an input on itself, so <c>JSON_QUERY($cor0."DOC",
+        /// '$.tags')</c> under one is a path of the document being scanned — the test above. A join
+        /// correlates it on the <em>other</em> side, and there the identical expression is a value of a
+        /// row this statement knows nothing about.
         /// </para>
         /// <para>
         /// Resolving it anyway would emit <c>c.tags</c>: a real path, of the wrong document, in a

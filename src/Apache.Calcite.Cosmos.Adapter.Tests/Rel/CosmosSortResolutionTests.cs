@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         static readonly CosmosPath[] Fields =
         {
-            CosmosPath.Root("c"),                                                   // 0 — the map column
+            CosmosPath.Root("c"),                                                   // 0 — the document column
             CosmosPath.Root("c").Property("name"),                                  // 1 — nullable
             CosmosPath.Root("c").Property("inventory").Property("quantity"),        // 2 — nullable
             CosmosPath.Root("c").Property("id"),                                    // 3 — NOT NULL

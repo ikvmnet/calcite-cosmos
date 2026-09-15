@@ -205,17 +205,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                     break;
 
-                // The same thing said in SQL/JSON. `JSON_VALUE(<doc>, '$.a.b')` addresses exactly what
-                // `ITEM(ITEM(<doc>,'a'),'b')` addresses, so it resolves to the same path and every
-                // clause that requires one accepts it without knowing which spelling it was written in.
-                // The document is the `DOC` column, which binds to the root.
+                // A SQL/JSON accessor addresses a document path: `JSON_VALUE(<doc>, '$.a.b')` resolves
+                // to `c.a.b`, and every clause that requires a path accepts it. The document is the
+                // `DOC` column, which binds to the root.
                 case RexCall json when IsJsonAccessor(json) && TryResolveJsonPath(json, out path):
                     return true;
 
                 // `StringToArray(JSON_QUERY(<doc>, '$.tags'))` is the array at that path, and the
                 // composition exists because UNNEST will not take a string: `JSON_QUERY` is typed
-                // VARCHAR and is refused, while `StringToArray` is typed ANY and is accepted — the
-                // same type the map spelling `ITEM(<map>, 'tags')` already produces.
+                // VARCHAR and is refused, while `StringToArray` is typed ANY and is accepted.
                 case RexCall array when IsArrayFromJson(array) && TryResolvePath((RexNode)array.getOperands().get(0), out path):
                     return true;
             }
@@ -524,11 +522,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         void WriteCall(StringBuilder builder, RexCall call)
         {
-            // A SQL/JSON accessor over the document is the path it addresses, and is written as one.
-            // The same rendering ITEM gets, because it is the same thing said differently: the service
-            // returns the value at the path, and the RETURNING clause is what told the plan its type.
-            // Handled ahead of the kind switch so that every clause reaching here — a projection, a
-            // predicate, a sort key, an aggregate argument — gets it without a case of its own.
+            // A SQL/JSON accessor over the document is the path it addresses, and is written as one:
+            // the service returns the value at the path, and the RETURNING clause is what told the
+            // plan its type. Handled ahead of the kind switch so that every clause reaching here —
+            // a projection, a predicate, a sort key, an aggregate argument — gets it without a case
+            // of its own.
             if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
                 builder.Append(jsonPath.ToString());
@@ -806,16 +804,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Two spellings say it. A path read through the map column is typed <c>ANY</c>, and Calcite's
-        /// cast over one is the value's own rendering. <c>JSON_VALUE</c> without a <c>RETURNING</c>
-        /// clause is the same value in the other column's spelling: Calcite types it <c>VARCHAR(2000)</c>
-        /// and, measured against its own runtime, renders a stored number as digits, a boolean as
-        /// <c>true</c> or <c>false</c>, and a string as itself — exactly what the cast over <c>ANY</c>
-        /// renders — and answers null for an absent path, a null, an object or an array, which the
-        /// comparison then does not keep. So the argument on <see cref="TryTextCastOperand"/> carries
-        /// over unchanged to the cast a <c>DOC</c> view writes, which is what this was missing (#71).
-        /// The same measurement found no width applied at run time — <c>RETURNING VARCHAR(3)</c>
-        /// returns <c>'bikes'</c> whole — so a character type of any width is the same reading.
+        /// Two spellings say it. A promoted column is typed <c>ANY</c>, and Calcite's cast over one
+        /// is the value's own rendering. <c>JSON_VALUE</c> without a <c>RETURNING</c> clause is the
+        /// same value said as a path: Calcite types it <c>VARCHAR(2000)</c> and, measured against its
+        /// own runtime, renders a stored number as digits, a boolean as <c>true</c> or <c>false</c>,
+        /// and a string as itself — exactly what the cast over <c>ANY</c> renders — and answers null
+        /// for an absent path, a null, an object or an array, which the comparison then does not keep.
+        /// So the argument on <see cref="TryTextCastOperand"/> carries over unchanged to the cast a
+        /// <c>DOC</c> view writes (#71). The same measurement found no width applied at run time —
+        /// <c>RETURNING VARCHAR(3)</c> returns <c>'bikes'</c> whole — so a character type of any width
+        /// is the same reading.
         /// </para>
         /// <para>
         /// A <c>RETURNING</c> that converts — a number, a boolean, a date — is refused: the cast then
@@ -1001,7 +999,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// never does.
         /// </para>
         /// <para>
-        /// <b>Only the map column's spelling.</b> The same cast over <c>JSON_VALUE</c> drops in a
+        /// <b>Only a value typed <c>ANY</c>.</b> The same cast over <c>JSON_VALUE</c> drops in a
         /// comparison — see <see cref="IsRenderedDocumentValue"/> — and does not here, because a
         /// projection has no literal to exclude the cases on. Measured, <c>JSON_VALUE</c> answers null
         /// for an object or an array where the reader renders one as <c>{x=1}</c> or <c>[x, y]</c>, so
@@ -1765,13 +1763,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes a map or array element access.
+        /// Writes an element access.
         /// </summary>
         /// <remarks>
-        /// <c>ITEM</c> is the operator the map row model depends on: a reference to a document
-        /// property arrives as <c>ITEM(&lt;map&gt;, 'name')</c> and must become a path extension
-        /// rather than a function call. Only constant accessors can be resolved this way, since
-        /// Cosmos paths are static.
+        /// <c>ITEM</c> reaches into a value typed <c>ANY</c> — an array subscript, or a property of a
+        /// promoted column — and must become a path extension rather than a function call. Only
+        /// constant accessors can be resolved this way, since Cosmos paths are static.
         /// </remarks>
         void WriteItem(StringBuilder builder, RexCall call)
         {

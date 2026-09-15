@@ -745,7 +745,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var results = await Execute(Query(builder, parameters));
             var document = results.Should().ContainSingle().Subject;
 
-            // Read as the map column is: the whole document, by its JSON shape rather than a declared type.
+            // Read by JSON shape rather than by a declared type: the whole document, as it arrived.
             var map = CosmosJson.GetMap(document);
 
             map.get("str").Should().Be("text");
@@ -774,8 +774,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             ((java.util.Map)obj.get("b")).get("c").Should().Be("deep");
             ((java.util.List)obj.get("d")).size().Should().Be(2);
 
-            // Nesting is not truncated at the map column's one-level type: the value goes as deep as
-            // the document does.
+            // Nesting is not truncated: the value goes as deep as the document does.
             ((java.util.Map)((java.util.Map)map.get("obj")).get("b")).get("c").Should().Be("deep");
         }
 

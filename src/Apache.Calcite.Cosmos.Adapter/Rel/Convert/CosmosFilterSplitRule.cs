@@ -585,11 +585,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <c>CAST(c."_MAP"['x'] AS VARCHAR) = '30'</c> and <c>JSON_VALUE(c."DOC", '$.x') = '30'</c>
-        /// are declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps
-        /// the document, where <c>c.x = '30'</c> at the service does not — and used to push only
-        /// <c>IS_DEFINED</c>. Each still implies something tighter: the value is that string, or it is
-        /// a value that renders as it. So the rule pushes
+        /// <c>JSON_VALUE(c."DOC", '$.x') = '30'</c> and <c>CAST(c."$.x" AS VARCHAR) = '30'</c> are
+        /// declined as translations — Calcite renders the stored number 30 as <c>30</c> and keeps the
+        /// document, where <c>c.x = '30'</c> at the service does not. Each still implies something
+        /// tighter: the value is that string, or it is a value that renders as it. So the rule pushes
         /// </para>
         /// <code>
         /// c.x = '30' OR c.x = 30
