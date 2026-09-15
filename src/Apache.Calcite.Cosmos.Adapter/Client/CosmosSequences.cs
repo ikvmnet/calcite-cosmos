@@ -45,12 +45,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// spans many continuations occupies no thread between them.
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="executor"/> or <paramref name="rowBuilder"/> is <c>null</c>.</exception>
-        public static async IAsyncEnumerable<TRow> ReadAsync<TRow>(ICosmosQueryExecutor executor, CosmosQuery query, Func<JsonElement, TRow> rowBuilder, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public static async IAsyncEnumerable<TRow> ReadAsync<TRow>(ICosmosQueryExecutor executor, org.apache.calcite.DataContext root, CosmosQuery query, Func<JsonElement, TRow> rowBuilder, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             if (executor is null)
                 throw new ArgumentNullException(nameof(executor));
             if (rowBuilder is null)
                 throw new ArgumentNullException(nameof(rowBuilder));
+
+            // The statement is the same object every execution; what differs is the values a prepared
+            // one left open, which is the only thing read off the context here.
+            query = CosmosQueries.Bind(query, root);
 
             await foreach (var element in executor.ExecuteAsync(query, cancellationToken: cancellationToken).ConfigureAwait(false))
                 yield return rowBuilder(element);

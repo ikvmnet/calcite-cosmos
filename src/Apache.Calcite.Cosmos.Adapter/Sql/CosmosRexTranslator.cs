@@ -459,12 +459,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case RexLiteral literal:
                     WriteLiteral(builder, literal);
                     break;
+                case org.apache.calcite.rex.RexDynamicParam parameter:
+                    WriteDynamicParam(builder, parameter);
+                    break;
                 case RexCall call:
                     WriteCall(builder, call);
                     break;
                 default:
                     throw new CosmosTranslationException($"Unsupported expression '{node.getKind().name()}' of type '{node.GetType().Name}'.");
             }
+        }
+
+        /// <summary>
+        /// Writes a dynamic parameter as a bound parameter of the statement.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The plan knows the type, which is what it needs; the value belongs to the execution.</b>
+        /// A prepared statement is compiled once and run many times, so <c>?</c> carries an ordinal
+        /// rather than a value — and every decision made here is a decision about types. Whether a
+        /// comparison is exact, whether a guard is needed, whether the path is a string: none of them
+        /// asks what the value is. So a parameter is written exactly as a literal of its type would
+        /// be, and the slot behind the name is filled in by
+        /// <see cref="Client.CosmosQueries.Bind"/> when the statement runs.
+        /// </para>
+        /// <para>
+        /// This is what a prepared statement is for, and declining it was expensive: a host that
+        /// parameterises its filters — which Entity Framework does for every one — had the comparison
+        /// weakened to a definedness test and rechecked in process, so an equality on <c>id</c> read
+        /// the container whole rather than taking a point read.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="parameter">The parameter to write.</param>
+        void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
+        {
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex())));
         }
 
         void WriteInputRef(StringBuilder builder, RexInputRef inputRef)
