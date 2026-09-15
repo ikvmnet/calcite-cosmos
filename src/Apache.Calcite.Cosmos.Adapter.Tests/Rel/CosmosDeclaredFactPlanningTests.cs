@@ -413,6 +413,133 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             PlanText(best).Should().Contain("ClrEnumerableFilter", "and the conjunct with no form is still rechecked above: " + PlanText(best));
         }
 
+        /// <summary>
+        /// The schema a temporal sort turns on: the path is there, is a scalar, and — the part that
+        /// decides the ordering — is or is not confined to one fixed ISO-8601 UTC shape.
+        /// </summary>
+        /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c> for none.</param>
+        /// <returns>The container.</returns>
+        static CosmosContainerMetadata Instant(string? pattern)
+        {
+            var declared = pattern is null ? "" : $""", "pattern": "{pattern.Replace("\\", "\\\\")}" """;
+
+            return new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                    $$"""
+                    { "type": "object", "required": ["at"],
+                      "properties": { "at": { "type": "string"{{declared}} } } }
+                    """)));
+        }
+
+        const string Instants = """SELECT JSON_VALUE(c."DOC", '$.at' RETURNING TIMESTAMP) AS "at" FROM items AS c ORDER BY 1""";
+
+        /// <summary>
+        /// A <c>TIMESTAMP</c> sort over a path whose shape is not confined must not push.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos has no date type, so the path holds a string and <c>ORDER BY c.at</c> is a
+        /// lexicographic string sort — which is the order the plan asked for only where every value
+        /// shares one shape. The .NET SDK's default serializer trims trailing zeros from the fraction,
+        /// so a container written without a converter holds <c>…:56Z</c> beside <c>…:56.5Z</c> and the
+        /// two sort the wrong way round: <c>'Z'</c> is 0x5A and <c>'.'</c> is 0x2E.
+        /// </para>
+        /// <para>
+        /// The presence and scalar claims are both made here, so null placement is settled and the
+        /// ordering is the only thing left to refuse it. That is what makes this a test of the
+        /// ordering rather than of the placement rule beside it.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnUnconfinedShapeWillNotCarryATemporalSort()
+        {
+            var container = Instant(null);
+
+            Query(FindCosmos(PlanToCosmos(Instants, container, out _)), container).Sql
+                .Should().NotContain("ORDER BY",
+                    "nothing says the stored strings share a shape, so their lexical order is not the plan's order");
+        }
+
+        /// <summary>
+        /// The same sort pushes once the declared pattern confines the shape.
+        /// </summary>
+        [TestMethod]
+        public void AFixedIsoShapeCarriesATemporalSort()
+        {
+            foreach (var pattern in new[]
+            {
+                "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z$",
+            })
+            {
+                var container = Instant(pattern);
+
+                Query(FindCosmos(PlanToCosmos(Instants, container, out _)), container).Sql
+                    .Should().Contain("ORDER BY c.at",
+                        "one fixed shape makes the lexical order chronological, for " + pattern);
+            }
+        }
+
+        /// <summary>
+        /// A range over an instant reaches the statement, in both spellings a query writes it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both shapes name the same path and differ only in where the temporal type comes from — a
+        /// <c>CAST</c> over the text accessor, or the accessor's own <c>RETURNING</c> clause. The
+        /// second carries no text operand to compare against, so the lowering rebuilds the accessor
+        /// without the clause; that this row passes is what says it rebuilt the right one.
+        /// </para>
+        /// <para>
+        /// The whole predicate leaves as one statement: an <c>ClrEnumerableFilter</c> above the
+        /// converter would mean the comparison was rechecked in process, which is what happened before
+        /// the form licensed it.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ARangeOverAFixedShapeReachesTheStatement()
+        {
+            var confined = Instant(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$");
+
+            foreach (var read in new[]
+            {
+                """JSON_VALUE(c."DOC", '$.at' RETURNING TIMESTAMP)""",
+                """CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP)""",
+            })
+            {
+                var best = PlanToCosmos(
+                    $"""SELECT c."DOC" FROM items AS c WHERE {read} > TIMESTAMP '2024-01-15 12:30:00'""",
+                    confined, out _);
+
+                Query(FindCosmos(best), confined).Sql.Should().Contain("c.at > @",
+                    "the ordering lowers to a string comparison the service can serve, for " + read);
+
+                PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                    "and nothing is left to recheck in process, for " + read);
+            }
+        }
+
+        /// <summary>
+        /// The same range over an unconfined path stays in process.
+        /// </summary>
+        [TestMethod]
+        public void ARangeOverAnUnconfinedShapeStaysInProcess()
+        {
+            var container = Instant(null);
+
+            var best = PlanToCosmos(
+                """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.at' RETURNING TIMESTAMP) > TIMESTAMP '2024-01-15 12:30:00'""",
+                container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ",
+                "nothing says the stored strings share a shape");
+
+            PlanText(best).Should().Contain("ClrEnumerableFilter",
+                "so the comparison is still applied where it always was");
+        }
+
+
     }
 
 }

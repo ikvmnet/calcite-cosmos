@@ -129,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
         public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
-            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, out keys, out paths);
+            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, null, out keys, out paths);
         }
 
         /// <summary>
@@ -147,10 +147,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="rowType">The input row type, consulted for the nullability of each key.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="nonNullFields">Ordinals the plan guarantees are never null, or <c>null</c>.</param>
+        /// <param name="sortableFields">
+        /// Ordinals holding an expression the service will order by, or <c>null</c>.
+        /// </param>
+        /// <param name="container">
+        /// The container, consulted for the stored form of a key the plan types as temporal. A
+        /// <c>null</c> container declares nothing, and such a key is refused — see
+        /// <see cref="OrderIsLexical"/>.
+        /// </param>
         /// <param name="keys">On success, the resolved keys in order.</param>
         /// <param name="paths">On success, the resolved paths in order.</param>
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
-        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
+        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, Metadata.CosmosContainerMetadata? container, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
@@ -204,6 +212,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                     return false;
 
+                // Cosmos has no temporal type, so a key the plan types as one is a string at the
+                // service and the ORDER BY compares it lexically. See OrderIsLexical.
+                var type = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().getSqlTypeName();
+                if (IsTemporal(type) && OrderIsLexical(container, path) == false)
+                    return false;
+
                 resolvedPaths[i] = path;
                 resolvedKeys[i] = new CosmosSortKey(path.ToPolicyPath(), descending);
             }
@@ -212,6 +226,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             paths = resolvedPaths;
             return true;
         }
+
+        /// <summary>
+        /// Determines whether a key the plan types as temporal is one the service orders the way the
+        /// plan means.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The question exists because Cosmos has no date type.</b> A path the plan reads as a
+        /// <c>TIMESTAMP</c> — through <c>CAST</c>, or through <c>JSON_VALUE … RETURNING TIMESTAMP</c>,
+        /// or through a view's parse — holds a JSON <em>string</em>, and <c>ORDER BY</c> over it is a
+        /// lexicographic string comparison. That is chronological order only where every value at the
+        /// path shares one fixed shape, which is exactly what
+        /// <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> records and what nothing else
+        /// says. Mixed precision sorts <c>'…:56.5Z'</c> before <c>'…:56Z'</c> — <c>'.'</c> is 0x2E and
+        /// <c>'Z'</c> is 0x5A — and a mixed <c>Z</c>/offset breaks it the same way.
+        /// </para>
+        /// <para>
+        /// <b>Refusing without a container is the safe direction and not a compromise.</b> Declining a
+        /// sort that would have been correct costs an in-process ordering; pushing one that is not
+        /// returns the rows in the wrong order and nothing downstream notices. The .NET SDK's default
+        /// serializer writes exactly the mixed path this refuses, so the unconfined case is the common
+        /// one rather than the exotic one.
+        /// </para>
+        /// <para>
+        /// <b>Only what holds outright.</b> A sort carries no predicate of its own, so there is nothing
+        /// here to prove a guarded fact from — the same argument, and the same
+        /// <c>Derive(null)</c>, that <c>CosmosSortRule.NonNullFields</c> makes for the null placement.
+        /// </para>
+        /// </remarks>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="path">The path the key resolved to.</param>
+        /// <returns><c>true</c> where the stored form makes the lexical order the plan's order.</returns>
+        static bool OrderIsLexical(Metadata.CosmosContainerMetadata? container, CosmosPath path)
+        {
+            if (container is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            return container.Facts.Derive(null).RepresentationOf(document) is Metadata.CosmosRepresentation representation
+                && representation.PreservesOrder;
+        }
+
+        /// <summary>
+        /// Determines whether a SQL type is one Cosmos has no equivalent of and stores as a string.
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <returns><c>true</c> for a date or a time.</returns>
+        static bool IsTemporal(org.apache.calcite.sql.type.SqlTypeName type) =>
+            type == org.apache.calcite.sql.type.SqlTypeName.DATE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
 
         /// <summary>
         /// Maps a field collation onto a plain ascending or descending flag, refusing any
@@ -368,7 +437,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             for (var i = 0; i < sortable.Length; i++)
                 sortable[i] = implementor.SortableExpressions[i] is not null;
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, out var keys, out var paths) == false)
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, implementor.Container, out var keys, out var paths) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to document paths.");
 
             if (implementor.Container.IsSortSupported(keys) == false)
