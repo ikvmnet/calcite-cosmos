@@ -17,6 +17,10 @@
             <Targets>src%5Cdist%5Cdist-tests:Publish</Targets>
             <Properties>PublishDir=$(DistDir)\tests</Properties>
         </TargetsForPublish>
+        <TargetsForPublish Include="$(SolutionFile)">
+            <Targets>src%5Cdist%5Cdist-benchmarks:Publish</Targets>
+            <Properties>PublishDir=$(DistDir)\benchmarks</Properties>
+        </TargetsForPublish>
     </ItemGroup>
 
     <Target Name="Publish">

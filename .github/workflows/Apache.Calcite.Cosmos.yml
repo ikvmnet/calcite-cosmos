@@ -87,23 +87,46 @@ jobs:
       with:
         name: tests
         path: dist/tests.tar.gz
+    - name: Package Benchmarks
+      run: tar czvf benchmarks.tar.gz benchmarks
+      working-directory: dist
+    - name: Upload Benchmarks
+      uses: actions/upload-artifact@v5
+      with:
+        name: benchmarks
+        path: dist/benchmarks.tar.gz
   # The benchmark corpus rots quietly: a statement that stops parsing, or one that stops pushing
   # because a rule's predicate tightened, still produces a number. `verify` plans every statement in
   # it once and fails on either — including a statement that starts pushing and is not listed as
-  # doing so, because the list is what two of the benchmark classes are run over. It also builds the
-  # project, which is the other thing this catches.
+  # doing so, because the list is what two of the benchmark classes are run over.
   #
   # It does not run benchmarks. A shared runner's timings are not comparable between runs, so
-  # measuring here would produce numbers nobody could act on.
+  # measuring here would produce numbers nobody could act on. What it does do is plan, on every
+  # platform and framework the adapter ships for, which is why it is worth a matrix: planning runs
+  # through IKVM, and a corpus that verifies on linux-x64 is not thereby known to verify on arm64 or
+  # on .NET 8.
+  #
+  # Built once by `build` and published as an artifact rather than compiled per leg, for the reason
+  # the tests are: ten legs each restoring and building the same sources is nine wasted builds, and a
+  # leg that fails should be failing about the corpus rather than about a restore.
   benchmarks:
-    name: Benchmarks
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sys:
+        - win-x64
+        - linux-x64
+        - linux-arm64
+        - osx-x64
+        - osx-arm64
+        tfm:
+        - net8.0
+        - net10.0
+    name: Benchmarks (${{ matrix.tfm }}:${{ matrix.sys }})
+    needs:
+    - build
+    runs-on: ${{ fromJSON('{"win-x86":["windows-2022"],"win-x64":["windows-2022"],"linux-x64":["ubuntu-24.04"],"linux-arm64":["ubuntu-24.04-arm"],"osx-x64":["macos-15-intel"],"osx-arm64":["macos-15"]}')[matrix.sys] }}
     steps:
-    - name: Checkout Source
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-        submodules: recursive
     - name: Setup .NET 9.0
       uses: actions/setup-dotnet@v5
       with:
@@ -112,14 +135,27 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
-    - name: Add NuGet Source (GitHub)
-      shell: pwsh
-      run: dotnet nuget update source ${{ github.repository_owner }} --source $env:GITHUB_REPOS --username USERNAME --password $env:GITHUB_TOKEN --store-password-in-clear-text
-      env:
-        GITHUB_REPOS: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Download Benchmarks
+      uses: actions/download-artifact@v5
+      with:
+        name: benchmarks
+    - name: Restore Benchmarks
+      run: tar xzvf benchmarks.tar.gz
     - name: Verify Benchmark Corpus
-      run: dotnet run --project src/Apache.Calcite.Cosmos.Benchmarks/Apache.Calcite.Cosmos.Benchmarks.csproj -c Release -f net10.0 -- verify
+      shell: pwsh
+      env:
+        # The test job runs net8.0 on these images without installing an 8.0 runtime, so one is there
+        # to be had. This says what to do if it ever is not, rather than asserting what is installed.
+        DOTNET_ROLL_FORWARD: Major
+      run: |
+        $tfm = "${{ matrix.tfm }}"
+        $dll = "./benchmarks/Apache.Calcite.Cosmos.Benchmarks/$tfm/Apache.Calcite.Cosmos.Benchmarks.dll"
+
+        if (-not (Test-Path $dll)) {
+            throw "The benchmarks artifact carries no $tfm build at $dll."
+        }
+
+        dotnet $dll verify
   test:
     strategy:
       matrix:

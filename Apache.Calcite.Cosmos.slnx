@@ -24,5 +24,6 @@
   <Folder Name="/src/dist/">
     <Project Path="src/dist-nuget/dist-nuget.csproj" />
     <Project Path="src/dist-tests/dist-tests.csproj" />
+    <Project Path="src/dist-benchmarks/dist-benchmarks.csproj" />
   </Folder>
 </Solution>
