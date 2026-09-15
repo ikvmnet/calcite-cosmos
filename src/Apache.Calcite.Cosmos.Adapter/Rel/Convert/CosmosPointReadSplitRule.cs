@@ -44,6 +44,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// without inventing a column.
     /// </para>
     /// <para>
+    /// <b>What it will not lift.</b> A residual naming a Cosmos function — <c>IS_DEFINED</c> and the rest
+    /// of <see cref="Sql.CosmosOperators"/> — stays with the service. Those are declared so a query can
+    /// name them and rendered into Cosmos SQL; none has a CLR implementation, so a plan holding one above
+    /// the converter is cheaper on paper and impossible in fact, and Calcite says so only at code
+    /// generation with <c>Unable to implement</c>. The sibling rule never meets this because everything
+    /// it lifts is, by construction, something Cosmos could not render in the first place.
+    /// </para>
+    /// <para>
     /// <b>Why it is sound.</b> The same argument as <see cref="CosmosFilterSplitRule"/>: the pushed
     /// condition is a subset of the original's top-level conjuncts, so the original implies it, and a
     /// weaker filter discards only rows the original would have discarded too. The lifted filter — the
@@ -232,6 +240,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (IsCompletePointRead(filter, pinned, _convention.Container) == false)
                 return null;
+
+            // A residual is only worth holding back if something outside the convention can evaluate it.
+            // The Cosmos functions are declared for the validator and rendered into Cosmos SQL; none has
+            // a CLR implementation, so a plan leaving one above the converter is cheaper on paper and
+            // cannot be generated at all. The sibling rule never meets this, because everything it lifts
+            // is by definition something Cosmos could not render.
+            foreach (var conjunct in residual)
+                if (Sql.CosmosOperators.ReferencesServiceOnlyFunction(conjunct))
+                    return null;
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 

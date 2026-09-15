@@ -235,6 +235,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// A residual only the service can evaluate cannot be lifted, however cheap the read would be.
+        /// <c>IS_STRING</c>, like the rest of <c>CosmosOperators</c>, has no CLR implementation, so a
+        /// plan that leaves it above the converter cannot be generated at all — Calcite fails only at
+        /// code generation, with "Unable to implement", which is how CI found this.
+        /// The rule has to decline rather than offer a plan that is cheaper and impossible.
+        /// </remarks>
+        [TestMethod]
+        public void AResidualOnlyTheServiceCanEvaluateIsNotLifted()
+        {
+            Use(SmallDocuments());
+
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(c.\"$.category\")");
+
+            Text(plan).Should().NotContain("ClrEnumerableFilter",
+                "a Cosmos function has no CLR implementation, so a filter carrying it cannot be implemented above the converter");
+
+            var query = Query(Find<CosmosFilter>(plan)!);
+
+            query.PointReadId.Should().BeNull("the whole predicate has to stay with the service");
+            query.Sql.Should().Contain("IS_STRING");
+        }
+
+        /// <remarks>
         /// And nothing changes where the pinned half is not a complete point read on its own: holding a
         /// residual back would weaken the pushed predicate for no read in return.
         /// </remarks>
