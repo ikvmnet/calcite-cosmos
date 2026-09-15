@@ -113,6 +113,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                     await container.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("category").GetString()), cancellationToken: cts.Token);
                 }
 
+                // A second container, declared with a JSON Schema below. It exists so that the
+                // contradiction rewrite is exercised against a service: a declared domain plus a
+                // query asking outside it is the only way to reach the constant predicate, and
+                // nothing else in the suite declares a schema on a container it can query.
+                var declared = new ContainerProperties("catalog", "/kind");
+
+                try { await database.GetContainer("catalog").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
+                var catalog = (await database.CreateContainerIfNotExistsAsync(declared, cancellationToken: cts.Token)).Container;
+
+                foreach (var json in new[]
+                {
+                    """{"id":"b1","kind":"book","title":"Atlas"}""",
+                    """{"id":"d1","kind":"disc","title":"Nocturnes"}""",
+                })
+                {
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var doc = JsonDocument.Parse(json);
+                    await catalog.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("kind").GetString()), cancellationToken: cts.Token);
+                }
+
                 _client = client;
             }
             catch (Exception e)
@@ -159,7 +179,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 "endpoint": "{{Endpoint}}",
                 "key": "{{Key}}",
                 "database": "{{DatabaseName}}",
-                "containers": [ "products" ],
+                "containers": [
+                  "products",
+                  {
+                    "name": "catalog",
+                    "schema": {
+                      "type": "object",
+                      "properties": { "kind": { "enum": ["book", "disc"] } }
+                    }
+                  }
+                ],
                 "connectionMode": "gateway"
               }
             },
@@ -217,6 +246,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             values.Sort(StringComparer.Ordinal);
             return values;
+        }
+
+        /// <summary>
+        /// A predicate the declared domain contradicts returns nothing, and the service accepts the
+        /// statement that says so.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The half of the contradiction rewrite a planner test cannot reach. Where the declaration
+        /// and the query cannot both hold, the predicate is rewritten to the constant — which renders
+        /// as <c>WHERE @p0</c> with a bound boolean, because the translator binds every literal rather
+        /// than inlining one. Whether Cosmos accepts a lone bound boolean as a whole <c>WHERE</c>
+        /// clause is a question about the service, and this is what asks it.
+        /// </para>
+        /// <para>
+        /// A hard error rather than an empty result is the failure being guarded against: the rewrite
+        /// turns a query that was merely slow into one that does not run.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task AContradictedPredicateReturnsNothingAtTheService()
+        {
+            RequireService();
+
+            var none = await QueryAsync("""SELECT c."id" FROM "catalog" AS c WHERE JSON_VALUE(c."DOC", '$.kind') = 'poster'""");
+            none.Should().BeEmpty("no document holds a kind outside the declared domain");
+        }
+
+        /// <summary>
+        /// And the same container answers a predicate the domain admits, so the row above is empty
+        /// because of the contradiction rather than because nothing is there.
+        /// </summary>
+        [TestMethod]
+        public async Task TheSameContainerStillAnswersASatisfiablePredicate()
+        {
+            RequireService();
+
+            var books = await QueryAsync("""SELECT c."id" FROM "catalog" AS c WHERE JSON_VALUE(c."DOC", '$.kind') = 'book'""");
+            books.Should().Equal("b1");
         }
 
         /// <summary>

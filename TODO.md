@@ -1053,13 +1053,16 @@ filter into an empty `Values`, is configured for a `LogicalFilter` and does not 
 it changes nothing; measured. Getting to no statement at all means detecting the contradiction on the
 *logical* filter, in a rule of its own that produces the empty relation, which is its own change.
 
-**And one thing is unmeasured.** The constant renders as `WHERE @p0` with a boolean parameter, because
-the translator binds every literal rather than inlining — deliberately, so that statement text is
-independent of data. Whether Cosmos accepts a lone bound boolean as a whole `WHERE` clause has not
-been checked against a service: no service-backed test class declares a schema, so none of them
-reaches this path, and the owner's standing instruction is not to run an emulator locally. The
-failure mode if it is wrong is narrow but real — a hard error on a query whose correct answer is no
-rows. Worth a fixture before this is relied on.
+**And one thing is measured only on CI.** The constant renders as `WHERE @p0` with a boolean
+parameter, because the translator binds every literal rather than inlining — deliberately, so that
+statement text is independent of data. Whether Cosmos accepts a lone bound boolean as a whole `WHERE`
+clause is a question about the service, and no service-backed class declared a schema on a container
+it could query, so nothing reached the path. `CosmosConnectionFunctionTests` now builds a second
+container, `catalog`, declared with an `enum`, and asks it for a value outside the domain; a sibling
+test asks for one inside it, so an empty answer is the contradiction rather than an empty container.
+Both need a service and report inconclusive without one, which means the `linux-x64` leg is where they
+actually run. The failure mode being guarded against is narrow but real: the rewrite turns a query
+that was merely slow into one that does not run.
 
 **Not built, and the other two conclusions are where the rest of the value is.** A declared *tautology*
 — `kind` is `const: "A"` and the query says `kind = 'A'` — could be dropped, and the payoff is the one
