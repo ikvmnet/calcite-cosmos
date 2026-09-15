@@ -1031,6 +1031,45 @@ and section 6 records why it is not the same job — `CAST(<string> AS TIMESTAMP
 back as is its own question. A temporal sort is not unavailable meanwhile: the `RETURNING TIMESTAMP`
 spelling binds to the path directly and pushes, gated on the same bit.
 
+### The value claims are read as conclusions now, and only the first of three
+
+`EqualTo`, `OneOf` and `NotEqualTo` were produced from `const`, `enum` and a discriminated `oneOf`,
+carried through `Entails`, and used as **premises** — what a query proves, to unlock a guarded fact.
+Nothing read one as a **conclusion**, as a statement about the data that changes a plan. The same
+shape `PreservesOrder` was in before #106, and not recorded here either until now.
+
+**Built: a contradicted predicate keeps nothing.** `CosmosFact.Excludes` is the exclusion table beside
+`Entails` — a separate table because exclusion is not entailment's negation, most pairs being neither,
+and `CosmosFactSet.IsContradictory` asks it of every path. Where the container's declaration and the
+query's own conjuncts cannot both hold, `CosmosFactRewriter` answers the constant. Declare
+`status` as `enum: ["active","archived"]`, ask for `'deleted'`, and the plan carries
+`CosmosFilter(condition=[false])` rather than a comparison. A guarded declaration reaches the same
+answer by the argument it always uses: over a document the guard does not cover the conjunct that
+proved it has already excluded the row.
+
+**It still costs one round trip, and should not.** The constant is reached inside the converter, so it
+lands on a `CosmosFilter` — and `CoreRules.FILTER_REDUCE_EXPRESSIONS`, which turns an always-false
+filter into an empty `Values`, is configured for a `LogicalFilter` and does not match it. Registering
+it changes nothing; measured. Getting to no statement at all means detecting the contradiction on the
+*logical* filter, in a rule of its own that produces the empty relation, which is its own change.
+
+**And one thing is unmeasured.** The constant renders as `WHERE @p0` with a boolean parameter, because
+the translator binds every literal rather than inlining — deliberately, so that statement text is
+independent of data. Whether Cosmos accepts a lone bound boolean as a whole `WHERE` clause has not
+been checked against a service: no service-backed test class declares a schema, so none of them
+reaches this path, and the owner's standing instruction is not to run an emulator locally. The
+failure mode if it is wrong is narrow but real — a hard error on a query whose correct answer is no
+rows. Worth a fixture before this is relied on.
+
+**Not built, and the other two conclusions are where the rest of the value is.** A declared *tautology*
+— `kind` is `const: "A"` and the query says `kind = 'A'` — could be dropped, and the payoff is the one
+#92 established: `TryExtractPointRead` refuses any conjunct that is not an `id` or partition-key
+equality, so a redundant conjunct is what stands between a routed query at 2.82 RU and a point read at
+1.00. And a `const` partition key means every document is in one logical partition, so
+`CosmosPartitionKeyExtractor` — which never consults the declaration at all today — could route a
+query that pins nothing. That last one would also give the fan-out measurement below something to be
+priced against.
+
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 
 `WHERE <path> = ?` is weakened to a definedness test even where the container declares the path a

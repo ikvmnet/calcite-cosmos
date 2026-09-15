@@ -83,6 +83,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             (representation.PreservesOrder ? 2 : 0) + (representation.PreservesEquality ? 1 : 0);
 
         /// <summary>
+        /// Gets whether what is known cannot all hold of one document.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Which means the predicate keeps nothing.</b> This set is what the container declares
+        /// closed under what the query's own conjuncts established, so a contradiction in it is a
+        /// contradiction between the two: a document satisfying the predicate would have to hold a
+        /// value the declaration says it does not. There is no such document, and the plan need not
+        /// ask the service for one.
+        /// </para>
+        /// <para>
+        /// <b>A guarded declaration reaches the same answer by the argument it always uses.</b> Over
+        /// a document the guard does not cover, the conjunct that proved the guard has already
+        /// excluded the row; over one it does, the declared claim holds and contradicts. Either way
+        /// nothing survives.
+        /// </para>
+        /// <para>
+        /// Quadratic in the claims on one path and linear in paths, which costs nothing because a
+        /// path carries few claims — the same assumption asking a question makes.
+        /// </para>
+        /// </remarks>
+        public bool IsContradictory
+        {
+            get
+            {
+                foreach (var known in _byPath.Values)
+                    for (var i = 0; i < known.Count; i++)
+                        for (var j = i + 1; j < known.Count; j++)
+                            if (known[i].Excludes(known[j]))
+                                return true;
+
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Returns everything known about a path, for diagnostics.
         /// </summary>
         /// <param name="path">The path.</param>
