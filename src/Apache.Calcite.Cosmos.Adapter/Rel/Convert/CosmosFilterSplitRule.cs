@@ -95,17 +95,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         internal static CosmosTable? FindTable(RelNode? node)
         {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
+            return FindTable(node, CosmosPlanMembers.NewSeen());
+        }
 
-            return node switch
+        /// <inheritdoc cref="FindTable(RelNode?)" />
+        /// <remarks>
+        /// Every member is asked, not one representative: which container a subtree reads is a
+        /// question about its <em>shape</em>, and a member whose type none of the cases mention
+        /// answers "none" for a plan that reads one. See <see cref="CosmosPlanMembers"/>.
+        /// </remarks>
+        /// <param name="node">The subtree.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            foreach (var member in CosmosPlanMembers.Of(node))
             {
-                TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
-                Filter filter => FindTable(filter.getInput()),
-                Project project => FindTable(project.getInput()),
-                Correlate correlate => FindTable(correlate.getLeft()),
-                _ => null,
-            };
+                if (seen.Add(member) == false)
+                    continue;
+
+                var found = member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
+                    Filter filter => FindTable(filter.getInput(), seen),
+                    Project project => FindTable(project.getInput(), seen),
+                    Correlate correlate => FindTable(correlate.getLeft(), seen),
+                    _ => null,
+                };
+
+                if (found is not null)
+                    return found;
+            }
+
+            return null;
         }
 
         /// <inheritdoc />
@@ -984,18 +1005,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     applied.Add(((RexNode)conjuncts.get(i)).toString());
             }
 
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-            {
-                var alternatives = subset.getRelList();
-                for (var i = 0; i < alternatives.size(); i++)
-                    Collect((RelNode)alternatives.get(i));
-
-                Collect(subset.getOriginal());
-            }
-            else
-            {
-                Collect(node);
-            }
+            // Every expression the node stands for, which this did by hand before CosmosPlanMembers
+            // existed and is the pattern that class was named after: a conjunct applied in any member
+            // is applied to the relation, and missing one re-pushes a weakening under itself.
+            foreach (var member in Rel.CosmosPlanMembers.Of(node))
+                Collect(member);
 
             return applied;
         }

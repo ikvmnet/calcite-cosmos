@@ -87,18 +87,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsRestrictable(RelNode? node)
         {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
+            return IsRestrictable(node, CosmosPlanMembers.NewSeen());
+        }
 
-            return node switch
+        /// <inheritdoc cref="IsRestrictable(RelNode?)" />
+        /// <remarks>
+        /// Finding the chain in any member establishes it of the relation, the members being
+        /// equivalent; not finding it in one establishes nothing about the others. So this asks every
+        /// member and takes the first that answers, which is more permissive than taking a
+        /// representative and is sound for the same reason. See <see cref="CosmosPlanMembers"/>.
+        /// </remarks>
+        /// <param name="node">The subtree.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        static bool IsRestrictable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            foreach (var member in CosmosPlanMembers.Of(node))
             {
-                null => false,
-                TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable,
-                Filter filter => IsRestrictable(filter.getInput()),
-                Project project => IsRestrictable(project.getInput()),
-                Correlate correlate => IsRestrictable(correlate.getLeft()),
-                _ => false,
-            };
+                if (seen.Add(member) == false)
+                    continue;
+
+                var restrictable = member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable,
+                    Filter filter => IsRestrictable(filter.getInput(), seen),
+                    Project project => IsRestrictable(project.getInput(), seen),
+                    Correlate correlate => IsRestrictable(correlate.getLeft(), seen),
+                    _ => false,
+                };
+
+                if (restrictable)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -106,17 +127,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         static CosmosTable? FindTable(RelNode? node)
         {
-            if (node is org.apache.calcite.plan.volcano.RelSubset subset)
-                node = subset.getOriginal() ?? subset.getBest();
+            return FindTable(node, CosmosPlanMembers.NewSeen());
+        }
 
-            return node switch
+        /// <inheritdoc cref="FindTable(RelNode?)" />
+        /// <remarks>
+        /// Every member is asked, not one representative: which container a subtree reads is a
+        /// question about its <em>shape</em>, and a member whose type none of the cases mention
+        /// answers "none" for a plan that reads one. See <see cref="CosmosPlanMembers"/>.
+        /// </remarks>
+        /// <param name="node">The subtree.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            foreach (var member in CosmosPlanMembers.Of(node))
             {
-                TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
-                Filter filter => FindTable(filter.getInput()),
-                Project project => FindTable(project.getInput()),
-                Correlate correlate => FindTable(correlate.getLeft()),
-                _ => null,
-            };
+                if (seen.Add(member) == false)
+                    continue;
+
+                var found = member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
+                    Filter filter => FindTable(filter.getInput(), seen),
+                    Project project => FindTable(project.getInput(), seen),
+                    Correlate correlate => FindTable(correlate.getLeft(), seen),
+                    _ => null,
+                };
+
+                if (found is not null)
+                    return found;
+            }
+
+            return null;
         }
 
         /// <summary>

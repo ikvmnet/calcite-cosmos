@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (GetUncollect(correlate) is not Uncollect uncollect)
                 return null;
 
-            if (Strip(uncollect.getInput()) is not Project project || project.getProjects().size() != 1)
+            if (CosmosPlanMembers.First<Project>(uncollect.getInput()) is not Project project || project.getProjects().size() != 1)
                 return null;
 
             return (RexNode)project.getProjects().get(0);
@@ -78,12 +78,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static Uncollect? GetUncollect(Correlate correlate)
         {
-            var right = Strip(correlate.getRight());
+            // Every member, not one representative: whether the right side presents an Uncollect is
+            // a question about its shape, and members are equivalent as relations rather than as
+            // trees. See CosmosPlanMembers.
+            var uncollect = CosmosPlanMembers.First<Uncollect>(correlate.getRight());
 
-            if (right is Filter filter)
-                right = Strip(filter.getInput());
+            if (uncollect is null && CosmosPlanMembers.First<Filter>(correlate.getRight()) is Filter filter)
+                uncollect = CosmosPlanMembers.First<Uncollect>(filter.getInput());
 
-            if (right is not Uncollect uncollect)
+            if (uncollect is null)
                 return null;
 
             // Cosmos has no way to surface an element's position.
@@ -114,27 +117,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>The shifted predicate, or <c>null</c>.</returns>
         public static RexNode? GetElementCondition(Correlate correlate)
         {
-            if (Strip(correlate.getRight()) is not Filter filter)
+            if (CosmosPlanMembers.First<Filter>(correlate.getRight()) is not Filter filter)
                 return null;
 
             return RexUtil.shift(filter.getCondition(), correlate.getLeft().getRowType().getFieldCount());
-        }
-
-        /// <summary>
-        /// Resolves an input to a concrete node.
-        /// </summary>
-        /// <remarks>
-        /// Once a tree is registered with the Volcano planner, an operator's inputs are equivalence
-        /// sets rather than the nodes themselves, so a rule inspecting more than its own node has
-        /// to see through them. This is why the rule is written against the whole correlate: the
-        /// shape it needs spans three levels, and only the top one is bound directly.
-        /// </remarks>
-        static RelNode? Strip(RelNode? node)
-        {
-            for (var i = 0; node is org.apache.calcite.plan.volcano.RelSubset subset && i < 8; i++)
-                node = subset.getBest() ?? subset.getOriginal();
-
-            return node;
         }
 
         /// <summary>
