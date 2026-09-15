@@ -151,8 +151,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-
             var below = AlreadyApplied(filter.getInput());
 
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
@@ -163,6 +161,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
 
             var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
+
+            // What the container knows, closed under the conjuncts that reach the service on their
+            // own. Those and no others, because a fact licenses a comparison only where the conjunct
+            // that proved it is applied beside it: a guard left above in the residual would leave the
+            // service deciding rows the guard was meant to have excluded. Admitting more can only
+            // grow the pushable half, so every conjunct this pass is derived from is still pushed.
+            var facts = Establish(conjuncts, fields, container, rexBuilder, readings);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
 
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
@@ -190,6 +196,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             return (pushable, residual);
         }
 
+
+        /// <summary>
+        /// Closes the container's facts under the conjuncts that translate unaided.
+        /// </summary>
+        /// <remarks>
+        /// The first of two passes, and the reason there are two. A conjunct may translate only
+        /// <em>because</em> of a fact, and that fact may hold only because of another conjunct — so
+        /// the facts have to be established before the split and from conjuncts that are certain to be
+        /// pushed. One that translates with no help is certain; one that needed help is not, until the
+        /// split says so. Deriving from the whole predicate instead would push a comparison whose
+        /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
+        /// </remarks>
+        static Metadata.CosmosFactSet Establish(
+            java.util.List conjuncts,
+            IReadOnlyList<CosmosPath?> fields,
+            Metadata.CosmosContainerMetadata container,
+            RexBuilder rexBuilder,
+            IReadOnlyList<CosmosReading>? readings)
+        {
+            if (container.Facts.IsEmpty)
+                return Metadata.CosmosFactSet.Empty;
+
+            var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
+            var established = new List<Metadata.CosmosFact>();
+
+            for (var i = 0; i < conjuncts.size(); i++)
+                if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
+                    established.AddRange(Metadata.CosmosFactExtractor.Extract((RexNode)conjuncts.get(i), fields, CosmosImplementor.DefaultRootAlias));
+
+            return container.Facts.Derive(established);
+        }
 
         /// <summary>
         /// Weakens a comparison over a text accessor to the case where the two agree, or returns

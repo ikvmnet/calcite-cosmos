@@ -62,8 +62,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
-            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings);
-            return translator.TryTranslate(Pushed(convention, filter, fields), out _);
+            var condition = Pushed(convention, filter, fields);
+
+            // What the container knows, closed under what this predicate proves. Safe to hand over
+            // here and not in the split rule: this rule pushes the condition whole, so a conjunct that
+            // licensed another is applied at the service beside it. Where only part of a predicate is
+            // pushed that no longer holds, and the split rule is left alone until it can say which
+            // conjuncts reached the service.
+            var facts = convention.Container is CosmosContainerMetadata container
+                ? container.Facts.Derive(CosmosFactExtractor.Extract(condition, fields, CosmosImplementor.DefaultRootAlias))
+                : CosmosFactSet.Empty;
+
+            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings, facts);
+            return translator.TryTranslate(condition, out _);
         }
 
         /// <summary>

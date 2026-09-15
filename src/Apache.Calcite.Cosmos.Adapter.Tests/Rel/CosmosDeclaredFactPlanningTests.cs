@@ -180,6 +180,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A declared type closes the gap an ordering comparison over the accessor has: the refusal
+        /// rests on the service ordering raw values across JSON types while Calcite orders their
+        /// renderings, and where the container says the path holds a string there is no second type
+        /// for them to disagree over.
+        /// </summary>
+        [TestMethod]
+        public void ADeclaredTypeMakesAnOrderingComparisonExactRatherThanWeakened()
+        {
+            const string Typed = """
+            { "properties": { "at": { "type": "string",
+                                      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" } } }
+            """;
+
+            var container = new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Typed)));
+
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.at') >= '2024-01-01T00:00:00Z'""", container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.at >= @");
+            query.Sql.Should().NotContain("IS_STRING", "the guard admitted the types the schema says are not there");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+                "and with nothing left to recheck the filter is wholly pushed: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// And without the declaration it is weakened exactly as it was.
+        /// </summary>
+        [TestMethod]
+        public void WithoutADeclaredTypeAnOrderingComparisonIsStillWeakened()
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.at') >= '2024-01-01T00:00:00Z'""", container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("NOT IS_STRING(c.at)");
+            PlanText(best).Should().Contain("ClrEnumerableFilter", "the comparison is still Calcite's to make: " + PlanText(best));
+        }
+
+        /// <summary>
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>

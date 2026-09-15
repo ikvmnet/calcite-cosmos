@@ -406,25 +406,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             var type = node.get("type");
 
-            // A union type states only what its members agree on, which is nothing — except for the
-            // idiomatic ["t", "null"], whose non-null member is the type when the value is there.
+            // A union type states only what its members agree on, which is nothing. The idiomatic
+            // ["t", "null"] is the one that looks like an exception and is not: a document storing a
+            // JSON null conforms to it and is not of type t, so claiming t would be a fact the schema
+            // never stated. Nullability wants a claim of its own before this can say anything.
             if (type is not null && type.isArray())
-            {
-                string? single = null;
-
-                for (var i = 0; i < type.size(); i++)
-                {
-                    var name = type.get(i)?.asText();
-                    if (name == "null")
-                        continue;
-                    if (single is not null)
-                        return null;
-
-                    single = name;
-                }
-
-                return single is null ? null : Parse(single);
-            }
+                return null;
 
             return type is not null && type.isTextual() ? Parse(type.asText()) : null;
         }
