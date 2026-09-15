@@ -95,6 +95,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         string Rewrite(RexNode condition, string? schema) =>
             CosmosFactRewriter.Rewrite(condition, _fields, Container(schema), "c", _rex).ToString();
 
+        const string Millis = """
+        { "properties": { "ref": { "type": "string",
+                                   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" } } }
+        """;
+
+        const string Seconds = """
+        { "properties": { "ref": { "type": "string",
+                                   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" } } }
+        """;
+
+        const string Unshaped = """{ "properties": { "ref": { "type": "string" } } }""";
+
+        /// <summary>A <c>TIMESTAMP</c> literal, at millisecond precision.</summary>
+        RexNode Instant(string text) => _rex.makeTimestampLiteral(new org.apache.calcite.util.TimestampString(text), 3);
+
+        /// <summary><c>CAST(&lt;ref&gt; AS TIMESTAMP)</c>, the shape a view over an instant produces.</summary>
+        RexNode AsInstant() => _rex.makeCast(_types.createSqlType(SqlTypeName.TIMESTAMP), Ref(0, SqlTypeName.VARCHAR));
+
+        /// <summary>
+        /// An ordering over a path confined to one fixed shape lowers to a string comparison, with
+        /// the literal written in that shape.
+        /// </summary>
+        [TestMethod]
+        public void AnOrderingOverAFixedShapeLowersToAStringComparison()
+        {
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
+                .Should().Be(""">($0, '2024-01-15T12:30:00.000Z')""",
+                    "the lexical order of a fixed shape is the chronological one, and the literal joins that shape");
+        }
+
+        /// <summary>
+        /// A literal carrying less precision than the path stores is written out in full, which loses
+        /// nothing and is the ordinary case.
+        /// </summary>
+        [TestMethod]
+        public void ACoarserLiteralIsWrittenOutInTheStoredShape()
+        {
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
+                .Should().Be("""<=($0, '2024-01-15T12:30:00.000Z')""");
+        }
+
+        /// <summary>
+        /// Reading the path off the right-hand operand means reading the comparison backwards, so the
+        /// operator is reversed with it.
+        /// </summary>
+        /// <remarks>
+        /// The case that would be silently wrong rather than merely unpushed: keeping the operator as
+        /// written turns <c>&lt;literal&gt; &gt; &lt;path&gt;</c> into <c>&lt;path&gt; &gt;
+        /// &lt;literal&gt;</c>, which selects the complement of what the query asked for.
+        /// </remarks>
+        [TestMethod]
+        public void TheOperatorIsReversedWhenTheLiteralIsOnTheLeft()
+        {
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsInstant()), Millis)
+                .Should().Be("""<($0, '2024-01-15T12:30:00.000Z')""",
+                    "`literal > path` is `path < literal`");
+        }
+
+        /// <summary>
+        /// A literal finer than the stored shape lowers nothing, truncating it not being an
+        /// equivalence.
+        /// </summary>
+        /// <remarks>
+        /// Against a seconds path, <c>&gt; '…12:30:00.5'</c> truncated to <c>&gt; '…12:30:00Z'</c>
+        /// would admit the stored value <c>12:30:00Z</c>, which is earlier than the literal. So the
+        /// comparison stays where it was and is applied in process.
+        /// </remarks>
+        [TestMethod]
+        public void ALiteralFinerThanTheStoredShapeLowersNothing()
+        {
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00.500"));
+
+            Rewrite(condition, Seconds).Should().Be(condition.ToString(), "truncating the literal would select different rows");
+        }
+
+        /// <summary>
+        /// A path with no declared shape lowers no ordering, whatever else is known about it.
+        /// </summary>
+        /// <remarks>
+        /// The common case rather than the exotic one: the .NET SDK's default serializer trims
+        /// trailing zeros from the fraction, so a container written without a converter holds exactly
+        /// the mixed path this refuses.
+        /// </remarks>
+        [TestMethod]
+        public void AnUnshapedPathLowersNoOrdering()
+        {
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00"));
+
+            Rewrite(condition, Unshaped).Should().Be(condition.ToString());
+            Rewrite(condition, null).Should().Be(condition.ToString(), "and a container declaring nothing proves nothing");
+        }
+
+        /// <summary>
+        /// A form that preserves equality and not order lowers the equality and refuses the ordering.
+        /// </summary>
+        /// <remarks>
+        /// The two properties are independent, and this is the pair that shows it: an unconfined
+        /// canonical UUID has one spelling per value, so equality is exact, while Calcite's order over
+        /// it is not the lexical one. Nothing about the ordering follows from the equality.
+        /// </remarks>
+        [TestMethod]
+        public void AnEqualityOnlyFormStillRefusesTheOrdering()
+        {
+            var ordering = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
+                _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Ref(0, SqlTypeName.VARCHAR)),
+                Uuid(Canonical));
+
+            Rewrite(ordering, Unconditional).Should().Be(ordering.ToString(), "only the equality was ever licensed");
+            Rewrite(UuidEquality(), Unconditional).Should().Contain("'" + Canonical + "'", "while the equality still lowers");
+        }
+
         [TestMethod]
         public void ADeclaredFormLowersTheComparisonToAStringEquality()
         {

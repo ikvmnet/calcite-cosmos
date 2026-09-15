@@ -725,6 +725,117 @@ half — string comparisons, and those *do* have the recheck escape.
 
 See *Temporal* above, whose prerequisite this is a narrower statement of.
 
+#### Partly built, and the unbuilt part is named
+
+**The sort was not merely unpushed — one spelling of it pushed unguarded, which was a wrong answer.**
+`JSON_VALUE(doc, '$.at' RETURNING TIMESTAMP)` resolves to a path (`TryResolvePath` accepts a
+two-or-more-operand accessor and the `RETURNING` flags are trailing operands nothing reads), so a sort
+over one bound to the path and rendered as `ORDER BY c.at` — a lexicographic string sort the plan
+believed was chronological. Measured, over a container declaring `at` present and a string and nothing
+about its shape:
+
+```
+SELECT VALUE { "at": (IS_PRIMITIVE(c.at) ? c.at : null) } FROM items c ORDER BY c.at ASC
+```
+
+The .NET SDK's default serializer writes exactly the mixed path that breaks, so this was the common
+case rather than the exotic one — see *Why the SDK writes an unsortable shape* below.
+`CosmosSort.OrderIsLexical` now gates it on `PreservesOrder`, and refuses where no container is in
+hand. Two tests pin both directions.
+
+**Built, with the ordering licensed:**
+
+- **The temporal rows are generated rather than written out**, the way the UUID rows are, because
+  what makes a shape usable is its *fixedness* and not which shape it is. Five spellings became
+  seventy-seven, across four axes: fraction width (0–9 digits, seven being a tick and nine what a Java
+  or Go writer produces), zero-offset spelling (`Z`, `+00:00`, absent), extended against basic format
+  (`2024-01-15T12:30:00Z` against `20240115T123000Z`), and how much of the instant is stored at all —
+  minute precision, a calendar date in either format, a year-month, and a clock with no date.
+  `iso8601-utc-seconds`, `-milliseconds`, `-microseconds`, `-ticks` and `iso8601-date` keep their
+  names; the rest are named systematically.
+- **What is never generated is the shape that varies**, and that is the whole of the argument: a
+  fraction of unstated width (`[0-9]{1,7}`, `[0-9]+`, or an optional group) and an offset not pinned
+  to zero both admit a conforming document the order gets wrong. `AShapeThatVariesIsNotRecognised`
+  pins all six spellings of that.
+- **A clock with no date is recognised but not renderable.** Its lexical order *is* its chronological
+  order, so a sort over one is sound; writing an instant into it would drop the date, so
+  `RenderDateTime` answers null and the comparison stays in process. Recognition and renderability are
+  separate questions and this is the row that shows it.
+- **`Normalise` gained a fourth identity**: for an atom matching one character, `A{m}A{n}` and
+  `A{m+n}` accept the same strings, and so do `A` and `A{1}`. That collapses the axis a date pattern
+  varies along most — `\d\d\d\d-\d\d-\d\d` is as common as `\d{4}-\d{2}-\d{2}`. Only the counted
+  quantifier merges; `?`, `*`, `+` and `{m,n}` all admit a range of widths, which is the one property
+  these forms turn on, so an atom carrying one ends the run beside it.
+- `CosmosStoredForms.RenderDateTime` — the instant analogue of `RenderUuid`, writing a literal in the
+  path's own shape, driven by the same generated table. It **refuses a literal finer than the form**
+  rather than truncating: against a seconds path, `> '…12:30:00.5'` truncated to `> '…12:30:00Z'`
+  admits a stored `12:30:00Z` that is earlier than the literal. A coarser literal is written out in
+  full and loses nothing.
+- `CosmosFactRewriter.TryLowerInstant` — `=`, `<>`, `<`, `<=`, `>`, `>=` over `CAST(<path> AS
+  TIMESTAMP)` and over `JSON_VALUE(…, RETURNING TIMESTAMP)`, lowered to a string comparison. The
+  flipped orientation reverses the operator, which is the case that would have been silently wrong
+  rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
+  `PreservesOrder`, so a UUID still reaches the equality alone.
+
+**Not built, and each for a stated reason:**
+
+- **`ORDER BY CAST(<path> AS TIMESTAMP)` still does not push** — measured, `SELECT VALUE c FROM items
+  c` under a `ClrEnumerableSort`. This is the cast-drop the paragraph above calls *the* change, and it
+  is the one thing here that is not done. The range rewrite reaches it because a filter's predicate is
+  rewritten before the split rule reads it; a sort key is not a predicate. The key is a *computed
+  projection*, so `fields[index]` is null and the key is refused before its form is ever asked about.
+  Licensing it means the implementor carrying a temporal binding per ordinal the way it already
+  carries `SortableExpressions` — `CosmosProject.Implement` recording that ordinal *n* is the path
+  `c.at` read as an instant — so that the rule and the implementation decide on the same binding. Note
+  the spelling is less urgent than it looks: section 6 records that `CAST(<string> AS TIMESTAMP)`
+  accepts only `yyyy-MM-dd HH:mm:ss` and *raises* on every ISO-8601 form a document stores, so the
+  cast is the spelling that cannot work in process, while `RETURNING` is the one that does.
+- **A space-separated instant is not recognised, and the obstacle is the normaliser rather than the
+  shape.** `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
+  `isoformat(sep=' ')` and a good many SQL exports write it. But `Normalise` strips whitespace outside
+  a character class, on the stated grounds that it "means nothing in an unextended ECMA-262 pattern",
+  and that is **not so**: whitespace is significant in ECMA-262, which is the dialect JSON Schema
+  specifies, and only the `x` flag other dialects have makes it insignificant. So the space-separated
+  pattern cannot be told apart from one written with no separator at all, and registering it would
+  claim this form for that one. Two consequences, and the second is the one worth acting on: the
+  shape stays unsupported, and a declared pattern carrying *significant* whitespace is today
+  recognised as the form it would be without it — which is a wrong answer rather than a missing
+  feature, since `RenderUuid` then writes a spelling the stored values do not have. The rule is
+  pinned by a row in `TheSpellingsInTheWildAreRecognised`, so flipping it is a deliberate change and
+  not a bug fix to slip in; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that would flip
+  with it.
+- **`PARSE_TIMESTAMP`, `PARSE_DATETIME`, `TO_TIMESTAMP` are not recognised.** Adding them is not the
+  one-line extension of `TextAccessorOf` it appears to be, because the parse carries a *format* and
+  the rewrite is an equivalence only where that format denotes the path's stored shape — a format
+  that does not match parses to null for every row, and ordering by the path is then not what
+  ordering by the parse means. Recognising the format is the *form-preserving chain* this section
+  already names as the notion needed; a spelling table per form, in the manner of
+  `CosmosStoredForms.Recognise`, is the sound way to it and none of it is measured yet.
+
+### Why the SDK writes an unsortable shape
+
+Worth recording because it settles how common the mixed path is, and it is not a matter of opinion.
+The .NET SDK never chose a date format: `CosmosJsonDotNetSerializer` is Newtonsoft at stock settings,
+and Newtonsoft's ISO writer emits the *minimum* fraction digits because ISO 8601 treats trailing
+fractional zeros as insignificant. System.Text.Json's ISO 8601-1:2019 profile trims the same way, so
+switching serializers does not help. `DateTime.UtcNow` carries seven significant tick digits about
+nine times in ten, so the shape wobbles between six and seven digits; a deliberately truncated value —
+`DateTime.Today`, a parsed `"2024-01-15"` — drops the fraction entirely and sorts *after* everything
+with one.
+
+Azure's own documentation recommends `yyyy-MM-ddTHH:mm:ss.fffffffZ` and then asserts, wrongly, that
+ordering "is preserved when they're transformed to strings". Two issues report the contradiction —
+[#1468](https://github.com/Azure/azure-cosmos-dotnet-v3/issues/1468), closed with no fix or rationale
+posted, and [#4904](https://github.com/Azure/azure-cosmos-dotnet-v3/issues/4904), open since November
+2024 with no maintainer reply. `CosmosSerializationOptions` exposes no date handling and
+`CosmosJsonDotNetSerializer` is `internal sealed`, so the documented format requires writing an entire
+`CosmosSerializer`; requests to expose the settings ([#551](https://github.com/Azure/azure-cosmos-dotnet-v3/issues/551),
+[#1813](https://github.com/Azure/azure-cosmos-dotnet-v3/issues/1813)) have stood for years.
+
+So: a container written by an ordinary .NET application has a mixed path and is correctly refused, and
+a container that applied a converter has one of the fixed shapes and is correctly licensed. That is
+the distribution the gate is sized for.
+
 ### Clause-level
 
 - **Native `IN` and `BETWEEN` — closed by measurement, not built.** `expandSearch` turns both into

@@ -299,6 +299,152 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 CosmosStoredForms.Recognise(pattern).Should().Be(expected, "for " + pattern);
         }
 
+        /// <summary>
+        /// The temporal shapes, across every axis a fixed spelling can vary along.
+        /// </summary>
+        /// <remarks>
+        /// Each row is a language whose every field is the same width in every value, which is the
+        /// whole of what makes its lexical order chronological. The shape itself does not matter —
+        /// which is why they are generated rather than chosen between.
+        /// </remarks>
+        [TestMethod]
+        public void EveryFixedTemporalShapeIsRecognisedAndSortable()
+        {
+            foreach (var pattern in new[]
+            {
+                // Every fraction width, including the nine digits a Java or Go writer produces and the
+                // seven the round-trip format specifier does.
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{1}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{9}Z$",
+
+                // The zero offset written out, and no zone at all.
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\+00:00$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}$",
+
+                // The basic format, and minute precision.
+                @"^[0-9]{8}T[0-9]{6}Z$",
+                @"^[0-9]{8}T[0-9]{6}\.[0-9]{3}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}$",
+
+                // Calendar and clock shapes that store only part of an instant.
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                @"^[0-9]{8}$",
+                @"^[0-9]{4}-[0-9]{2}$",
+                @"^[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+                @"^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}$",
+                @"^[0-9]{2}:[0-9]{2}$",
+
+                // The same languages written the other common way: \d for the class, and the run
+                // spelled out rather than counted.
+                @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$",
+                @"^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d\d\dZ$",
+                @"^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$",
+            })
+            {
+                var recognised = CosmosStoredForms.Recognise(pattern);
+
+                recognised.Should().NotBeNull("for " + pattern);
+                recognised!.Value.PreservesOrder.Should().BeTrue("a fixed width sorts chronologically, for " + pattern);
+                recognised.Value.PreservesEquality.Should().BeTrue("and has one spelling per value, for " + pattern);
+            }
+        }
+
+        /// <summary>
+        /// The shapes that vary, which are the ones the ordering argument fails for.
+        /// </summary>
+        /// <remarks>
+        /// Each admits two widths for one path, and the wider sorts below the narrower wherever the
+        /// character that follows the fraction outranks <c>'.'</c>. The .NET SDK's default serializer
+        /// writes the first of these, which is why it is the common case rather than the exotic one.
+        /// </remarks>
+        [TestMethod]
+        public void AShapeThatVariesIsNotRecognised()
+        {
+            foreach (var pattern in new[]
+            {
+                // An optional fraction, and a fraction of a range of widths -- the SDK's own output.
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,7})?Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{1,7}Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+Z$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]*Z$",
+
+                // An offset that is not pinned to zero, which orders two instants by their local
+                // clocks rather than by when they happened.
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+                @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|\+00:00)$",
+
+                // Unanchored, which admits a conforming value with anything around it.
+                @"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            })
+                CosmosStoredForms.Recognise(pattern).Should().BeNull("for " + pattern);
+        }
+
+        /// <summary>
+        /// A space-separated instant is not recognised, and the reason is the normaliser rather than
+        /// the shape.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>2024-01-15 12:30:00Z</c> is as fixed as its <c>T</c> spelling and would sort exactly as
+        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. What stops
+        /// it is that <see cref="CosmosStoredForms.Normalise"/> strips whitespace outside a character
+        /// class, so the pattern cannot be told apart from one written with no separator at all, and
+        /// registering it would claim this form for that one.
+        /// </para>
+        /// <para>
+        /// Recorded as a test rather than a comment because the fix is a one-line change to the
+        /// normaliser — whitespace is significant in unextended ECMA-262, which is the dialect JSON
+        /// Schema specifies — and this is the row that would flip when someone makes it. Until then the
+        /// failure is the safe direction: unrecognised, so the comparison stays in process.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ASpaceSeparatedInstantIsNotYetRecognised()
+        {
+            CosmosStoredForms.Recognise(@"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+                .Should().BeNull("the separator does not survive normalisation");
+        }
+
+        /// <summary>
+        /// Each form writes a literal in its own spelling, and refuses a value it cannot hold.
+        /// </summary>
+        [TestMethod]
+        public void EachTemporalFormWritesItsOwnSpelling()
+        {
+            var value = new System.DateTime(2024, 1, 15, 12, 30, 0, System.DateTimeKind.Utc);
+
+            string? Render(string pattern) =>
+                CosmosStoredForms.RenderDateTime(CosmosStoredForms.Recognise(pattern)!.Value, value);
+
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$").Should().Be("2024-01-15T12:30:00Z");
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}Z$").Should().Be("2024-01-15T12:30:00.0000000Z");
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{9}Z$").Should().Be("2024-01-15T12:30:00.000000000Z",
+                "nine digits is seven padded, which holds every value a DateTime carries");
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00$").Should().Be("2024-01-15T12:30:00+00:00");
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$").Should().Be("2024-01-15T12:30:00");
+            Render(@"^[0-9]{8}T[0-9]{6}Z$").Should().Be("20240115T123000Z");
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}Z$").Should().Be("2024-01-15T12:30Z");
+
+            // Values that do not land on the form are refused rather than truncated.
+            Render(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}$").Should().BeNull("the value carries a time of day");
+            Render(@"^[0-9]{4}-[0-9]{2}$").Should().BeNull("and a day the year-month form does not store");
+
+            // A clock with no date holds no instant at all, so nothing is written into one -- while it
+            // is still recognised, which is what licenses a sort over it.
+            Render(@"^[0-9]{2}:[0-9]{2}:[0-9]{2}$").Should().BeNull("writing an instant here would drop the date");
+
+            var midnight = new System.DateTime(2024, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
+            CosmosStoredForms.RenderDateTime(CosmosStoredForms.Recognise(@"^[0-9]{4}-[0-9]{2}$")!.Value, midnight)
+                .Should().Be("2024-01", "a value that does land on the form is written");
+        }
+
         [TestMethod]
         public void AnUppercaseSpellingIsCanonicalToo()
         {
