@@ -146,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Reads a comparison between a container-rooted path and a constant, either way round.
         /// </summary>
-        static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out object? value)
+        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out object? value)
         {
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);

@@ -1064,14 +1064,39 @@ Both need a service and report inconclusive without one, which means the `linux-
 actually run. The failure mode being guarded against is narrow but real: the rewrite turns a query
 that was merely slow into one that does not run.
 
-**Not built, and the other two conclusions are where the rest of the value is.** A declared *tautology*
-— `kind` is `const: "A"` and the query says `kind = 'A'` — could be dropped, and the payoff is the one
-#92 established: `TryExtractPointRead` refuses any conjunct that is not an `id` or partition-key
-equality, so a redundant conjunct is what stands between a routed query at 2.82 RU and a point read at
-1.00. And a `const` partition key means every document is in one logical partition, so
-`CosmosPartitionKeyExtractor` — which never consults the declaration at all today — could route a
-query that pins nothing. That last one would also give the fan-out measurement below something to be
-priced against.
+**Also built: a declared tautology is not asked.** Where the container guarantees both that a path is
+present and what value it holds, a query comparing that path to that value decides nothing, and
+`CosmosFactRewriter` answers the constant — which `RexUtil` then drops from a conjunction. Two claims
+are needed and the second is the whole of the argument: a declared value says what a path holds *if it
+holds anything*, so a container declaring `kind` is `"A"` and nothing more still admits a document
+with no `kind`, over which `kind = 'A'` is unknown and the row is dropped. Removing the conjunct would
+keep that row. Only `required` beside the `const` rules that document out. It is read from
+`Derive(null)` and never from a guarded fact, because the conjunct being deleted may be the one that
+proved the guard.
+
+**The payoff this was predicted to have, it does not have, and that is worth recording.** This entry
+said it would unblock a point read, on the reasoning that `TryExtractPointRead` refuses any conjunct
+that is not an `id` or partition-key equality — so a redundant conjunct stood between a routed query
+at 2.82 RU and a point read at 1.00. Measured, the read is reached either way: `CosmosPointReadSplitRule`
+already partitions the conjunction and holds the extra conjunct back, which is what #92 built it for.
+
+What changes is that the conjunct held back was then **rechecked in process for every row the read
+returned**, and a conjunct no document can fail has nothing to recheck. Measured, over the same query
+with and without the declaration:
+
+```
+declared:  CosmosToClrEnumerableConverter … (the conjunct is gone)
+plain:     ClrEnumerableFilter(condition=[=(JSON_VALUE($0, '$.kind'), 'A')])
+             CosmosToClrEnumerableConverter …
+```
+
+A plan node and a per-row test rather than a request. Smaller than this entry claimed, and still worth
+taking — and the statement sent is one predicate shorter either way.
+
+**Still not built: a `const` partition key routes every query.** Every document being in one logical
+partition means `PartitionKeyValues` could be supplied for a query that pins nothing, which is the
+fan-out saving without the predicate. `CosmosPartitionKeyExtractor` does not consult the declaration
+at all today. It would also give the fan-out measurement below something to be priced against.
 
 ### A declared type does not yet make a parameterised comparison exact — *small, and measured*
 

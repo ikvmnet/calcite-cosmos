@@ -1110,6 +1110,96 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 "nothing says what the path holds, so nothing rules the value out");
         }
 
+
+        const string RefPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
+        /// <summary>
+        /// A schema declaring <c>kind</c> as a constant, present or not, beside a UUID-shaped ref.
+        /// </summary>
+        /// <param name="present">Whether <c>kind</c> is declared <c>required</c>.</param>
+        /// <returns>The container.</returns>
+        static CosmosContainerMetadata Constant(bool present)
+        {
+            var required = present ? "\"required\": [\"kind\"], " : "";
+
+            return Declaring("{ \"type\": \"object\", " + required
+                + "\"properties\": { \"kind\": { \"const\": \"A\" }, "
+                + "\"ref\": { \"type\": \"string\", \"pattern\": \"" + RefPattern.Replace("\\", "\\\\") + "\" } } }");
+        }
+
+        /// <summary>
+        /// A comparison the container already guarantees is not asked at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The payoff is not the one the backlog predicted, and the measurement is why this says
+        /// so.</b> It was written down as unblocking a point read, on the reasoning that
+        /// <c>TryExtractPointRead</c> refuses any conjunct that is not an <c>id</c> or partition-key
+        /// equality. Measured, the read is reached either way: <c>CosmosPointReadSplitRule</c> already
+        /// partitions the conjunction and holds the extra conjunct back, which is exactly what #92
+        /// built it to do.
+        /// </para>
+        /// <para>
+        /// What changes is that the conjunct held back is then <em>rechecked in process for every row
+        /// the read returns</em>, and a conjunct no document can fail has nothing to recheck. So the
+        /// saving is a plan node and a per-row test rather than a request, which is smaller than the
+        /// backlog claimed and still worth taking.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredTautologyIsNotAsked()
+        {
+            var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'A' AND JSON_VALUE(c."DOC", '$.id') = 'x' AND {Ref} = UUID'{Canonical}'""";
+
+            var container = Constant(present: true);
+            var best = PlanToCosmos(sql, container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().NotContain("c.kind", "every document satisfies it, so the service need not be asked");
+            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing rechecks it per row: " + PlanText(best));
+
+            query.PointReadId.Should().Be("x", "the read the split rule already reached is still reached");
+        }
+
+        /// <summary>
+        /// Without a presence claim the same comparison stays, and that is the whole of the argument.
+        /// </summary>
+        /// <remarks>
+        /// A declared value says what a path holds <em>if it holds anything</em> — the reading
+        /// <c>Entails</c> is careful about, where nothing entails <c>Present</c>. So a container
+        /// declaring <c>kind</c> is <c>"A"</c> and nothing more still admits a document with no
+        /// <c>kind</c>, over which <c>kind = 'A'</c> is unknown and the row is dropped. Removing the
+        /// conjunct would keep that row, which is a different answer rather than a faster one.
+        /// </remarks>
+        [TestMethod]
+        public void WithoutAPresenceClaimTheComparisonStays()
+        {
+            var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'A' AND JSON_VALUE(c."DOC", '$.id') = 'x' AND {Ref} = UUID'{Canonical}'""";
+
+            var container = Constant(present: false);
+            var best = PlanToCosmos(sql, container, out _);
+
+            (Query(FindCosmos(best), container).Sql + PlanText(best))
+                .Should().Contain("kind", "a document with no kind at all is admitted, and the comparison drops it");
+        }
+
+        /// <summary>
+        /// And a value the declaration does not guarantee is asked as written.
+        /// </summary>
+        [TestMethod]
+        public void AComparisonTheDeclarationDoesNotGuaranteeIsUntouched()
+        {
+            var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'Z' AND JSON_VALUE(c."DOC", '$.id') = 'x'""";
+
+            var container = Constant(present: true);
+            var best = PlanToCosmos(sql, container, out _);
+
+            // 'Z' against a declared const of 'A' is the contradiction case, not the tautology one --
+            // which is the other half of the same table, and settles to the constant instead.
+            PlanText(best).Should().Contain("condition=[false]",
+                "a declared constant refutes every other value: " + PlanText(best));
+        }
+
     }
 
 }
