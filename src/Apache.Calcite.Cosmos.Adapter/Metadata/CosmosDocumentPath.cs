@@ -130,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Renders the path the way a JSON pointer expression reads, for diagnostics.
         /// </summary>
-        /// <returns>The path, such as <c>$.data.parkId</c>.</returns>
+        /// <returns>The path, such as <c>$.shipment.id</c>.</returns>
         public override string ToString()
         {
             var builder = new StringBuilder("$");

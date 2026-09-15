@@ -60,9 +60,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Determines whether a fact holds.
         /// </summary>
         /// <remarks>
-        /// Through subsumption, so a known <c>$.type = 'ParkMap'</c> answers yes to
-        /// <c>$.type IS DEFINED</c> and to <c>$.type &lt;&gt; 'Park'</c> without either having been
-        /// derived. <see cref="CosmosFact.Entails"/> carries the table.
+        /// Through subsumption, so a known equality answers yes to the definedness of the same path,
+        /// and to every disequality but its own, without either having been derived.
+        /// <see cref="CosmosFact.Entails"/> carries the table.
         /// </remarks>
         /// <param name="fact">The fact to test.</param>
         /// <returns><c>true</c> if it holds.</returns>

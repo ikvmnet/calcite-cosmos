@@ -93,6 +93,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Determines whether a form is one of the UUID spellings, whose stored string is the
+        /// canonical lowercase rendering.
+        /// </summary>
+        /// <remarks>
+        /// Asked by a rewrite that has to <em>write</em> the stored string for a value, which it can
+        /// only do for a form it knows the spelling of. The two differ in what they license and not in
+        /// how they are written.
+        /// </remarks>
+        /// <param name="representation">The form.</param>
+        /// <returns><c>true</c> where the stored string is a canonical lowercase UUID.</returns>
+        public static bool IsUuid(CosmosRepresentation representation) =>
+            string.Equals(representation.Name, UuidCanonicalLower.Name, StringComparison.Ordinal) ||
+            string.Equals(representation.Name, UuidCanonicalLowerSortable.Name, StringComparison.Ordinal);
+
+        /// <summary>
         /// Returns the stored form a declared pattern is recognised as, or <c>null</c>.
         /// </summary>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>

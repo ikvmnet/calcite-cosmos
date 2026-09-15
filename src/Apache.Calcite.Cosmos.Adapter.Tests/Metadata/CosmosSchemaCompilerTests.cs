@@ -13,10 +13,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// A declared schema, compiled to rules, asked the questions a rewrite asks.
     /// </summary>
     /// <remarks>
-    /// The container the issue is written around: <c>parks</c> holds both a <c>Park</c> and a
-    /// <c>ParkMap</c>, discriminated by <c>$.type</c>, and only a <c>ParkMap</c> carries
-    /// <c>$.data.parkId</c>. So the whole point is that a fact about <c>parkId</c> is unusable until
-    /// the query has proven which kind of document it is filtering.
+    /// The shape that makes this worth having: one container holding two kinds of document,
+    /// discriminated by a property, where only one kind carries the path a fact is declared for. A
+    /// fact about that path is unusable until the query has proven which kind it is filtering.
     /// </remarks>
     [TestClass]
     public class CosmosSchemaCompilerTests

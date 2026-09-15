@@ -71,10 +71,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// What is claimed about a path.
     /// </summary>
     /// <remarks>
-    /// One hierarchy for two jobs, deliberately. A claim a query can establish — <c>$.type</c> equals
-    /// <c>'ParkMap'</c> — and a claim a rewrite can consume — <c>$.data.parkId</c> is a canonical
-    /// lowercase UUID — are the same kind of thing, and keeping them the same kind is what lets a
-    /// schema express facts that are conditional on other facts without a second mechanism. See
+    /// One hierarchy for two jobs, deliberately. A claim a query can establish — a discriminator
+    /// property holding a particular value — and a claim a rewrite can consume — a path holding a
+    /// canonical lowercase UUID — are the same kind of thing, and keeping them the same kind is what
+    /// lets a schema express facts that are conditional on other facts without a second mechanism. See
     /// <c>DESIGN-93.md</c> §2.
     /// </remarks>
     public abstract record CosmosClaim

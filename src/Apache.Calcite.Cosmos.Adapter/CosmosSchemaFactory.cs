@@ -42,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// </para>
     /// <para>
     /// <b>A listed container may carry a JSON Schema instead of being named alone.</b> Write
-    /// <c>{ "name": "parks", "schema": { … } }</c> in place of <c>"parks"</c>, and the schema is
+    /// <c>{ "name": "orders", "schema": { … } }</c> in place of <c>"orders"</c>, and the schema is
     /// compiled once into the facts a pushdown can prove against — that a path holds a canonical UUID,
     /// or an instant at one fixed shape, and under which discriminator it does. It is a declaration
     /// the adapter trusts rather than checks, so a document that violates it is a data-integrity
