@@ -53,6 +53,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// It is <em>at most</em> one, and the estimate is one rather than a fraction because a row
         /// count of zero prices a plan at nothing and makes everything containing it look free.
         /// </para>
+        /// <para>
+        /// <b>This is not the path the planner takes, and on its own it does nothing.</b>
+        /// <c>RelMdRowCount</c> has a handler for <c>Filter</c> and dispatches to it on the node's
+        /// class, so the planner never asks a <c>Filter</c> subclass for its own estimate.
+        /// <see cref="CosmosRelMetadataQuery"/> is what actually answers, and it is installed where a
+        /// Cosmos table reaches a plan. This override is kept because it is the correct answer to the
+        /// question it is asked, for any caller that does ask it directly.
+        /// </para>
         /// </remarks>
         public override double estimateRowCount(RelMetadataQuery mq)
         {

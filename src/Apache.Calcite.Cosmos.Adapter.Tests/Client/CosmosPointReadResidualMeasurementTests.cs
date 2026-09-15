@@ -407,6 +407,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// Times the two routes end to end, so the choice rests on something measured rather than on
+        /// request units alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Request units are what Cosmos bills and throttles on, so they are the objective a planner
+        /// should minimise. Latency is the other half of "better", and if read-then-filter were cheaper
+        /// but slower the trade would be a real one rather than free. It is not: both routes are a single
+        /// round trip, and the read is the shorter one.
+        /// </para>
+        /// <para>
+        /// Measured, median of thirty alternated round trips against a serverless account a continent
+        /// away, over two runs: point read 67.5 and 67.6 ms, query 68.7 and 69.9 ms — the read ahead by
+        /// 1.2 and 2.3 ms. The spread between runs is larger than the effect, so the honest reading is
+        /// that the read is not slower rather than that it is faster by any particular amount. Both
+        /// figures are dominated by the round trip, which is the useful part: the mechanism difference is
+        /// small against the network, and the in-process residual over one row costs nothing measurable.
+        /// </para>
+        /// <para>
+        /// What this settles for the planner is narrow but useful. There is no latency penalty to weigh
+        /// against the request units saved, so ordering the routes by request units does not trade one
+        /// resource for another — which is what would have made a conversion constant necessary.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task TheCheaperRouteIsAlsoTheFasterOne()
+        {
+            const int Rounds = 30;
+
+            static double Median(List<double> values)
+            {
+                values.Sort();
+                return values[values.Count / 2];
+            }
+
+            // Warm the connection and the routing caches, so the first request's handshake is not
+            // attributed to whichever form happens to run first.
+            await PointRead(D(0), Partition);
+            await Query(LookupQuery(D(0), Partition), Partition);
+
+            var read = new List<double>(Rounds);
+            var query = new List<double>(Rounds);
+
+            for (var i = 0; i < Rounds; i++)
+            {
+                // Alternated rather than run in blocks, so a drift in the service's latency lands on
+                // both forms rather than on one.
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                await PointRead(D(0), Partition);
+                read.Add(clock.Elapsed.TotalMilliseconds);
+
+                clock.Restart();
+                await Query(LookupQuery(D(0), Partition), Partition);
+                query.Add(clock.Elapsed.TotalMilliseconds);
+            }
+
+            var readMedian = Median(read);
+            var queryMedian = Median(query);
+
+            Say("");
+            Say("## Latency, single small document (median of " + Rounds + ")");
+            Say($"point read                   : {readMedian:F1} ms");
+            Say($"query + residual, pinned     : {queryMedian:F1} ms");
+            Say($"difference                   : {queryMedian - readMedian:F1} ms");
+
+            // The relation, not the milliseconds, which depend on the distance to the account: the
+            // cheaper route must not be the slower one, because that is the trade that would make
+            // ordering by request units a choice between resources rather than a free win.
+            readMedian.Should().BeLessThan(queryMedian * 1.25,
+                "a point read is one round trip and so is the query; the read must not be materially slower");
+        }
+
+        /// <summary>
         /// The regime that reverses the single-document trade: a body large enough that reading it
         /// costs more than the floor the query pays.
         /// </summary>

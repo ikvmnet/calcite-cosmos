@@ -96,6 +96,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+
+            // A by-id lookup returns one document, and Calcite guesses otherwise. See
+            // CosmosRelMetadataQuery for why that guess decides this plan.
+            CosmosRelMetadataQuery.Install(cluster);
+
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
 
             return converter.convertQuery(validator.validate(parsed), false, true).project();
@@ -163,21 +168,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var plan = Plan(Lookup);
 
-            // The rule fires, lifts the residual above the projection, and registers the alternative in
-            // every convention the plan could use it in — verified by instrumenting onMatch, and by the
-            // fact that exaggerating the request unit gap makes the planner take it and this test pass.
-            // What decides against it is calibration, not mechanism: the measured gap between a read and
-            // the query it replaces is about 1.9 RU, and the plan only flips when a request unit is
-            // weighted at roughly fifteen abstract units. That number is not measured and would be a
-            // constant reverse-engineered from this assertion, so it is not applied. See the remarks on
-            // the class for what would settle it.
-            Find<CosmosFilter>(plan).Should().NotBeNull();
+            var pushed = Find<CosmosFilter>(plan);
+            pushed.Should().NotBeNull("the pinned equalities should still reach the service");
 
-            Assert.Inconclusive(
-                "The split is offered, sound, and correctly priced in request units; the planner declines " +
-                "it because in-process work is priced far above the ~1.9 RU a point read saves. Flipping it " +
-                "needs a request-unit-to-abstract-unit conversion of about fifteen, which nothing measures, " +
-                "or a reckoning with how the adapter prices leaving the Cosmos convention at all.");
+            var query = Query(pushed!);
+
+            query.PointReadId.Should().Be("x", "the pushed half says nothing beyond id and the partition key");
+            query.PartitionKeyValues.Should().Equal("bikes");
+
+            // And the residual is not lost: it is applied above, by Calcite, with Calcite's semantics.
+            query.Sql.Should().NotContain("_ts", "the residual is held back rather than pushed");
+            Text(plan).Should().Contain("ClrEnumerableFilter", "and finishes outside the Cosmos convention");
         }
 
         /// <remarks>
@@ -215,9 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var query = Query(Find<CosmosFilter>(Plan(Lookup))!);
 
-            query.PointReadId.Should().BeNull(
-                "for the calibration reason AResidualIsHeldBackSoThePointReadIsRecovered records, not " +
-                "because an unmeasured container is priced against the read");
+            query.PointReadId.Should().Be("x");
         }
 
         /// <remarks>
