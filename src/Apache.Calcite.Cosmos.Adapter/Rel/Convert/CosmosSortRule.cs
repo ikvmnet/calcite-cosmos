@@ -38,11 +38,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>A configured rule.</returns>
         public static CosmosSortRule Create(CosmosConvention convention)
         {
-            return (CosmosSortRule)Config.INSTANCE
+            var rule = (CosmosSortRule)Config.INSTANCE
                 .withConversion(typeof(Sort), new DelegatePredicate<Sort>(s => IsSupported(convention, s)), Convention.NONE, convention, "CosmosSortRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosSortRule>(c => new CosmosSortRule(c)))
                 .toRule(typeof(CosmosSortRule));
+
+            // Conversion needs the container the same way the legality test does, and the out trait
+            // carries it only behind a cast at every use. A rule is created per convention.
+            rule._convention = convention;
+            return rule;
         }
+
+        CosmosConvention? _convention;
 
         /// <summary>
         /// Determines whether a sort can be pushed into the given container.
@@ -69,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(sort), SortableFields(sort.getInput(), fields.Count), out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(sort.getInput(), fields.Count), out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -130,10 +137,84 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// deciding on the same one — the same reason the binding above is derived by walking the
         /// input rather than read off its row type.
         /// </remarks>
-        static IReadOnlyList<int> NonNullFields(Sort sort)
+        static IReadOnlyList<int> NonNullFields(CosmosConvention? convention, Sort sort)
         {
-            return CosmosSort.FindNonNullFields(sort.getInput(), sort.getCluster().getMetadataQuery());
+            var guaranteed = CosmosSort.FindNonNullFields(sort.getInput(), sort.getCluster().getMetadataQuery());
+
+            if (convention?.Container is not Metadata.CosmosContainerMetadata container)
+                return guaranteed;
+
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _) == false)
+                return guaranteed;
+
+            // Only what holds outright. A sort carries no predicate of its own, so there is nothing
+            // here to prove a guarded fact from, and a fact conditional on a filter below would need
+            // that filter to have reached the service before it could be leaned on.
+            var facts = container.Facts.Derive(null);
+            var all = new List<int>(guaranteed);
+            var rowFields = sort.getInput().getRowType().getFieldList();
+
+            for (var i = 0; i < fields.Count; i++)
+            {
+                if (all.Contains(i) || fields[i] is not Sql.CosmosPath path)
+                    continue;
+
+                // A field the plan already types as non-nullable needs nothing said about it, and
+                // saying it anyway would put a promoted column in a list whose purpose is to name the
+                // ones the plan would otherwise have refused.
+                if (i < rowFields.size() &&
+                    ((org.apache.calcite.rel.type.RelDataTypeField)rowFields.get(i)).getType().isNullable() == false)
+                    continue;
+
+                if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false)
+                    continue;
+
+                if (Metadata.CosmosDocumentPath.From(path) is Metadata.CosmosDocumentPath document && NeverNull(facts, document))
+                    all.Add(i);
+            }
+
+            return all;
         }
+
+        /// <summary>
+        /// Determines whether the accessor over a path can be relied on never to answer SQL null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Two claims, and both are needed. The path has to be <em>there</em>, since the accessor
+        /// answers null over an absent one; and it has to hold a scalar of a known type, since the
+        /// accessor answers null for a JSON null and for an object or an array alike — neither being
+        /// a scalar, which is SQL/JSON's own line. A type admitting null is not enough for the same
+        /// reason the presence is not.
+        /// </para>
+        /// <para>
+        /// What it buys is the null-placement rule, which is what actually stands between a declared
+        /// path and a pushed sort: Cosmos orders nulls first ascending and Calcite's default is last,
+        /// so a nullable key is refused however well the ordering is otherwise understood. A key that
+        /// cannot be null leaves the two nothing to disagree about — the same argument a query
+        /// removing the nulls itself makes, settled by the container instead of by the predicate.
+        /// </para>
+        /// </remarks>
+        static bool NeverNull(Metadata.CosmosFactSet facts, Metadata.CosmosDocumentPath path)
+        {
+            if (facts.Knows(new Metadata.CosmosFact(path, new Metadata.CosmosClaim.Present())) == false)
+                return false;
+
+            foreach (var claim in facts.ClaimsFor(path))
+                if (claim is Metadata.CosmosClaim.OfType { OrNull: false } typed && IsScalar(typed.Type))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether a JSON type is one the accessor answers a value for rather than null.
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <returns><c>true</c> for a scalar.</returns>
+        static bool IsScalar(Metadata.CosmosJsonType type) =>
+            type is Metadata.CosmosJsonType.String or Metadata.CosmosJsonType.Number
+                 or Metadata.CosmosJsonType.Integer or Metadata.CosmosJsonType.Boolean;
 
         /// <summary>
         /// Initializes a new instance using the supplied rule configuration.
@@ -157,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 sort.getCollation(),
                 sort.offset,
                 sort.fetch,
-                NonNullFields(sort));
+                NonNullFields(_convention, sort));
         }
 
     }

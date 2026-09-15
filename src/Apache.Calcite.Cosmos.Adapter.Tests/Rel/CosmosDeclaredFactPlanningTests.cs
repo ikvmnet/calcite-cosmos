@@ -338,6 +338,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A sort over a document path is refused for null placement rather than for anything about
+        /// the ordering, and a container that says the path is always a scalar settles it.
+        /// </summary>
+        /// <remarks>
+        /// Cosmos orders nulls first ascending where Calcite's default is last, so a nullable key is
+        /// refused however well the order is otherwise understood. A query removing the nulls itself
+        /// has always satisfied that; this is the container doing it instead, once and for every
+        /// query rather than one predicate at a time.
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredScalarThatIsAlwaysThereMakesAPathSortable()
+        {
+            const string Always = """
+            { "type": "object", "required": ["at"],
+              "properties": { "at": { "type": "string" } } }
+            """;
+
+            var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
+                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Always)));
+
+            const string Sql = """SELECT JSON_VALUE(c."DOC", '$.at') AS "at" FROM items AS c ORDER BY 1""";
+
+            var with = PlanToCosmos(Sql, declared, out _);
+            Query(FindCosmos(with), declared).Sql.Should().Contain("ORDER BY c.at",
+                "the key cannot be null, so the two sides have nothing to disagree about");
+
+            var without = PlanToCosmos(Sql, Declared(false), out _);
+            Query(FindCosmos(without), Declared(false)).Sql.Should().NotContain("ORDER BY",
+                "where nothing says so, the placement rule refuses it as it always has");
+        }
+
+        /// <summary>
+        /// Both claims are needed, and a nullable type is not one of them.
+        /// </summary>
+        [TestMethod]
+        public void PresenceAloneAndANullableTypeAreBothTooWeakToSort()
+        {
+            const string Sql = """SELECT JSON_VALUE(c."DOC", '$.at') AS "at" FROM items AS c ORDER BY 1""";
+
+            foreach (var schema in new[]
+            {
+                // There, but of no stated type -- the accessor answers null for an object or an array.
+                """{ "type": "object", "required": ["at"] }""",
+                // A scalar, but not necessarily there.
+                """{ "type": "object", "properties": { "at": { "type": "string" } } }""",
+                // There and a scalar, but a null is admitted beside it.
+                """{ "type": "object", "required": ["at"], "properties": { "at": { "type": ["string","null"] } } }""",
+            })
+            {
+                var container = new CosmosContainerMetadata("items", new[] { "/ref" })
+                    .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+
+                Query(FindCosmos(PlanToCosmos(Sql, container, out _)), container).Sql
+                    .Should().NotContain("ORDER BY", "for " + schema);
+            }
+        }
+
+        /// <summary>
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>
