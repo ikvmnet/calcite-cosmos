@@ -129,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
         public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
-            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, null, out keys, out paths);
+            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, null, null, out keys, out paths);
         }
 
         /// <summary>
@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="keys">On success, the resolved keys in order.</param>
         /// <param name="paths">On success, the resolved paths in order.</param>
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
-        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, Metadata.CosmosContainerMetadata? container, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
+        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, Metadata.CosmosContainerMetadata? container, IReadOnlyList<CosmosPath?>? orderingPaths, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
@@ -178,7 +178,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (index < 0 || index >= fields.Count || index >= typeFields.size())
                     return false;
 
-                var nullable = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().isNullable()
+                // A computed column that converts an order-preserving path may still be ordered by
+                // that path. It is not a binding — nothing else may read it — so it is consulted
+                // only here, and only where the ordinal binds to nothing. See
+                // CosmosImplementor.OrderingPaths.
+                var ordered = fields[index] is null && orderingPaths is not null && index < orderingPaths.Count
+                    ? orderingPaths[index]
+                    : null;
+
+                // Such an ordinal cannot be null, the claim behind it being that the path holds a
+                // scalar in every document; so the placement the two sides would disagree about does
+                // not arise, and the row type's nullability is not the stronger fact here.
+                var nullable = ordered is null
+                    && ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().isNullable()
                     && IsGuaranteedNonNull(nonNullFields, index) == false;
 
                 if (TryGetDescending(field, nullable, out var descending) == false)
@@ -188,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // by a projection alias. The one exception is an expression the service accepts in the
                 // clause, which the sort writes out a second time rather than referring to — see
                 // CosmosImplementor.SortableExpressions for what qualifies and why nothing else does.
-                var path = fields[index];
+                var path = fields[index] ?? ordered;
                 if (path is null)
                 {
                     if (sortableFields is null || index >= sortableFields.Count || sortableFields[index] == false)
@@ -437,7 +449,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             for (var i = 0; i < sortable.Length; i++)
                 sortable[i] = implementor.SortableExpressions[i] is not null;
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, implementor.Container, out var keys, out var paths) == false)
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, implementor.Container, implementor.OrderingPaths, out var keys, out var paths) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to document paths.");
 
             if (implementor.Container.IsSortSupported(keys) == false)

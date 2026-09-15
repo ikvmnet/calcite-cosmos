@@ -79,6 +79,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var readings = new CosmosReading[projects.size()];
             var sortable = new string?[projects.size()];
             var rendered = new string?[projects.size()];
+            var ordering = new CosmosPath?[projects.size()];
+
+            // Only what holds outright. A projection carries no predicate of its own, so there is
+            // nothing here to prove a guarded fact from -- the same argument, and the same
+            // Derive(null), that CosmosSortRule makes for the null placement.
+            var facts = implementor.Container?.Facts.Derive(null);
 
             // Read before anything rebinds them. A column passed straight through keeps how it is
             // read: the JSON column projected under an alias is still the document, and reading it as
@@ -119,6 +125,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // reason it is rendered: the column carries text and the path carries the raw value,
                 // so an operator written against the path would mean something else.
                 paths[i] = translator.TryResolvePath(node, out var path) ? path : null;
+
+                // A computed column that converts a path the container confines to one stored shape
+                // may still be ordered by that path, even though it addresses none. A weaker claim
+                // than a binding and recorded apart from one -- see CosmosImplementor.OrderingPaths.
+                var candidate = paths[i] ?? OrderingCandidateOf(node, translator, implementor.RootAlias);
+                ordering[i] = paths[i] is not null || IsOrderable(facts, candidate) ? candidate : null;
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -132,6 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Readings = readings;
             implementor.SortableExpressions = sortable;
             implementor.RenderedExpressions = rendered;
+            implementor.OrderingPaths = ordering;
         }
 
 
@@ -150,6 +163,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             return node is RexCall call
                 && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
         }
+
+        /// <summary>
+        /// Returns the path underneath a projection that converts one, or <c>null</c> where the
+        /// projection is not such a conversion.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The structural half of the question, and it is split from the other half on purpose.</b>
+        /// Which ordinal holds which candidate depends on <em>which tree is looked at</em> — a rule
+        /// reading one member of a <c>RelSubset</c> and the implementation another would disagree,
+        /// and a rule that decided differently from implementation fires on a key implementation then
+        /// refuses. So this is derived once, on the walk
+        /// <see cref="CosmosImplementor.TryBindOutput"/> already makes, and never by a second walk of
+        /// its own. Whether the container licenses the candidate is <see cref="IsOrderable"/>, which
+        /// is a pure lookup and cannot disagree with itself.
+        /// </para>
+        /// <para>
+        /// <b>Only a conversion to a type Cosmos has no equivalent of.</b> A <c>UUID</c> and a
+        /// <c>TIMESTAMP</c> are both strings at the service, so the ordering question is about the
+        /// stored spelling. A cast between two types the service compares natively is not this
+        /// rewrite's business and gets no entry.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="translator">Resolves an expression to the path it addresses.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        public static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
+        {
+            if (node is not RexCall call || translator is null)
+                return null;
+
+            var kind = call.getKind().name();
+            if (kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.CAST) && kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.SAFE_CAST))
+                return null;
+
+            if (call.getOperands().size() != 1 || IsStoredAsText(call.getType()?.getSqlTypeName()) == false)
+                return null;
+
+            if (translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path) == false || path is null)
+                return null;
+
+            return string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) ? path : null;
+        }
+
+        /// <summary>
+        /// Determines whether the container licenses ordering by a candidate path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two conditions.</b> The stored form has to preserve order, which is what
+        /// <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> says and which a form preserving
+        /// equality alone does not give.
+        /// </para>
+        /// <para>
+        /// <b>And the guard the projection renders has to be vacuous</b>, which is the condition a
+        /// reading of <c>TODO.md</c> alone would miss — see
+        /// <see cref="CosmosImplementor.OrderingPaths"/> for what the column renders as and why an
+        /// object at the path would otherwise sort on the wrong side of every scalar.
+        /// </para>
+        /// <para>
+        /// A pure function of the path and the facts, which is what lets the rule and the
+        /// implementation each ask it without a walk between them.
+        /// </para>
+        /// </remarks>
+        /// <param name="facts">What the container declares, already derived.</param>
+        /// <param name="path">The candidate path, or <c>null</c>.</param>
+        /// <returns><c>true</c> where a sort may order by the path.</returns>
+        public static bool IsOrderable(Metadata.CosmosFactSet? facts, CosmosPath? path)
+        {
+            if (facts is null || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
+                return false;
+
+            return facts.IsAlwaysScalar(document);
+        }
+
+        /// <summary>
+        /// Determines whether a SQL type is one Cosmos has no equivalent of and stores as a string.
+        /// </summary>
+        /// <param name="type">The type.</param>
+        /// <returns><c>true</c> where the service holds the value as text.</returns>
+        static bool IsStoredAsText(org.apache.calcite.sql.type.SqlTypeName? type) =>
+            type == org.apache.calcite.sql.type.SqlTypeName.UUID
+            || type == org.apache.calcite.sql.type.SqlTypeName.DATE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP
+            || type == org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE;
 
     }
 
