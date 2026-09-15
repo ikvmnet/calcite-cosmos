@@ -388,9 +388,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             }
 
             if (offset is not null)
-                implementor.Query.Offset = RexLiteral.intValue(offset);
+                implementor.Query.Offset = implementor.RowLimit(offset);
             if (fetch is not null)
-                implementor.Query.Fetch = RexLiteral.intValue(fetch);
+                implementor.Query.Fetch = implementor.RowLimit(fetch);
         }
 
     }

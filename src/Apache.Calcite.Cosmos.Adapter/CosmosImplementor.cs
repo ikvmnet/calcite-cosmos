@@ -720,6 +720,36 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string Translate(RexNode node) => CreateTranslator().Translate(node);
 
         /// <summary>
+        /// Reads a row limit written into the plan, binding a parameter where the count is one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The plan needs the <em>type</em> and not the count. A literal carries its own; a dynamic
+        /// parameter carries an ordinal, and an integer parameter is as pushable as an integer
+        /// constant because the service binds one exactly as it binds the other — measured, both
+        /// <c>OFFSET @skip LIMIT @take</c> and <c>SELECT TOP @take</c> run. Asking for the count
+        /// instead is what made a parameterised <c>FETCH</c> throw.
+        /// </para>
+        /// <para>
+        /// Bound through the same list every other parameter goes through, so the value is filled in
+        /// where every other value is — see <see cref="Sql.CosmosDynamicValue"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The plan's <c>fetch</c> or <c>offset</c> expression.</param>
+        /// <returns>The limit.</returns>
+        /// <exception cref="CosmosTranslationException">The expression is neither a literal nor a parameter.</exception>
+        public Sql.CosmosRowLimit RowLimit(RexNode node)
+        {
+            if (node is RexLiteral literal)
+                return RexLiteral.intValue(literal);
+
+            if (node is org.apache.calcite.rex.RexDynamicParam parameter)
+                return Sql.CosmosRowLimit.Bound(_parameters.Add(new Sql.CosmosDynamicValue(parameter.getIndex())));
+
+            throw new CosmosTranslationException("A row limit is neither a literal nor a parameter.");
+        }
+
+        /// <summary>
         /// Renders a <em>predicate</em>, which may lean on what the container knows about the
         /// documents it keeps.
         /// </summary>
@@ -816,13 +846,16 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         int? MaxItemCount()
         {
-            if (_query.Top is int top)
+            // A limit carried by a parameter has no count here, and none is needed: the page size is a
+            // hint, and what bounds the result is the LIMIT the statement already carries. So an
+            // unknown limit asks for the service's default page rather than for a page it cannot size.
+            if (_query.Top?.Count is int top)
                 return top;
 
-            if (_query.Fetch is not int fetch)
+            if (_query.Fetch?.Count is not int fetch)
                 return null;
 
-            var offset = _query.Offset ?? 0;
+            var offset = _query.Offset?.Count ?? 0;
 
             // A page size has to be positive; a zero-row limit is expressed by the statement itself.
             var total = (long)offset + fetch;

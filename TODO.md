@@ -863,6 +863,16 @@ What it unlocks, in rough order of value:
   rendered into the declared stored shape.
 - **`MIN` and `MAX`**, which are the same argument over an aggregate.
 
+### A declared type does not yet make a parameterised comparison exact — *small, and measured*
+
+`WHERE <path> = ?` is weakened to a definedness test even where the container declares the path a
+string, and it should not be: the weakening exists because the accessor renders every JSON scalar as
+text, and a declared `type: string` says there is no other type to render into that text — which is
+exactly the argument that deletes the guard for a literal. The exactness test reads the literal
+rather than consulting the fact set, so a value that is not there fails it whatever the container
+says. Measured on the parameter work for #103; `ADeclaredTypeRecoversTheExactComparison` was written,
+failed, and removed rather than enshrined.
+
 ### Facts about array elements — *small, and waiting for a consumer*
 
 `CosmosDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The

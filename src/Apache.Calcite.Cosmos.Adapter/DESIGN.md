@@ -903,6 +903,46 @@ worth naming:
 | `x MEMBER OF a` | `ARRAY_CONTAINS(a, x)` | the operands swap |
 | `TRIM`/`LTRIM`/`RTRIM` | same | Calcite carries `[flag, chars, string]`; the flag picks the function, and only trimming spaces is translated |
 
+#### A prepared statement's value belongs to the execution
+
+A host that compiles a statement once and runs it many times writes `?` where a value goes, and
+Entity Framework does it for every filter and for every `Take` — a literal `Take(3)` included, so
+that one plan serves every page. So `RexDynamicParam` is the ordinary shape rather than an exotic
+one, and the adapter used to meet it twice and badly: the row limit asked for its count with
+`RexLiteral.intValue`, which asserts, so a parameterised `FETCH` planned happily and threw when it
+ran; and a comparison against one was declined, so the split rule weakened it to a definedness test
+and rechecked it in process.
+
+**Both were asking for a value the plan was never going to have, and neither needed one.** Every
+decision made while a statement is built is a decision about *types* — whether a comparison is exact,
+whether a guard is wanted, whether a limit is an integer. The value decides nothing here. So a
+dynamic parameter is written exactly as a literal of its type would be, bound through the same list
+under the same kind of name, and the slot behind the name is closed by `CosmosQueries.Bind` out of
+the data context the execution supplies.
+
+**The service takes it.** Measured against a container: `OFFSET @skip LIMIT @take`, the same with an
+`ORDER BY` above it, and `SELECT TOP @take` all run. So nothing about the statement text changes for
+a limit that is not a constant, which is the property that makes one plan serve every page.
+
+| | |
+|---|---|
+| `FETCH NEXT ? ROWS ONLY` | `OFFSET 0 LIMIT @p0` |
+| `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` | `OFFSET @p0 LIMIT @p1` |
+| `WHERE c."id" = ?` | `c.id = @p0`, exact, nothing rechecked above |
+
+**The page size is the one thing that cannot be known, and it does not need to be.** `MaxItemCount`
+is a hint about how many rows come back per round trip; what bounds the result is the `LIMIT` the
+statement carries. A limit the plan does not have therefore asks for the service's own page rather
+than for a page it cannot size.
+
+**What degrades without a type, and why that is the right place for it to degrade.** A bare `?`
+compared against a document path is still weakened, because the accessor renders every JSON scalar as
+text and an equality against text is exact only where the text is one no number and no boolean
+renders as — a fact about the *value*, which a parameter has none to inspect. A consumer generating
+SQL should cast its parameters, at which point Calcite knows the type and the plan can reason from
+it; a consumer that does not gets correct rows and a weaker statement. That is a bug in the consumer
+rather than a gap here, and `TODO.md` records the one case a declaration ought to recover.
+
 #### Casts over document values
 
 The row model types every document path `ANY`, so a view can only give a column a SQL type by
