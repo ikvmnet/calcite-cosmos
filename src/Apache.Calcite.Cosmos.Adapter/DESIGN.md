@@ -254,6 +254,16 @@ so it prices the index question and not the fan-out one; *The lookup restriction
 what says the fan-out difference is real, the router pruning from an equality in the predicate where a
 case-insensitive call names no value to prune on.
 
+**What a caller writes to reach it.** Two spellings, and a third that looks like the obvious one and
+cannot work. `CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)` and
+`CAST(JSON_VALUE(c."DOC", '$.ref' RETURNING VARCHAR) AS UUID)` both lower, the path underneath being
+the same path either way. `JSON_VALUE(…, '$.ref' RETURNING UUID)` does not: `RETURNING` *asserts* the
+extracted type rather than converting to it, and JSON has no UUID, so the extraction always yields a
+string and the assertion always fails. Measured — it validates, plans, and throws
+`InvalidCastException` at run time whatever the document holds. It is a landmine rather than an
+alternative, and the same shape as the `RETURNING` defect recorded under *Casts over document values*,
+with the mismatch now unavoidable rather than merely possible.
+
 #### A fact says which relations it preserves, not what type it is
 
 The obvious model — a path "is a UUID" — is wrong, and one measurement kills it. **Calcite orders

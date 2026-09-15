@@ -180,6 +180,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// The other spelling of a typed view column: <c>RETURNING VARCHAR</c> answers a string, and
+        /// the cast over it converts. <c>RETURNING UUID</c> is not a third — <c>RETURNING</c> asserts
+        /// the extracted type rather than converting to it, and JSON has no UUID, so it validates and
+        /// then throws at run time whatever the document holds.
+        /// </summary>
+        [TestMethod]
+        public void TheReturningVarcharSpellingLowersToo()
+        {
+            var container = Declared(true);
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'B' AND CAST(JSON_VALUE(c."DOC", '$.ref' RETURNING VARCHAR) AS UUID) = UUID'{Canonical}'""",
+                container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.ref = @", "the path underneath is the same path");
+            query.PartitionKeyValues.Should().ContainSingle().Which.Should().Be(Canonical);
+        }
+
+        /// <summary>
         /// The chain the issue is written around, end to end, now that a residual no longer costs the
         /// read: a comparison with no Cosmos form lowers to a string equality, the equality pins the
         /// partition key, and the discriminator that licensed it is held back rather than pushed.

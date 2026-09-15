@@ -71,9 +71,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return facts;
         }
 
+        /// <summary>
+        /// Flattens nested conjunctions into their top-level conjuncts.
+        /// </summary>
+        /// <param name="node">The predicate, or part of one.</param>
+        /// <param name="conjuncts">Collects what the conjunction is made of.</param>
         static void Flatten(RexNode node, List<RexNode> conjuncts)
         {
-            if (node is RexCall call && (SqlKind.__Enum)call.getKind().ordinal() == SqlKind.__Enum.AND)
+            if (node is RexCall call && call.getKind().name() == nameof(SqlKind.__Enum.AND))
             {
                 for (var i = 0; i < call.getOperands().size(); i++)
                     Flatten((RexNode)call.getOperands().get(i), conjuncts);
@@ -84,33 +89,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             conjuncts.Add(node);
         }
 
+        /// <summary>
+        /// Reads one conjunct, adding whatever it establishes.
+        /// </summary>
+        /// <remarks>
+        /// A shape not recognised adds nothing, which loses facts and can only lose pushdowns.
+        /// </remarks>
+        /// <param name="node">One top-level conjunct.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="facts">Collects what the conjunct proves.</param>
         static void Read(RexNode node, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<CosmosFact> facts)
         {
             if (node is not RexCall call)
                 return;
 
-            switch ((SqlKind.__Enum)call.getKind().ordinal())
+            // By name rather than by ordinal. SqlKind has 355 values and a kind's position
+            // among them is not an API: a constant added upstream renumbers everything after
+            // it, and a cast from the ordinal would go on compiling while meaning something
+            // else. Measured on 1.42, where EQUALS is 76 and CAST is 172.
+            switch (call.getKind().name())
             {
-                case SqlKind.__Enum.EQUALS when call.getOperands().size() == 2:
+                case nameof(SqlKind.__Enum.EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var path, out var value))
                         facts.Add(new CosmosFact(path!, new CosmosClaim.EqualTo(value)));
                     break;
 
-                case SqlKind.__Enum.NOT_EQUALS when call.getOperands().size() == 2:
+                case nameof(SqlKind.__Enum.NOT_EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var excludedPath, out var excluded))
                         facts.Add(new CosmosFact(excludedPath!, new CosmosClaim.NotEqualTo(excluded)));
                     break;
 
                 // A value that is not null is a value the path has. The converse does not hold — a
                 // stored JSON null is defined — so this proves presence and nothing more.
-                case SqlKind.__Enum.IS_NOT_NULL when call.getOperands().size() == 1:
+                case nameof(SqlKind.__Enum.IS_NOT_NULL) when call.getOperands().size() == 1:
                     if (TryPath((RexNode)call.getOperands().get(0), fields, rootAlias) is CosmosDocumentPath defined)
                         facts.Add(new CosmosFact(defined, new CosmosClaim.Present()));
                     break;
 
                 // An expanded IN is a disjunction of equalities, and it bounds the value's domain
                 // exactly when every branch is an equality on one path.
-                case SqlKind.__Enum.OR:
+                case nameof(SqlKind.__Enum.OR):
                     if (TryDomain(call, fields, rootAlias, out var domainPath, out var domain))
                         facts.Add(new CosmosFact(domainPath!, new CosmosClaim.OneOf(domain!)));
                     break;
@@ -136,6 +155,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 || TrySide(right, left, fields, rootAlias, out path, out value);
         }
 
+        /// <summary>
+        /// Reads one side of a comparison as a container-rooted path and the other as a constant.
+        /// </summary>
+        /// <param name="pathNode">The side expected to address a path.</param>
+        /// <param name="valueNode">The side expected to be a literal.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="path">On success, the document path.</param>
+        /// <param name="value">On success, the value the literal carries.</param>
+        /// <returns><c>true</c> where the two sides were as expected.</returns>
         static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out object? value)
         {
             path = null;
@@ -185,7 +214,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             for (var i = 0; i < call.getOperands().size(); i++)
             {
                 if (call.getOperands().get(i) is not RexCall branch ||
-                    (SqlKind.__Enum)branch.getKind().ordinal() != SqlKind.__Enum.EQUALS ||
+                    branch.getKind().name() != nameof(SqlKind.__Enum.EQUALS) ||
                     branch.getOperands().size() != 2)
                     return false;
 

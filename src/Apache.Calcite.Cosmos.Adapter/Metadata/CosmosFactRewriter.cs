@@ -91,9 +91,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (node is not RexCall call)
                 return null;
 
-            var kind = (SqlKind.__Enum)call.getKind().ordinal();
+            // By name rather than by ordinal: a kind's position among SqlKind's 355 values is
+            // not an API, and a cast from the ordinal keeps compiling when one is inserted.
+            var kind = call.getKind().name();
 
-            if (kind == SqlKind.__Enum.AND)
+            if (kind == nameof(SqlKind.__Enum.AND))
             {
                 var operands = new java.util.ArrayList();
                 var changed = false;
@@ -110,7 +112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return changed ? RexUtil.composeConjunction(rexBuilder, operands) : null;
             }
 
-            if (kind != SqlKind.__Enum.EQUALS || call.getOperands().size() != 2)
+            if (kind != nameof(SqlKind.__Enum.EQUALS) || call.getOperands().size() != 2)
                 return null;
 
             var left = (RexNode)call.getOperands().get(0);
@@ -126,14 +128,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static RexNode? TryLower(RexNode castNode, RexNode literalNode, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
-            if (literalNode is not RexLiteral literal || CanonicalUuid(literal) is not string canonical)
+            if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)
                 return null;
 
             if (castNode is not RexCall cast)
                 return null;
 
-            var kind = (SqlKind.__Enum)cast.getKind().ordinal();
-            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+            var kind = cast.getKind().name();
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
                 return null;
 
             if (cast.getType()?.getSqlTypeName() != SqlTypeName.UUID || cast.getOperands().size() != 1)
@@ -156,32 +158,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // The form has to be one whose stored spelling this knows how to write, and one whose
             // equality means the value's equality. A representation that pins some other shape is not
             // this rewrite's business, however well declared.
-            if (representation.PreservesEquality == false || CosmosStoredForms.IsUuid(representation) == false)
+            if (representation.PreservesEquality == false || CosmosStoredForms.RenderUuid(representation, value) is not string stored)
                 return null;
 
-            return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, operand, rexBuilder.makeLiteral(canonical));
+            return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, operand, rexBuilder.makeLiteral(stored));
         }
 
         /// <summary>
-        /// Reads a UUID literal as the canonical lowercase string a conforming document stores.
+        /// Reads the value a UUID literal carries.
         /// </summary>
         /// <remarks>
-        /// <c>java.util.UUID.toString</c> is that spelling, and <c>Guid.ToString("D")</c> is the same
-        /// one — the fallback exists because the boxed representation of a literal is Calcite's
-        /// business rather than this adapter's, and a spelling that will not parse yields no rewrite
-        /// rather than a guess.
+        /// The value and not a spelling: which spelling a conforming document stores is the path form
+        /// to say, and <see cref="CosmosStoredForms.RenderUuid"/> is what says it. The fallback exists
+        /// because the boxed representation of a literal is Calcite business rather than this adapter
+        /// business, and text that will not parse yields no rewrite rather than a guess.
         /// </remarks>
-        static string? CanonicalUuid(RexLiteral literal)
+        /// <param name="literal">The literal.</param>
+        /// <returns>The value, or <c>null</c> where the literal is not a UUID this can read.</returns>
+        static Guid? UuidOf(RexLiteral literal)
         {
             if (literal.isNull() || literal.getTypeName() != SqlTypeName.UUID)
                 return null;
 
-            if (literal.getValue() is java.util.UUID uuid)
-                return uuid.toString();
+            var text = literal.getValue() is java.util.UUID uuid ? uuid.toString() : literal.getValue()?.ToString();
 
-            return literal.getValue()?.ToString() is string text && Guid.TryParseExact(text, "D", out var parsed)
-                ? parsed.ToString("D")
-                : null;
+            return text is not null && Guid.TryParse(text, out var value) ? value : null;
         }
 
     }

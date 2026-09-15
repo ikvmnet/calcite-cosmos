@@ -30,8 +30,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     public static class CosmosServiceFacts
     {
 
+        /// <summary>
+        /// The rules themselves, built once.
+        /// </summary>
         static readonly CosmosFactRule[] Stated = Build();
 
+        /// <summary>
+        /// Builds the rules for the properties the service maintains.
+        /// </summary>
+        /// <returns>The rules.</returns>
         static CosmosFactRule[] Build()
         {
             CosmosFactRule[] About(string property, CosmosJsonType type)

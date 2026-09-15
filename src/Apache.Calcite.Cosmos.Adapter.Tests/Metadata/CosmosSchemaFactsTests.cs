@@ -146,6 +146,91 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "a case-insensitive class is a different language and gets no entry, which is the whole point of recognising rather than probing");
         }
 
+        /// <summary>
+        /// Uppercase is as canonical as lowercase, and the two differ only in what a comparison has to
+        /// render its literal into.
+        /// </summary>
+        /// <summary>
+        /// The spellings people actually write, which vary along more axes than the shape does.
+        /// </summary>
+        /// <remarks>
+        /// Each row here was found in a published schema, a validator guide or the uuid package own
+        /// documentation. They describe the same handful of languages and are written a dozen ways.
+        /// </remarks>
+        [TestMethod]
+        public void TheSpellingsInTheWildAreRecognised()
+        {
+            var lower = CosmosStoredForms.UuidCanonicalLower;
+            var upper = CosmosStoredForms.UuidCanonicalUpper;
+            var sortable = CosmosStoredForms.UuidCanonicalLowerSortable;
+
+            var recognised = new (string Pattern, CosmosRepresentation? Expected)[]
+            {
+                // The class written the other way round, which is as common as the first.
+                ("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", lower),
+                ("^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$", upper),
+
+                // Every RFC version nibble, and the range of them.
+                ("^[a-f0-9]{8}-[a-f0-9]{4}-1[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", lower),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+
+                // The variant class written out of order.
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[ba98][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+
+                // The nil-UUID alternation the uuid package documents. Equality survives, ordering
+                // does not: the nil value variant nibble is 0, which is on the other side of the sign.
+                ("(?:^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$)|(?:^0{8}-0{4}-0{4}-0{4}-0{12}$)", lower),
+                ("(?:^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$)|(?:^0{8}-0{4}-0{4}-0{4}-0{12}$)", lower),
+
+                // First digit confined, so the high half keeps its sign and the order is usable.
+                ("^[0-7][a-f0-9]{7}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", sortable),
+
+                // Whitespace, which means nothing outside a class.
+                ("^[0-9a-f]{8} -[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", lower),
+
+                // And the ones that must stay unrecognised. Case-insensitive throughout, and mixed in
+                // the variant nibble alone -- both admit two spellings of one value.
+                ("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", null),
+                ("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$", null),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89abAB][0-9a-f]{3}-[0-9a-f]{12}$", null),
+
+                // Unanchored, which admits a conforming value with anything around it.
+                ("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", null),
+            };
+
+            foreach (var (pattern, expected) in recognised)
+                CosmosStoredForms.Recognise(pattern).Should().Be(expected, "for " + pattern);
+        }
+
+        [TestMethod]
+        public void AnUppercaseSpellingIsCanonicalToo()
+        {
+            const string Upper = """
+            { "properties": { "ref": { "type": "string",
+                "pattern": "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" } } }
+            """;
+
+            var reference = CosmosDocumentPath.Root.Property("ref");
+            var derived = Compile(Upper).Derive(null);
+
+            derived.RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalUpper);
+
+            // And the two are different forms, not one form read twice: a container is written one way
+            // or the other, and a schema admitting both spellings is canonical at neither.
+            Compile("""
+            { "properties": { "ref": { "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" } } }
+            """).Derive(null).RepresentationOf(reference).Should().BeNull();
+
+            // The first hex digit decides ordering the same way it does in lowercase, 0-9 sorting
+            // before A-F as it sorts before a-f.
+            Compile("""
+            { "properties": { "ref": { "type": "string",
+                "pattern": "^[0-7][0-9A-F]{7}-[0-9A-F]{4}-7[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" } } }
+            """).Derive(null).RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalUpperSortable);
+        }
+
         [TestMethod]
         public void AnUndiscriminatedBranchYieldsOnlyWhatEveryBranchAgreesOn()
         {

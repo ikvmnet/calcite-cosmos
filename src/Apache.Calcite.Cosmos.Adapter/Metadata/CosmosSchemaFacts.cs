@@ -438,6 +438,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return found.Count > 0;
         }
 
+        /// <summary>
+        /// Reads the whole of one property subschema inside a condition, or fails.
+        /// </summary>
+        /// <param name="subschema">The subschema constraining the property.</param>
+        /// <param name="path">The path the property is at.</param>
+        /// <param name="resolver">Resolves a reference standing in the way.</param>
+        /// <param name="found">Collects the atoms read.</param>
+        /// <returns><c>true</c> where every keyword was understood and at least one atom came of it.</returns>
         static bool TryPropertyCondition(JsonNode subschema, CosmosDocumentPath path, CosmosSchemaResolver resolver, List<CosmosFact> found)
         {
             subschema = resolver.Follow(subschema) ?? subschema;
@@ -521,6 +529,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return null;
         }
 
+        /// <summary>
+        /// Determines whether one property selects a different branch for each of them.
+        /// </summary>
+        /// <param name="branches">The branches.</param>
+        /// <param name="parent">The node carrying them, and any discriminator.</param>
+        /// <param name="name">The candidate property.</param>
+        /// <param name="resolver">Resolves a branch written as a reference.</param>
+        /// <returns><c>true</c> where every branch is selected, and no two by the same value.</returns>
         static bool Pins(JsonNode branches, JsonNode parent, string name, CosmosSchemaResolver resolver)
         {
             var seen = new List<object?>();
@@ -576,12 +592,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return LastSegment(reference);
         }
 
+        /// <summary>
+        /// The schema name a reference ends in, which OpenAPI uses when no mapping names a branch.
+        /// </summary>
+        /// <param name="reference">The reference.</param>
+        /// <returns>The last segment, or the whole of it where there is no separator.</returns>
         static string LastSegment(string reference)
         {
             var slash = reference.LastIndexOf('/');
             return slash < 0 ? reference : reference.Substring(slash + 1);
         }
 
+        /// <summary>
+        /// Reads a <c>type</c>, where it states one thing.
+        /// </summary>
+        /// <param name="node">The schema node.</param>
+        /// <returns>The type, or <c>null</c> where none is stated or the schema widens it.</returns>
         static CosmosJsonType? ReadType(JsonNode node)
         {
             // OpenAPI 3.0 says a value may be null with a keyword beside the type rather than inside
@@ -602,6 +628,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return type is not null && type.isTextual() ? Parse(type.asText()) : null;
         }
 
+        /// <summary>
+        /// Maps a JSON Schema type name onto the JSON types a claim can be about.
+        /// </summary>
+        /// <param name="name">The declared name.</param>
+        /// <returns>The type, or <c>null</c> where it is not one of them.</returns>
         static CosmosJsonType? Parse(string name) => name switch
         {
             "string" => CosmosJsonType.String,
@@ -614,6 +645,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _ => null,
         };
 
+        /// <summary>
+        /// Reads an <c>enum</c> as a domain of scalars.
+        /// </summary>
+        /// <remarks>
+        /// All or nothing: a domain carrying an object or an array is one nothing here can compare
+        /// against, and half of it would be a claim the schema did not make.
+        /// </remarks>
+        /// <param name="node">The schema node.</param>
+        /// <returns>The domain, or <c>null</c>.</returns>
         static IReadOnlyList<object?>? ReadEnum(JsonNode node)
         {
             if (node.get("enum") is not JsonNode domain || domain.isArray() == false || domain.size() == 0)
@@ -632,6 +672,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return values;
         }
 
+        /// <summary>
+        /// Reads a keyword whose value is a string.
+        /// </summary>
+        /// <param name="node">The schema node.</param>
+        /// <param name="keyword">The keyword.</param>
+        /// <returns>The text, or <c>null</c> where the keyword is absent or is not a string.</returns>
         static string? Text(JsonNode node, string keyword) =>
             node.get(keyword) is JsonNode value && value.isTextual() ? value.asText() : null;
 
