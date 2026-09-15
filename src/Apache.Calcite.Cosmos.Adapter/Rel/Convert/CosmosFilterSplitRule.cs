@@ -43,6 +43,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// The split terminates. It fires only when both parts are non-empty, and neither of the two filters
     /// it produces has that property — the inner is wholly renderable, the outer wholly not.
     /// </para>
+    /// <para>
+    /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
+    /// one once the declared stored form is taken into account, and the fact that says so is usually
+    /// conditional on a sibling conjunct — so the whole condition is rewritten before it is taken apart,
+    /// while the conjunct that proves the condition is still beside the one it licenses. See
+    /// <see cref="Metadata.CosmosFactRewriter"/>.
+    /// </para>
     /// </remarks>
     public class CosmosFilterSplitRule : RelOptRule
     {
@@ -148,7 +155,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var below = AlreadyApplied(filter.getInput());
 
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
+            // Lowered before it is split, and that order is the point: a fact is usually conditional,
+            // and the conjunct that proves the condition is a sibling of the one being lowered. Split
+            // first and each conjunct would be weighed on its own, with nothing left to prove the
+            // guard from.
+            var condition = Metadata.CosmosFactRewriter.Rewrite(
+                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
+
+            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
 
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
