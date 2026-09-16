@@ -20,8 +20,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="IKVM" Version="8.16.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
+        <PackageReference Include="IKVM" Version="8.16.1" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.1" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <MavenReference Include="org.apache.calcite:calcite-csv" Version="1.42.0" />
     </ItemGroup>

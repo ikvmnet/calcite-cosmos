@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="IKVM" Version="8.16.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
+        <PackageReference Include="IKVM" Version="8.16.1" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.1" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.11.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
@@ -22,7 +22,7 @@
     <ItemGroup>
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
         <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.28.0" />
-        <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.6" />
+        <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.9" />
     </ItemGroup>
 
     <ItemGroup>
