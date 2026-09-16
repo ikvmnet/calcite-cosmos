@@ -197,15 +197,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var calcite = (CalciteDataReader)reader;
             var isNull = reader.IsDBNull(0);
 
-            // A WORKAROUND, and worth labelling as one so it is removed rather than inherited. The
-            // collection accessors refuse a null instead of answering one, which is a defect --
-            // ikvmnet/calcite-dotnet#144, where the intended behaviour is that GetArray returns null,
-            // as JDBC's getArray does for a SQL NULL. Calling them over a null column would record an
-            // exception belonging to that defect rather than to the question this class asks, which
-            // is only whether any route reaches an array.
+            // Asked only where the column holds something, which is the calling convention rather
+            // than a way around one. The collection accessors are typed getters and refuse a null as
+            // every other typed getter does; a caller that wants to distinguish a null asks IsDBNull
+            // first, explicitly. So this is what a correct caller writes, and the matrix writes it.
             //
-            // So the guard stands in for the fix: once #144 lands these can be called unconditionally
-            // like the other five, and this branch should go with it.
+            // Called unguarded, they would record a refusal for every array RETURNING in the corpus
+            // -- all of which are null -- which says only that the column was null, a fact IsDBNull
+            // already carries. The question here is whether any route reaches an array, and a
+            // refusal-for-null is not an answer to it. TheCollectionAccessorsRefuseANullCollection
+            // pins the refusal itself.
             object? collection = isNull ? null : Normalize(() => calcite.GetArray(0));
             object? collectionTyped = isNull ? null : Normalize(() => typedArray(calcite));
 
@@ -330,6 +331,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
+        /// The collection accessors refuse a null rather than answering one, as every other typed
+        /// getter does, so a caller that wants to tell a null apart asks <c>IsDBNull</c> first.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A contract and not a defect</b>, which is worth saying because the opposite is
+        /// arguable: both return types are reference types, so null is expressible, and JDBC's
+        /// <c>getArray</c> does answer null for a SQL NULL. The provider's rule is the other one —
+        /// a typed getter converts a value, and where there is no value there is nothing to convert,
+        /// so it refuses exactly as <c>GetInt32</c> or <c>GetString</c> would. Uniformity across the
+        /// accessors wins over JDBC parity on this point, and the cost is that <c>IsDBNull</c> is
+        /// explicit rather than implied.
+        /// </para>
+        /// <para>
+        /// Pinned here because the matrix depends on it: every array <c>RETURNING</c> in this class
+        /// is null, so this is the path a caller of the corpus actually takes, and a change to it
+        /// would change what
+        /// <see cref="NoArrayReturningFormYieldsAnArray"/> is measuring without changing its result.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheCollectionAccessorsRefuseANullCollection()
+        {
+            using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY)";
+
+            using var reader = command.ExecuteReader();
+            reader.Read().Should().BeTrue();
+
+            var calcite = (CalciteDataReader)reader;
+
+            reader.GetFieldType(0).Should().Be(typeof(string[]), "the column is a collection");
+            reader.IsDBNull(0).Should().BeTrue("and it is null, which is the premise");
+
+            // Called without the guard, deliberately: this is the one place that asks what happens.
+            calcite.Invoking(r => r.GetArray(0)).Should().Throw<InvalidCastException>(
+                "a typed getter refuses a null rather than answering one");
+
+            calcite.Invoking(r => r.GetArray<string>(0)).Should().Throw<InvalidCastException>(
+                "and naming the element type does not change that");
+
+            // The general-purpose accessors answer null instead, which is the difference a caller
+            // sees and the reason IsDBNull is what tells the two apart before either is called.
+            reader.GetValue(0).Should().Be(DBNull.Value);
+            reader.GetFieldValue<string[]>(0).Should().BeNull();
+        }
+
+        /// <summary>
         /// The collection accessors reach an array on exactly the column shape every failing case
         /// has, so what those cases lack is the value and not the route.
         /// </summary>
@@ -342,12 +394,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// not a limitation of its own.
         /// </para>
         /// <para>
-        /// <b>What is deliberately not asserted is how they decline a null.</b> They refuse it rather
-        /// than answering one, and that is a defect rather than a choice: <c>GetArray</c> should
-        /// answer null, as JDBC's <c>getArray</c> does for a SQL NULL — ikvmnet/calcite-dotnet#144.
-        /// Pinning the refusal here would be asserting the defect, and would fail the moment it is
-        /// fixed. The matrix guards with <c>IsDBNull</c> instead, which is the workaround a caller
-        /// must write meanwhile, so nothing in this class depends on the answer either way.
+        /// How they decline a null is pinned separately, by
+        /// <see cref="TheCollectionAccessorsRefuseANullCollection"/>. The matrix asks
+        /// <c>IsDBNull</c> before calling them, which is the convention a caller owes a typed getter
+        /// rather than a way around one.
         /// </para>
         /// </remarks>
         [TestMethod]
