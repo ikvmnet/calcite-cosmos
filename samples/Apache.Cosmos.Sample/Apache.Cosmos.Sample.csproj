@@ -15,13 +15,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.152" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.159" />
         <PackageReference Include="Spectre.Console" Version="0.57.2" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="IKVM" Version="8.16.0" />
-        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.0" />
+        <PackageReference Include="IKVM" Version="8.16.1" />
+        <PackageReference Include="IKVM.Java.Extensions" Version="8.16.1" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <MavenReference Include="org.apache.calcite:calcite-csv" Version="1.42.0" />
     </ItemGroup>
