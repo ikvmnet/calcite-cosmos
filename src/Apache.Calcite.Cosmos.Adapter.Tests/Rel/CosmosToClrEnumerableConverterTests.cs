@@ -363,6 +363,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             ((object[])rows[0]).Should().Equal("a", java.lang.Long.valueOf(17L));
         }
 
+        /// <summary>
+        /// An array-typed column comes back as the array, which is what #119 said it did not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The read half of the fix. The statement asks for <c>IS_ARRAY(c.tags) ? c.tags : null</c>
+        /// — asserted in <see cref="CosmosPlannerTests"/> — and this is what the row builder then does
+        /// with the answer: <c>CosmosJson.GetList</c> builds the <see cref="java.util.List"/> Calcite
+        /// holds a collection in, which <see cref="Sql.CalciteArrayReadingMeasurementTests"/> shows reaching a
+        /// <c>DbDataReader</c> as a CLR array.
+        /// </para>
+        /// <para>
+        /// Before the fix the column was read as text, so the row carried the string <c>[a, b]</c>
+        /// where the plan had declared a collection and the cast to a list failed outright.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayColumnAsTheArray()
+        {
+            Given("""{ "T": ["a", "b"] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+            rows[0].Should().BeAssignableTo<java.util.List>();
+
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(2);
+            list.get(0).Should().Be("a");
+            list.get(1).Should().Be("b");
+        }
+
+        /// <remarks>
+        /// The guard answers null at the service for a document holding no array at the path, and the
+        /// column reads as SQL null rather than failing the query — which is the point of guarding
+        /// rather than emitting the bare path.
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayColumnAsNullWhereTheGuardAnsweredNull()
+        {
+            Given("""{ }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+
+            rows.Should().Equal(new object[] { null! });
+        }
+
+        /// <summary>
+        /// The elements are read as the type the <c>RETURNING</c> named, not by their own JSON type.
+        /// </summary>
+        /// <remarks>
+        /// <c>INTEGER ARRAY</c> holds <see cref="java.lang.Integer"/>, where reading each element
+        /// naturally would hand back a <see cref="java.lang.Long"/> — a Cosmos number being a double
+        /// and an integral one arriving as a Long wherever there is no schema to consult. Here there
+        /// is one.
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadArrayElementsAsTheDeclaredComponentType()
+        {
+            Given("""{ "T": [1, 2] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING INTEGER ARRAY) AS \"T\" FROM products AS c"));
+
+            var list = (java.util.List)rows[0];
+            list.get(0).Should().Be(java.lang.Integer.valueOf(1));
+            list.get(1).Should().Be(java.lang.Integer.valueOf(2));
+        }
+
+        /// <remarks>
+        /// An element contradicting the declaration fails rather than lies, which is the same refusal
+        /// <c>CosmosJson.GetString</c> makes for a scalar column and the reason a <c>RETURNING</c>
+        /// clause is worth trusting at all.
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldRefuseAnElementThatContradictsTheDeclaredComponentType()
+        {
+            Given("""{ "T": [1, 2] }""");
+
+            var plan = PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c");
+
+            var act = async () => await Execute(plan);
+            (await act.Should().ThrowAsync<CosmosMaterializationException>()).WithMessage("*Expected a JSON string*");
+        }
+
+        /// <summary>
+        /// A scalar <c>RETURNING</c> reads as the type it names.
+        /// </summary>
+        /// <remarks>
+        /// The same one-line mistake as the array case: every <c>JSON_VALUE</c> was rendered as the
+        /// text form's guard and read back as text, so a column the plan had declared <c>INTEGER</c>
+        /// carried a string and the row could not be built. Held here because the array case alone
+        /// would not have caught it.
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAScalarReturningAsTheTypeItNames()
+        {
+            Given("""{ "N": 7, "B": true }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"N\", JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) AS \"B\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+            ((object[])rows[0]).Should().Equal(java.lang.Integer.valueOf(7), java.lang.Boolean.TRUE);
+        }
+
         /// <remarks>
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.

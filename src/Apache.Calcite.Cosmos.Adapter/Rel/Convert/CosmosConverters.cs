@@ -27,10 +27,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     static class CosmosConverters
     {
 
-        static readonly System.Reflection.MethodInfo GetPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetProperty), [typeof(JsonElement), typeof(string), typeof(SqlTypeName)])
+        static readonly System.Reflection.MethodInfo GetPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetProperty), [typeof(JsonElement), typeof(string), typeof(SqlTypeName), typeof(SqlTypeName)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetProperty)}' is missing from {nameof(CosmosJson)}.");
 
-        static readonly System.Reflection.MethodInfo GetPathMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetPath), [typeof(JsonElement), typeof(IReadOnlyList<CosmosPathSegment>), typeof(SqlTypeName)])
+        static readonly System.Reflection.MethodInfo GetPathMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetPath), [typeof(JsonElement), typeof(IReadOnlyList<CosmosPathSegment>), typeof(SqlTypeName), typeof(SqlTypeName)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetPath)}' is missing from {nameof(CosmosJson)}.");
 
         static readonly System.Reflection.MethodInfo GetTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetTextProperty), [typeof(JsonElement), typeof(string)])
@@ -374,11 +374,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (fields[i] is not CosmosPath path)
                     return null;
 
+                var type = ((RelDataTypeField)typeFields.get(i)).getType();
+
                 values[i] = Expression.Call(null,
                     GetPathMethod,
                     row,
                     Expression.Constant(path.Segments),
-                    Expression.Constant(((RelDataTypeField)typeFields.get(i)).getType().getSqlTypeName()));
+                    Expression.Constant(type.getSqlTypeName()),
+                    Expression.Constant(ComponentTypeNameOf(type), typeof(SqlTypeName)));
             }
 
             Expression body = fieldCount == 1 ? values[0] : Expression.NewArrayInit(typeof(object), values);
@@ -420,7 +423,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 GetPropertyMethod,
                 row,
                 Expression.Constant(field.getName()),
-                Expression.Constant(field.getType().getSqlTypeName()));
+                Expression.Constant(field.getType().getSqlTypeName()),
+                Expression.Constant(ComponentTypeNameOf(field.getType()), typeof(SqlTypeName)));
+        }
+
+        /// <summary>
+        /// Returns the element type of a collection type, or <c>null</c> where the type is not one.
+        /// </summary>
+        /// <remarks>
+        /// What tells <c>VARCHAR ARRAY</c> from <c>INTEGER ARRAY</c> at the point the value is read.
+        /// The reader needs it because a JSON array carries no element type of its own — see
+        /// <see cref="CosmosJson.GetList(JsonElement, SqlTypeName?)"/>.
+        /// </remarks>
+        static SqlTypeName? ComponentTypeNameOf(org.apache.calcite.rel.type.RelDataType type)
+        {
+            var name = type?.getSqlTypeName();
+            if (name != SqlTypeName.ARRAY && name != SqlTypeName.MULTISET)
+                return null;
+
+            return type!.getComponentType()?.getSqlTypeName();
         }
 
         /// <summary>

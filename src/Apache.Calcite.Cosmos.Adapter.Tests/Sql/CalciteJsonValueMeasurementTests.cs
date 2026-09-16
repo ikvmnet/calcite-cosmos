@@ -159,6 +159,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 "an object is not a scalar, so the error path runs and answers null");
         }
 
+        /// <summary>
+        /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and it is
+        /// the one the adapter diverges from on purpose.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>RETURNING … ARRAY</c> is the only spelling in SQL that gives an accessor an array type,
+        /// and it is therefore the only spelling an <c>UNNEST</c> will take as a source —
+        /// <c>JSON_QUERY</c> is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c>. So the clause exists to
+        /// name an array. In process it never produces one: the array is not a scalar, so the
+        /// extraction fails, the error path runs, and null comes back — the same accident as above,
+        /// seen from the other side. A scalar at the path throws instead, the extraction having
+        /// succeeded and the cast to a list then failing outside the error handling.
+        /// </para>
+        /// <para>
+        /// <b>Which is why the adapter answers the array.</b> The traversal already reads the elements
+        /// at that path, and a projection of the same call answering null made one expression mean two
+        /// things (#119). The pushed column is <c>IS_ARRAY(p) ? p : null</c>: it agrees with the engine
+        /// for an object, a JSON null and an absent path, answers the standard's <c>NULL ON ERROR</c>
+        /// where the engine throws, and answers the array where the engine's own clause is useless.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReturningAnswersNullForAnArrayAndThrowsForAScalar()
+        {
+            // An array — what the clause is for — comes back null.
+            foreach (var json in new[] { "[\"a\",\"b\"]", "[]", "[1,2]" })
+            {
+                var answer = Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING VARCHAR ARRAY)");
+
+                answer.Threw.Should().BeNull($"over {json}");
+                answer.Declared.Should().Be("String[]", $"RETURNING names the declared type, over {json}");
+                answer.Value.Should().BeNull($"the engine answers null even over {json}, which is the defect");
+            }
+
+            // An object, a JSON null and an absent path answer null as well, and there the adapter agrees.
+            Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+            Ask($"JSON_VALUE({Document("null")}, '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+            Ask("JSON_VALUE('{}', '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+
+            // A scalar throws: the extraction succeeded, and the cast to a list is outside its handling.
+            foreach (var json in new[] { "\"bikes\"", "30", "true" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING VARCHAR ARRAY)").Threw.Should().NotBeNull(
+                    $"a scalar under an array RETURNING is a raw cast failure, over {json}");
+        }
+
     }
 
 }

@@ -188,6 +188,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             list.get(2).Should().BeNull();
         }
 
+        /// <summary>
+        /// An element is read as the declared component type where the caller has one.
+        /// </summary>
+        /// <remarks>
+        /// The reading above has no element type to consult and discovers each element's; a column
+        /// typed <c>INTEGER ARRAY</c> does have one, and the difference shows: an integral JSON number
+        /// is a <see cref="java.lang.Long"/> discovered and a <see cref="java.lang.Integer"/> declared,
+        /// and a plan that said <c>INTEGER</c> wants the latter.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldReadArrayElementsAsTheDeclaredComponentType()
+        {
+            var list = CosmosJson.GetList(Value("""[ 1, 2 ]"""), SqlTypeName.INTEGER);
+
+            list.size().Should().Be(2);
+            list.get(0).Should().Be(java.lang.Integer.valueOf(1));
+            list.get(1).Should().Be(java.lang.Integer.valueOf(2));
+        }
+
+        /// <remarks>
+        /// And refuses one that contradicts it, rather than coercing — the same refusal a scalar
+        /// column makes, for the same reason.
+        /// </remarks>
+        [TestMethod]
+        public void ShouldRefuseAnElementThatContradictsTheDeclaredComponentType()
+        {
+            var act = () => CosmosJson.GetList(Value("""[ "a", 2 ]"""), SqlTypeName.VARCHAR);
+            act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
+        }
+
         [TestMethod]
         public void ShouldReadNestedStructureUnderAny()
         {

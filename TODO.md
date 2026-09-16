@@ -378,6 +378,18 @@ source. And the accepted path grammar is `$` followed by `.name`, `['name']` and
 wildcard, a descent or a filter is refused rather than approximated, and the path argument must be a
 literal for the reason the full text functions' first argument must be.
 
+**The same spelling projected meant something else, and that was a bug rather than a limit (#119).**
+Every `JSON_VALUE` was rendered as the bare accessor's guard, `IIF(IS_PRIMITIVE(p), p, null)`, and
+read as text — whatever the `RETURNING` clause said. `IS_PRIMITIVE` is false of an array, so the
+array a traversal read elements out of was null as a column; and a scalar `RETURNING` carried the text
+reading into a column the plan had declared a number, which the row builder could not hand over at
+all. The guard and the reading now follow the accessor's declared type: `IS_ARRAY` and a
+`java.util.List` for an array type, the bare path and the declared type for every other, and
+`IS_PRIMITIVE` and text for the bare accessor it was written for. A collection is read to its element
+type as well, so `INTEGER ARRAY` holds `Integer` rather than the `Long` a schemaless read discovers.
+`DESIGN.md` records it under *Projecting a cast to text*; what is still not handled is `JSON_QUERY`,
+the mirror guard, which keeps the typed reading and is wrong in the way this was.
+
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
 `JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the
 writer, the routing in `CosmosSequences`, and the refusal of every form that cannot be rendered. The

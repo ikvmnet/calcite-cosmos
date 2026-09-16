@@ -47,13 +47,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <exception cref="CosmosMaterializationException">The value cannot be read as that type.</exception>
         public static object? GetProperty(JsonElement row, string name, SqlTypeName typeName)
         {
+            return GetProperty(row, name, typeName, null);
+        }
+
+        /// <inheritdoc cref="GetProperty(JsonElement, string, SqlTypeName)" />
+        /// <param name="row">The JSON value Cosmos returned for the row.</param>
+        /// <param name="name">The property to read.</param>
+        /// <param name="typeName">The SQL type the plan was built against.</param>
+        /// <param name="componentTypeName">
+        /// The element type, where <paramref name="typeName"/> is a collection. See
+        /// <see cref="GetList(JsonElement, SqlTypeName?)"/> for what it buys.
+        /// </param>
+        public static object? GetProperty(JsonElement row, string name, SqlTypeName typeName, SqlTypeName? componentTypeName)
+        {
             // A row that is not an object has no properties to name. That is not reachable through the
             // converters, which always project an object, but it is worth failing loudly rather than
             // silently yielding a row of nulls if one ever stops doing so.
             if (row.ValueKind != JsonValueKind.Object)
                 throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
 
-            return row.TryGetProperty(name, out var value) ? GetValue(value, typeName) : null;
+            return row.TryGetProperty(name, out var value) ? GetValue(value, typeName, componentTypeName) : null;
         }
 
         /// <summary>
@@ -155,6 +168,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <returns>The value, or <c>null</c> where the path is absent or JSON null.</returns>
         public static object? GetPath(JsonElement document, IReadOnlyList<CosmosPathSegment> segments, SqlTypeName typeName)
         {
+            return GetPath(document, segments, typeName, null);
+        }
+
+        /// <inheritdoc cref="GetPath(JsonElement, IReadOnlyList{CosmosPathSegment}, SqlTypeName)" />
+        /// <param name="document">The document.</param>
+        /// <param name="segments">The path's segments, relative to the document root.</param>
+        /// <param name="typeName">The SQL type the plan was built against.</param>
+        /// <param name="componentTypeName">
+        /// The element type, where <paramref name="typeName"/> is a collection. Carried so that a
+        /// point read and a query read a collection column identically, which is the whole reason the
+        /// two readings are written against the same functions.
+        /// </param>
+        public static object? GetPath(JsonElement document, IReadOnlyList<CosmosPathSegment> segments, SqlTypeName typeName, SqlTypeName? componentTypeName)
+        {
             if (segments is null)
                 throw new ArgumentNullException(nameof(segments));
 
@@ -175,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     return null;
             }
 
-            return GetValue(value, typeName);
+            return GetValue(value, typeName, componentTypeName);
         }
 
         /// <summary>
@@ -186,6 +213,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <returns>The value, or <c>null</c> where the value is JSON null.</returns>
         /// <exception cref="CosmosMaterializationException">The value cannot be read as that type.</exception>
         public static object? GetValue(JsonElement value, SqlTypeName typeName)
+        {
+            return GetValue(value, typeName, null);
+        }
+
+        /// <inheritdoc cref="GetValue(JsonElement, SqlTypeName)" />
+        /// <param name="value">The value to read.</param>
+        /// <param name="typeName">The SQL type the plan was built against.</param>
+        /// <param name="componentTypeName">
+        /// The element type, where <paramref name="typeName"/> is a collection, and <c>null</c> where
+        /// the caller has none to give. See <see cref="GetList(JsonElement, SqlTypeName?)"/>.
+        /// </param>
+        public static object? GetValue(JsonElement value, SqlTypeName typeName, SqlTypeName? componentTypeName)
         {
             if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
                 return null;
@@ -233,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     return GetMap(value);
                 case nameof(SqlTypeName.ARRAY):
                 case nameof(SqlTypeName.MULTISET):
-                    return GetList(value);
+                    return GetList(value, componentTypeName);
                 case nameof(SqlTypeName.ANY):
                 case nameof(SqlTypeName.OTHER):
                     return GetNatural(value);
@@ -307,13 +346,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <returns>The list.</returns>
         public static java.util.List GetList(JsonElement value)
         {
+            return GetList(value, null);
+        }
+
+        /// <inheritdoc cref="GetList(JsonElement)" />
+        /// <param name="value">The value to read.</param>
+        /// <param name="componentTypeName">
+        /// The element type the plan declared, or <c>null</c> to read each element by its own JSON
+        /// type.
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// <b>The element type is read the same way the column's own is, and for the same reason.</b>
+        /// A collection column carries a declared element type — <c>VARCHAR ARRAY</c> says the
+        /// elements are strings — and reading them naturally instead would hand a
+        /// <see cref="java.lang.Long"/> to a plan that declared <see cref="string"/>, which is the
+        /// coercion <see cref="GetString"/> refuses for a scalar column. So a document that
+        /// contradicts the declaration fails here rather than further down, which is the whole reason
+        /// a <c>RETURNING</c> clause is worth trusting.
+        /// </para>
+        /// <para>
+        /// <c>null</c> where the caller has no element type — an <c>ANY</c> value's own list, which
+        /// has no schema to consult and is discovered element by element.
+        /// </para>
+        /// </remarks>
+        public static java.util.List GetList(JsonElement value, SqlTypeName? componentTypeName)
+        {
             if (value.ValueKind != JsonValueKind.Array)
                 throw new CosmosMaterializationException($"Expected a JSON array for an ARRAY, got {value.ValueKind}.");
 
             var list = new java.util.ArrayList(value.GetArrayLength());
 
             foreach (var element in value.EnumerateArray())
-                list.add(GetNatural(element));
+                list.add(componentTypeName is null ? GetNatural(element) : GetValue(element, componentTypeName));
 
             return list;
         }
