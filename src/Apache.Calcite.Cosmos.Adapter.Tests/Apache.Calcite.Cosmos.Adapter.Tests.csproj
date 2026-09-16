@@ -14,8 +14,8 @@
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.11.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.152" />
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.152" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.159" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.159" />
         <PackageReference Include="Testcontainers" Version="4.15.0" />
     </ItemGroup>
 
