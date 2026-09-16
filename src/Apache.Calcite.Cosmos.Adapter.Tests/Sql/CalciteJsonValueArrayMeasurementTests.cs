@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Linq;
 
 using Apache.Calcite.Data;
 
@@ -487,8 +488,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             read.Value.Should().BeOfType<string[]>().Which.Should().Equal("z");
             read.Typed.Should().BeOfType<string[]>().Which.Should().Equal("z");
             read.ProviderSpecific.Should().BeOfType<string[]>().Which.Should().Equal("z");
-            read.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("z",
-                "the collection accessor reaches it too, so what fails above is the extraction and not the route");
+            // The collection accessor reaches it too, so what fails in the null cases is the
+            // extraction and not the route. (Equal takes params, so the reason lives here.)
+            read.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("z");
         }
 
         /// <summary>
