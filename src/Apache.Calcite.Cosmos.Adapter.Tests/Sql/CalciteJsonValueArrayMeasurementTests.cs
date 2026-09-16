@@ -30,9 +30,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     /// different fixes.
     /// </para>
     /// <para>
-    /// Three things are held here. The driver carries array values perfectly well
+    /// Three things are held here. The driver carries array values perfectly well, through all seven
+    /// routes including the provider's own collection accessors
     /// (<see cref="TheDriverCarriesArrayValues"/>). No spelling of an array <c>RETURNING</c> produces
-    /// one, and no reader route rescues it
+    /// one, and no reader route rescues it — <c>GetArray</c> and <c>GetArray&lt;T&gt;</c> included,
+    /// which is what makes "no route" exhaustive rather than a survey of the general-purpose ones
     /// (<see cref="NoArrayReturningFormYieldsAnArray"/>). And the engine says why, in its own words,
     /// when asked to raise rather than swallow (<see cref="TheExtractionRefusesTheArrayAsNonScalar"/>)
     /// — with <see cref="ADefaultOnErrorProvesEverythingBelowTheExtractionWorks"/> as the control that
@@ -88,6 +90,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <param name="Typed">What <c>GetFieldValue&lt;string[]&gt;</c> returned, or the exception's name.</param>
         /// <param name="Untyped">What <c>GetFieldValue&lt;object&gt;</c> returned.</param>
         /// <param name="ProviderSpecific">What <c>GetProviderSpecificValue</c> returned.</param>
+        /// <param name="Collection">What <c>GetArray</c> returned — the provider's own collection accessor.</param>
+        /// <param name="CollectionTyped">What <c>GetArray&lt;T&gt;</c> returned, for the column's own element type.</param>
         sealed record Read(
             Type? Declared,
             bool IsDbNull,
@@ -95,15 +99,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             object? Indexer,
             object? Typed,
             object? Untyped,
-            object? ProviderSpecific)
+            object? ProviderSpecific,
+            object? Collection,
+            object? CollectionTyped)
         {
 
             /// <summary>
-            /// Whether every route agreed the column held nothing.
+            /// Every route's answer, so that a claim about "no route" is made over all of them.
             /// </summary>
-            public bool IsNullEverywhere =>
-                IsDbNull && Value is null && Indexer is null && Typed is null && Untyped is null && ProviderSpecific is null;
+            public IEnumerable<(string Route, object? Answer)> Routes =>
+            [
+                ("GetValue", Value),
+                ("this[0]", Indexer),
+                ("GetFieldValue<string[]>", Typed),
+                ("GetFieldValue<object>", Untyped),
+                ("GetProviderSpecificValue", ProviderSpecific),
+                ("GetArray", Collection),
+                ("GetArray<T>", CollectionTyped),
+            ];
 
+            /// <summary>
+            /// Whether no route produced an array.
+            /// </summary>
+            /// <remarks>
+            /// Asked as "produced no array" rather than "was null everywhere", because the two are
+            /// not the same and only the first is the claim. A typed accessor refuses a column of
+            /// another type by throwing, and a refusal is not a value — what would falsify this class
+            /// is a route handing back a collection, not a route declining differently from its
+            /// neighbours.
+            /// </remarks>
+            public bool FoundNoArray => Routes.All(r => r.Answer is not Array);
+
+        }
+
+        /// <summary>
+        /// What a route did instead of answering.
+        /// </summary>
+        /// <remarks>
+        /// Kept apart from a null so the two are never conflated: <c>GetArray</c> over a
+        /// <c>VARCHAR</c> throwing is a different fact from a collection column holding nothing.
+        /// </remarks>
+        sealed record Thrown(string Exception)
+        {
+            public override string ToString() => "threw " + Exception;
         }
 
         static object? Normalize(Func<object?> read)
@@ -116,12 +154,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             catch (Exception e)
             {
                 // A typed accessor over a column of another type throws rather than answering, which
-                // is an answer too -- recorded as the exception's name so a caller can tell the two
-                // apart from "it was null".
+                // is an answer too -- recorded as a refusal so a caller can tell it from "it was null".
                 while (e.InnerException is Exception inner)
                     e = inner;
 
-                return e.GetType().Name;
+                return new Thrown(e.GetType().Name);
             }
         }
 
@@ -130,9 +167,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// </summary>
         /// <param name="sql">The statement.</param>
         /// <param name="withTable">Whether to register the document table as <c>docs</c>.</param>
+        /// <param name="typedArray">
+        /// How to call <c>GetArray&lt;T&gt;</c> for this column. Supplied by the caller rather than
+        /// fixed, because the element type is the column's: <c>GetArray&lt;string&gt;</c> over an
+        /// <c>INTEGER ARRAY</c> is refused for naming the wrong element type, which is a different
+        /// fact from the one being measured and would be recorded as though it were the same.
+        /// Defaults to <see cref="string"/>, which is what most of the corpus declares.
+        /// </param>
         /// <returns>The read, or <c>null</c> where the statement produced no rows.</returns>
-        static Read? Ask(string sql, bool withTable = false)
+        static Read? Ask(string sql, bool withTable = false, Func<CalciteDataReader, object?>? typedArray = null)
         {
+            typedArray ??= r => r.GetArray<string>(0);
+
             using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
             connection.Open();
 
@@ -146,6 +192,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             if (reader.Read() == false)
                 return null;
 
+            // GetArray is the provider's own, ADO.NET having no accessor for a collection, so it is
+            // reached through the concrete reader rather than through DbDataReader.
+            var calcite = (CalciteDataReader)reader;
+
             return new Read(
                 reader.GetFieldType(0),
                 reader.IsDBNull(0),
@@ -153,7 +203,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Normalize(() => reader[0]),
                 Normalize(() => reader.GetFieldValue<string[]>(0)),
                 Normalize(() => reader.GetFieldValue<object>(0)),
-                Normalize(() => reader.GetProviderSpecificValue(0)));
+                Normalize(() => reader.GetProviderSpecificValue(0)),
+                Normalize(() => calcite.GetArray(0)),
+                Normalize(() => typedArray(calcite)));
         }
 
         /// <summary>
@@ -178,20 +230,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             array.Declared.Should().Be(typeof(string[]));
             array.IsDbNull.Should().BeFalse();
+
+            // Every route, including the two the provider added for collections. Asserted one by one
+            // rather than through Routes, so a failure names the accessor that stopped answering.
             array.Value.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
             array.Indexer.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
             array.Typed.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
             array.Untyped.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
             array.ProviderSpecific.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
+            array.Collection.Should().BeAssignableTo<Array>("GetArray is the accessor for a collection");
+            array.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
 
-            // A MULTISET is the other collection type and arrives the same way.
+            // A MULTISET is the other collection type and arrives the same way -- they differ in
+            // whether the order of the elements means anything, not in what holds them.
             var multiset = Ask("SELECT MULTISET['a','b']")!;
             multiset.Value.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
+            multiset.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("a", "b");
 
-            // And the element type is honoured rather than everything arriving as strings.
-            var integers = Ask("SELECT ARRAY[1,2]")!;
+            // And the element type is the column's rather than everything arriving as strings, which
+            // is why the generic accessor is called with the type the column declares.
+            var integers = Ask("SELECT ARRAY[1,2]", typedArray: r => r.GetArray<int>(0))!;
             integers.Declared.Should().Be(typeof(int[]));
             integers.Value.Should().BeOfType<int[]>().Which.Should().Equal(1, 2);
+            integers.CollectionTyped.Should().BeOfType<int[]>().Which.Should().Equal(1, 2);
         }
 
         /// <summary>
@@ -205,44 +266,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// literal. All of them declare the right CLR type and all of them answer null.
         /// </para>
         /// <para>
-        /// The reader is asked five ways per case because the five are not one mechanism: a provider
-        /// may convert in <c>GetValue</c> and not in <c>GetFieldValue&lt;T&gt;</c>, or keep an engine
-        /// representation only behind <c>GetProviderSpecificValue</c>. None of them differ here.
+        /// <b>The reader is asked seven ways per case</b>, because the seven are not one mechanism: a
+        /// provider may convert in <c>GetValue</c> and not in <c>GetFieldValue&lt;T&gt;</c>, or keep an
+        /// engine representation only behind <c>GetProviderSpecificValue</c>. Two of the seven are the
+        /// provider's own <c>GetArray</c> and <c>GetArray&lt;T&gt;</c> — the accessors built for
+        /// collections, ADO.NET having none, and therefore the ones with the best claim to reach an
+        /// array if anything does. The generic is called with the element type the column declares,
+        /// since naming another is a refusal about the type argument rather than about the array.
+        /// None of the seven differ here.
         /// </para>
         /// </remarks>
         [TestMethod]
         public void NoArrayReturningFormYieldsAnArray()
         {
-            var forms = new (string Case, string Sql, bool Table)[]
+            Func<CalciteDataReader, object?> text = r => r.GetArray<string>(0);
+            Func<CalciteDataReader, object?> integer = r => r.GetArray<int>(0);
+            Func<CalciteDataReader, object?> big = r => r.GetArray<long>(0);
+
+            var forms = new (string Case, string Sql, bool Table, Func<CalciteDataReader, object?> Typed)[]
             {
-                ("VARCHAR ARRAY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY)", false),
-                ("VARCHAR(20) ARRAY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR(20) ARRAY)", false),
-                ("INTEGER ARRAY", $"SELECT JSON_VALUE({Literal}, '$.n' RETURNING INTEGER ARRAY)", false),
-                ("BIGINT ARRAY", $"SELECT JSON_VALUE({Literal}, '$.n' RETURNING BIGINT ARRAY)", false),
-                ("lax path", $"SELECT JSON_VALUE({Literal}, 'lax $.v' RETURNING VARCHAR ARRAY)", false),
-                ("strict path", $"SELECT JSON_VALUE({Literal}, 'strict $.v' RETURNING VARCHAR ARRAY)", false),
-                ("wildcard step", $"SELECT JSON_VALUE({Literal}, 'lax $.v[*]' RETURNING VARCHAR ARRAY)", false),
-                ("the document root", "SELECT JSON_VALUE('[\"a\",\"b\"]', '$' RETURNING VARCHAR ARRAY)", false),
-                ("NULL ON EMPTY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY NULL ON EMPTY)", false),
-                ("NULL ON ERROR", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY NULL ON ERROR)", false),
-                ("DEFAULT ON EMPTY", $"SELECT JSON_VALUE({Literal}, '$.missing' RETURNING VARCHAR ARRAY DEFAULT ARRAY['z'] ON EMPTY)", false),
-                ("a column, VARCHAR ARRAY", "SELECT JSON_VALUE(\"J\", '$.v' RETURNING VARCHAR ARRAY) FROM \"docs\"", true),
-                ("a column, INTEGER ARRAY", "SELECT JSON_VALUE(\"J\", '$.n' RETURNING INTEGER ARRAY) FROM \"docs\"", true),
+                ("VARCHAR ARRAY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY)", false, text),
+                ("VARCHAR(20) ARRAY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR(20) ARRAY)", false, text),
+                ("INTEGER ARRAY", $"SELECT JSON_VALUE({Literal}, '$.n' RETURNING INTEGER ARRAY)", false, integer),
+                ("BIGINT ARRAY", $"SELECT JSON_VALUE({Literal}, '$.n' RETURNING BIGINT ARRAY)", false, big),
+                ("lax path", $"SELECT JSON_VALUE({Literal}, 'lax $.v' RETURNING VARCHAR ARRAY)", false, text),
+                ("strict path", $"SELECT JSON_VALUE({Literal}, 'strict $.v' RETURNING VARCHAR ARRAY)", false, text),
+                ("wildcard step", $"SELECT JSON_VALUE({Literal}, 'lax $.v[*]' RETURNING VARCHAR ARRAY)", false, text),
+                ("the document root", "SELECT JSON_VALUE('[\"a\",\"b\"]', '$' RETURNING VARCHAR ARRAY)", false, text),
+                ("NULL ON EMPTY", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY NULL ON EMPTY)", false, text),
+                ("NULL ON ERROR", $"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY NULL ON ERROR)", false, text),
+                ("DEFAULT ON EMPTY", $"SELECT JSON_VALUE({Literal}, '$.missing' RETURNING VARCHAR ARRAY DEFAULT ARRAY['z'] ON EMPTY)", false, text),
+                ("a column, VARCHAR ARRAY", "SELECT JSON_VALUE(\"J\", '$.v' RETURNING VARCHAR ARRAY) FROM \"docs\"", true, text),
+                ("a column, INTEGER ARRAY", "SELECT JSON_VALUE(\"J\", '$.n' RETURNING INTEGER ARRAY) FROM \"docs\"", true, integer),
             };
 
             // Every form is reported, rather than the first one to fail: which subset breaks is
             // what would say whether a future fix is partial.
             using var scope = new AssertionScope();
 
-            foreach (var (name, sql, table) in forms)
+            foreach (var (name, sql, table, typed) in forms)
             {
-                var read = Ask(sql, table);
+                var read = Ask(sql, table, typed);
 
                 read.Should().NotBeNull($"the statement should produce a row, over {name}");
                 read!.Declared.Should().NotBeNull($"the column should be typed, over {name}");
-                read.IsNullEverywhere.Should().BeTrue(
+                read.FoundNoArray.Should().BeTrue(
                     $"no reader route should find an array, over {name} — got " +
-                    $"value={Describe(read.Value)}, typed={Describe(read.Typed)}, provider={Describe(read.ProviderSpecific)}");
+                    string.Join(", ", read.Routes.Select(r => $"{r.Route}={Describe(r.Answer)}")));
             }
         }
 
@@ -322,6 +392,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             read.Value.Should().BeOfType<string[]>().Which.Should().Equal("z");
             read.Typed.Should().BeOfType<string[]>().Which.Should().Equal("z");
             read.ProviderSpecific.Should().BeOfType<string[]>().Which.Should().Equal("z");
+            read.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("z",
+                "the collection accessor reaches it too, so what fails above is the extraction and not the route");
         }
 
         /// <summary>
@@ -348,6 +420,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         static string Describe(object? value) => value switch
         {
             null => "null",
+            Thrown thrown => thrown.ToString(),
             string[] a => "string[" + a.Length + "]",
             System.Array a => value.GetType().Name + "[" + a.Length + "]",
             _ => value.GetType().Name + ":" + value,
