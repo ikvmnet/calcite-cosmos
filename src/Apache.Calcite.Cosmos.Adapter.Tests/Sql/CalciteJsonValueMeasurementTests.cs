@@ -17,10 +17,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     /// <remarks>
     /// <para>
     /// No service and no adapter: a <c>CalciteConnection</c> over a literal JSON string, so what is
-    /// pinned is the engine the adapter has to agree with. Two questions, and the row model rests on
-    /// both — <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a comparison over the bare
-    /// accessor because of the first, and the second is why a comparison through <c>RETURNING</c>
-    /// may exclude a document rather than reproduce a crash.
+    /// pinned is the engine itself. Three questions, and the row model rests on all of them —
+    /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a comparison over the bare accessor
+    /// because of the first, the second is why a comparison through <c>RETURNING</c> may exclude a
+    /// document rather than reproduce a crash, and the third is why an array-typed column is rendered
+    /// at all.
+    /// </para>
+    /// <para>
+    /// <b>Agreement with the engine is the rule and not the axiom.</b> The bare accessor is a
+    /// rendering the adapter reproduces exactly; the two <c>RETURNING</c> measurements below are
+    /// defects, and there the adapter implements what the construct means instead. Which is which is
+    /// the point of measuring: a difference that is not written down here is a bug in this repository.
     /// </para>
     /// </remarks>
     [TestClass]
@@ -160,8 +167,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <summary>
-        /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and it is
-        /// the one the adapter diverges from on purpose.
+        /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and the
+        /// adapter implements the construct rather than reproducing it.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -192,12 +199,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// arrives as a CLR array — see <see cref="CalciteArrayReadingMeasurementTests"/>.
         /// </para>
         /// <para>
-        /// <b>Which is why the adapter answers the array.</b> The traversal already reads the elements
-        /// at that path, and a projection of the same call answering null made one expression mean two
-        /// things (#119). The pushed column is <c>IS_ARRAY(p) ? p : null</c>: it agrees with the engine
-        /// for an object, a JSON null and an absent path, answers the standard's <c>NULL ON ERROR</c>
-        /// where the engine throws, and answers the array where the engine's own clause is useless —
-        /// which is what upstream's own example asks for.
+        /// <b>Which is why the adapter answers the array, and why that is not a divergence.</b> The
+        /// traversal already reads the elements at that path, and a projection of the same call
+        /// answering null made one expression mean two things (#119). The pushed column is
+        /// <c>IS_ARRAY(p) ? p : null</c>, and against what the construct means it is right in every
+        /// case: the array where the clause exists to name one, null for an object, a JSON null and an
+        /// absent path — which is what the engine answers too — and null for a scalar, a type mismatch
+        /// under the default <c>NULL ON ERROR</c>, where the engine throws. Two of those five the
+        /// engine gets wrong; none of them the adapter does.
+        /// </para>
+        /// <para>
+        /// <b>The authority is Calcite's extension, not SQL:2016</b>, which restricts
+        /// <c>RETURNING</c> to predefined scalar types and offers <c>JSON_QUERY</c> for structure —
+        /// so the spelling is not standard SQL at all. It is Calcite's, it is intended, and only its
+        /// runtime is missing. A release that repairs the extraction therefore converges on what this
+        /// already does.
         /// </para>
         /// </remarks>
         [TestMethod]

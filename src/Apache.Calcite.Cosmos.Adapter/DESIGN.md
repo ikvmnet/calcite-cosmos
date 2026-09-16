@@ -1265,14 +1265,37 @@ all. The declared type is what tells the three apart, and it is the same test
 | `ARRAY`, `MULTISET` — `RETURNING … ARRAY` | `IIF(IS_ARRAY(p), p, null)` | `Typed`, a `java.util.List` |
 | anything else — `RETURNING INTEGER`, … | `p` | `Typed`, the declared type |
 
-**The array case is a deliberate divergence, and it is the one the traversal already takes.** Measured
-against Calcite's own runtime — `CalciteJsonValueMeasurementTests` — an array `RETURNING` never
-answers an array: the array is not a scalar, so the extraction fails, the error path runs and null
-comes back; a scalar at the path throws a raw cast failure instead, outside that handling. The clause
-exists only to *name* an array — it is the sole spelling that gives an accessor an array type, which
-is why `UNNEST` requires it and why `JSON_QUERY`, `VARCHAR` even `WITH ARRAY WRAPPER`, can never be a
-source. So the engine's own behaviour makes the clause useless in process, and the adapter answers the
-array the way the traversal already reads it.
+**This is not a divergence — it is the implementation, done at the service.** The distinction matters,
+because "we knowingly answer differently from the engine" invites a later reader to change it back.
+Measured against Calcite's own runtime — `CalciteJsonValueMeasurementTests` — an array `RETURNING`
+never answers an array: the array is not a scalar, so the extraction fails, the error path runs and
+null comes back; a scalar at the path throws a raw cast failure instead, outside that handling. Both
+are defects. Against what the construct *means*, the pushed column is right in every case and the
+engine is wrong in two:
+
+| at the path | what the construct means | pushed | Calcite's runtime |
+| --- | --- | --- | --- |
+| an array | the array | the array | **null** |
+| a scalar | null — a type mismatch under the default `NULL ON ERROR` | null | **throws** |
+| an object | null | null | null |
+| JSON null | null | null | null |
+| absent | null — the default `NULL ON EMPTY` | null | null |
+
+**The authority for "what it means" is Calcite, not SQL:2016** — worth stating plainly, because the
+standard says the opposite. SQL:2016 restricts `JSON_VALUE`'s `RETURNING` to predefined scalar types
+and gives `JSON_QUERY` for structure, so `RETURNING … ARRAY` is not standard SQL at all. It is a
+Calcite extension: the validator accepts it, the type system says the call is an array, `UNNEST`
+consumes it — it is the *only* spelling that names an array type, `JSON_QUERY` being `VARCHAR` even
+`WITH ARRAY WRAPPER` — and [CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208), fixed
+in 1.37.0, tunes the element nullability of exactly
+`unnest(json_value(col, '$.c' returning bigint array))`. So the extension is intended and only its
+runtime is missing, which is what the adapter supplies by rendering the path to the service.
+
+Which also settles what happens when upstream fixes it: the convergent repair — make the extraction
+produce the array — lands on what this already does. The other conceivable repair, tightening the
+validator to refuse a non-scalar `RETURNING`, would break the CALCITE-6208 pattern for every Calcite
+user, and would take this adapter's traversal with it. Neither is a reason to write the column
+differently.
 
 **It is Calcite's, and the layers were ruled out one at a time**, because "the wrapper loses the array"
 is the obvious competing explanation and would have meant a different fix. `JsonFunctions.StatefulFunction.jsonValue`

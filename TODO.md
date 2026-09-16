@@ -390,6 +390,18 @@ type as well, so `INTEGER ARRAY` holds `Integer` rather than the `Long` a schema
 `DESIGN.md` records it under *Projecting a cast to text*; what is still not handled is `JSON_QUERY`,
 the mirror guard, which keeps the typed reading and is wrong in the way this was.
 
+**And the column is the implementation of that construct, not a departure from it — worth saying
+because the engine disagrees.** Measured at `JsonFunctions.jsonValue` itself, with no plan, no code
+generation and no reader in the way, the extraction is scalar-only: an array `RETURNING` answers null
+over an array and throws over a scalar, while the validator admits the array type and `UNNEST`
+consumes it. Against what the construct means the pushed column is right in all five cases and the
+engine is wrong in two. The authority is Calcite's own extension rather than SQL:2016, which permits
+no array `RETURNING` at all — see [CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208),
+which tunes element nullability for exactly `unnest(json_value(col, '$.c' returning bigint array))`.
+**Nothing upstream is filed for the extraction itself**, and filing it is the owner's call; the fix
+that would converge on this adapter is repairing the runtime, while tightening the validator to refuse
+a non-scalar `RETURNING` would take the traversal with it.
+
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
 `JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the
 writer, the routing in `CosmosSequences`, and the refusal of every form that cannot be rendered. The

@@ -1416,18 +1416,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <see cref="CosmosReading.Typed"/> and nothing renders.
         /// </para>
         /// <para>
-        /// <b>The guard is <c>IS_ARRAY</c>, and it buys agreement rather than costing it.</b>
-        /// Measured against Calcite's own runtime, <c>JSON_VALUE</c> with an array <c>RETURNING</c>
-        /// answers null for an object, a JSON null and an absent path, and throws a raw cast failure
-        /// over a scalar — and answers null over an array too, which is the defect that makes the
-        /// clause useless in process and the divergence this adapter takes deliberately, exactly as
-        /// the traversal already does. Against that, the guard agrees on the object, the null and the
-        /// absent path; the bare path would throw for all three, the reader refusing to read an object
-        /// as a list. Over a scalar it answers null where Calcite throws, which is the standard's own
-        /// <c>NULL ON ERROR</c> and the same liberty
-        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> takes — see
-        /// <c>CalciteJsonValueMeasurementTests</c>. And it is what keeps one oddly-shaped document from
-        /// failing a query rather than reading null for its own row.
+        /// <b>The guard is <c>IS_ARRAY</c>, and what it renders is the construct's meaning rather
+        /// than a departure from it.</b> This is worth being exact about, because the engine disagrees
+        /// and a later reader will find that out. Measured against Calcite's own runtime,
+        /// <c>JSON_VALUE</c> with an array <c>RETURNING</c> answers null for an object, a JSON null
+        /// and an absent path — correct, and the guard agrees on all three, where the bare path would
+        /// have the reader refuse to read an object as a list and fail the query. Over an array it
+        /// answers null as well, and over a scalar it throws a raw cast failure: both are defects,
+        /// isolated to <c>JsonFunctions.jsonValue</c>, which is scalar-only by construction while the
+        /// validator admits the array return type the runtime can never produce. So the guard is right
+        /// in every case and the engine is wrong in two — the array, where the clause exists to name
+        /// one, and the scalar, where a type mismatch is the default <c>NULL ON ERROR</c> rather than
+        /// an exception. See <c>CalciteJsonValueMeasurementTests</c>, and
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> for the same liberty taken over a scalar
+        /// <c>RETURNING</c>. Answering null also keeps one oddly-shaped document from failing a query
+        /// rather than reading null for its own row.
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
