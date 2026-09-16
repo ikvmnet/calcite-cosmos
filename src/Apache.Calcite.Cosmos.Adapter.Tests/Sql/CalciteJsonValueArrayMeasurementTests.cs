@@ -195,17 +195,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             // GetArray is the provider's own, ADO.NET having no accessor for a collection, so it is
             // reached through the concrete reader rather than through DbDataReader.
             var calcite = (CalciteDataReader)reader;
+            var isNull = reader.IsDBNull(0);
+
+            // A WORKAROUND, and worth labelling as one so it is removed rather than inherited. The
+            // collection accessors refuse a null instead of answering one, which is a defect --
+            // ikvmnet/calcite-dotnet#144, where the intended behaviour is that GetArray returns null,
+            // as JDBC's getArray does for a SQL NULL. Calling them over a null column would record an
+            // exception belonging to that defect rather than to the question this class asks, which
+            // is only whether any route reaches an array.
+            //
+            // So the guard stands in for the fix: once #144 lands these can be called unconditionally
+            // like the other five, and this branch should go with it.
+            object? collection = isNull ? null : Normalize(() => calcite.GetArray(0));
+            object? collectionTyped = isNull ? null : Normalize(() => typedArray(calcite));
 
             return new Read(
                 reader.GetFieldType(0),
-                reader.IsDBNull(0),
+                isNull,
                 Normalize(() => reader.GetValue(0)),
                 Normalize(() => reader[0]),
                 Normalize(() => reader.GetFieldValue<string[]>(0)),
                 Normalize(() => reader.GetFieldValue<object>(0)),
                 Normalize(() => reader.GetProviderSpecificValue(0)),
-                Normalize(() => calcite.GetArray(0)),
-                Normalize(() => typedArray(calcite)));
+                collection,
+                collectionTyped);
         }
 
         /// <summary>
@@ -314,6 +327,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     $"no reader route should find an array, over {name} — got " +
                     string.Join(", ", read.Routes.Select(r => $"{r.Route}={Describe(r.Answer)}")));
             }
+        }
+
+        /// <summary>
+        /// The collection accessors reach an array on exactly the column shape every failing case
+        /// has, so what those cases lack is the value and not the route.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both are asked over a <c>VARCHAR ARRAY</c> produced by <c>DEFAULT … ON ERROR</c> — the same
+        /// declared type, the same statement shape, the same reader as every null row above, differing
+        /// only in that a value reaches the column. They answer it. That is what licenses the claim
+        /// the matrix makes: a route that works here and finds nothing there is reporting an absence,
+        /// not a limitation of its own.
+        /// </para>
+        /// <para>
+        /// <b>What is deliberately not asserted is how they decline a null.</b> They refuse it rather
+        /// than answering one, and that is a defect rather than a choice: <c>GetArray</c> should
+        /// answer null, as JDBC's <c>getArray</c> does for a SQL NULL — ikvmnet/calcite-dotnet#144.
+        /// Pinning the refusal here would be asserting the defect, and would fail the moment it is
+        /// fixed. The matrix guards with <c>IsDBNull</c> instead, which is the workaround a caller
+        /// must write meanwhile, so nothing in this class depends on the answer either way.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheCollectionAccessorsReachAnArrayInSuchAColumn()
+        {
+            var read = Ask($"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY DEFAULT ARRAY['z'] ON ERROR)")!;
+
+            read.Declared.Should().Be(typeof(string[]), "the column is typed exactly as the failing ones are");
+            read.IsDbNull.Should().BeFalse();
+            read.Collection.Should().BeAssignableTo<Array>("GetArray is the accessor for a collection");
+            read.CollectionTyped.Should().BeOfType<string[]>().Which.Should().Equal("z");
         }
 
         /// <summary>
