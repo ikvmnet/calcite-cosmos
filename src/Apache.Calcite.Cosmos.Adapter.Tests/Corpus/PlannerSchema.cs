@@ -3,16 +3,16 @@
 using Apache.Calcite.Cosmos.Adapter;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
-namespace Apache.Calcite.Cosmos.Benchmarks.Model
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Corpus
 {
 
     /// <summary>
-    /// The containers every benchmark plans against.
+    /// The containers the corpus plans against.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A benchmark of a planner is a benchmark of the metadata it consults, because that is what the
-    /// rules ask questions of. A container declaring nothing takes a fast path through most of them —
+    /// Exercising a planner is exercising the metadata it consults, because that is what the rules
+    /// ask questions of. A container declaring nothing takes a fast path through most of them —
     /// an undeclared full text path is refused outright, an unstated indexing policy answers "indexed"
     /// to every question without matching a pattern, and an unknown row count leaves the cost model
     /// with one plan it can distinguish from another. So none of these declare nothing.
@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
     /// to be is stable, so that a difference between two runs is a difference in the planner.
     /// </para>
     /// </remarks>
-    public static class BenchmarkSchema
+    public static class PlannerSchema
     {
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// <remarks>
         /// Routing here is a prefix question rather than a yes-or-no one: pinning <c>tenant</c> alone
         /// narrows execution, pinning all three confines it to a single logical partition, and pinning
-        /// the second without the first narrows nothing. Every predicate benchmark that cares about
+        /// the second without the first narrows nothing. Every corpus statement that cares about
         /// routing names this container.
         /// </remarks>
         public static readonly CosmosContainerMetadata Events = new(
@@ -175,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// Fresh, because a <see cref="CosmosTable"/> owns the <see cref="CosmosConvention"/> its
         /// rules are bound to and a convention is identified by reference. Two harnesses sharing one
         /// table would share a convention, which is the one piece of state that would let one
-        /// benchmark's registrations reach another's planner.
+        /// harness's rule registrations reach another's planner.
         /// </remarks>
         /// <returns>The tables, keyed by container name.</returns>
         public static IReadOnlyDictionary<string, CosmosTable> CreateTables()

@@ -1,26 +1,27 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
-namespace Apache.Calcite.Cosmos.Benchmarks.Model
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Corpus
 {
 
     /// <summary>
-    /// The statements every planning benchmark is run over.
+    /// The statements <see cref="PlannerCorpusTests"/> plans.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// One corpus rather than one per benchmark class, so that the parse, convert, search and render
-    /// benchmarks are timing the same statements and their numbers can be read against each other.
-    /// A stage that is cheap for a statement and a stage that is expensive for it is the whole point
-    /// of separating them.
+    /// <b>A breadth corpus, and that is what distinguishes it from the rest of the suite.</b> Every
+    /// other planner test asks a pointed question about one statement and asserts the answer. This
+    /// asks the shallowest question — does it still plan, and does it still push what it pushed — of
+    /// a wide spread of statements at once, which is the failure the pointed tests cannot see: a rule
+    /// predicate that tightens and quietly stops matching a shape nobody wrote a test for.
     /// </para>
     /// <para>
-    /// <b>What earns a place here.</b> Not coverage of SQL — the test suite does that — but a
-    /// distinct amount of work for the planner. A second statement that reaches the same rules by the
-    /// same route costs a benchmark run and reports nothing new, so each entry names, in its note,
-    /// the decision it is here to make the planner take. Several are deliberately statements that do
-    /// <em>not</em> push: a rule declining is a measurement, and a corpus of only pushable statements
-    /// would never time the path a real schema spends most of its time on.
+    /// <b>What earns a place here.</b> Not coverage of SQL — the rest of the suite does that — but a
+    /// distinct route through the planner. A second statement reaching the same rules the same way
+    /// reports nothing new, so each entry names, in its note, the decision it is here to make the
+    /// planner take. Several deliberately do <em>not</em> push: a rule declining is an answer, and a
+    /// corpus of only pushable statements would never walk the path a real schema spends most of its
+    /// time on.
     /// </para>
     /// </remarks>
     public static class PlannerQueries
@@ -674,14 +675,11 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// <para>
         /// A subset rather than a predicate, because it is a claim about the adapter and not a
         /// property of the statement: these are the ones the service answers by itself, with nothing
-        /// left for the plan to do but read rows. <c>verify</c> checks the list against what the
-        /// planner actually does and reports both directions of drift, so a rule that quietly stops
-        /// pushing something is a failed check rather than a benchmark that got faster.
-        /// </para>
-        /// <para>
-        /// It is what <see cref="Benchmarks.PushdownBenchmarks"/> and
-        /// <see cref="Benchmarks.ImplementBenchmarks"/> can be run over at all: one needs a statement
-        /// with a plan in the convention, and the other needs a subtree to render.
+        /// left for the plan to do but read rows.
+        /// <see cref="PlannerCorpusTests.TheWhollyPushedListAgreesWithThePlanner"/> checks the list
+        /// against what the planner does and fails on drift in <em>either</em> direction — a rule
+        /// that quietly stops pushing one of these is a regression, and one that starts pushing a
+        /// statement not listed is a list that has become wrong.
         /// </para>
         /// </remarks>
         static readonly string[] WhollyPushedNames =
@@ -725,6 +723,19 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// Gets the statements that plan wholly inside the Cosmos convention.
         /// </summary>
         public static IEnumerable<PlannerQuery> WhollyPushed => WhollyPushedNames.Select(Get);
+
+        /// <summary>
+        /// Gets the names claimed to plan wholly inside the Cosmos convention, as written.
+        /// </summary>
+        /// <remarks>
+        /// The raw list rather than the statements, which <see cref="WhollyPushed"/> resolves through
+        /// <see cref="Get"/> and would therefore throw over. A name matching no statement is a claim
+        /// that has gone inert — the drift check compares the list against each statement, so a name
+        /// nothing is called is simply never consulted, and a renamed entry would lose its guard in
+        /// silence. <see cref="PlannerCorpusTests.EveryWhollyPushedNameNamesAStatement"/> is what
+        /// reports it, and it needs the names unresolved to do so.
+        /// </remarks>
+        public static IReadOnlyList<string> ClaimedWhollyPushed => WhollyPushedNames;
 
         /// <summary>
         /// Determines whether a statement is expected to plan wholly inside the Cosmos convention.

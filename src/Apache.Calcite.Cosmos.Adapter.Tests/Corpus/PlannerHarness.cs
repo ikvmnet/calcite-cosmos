@@ -25,7 +25,7 @@ using org.apache.calcite.sql.util;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
 
-namespace Apache.Calcite.Cosmos.Benchmarks.Model
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Corpus
 {
 
     /// <summary>
@@ -36,8 +36,8 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
     /// The same direct wiring the adapter's planner tests use, and for the same reason they give:
     /// Calcite's usual entry points open an internal JDBC connection, which fails under IKVM. What
     /// it adds is a seam at every stage — parse, validate, convert, search, render — so that a
-    /// benchmark can ask for one of them rather than for all of them, and a change in the parser
-    /// cannot be mistaken for a change in the planner.
+    /// failure can be attributed to one of them rather than to "it did not plan", which over a
+    /// corpus this size is the difference between a usable report and a wall of stack traces.
     /// </para>
     /// <para>
     /// <b>What is shared and what is not.</b> The type factory, the root schema, the catalogue reader
@@ -60,11 +60,11 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         readonly SqlParser.Config _parserConfig;
 
         /// <summary>
-        /// Initializes a new instance over <see cref="BenchmarkSchema"/>.
+        /// Initializes a new instance over <see cref="PlannerSchema"/>.
         /// </summary>
         public PlannerHarness()
         {
-            _tables = BenchmarkSchema.CreateTables();
+            _tables = PlannerSchema.CreateTables();
             _typeFactory = new JavaTypeFactoryImpl();
             _rootSchema = CalciteSchema.createRootSchema(false);
 
@@ -185,9 +185,9 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// corpus plannable at all.
         /// </para>
         /// <para>
-        /// Its own stage, and benchmarked as one, because it is a rewriting pass with no costing in
-        /// it: time spent here is not time spent searching, and a statement with no sub-query pays
-        /// only for the pattern match that finds none.
+        /// Its own stage, because it is a rewriting pass with no costing in it: a statement that
+        /// fails here failed to be rewritten, which is a different fault from one the search could
+        /// not find a plan for.
         /// </para>
         /// </remarks>
         /// <param name="rel">The converter's output.</param>
@@ -251,11 +251,11 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// Plans a statement for the CLR convention, with every rule a host would have.
         /// </summary>
         /// <remarks>
-        /// The measurement that matters. A host asks for <c>ClrEnumerableConvention</c>, never for
-        /// the Cosmos one, so the planner has to reach the pushed form and the in-process form both,
-        /// cost them against each other, and choose — which is the work these benchmarks exist to
-        /// time. It also cannot fail for want of a plan: reading the container and doing everything
-        /// here is always available.
+        /// The stage that matters. A host asks for <c>ClrEnumerableConvention</c>, never for the
+        /// Cosmos one, so the planner has to reach the pushed form and the in-process form both,
+        /// cost them against each other, and choose. It also cannot fail for want of a plan: reading
+        /// the container and doing everything here is always available — so a statement that fails
+        /// here has failed at something other than costing.
         /// </remarks>
         /// <param name="sql">The statement.</param>
         /// <param name="reorderJoins">Whether to also register the rule that lets the planner swap a
@@ -380,8 +380,10 @@ namespace Apache.Calcite.Cosmos.Benchmarks.Model
         /// Determines whether any node of a tree is in the Cosmos convention.
         /// </summary>
         /// <remarks>
-        /// What makes a corpus entry a pushdown benchmark rather than a planning benchmark. A
-        /// statement that plans in a millisecond and pushes nothing is timing the CLR rules.
+        /// The weaker of the two questions the corpus asks — whether anything at all reached the
+        /// service. <see cref="PlannerCorpusTests"/> reports it but does not fail on it: a statement
+        /// that pushes nothing is a legitimate corpus entry, several being here precisely because
+        /// they must not push.
         /// </remarks>
         /// <param name="rel">The tree.</param>
         /// <returns><c>true</c> if the plan pushes anything to the service.</returns>

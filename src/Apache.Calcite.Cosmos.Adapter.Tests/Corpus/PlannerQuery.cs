@@ -1,12 +1,12 @@
-﻿namespace Apache.Calcite.Cosmos.Benchmarks.Model
+﻿namespace Apache.Calcite.Cosmos.Adapter.Tests.Corpus
 {
 
     /// <summary>
     /// What a statement in the corpus is for.
     /// </summary>
     /// <remarks>
-    /// A benchmark filters on this rather than on a name, so that a run can ask for the aggregate
-    /// rules without also planning every join.
+    /// Carried so that a failure names the area it is in — a corpus of this size reports better as
+    /// "three Aggregate statements stopped planning" than as three unrelated names.
     /// </remarks>
     public enum PlannerQueryCategory
     {
@@ -52,13 +52,13 @@
     /// <summary>
     /// One statement in the corpus.
     /// </summary>
-    /// <param name="Name">A stable identifier, used as the benchmark's parameter label.</param>
+    /// <param name="Name">A stable identifier, and what the wholly-pushed list names.</param>
     /// <param name="Category">What the statement is in the corpus for.</param>
     /// <param name="Sql">The statement.</param>
     /// <param name="Note">Why it is here — what about the planner it is meant to reach.</param>
     /// <remarks>
-    /// <see cref="ToString"/> is the name, because BenchmarkDotNet labels a parameter column with it
-    /// and a column of SQL is unreadable.
+    /// <see cref="ToString"/> is the name, so that a failure message lists statements by what they
+    /// are called rather than by their SQL.
     /// </remarks>
     public sealed record PlannerQuery(string Name, PlannerQueryCategory Category, string Sql, string Note)
     {
