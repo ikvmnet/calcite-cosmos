@@ -168,17 +168,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>RETURNING … ARRAY</c> is the only spelling in SQL that gives an accessor an array type,
         /// and it is therefore the only spelling an <c>UNNEST</c> will take as a source —
         /// <c>JSON_QUERY</c> is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c>. So the clause exists to
-        /// name an array. In process it never produces one: the array is not a scalar, so the
-        /// extraction fails, the error path runs, and null comes back — the same accident as above,
-        /// seen from the other side. A scalar at the path throws instead, the extraction having
-        /// succeeded and the cast to a list then failing outside the error handling.
+        /// name an array, and upstream treats it as a working one:
+        /// <see href="https://issues.apache.org/jira/browse/CALCITE-6208">CALCITE-6208</see>, fixed in
+        /// 1.37.0, is about the element nullability of exactly
+        /// <c>unnest(json_value(col, '$.c' returning bigint array))</c>. It never produces an array
+        /// here regardless.
+        /// </para>
+        /// <para>
+        /// <b>Where it happens, isolated.</b> Not the ADO.NET wrapper and not code generation —
+        /// <c>JsonFunctions.StatefulFunction.jsonValue</c>, the extraction itself, invoked directly
+        /// with <c>NULL ON EMPTY</c> and <c>NULL ON ERROR</c>, answers <c>null</c> over
+        /// <c>{"v":["a","b"]}</c> and the string <c>bikes</c> over <c>{"v":"bikes"}</c>. The function
+        /// is scalar-only by construction, which is right for SQL/JSON; the <c>RETURNING</c> type is
+        /// applied afterwards as a cast, which is why an array answers null and a scalar throws
+        /// <c>String → java.util.List</c> outside the <c>ON ERROR</c> handling. The validator admits a
+        /// return type the runtime can never produce, and the two halves have never been reconciled.
+        /// </para>
+        /// <para>
+        /// The same answers come back through Calcite's own JDBC driver, over a literal and over a
+        /// table column alike, and the <c>UNNEST</c> of one yields no rows — so the null is Calcite's
+        /// and not a reader's. Measured against controls that rule the layers out: <c>ARRAY['a','b']</c>
+        /// arrives as an <c>ArrayImpl</c>, and a <see cref="java.util.List"/> from a table's own row
+        /// arrives as a CLR array — see <see cref="CalciteArrayReadingMeasurementTests"/>.
         /// </para>
         /// <para>
         /// <b>Which is why the adapter answers the array.</b> The traversal already reads the elements
         /// at that path, and a projection of the same call answering null made one expression mean two
         /// things (#119). The pushed column is <c>IS_ARRAY(p) ? p : null</c>: it agrees with the engine
         /// for an object, a JSON null and an absent path, answers the standard's <c>NULL ON ERROR</c>
-        /// where the engine throws, and answers the array where the engine's own clause is useless.
+        /// where the engine throws, and answers the array where the engine's own clause is useless —
+        /// which is what upstream's own example asks for.
         /// </para>
         /// </remarks>
         [TestMethod]

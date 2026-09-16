@@ -1274,6 +1274,23 @@ is why `UNNEST` requires it and why `JSON_QUERY`, `VARCHAR` even `WITH ARRAY WRA
 source. So the engine's own behaviour makes the clause useless in process, and the adapter answers the
 array the way the traversal already reads it.
 
+**It is Calcite's, and the layers were ruled out one at a time**, because "the wrapper loses the array"
+is the obvious competing explanation and would have meant a different fix. `JsonFunctions.StatefulFunction.jsonValue`
+— the extraction, invoked directly with `NULL ON EMPTY` / `NULL ON ERROR`, no plan, no code generation,
+no reader — answers `null` over `{"v":["a","b"]}` and `bikes` over `{"v":"bikes"}`. The function is
+scalar-only by construction, which is correct for SQL/JSON; the `RETURNING` type is applied *afterwards*
+as a cast, so an array answers null and a scalar throws `String → java.util.List` outside the `ON ERROR`
+handling. The validator admits a return type the runtime cannot produce.
+
+The same answers come back through Calcite's **own JDBC driver** rather than the ADO.NET wrapper, over a
+literal and over a table column alike, with `UNNEST` of one yielding no rows. Controls rule out every
+layer in between: `ARRAY['a','b']` arrives as an `ArrayImpl`, and a `java.util.List` in a table's own row
+arrives as a CLR array. And upstream treats the construct as supported —
+[CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208), fixed in 1.37.0, tunes the element
+nullability of exactly `unnest(json_value(col, '$.c' returning bigint array))` — so answering the array
+is what its own example asks for, and a future release that fixes the extraction would move the engine
+*towards* this adapter rather than away from it.
+
 Against that, `IS_ARRAY` is the guard that *agrees most*: it answers null for an object, a JSON null
 and an absent path, exactly as the engine does, where the bare path would have the reader refuse to
 read an object as a list and fail the query. Over a scalar it answers null where the engine throws,
