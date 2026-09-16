@@ -108,10 +108,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // else was measured to be accepted there. See CosmosImplementor.SortableExpressions.
                 sortable[i] = IsSortableAtTheService(node) ? expression : null;
 
-                // Recorded where the rendering is not the path, so that a node above which rebuilds
-                // the select list emits what this decided rather than the path underneath. A guarded
-                // accessor is the case: the path holds the raw value and the column carries text.
-                rendered[i] = reading != CosmosReading.Typed ? expression : null;
                 readings[i] = reading != CosmosReading.Typed ? reading
                     : node is RexInputRef reference
                         && reference.getIndex() >= 0
@@ -125,6 +121,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // reason it is rendered: the column carries text and the path carries the raw value,
                 // so an operator written against the path would mean something else.
                 paths[i] = translator.TryResolvePath(node, out var path) ? path : null;
+
+                // Recorded where the rendering is not the path, so that a node above which rebuilds
+                // the select list emits what this decided rather than the path underneath. A guarded
+                // accessor is the case: the path holds the raw value and the column carries what the
+                // accessor means for it.
+                //
+                // Asked of the two texts rather than of the reading, which is a proxy that used to
+                // hold and does not: an array-typed accessor is guarded and still read as its
+                // declared type, so a reading of Typed no longer says the rendering is the path.
+                rendered[i] = string.Equals(expression, paths[i]?.ToString(), StringComparison.Ordinal) ? null : expression;
 
                 // A computed column that converts a path the container confines to one stored shape
                 // may still be ordered by that path, even though it addresses none. A weaker claim

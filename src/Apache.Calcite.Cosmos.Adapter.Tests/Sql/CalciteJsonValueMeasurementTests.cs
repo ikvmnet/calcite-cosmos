@@ -17,10 +17,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     /// <remarks>
     /// <para>
     /// No service and no adapter: a <c>CalciteConnection</c> over a literal JSON string, so what is
-    /// pinned is the engine the adapter has to agree with. Two questions, and the row model rests on
-    /// both — <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a comparison over the bare
-    /// accessor because of the first, and the second is why a comparison through <c>RETURNING</c>
-    /// may exclude a document rather than reproduce a crash.
+    /// pinned is the engine itself. Three questions, and the row model rests on all of them —
+    /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a comparison over the bare accessor
+    /// because of the first, the second is why a comparison through <c>RETURNING</c> may exclude a
+    /// document rather than reproduce a crash, and the third is why an array-typed column is rendered
+    /// at all.
+    /// </para>
+    /// <para>
+    /// <b>Agreement with the engine is the rule and not the axiom.</b> The bare accessor is a
+    /// rendering the adapter reproduces exactly; the two <c>RETURNING</c> measurements below are
+    /// defects, and there the adapter implements what the construct means instead. Which is which is
+    /// the point of measuring: a difference that is not written down here is a bug in this repository.
     /// </para>
     /// </remarks>
     [TestClass]
@@ -157,6 +164,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             // And the extraction's own error path works, which is what makes the above an accident.
             Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING INTEGER)").Threw.Should().BeNull(
                 "an object is not a scalar, so the error path runs and answers null");
+        }
+
+        /// <summary>
+        /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and the
+        /// adapter implements the construct rather than reproducing it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>RETURNING … ARRAY</c> is the only spelling in SQL that gives an accessor an array type,
+        /// and it is therefore the only spelling an <c>UNNEST</c> will take as a source —
+        /// <c>JSON_QUERY</c> is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c>. So the clause exists to
+        /// name an array, and upstream treats it as a working one:
+        /// <see href="https://issues.apache.org/jira/browse/CALCITE-6208">CALCITE-6208</see>, fixed in
+        /// 1.37.0, is about the element nullability of exactly
+        /// <c>unnest(json_value(col, '$.c' returning bigint array))</c>. It never produces an array
+        /// here regardless.
+        /// </para>
+        /// <para>
+        /// <b>Where it happens, isolated.</b> Not the ADO.NET wrapper and not code generation —
+        /// <c>JsonFunctions.StatefulFunction.jsonValue</c>, the extraction itself, invoked directly
+        /// with <c>NULL ON EMPTY</c> and <c>NULL ON ERROR</c>, answers <c>null</c> over
+        /// <c>{"v":["a","b"]}</c> and the string <c>bikes</c> over <c>{"v":"bikes"}</c>. The function
+        /// is scalar-only by construction, which is right for SQL/JSON; the <c>RETURNING</c> type is
+        /// applied afterwards as a cast, which is why an array answers null and a scalar throws
+        /// <c>String → java.util.List</c> outside the <c>ON ERROR</c> handling. The validator admits a
+        /// return type the runtime can never produce, and the two halves have never been reconciled.
+        /// </para>
+        /// <para>
+        /// The same answers come back through Calcite's own JDBC driver, over a literal and over a
+        /// table column alike, and the <c>UNNEST</c> of one yields no rows — so the null is Calcite's
+        /// and not a reader's. Measured against controls that rule the layers out: <c>ARRAY['a','b']</c>
+        /// arrives as an <c>ArrayImpl</c>, and a <see cref="java.util.List"/> from a table's own row
+        /// arrives as a CLR array — see <see cref="CalciteArrayReadingMeasurementTests"/>.
+        /// </para>
+        /// <para>
+        /// <b>Which is why the adapter answers the array, and why that is not a divergence.</b> The
+        /// traversal already reads the elements at that path, and a projection of the same call
+        /// answering null made one expression mean two things (#119). The pushed column is
+        /// <c>IS_ARRAY(p) ? p : null</c>, and against what the construct means it is right in every
+        /// case: the array where the clause exists to name one, null for an object, a JSON null and an
+        /// absent path — which is what the engine answers too — and null for a scalar, a type mismatch
+        /// under the default <c>NULL ON ERROR</c>, where the engine throws. Two of those five the
+        /// engine gets wrong; none of them the adapter does.
+        /// </para>
+        /// <para>
+        /// <b>The authority is Calcite's extension, not SQL:2016</b>, which restricts
+        /// <c>RETURNING</c> to predefined scalar types and offers <c>JSON_QUERY</c> for structure —
+        /// so the spelling is not standard SQL at all. It is Calcite's, it is intended, and only its
+        /// runtime is missing. A release that repairs the extraction therefore converges on what this
+        /// already does.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReturningAnswersNullForAnArrayAndThrowsForAScalar()
+        {
+            // An array — what the clause is for — comes back null.
+            foreach (var json in new[] { "[\"a\",\"b\"]", "[]", "[1,2]" })
+            {
+                var answer = Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING VARCHAR ARRAY)");
+
+                answer.Threw.Should().BeNull($"over {json}");
+                answer.Declared.Should().Be("String[]", $"RETURNING names the declared type, over {json}");
+                answer.Value.Should().BeNull($"the engine answers null even over {json}, which is the defect");
+            }
+
+            // An object, a JSON null and an absent path answer null as well, and there the adapter agrees.
+            Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+            Ask($"JSON_VALUE({Document("null")}, '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+            Ask("JSON_VALUE('{}', '$.v' RETURNING VARCHAR ARRAY)").Value.Should().BeNull();
+
+            // A scalar throws: the extraction succeeded, and the cast to a list is outside its handling.
+            foreach (var json in new[] { "\"bikes\"", "30", "true" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING VARCHAR ARRAY)").Threw.Should().NotBeNull(
+                    $"a scalar under an array RETURNING is a raw cast failure, over {json}");
         }
 
     }

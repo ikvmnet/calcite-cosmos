@@ -1044,6 +1044,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> names an
+        /// array type, which is the only spelling that names one.
+        /// </summary>
+        /// <remarks>
+        /// The counterpart of <see cref="IsTextJsonValue"/>, and asked for the same reason: what the
+        /// call is typed decides both how it is rendered and how the value is read back.
+        /// <c>JSON_QUERY</c> is not this — it is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c>, being
+        /// the JSON text of an array rather than the array.
+        /// </remarks>
+        internal static bool IsCollectionJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            var name = call.getType()?.getSqlTypeName();
+            return name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET;
+        }
+
+        /// <summary>
         /// Determines whether an expression is the rendering of a document value as text: a
         /// <c>JSON_VALUE</c> read as text, or a field bound to one.
         /// </summary>
@@ -1231,6 +1250,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return guarded;
             }
 
+            // A RETURNING that names an array type asks for the array at the path, which the service
+            // holds and the reader builds a list out of. Guarded rather than bare for the reason the
+            // text form is -- see TryJsonArrayProjection.
+            if (TryJsonArrayProjection(node, out var collection) && collection is not null)
+            {
+                reading = CosmosReading.Typed;
+                return collection;
+            }
+
             reading = CosmosReading.Typed;
             return Translate(node);
         }
@@ -1347,17 +1375,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             expression = null;
 
-            if (node is not RexCall call)
+            // Only the accessor read as text. A RETURNING that names another type is not a rendering
+            // and the guard would be the wrong one: IS_PRIMITIVE is false of an array, so an
+            // array-typed accessor rendered this way answered null for the very documents it was
+            // written to read (#119), and a scalar RETURNING was read back as text into a column the
+            // plan had declared a number. The type is what tells them apart, and it is the same test
+            // CosmosImplementor.TryBindOutput records the reading by.
+            if (IsTextJsonValue(node) == false)
                 return false;
 
-            if (string.Equals(call.getOperator().getName(), "JSON_VALUE", StringComparison.Ordinal) == false)
-                return false;
+            var call = (RexCall)node;
 
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
             var rendered = path.ToString();
             expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            return true;
+        }
+
+        /// <summary>
+        /// Renders <c>JSON_VALUE</c> whose <c>RETURNING</c> names an array type as the array at the
+        /// path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The same expression already means this to a traversal.</b>
+        /// <c>UNNEST(JSON_VALUE(c."DOC", '$.tags' RETURNING VARCHAR ARRAY))</c> is how an array is
+        /// traversed — <c>RETURNING</c> is the only spelling that names an array type, <c>JSON_QUERY</c>
+        /// being <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c> — and <see cref="TryResolvePath"/>
+        /// resolves it to the path the array is at. Projected, the same call was rendered as the text
+        /// form's guard, <c>IS_PRIMITIVE</c>, which is false of an array: the column came back null for
+        /// every document the traversal read elements out of (#119). One expression, two answers, and
+        /// this is what makes it one.
+        /// </para>
+        /// <para>
+        /// <b>Read as the declared type, not as text.</b> <c>CosmosJson.GetValue</c> reads an
+        /// <c>ARRAY</c> or a <c>MULTISET</c> as the <see cref="java.util.List"/> Calcite holds a
+        /// collection in, which is the value the plan declared — so the reading stays
+        /// <see cref="CosmosReading.Typed"/> and nothing renders.
+        /// </para>
+        /// <para>
+        /// <b>The guard is <c>IS_ARRAY</c>, and what it renders is the construct's meaning rather
+        /// than a departure from it.</b> This is worth being exact about, because the engine disagrees
+        /// and a later reader will find that out. Measured against Calcite's own runtime,
+        /// <c>JSON_VALUE</c> with an array <c>RETURNING</c> answers null for an object, a JSON null
+        /// and an absent path — correct, and the guard agrees on all three, where the bare path would
+        /// have the reader refuse to read an object as a list and fail the query. Over an array it
+        /// answers null as well, and over a scalar it throws a raw cast failure: both are defects,
+        /// isolated to <c>JsonFunctions.jsonValue</c>, which is scalar-only by construction while the
+        /// validator admits the array return type the runtime can never produce. So the guard is right
+        /// in every case and the engine is wrong in two — the array, where the clause exists to name
+        /// one, and the scalar, where a type mismatch is the default <c>NULL ON ERROR</c> rather than
+        /// an exception. See <c>CalciteJsonValueMeasurementTests</c>, and
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> for the same liberty taken over a scalar
+        /// <c>RETURNING</c>. Answering null also keeps one oddly-shaped document from failing a query
+        /// rather than reading null for its own row.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryJsonArrayProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (IsCollectionJsonValue(node) == false)
+                return false;
+
+            var call = (RexCall)node;
+
+            if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
             return true;
         }
 

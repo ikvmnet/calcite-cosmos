@@ -1434,6 +1434,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// An accessor whose <c>RETURNING</c> names an array type is guarded by <c>IS_ARRAY</c>, not
+        /// by the text form's <c>IS_PRIMITIVE</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The guard used to be <c>IS_PRIMITIVE</c> for every <c>JSON_VALUE</c> whatever it was typed,
+        /// and <c>IS_PRIMITIVE</c> is false of an array: the column answered null for exactly the
+        /// documents it was written to read (#119). The same expression as an <c>UNNEST</c> source
+        /// resolved to the path and returned the elements, so one spelling meant two things.
+        /// </para>
+        /// <para>
+        /// <c>RETURNING … ARRAY</c> is the only spelling that names an array type — <c>JSON_QUERY</c>
+        /// is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c> — so the declared type is what tells the
+        /// two apart, and it is the same test the binding records the reading by.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReturningAccessorIsGuardedByIsArray()
+        {
+            var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c");
+
+            Render(best).Should().Be("SELECT VALUE { \"t\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM products c");
+        }
+
+        /// <summary>
+        /// The array a projection reads is the array a traversal traverses.
+        /// </summary>
+        /// <remarks>
+        /// One path, one spelling, and after #119 one meaning. The traversal names the path bare
+        /// because <c>JOIN … IN</c> iterates it; the projection guards it because a column has to
+        /// answer something for a document whose path holds no array. Both address <c>c.tags</c>.
+        /// </remarks>
+        [TestMethod]
+        public void AProjectedArrayAddressesTheSamePathATraversalDoes()
+        {
+            var projected = Render(PlanToCosmos(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
+
+            var traversed = Render(PlanToCosmos(
+                "SELECT c.\"id\" FROM products AS c, UNNEST(JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t"));
+
+            projected.Should().Contain("c.tags");
+            traversed.Should().Contain("IN c.tags");
+        }
+
+        /// <summary>
+        /// A <c>RETURNING</c> that names a scalar type is rendered as the bare path and read as that
+        /// type.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The text guard applied to these too, and it carried a second reading with it: the column
+        /// was read back as text into a plan that had declared a number, which the row builder then
+        /// could not hand over — <em>Unable to cast System.String to java.lang.Integer</em>. The same
+        /// one-line mistake as the array case, and it goes with it.
+        /// </para>
+        /// <para>
+        /// Bare rather than guarded, because <c>RETURNING</c> asserts rather than converts: the
+        /// service sends what the path holds and <c>CosmosJson</c> reads it as the declared type,
+        /// refusing a document that contradicts the clause instead of answering wrongly — which is
+        /// the whole reason the clause is worth trusting.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AScalarReturningAccessorIsRenderedAsTheBarePath()
+        {
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"n\": c.n } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) AS \"b\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"b\": c.b } FROM products c");
+        }
+
+        /// <summary>
         /// A negated conjunction implies nothing about the paths inside it.
         /// </summary>
         /// <remarks>

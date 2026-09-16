@@ -1248,6 +1248,102 @@ copied intact, and `CosmosRexTranslator.WriteCast` renders a cast to `ANY` over 
 path. The residual half of the split needs no such care: no rule converts it, because the filter rule
 declines it in either spelling, and nothing copies a Cosmos filter that was never made.
 
+**What the guard is depends on what the accessor is typed, and for a while it did not.** Every
+`JSON_VALUE` was rendered `IIF(IS_PRIMITIVE(p), p, null)` and read as text, whatever its `RETURNING`
+clause said. That is right for the bare accessor and wrong for every other spelling of it, in two
+ways at once. `IS_PRIMITIVE` is *false* of an array, so `JSON_VALUE(doc, '$.tags' RETURNING VARCHAR
+ARRAY)` projected as a column answered null for exactly the documents it was written to read — while
+the *same call* as an `UNNEST` source resolved to the path and returned the elements, so one
+expression meant two things (#119). And a scalar `RETURNING` carried the text reading with it, so a
+column the plan had declared `INTEGER` came back holding a string and the row could not be built at
+all. The declared type is what tells the three apart, and it is the same test
+`CosmosImplementor.TryBindOutput` already recorded the reading by:
+
+| the accessor is typed | rendered | read as |
+| --- | --- | --- |
+| `VARCHAR`, `CHAR` — the bare accessor | `IIF(IS_PRIMITIVE(p), p, null)` | `Text`, the rendering |
+| `ARRAY`, `MULTISET` — `RETURNING … ARRAY` | `IIF(IS_ARRAY(p), p, null)` | `Typed`, a `java.util.List` |
+| anything else — `RETURNING INTEGER`, … | `p` | `Typed`, the declared type |
+
+**This is not a divergence — it is the implementation, done at the service.** The distinction matters,
+because "we knowingly answer differently from the engine" invites a later reader to change it back.
+Measured against Calcite's own runtime — `CalciteJsonValueMeasurementTests` — an array `RETURNING`
+never answers an array: the array is not a scalar, so the extraction fails, the error path runs and
+null comes back; a scalar at the path throws a raw cast failure instead, outside that handling. Both
+are defects. Against what the construct *means*, the pushed column is right in every case and the
+engine is wrong in two:
+
+| at the path | what the construct means | pushed | Calcite's runtime |
+| --- | --- | --- | --- |
+| an array | the array | the array | **null** |
+| a scalar | null — a type mismatch under the default `NULL ON ERROR` | null | **throws** |
+| an object | null | null | null |
+| JSON null | null | null | null |
+| absent | null — the default `NULL ON EMPTY` | null | null |
+
+**The authority for "what it means" is Calcite, not SQL:2016** — worth stating plainly, because the
+standard says the opposite. SQL:2016 restricts `JSON_VALUE`'s `RETURNING` to predefined scalar types
+and gives `JSON_QUERY` for structure, so `RETURNING … ARRAY` is not standard SQL at all. It is a
+Calcite extension: the validator accepts it, the type system says the call is an array, `UNNEST`
+consumes it — it is the *only* spelling that names an array type, `JSON_QUERY` being `VARCHAR` even
+`WITH ARRAY WRAPPER` — and [CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208), fixed
+in 1.37.0, tunes the element nullability of exactly
+`unnest(json_value(col, '$.c' returning bigint array))`. So the extension is intended and only its
+runtime is missing, which is what the adapter supplies by rendering the path to the service.
+
+Which also settles what happens when upstream fixes it: the convergent repair — make the extraction
+produce the array — lands on what this already does. The other conceivable repair, tightening the
+validator to refuse a non-scalar `RETURNING`, would break the CALCITE-6208 pattern for every Calcite
+user, and would take this adapter's traversal with it. Neither is a reason to write the column
+differently.
+
+**It is Calcite's, and the layers were ruled out one at a time**, because "the wrapper loses the array"
+is the obvious competing explanation and would have meant a different fix. `JsonFunctions.StatefulFunction.jsonValue`
+— the extraction, invoked directly with `NULL ON EMPTY` / `NULL ON ERROR`, no plan, no code generation,
+no reader — answers `null` over `{"v":["a","b"]}` and `bikes` over `{"v":"bikes"}`. The function is
+scalar-only by construction, which is correct for SQL/JSON; the `RETURNING` type is applied *afterwards*
+as a cast, so an array answers null and a scalar throws `String → java.util.List` outside the `ON ERROR`
+handling. The validator admits a return type the runtime cannot produce.
+
+The same answers come back through Calcite's **own JDBC driver** rather than the ADO.NET wrapper, over a
+literal and over a table column alike, with `UNNEST` of one yielding no rows. Controls rule out every
+layer in between: `ARRAY['a','b']` arrives as an `ArrayImpl`, and a `java.util.List` in a table's own row
+arrives as a CLR array. And upstream treats the construct as supported —
+[CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208), fixed in 1.37.0, tunes the element
+nullability of exactly `unnest(json_value(col, '$.c' returning bigint array))` — so answering the array
+is what its own example asks for, and a future release that fixes the extraction would move the engine
+*towards* this adapter rather than away from it.
+
+Against that, `IS_ARRAY` is the guard that *agrees most*: it answers null for an object, a JSON null
+and an absent path, exactly as the engine does, where the bare path would have the reader refuse to
+read an object as a list and fail the query. Over a scalar it answers null where the engine throws,
+which is SQL:2016's own `NULL ON ERROR` and the same liberty `CosmosFilterSplitRule` takes. And it
+means one oddly-shaped document reads null for its own row rather than failing every row with it.
+
+**A collection column is read to its element type.** `CosmosJson.GetList` takes the component type the
+plan declared, so `INTEGER ARRAY` holds `java.lang.Integer` rather than the `java.lang.Long` an
+integral JSON number is discovered as where there is no schema to consult, and `VARCHAR ARRAY` over
+`[1,2]` fails with *Expected a JSON string, got Number* rather than handing back boxes of the wrong
+class. The same refusal a scalar column makes, for the same reason: a wrong `RETURNING` fails rather
+than lies. The value itself is a `java.util.List`, which is what Calcite holds a collection in and what
+`CalciteArrayReadingMeasurementTests` pins reaching a `DbDataReader` as a CLR array — the last link a
+caller mapping the column to a primitive collection depends on.
+
+The bookkeeping moved with it. `CosmosProject` recorded the rendered expression wherever the *reading*
+was not `Typed`, which was a proxy for "the rendering is not the path" and held while the only guarded
+column was also the only rendered one. An array column is guarded and read as its declared type, so
+the proxy stopped holding; the question is now asked of the two texts directly.
+
+**What the column binds to did not change, and one predicate over it is worth naming.** An array
+column addresses the path, as the accessor always has — that is what an `UNNEST` source needs — so a
+filter above the projection pushes against `c.tags`. For everything the service can say about an array
+that is agreement: a document holding no array there makes `ARRAY_LENGTH` or `ARRAY_CONTAINS`
+*undefined* and is excluded, and in process the column is null and is excluded too. `IS NULL` is the
+exception, and it is the engine's defect showing through rather than anything this introduced: in
+process the accessor is null for *every* document, so `WHERE <array column> IS NULL` keeps all of them
+and the pushed statement keeps only those with nothing at the path. It pushed the same way before an
+array column could carry a value at all; what has changed is that the column is now worth writing.
+
 **Ordering by an expression is refused by the service anyway.** Measured, and it closes the question
 rather than leaving it a matter of caution: `ORDER BY ToString(c.label)`, `ORDER BY UPPER(c.label)` and
 `ORDER BY c.label || 'x'` each answer 400, error code 2206 — *"Unsupported ORDER BY clause. ORDER BY
