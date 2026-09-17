@@ -967,6 +967,12 @@ an entire document crosses the wire to supply one scalar the service was willing
 holds for any operator with no Cosmos form over operands that have one — a temporal conversion, an
 unsupported function, an `IIF` the service will not take.
 
+**Two neighbours are now done and this is what is left of them.** #130 asked for a `COALESCE` over
+accessors to push, and it does — the blocker was a nullability-only cast rather than anything about
+`COALESCE`, and an accessor over a literal document is now computed rather than addressed. Neither is
+this entry: both make a *whole* expression renderable, where this one is about an expression that
+stays partly unrenderable however many of its pieces work.
+
 **What it would take.** Walk the residual and find the maximal sub-expressions that translate; project
 each as a column of its own in the pushed half; rewrite the residual to read them as input
 references. The top-level split is that algorithm with the walk stopping at depth zero, so the shape

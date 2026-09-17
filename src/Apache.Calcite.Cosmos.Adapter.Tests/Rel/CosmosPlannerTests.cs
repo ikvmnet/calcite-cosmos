@@ -1618,6 +1618,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// </para>
         /// </remarks>
         /// <summary>
+        /// #130's own query, whole: the accessor renders, the coalesce renders, and the constant
+        /// fallback is computed rather than addressed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The shape a caller writes for an array column that reads empty.</b> Three separate
+        /// refusals stood between this and the service, and each was a different thing: the cast
+        /// COALESCE expands to, which converts nothing; the guard an accessor loses by being nested
+        /// (#131); and an accessor over a literal document, which resolves to no path because there is
+        /// no document column under it.
+        /// </para>
+        /// <para>
+        /// The parameter is the empty array itself, sent as JSON, so what comes back for a document
+        /// with nothing at the path is read by the column's own reading as an empty list — which is
+        /// what the query asked for and what it answers in process.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheReportedCoalesceToAnEmptyArrayPushesWhole()
+        {
+            var query = Query(PlanToCosmos(
+                "SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY('[]', '$' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"));
+
+            query.Sql.Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) } FROM products c");
+
+            query.Parameters.Should().HaveCount(1);
+            query.Parameters[0].Value.Should().BeAssignableTo<System.Collections.Generic.IEnumerable<object?>>()
+                .Which.Should().BeEmpty("the fallback is the empty array the constant is");
+        }
+
+        /// <summary>
+        /// A constant accessor is the value at the path, and the accessor's own shape test decides it.
+        /// </summary>
+        /// <remarks>
+        /// The same line the guard draws at the service, drawn here instead because both operands are
+        /// known: an array <c>RETURNING</c> answers only an array, a text accessor only a primitive,
+        /// and null for anything else. A wildcard or a descent is refused, as it is over a document
+        /// column — one grammar, not two.
+        /// </remarks>
+        [TestMethod]
+        public void AConstantAccessorIsComputedRatherThanAddressed()
+        {
+            Query(PlanToCosmos("SELECT JSON_VALUE('{\"v\":3}', '$.v' RETURNING INTEGER) AS \"a\" FROM products AS c"))
+                .Parameters.Select(p => p.Value?.ToString()).Should().Equal("3");
+
+            Query(PlanToCosmos("SELECT JSON_QUERY('{\"v\":[1,2]}', '$.v' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c"))
+                .Parameters.Should().HaveCount(1);
+
+            // A scalar is not an array, so the array accessor answers null -- written out rather than
+            // parameterised, there being no value to bind.
+            Render(PlanToCosmos("SELECT JSON_QUERY('{\"v\":3}', '$.v' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": null } FROM products c");
+
+            // And an object is not a scalar, so the text accessor answers null.
+            Render(PlanToCosmos("SELECT JSON_VALUE('{\"v\":{}}', '$.v' RETURNING VARCHAR) AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": null } FROM products c");
+        }
+
+        /// <summary>
         /// A <c>COALESCE</c> over an accessor pushes, and used to take the whole projection in process
         /// with it (#130).
         /// </summary>

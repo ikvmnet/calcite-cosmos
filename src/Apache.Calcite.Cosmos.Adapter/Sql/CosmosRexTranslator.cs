@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Internal;
 
@@ -737,8 +738,179 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             WriteCallCore(builder, call);
         }
 
+        /// <summary>
+        /// Writes a SQL/JSON accessor whose document is a literal as the value it answers.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>An accessor over a literal addresses nothing, and it does not have to.</b> Both operands
+        /// are constants, so the whole call is one — it answers the same value for every document and
+        /// can be computed here. Without this it was refused, because <see cref="TryResolveJsonPath"/>
+        /// resolves the document operand to a path and a literal is not one, and a refused operand
+        /// takes its whole expression in process with it.
+        /// </para>
+        /// <para>
+        /// <b>Which is how it reached us.</b> #130 models an array column that reads empty where the
+        /// document has nothing, spelling the fallback as a <c>JSON_QUERY</c> over the literal
+        /// <c>[]</c>. The accessor over the document rendered, the coalesce rendered, and the empty
+        /// array was the one piece that did not.
+        /// </para>
+        /// <para>
+        /// <b>Calcite own reducer does not close this.</b> Measured with
+        /// <c>PROJECT_REDUCE_EXPRESSIONS</c> registered and an executor set, a constant
+        /// <c>JSON_VALUE</c> folds to a literal and the constant <c>JSON_QUERY</c> does not, there
+        /// being no <c>RexLiteral</c> for an array to fold it to. So the collection case, which is the
+        /// one asked for, needs its own answer whether or not that rule is ever registered.
+        /// </para>
+        /// <para>
+        /// <b>The accessor own shape test is applied rather than assumed</b>, and it is the guard
+        /// written out: an array <c>RETURNING</c> answers the value only where it is an array, a text
+        /// accessor only where it is a primitive, null otherwise — the same line
+        /// <see cref="WriteGuardedAccessor"/> draws at the service. The value is bound as a parameter
+        /// in plain CLR form, so the service is sent the JSON the constant is and the column own
+        /// reading converts what comes back, exactly as for a path.
+        /// </para>
+        /// </remarks>
+        bool TryWriteConstantAccessor(StringBuilder builder, RexCall call)
+        {
+            if (call.getOperands().size() < 2
+                || Operand(call, 0) is not RexLiteral document
+                || Operand(call, 1) is not RexLiteral pathLiteral)
+                return false;
+
+            string? text;
+            string? pathText;
+
+            try
+            {
+                text = GetLiteralValue(document) as string;
+                pathText = GetLiteralValue(pathLiteral) as string;
+            }
+            catch (CosmosTranslationException)
+            {
+                return false;
+            }
+
+            if (text is null || pathText is null)
+                return false;
+
+            // The same grammar a path over the document column is held to -- a wildcard, a descent or a
+            // filter is refused here as it is there, rather than answered by a second implementation.
+            if (TryExtendByJsonPath(CosmosPath.Root("$"), pathText, out var path) == false || path is null)
+                return false;
+
+            JsonDocument parsed;
+
+            try
+            {
+                parsed = JsonDocument.Parse(text);
+            }
+            catch (JsonException)
+            {
+                // Not a document at all, which is an error behaviour rather than a value. Left to the
+                // engine rather than guessed at.
+                return false;
+            }
+
+            using (parsed)
+            {
+                var value = parsed.RootElement;
+
+                foreach (var segment in path.Segments)
+                {
+                    if (segment.IsIndex)
+                    {
+                        if (value.ValueKind != JsonValueKind.Array || segment.ArrayIndex >= value.GetArrayLength())
+                            return WriteJsonNull(builder);
+
+                        value = value[segment.ArrayIndex];
+                        continue;
+                    }
+
+                    if (value.ValueKind != JsonValueKind.Object || value.TryGetProperty(segment.Name!, out value) == false)
+                        return WriteJsonNull(builder);
+                }
+
+                if (IsCollectionJsonQuery(call))
+                    return value.ValueKind == JsonValueKind.Array ? WriteJsonConstant(builder, value) : WriteJsonNull(builder);
+
+                // A plain JSON_QUERY answers the fragment as *text*, which the reading produces rather
+                // than the service -- see TryJsonQueryProjection. There is no reading over a constant
+                // written into an expression, so it is declined for the reason a nested one is.
+                if (IsPlainJsonQuery(call))
+                    return false;
+
+                if (IsJsonPrimitive(value))
+                    return WriteJsonConstant(builder, value);
+
+                return IsTextJsonValue(call) ? WriteJsonNull(builder) : WriteJsonConstant(builder, value);
+            }
+        }
+
+        static bool IsJsonPrimitive(JsonElement value)
+        {
+            return value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                or JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null;
+        }
+
+        static bool WriteJsonNull(StringBuilder builder)
+        {
+            builder.Append("null");
+            return true;
+        }
+
+        bool WriteJsonConstant(StringBuilder builder, JsonElement value)
+        {
+            builder.Append(_parameters.Add(ToParameterValue(value)));
+            return true;
+        }
+
+        /// <summary>
+        /// Reads a JSON value as the plain CLR shape a query parameter is serialised from.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <c>CosmosJson.GetValue</c>, which reads a value into the Java types
+        /// Calcite runtime holds. Those are what a column is read <em>back</em> as; what goes
+        /// <em>out</em> has to survive whichever serialiser the SDK is configured with, and lists and
+        /// dictionaries of primitives do where a <c>JsonElement</c> or a <c>java.util.List</c> does not.
+        /// </remarks>
+        static object? ToParameterValue(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.True:
+                    return true;
+                case JsonValueKind.False:
+                    return false;
+                case JsonValueKind.String:
+                    return value.GetString();
+                case JsonValueKind.Number:
+                    return value.TryGetInt64(out var integral) ? integral : value.GetDouble();
+                case JsonValueKind.Array:
+                    var items = new List<object?>(value.GetArrayLength());
+                    foreach (var item in value.EnumerateArray())
+                        items.Add(ToParameterValue(item));
+
+                    return items;
+                case JsonValueKind.Object:
+                    var members = new Dictionary<string, object?>(StringComparer.Ordinal);
+                    foreach (var member in value.EnumerateObject())
+                        members[member.Name] = ToParameterValue(member.Value);
+
+                    return members;
+                default:
+                    return null;
+            }
+        }
+
         void WriteCallCore(StringBuilder builder, RexCall call)
         {
+            // An accessor whose document is a literal is a constant, and is computed here rather than
+            // addressed -- see TryWriteConstantAccessor. Ahead of the path branch because that one
+            // resolves the document operand to a path, and a literal is not one.
+            if (IsJsonAccessor(call) && TryWriteConstantAccessor(builder, call))
+                return;
+
             // A SQL/JSON accessor over the document is the path it addresses, and is written as one:
             // the service returns the value at the path, and the RETURNING clause is what told the
             // plan its type. Handled ahead of the kind switch so that every clause reaching here —
