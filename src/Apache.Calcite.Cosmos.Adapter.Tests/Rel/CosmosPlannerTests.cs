@@ -1450,6 +1450,81 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// two apart, and it is the same test the binding records the reading by.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// A projection mixing renderable columns with one that is not sends the renderable ones and
+        /// keeps only the rest in process.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The case #125 was filed for.</b> A constant timestamp cannot be rendered — Cosmos has no
+        /// temporal type and nothing declares which encoding a container uses, so
+        /// <c>CosmosRexTranslator.GetLiteralValue</c> refuses one rather than guessing. Before the
+        /// split that refusal took the whole projection with it, and the statement became
+        /// <c>SELECT VALUE c</c>: every document crossed the wire so that the client could compute a
+        /// constant.
+        /// </para>
+        /// <para>
+        /// The timestamp reads nothing from the input, so the pushed half is the array alone and the
+        /// document does not travel at all.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AProjectionSplitsAroundAnExpressionThatCannotRender()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST('2020-01-01 12:00:00' AS TIMESTAMP) AS \"x\", JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+
+            var plan = Plan(best);
+            plan.Should().Contain("CosmosProject", "the half that renders belongs at the service: " + plan);
+
+            var sql = Render(FindCosmos(best));
+            sql.Should().Contain("IS_ARRAY(c.tags)", "which is the array column, guarded as ever: " + sql);
+            sql.Should().NotContain("SELECT VALUE c ", "and the document itself should not travel: " + sql);
+        }
+
+        /// <summary>
+        /// The pushed half carries whatever the residual reads, so a residual over a document path
+        /// still finds its operand.
+        /// </summary>
+        /// <remarks>
+        /// A numeric cast of a path cannot render, and computing it in process needs the document. So
+        /// the inner projection sends <c>DOC</c> beside the array rather than only the array, and the
+        /// outer expression is rewritten to read it from there. The document travels — this split is
+        /// about where each column is <em>evaluated</em>, and only saves bytes where the residual
+        /// needs nothing.
+        /// </remarks>
+        [TestMethod]
+        public void TheSplitCarriesWhatTheResidualReads()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\", JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("IS_ARRAY(c.tags)", "the array is evaluated at the service: " + sql);
+            sql.Should().Contain("\": c }", "and the document goes with it, for the cast above: " + sql);
+        }
+
+        /// <summary>
+        /// A projection every part of which renders is not split.
+        /// </summary>
+        /// <remarks>
+        /// The rule fires only where both halves are non-empty, so the ordinary case keeps the single
+        /// <see cref="CosmosProject"/> the all-or-nothing rule already made. Worth holding because a
+        /// split that fired here would add a node and a wrapping projection for nothing.
+        /// </remarks>
+        [TestMethod]
+        public void AWhollyRenderableProjectionIsNotSplit()
+        {
+            var best = PlanToAsync(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) AS \"x\", JSON_VALUE(c.\"DOC\", '$.b' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+
+            var plan = Plan(best);
+
+            plan.Should().Contain("CosmosProject", "the projection pushes whole: " + plan);
+            plan.Should().NotContain("ClrEnumerableProject", "with nothing left above it: " + plan);
+        }
+
         [TestMethod]
         public void AnArrayReturningAccessorIsGuardedByIsArray()
         {

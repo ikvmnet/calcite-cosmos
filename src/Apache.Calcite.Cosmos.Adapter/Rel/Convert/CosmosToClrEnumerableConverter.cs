@@ -76,11 +76,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <inheritdoc />
+        /// <remarks>
+        /// <para>
+        /// <b>This node is the wire, so what it costs is how much crosses it.</b> Until that was
+        /// priced the cost was rows alone, and a projection pushed below this node reduced nothing the
+        /// model could measure while adding the node that pushed it — so a mixed projection was always
+        /// cheaper left whole and in process, and <see cref="CosmosProjectSplitRule"/> produced a plan
+        /// the planner then discarded every time (#125).
+        /// </para>
+        /// <para>
+        /// <b>Width is a count of columns, and that is cruder than it sounds.</b>
+        /// <c>getAverageRowSize</c> is the metadata that would say what a row actually weighs, and it
+        /// was tried first: measured over these plans it answers <c>null</c> at every node, scan and
+        /// projection alike, so nothing was being scaled by it and the count was doing all the work.
+        /// Asking for it and quietly falling back would have described a mechanism that never ran.
+        /// </para>
+        /// <para>
+        /// <b>What the count gets wrong is the document.</b> The <c>DOC</c> column carries an entire
+        /// item and a projected scalar carries a value, and counting both as one column calls a
+        /// statement returning the document plus a scalar cheaper than one returning five scalars —
+        /// which in bytes it is not. The direction is still right wherever it decides anything here,
+        /// because pushing a projection only ever removes columns; the magnitude is wrong. Sizing the
+        /// document properly means a <c>RelMdSize</c> handler for the Cosmos nodes, which is a larger
+        /// piece of work and is not attempted for this.
+        /// </para>
+        /// </remarks>
         public override RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq)
         {
             var cost = base.computeSelfCost(planner, mq);
+            if (cost == null)
+                return null!;
 
-            return cost == null ? null! : cost.multiplyBy(ClrEnumerableConvention.CostMultiplier);
+            return cost.multiplyBy(ClrEnumerableConvention.CostMultiplier * System.Math.Max(1, getInput().getRowType().getFieldCount()));
         }
 
         /// <inheritdoc />
