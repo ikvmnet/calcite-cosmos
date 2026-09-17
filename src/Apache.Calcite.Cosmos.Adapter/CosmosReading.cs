@@ -37,6 +37,21 @@
         /// </remarks>
         Json,
 
+        /// <summary>
+        /// Read whatever JSON arrived and write it back as compact JSON text, which is what
+        /// <c>JSON_QUERY</c> answers. See <see cref="Client.CosmosJson.GetJsonTextProperty"/>.
+        /// </summary>
+        /// <remarks>
+        /// <b>Distinct from <see cref="Json"/>, and the difference is whitespace.</b> That one hands
+        /// back the service's own bytes, which is right for the document column — it cannot then
+        /// differ from what is stored. This one is a value inside a document being returned as text
+        /// by an operator whose in-process form re-serialises: measured, Calcite answers
+        /// <c>["a","b"]</c> for a path stored as <c>[ "a" ,   "b" ]</c>. Handing the raw bytes over
+        /// would make the pushed column differ from the in-process one by exactly the spaces the
+        /// document happened to carry.
+        /// </remarks>
+        JsonText,
+
     }
 
 }

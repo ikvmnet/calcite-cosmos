@@ -39,6 +39,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static readonly System.Reflection.MethodInfo GetJsonPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonProperty), [typeof(JsonElement), typeof(string)])
             ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetJsonProperty)}' is missing from {nameof(CosmosJson)}.");
 
+        static readonly System.Reflection.MethodInfo GetJsonTextPropertyMethod = typeof(CosmosJson).GetMethod(nameof(CosmosJson.GetJsonTextProperty), [typeof(JsonElement), typeof(string)])
+            ?? throw new InvalidOperationException($"'{nameof(CosmosJson.GetJsonTextProperty)}' is missing from {nameof(CosmosJson)}.");
+
         static readonly System.Reflection.MethodInfo GetExecutorMethod = typeof(CosmosSchemas).GetMethod(nameof(CosmosSchemas.GetExecutor), [typeof(org.apache.calcite.DataContext), typeof(string[])])
             ?? throw new InvalidOperationException($"'{nameof(CosmosSchemas.GetExecutor)}' is missing from {nameof(CosmosSchemas)}.");
 
@@ -409,6 +412,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (reading == CosmosReading.Text)
                 return Expression.Convert(
                     Expression.Call(null, GetTextPropertyMethod, row, Expression.Constant(field.getName())),
+                    typeof(object));
+
+            // A JSON fragment, written out as Calcite writes one. The declared VARCHAR would refuse
+            // the object or array the column carries, which is what a projected JSON_QUERY threw on
+            // before it had a rendering of its own.
+            if (reading == CosmosReading.JsonText)
+                return Expression.Convert(
+                    Expression.Call(null, GetJsonTextPropertyMethod, row, Expression.Constant(field.getName())),
                     typeof(object));
 
             // The document column, read as the text the service sent rather than as the declared

@@ -287,7 +287,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         static bool IsJsonAccessor(RexCall call)
         {
-            return call.getOperator().getName() is "JSON_VALUE" or "JSON_QUERY" && call.getOperands().size() >= 2;
+            if (call.getOperator().getName() == "JSON_VALUE")
+                return call.getOperands().size() >= 2;
+
+            // A wrapper or a behaviour clause substitutes something the path does not hold -- measured,
+            // WITH UNCONDITIONAL ARRAY WRAPPER over the string `bikes` answers ["bikes"] and
+            // EMPTY OBJECT ON ERROR answers {} -- so only the plain form is the path it addresses.
+            return IsPlainJsonQuery(call);
         }
 
         /// <summary>
@@ -1044,6 +1050,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a plain <c>JSON_QUERY</c> — the accessor that answers a
+        /// JSON fragment rather than a scalar.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The two-operand form only.</b> <c>JSON_QUERY</c> carries a wrapper clause and behaviour
+        /// clauses, and each changes what comes back: measured, <c>WITH UNCONDITIONAL ARRAY WRAPPER</c>
+        /// over the string <c>bikes</c> answers <c>["bikes"]</c> where the plain form answers null, and
+        /// <c>EMPTY OBJECT ON ERROR</c> answers <c>{}</c>. None of those is the path, so none is
+        /// rendered as one, and only the spelling with nothing else to say is taken.
+        /// </para>
+        /// <para>
+        /// The type is not the test it is for <see cref="IsTextJsonValue"/>: <c>JSON_QUERY</c> is
+        /// <c>VARCHAR</c> whatever it is asked for. Nor is the operand count, which is where this
+        /// first went wrong — <c>JSON_VALUE</c> carries its <c>RETURNING</c> in its type and has two
+        /// operands, while a validated <c>JSON_QUERY</c> always has five: the wrapper and both
+        /// behaviours are present as symbols whether or not they were written. Plain is what those
+        /// three say — or, for a call built by hand with none of them, what their absence says.
+        /// </para>
+        /// <para>
+        /// Read by name rather than by ordinal, for the reason the rest of this file gives: a Java
+        /// enum's ordinals are not stable across versions, its names are.
+        /// </para>
+        /// </remarks>
+        internal static bool IsPlainJsonQuery(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_QUERY")
+                return false;
+
+            // Two operands is the call with nothing said, which a caller building one by hand writes
+            // and which is plain by construction -- there is no clause on it to differ from the plain
+            // form. The validator always writes five, so both shapes reach here.
+            if (call.getOperands().size() == 2)
+                return true;
+
+            return call.getOperands().size() == 5
+                && IsFlag(call, 2, "WITHOUT_ARRAY")
+                && IsFlag(call, 3, "NULL")
+                && IsFlag(call, 4, "NULL");
+        }
+
+        /// <summary>
+        /// Determines whether an operand is a symbol literal naming the given enum constant.
+        /// </summary>
+        static bool IsFlag(RexCall call, int ordinal, string name)
+        {
+            if ((RexNode)call.getOperands().get(ordinal) is not RexLiteral literal)
+                return false;
+
+            var value = literal.getValue();
+            var text = value is java.lang.Enum symbol ? symbol.name() : value?.ToString();
+
+            return string.Equals(text, name, StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> names an
         /// array type, which is the only spelling that names one.
         /// </summary>
@@ -1090,11 +1152,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsTextJsonValue(node))
                 return true;
 
+            // A plain JSON_QUERY is a rendering of the fragment at the path, not the fragment, so an
+            // operator written over it is held to the same tests the scalar accessor is.
+            if (IsPlainJsonQuery(node))
+                return true;
+
             return node is RexInputRef reference
                 && IsCharacter(reference)
                 && reference.getIndex() >= 0
                 && reference.getIndex() < _readings.Count
-                && _readings[reference.getIndex()] == CosmosReading.Text;
+                && _readings[reference.getIndex()] is CosmosReading.Text or CosmosReading.JsonText;
         }
 
         /// <summary>
@@ -1257,6 +1324,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 reading = CosmosReading.Typed;
                 return collection;
+            }
+
+            // The other half of SQL/JSON: the fragment at the path, as text. Its guard is the
+            // complement of the scalar one -- see TryJsonQueryProjection.
+            if (TryJsonQueryProjection(node, out var fragment) && fragment is not null)
+            {
+                reading = CosmosReading.JsonText;
+                return fragment;
             }
 
             reading = CosmosReading.Typed;
@@ -1450,6 +1525,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var rendered = path.ToString();
             expression = $"({CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            return true;
+        }
+
+        /// <summary>
+        /// Renders a plain <c>JSON_QUERY</c> over a document path as the fragment the function means.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The mirror of the scalar accessor, and it was wrong in both directions before.</b>
+        /// <c>JSON_QUERY</c> is declared <c>VARCHAR</c>, so a projection of one was read as text while
+        /// the statement sent the bare path: over an object or an array — the values the function
+        /// exists to return — the service answered the raw value and <c>CosmosJson.GetString</c>
+        /// refused it, so the column threw; over a scalar it answered the scalar, where SQL/JSON says
+        /// the function returns null. Worse than the array case, which merely came back empty.
+        /// </para>
+        /// <para>
+        /// <b>The guard is the complement of <c>IS_PRIMITIVE</c>.</b> <c>JSON_VALUE</c> answers for a
+        /// string, a number, a boolean and a JSON null and nothing else; this answers for an object and
+        /// an array and nothing else. <c>IS_OBJECT(p) OR IS_ARRAY(p)</c> is that line at the service,
+        /// so the rendered column carries a value for precisely the documents the function carries one
+        /// for, and null — through the absent property Cosmos elides — for the rest.
+        /// </para>
+        /// <para>
+        /// <b>Read as <see cref="CosmosReading.JsonText"/> rather than as the declared <c>VARCHAR</c>,</b>
+        /// because the value that comes back is a fragment and not a string. The reading writes it out
+        /// as compact JSON, which is what Calcite's own <c>JSON_QUERY</c> answers — measured, a path
+        /// stored as <c>[ "a" ,   "b" ]</c> reads <c>["a","b"]</c> there, so handing over the service's
+        /// own bytes would differ by whatever whitespace the document happened to carry.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryJsonQueryProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (IsPlainJsonQuery(node) == false)
+                return false;
+
+            var call = (RexCall)node;
+
+            if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsObject.getName()}({rendered}) OR {CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
             return true;
         }
 

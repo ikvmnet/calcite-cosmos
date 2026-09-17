@@ -136,6 +136,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// divergence, recorded rather than hidden.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// <c>JSON_QUERY</c> is the mirror of the scalar accessor, and it re-serialises what it finds.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Both halves matter to the adapter. That it answers for an object and an array and null for
+        /// everything else is the guard the pushed column renders —
+        /// <c>IS_OBJECT(p) OR IS_ARRAY(p)</c> is that line at the service, as <c>IS_PRIMITIVE</c> is
+        /// <c>JSON_VALUE</c>'s.
+        /// </para>
+        /// <para>
+        /// <b>And that the text is normalised is why the reading cannot hand over the service's own
+        /// bytes.</b> The document here is written with spaces between its tokens and comes back
+        /// without them, so a column that returned what Cosmos stored would differ from the in-process
+        /// answer by exactly the whitespace the document happened to carry.
+        /// <see cref="Apache.Calcite.Cosmos.Adapter.CosmosReading.JsonText"/> writes it out compactly
+        /// for that reason.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void JsonQueryAnswersStructureOnlyAndWritesItCompactly()
+        {
+            const string Spaced = "'{\"v\": [ \"a\" ,   \"b\" ] , \"o\": { \"a\" : 1 }, \"s\": \"bikes\", \"n\": null }'";
+
+            Ask($"JSON_QUERY({Spaced}, '$.o')").Value.Should().Be("{\"a\":1}",
+                "an object comes back as its JSON, with the spaces the document carried removed");
+
+            Ask($"JSON_QUERY({Spaced}, '$.v')").Value.Should().Be("[\"a\",\"b\"]",
+                "and so does an array");
+
+            Ask($"JSON_QUERY({Spaced}, '$.s')").Value.Should().BeNull("a scalar is not this function's business");
+            Ask($"JSON_QUERY({Spaced}, '$.n')").Value.Should().BeNull("nor is a JSON null");
+            Ask($"JSON_QUERY({Spaced}, '$.missing')").Value.Should().BeNull("nor is an absent path");
+        }
+
+        /// <summary>
+        /// A wrapper or a behaviour clause substitutes a value the path does not hold.
+        /// </summary>
+        /// <remarks>
+        /// Which is why the adapter renders only the plain form as a path, and declines these — the
+        /// path carries the value, and these carry something built around it. Held here because the
+        /// refusal rests on what they do rather than on their being unfamiliar.
+        /// </remarks>
+        [TestMethod]
+        public void JsonQueryWrapperAndBehaviourClausesAnswerSomethingElse()
+        {
+            const string Spaced = "'{\"s\": \"bikes\"}'";
+
+            Ask($"JSON_QUERY({Spaced}, '$.s' WITH UNCONDITIONAL ARRAY WRAPPER)").Value.Should().Be("[\"bikes\"]",
+                "the wrapper builds an array the path does not hold");
+
+            Ask($"JSON_QUERY({Spaced}, '$.s' EMPTY OBJECT ON ERROR)").Value.Should().Be("{}",
+                "and a behaviour clause substitutes one on the error the scalar causes");
+        }
+
         [TestMethod]
         public void ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt()
         {

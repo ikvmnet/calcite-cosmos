@@ -151,6 +151,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Reads a named property as compact JSON text, which is what <c>JSON_QUERY</c> answers.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Re-serialised rather than handed over, which is the whole difference from
+        /// <see cref="GetJsonProperty"/>. A document may be stored with whitespace between its
+        /// tokens; Calcite's own <c>JSON_QUERY</c> parses and writes the fragment back, and measured,
+        /// answers <c>["a","b"]</c> for a path holding <c>[ "a" ,   "b" ]</c>. Writing it out here
+        /// the same way is what keeps the pushed column and the in-process one the same string.
+        /// </para>
+        /// <para>
+        /// A scalar at the path is not this operator's business and answers null — the guard renders
+        /// that at the service, and this is the reading for what the guard admits.
+        /// </para>
+        /// </remarks>
+        /// <param name="row">The row object.</param>
+        /// <param name="name">The property to read.</param>
+        /// <returns>The JSON text, or <c>null</c> where the property is absent or JSON null.</returns>
+        /// <exception cref="CosmosMaterializationException">The row is not an object.</exception>
+        public static string? GetJsonTextProperty(JsonElement row, string name)
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+                throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
+
+            if (row.TryGetProperty(name, out var value) == false || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                return null;
+
+            using var buffer = new System.IO.MemoryStream();
+
+            // Default options, so no indentation: the compact form Calcite writes.
+            using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+                value.WriteTo(writer);
+
+            return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+        }
+
+        /// <summary>
         /// Reads a document path as a value of the given SQL type.
         /// </summary>
         /// <remarks>
