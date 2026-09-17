@@ -284,16 +284,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// an accessor and is rendered as <c>IS_DEFINED</c> where it appears; the modifying family is
         /// not an accessor at all.
         /// </para>
+        /// <para>
+        /// This is the single gate every consumer of a path goes through — a projection, a filter, a
+        /// partition key, a traversal — so refusing a spelling here refuses it everywhere, which is why
+        /// <see cref="IsArrayReturningJsonValue"/> is asked at this level rather than at any one of
+        /// them.
+        /// </para>
         /// </remarks>
         static bool IsJsonAccessor(RexCall call)
         {
             if (call.getOperator().getName() == "JSON_VALUE")
-                return call.getOperands().size() >= 2;
+            {
+                if (call.getOperands().size() < 2)
+                    return false;
+
+                // An array RETURNING on JSON_VALUE is not a construct SQL defines, so it addresses no
+                // path in any clause -- see IsArrayReturningJsonValue.
+                return IsArrayReturningJsonValue(call) == false;
+            }
 
             // A wrapper or a behaviour clause substitutes something the path does not hold -- measured,
             // WITH UNCONDITIONAL ARRAY WRAPPER over the string `bikes` answers ["bikes"] and
             // EMPTY OBJECT ON ERROR answers {} -- so only the plain form is the path it addresses.
             return IsPlainJsonQuery(call);
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> names an
+        /// array type — a spelling that is refused rather than rendered.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>SQL restricts <c>JSON_VALUE</c>'s <c>RETURNING</c> to a predefined scalar type</b> and
+        /// gives <c>JSON_QUERY</c> for structure. So this is not a construct the standard defines and
+        /// Calcite implements badly — it is a spelling Calcite happens to accept and then answers by
+        /// its own lights: measured, null over an array under the default <c>NULL ON ERROR</c> and a
+        /// raw cast failure over a scalar. Rendering it would invent a meaning, and invent it only
+        /// here, so the same query moved off this adapter would silently answer differently.
+        /// </para>
+        /// <para>
+        /// <b>Refused in every clause rather than in the projection alone.</b> The first version of
+        /// this refusal declined the column and left the traversal pushing, which put the divergence
+        /// somewhere else instead of removing it: <c>UNNEST</c> of a null array yields no rows in
+        /// process, so a pushed <c>JOIN t0 IN c.tags</c> answered rows where the engine answers none.
+        /// One expression must not mean two things — that is what #119 was filed about — and the only
+        /// way to hold that is for the spelling to address no path at all.
+        /// </para>
+        /// <para>
+        /// A caller wanting the array writes <c>JSON_QUERY</c>, which SQL permits the clause on and
+        /// which measurement shows Calcite implements: it answers the array in process, unnests to the
+        /// right rows, and renders to the same path here — so it agrees with itself pushed or not.
+        /// </para>
+        /// </remarks>
+        internal static bool IsArrayReturningJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            var name = call.getType()?.getSqlTypeName();
+            return name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET;
         }
 
         /// <summary>
@@ -1106,23 +1155,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> names an
-        /// array type, which is the only spelling that names one.
+        /// Determines whether an expression is a plain <c>JSON_QUERY</c> whose <c>RETURNING</c> names
+        /// an array type.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The counterpart of <see cref="IsTextJsonValue"/>, and asked for the same reason: what the
-        /// call is typed decides both how it is rendered and how the value is read back.
-        /// <c>JSON_QUERY</c> is not this — it is <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c>, being
-        /// the JSON text of an array rather than the array.
+        /// call is typed decides both how it is rendered and how the value is read back. A
+        /// <c>RETURNING</c> is what changes that type — a <em>wrapper</em> clause does not, so
+        /// <c>WITH UNCONDITIONAL ARRAY WRAPPER</c> is still <c>VARCHAR</c>, the JSON text of an array
+        /// rather than the array, and is not this.
+        /// </para>
+        /// <para>
+        /// <c>JSON_QUERY</c>'s alone. This asked for either accessor until the array
+        /// <c>RETURNING</c> on <c>JSON_VALUE</c> was refused — see
+        /// <see cref="IsArrayReturningJsonValue"/>, which says why, and note that such a call no
+        /// longer reaches here at all: <see cref="IsJsonAccessor"/> declines it first.
+        /// </para>
         /// </remarks>
-        internal static bool IsCollectionJsonValue(RexNode node)
+        internal static bool IsCollectionJsonQuery(RexNode node)
         {
             if (node is not RexCall call)
                 return false;
 
             // JSON_QUERY's alone. SQL restricts JSON_VALUE's RETURNING to a predefined scalar type,
             // so an array one is not a construct with a meaning to implement -- see
-            // TranslateProjection, which refuses it rather than answering one.
+            // IsArrayReturningJsonValue, and IsJsonAccessor, which refuses it to every clause.
             if (IsPlainJsonQuery(call) == false)
                 return false;
 
@@ -1341,21 +1399,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             // An array RETURNING on JSON_VALUE is refused rather than rendered, and the refusal is the
-            // whole behaviour. SQL restricts that clause to a predefined scalar type, so there is no
-            // construct here to be faithful to -- only a spelling Calcite accepts and then answers by
-            // its own lights: null under the default NULL ON ERROR, and a raw failure under ERROR ON
-            // ERROR. Declining sends the column in process, where those are exactly what a caller
-            // gets, rather than inventing an array at the service that the same query without this
-            // adapter would never produce.
+            // whole behaviour -- see IsArrayReturningJsonValue, and IsJsonAccessor, which refuses the
+            // same spelling to every other clause. Declining sends the column in process, where a
+            // caller gets what the engine gives: null under the default NULL ON ERROR, and a raw
+            // failure under ERROR ON ERROR. The second is the half that settles it, a pushed column
+            // having no way to raise.
             //
-            // The spelling that does mean an array is JSON_QUERY's, which the standard permits and
-            // Calcite implements -- measured, it answers the array and unnests correctly in process.
-            // A caller wanting the array has that, and is better served by it than by this one
-            // working here and nowhere else.
-            if (node is RexCall accessor
-                && accessor.getOperator().getName() == "JSON_VALUE"
-                && accessor.getType()?.getSqlTypeName() is SqlTypeName name
-                && (name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET))
+            // Stated here as well as at the gate because a projection is the one clause that must
+            // say so out loud: everywhere else a refusal is a pushdown not taken, and here it is the
+            // difference between an answer and an invented one.
+            if (IsArrayReturningJsonValue(node))
                 throw new CosmosTranslationException(
                     "JSON_VALUE with an array RETURNING is not a construct SQL defines -- the clause names a predefined scalar type -- so it is left to the engine, which answers null. JSON_QUERY is the accessor that returns an array.");
 
@@ -1542,7 +1595,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             expression = null;
 
-            if (IsCollectionJsonValue(node) == false)
+            if (IsCollectionJsonQuery(node) == false)
                 return false;
 
             var call = (RexCall)node;

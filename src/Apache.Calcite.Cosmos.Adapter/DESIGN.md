@@ -1960,14 +1960,19 @@ does *not* push: `JSON_QUERY` evaluates correctly in process and `JSON_VALUE` an
 the defect behind the array column returning nothing when a projection is lifted (#125,
 ikvmnet/calcite-dotnet#152).
 
-**That "no difference" is one traversal short of true, and it is worth saying plainly.** A pushed
-`UNNEST(JSON_VALUE(… RETURNING VARCHAR ARRAY))` returns the elements; the same statement in process
-returns *no rows*, the null array unnesting to nothing. It is the divergence the projection stopped
-making when the array `RETURNING` was refused there, surviving in the one place the reversal did not
-reach — it predates #119 rather than arriving with it, and refusing it would turn a query that
-returns the right rows today into one that returns none. `TODO.md` carries it as an open decision
-rather than a settled position. `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))` agrees pushed and in
-process, and is what a caller should be writing either way.
+**That "no difference" was one traversal short of true, and closing it is what made the refusal mean
+anything.** A pushed `UNNEST(JSON_VALUE(… RETURNING VARCHAR ARRAY))` returned the elements; the same
+statement in process returns *no rows*, the null array unnesting to nothing. Refusing the column
+alone would have moved that divergence rather than removed it — measured, with the projection
+declining and the traversal still pushing, the plan is `CosmosUnnest` over the table scan, so the
+adapter answered rows where the engine answers none.
+
+So the refusal lives in `IsJsonAccessor`, the single gate a projection, a filter, a partition key and
+a traversal all pass through: the spelling addresses no path *in any clause*. One expression, one
+meaning, which is the whole of what #119 was filed about. The cost is real and is named rather than
+hidden — a caller who wrote this and got rows now gets none, because that is what the statement
+means. `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))` agrees pushed and in process, and is what a
+caller should be writing.
 
 **Element nullability is the type's, and there is no syntax to say otherwise.** `RETURNING INTEGER
 ARRAY` reads back as `int?[]`: nullability in SQL is a constraint rather than part of a data type, the

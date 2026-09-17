@@ -1611,6 +1611,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// The same spelling is refused as a traversal source, and refusing it there is what makes the
+        /// refusal mean anything.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The first version of this reversal declined the column and left this pushing</b>, which
+        /// moved the divergence rather than removing it. In process the accessor answers null and
+        /// <c>UNNEST</c> of a null array yields <em>no rows</em> —
+        /// <c>CalciteJsonValueArrayMeasurementTests.NeitherUnnestNorCardinalityFindsAnything</c> pins
+        /// that — so a pushed <c>JOIN t0 IN c.tags</c> would answer rows where the same query without
+        /// this adapter answers none.
+        /// </para>
+        /// <para>
+        /// So the refusal lives in <c>IsJsonAccessor</c>, the one gate a projection, a filter, a
+        /// partition key and a traversal all go through: the spelling addresses no path in any clause.
+        /// One expression, one meaning, which is what #119 was filed about.
+        /// </para>
+        /// <para>
+        /// The cost is named rather than hidden: a caller who wrote this and got rows will now get
+        /// none, because that is what the statement means. <c>JSON_QUERY</c> is the spelling that
+        /// keeps the rows, and <see cref="AProjectedArrayAddressesTheSamePathATraversalDoes"/> holds
+        /// it to the same path.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReturningOnJsonValueIsNotTraversedEither()
+        {
+            var plan = Plan(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c, UNNEST(JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t"));
+
+            plan.Should().NotContain("CosmosUnnest", "the spelling addresses no path, so there is no traversal to render: " + plan);
+        }
+
+        /// <summary>
         /// The array a projection reads is the array a traversal traverses.
         /// </summary>
         /// <remarks>

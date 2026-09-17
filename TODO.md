@@ -417,15 +417,16 @@ way, and `DESIGN.md` answers it: a JIRA touching an example is not a construct, 
 against a release that already has that fix. **Nothing upstream is filed for the extraction itself**,
 and filing it is the owner's call.
 
-**One asymmetry is left standing, and it is a decision rather than an oversight.**
-`UNNEST(JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY))` still resolves to the path and renders
-`JOIN t0 IN c.tags`, so it returns the elements where the same query in process yields *no rows* — the
-null array unnests to nothing, which `CalciteJsonValueArrayMeasurementTests` pins. That is the same
-divergence the projection just stopped making, in the one place the reversal did not reach. It
-predates #119 rather than arriving with it, and refusing it would turn a query that returns the right
-rows today into one that returns none, so it is named here for the owner to rule on rather than
-changed unasked. `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))` is the spelling that agrees pushed
-and in process, and is what a caller should be pointed at either way.
+**The traversal goes with it, and that is what makes the refusal mean anything.** A first pass
+refused the column and left `UNNEST(JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY))` resolving to
+the path — measured, still `CosmosUnnest` over the scan — which moved the divergence rather than
+removing it: in process the null array unnests to *no rows*, which
+`CalciteJsonValueArrayMeasurementTests` pins, so the adapter answered rows the engine does not. The
+refusal therefore lives in `IsJsonAccessor`, the one gate a projection, a filter, a partition key and
+a traversal all pass through, and the spelling addresses no path in any clause. The cost is named
+rather than hidden: a caller who wrote it and got rows now gets none, because that is what the
+statement means. `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))` agrees pushed and in process and is
+where such a caller should be pointed.
 
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
 `JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the
