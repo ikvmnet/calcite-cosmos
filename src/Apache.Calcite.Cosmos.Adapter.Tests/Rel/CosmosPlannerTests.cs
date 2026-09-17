@@ -1472,7 +1472,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AProjectionSplitsAroundAnExpressionThatCannotRender()
         {
             var best = PlanToAsync(
-                "SELECT CAST('2020-01-01 12:00:00' AS TIMESTAMP) AS \"x\", JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+                "SELECT CAST('2020-01-01 12:00:00' AS TIMESTAMP) AS \"x\", JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
 
             var plan = Plan(best);
             plan.Should().Contain("CosmosProject", "the half that renders belongs at the service: " + plan);
@@ -1497,7 +1497,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void TheSplitCarriesWhatTheResidualReads()
         {
             var best = PlanToAsync(
-                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\", JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\", JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
 
             var sql = Render(FindCosmos(best));
 
@@ -1517,7 +1517,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AWhollyRenderableProjectionIsNotSplit()
         {
             var best = PlanToAsync(
-                "SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) AS \"x\", JSON_VALUE(c.\"DOC\", '$.b' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) AS \"x\", JSON_QUERY(c.\"DOC\", '$.b' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
 
             var plan = Plan(best);
 
@@ -1570,9 +1570,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [TestMethod]
         public void AnArrayReturningAccessorIsGuardedByIsArray()
         {
-            var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c");
+            var best = PlanToCosmos("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c");
 
             Render(best).Should().Be("SELECT VALUE { \"t\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM products c");
+        }
+
+        /// <summary>
+        /// An array <c>RETURNING</c> on <c>JSON_VALUE</c> is refused rather than rendered, because SQL
+        /// does not define it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A reversal of #119, and the reasoning changed rather than the measurement.</b> That
+        /// change rendered this spelling as the array at the path, on the ground that the engine
+        /// answers null and a traversal already reads the elements. But the clause names a
+        /// <em>predefined scalar type</em> in SQL, so there is no construct here to be faithful to:
+        /// an array <c>RETURNING</c> on this accessor is a spelling Calcite happens to accept, not one
+        /// with a meaning to implement.
+        /// </para>
+        /// <para>
+        /// So the column is left in process, where a caller gets what the same query without this
+        /// adapter gets — null under the default <c>NULL ON ERROR</c>, and a raw failure under
+        /// <c>ERROR ON ERROR</c>. The second cannot be reproduced at the service, and once the first
+        /// is conceded it should not be: a pushed answer a plain Calcite query never produces is the
+        /// divergence, whichever way it falls.
+        /// </para>
+        /// <para>
+        /// A caller wanting the array writes <c>JSON_QUERY</c>, which SQL permits and Calcite
+        /// implements — measured, it answers the array and unnests correctly in process, so it works
+        /// whether or not the projection pushes.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AnArrayReturningOnJsonValueIsNotPushed()
+        {
+            var plan = Plan(PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
+
+            plan.Should().Contain("ClrEnumerableProject", "the engine decides this one: " + plan);
+            plan.Should().NotContain("CosmosProject", "and nothing of it is rendered: " + plan);
         }
 
         /// <summary>
@@ -1587,10 +1622,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         public void AProjectedArrayAddressesTheSamePathATraversalDoes()
         {
             var projected = Render(PlanToCosmos(
-                "SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
+                "SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
 
             var traversed = Render(PlanToCosmos(
-                "SELECT c.\"id\" FROM products AS c, UNNEST(JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t"));
+                "SELECT c.\"id\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t"));
 
             projected.Should().Contain("c.tags");
             traversed.Should().Contain("IN c.tags");

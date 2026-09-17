@@ -1120,11 +1120,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call)
                 return false;
 
-            // Either accessor: a RETURNING that names an array type means the array at the path, and
-            // which function was written decides what happens to a value that is not one rather than
-            // what happens to one that is. Measured, JSON_QUERY with an array RETURNING is the
-            // spelling that actually produces one in process, where JSON_VALUE's answers null.
-            if (call.getOperator().getName() != "JSON_VALUE" && IsPlainJsonQuery(call) == false)
+            // JSON_QUERY's alone. SQL restricts JSON_VALUE's RETURNING to a predefined scalar type,
+            // so an array one is not a construct with a meaning to implement -- see
+            // TranslateProjection, which refuses it rather than answering one.
+            if (IsPlainJsonQuery(call) == false)
                 return false;
 
             var name = call.getType()?.getSqlTypeName();
@@ -1324,9 +1323,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return guarded;
             }
 
-            // A RETURNING that names an array type asks for the array at the path, which the service
-            // holds and the reader builds a list out of. Guarded rather than bare for the reason the
-            // text form is -- see TryJsonArrayProjection.
+            // A JSON_QUERY whose RETURNING names an array type asks for the array at the path, which
+            // the service holds and the reader builds a list out of. Guarded rather than bare for the
+            // reason the text form is -- see TryJsonArrayProjection.
             if (TryJsonArrayProjection(node, out var collection) && collection is not null)
             {
                 reading = CosmosReading.Typed;
@@ -1340,6 +1339,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 reading = CosmosReading.JsonText;
                 return fragment;
             }
+
+            // An array RETURNING on JSON_VALUE is refused rather than rendered, and the refusal is the
+            // whole behaviour. SQL restricts that clause to a predefined scalar type, so there is no
+            // construct here to be faithful to -- only a spelling Calcite accepts and then answers by
+            // its own lights: null under the default NULL ON ERROR, and a raw failure under ERROR ON
+            // ERROR. Declining sends the column in process, where those are exactly what a caller
+            // gets, rather than inventing an array at the service that the same query without this
+            // adapter would never produce.
+            //
+            // The spelling that does mean an array is JSON_QUERY's, which the standard permits and
+            // Calcite implements -- measured, it answers the array and unnests correctly in process.
+            // A caller wanting the array has that, and is better served by it than by this one
+            // working here and nowhere else.
+            if (node is RexCall accessor
+                && accessor.getOperator().getName() == "JSON_VALUE"
+                && accessor.getType()?.getSqlTypeName() is SqlTypeName name
+                && (name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET))
+                throw new CosmosTranslationException(
+                    "JSON_VALUE with an array RETURNING is not a construct SQL defines -- the clause names a predefined scalar type -- so it is left to the engine, which answers null. JSON_QUERY is the accessor that returns an array.");
 
             reading = CosmosReading.Typed;
             return Translate(node);
@@ -1477,42 +1495,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Renders <c>JSON_VALUE</c> whose <c>RETURNING</c> names an array type as the array at the
+        /// Renders <c>JSON_QUERY</c> whose <c>RETURNING</c> names an array type as the array at the
         /// path.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>The same expression already means this to a traversal.</b>
-        /// <c>UNNEST(JSON_VALUE(c."DOC", '$.tags' RETURNING VARCHAR ARRAY))</c> is how an array is
-        /// traversed — <c>RETURNING</c> is the only spelling that names an array type, <c>JSON_QUERY</c>
-        /// being <c>VARCHAR</c> even <c>WITH ARRAY WRAPPER</c> — and <see cref="TryResolvePath"/>
-        /// resolves it to the path the array is at. Projected, the same call was rendered as the text
-        /// form's guard, <c>IS_PRIMITIVE</c>, which is false of an array: the column came back null for
-        /// every document the traversal read elements out of (#119). One expression, two answers, and
-        /// this is what makes it one.
+        /// <b>This is the accessor SQL gives for an array, and the only one rendered as one.</b>
+        /// <c>JSON_VALUE</c>'s <c>RETURNING</c> names a predefined scalar type, so an array one is not
+        /// a construct with a meaning to implement — <see cref="TranslateProjection"/> refuses it, and
+        /// the comment there says why. <c>JSON_QUERY</c>'s may name an array, and measured against
+        /// Calcite's own runtime it answers one: <c>JSON_QUERY(doc, '$.v' RETURNING VARCHAR ARRAY)</c>
+        /// reads back <c>string[2]{a,b}</c> in process and unnests to two rows. The pushed answer and
+        /// the in-process answer are therefore the same answer, which is the test a rendering has to
+        /// pass and the one the array <c>JSON_VALUE</c> could never pass.
+        /// </para>
+        /// <para>
+        /// <b>The same expression means this to a traversal.</b>
+        /// <c>UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY))</c> resolves through
+        /// <see cref="TryResolvePath"/> to the path the array is at and renders to a join over it;
+        /// projected, this addresses the same path. <c>CosmosPlannerTests</c>'s
+        /// <c>AProjectedArrayAddressesTheSamePathATraversalDoes</c> holds the two together, which is
+        /// what #119 was filed about: one expression must not mean two things.
         /// </para>
         /// <para>
         /// <b>Read as the declared type, not as text.</b> <c>CosmosJson.GetValue</c> reads an
         /// <c>ARRAY</c> or a <c>MULTISET</c> as the <see cref="java.util.List"/> Calcite holds a
         /// collection in, which is the value the plan declared — so the reading stays
-        /// <see cref="CosmosReading.Typed"/> and nothing renders.
+        /// <see cref="CosmosReading.Typed"/> and nothing renders. The plain form of the same accessor
+        /// is <c>VARCHAR</c> and is read as <see cref="CosmosReading.JsonText"/> instead, the fragment
+        /// as text — see <see cref="TryJsonQueryProjection"/>, which runs after this one for that
+        /// reason.
         /// </para>
         /// <para>
-        /// <b>The guard is <c>IS_ARRAY</c>, and what it renders is the construct's meaning rather
-        /// than a departure from it.</b> This is worth being exact about, because the engine disagrees
-        /// and a later reader will find that out. Measured against Calcite's own runtime,
-        /// <c>JSON_VALUE</c> with an array <c>RETURNING</c> answers null for an object, a JSON null
-        /// and an absent path — correct, and the guard agrees on all three, where the bare path would
-        /// have the reader refuse to read an object as a list and fail the query. Over an array it
-        /// answers null as well, and over a scalar it throws a raw cast failure: both are defects,
-        /// isolated to <c>JsonFunctions.jsonValue</c>, which is scalar-only by construction while the
-        /// validator admits the array return type the runtime can never produce. So the guard is right
-        /// in every case and the engine is wrong in two — the array, where the clause exists to name
-        /// one, and the scalar, where a type mismatch is the default <c>NULL ON ERROR</c> rather than
-        /// an exception. See <c>CalciteJsonValueMeasurementTests</c>, and
-        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> for the same liberty taken over a scalar
-        /// <c>RETURNING</c>. Answering null also keeps one oddly-shaped document from failing a query
-        /// rather than reading null for its own row.
+        /// <b>The guard is <c>IS_ARRAY</c>, and it exists for the reader rather than for the engine.</b>
+        /// Bare, the path would hand the reader an object where the plan declared a list, and one
+        /// oddly-shaped document would fail the whole query; guarded, that document reads null for its
+        /// own row and the rest of the read continues. <see cref="TryJsonQueryProjection"/> carries the
+        /// complementary guard for the text form, and
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> the same reasoning on the filter side.
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>

@@ -384,7 +384,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": ["a", "b"] }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
 
             rows.Should().HaveCount(1);
             rows[0].Should().BeAssignableTo<java.util.List>();
@@ -405,7 +405,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
 
             rows.Should().Equal(new object[] { null! });
         }
@@ -424,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": [1, 2] }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING INTEGER ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING INTEGER ARRAY) AS \"T\" FROM products AS c"));
 
             var list = (java.util.List)rows[0];
             list.get(0).Should().Be(java.lang.Integer.valueOf(1));
@@ -441,7 +441,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": [1, 2] }""");
 
-            var plan = PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c");
+            var plan = PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c");
 
             var act = async () => await Execute(plan);
             (await act.Should().ThrowAsync<CosmosMaterializationException>()).WithMessage("*Expected a JSON string*");
@@ -573,7 +573,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "q": [1, null, 2] }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"q\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"q\" FROM products AS c"));
 
             var list = (java.util.List)rows[0];
             list.size().Should().Be(3, "the null is an element and not an absence");
