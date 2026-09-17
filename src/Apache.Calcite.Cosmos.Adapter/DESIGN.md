@@ -202,7 +202,7 @@ metadata rather than *type* metadata:
 | Full text policy and full text indexes | Container definition, indexing policy | **Whether a full text function pushes at all** |
 | Vector embedding policy and vector indexes | Container definition, indexing policy | **Whether `VECTORDISTANCE` pushes at all** |
 | Tuple indexes | Indexing policy | Nothing yet |
-| `geospatialConfig` | Container definition | **Whether an `ST_GEOG_*` pushes at all** |
+| `geospatialConfig` | Container definition | **Whether an `CLR_ST_GEOG_*` pushes at all** |
 | Spatial indexes | Indexing policy | Nothing — a geodesic call pushes whether or not one is declared |
 
 Three of these carry hard consequences:
@@ -1855,7 +1855,7 @@ so no scalar conversion reorders the rows.
 
 None of that changed. What changed is that
 [`Apache.Calcite.Geography`](https://github.com/ikvmnet/calcite-dotnet) supplies a family of
-`ST_GEOG_*` operators that read coordinates as WGS84 and answer in metres, over S2.
+`CLR_ST_GEOG_*` operators that read coordinates as WGS84 and answer in metres, over S2.
 
 **There is still no `GEOGRAPHY` type, and that is a decision rather than an omission.** A geography
 and a geometry are the same type carried by the same class, and the operator's name is the whole of
@@ -1865,14 +1865,14 @@ the assignment table is asserted on rather than rejected, so a function declared
 such a type takes the validator down. Since a schema is the only way an adapter brings its functions
 with it, the type gave way to the registration.
 
-**What that costs is a mixed expression nothing refuses.** `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)`
+**What that costs is a mixed expression nothing refuses.** `CLR_ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)`
 buffers in degrees and then measures in metres, and both halves run. This adapter cannot close that;
 it is a property of there being one type for two readings.
 
 **What this adapter adds is the one refusal it can make.** The Cosmos spelling of every one of these
 is the *unprefixed* one, so what a rendered `ST_DISTANCE` means at the service is decided by the
 container's `geospatialConfig` and not by the name in the query. So `CosmosRexTranslator` refuses to
-render any `ST_GEOG_*` over a container reading `Geometry`. That is unlike the full text gate, which
+render any `CLR_ST_GEOG_*` over a container reading `Geometry`. That is unlike the full text gate, which
 exists because the service returns an *error*; here the service returns an *answer*, which is the
 worse failure and the reason this one is checked while planning.
 
@@ -1892,7 +1892,7 @@ document column, `DOC`, and the columns the service guarantees. Nothing in Calci
 value into a geometry, so a shape in a document reaches an operator by being parsed out of text:
 
 ```sql
-ST_GEOG_DWITHIN(ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')), …, 1000)
+CLR_ST_GEOG_DWITHIN(CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')), …, 1000)
 ```
 
 In process that is exactly what happens. **Pushed down it is not.** `JSON_QUERY` over `DOC` already
@@ -1906,10 +1906,10 @@ evaluating it is what the service is being asked to do.
 names.** Supplying a better implementation of `ST_GEOMFROMGEOJSON` cannot be made to take effect:
 `SqlUtil.lookupRoutine` resolves across every chained operator table by parameter match, so Calcite's
 `VARCHAR` overload beats an adapter's `ANY` one regardless of chain order. Hence
-`ST_GEOG_GEOMFROMGEOJSON` and its siblings, named for this adapter rather than overloading Calcite's.
+`CLR_ST_GEOG_GEOMFROMGEOJSON` and its siblings, named for this adapter rather than overloading Calcite's.
 
 **What is in scope is what Cosmos evaluates** — `ST_DISTANCE`, `ST_WITHIN`, `ST_INTERSECTS` and
-`ST_ISVALID` — with `ST_GEOG_DWITHIN` rendering as a distance comparison, Cosmos having no counterpart.
+`ST_ISVALID` — with `CLR_ST_GEOG_DWITHIN` rendering as a distance comparison, Cosmos having no counterpart.
 
 **A distance orders at the service, which is not the general rule.** `ORDER BY ST_DISTANCE(c.location,
 <point>)` is accepted, and stays accepted under a `WHERE` and an `OFFSET … LIMIT`. That had to be
@@ -1927,13 +1927,13 @@ measured to be accepted; and it must be the whole collation, a second key beside
 2206 a computed key draws alone.
 
 **Two more push without being spatial calls at all.** A GeoJSON shape records its type as a `type`
-member, so `ST_GEOG_GEOMETRYTYPE` over a stored geography is `c.location.type` — an ordinary property
+member, so `CLR_ST_GEOG_GEOMETRYTYPE` over a stored geography is `c.location.type` — an ordinary property
 read, no spatial function and no spatial index involved. The vocabularies agree for anything a
 container can hold: JTS also spells `LinearRing`, which GeoJSON has no member for, so a stored shape
 cannot be one. A geometry built inside the query has no path and is declined, which is also the case
 where that difference could otherwise have appeared.
 
-`ST_GEOG_ASGEOJSON` is the second, and it is a projection only. The document already holds the
+`CLR_ST_GEOG_ASGEOJSON` is the second, and it is a projection only. The document already holds the
 GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service never asked
 for; the property is selected instead and read as the JSON the service sent — the same
 `CosmosReading.Json` the `DOC` column takes, and for the same reason, the value being an object

@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public static bool IsSortableAtTheService(RexNode node)
         {
             return node is RexCall call
-                && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance.getName(), StringComparison.Ordinal);
+                && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogDistance.getName(), StringComparison.Ordinal);
         }
 
         /// <summary>

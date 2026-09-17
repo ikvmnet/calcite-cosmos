@@ -538,10 +538,10 @@ package requires.
 
 **There is no `GEOGRAPHY` type.** A geography and a geometry are the same type carried by the same
 class, and the name of the operator applied to a value is the whole of what says which reading is
-meant — `ST_GEOG_DISTANCE` rather than `ST_DISTANCE`. Calcite's `SqlTypeName` is a closed enum and a
+meant — `CLR_ST_GEOG_DISTANCE` rather than `ST_DISTANCE`. Calcite's `SqlTypeName` is a closed enum and a
 type of one's own cannot be registered on a schema, which is how an adapter brings its functions with
 it, so the type gave way to the registration. The cost is that a mixed expression is not refused:
-`ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees and measures in metres, and both halves
+`CLR_ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees and measures in metres, and both halves
 run.
 
 **Reaching the names.** Either register them on the root schema, or chain the table if you assemble
@@ -558,9 +558,9 @@ map lookup yields into one — so a shape in a document reaches an operator by b
 ```sql
 SELECT c."id"
 FROM "products" AS c
-WHERE ST_GEOG_DWITHIN(
-        ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
-        ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
+WHERE CLR_ST_GEOG_DWITHIN(
+        CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
+        CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
         1000)
 ```
 
@@ -568,11 +568,11 @@ That pushes. `JSON_QUERY` over `DOC` resolves to a document path, so the constru
 it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads
 the property as the shape, so the text and the parsing are a round trip it never needed.
 
-**What pushes.** `ST_GEOG_DISTANCE`, `ST_GEOG_WITHIN`, `ST_GEOG_INTERSECTS` and `ST_GEOG_ISVALID` are
+**What pushes.** `CLR_ST_GEOG_DISTANCE`, `CLR_ST_GEOG_WITHIN`, `CLR_ST_GEOG_INTERSECTS` and `CLR_ST_GEOG_ISVALID` are
 the service's own functions under another name. Two more push without being spatial calls at
-all: `ST_GEOG_GEOMETRYTYPE`, since GeoJSON records the type as a member, so over a stored shape it is
-`c.location.type`; and `ST_GEOG_ASGEOJSON` in a projection, since the document already holds the
-GeoJSON and re-serialising a shape just parsed is a round trip. `ST_GEOG_DWITHIN` becomes the distance comparison the
+all: `CLR_ST_GEOG_GEOMETRYTYPE`, since GeoJSON records the type as a member, so over a stored shape it is
+`c.location.type`; and `CLR_ST_GEOG_ASGEOJSON` in a projection, since the document already holds the
+GeoJSON and re-serialising a shape just parsed is a round trip. `CLR_ST_GEOG_DWITHIN` becomes the distance comparison the
 reference documents a spatial index as answering. A geography constant is written out as the GeoJSON
 object. A constructor over a *computed* string is declined and stays in process, because rendering one
 would mean evaluating it.

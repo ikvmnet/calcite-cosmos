@@ -238,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <c>geospatialConfig</c> is declared once for a container and applies to everything in it,
         /// so this is a container-wide fact and not a per-path one. It decides whether an
-        /// <c>ST_GEOG_*</c> call may be pushed at all: the Cosmos spelling is the unprefixed one, and
+        /// <c>CLR_ST_GEOG_*</c> call may be pushed at all: the Cosmos spelling is the unprefixed one, and
         /// what that spelling <em>means</em> at the service is whatever this says. Pushing a geodesic
         /// call into a container reading <c>Geometry</c> would render <c>ST_DISTANCE</c> and get a
         /// planar answer back with nothing said.
