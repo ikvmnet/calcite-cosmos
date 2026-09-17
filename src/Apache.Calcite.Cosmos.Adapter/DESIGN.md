@@ -1733,6 +1733,52 @@ The scoring functions are in the operator table so a query can name them, and th
 them through `TranslateRank` alone; everywhere else is a place the service rejects them, so a `WHERE`
 or a select list containing one declines.
 
+#### The shared vocabulary, and what it maps onto
+
+`Apache.Calcite.FullText` declares `CLR_FT_*` — a full text surface a query can be written against
+without naming a store. This adapter renders them as the service's own spellings, and keeps its own
+names beside them: a query already written against `FULLTEXTCONTAINS` goes on working, and one written
+against the shared surface plans here as well as anywhere else. **Two spellings of one rendering**,
+not two implementations.
+
+| written | rendered |
+| --- | --- |
+| `CLR_FT_CONTAINS(p, kw)` | `FULLTEXTCONTAINS(p, @p0)` |
+| `CLR_FT_CONTAINS_ALL(p, kw, …)` | `FULLTEXTCONTAINSALL(p, @p0, …)` |
+| `CLR_FT_CONTAINS_ANY(p, kw, …)` | `FULLTEXTCONTAINSANY(p, @p0, …)` |
+| `CLR_FT_SCORE(p, kw, …)` | `FULLTEXTSCORE(p, @p0, …)`, `ORDER BY RANK` only |
+| `CLR_FT_RRF(score, …)` | `RRF(…)`, `ORDER BY RANK` only |
+| `CLR_FT_PHRASE(text)` | the term itself |
+| `CLR_FT_FUZZY(text, edits)` | `{"term": …, "distance": …}` |
+| `CLR_FT_PREFIX(text)` | **refused** |
+
+**Where a call is legal stays this adapter's business**, which is the line the package itself draws.
+The shared score is refused everywhere the service's own is — a projection, a `WHERE`, a derived
+table — because those are `SC2240` here whatever the call is spelled.
+
+**A phrase renders as the term itself**, because that is already what the service reads a multi-word
+term as. The constructor exists because the bare spelling is not portable: `FullTextContains(c.text,
+"red bicycle")` is a phrase here, while PostgreSQL's `plainto_tsquery` reads the same two words as
+`red & bicycle` and matches a document holding them paragraphs apart. Same query, two answers, no
+error. What the constructor buys is that the query said which it meant.
+
+**A fuzzy term gains a spelling this adapter did not previously offer.** `{"term": …, "distance": …}`
+is documented by the text of `SC2241` — the refusal a keyword *array* earns — and was recorded here
+as a form not offered. It is offered now, because the shared vocabulary gave it a name.
+
+**`CLR_FT_PREFIX` is refused, and not approximated.** The service matches whole analyzed terms and has
+no prefix form. `STARTSWITH` over the same property is not the same question — a substring test over
+the stored text against a prefix over the analyzer's terms — and answering a different question is
+worse than refusing this one. The call then has no body, so the query says so.
+
+**One route, never both.** The declarations are merged into `CosmosSchemaFunctions`, which is where a
+connection finds them; a host assembling its own planner chains `FullTextOperatorTable.Instance()`
+instead. Registering both leaves two candidates for one name, which reaches a type-precedence pass
+that a single candidate skips — and an `ARRAY` argument throws there rather than declining, with
+`IllegalArgumentException: must contain type: ANY`. The package's README records it against
+`SqlUtil.lookupSubjectRoutines`. It is not a hazard Cosmos's own names have, their `searched` position
+never being an array.
+
 ### The declaration prices a full text function, and still gates a vector one
 
 The operator being nameable is not the same as the *path* being searchable, and only the container

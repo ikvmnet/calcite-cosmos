@@ -75,6 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", _table);
 
+
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
 
@@ -89,8 +90,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             // Chained so that a query can name the adapter's own functions. Calcite's standard table has
             // nothing to resolve IS_DEFINED or FULLTEXTCONTAINS to, and this is the seam a caller wires
             // the same way.
+            //
+            // The shared full text table is chained beside it, which is what a host assembling its own
+            // planner does -- and this harness is one. A connection takes the other route instead,
+            // CosmosSchema declaring the same names where the catalog reader looks; that one is
+            // CosmosConnectionFunctionTests. One route or the other and never both, for the reason the
+            // package records: two candidates for one name reach a type-precedence pass a single
+            // candidate skips, and an ARRAY argument throws there rather than declining.
             var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(
-                SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance);
+                SqlStdOperatorTable.instance(),
+                Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance,
+                Apache.Calcite.FullText.Sql.FullTextOperatorTable.Instance());
 
             var validator = SqlValidatorUtil.newValidator(
                 operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
@@ -1875,6 +1885,90 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
                 .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n)) ? c.n : @p0) } FROM products c");
+        }
+
+        /// <summary>
+        /// A query written against the shared full text vocabulary pushes, and renders as the service's
+        /// own spelling.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The half the translator tests cannot answer.</b> That <c>CLR_FT_CONTAINS</c> renders as
+        /// <c>FULLTEXTCONTAINS</c> is one thing; that a caller can <em>write</em> it in SQL and have it
+        /// resolve is another, and it is the whole point of merging the declarations into the schema's
+        /// own rather than expecting a host to chain a table.
+        /// </para>
+        /// <para>
+        /// One route, not two. Chaining the package's operator table as well would leave two candidates
+        /// for one name and break an <c>ARRAY</c> column, which the package's README records against
+        /// <c>SqlUtil.lookupSubjectRoutines</c>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheSharedVocabularyResolvesAndPushes()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')"))
+                .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE FULLTEXTCONTAINS(c.name, @p0)");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS_ANY(JSON_VALUE(c.\"DOC\", '$.name'), 'steel', 'frame')"))
+                .Should().Contain("FULLTEXTCONTAINSANY(c.name, @p0, @p1)");
+        }
+
+        /// <summary>
+        /// The shared score reaches the rank clause the same way the service's own does.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosRankRule</c> matches on <c>IsScoringFunction</c>, which is a test on the call's
+        /// <em>name</em> — so teaching it the shared spellings was one line, and the three-node shape
+        /// it collapses is unchanged.
+        /// </remarks>
+        [TestMethod]
+        public void TheSharedScoreReachesTheRankClause()
+        {
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY CLR_FT_SCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')");
+
+            Plan(best).Should().Contain("CosmosRank", "the rule reads the name, not the operator: " + Plan(best));
+
+            Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c ORDER BY RANK FULLTEXTSCORE(c.name, @p0)");
+        }
+
+        /// <summary>
+        /// A shared predicate beside one that cannot render pushes what it can.
+        /// </summary>
+        /// <remarks>
+        /// The filter split treats a full text call as it treats anything else that renders: the
+        /// conjunct goes to the service and the rest is rechecked above. Dropping a conjunct only ever
+        /// weakens, so the service discards nothing the whole predicate would have kept.
+        /// </remarks>
+        [TestMethod]
+        public void ASharedPredicateBesideAResidualStillPushes()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') AND INITCAP(c.\"id\") = 'X'");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("FULLTEXTCONTAINS(c.name, @p0)", "the half the service can answer goes down: " + sql);
+            Plan(best).Should().Contain("INITCAP", "and the half it cannot is rechecked above: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A prefix term takes the whole predicate out of the statement, rather than approximating one.
+        /// </summary>
+        /// <remarks>
+        /// <c>CLR_FT_PREFIX</c> is the one thing in the shared vocabulary Cosmos has no form for. The
+        /// call is declined, and because a full text function has no in-process body the query then
+        /// fails with a sentence saying so rather than answering a different question — which is what
+        /// rendering <c>STARTSWITH</c> over the same property would have been.
+        /// </remarks>
+        [TestMethod]
+        public void APrefixTermIsNotPushed()
+        {
+            var plan = Plan(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), CLR_FT_PREFIX('mount'))"));
+
+            plan.Should().Contain("ClrEnumerableFilter", "the service has no prefix term: " + plan);
+            plan.Should().NotContain("CosmosFilter(condition=[CLR_FT_CONTAINS", "and nothing of it is rendered: " + plan);
         }
 
         [TestMethod]

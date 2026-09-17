@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.FullText.Sql;
 
 using FluentAssertions;
 
@@ -82,6 +83,130 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             Translate(CosmosOperators.FullTextContainsAny, Text(), Keyword("one"), Keyword("two"))
                 .Should().Be("FULLTEXTCONTAINSANY(c.text, @p0, @p1)");
+        }
+
+        // ── The shared vocabulary ───────────────────────────────────────────────────
+
+        /// <summary>
+        /// The <c>CLR_FT_*</c> predicates render as the service's own spellings.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A rename and nothing more,</b> which is the whole of what adopting the shared vocabulary
+        /// costs here: the operand shape is identical — a searched path, then keywords — so the same
+        /// writer answers both, given the name to emit.
+        /// </para>
+        /// <para>
+        /// The service's own names stay. A query already written against <c>FULLTEXTCONTAINS</c> keeps
+        /// working, and a query written against the shared surface now plans here as well as anywhere
+        /// else; they are two spellings of one rendering rather than two implementations.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheSharedPredicatesRenderAsTheServiceSpelling()
+        {
+            Translate(FullTextOperatorTable.ClrFtContains, Text(), Keyword("search phrase"))
+                .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
+
+            Translate(FullTextOperatorTable.ClrFtContainsAll, Text(), Keyword("one"), Keyword("two"), Keyword("three"))
+                .Should().Be("FULLTEXTCONTAINSALL(c.text, @p0, @p1, @p2)");
+
+            Translate(FullTextOperatorTable.ClrFtContainsAny, Text(), Keyword("one"), Keyword("two"))
+                .Should().Be("FULLTEXTCONTAINSANY(c.text, @p0, @p1)");
+        }
+
+        /// <summary>
+        /// The shared score is held to the same clause the service's own is.
+        /// </summary>
+        /// <remarks>
+        /// Where a call is legal is the adapter's business, not the vocabulary's — the package says so
+        /// and this is that line being drawn. Cosmos permits a score in <c>ORDER BY RANK</c> and
+        /// nowhere else, so the shared spelling is refused everywhere the service's own is.
+        /// </remarks>
+        [TestMethod]
+        public void TheSharedScoreIsRankClauseOnly()
+        {
+            CanTranslate(FullTextOperatorTable.ClrFtScore, Text(), Keyword("steel"))
+                .Should().BeFalse("a score is not a predicate and not a column");
+
+            Translator().TranslateRank(_rex.makeCall(FullTextOperatorTable.ClrFtScore, Text(), Keyword("steel")))
+                .Should().Be("FULLTEXTSCORE(c.text, @p0)");
+        }
+
+        /// <summary>
+        /// A phrase is the term itself, because that is what the service reads a multi-word term as.
+        /// </summary>
+        /// <remarks>
+        /// <b>The constructor exists because the bare spelling is not portable</b>, not because Cosmos
+        /// needs one: <c>FullTextContains(c.text, "red bicycle")</c> is already a phrase here, while
+        /// PostgreSQL's <c>plainto_tsquery</c> reads the same two words as <c>red &amp; bicycle</c>.
+        /// So the rendering is the text, and what the constructor buys is that the query said which it
+        /// meant.
+        /// </remarks>
+        [TestMethod]
+        public void APhraseIsTheTermItself()
+        {
+            Translate(FullTextOperatorTable.ClrFtContains, Text(),
+                _rex.makeCall(FullTextOperatorTable.ClrFtPhrase, Keyword("red bicycle")))
+                .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
+
+            var parameters = new CosmosParameterList();
+            new CosmosRexTranslator(_rex, _fields, parameters).Translate(
+                _rex.makeCall(FullTextOperatorTable.ClrFtContains, Text(),
+                    _rex.makeCall(FullTextOperatorTable.ClrFtPhrase, Keyword("red bicycle"))));
+
+            parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be("red bicycle");
+        }
+
+        /// <summary>
+        /// A fuzzy term is the object form the service documents.
+        /// </summary>
+        /// <remarks>
+        /// <c>{"term": …, "distance": …}</c>, which is documented by the text of <c>SC2241</c> — the
+        /// refusal a keyword <em>array</em> earns — and was recorded in <c>DESIGN.md</c> as a form this
+        /// adapter did not offer. It does now, because the shared vocabulary gave it a spelling.
+        /// Bound as a parameter like every other keyword.
+        /// </remarks>
+        [TestMethod]
+        public void AFuzzyTermIsTheObjectTheServiceDocuments()
+        {
+            var parameters = new CosmosParameterList();
+            var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+
+            translator.Translate(_rex.makeCall(FullTextOperatorTable.ClrFtContains, Text(),
+                _rex.makeCall(FullTextOperatorTable.ClrFtFuzzy, Keyword("bycycle"),
+                    _rex.makeExactLiteral(new java.math.BigDecimal(2)))))
+                .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
+
+            var value = parameters.Parameters.Should().ContainSingle().Which.Value
+                .Should().BeAssignableTo<System.Collections.Generic.IDictionary<string, object?>>().Which;
+
+            value["term"].Should().Be("bycycle");
+            value["distance"].Should().Be(2L);
+        }
+
+        /// <summary>
+        /// A prefix term is declined, the service having no form for one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The one thing in the vocabulary Cosmos does not offer.</b> The service matches whole
+        /// analyzed terms; a prefix is PostgreSQL's <c>to_tsquery('a:*')</c>, SQL Server's
+        /// <c>'"a*"'</c>, FTS5's <c>a*</c>, and nothing here.
+        /// </para>
+        /// <para>
+        /// Declined rather than approximated. <c>STARTSWITH</c> over the same property is not the same
+        /// question — it is a substring test over the stored text, where a full text prefix is over
+        /// the analyzer's terms — and answering a different question is worse than refusing this one.
+        /// The call then has no body, so the query says so.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void APrefixTermIsDeclined()
+        {
+            CanTranslate(FullTextOperatorTable.ClrFtContains, Text(),
+                _rex.makeCall(FullTextOperatorTable.ClrFtPrefix, Keyword("mount")))
+                .Should().BeFalse("the service matches whole analyzed terms");
         }
 
         /// <remarks>

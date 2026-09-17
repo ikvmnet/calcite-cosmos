@@ -69,6 +69,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var builder = ImmutableMultimap.builder();
 
+            // The shared full text vocabulary, merged rather than mirrored. Cosmos's own FULLTEXT* names
+            // stay -- they are the service's spelling and a query already written against them keeps
+            // working -- and CLR_FT_* arrives beside them, so a statement written once against the
+            // shared surface plans here as well as anywhere else. What each renders as is one thing,
+            // in CosmosRexTranslator.
+            //
+            // Merged into this multimap rather than chained as an operator table, and only one of the
+            // two: with both routes live an ARRAY column fails validation with
+            // `IllegalArgumentException: must contain type: ANY`, SqlUtil.lookupSubjectRoutines
+            // reaching a type-precedence pass it skips when one route leaves one candidate. The
+            // package's README records it.
+            builder.putAll(Apache.Calcite.FullText.Schema.FullTextSchema.Functions());
+
             var operators = CosmosOperators.Instance.getOperatorList();
 
             for (var i = 0; i < operators.size(); i++)
