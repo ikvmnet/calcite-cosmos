@@ -1525,6 +1525,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             plan.Should().NotContain("ClrEnumerableProject", "with nothing left above it: " + plan);
         }
 
+        /// <summary>
+        /// A plain <c>JSON_QUERY</c> is guarded by the complement of the scalar accessor's guard.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_VALUE</c> answers for a string, a number, a boolean and a JSON null;
+        /// <c>JSON_QUERY</c> answers for an object and an array. <c>IS_OBJECT(p) OR IS_ARRAY(p)</c> is
+        /// that line at the service, so the rendered column carries a value for exactly the documents
+        /// the function carries one for.
+        /// </remarks>
+        [TestMethod]
+        public void APlainJsonQueryIsGuardedByIsObjectOrIsArray()
+        {
+            var best = PlanToCosmos("SELECT JSON_QUERY(c.\"DOC\", '$.o') AS \"q\" FROM products AS c");
+
+            Render(best).Should().Be("SELECT VALUE { \"q\": (IS_OBJECT(c.o) OR IS_ARRAY(c.o) ? c.o : null) } FROM products c");
+        }
+
+        /// <summary>
+        /// A wrapper or a behaviour clause is not the path, so it does not push.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Measured against Calcite's own runtime, <c>WITH UNCONDITIONAL ARRAY WRAPPER</c> over the
+        /// string <c>bikes</c> answers <c>["bikes"]</c> and <c>EMPTY OBJECT ON ERROR</c> answers
+        /// <c>{}</c> — values built around the path rather than held at it. The accessor test refuses
+        /// them for that reason, and the projection is left in process where the engine computes what
+        /// it means.
+        /// </para>
+        /// <para>
+        /// The clauses are always present as operands, whether written or not, which is why the plain
+        /// form is recognised by what the three symbols say rather than by their absence.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AJsonQueryWithAWrapperDoesNotPush()
+        {
+            var plan = Plan(PlanToAsync("SELECT JSON_QUERY(c.\"DOC\", '$.o' WITH UNCONDITIONAL ARRAY WRAPPER) AS \"q\" FROM products AS c"));
+
+            plan.Should().Contain("ClrEnumerableProject", "the wrapper form stays in process: " + plan);
+            plan.Should().NotContain("CosmosProject", "and nothing of it is pushed: " + plan);
+        }
+
         [TestMethod]
         public void AnArrayReturningAccessorIsGuardedByIsArray()
         {

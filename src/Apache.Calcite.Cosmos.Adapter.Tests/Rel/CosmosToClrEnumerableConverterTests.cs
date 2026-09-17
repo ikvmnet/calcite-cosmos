@@ -468,6 +468,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             ((object[])rows[0]).Should().Equal(java.lang.Integer.valueOf(7), java.lang.Boolean.TRUE);
         }
 
+        /// <summary>
+        /// A projected <c>JSON_QUERY</c> reads back as the fragment's JSON text, written as Calcite
+        /// writes it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This threw before it had a rendering of its own.</b> The statement sent the bare path
+        /// and the column was read as the declared <c>VARCHAR</c>, so the object the function exists
+        /// to return was refused by <c>CosmosJson.GetString</c> — <em>Expected a JSON string, got
+        /// Object</em> — while a scalar at the path came back as itself, where SQL/JSON says the
+        /// function answers null. Wrong in both directions at once.
+        /// </para>
+        /// <para>
+        /// The whitespace case is the one that decides the reading. The document here is stored with
+        /// spaces between its tokens and the column reads <c>["a","b"]</c> without them, which is what
+        /// Calcite's own <c>JSON_QUERY</c> answers — see
+        /// <c>CalciteJsonValueMeasurementTests.JsonQueryAnswersStructureOnlyAndWritesItCompactly</c>.
+        /// Handing over the service's own bytes, as the document column does, would have differed by
+        /// exactly those spaces.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAJsonQueryColumnAsCompactJsonText()
+        {
+            Given("""{ "q": { "a" : 1 } }""");
+            (await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.o') AS \"q\" FROM products AS c")))
+                .Should().Equal("{\"a\":1}");
+
+            Given("""{ "q": [ "a" ,   "b" ] }""");
+            (await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.v') AS \"q\" FROM products AS c")))
+                .Should().Equal("[\"a\",\"b\"]");
+        }
+
+        /// <remarks>
+        /// The guard answers null at the service for a scalar, and the column reads as SQL null —
+        /// which is what the function means, and what it did not do when the bare path was sent.
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAJsonQueryOverAScalarAsNull()
+        {
+            Given("""{ }""");
+
+            (await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.s') AS \"q\" FROM products AS c")))
+                .Should().Equal(new object[] { null! });
+        }
+
         /// <remarks>
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.

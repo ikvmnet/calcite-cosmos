@@ -531,6 +531,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                         // that also binds -- a dropped cast binds to nothing, so what it is read as
                         // can never be asked.
                         reads[i] = paths[i] is not null && CosmosRexTranslator.IsTextJsonValue(expression) ? CosmosReading.Text
+                            : paths[i] is not null && CosmosRexTranslator.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
                             : expression is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < inputReadings.Count ? inputReadings[reference.getIndex()]
                             : CosmosReading.Typed;
                     }

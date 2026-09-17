@@ -1248,6 +1248,32 @@ copied intact, and `CosmosRexTranslator.WriteCast` renders a cast to `ANY` over 
 path. The residual half of the split needs no such care: no rule converts it, because the filter rule
 declines it in either spelling, and nothing copies a Cosmos filter that was never made.
 
+**`JSON_QUERY` is the other half, and it is guarded by the complement.** SQL/JSON splits the two
+accessors on the same line: `JSON_VALUE` answers for a string, a number, a boolean and a JSON null,
+and `JSON_QUERY` answers for an object and an array. So the guards are complementary —
+`IIF(IS_PRIMITIVE(p), p, null)` against `IIF(IS_OBJECT(p) OR IS_ARRAY(p), p, null)` — and the pushed
+column carries a value for exactly the documents the function carries one for.
+
+Before it had a rendering the projection was wrong in *both* directions, which is worse than the array
+case that merely came back empty. The bare path was sent and the column read as the declared
+`VARCHAR`, so an object or an array — the values the function exists to return — was refused by
+`CosmosJson.GetString` with *Expected a JSON string, got Object*, while a scalar at the path came back
+as itself where the function answers null.
+
+**The reading is a third one, and whitespace is why.** `CosmosReading.Json` hands over the service's
+own bytes, which is right for the `DOC` column and wrong here: measured, Calcite's `JSON_QUERY` parses
+and writes the fragment back, answering `["a","b"]` for a path stored as `[ "a" ,   "b" ]`. So
+`CosmosReading.JsonText` re-serialises compactly, and the pushed column and the in-process one are the
+same string rather than differing by whatever spaces the document happened to carry.
+
+**Only the plain form.** A validated `JSON_QUERY` always carries five operands — the wrapper and both
+behaviours are present as symbols whether or not they were written — and each of them substitutes
+something the path does not hold: measured, `WITH UNCONDITIONAL ARRAY WRAPPER` over the string `bikes`
+answers `["bikes"]` and `EMPTY OBJECT ON ERROR` answers `{}`. `CosmosRexTranslator.IsPlainJsonQuery`
+is the test, read by enum *name* rather than ordinal, and `IsJsonAccessor` now applies it — so a
+wrapper form addresses no path in any clause and is left in process, where the engine computes what it
+means.
+
 **What the guard is depends on what the accessor is typed, and for a while it did not.** Every
 `JSON_VALUE` was rendered `IIF(IS_PRIMITIVE(p), p, null)` and read as text, whatever its `RETURNING`
 clause said. That is right for the bare accessor and wrong for every other spelling of it, in two

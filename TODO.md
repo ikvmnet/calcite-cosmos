@@ -387,8 +387,12 @@ all. The guard and the reading now follow the accessor's declared type: `IS_ARRA
 `java.util.List` for an array type, the bare path and the declared type for every other, and
 `IS_PRIMITIVE` and text for the bare accessor it was written for. A collection is read to its element
 type as well, so `INTEGER ARRAY` holds `Integer` rather than the `Long` a schemaless read discovers.
-`DESIGN.md` records it under *Projecting a cast to text*; what is still not handled is `JSON_QUERY`,
-the mirror guard, which keeps the typed reading and is wrong in the way this was.
+`DESIGN.md` records it under *Projecting a cast to text*. **`JSON_QUERY`, the mirror, is handled too
+now** — it was wrong in the way this was and in the other direction besides: the bare path was sent
+and read as the declared `VARCHAR`, so the object or array the function exists to return was refused
+by `CosmosJson.GetString` while a scalar came back as itself, where SQL/JSON says null. It renders
+guarded by the complement of the scalar guard, `IS_OBJECT(p) OR IS_ARRAY(p)`, and reads as
+`CosmosReading.JsonText`.
 
 **And the column is the implementation of that construct, not a departure from it — worth saying
 because the engine disagrees.** Measured at `JsonFunctions.jsonValue` itself, with no plan, no code
@@ -927,6 +931,34 @@ for the same reason. So the two-statement shape is not one option among several;
 promoted `id` is not, so a distance-ordered query needs `LOW` in every case rather than only when the
 path happens to be nullable — see the geography items in section 4, and
 `CosmosDistanceSortPlanningTests`, which sets it for that reason.
+
+### Pushing part of an expression — *medium, and the split rule stops one level short*
+
+`CosmosProjectSplitRule` (#125) partitions a projection by whole expressions: each one either renders
+or it does not, and the ones that do not are computed above with whatever inputs they read projected
+beside them. What it never does is look *inside* one.
+
+**A residual is usually mostly pushable.** `CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE)`
+cannot render, because the cast converts where the service would not; the accessor inside it renders
+perfectly well. Today that whole expression is computed in process and `DOC` is projected for it, so
+an entire document crosses the wire to supply one scalar the service was willing to extract. The same
+holds for any operator with no Cosmos form over operands that have one — a temporal conversion, an
+unsupported function, an `IIF` the service will not take.
+
+**What it would take.** Walk the residual and find the maximal sub-expressions that translate; project
+each as a column of its own in the pushed half; rewrite the residual to read them as input
+references. The top-level split is that algorithm with the walk stopping at depth zero, so the shape
+of the rule does not change — `TrySplit` returns ordinals now and would return a rewritten expression
+plus the columns it needs.
+
+Two things to get right. The sub-expressions must be *maximal*, or the split pushes `c.n` and computes
+a cast that could have been an accessor. And an operand pushed as a column is read back by its own
+rules, so a sub-expression whose reading is `Text` or `JsonText` arrives as a rendering rather than as
+the value, and the residual above must be rewritten against what actually arrives — the same trap
+`CosmosImplementor.RenderedExpressions` exists for, one level down.
+
+It subsumes the bytes half of #125 rather than the correctness half: a residual that *consumes* an
+array still evaluates in process, where Calcite cannot produce one.
 
 ### Smaller rules
 
