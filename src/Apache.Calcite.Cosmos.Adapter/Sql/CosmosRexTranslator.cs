@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Internal;
 
@@ -625,8 +626,291 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
         }
 
+        /// <summary>
+        /// Whether an accessor reached inside a larger expression carries the guard it would carry as
+        /// a projection of its own.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Set for the compound branch of <see cref="TranslateProjection"/> and nowhere else, which is
+        /// exactly the scope of #131. A projection's result <em>is</em> the column, so an accessor in
+        /// it has to answer what the accessor answers; a filter compares the raw value the service
+        /// holds on purpose — see <see cref="WriteComparand"/> and
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> — and is left alone.
+        /// </para>
+        /// <para>
+        /// A field rather than a parameter because <see cref="Write"/> recurses through a dozen
+        /// writers that have no business knowing about it, and the alternative is threading a flag
+        /// through every one of them to be read in a single place.
+        /// </para>
+        /// </remarks>
+        bool _guardNestedAccessors;
+
+        /// <summary>
+        /// Writes an accessor that sits inside a larger expression, with the guard its own projection
+        /// would carry.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The same guard, decided the same way, one level down.</b> Bare, the path hands the
+        /// service's raw value to whatever encloses it, and the accessor's own meaning is lost:
+        /// measured on main, <c>UPPER(JSON_VALUE(DOC, '$.a'))</c> rendered <c>UPPER(c.a)</c>, so a
+        /// document holding an object at <c>$.a</c> — which the accessor answers null for — had the
+        /// object handed to <c>UPPER</c> instead (#131).
+        /// </para>
+        /// <para>
+        /// <b>The plain <c>JSON_QUERY</c> is refused rather than guarded</b>, because a guard is not
+        /// what it needs. Its column is the fragment <em>as text</em>, which the reading produces by
+        /// re-serialising what comes back — see <see cref="TryJsonQueryProjection"/> and
+        /// <see cref="CosmosReading.JsonText"/>. Nested, there is no reading to do that: the enclosing
+        /// operator would run at the service over the object itself, where Calcite runs it over the
+        /// text. No rendering of the path fixes that, so the expression is declined and computed in
+        /// process.
+        /// </para>
+        /// <para>
+        /// A scalar <c>RETURNING</c> stays bare, as it is alone: the service holds the value the plan
+        /// declared, and there is nothing to guard against that would not equally fail a column of its
+        /// own.
+        /// </para>
+        /// </remarks>
+        void WriteGuardedAccessor(StringBuilder builder, RexCall call, string rendered)
+        {
+            if (IsCollectionJsonQuery(call))
+            {
+                builder.Append('(').Append(CosmosOperators.IsArray.getName()).Append('(').Append(rendered)
+                    .Append(") ? ").Append(rendered).Append(" : null)");
+                return;
+            }
+
+            if (IsPlainJsonQuery(call))
+                throw new CosmosTranslationException("A JSON_QUERY inside an expression is the fragment as text, which the service has no way to produce -- the enclosing operator would run over the value instead. JSON_QUERY renders as a column of its own, where the reading writes the text.");
+
+            if (IsTextJsonValue(call))
+            {
+                builder.Append('(').Append(CosmosOperators.IsPrimitive.getName()).Append('(').Append(rendered)
+                    .Append(") ? ").Append(rendered).Append(" : null)");
+                return;
+            }
+
+            builder.Append(rendered);
+        }
+
+        /// <summary>
+        /// Writes a call, holding back the nested-accessor guard where the call is one whose operand is
+        /// an address rather than a value.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A geography function consumes what the document holds, not what the accessor extracts.</b>
+        /// A stored geography is a GeoJSON <em>object</em>, and
+        /// <c>ST_DISTANCE(JSON_VALUE(DOC, '$.location'), …)</c> is how a query names it — the accessor
+        /// is typed <c>VARCHAR</c> and is an addressing device, which is the same liberty
+        /// <see cref="IsTextRendering"/> records for the filter side. Guarded, <c>IS_PRIMITIVE</c> is
+        /// false of that object and the function would be handed null for every document that has one,
+        /// so the pushdown geography exists for would answer nothing.
+        /// </para>
+        /// <para>
+        /// This was found by a test rather than reasoned to —
+        /// <c>CosmosRelImplementTests.ASortOverADistanceRendersTheExpression</c> failed the moment the
+        /// guard went in — which is the argument for the narrow rule: the guard is for operators whose
+        /// Calcite meaning is computed over the accessor's own result, and these are the ones where it
+        /// is not.
+        /// </para>
+        /// </remarks>
         void WriteCall(StringBuilder builder, RexCall call)
         {
+            if (_guardNestedAccessors && GeographyFunctions.Contains(call.getOperator().getName()))
+            {
+                _guardNestedAccessors = false;
+
+                try
+                {
+                    WriteCallCore(builder, call);
+                }
+                finally
+                {
+                    _guardNestedAccessors = true;
+                }
+
+                return;
+            }
+
+            WriteCallCore(builder, call);
+        }
+
+        /// <summary>
+        /// Writes a SQL/JSON accessor whose document is a literal as the value it answers.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>An accessor over a literal addresses nothing, and it does not have to.</b> Both operands
+        /// are constants, so the whole call is one — it answers the same value for every document and
+        /// can be computed here. Without this it was refused, because <see cref="TryResolveJsonPath"/>
+        /// resolves the document operand to a path and a literal is not one, and a refused operand
+        /// takes its whole expression in process with it.
+        /// </para>
+        /// <para>
+        /// <b>Which is how it reached us.</b> #130 models an array column that reads empty where the
+        /// document has nothing, spelling the fallback as a <c>JSON_QUERY</c> over the literal
+        /// <c>[]</c>. The accessor over the document rendered, the coalesce rendered, and the empty
+        /// array was the one piece that did not.
+        /// </para>
+        /// <para>
+        /// <b>Calcite own reducer does not close this.</b> Measured with
+        /// <c>PROJECT_REDUCE_EXPRESSIONS</c> registered and an executor set, a constant
+        /// <c>JSON_VALUE</c> folds to a literal and the constant <c>JSON_QUERY</c> does not, there
+        /// being no <c>RexLiteral</c> for an array to fold it to. So the collection case, which is the
+        /// one asked for, needs its own answer whether or not that rule is ever registered.
+        /// </para>
+        /// <para>
+        /// <b>The accessor own shape test is applied rather than assumed</b>, and it is the guard
+        /// written out: an array <c>RETURNING</c> answers the value only where it is an array, a text
+        /// accessor only where it is a primitive, null otherwise — the same line
+        /// <see cref="WriteGuardedAccessor"/> draws at the service. The value is bound as a parameter
+        /// in plain CLR form, so the service is sent the JSON the constant is and the column own
+        /// reading converts what comes back, exactly as for a path.
+        /// </para>
+        /// </remarks>
+        bool TryWriteConstantAccessor(StringBuilder builder, RexCall call)
+        {
+            if (call.getOperands().size() < 2
+                || Operand(call, 0) is not RexLiteral document
+                || Operand(call, 1) is not RexLiteral pathLiteral)
+                return false;
+
+            string? text;
+            string? pathText;
+
+            try
+            {
+                text = GetLiteralValue(document) as string;
+                pathText = GetLiteralValue(pathLiteral) as string;
+            }
+            catch (CosmosTranslationException)
+            {
+                return false;
+            }
+
+            if (text is null || pathText is null)
+                return false;
+
+            // The same grammar a path over the document column is held to -- a wildcard, a descent or a
+            // filter is refused here as it is there, rather than answered by a second implementation.
+            if (TryExtendByJsonPath(CosmosPath.Root("$"), pathText, out var path) == false || path is null)
+                return false;
+
+            JsonDocument parsed;
+
+            try
+            {
+                parsed = JsonDocument.Parse(text);
+            }
+            catch (JsonException)
+            {
+                // Not a document at all, which is an error behaviour rather than a value. Left to the
+                // engine rather than guessed at.
+                return false;
+            }
+
+            using (parsed)
+            {
+                var value = parsed.RootElement;
+
+                foreach (var segment in path.Segments)
+                {
+                    if (segment.IsIndex)
+                    {
+                        if (value.ValueKind != JsonValueKind.Array || segment.ArrayIndex >= value.GetArrayLength())
+                            return WriteJsonNull(builder);
+
+                        value = value[segment.ArrayIndex];
+                        continue;
+                    }
+
+                    if (value.ValueKind != JsonValueKind.Object || value.TryGetProperty(segment.Name!, out value) == false)
+                        return WriteJsonNull(builder);
+                }
+
+                if (IsCollectionJsonQuery(call))
+                    return value.ValueKind == JsonValueKind.Array ? WriteJsonConstant(builder, value) : WriteJsonNull(builder);
+
+                // A plain JSON_QUERY answers the fragment as *text*, which the reading produces rather
+                // than the service -- see TryJsonQueryProjection. There is no reading over a constant
+                // written into an expression, so it is declined for the reason a nested one is.
+                if (IsPlainJsonQuery(call))
+                    return false;
+
+                if (IsJsonPrimitive(value))
+                    return WriteJsonConstant(builder, value);
+
+                return IsTextJsonValue(call) ? WriteJsonNull(builder) : WriteJsonConstant(builder, value);
+            }
+        }
+
+        static bool IsJsonPrimitive(JsonElement value)
+        {
+            return value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                or JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null;
+        }
+
+        static bool WriteJsonNull(StringBuilder builder)
+        {
+            builder.Append("null");
+            return true;
+        }
+
+        bool WriteJsonConstant(StringBuilder builder, JsonElement value)
+        {
+            builder.Append(_parameters.Add(ToParameterValue(value)));
+            return true;
+        }
+
+        /// <summary>
+        /// Reads a JSON value as the plain CLR shape a query parameter is serialised from.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <c>CosmosJson.GetValue</c>, which reads a value into the Java types
+        /// Calcite runtime holds. Those are what a column is read <em>back</em> as; what goes
+        /// <em>out</em> has to survive whichever serialiser the SDK is configured with, and lists and
+        /// dictionaries of primitives do where a <c>JsonElement</c> or a <c>java.util.List</c> does not.
+        /// </remarks>
+        static object? ToParameterValue(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.True:
+                    return true;
+                case JsonValueKind.False:
+                    return false;
+                case JsonValueKind.String:
+                    return value.GetString();
+                case JsonValueKind.Number:
+                    return value.TryGetInt64(out var integral) ? integral : value.GetDouble();
+                case JsonValueKind.Array:
+                    var items = new List<object?>(value.GetArrayLength());
+                    foreach (var item in value.EnumerateArray())
+                        items.Add(ToParameterValue(item));
+
+                    return items;
+                case JsonValueKind.Object:
+                    var members = new Dictionary<string, object?>(StringComparer.Ordinal);
+                    foreach (var member in value.EnumerateObject())
+                        members[member.Name] = ToParameterValue(member.Value);
+
+                    return members;
+                default:
+                    return null;
+            }
+        }
+
+        void WriteCallCore(StringBuilder builder, RexCall call)
+        {
+            // An accessor whose document is a literal is a constant, and is computed here rather than
+            // addressed -- see TryWriteConstantAccessor. Ahead of the path branch because that one
+            // resolves the document operand to a path, and a literal is not one.
+            if (IsJsonAccessor(call) && TryWriteConstantAccessor(builder, call))
+                return;
+
             // A SQL/JSON accessor over the document is the path it addresses, and is written as one:
             // the service returns the value at the path, and the RETURNING clause is what told the
             // plan its type. Handled ahead of the kind switch so that every clause reaching here —
@@ -634,7 +918,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // of its own.
             if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
-                builder.Append(jsonPath.ToString());
+                if (_guardNestedAccessors)
+                    WriteGuardedAccessor(builder, call, jsonPath.ToString());
+                else
+                    builder.Append(jsonPath.ToString());
+
                 return;
             }
 
@@ -1412,8 +1700,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException(
                     "JSON_VALUE with an array RETURNING is not a construct SQL defines -- the clause names a predefined scalar type -- so it is left to the engine, which answers null. JSON_QUERY is the accessor that returns an array.");
 
+            // Every shape above is one this recognises whole and renders with the guard its own
+            // reading needs. What is left is a compound expression -- a CASE, a function call, a
+            // concatenation -- and an accessor inside one rendered as the bare path, dropping the
+            // guard merely by being nested (#131). The flag is what carries it down; see
+            // WriteGuardedAccessor for what each accessor gets.
             reading = CosmosReading.Typed;
-            return Translate(node);
+
+            _guardNestedAccessors = true;
+
+            try
+            {
+                return Translate(node);
+            }
+            finally
+            {
+                _guardNestedAccessors = false;
+            }
         }
 
         /// <summary>
@@ -1985,6 +2288,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // projection's expression and the type that said it goes with it, where a cast is a call
             // of its own and survives. Rendered as the path, which is what the cast names.
             if (call.getOperands().size() == 1 && call.getType()?.getSqlTypeName() == SqlTypeName.ANY && IsTextRendering(Operand(call, 0)))
+            {
+                Write(builder, Operand(call, 0));
+                return;
+            }
+
+            // A cast that differs from its operand only in nullability converts nothing, and refusing it
+            // cost every COALESCE its pushdown (#130). The validator expands COALESCE(x, y) to
+            // CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y) before a RexCall exists: the accessor, the
+            // null test and the CASE all render, and that one cast -- Calcite asserting what the guard
+            // already proved -- failed the whole expression, so the projection lifted and DOC crossed
+            // the wire. Nothing about COALESCE or about arrays was involved; a scalar one with a string
+            // literal fallback de-pushed identically.
+            //
+            // Narrow on purpose, in two ways that a test caught rather than the reasoning did. A cast
+            // that changes the type family, the precision or the scale is still a conversion and is
+            // still refused -- the service would not perform it, which is what the refusal is for. And
+            // the direction matters: this is a *nullable operand cast to a non-nullable target*, not
+            // any cast whose types match. A cast between two identical types is a marker rather than a
+            // conversion -- WriteComparand reads one to decide what an equality is comparing, and
+            // CosmosFilterSplitRule writes one to say the comparison is against the raw value -- so
+            // stripping those would quietly push equalities the filter side declines on purpose. See
+            // CosmosRexTranslatorTests.EqualityThroughACastOverATypedColumnKeepsTheCast and
+            // CosmosCastTests.ACastToAnExactTypeIsDeclined, both of which failed to the broader test.
+            if (call.getOperands().size() == 1
+                && call.getType()?.isNullable() == false
+                && Operand(call, 0).getType()?.isNullable() == true
+                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType()))
             {
                 Write(builder, Operand(call, 0));
                 return;

@@ -1409,6 +1409,98 @@ Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has
 semantics over a property that may be *undefined* needs a Cosmos behaviour that has not been
 measured, and a wrong answer is worse than a refused pushdown.
 
+#### An accessor keeps its guard wherever it is written
+
+**The guard was dropped merely by nesting, and the bare accessor kept it the whole time — which is
+what made it hard to see.** Measured on `main`:
+
+| projection | rendered |
+| --- | --- |
+| `JSON_VALUE(DOC, '$.a')` | `(IS_PRIMITIVE(c.a) ? c.a : null)` |
+| `UPPER(JSON_VALUE(DOC, '$.a'))` | `UPPER(c.a)` |
+| `JSON_VALUE(DOC, '$.a') \|\| 'x'` | `CONCAT(c.a, @p0)` |
+| `CASE WHEN … THEN JSON_VALUE(DOC, '$.a') ELSE 'x' END` | `((c.id = @p0) ? c.a : @p1)` |
+
+All four push; only the first agrees with the engine. `JSON_VALUE` extracts *scalars*, so over a
+document holding an object at the path Calcite answers null while the service was handing the object
+to `UPPER`, to `CONCAT`, or out through the ternary (#131). The array form is worse than a wrong
+value: an object reaching a column the plan typed a list is #129's cast failure by another route.
+
+`TranslateProjection` sets a flag for its compound branch — the one reached once every whole-projection
+shape has declined — and `WriteGuardedAccessor` renders each accessor the way its own projection
+would: `IS_PRIMITIVE` for a text `JSON_VALUE`, `IS_ARRAY` for an array `JSON_QUERY`, the bare path for
+a scalar `RETURNING`. A plain `JSON_QUERY` is **refused** rather than guarded, because a guard is not
+what it needs — its column is the fragment *as text*, produced by the reading and not by the service,
+and nested there is no reading to do it.
+
+**Scoped to a projection.** A filter compares the raw value the service holds on purpose, which is
+what `CosmosFilterSplitRule` and `WriteComparand` are built on and is not in question here.
+
+**One exception, and a test found it rather than the reasoning.** A geography function's operand is an
+*address*, not a value: a stored geography is a GeoJSON object and
+`ST_DISTANCE(JSON_VALUE(DOC, '$.location'), …)` is how a query names it, so `IS_PRIMITIVE` is false of
+exactly the documents that have one and the pushdown would answer nothing.
+`ASortOverADistanceRendersTheExpression` failed the moment the guard went in, and `WriteCall` holds it
+back for that family.
+
+#### `COALESCE` pushes, and what stopped it was not `COALESCE`
+
+A `COALESCE` over pushable expressions took the whole projection in process and shipped `DOC` to
+supply one column (#130). The validator expands it before a `RexCall` exists:
+
+```
+COALESCE(x, y)  ->  CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y)
+```
+
+Measured, every piece of that already pushed on its own — the `CASE`, the `IS NOT NULL`, the accessor,
+the literal. What did not was **the cast, which converts nothing**: Calcite writes it to assert what
+the null test has just proved, and one refused node fails the whole expression. Nothing about arrays
+or about `JSON_QUERY` was involved either, which is where the report pointed — a scalar `COALESCE` to a
+string literal de-pushed identically.
+
+`WriteCast` now takes a cast whose operand is nullable, whose target is not, and whose types are
+otherwise equal. **Narrow in both directions, and tests caught the broader version rather than the
+reasoning catching it.** A cast that changes the family, precision or scale is a conversion the service
+would not perform and is still refused. And a cast between two *identical* types is a marker rather
+than a conversion — `WriteComparand` reads one to decide what an equality compares,
+`CosmosFilterSplitRule` writes one to say the comparison is against the raw value — so stripping those
+would have quietly pushed equalities the filter side declines on purpose.
+
+The guard composes through it, and the expansion names the accessor three times, so it is written
+three times:
+
+```
+SELECT VALUE { "a": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null))
+                      AND NOT IS_NULL((IS_PRIMITIVE(c.a) ? c.a : null)))
+                     ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) }
+```
+
+Verbose, and right in each case Calcite distinguishes: an absent path makes `IS_PRIMITIVE` undefined,
+so the ternary is undefined and `IS_DEFINED` is false; an object makes the ternary null, which
+`IS_NULL` catches; a JSON null is a primitive and is caught the same way; a scalar passes. All of
+them take the fallback exactly where `JSON_VALUE` answers null.
+
+#### An accessor over a literal is a constant
+
+`JSON_QUERY('[]', '$' RETURNING VARCHAR ARRAY)` is how #130 spells "an empty array", and it addressed
+no path — `TryResolveJsonPath` resolves the document operand to a path and a literal is not one — so
+it took its whole expression in process with it. Both operands are constants, so the call is one: it
+answers the same value for every document and is computed while rendering.
+
+**Calcite's own reducer does not close this**, which is worth recording because it is the obvious
+first answer. Measured with `PROJECT_REDUCE_EXPRESSIONS` registered and an executor set, a constant
+`JSON_VALUE` folds — `JSON_VALUE('{"v":3}', '$.v' RETURNING INTEGER)` becomes `CAST(3)` — and the
+constant `JSON_QUERY` does not, there being no `RexLiteral` for an array to fold it to. The collection
+case is the one that was asked for, so it needs its own answer whether or not that rule is ever
+registered.
+
+The accessor's own shape test is applied rather than assumed, and it is the guard written out: an
+array `RETURNING` answers the value only where it is an array, a text accessor only where it is a
+primitive, null otherwise. The path grammar is the one a document column is held to — a wildcard, a
+descent or a filter is refused here as it is there, one grammar rather than two. The value is bound as
+a parameter in plain CLR form, so the service is sent the JSON the constant is and the column's own
+reading converts what comes back, exactly as for a path.
+
 ### A projection that cannot be pushed is not a wall
 
 A view is how a caller gives a container a relational shape, and a view has to cast: the row model
