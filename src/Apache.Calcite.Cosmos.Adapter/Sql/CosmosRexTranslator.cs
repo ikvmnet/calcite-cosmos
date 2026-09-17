@@ -2905,6 +2905,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case "FULLTEXTCONTAINSANY":
                     WriteFullTextPredicate(builder, call, name);
                     return;
+
+                // The shared vocabulary, rendered as the service's own. Every one of these is a rename
+                // and nothing more -- the operand shape is the same, a searched path then keywords --
+                // which is what "everything Cosmos offers is expressible" amounts to from this side.
+                case "CLR_FT_CONTAINS":
+                    WriteFullTextPredicate(builder, call, "FULLTEXTCONTAINS");
+                    return;
+                case "CLR_FT_CONTAINS_ALL":
+                    WriteFullTextPredicate(builder, call, "FULLTEXTCONTAINSALL");
+                    return;
+                case "CLR_FT_CONTAINS_ANY":
+                    WriteFullTextPredicate(builder, call, "FULLTEXTCONTAINSANY");
+                    return;
+
+                case "CLR_FT_SCORE":
+                    if (_scoring == false)
+                        throw new CosmosTranslationException($"'{name}' is only legal in an ORDER BY RANK clause.");
+
+                    WriteFullTextPredicate(builder, call, "FULLTEXTSCORE");
+                    return;
+
+                case "CLR_FT_RRF":
+                    if (_scoring == false)
+                        throw new CosmosTranslationException($"'{name}' is only legal in an ORDER BY RANK clause.");
+
+                    WriteRrf(builder, call);
+                    return;
+
+                // A term constructor stands where a keyword goes and says what kind of term it is.
+                case "CLR_FT_PHRASE":
+                    RequireOperandCount(call, 1);
+                    Write(builder, Operand(call, 0));
+                    return;
+
+                case "CLR_FT_FUZZY":
+                    WriteFuzzyTerm(builder, call);
+                    return;
+
+                case "CLR_FT_PREFIX":
+                    throw new CosmosTranslationException("CLR_FT_PREFIX has no Cosmos form: the service matches whole analyzed terms and offers no prefix term. The call is left to the engine, which has no body for it, so the query says so rather than matching something else.");
+
+                // Only inside RRF, where it becomes the trailing weights array -- see WriteRrf. Reached
+                // here it is a weight somewhere the service has nowhere to put one.
+                case "CLR_FT_WEIGHT":
+                    throw new CosmosTranslationException("CLR_FT_WEIGHT is a weight on a score fused by RRF, and Cosmos carries those as RRF's trailing array. Outside an RRF there is nothing for it to weigh.");
                 case "FULLTEXTSCORE":
                     if (_scoring == false)
                         throw new CosmosTranslationException($"'{name}' is only legal in an ORDER BY RANK clause.");
@@ -3238,6 +3283,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return node is RexCall call && call.getOperator().getName() switch
             {
                 "FULLTEXTSCORE" or "RRF" or "VECTORDISTANCE" => true,
+                "CLR_FT_SCORE" or "CLR_FT_RRF" => true,
                 _ => false,
             };
         }
@@ -3258,6 +3304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return node is RexCall call && call.getOperator().getName() switch
             {
                 "FULLTEXTCONTAINS" or "FULLTEXTCONTAINSALL" or "FULLTEXTCONTAINSANY" or "FULLTEXTSCORE" => true,
+                "CLR_FT_CONTAINS" or "CLR_FT_CONTAINS_ALL" or "CLR_FT_CONTAINS_ANY" or "CLR_FT_SCORE" => true,
                 _ => false,
             };
         }
@@ -3270,6 +3317,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// are checked for here — a trailing weights array is an ordinary expression and renders as one —
         /// so an argument that is neither is refused by the recursive call rather than by a count.
         /// </remarks>
+        /// <summary>
+        /// Writes <c>CLR_FT_FUZZY</c> as the object form the service takes for a fuzzy term.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Cosmos spells a fuzzy term as an object where a keyword goes</b> —
+        /// <c>{"term": "bycycle", "distance": 2}</c> — which is documented by the error text of
+        /// <c>SC2241</c>, the refusal a keyword <em>array</em> earns. Bound as a parameter like every
+        /// other keyword, so the statement text stays independent of what is searched for.
+        /// </para>
+        /// <para>
+        /// Both operands must be literals. The distance is a count the service reads while planning the
+        /// match, and a computed one is refused rather than bound: there is nothing to compute it from
+        /// at the point the term is written.
+        /// </para>
+        /// </remarks>
+        void WriteFuzzyTerm(StringBuilder builder, RexCall call)
+        {
+            RequireOperandCount(call, 2);
+
+            if (Operand(call, 0) is not RexLiteral term || GetLiteralValue(term) is not string text)
+                throw new CosmosTranslationException("The text of CLR_FT_FUZZY must be a literal: the service reads the term while planning the match.");
+
+            // Read as whatever exact shape the literal arrived in. A SQL `2` reaches here as a DECIMAL
+            // where one built with makeLiteral over an INTEGER type reaches here as a long, and the
+            // distance is the same count either way.
+            if (Operand(call, 1) is not RexLiteral edits)
+                throw new CosmosTranslationException("The edit distance of CLR_FT_FUZZY must be an integer literal.");
+
+            var distance = GetLiteralValue(edits) switch
+            {
+                long value => value,
+                decimal value when decimal.Truncate(value) == value => (long)value,
+                var other => throw new CosmosTranslationException($"The edit distance of CLR_FT_FUZZY must be a whole number, and '{other}' is not one."),
+            };
+
+            builder.Append(_parameters.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["term"] = text,
+                ["distance"] = distance,
+            }));
+        }
+
         void WriteRrf(StringBuilder builder, RexCall call)
         {
             var operands = call.getOperands();
