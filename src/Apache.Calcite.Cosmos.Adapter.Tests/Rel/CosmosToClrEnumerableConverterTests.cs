@@ -514,6 +514,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 .Should().Equal(new object[] { null! });
         }
 
+        /// <summary>
+        /// An array <c>RETURNING</c> on <c>JSON_QUERY</c> is a collection column, not a fragment.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Both accessors take an array <c>RETURNING</c>, and it means the same thing on either.</b>
+        /// The fragment rendering is for the text-typed form alone: reading this one as text would
+        /// hand a string to a column the plan typed <c>String[]</c>, which is the cast failure the
+        /// guard was written to avoid one function earlier.
+        /// </para>
+        /// <para>
+        /// Worth a test of its own because the two tests are different questions —
+        /// <c>IsPlainJsonQuery</c> asks what the clauses say and the collection test asks what the
+        /// call is typed, and matching on the first alone is what let this through.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayReturningJsonQueryAsTheArray()
+        {
+            Given("""{ "q": ["a","b"] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.v' RETURNING VARCHAR ARRAY) AS \"q\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(2);
+            list.get(0).Should().Be("a");
+            list.get(1).Should().Be("b");
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_ARRAY(c.v)",
+                "an array column takes the array guard, not the fragment's");
+        }
+
         /// <remarks>
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.
