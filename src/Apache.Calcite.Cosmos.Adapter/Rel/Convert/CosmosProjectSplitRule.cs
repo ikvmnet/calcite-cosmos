@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -37,11 +38,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// what makes the split general rather than a special case for expressions over constants.
     /// </para>
     /// <para>
-    /// <b>The split is at the top level only.</b> <c>CAST(JSON_VALUE(DOC, '$.x') AS DOUBLE)</c> is one
-    /// residual expression, and the whole of it is computed above — the accessor inside it is not
-    /// pushed on its own, which would be a finer split than this makes. What the residual needs is
-    /// therefore <c>DOC</c>, and the document crosses the wire for that column. Correctness is
-    /// restored either way; the finer split would also save the bytes, and is not attempted here.
+    /// <b>The split goes inside an expression as well as between them.</b>
+    /// <c>CAST(JSON_VALUE(DOC, '$.x') AS DOUBLE)</c> does not render — the cast converts where the
+    /// service would not — but the accessor inside it renders perfectly well. So the residual is
+    /// walked for the <em>maximal</em> sub-expressions that translate, each is projected as a column of
+    /// its own, and the residual is rewritten to read them. What used to cross the wire for that column
+    /// was the whole document; what crosses now is one scalar.
+    /// </para>
+    /// <para>
+    /// <b>Maximal is the whole of the discipline.</b> The walk stops at the first node that renders
+    /// rather than descending past it, because a deeper split would push <c>c.x</c> and compute an
+    /// accessor above it that the service was willing to answer. Top-down, first success wins.
+    /// </para>
+    /// <para>
+    /// <b>What the residual still reads is collected by the same walk,</b> and that is what saves the
+    /// bytes rather than merely moving the work. An input reached inside a pushed sub-expression is
+    /// <em>not</em> needed above — the column supplies it — so the walk records an input only where it
+    /// reaches one outside every pushed fragment. Collecting them from the original expression instead
+    /// would project <c>DOC</c> beside the scalar extracted from it and leave the document on the wire.
+    /// </para>
+    /// <para>
+    /// <b>A bare reference and a literal are never fragments.</b> The reference is already available to
+    /// the outer projection and the literal costs nothing to compute there, so pushing either buys a
+    /// column and no work — and a projection of nothing but references is the shape this rule produces,
+    /// which is what it must not match again.
     /// </para>
     /// <para>
     /// <b>It terminates,</b> and the guard is that a pushable expression must be more than a bare
@@ -96,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (project.getVariablesSet().isEmpty() == false || project.containsOver())
                 return false;
 
-            return TrySplit(project, out _, out _);
+            return TrySplit(project, out _);
         }
 
         /// <inheritdoc />
@@ -104,29 +124,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var project = (Project)call.rel(0);
 
-            if (TrySplit(project, out var pushable, out var residual) == false)
+            if (TrySplit(project, out var split) == false)
                 return;
 
             var rexBuilder = project.getCluster().getRexBuilder();
             var projects = project.getProjects();
             var input = project.getInput();
 
-            // The inner projection: every pushable expression, then every input the residual reads.
+            // The inner projection, in three parts: every whole expression that renders, every maximal
+            // sub-expression found inside one that does not, and every input the residual still reads
+            // past those.
             var inner = new java.util.ArrayList();
             var ordinalOfPushable = new Dictionary<int, int>();
+            var ordinalOfFragment = new Dictionary<string, int>(StringComparer.Ordinal);
             var ordinalOfInput = new Dictionary<int, int>();
 
-            foreach (var i in pushable)
+            foreach (var i in split.Pushable)
             {
                 ordinalOfPushable[i] = inner.size();
                 inner.add(projects.get(i));
             }
 
-            foreach (var index in InputsOf(projects, residual))
+            foreach (var fragment in split.Fragments)
             {
-                if (ordinalOfInput.ContainsKey(index))
-                    continue;
+                ordinalOfFragment[fragment.ToString()] = inner.size();
+                inner.add(fragment);
+            }
 
+            foreach (var index in split.Inputs)
+            {
                 ordinalOfInput[index] = inner.size();
                 inner.add(rexBuilder.makeInputRef(input, index));
             }
@@ -134,8 +160,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var lower = LogicalProject.create(input, com.google.common.collect.ImmutableList.of(), inner, (java.util.List?)null, com.google.common.collect.ImmutableSet.of());
 
             // The outer projection: a reference for each pushed column, and each residual expression
-            // with its references moved onto the inner projection's output.
-            var shuttle = new Rebase(rexBuilder, ordinalOfInput);
+            // with its pushed sub-expressions and its remaining references moved onto the inner
+            // projection's output.
+            var shuttle = new Rebase(rexBuilder, ordinalOfInput, ordinalOfFragment);
             var outer = new java.util.ArrayList();
 
             for (var i = 0; i < projects.size(); i++)
@@ -151,22 +178,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Partitions a projection's expressions by whether each renders as Cosmos SQL.
+        /// Partitions a projection into what the service can produce and what is left to compute above
+        /// it, looking inside an expression as well as between them.
         /// </summary>
         /// <remarks>
         /// Tested against the binding derived by walking the input — the same one
         /// <see cref="CosmosProjectRule"/> and <see cref="CosmosProject.Implement"/> use — so an
         /// expression this calls pushable is one that rule would accept, and the inner projection it
-        /// builds converts rather than failing at implementation.
+        /// builds converts rather than failing at implementation. A sub-expression is held to exactly
+        /// the same test, which is what makes a fragment a column the same machinery renders and reads.
         /// </remarks>
         /// <param name="project">The projection.</param>
-        /// <param name="pushable">On success, the ordinals that render.</param>
-        /// <param name="residual">On success, the ordinals that do not.</param>
+        /// <param name="split">On success, what goes below and what stays above.</param>
         /// <returns><c>true</c> where the split is worth making.</returns>
-        bool TrySplit(Project project, out List<int> pushable, out List<int> residual)
+        bool TrySplit(Project project, out ProjectionSplit split)
         {
-            pushable = new List<int>();
-            residual = new List<int>();
+            split = new ProjectionSplit();
 
             var projects = project.getProjects();
             if (projects.size() == 0)
@@ -183,61 +210,173 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var facts = _convention.Container?.Facts.Derive(null) ?? Metadata.CosmosFactSet.Empty;
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
 
-            var nontrivial = false;
-
             for (var i = 0; i < projects.size(); i++)
             {
                 var expression = (RexNode)projects.get(i);
 
                 if (translator.TryTranslateProjection(expression, out _, out _))
                 {
-                    pushable.Add(i);
+                    split.Pushable.Add(i);
 
-                    // See the remarks on termination: a split whose pushable half is nothing but bare
+                    // See the remarks on termination: a split whose pushed half is nothing but bare
                     // references produces an outer projection of exactly that shape, which would match
                     // again.
-                    nontrivial |= expression is not RexInputRef;
+                    split.Nontrivial |= expression is not RexInputRef;
+                    continue;
                 }
-                else
-                {
-                    residual.Add(i);
-                }
+
+                split.Residual.Add(i);
+                Collect(translator, expression, split);
             }
 
-            return pushable.Count > 0 && residual.Count > 0 && nontrivial;
+            return split.Residual.Count > 0
+                && (split.Pushable.Count > 0 || split.Fragments.Count > 0)
+                && split.Nontrivial;
         }
 
         /// <summary>
-        /// Returns the input ordinals the residual expressions read.
+        /// Walks a residual expression, recording the maximal sub-expressions that render and the
+        /// inputs it still reads past them.
         /// </summary>
-        static IEnumerable<int> InputsOf(java.util.List projects, List<int> residual)
+        /// <remarks>
+        /// <para>
+        /// <b>Top-down, and the first success wins.</b> A node that renders is taken whole and its
+        /// operands are not visited, which is what <em>maximal</em> means: descending past it would
+        /// push a path and compute an accessor over it that the service was willing to answer.
+        /// </para>
+        /// <para>
+        /// <b>An input is recorded only where the walk reaches one.</b> Inside a fragment it is not
+        /// reached, because the fragment is not descended into — and that is deliberate rather than
+        /// incidental: the pushed column supplies what the residual needs, so projecting the input
+        /// beside it would put the document back on the wire and leave the split saving nothing but
+        /// the arithmetic.
+        /// </para>
+        /// <para>
+        /// A node that is neither a call nor a reference — a field access over a correlation variable,
+        /// say — is left to the residual whole, and whatever it reads is swept for by
+        /// <see cref="InputsOf"/>. Nothing of that kind reaches here today, <see cref="matches"/>
+        /// refusing a projection that carries variables, but the sweep is what makes the walk total
+        /// rather than exhaustive over the shapes that happen to exist.
+        /// </para>
+        /// </remarks>
+        static void Collect(CosmosRexTranslator translator, RexNode node, ProjectionSplit split)
+        {
+            if (node is RexInputRef inputRef)
+            {
+                split.Inputs.Add(inputRef.getIndex());
+                return;
+            }
+
+            // A literal is computed above for nothing. Tested before renderability because a literal
+            // renders perfectly well and would otherwise become a column carrying a constant.
+            if (node is RexLiteral)
+                return;
+
+            if (translator.TryTranslateProjection(node, out _, out _))
+            {
+                var digest = node.ToString();
+
+                if (split.Index.ContainsKey(digest) == false)
+                {
+                    split.Index[digest] = split.Fragments.Count;
+                    split.Fragments.Add(node);
+                }
+
+                split.Nontrivial = true;
+                return;
+            }
+
+            if (node is RexCall call)
+            {
+                var operands = call.getOperands();
+
+                for (var i = 0; i < operands.size(); i++)
+                    Collect(translator, (RexNode)operands.get(i), split);
+
+                return;
+            }
+
+            foreach (var index in InputsOf(node))
+                split.Inputs.Add(index);
+        }
+
+        /// <summary>
+        /// What a split decided: the ordinals that go below whole, the ordinals that stay above, the
+        /// sub-expressions lifted out of those, and the inputs still read past them.
+        /// </summary>
+        sealed class ProjectionSplit
+        {
+
+            /// <summary>The projection ordinals that render whole.</summary>
+            public List<int> Pushable { get; } = new();
+
+            /// <summary>The projection ordinals computed above.</summary>
+            public List<int> Residual { get; } = new();
+
+            /// <summary>The maximal renderable sub-expressions, in the order they were found.</summary>
+            public List<RexNode> Fragments { get; } = new();
+
+            /// <summary>
+            /// Each fragment's digest, so that the same sub-expression written twice becomes one column.
+            /// </summary>
+            /// <remarks>
+            /// Keyed by <c>ToString</c> rather than by the node, because a <see cref="RexNode"/>'s
+            /// equality is Java's and the dictionary's is not — and the digest is what Calcite itself
+            /// compares nodes by.
+            /// </remarks>
+            public Dictionary<string, int> Index { get; } = new(StringComparer.Ordinal);
+
+            /// <summary>The input ordinals the residual reads outside every fragment.</summary>
+            public SortedSet<int> Inputs { get; } = new();
+
+            /// <summary>Whether anything more than a bare reference goes below.</summary>
+            public bool Nontrivial { get; set; }
+
+        }
+
+        /// <summary>
+        /// Returns the input ordinals an expression reads.
+        /// </summary>
+        static IEnumerable<int> InputsOf(RexNode node)
         {
             var found = new SortedSet<int>();
+            var bits = RelOptUtil.InputFinder.bits(node);
 
-            foreach (var i in residual)
-            {
-                var bits = RelOptUtil.InputFinder.bits((RexNode)projects.get(i));
-
-                for (var bit = bits.nextSetBit(0); bit >= 0; bit = bits.nextSetBit(bit + 1))
-                    found.Add(bit);
-            }
+            for (var bit = bits.nextSetBit(0); bit >= 0; bit = bits.nextSetBit(bit + 1))
+                found.Add(bit);
 
             return found;
         }
 
         /// <summary>
-        /// Moves an expression's input references onto the inner projection's output.
+        /// Moves an expression onto the inner projection's output: a pushed sub-expression becomes the
+        /// column that now holds it, and a reference the residual still reads becomes its new ordinal.
         /// </summary>
+        /// <remarks>
+        /// The fragment test runs in <c>visitCall</c> <em>before</em> the base implementation, which is
+        /// what keeps the substitution maximal: recursing first would rewrite the operands of a node
+        /// that is about to be replaced whole, and the replacement would then no longer match what was
+        /// pushed.
+        /// </remarks>
         sealed class Rebase : RexShuttle
         {
 
             readonly RexBuilder _rexBuilder;
             readonly Dictionary<int, int> _ordinals;
+            readonly Dictionary<string, int> _fragments;
 
-            public Rebase(RexBuilder rexBuilder, Dictionary<int, int> ordinals)
+            public Rebase(RexBuilder rexBuilder, Dictionary<int, int> ordinals, Dictionary<string, int> fragments)
             {
                 _rexBuilder = rexBuilder;
                 _ordinals = ordinals;
+                _fragments = fragments;
+            }
+
+            public override RexNode visitCall(RexCall call)
+            {
+                return _fragments.TryGetValue(call.ToString(), out var ordinal)
+                    ? _rexBuilder.makeInputRef(call.getType(), ordinal)
+                    : base.visitCall(call);
             }
 
             public override RexNode visitInputRef(RexInputRef inputRef)

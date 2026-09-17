@@ -1487,11 +1487,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// still finds its operand.
         /// </summary>
         /// <remarks>
-        /// A numeric cast of a path cannot render, and computing it in process needs the document. So
-        /// the inner projection sends <c>DOC</c> beside the array rather than only the array, and the
-        /// outer expression is rewritten to read it from there. The document travels — this split is
-        /// about where each column is <em>evaluated</em>, and only saves bytes where the residual
-        /// needs nothing.
+        /// A numeric cast of a path cannot render, and this used to send <c>DOC</c> beside the array so
+        /// that the cast could be computed above it. It no longer does: the accessor <em>inside</em>
+        /// the cast renders, so the scalar is extracted at the service and the cast runs over that.
+        /// The document stays where it is, which is the bytes half this split was written for and did
+        /// not originally reach.
         /// </remarks>
         [TestMethod]
         public void TheSplitCarriesWhatTheResidualReads()
@@ -1502,7 +1502,145 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var sql = Render(FindCosmos(best));
 
             sql.Should().Contain("IS_ARRAY(c.tags)", "the array is evaluated at the service: " + sql);
-            sql.Should().Contain("\": c }", "and the document goes with it, for the cast above: " + sql);
+            sql.Should().Contain("IS_PRIMITIVE(c.n)", "and so is the accessor the cast reads: " + sql);
+            sql.Should().NotContain("\": c }", "so the document has no reason to travel: " + sql);
+        }
+
+        /// <summary>
+        /// A residual expression pushes the part of itself that renders.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The case the split was written for and did not originally reach.</b> The cast converts
+        /// where the service would not, so the expression is residual whole; the accessor inside it
+        /// renders perfectly well. What used to cross the wire for this column was the document, so
+        /// that the cast could read one scalar out of it in process.
+        /// </para>
+        /// <para>
+        /// Nothing about the cast changed — it is still computed above, and still reads what comes
+        /// back. What changed is what comes back.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AResidualExpressionPushesTheAccessorInsideIt()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\" FROM products AS c");
+
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrEnumerableProject(x=[CAST($0)", "the cast is still the engine's: " + plan);
+
+            Render(FindCosmos(best))
+                .Should().Be("SELECT VALUE { \"$f0\": (IS_PRIMITIVE(c.n) ? c.n : null) } FROM products c");
+        }
+
+        /// <summary>
+        /// The walk stops at the first node that renders rather than descending past it.
+        /// </summary>
+        /// <remarks>
+        /// <b>Maximal, not merely renderable.</b> Both the accessor and the coalesce around it render,
+        /// and it is the coalesce that must go down: splitting deeper would push the accessor and leave
+        /// the service's own conditional to be evaluated in process over it. One column, and the whole
+        /// of what the service was willing to answer.
+        /// </remarks>
+        [TestMethod]
+        public void AFragmentIsTheLargestRenderablePartRatherThanTheFirst()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST(COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS DOUBLE) AS \"x\" FROM products AS c");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0)",
+                "the coalesce goes down whole, not the accessor out of it: " + sql);
+
+            Plan(best).Should().Contain("CAST($0)", "leaving one column for the cast to read: " + Plan(best));
+        }
+
+        /// <summary>
+        /// The same sub-expression written twice is one column.
+        /// </summary>
+        /// <remarks>
+        /// Keyed by the node's digest, which is what Calcite compares nodes by. Worth a test because
+        /// the alternative is silent: two identical columns cost a little and read the same, so nothing
+        /// would ever fail.
+        /// </remarks>
+        [TestMethod]
+        public void ASubExpressionWrittenTwiceIsOneColumn()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\", "
+                + "CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS INTEGER) AS \"y\" FROM products AS c");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Be("SELECT VALUE { \"$f0\": (IS_PRIMITIVE(c.n) ? c.n : null) } FROM products c",
+                "one accessor, one column, read twice above: " + sql);
+        }
+
+        /// <summary>
+        /// An expression with nothing renderable inside it still sends what the residual reads.
+        /// </summary>
+        /// <remarks>
+        /// The floor the walk falls back to, and the behaviour the split had before it looked inside
+        /// anything: no fragment is found, so the input the residual names is projected for it. Worth
+        /// holding because the walk must not lose that — an expression it can do nothing with has to
+        /// come out the same way it went in.
+        /// </remarks>
+        [TestMethod]
+        public void AResidualWithNoRenderablePartStillCarriesItsInputs()
+        {
+            var best = PlanToAsync(
+                "SELECT CAST('2020-01-01 12:00:00' AS TIMESTAMP) AS \"t\", JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c");
+
+            var plan = Plan(best);
+
+            plan.Should().Contain("CosmosProject", "the half that renders still goes down: " + plan);
+            plan.Should().Contain("ClrEnumerableProject", "and the constant is still computed above: " + plan);
+        }
+
+        /// <summary>
+        /// A residual that consumes an array reads the array as a pushed column.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>`TODO.md` said this could not work, and it was measured rather than taken on trust.</b>
+        /// The entry read: a residual that consumes an array evaluates in process, where Calcite
+        /// cannot produce one — the correctness half of #125, left standing where the bytes half was
+        /// closed. It was written while the adapter pushed <c>JSON_VALUE(… RETURNING … ARRAY)</c>,
+        /// whose in-process answer is null, so lifting a projection into process emptied the column.
+        /// </para>
+        /// <para>
+        /// Two things since have removed it. <c>JSON_QUERY</c>'s array <c>RETURNING</c> does produce an
+        /// array in process — measured against Calcite's own runtime — so the fragment goes down as a
+        /// real array column and the residual reads a <see cref="java.util.List"/>. And
+        /// <c>JSON_VALUE</c>'s is refused in every clause, so the spelling the sentence was about is
+        /// not pushed at all, and its null is the engine's own answer rather than a divergence this
+        /// introduced.
+        /// </para>
+        /// <para>
+        /// <c>ITEM</c> is the operator here because it has no Cosmos form over an array, which is what
+        /// makes the expression residual; <c>CARDINALITY</c> would not do, rendering whole as
+        /// <c>ARRAY_LENGTH</c>. What the column is read <em>as</em> is pinned end to end by
+        /// <c>CosmosToClrEnumerableConverterTests.ShouldReadAnArrayReturningJsonQueryAsTheArray</c>;
+        /// running the residual over it is not available offline — see
+        /// <see href="https://github.com/ikvmnet/calcite-dotnet/issues/155">calcite-dotnet#155</see>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AResidualConsumingAnArrayReadsThePushedColumn()
+        {
+            var best = PlanToAsync(
+                "SELECT (JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY))[1] AS \"n\" FROM products AS c");
+
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrEnumerableProject(n=[ITEM($0, 1)])",
+                "the operator has no Cosmos form, so it stays: " + plan);
+
+            Render(FindCosmos(best))
+                .Should().Be("SELECT VALUE { \"$f0\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM products c");
         }
 
         /// <summary>
@@ -1767,22 +1905,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// A plain <c>JSON_QUERY</c> nested in an expression is refused rather than guarded.
+        /// A plain <c>JSON_QUERY</c> nested in an expression is not rendered in place — it is lifted
+        /// out into a column of its own.
         /// </summary>
         /// <remarks>
-        /// A guard is not what it needs. Its column is the fragment <em>as text</em>, and the text is
-        /// produced by the reading — <see cref="CosmosReading.JsonText"/> — not by the service. Nested,
-        /// there is no reading to do it, and the enclosing operator would run over the object where
-        /// Calcite runs over the text. No rendering of the path closes that, so the expression is
-        /// declined and computed in process.
+        /// <para>
+        /// <b>The refusal stands and the expression pushes anyway, which is the point of a fragment.</b>
+        /// Rendered <em>in place</em>, this accessor is wrong at any guard: its column is the fragment
+        /// as text, which <see cref="CosmosReading.JsonText"/> produces on the way back and the service
+        /// cannot produce at all, so <c>UPPER</c> would run over the object where Calcite runs over the
+        /// text.
+        /// </para>
+        /// <para>
+        /// Lifted out, there <em>is</em> a reading: the accessor becomes a column with its own, the text
+        /// arrives as Calcite would have computed it, and <c>UPPER</c> runs above over exactly that. So
+        /// the split does not weaken the refusal — it supplies the one thing the refusal said was
+        /// missing.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void ANestedJsonQueryIsRefusedRatherThanGuessedAt()
+        public void ANestedJsonQueryIsLiftedOutRatherThanRenderedInPlace()
         {
-            var plan = Plan(PlanToAsync("SELECT UPPER(JSON_QUERY(c.\"DOC\", '$.o')) AS \"a\" FROM products AS c"));
+            var best = PlanToAsync("SELECT UPPER(JSON_QUERY(c.\"DOC\", '$.o')) AS \"a\" FROM products AS c");
+            var plan = Plan(best);
 
-            plan.Should().Contain("ClrEnumerableProject", "the text is the engine's to produce: " + plan);
-            plan.Should().NotContain("CosmosProject", "and nothing of it is rendered: " + plan);
+            plan.Should().Contain("ClrEnumerableProject(a=[UPPER(", "the text operator stays with the engine: " + plan);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("IS_OBJECT(c.o) OR IS_ARRAY(c.o)", "and the accessor goes down as its own column: " + sql);
+            sql.Should().NotContain("UPPER", "which is not the same as rendering it in place: " + sql);
         }
 
         [TestMethod]

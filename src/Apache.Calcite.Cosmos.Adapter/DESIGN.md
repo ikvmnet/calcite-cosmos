@@ -1409,6 +1409,54 @@ Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has
 semantics over a property that may be *undefined* needs a Cosmos behaviour that has not been
 measured, and a wrong answer is worse than a refused pushdown.
 
+#### Splitting inside an expression, not only between them
+
+`CosmosProjectSplitRule` partitioned a projection by whole expressions: each one either rendered or it
+did not, and what did not was computed above with whatever inputs it read projected beside it. It
+never looked *inside* one. So `CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE)` was residual
+whole — the cast converts where the service would not — and what the residual needed was `DOC`, so an
+entire document crossed the wire to supply one scalar the service was willing to extract.
+
+It now walks the residual for the **maximal** sub-expressions that translate, projects each as a column
+of its own, and rewrites the residual to read them:
+
+```
+SELECT CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE) AS x, JSON_QUERY(DOC, '$.tags' RETURNING VARCHAR ARRAY) AS a
+
+  before   SELECT VALUE { "$f0": (IS_ARRAY(c.tags) ? c.tags : null), "": c }
+  after    SELECT VALUE { "$f0": (IS_ARRAY(c.tags) ? c.tags : null), "$f1": (IS_PRIMITIVE(c.n) ? c.n : null) }
+```
+
+**Maximal is the whole of the discipline.** The walk is top-down and the first node that renders is
+taken whole rather than descended past, because a deeper split would push `c.n` and compute above it an
+accessor the service had already answered.
+
+**What the residual still reads comes from the same walk, and that is what saves the bytes rather than
+merely moving the work.** An input reached *inside* a pushed fragment is not needed above — the column
+supplies it — so the walk records an input only where it reaches one outside every fragment.
+Collecting them from the original expression instead would project `DOC` beside the scalar extracted
+from it, which is the shape the rule used to produce.
+
+**A bare reference and a literal are never fragments.** The reference is already available to the outer
+projection and the literal costs nothing to compute there, so pushing either buys a column and no work.
+That is also what keeps the rule from matching its own output: the projection it produces is references
+beside residuals, and neither half offers anything new to push.
+
+**A fragment is a column, so it is read as a column** — which is what makes a reading that renders
+safe rather than a trap. A plain `JSON_QUERY` cannot be rendered *in place* inside an expression,
+because its value is the fragment as text and the text is produced by the reading rather than by the
+service. Lifted out, the reading exists: `UPPER(JSON_QUERY(DOC, '$.o'))` sends the guarded accessor
+down as its own column, the compact JSON arrives as Calcite would have computed it, and `UPPER` runs
+above over exactly that. The split does not weaken that refusal; it supplies the one thing the refusal
+said was missing.
+
+**Two things fell out of it that are worth recording.** A residual cast no longer pins the document, so
+a projected cast over a path now costs the scalar rather than the row — the case #125 restored
+correctness for and left the bytes of. And because the pushed half is now a `CosmosProject` binding a
+path, a sort above it has something to name: the temporal cast whose sort `TODO.md` recorded as
+"blocked before the sort" pushes as `ORDER BY c.at ASC` where the container declares the shape, and
+stays in process where it does not.
+
 #### An accessor keeps its guard wherever it is written
 
 **The guard was dropped merely by nesting, and the bare accessor kept it the whole time — which is
@@ -1512,6 +1560,16 @@ document the predicate matched.
 `CoreRules.SORT_PROJECT_TRANSPOSE` is registered for this, alongside the other Calcite rewrites the
 rule set carries because a bare Volcano planner has none. Transposed, the sort and its limit sit under
 the projection and push; the cast runs over the rows that come back.
+
+**This section used to say the transpose declines unless every sort key is a plain reference, and that
+it is that condition which makes the transpose sound.** Measured, the first half is right and the
+second is not the whole story. `SELECT CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE)
+ORDER BY 1` keeps its sort in process — the key is a cast and the transpose declines — but the same
+shape over a path a container has *declared* a fixed ISO-8601 instant does transpose, and the sort
+renders as `ORDER BY c.at ASC`. The declaration is the second route: it says the lexical order of the
+stored text is the temporal order, which is exactly the claim a sort through that cast needs. So a
+cast key is refused for want of a licence rather than by kind, and a declaration is a licence. The two
+plans are pinned side by side in `CosmosDeclaredFactPlanningTests`.
 
 ```
 ClrEnumerableProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
