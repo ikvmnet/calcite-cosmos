@@ -371,10 +371,14 @@ accessor, which is the spelling every typed caller writes and which had been pus
 did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
 proof, and a sort still has no weakening to fall back on if one is found.
 
-Two things the measurement settled that are worth keeping. `UNNEST` needs
-`JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
-spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest
-source. And the accepted path grammar is `$` followed by `.name`, `['name']` and `[0]` steps: a
+Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
+which is what names an array type — **and either accessor may carry it.** This entry used to say
+`JSON_QUERY` is `VARCHAR(2000)` whatever it is asked for and can never be an unnest source; that was
+wrong, and wrong about the accessor that actually works. A wrapper clause leaves it `VARCHAR`, but a
+`RETURNING` does not, and measured, `JSON_QUERY(…, '$.v' RETURNING VARCHAR ARRAY)` answers
+`string[2]{a,b}` where `JSON_VALUE`'s answers null. Pushed down the two are indistinguishable — every
+spelling renders `JOIN t0 IN c.tags`, the adapter reading the path rather than the function — so the
+correction costs nothing here and matters entirely to a plan that does not push. And the accepted path grammar is `$` followed by `.name`, `['name']` and `[0]` steps: a
 wildcard, a descent or a filter is refused rather than approximated, and the path argument must be a
 literal for the reason the full text functions' first argument must be.
 

@@ -1919,8 +1919,33 @@ The path argument must be a literal, and the grammar is `$` with `.name`, `['nam
 a wildcard, a descent or a filter has no Cosmos rendering and is refused. `RETURNING` is not rendered:
 it told the plan what the service will return, and a clause that disagrees with the document fails in
 materialisation rather than answering wrongly, which is what makes it worth trusting. `UNNEST` wants
-`RETURNING <type> ARRAY`; `JSON_QUERY` is `VARCHAR` even `WITH ARRAY WRAPPER` and is never an unnest
-source.
+`RETURNING <type> ARRAY`, and **either accessor may carry it** — this used to say `JSON_QUERY` is
+`VARCHAR` whatever it is asked for and can never be an unnest source, which is wrong twice. A wrapper
+clause does not change its type, but a `RETURNING` does, and measured, `JSON_QUERY` is the accessor
+whose array `RETURNING` actually produces an array:
+
+```
+JSON_QUERY(doc, '$.v' RETURNING VARCHAR ARRAY)          ->  string[2]{a,b}
+JSON_VALUE(doc, '$.v' RETURNING VARCHAR ARRAY)          ->  null
+UNNEST(JSON_QUERY(doc, '$.v' RETURNING VARCHAR ARRAY))  ->  two rows
+```
+
+So the spelling recorded here as the one a traversal needs is the one that answers null in process,
+and the one dismissed is the one that works. Pushed down it makes no difference — all three
+spellings, including `StringToArray(JSON_QUERY(…))`, render the same `JOIN t0 IN c.tags`, because
+what the adapter reads is the path and not the function. It makes every difference to a plan that
+does *not* push: `JSON_QUERY` evaluates correctly in process and `JSON_VALUE` answers null, which is
+the defect behind the array column returning nothing when a projection is lifted (#125,
+ikvmnet/calcite-dotnet#152).
+
+**Element nullability is the type's, and there is no syntax to say otherwise.** `RETURNING INTEGER
+ARRAY` reads back as `int?[]`: nullability in SQL is a constraint rather than part of a data type, the
+`RETURNING` clause names a type, and measured, `INTEGER NOT NULL ARRAY` and `INTEGER ARRAY NOT NULL`
+are both parse errors. Calcite forces the array *and* its elements nullable deliberately —
+[CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208) — because non-null elements let a
+`WHERE c IS NOT NULL` over an unnested array be optimised away and rows be lost. `CosmosJson.GetList`
+reads each element as the declared component type and carries a JSON null through as a null entry,
+which is the same reading.
 
 That is also what Calcite does with it in process, and it is worth knowing how literally. Measured
 against Calcite's runtime, `RETURNING` a type other than text performs no conversion at all: the

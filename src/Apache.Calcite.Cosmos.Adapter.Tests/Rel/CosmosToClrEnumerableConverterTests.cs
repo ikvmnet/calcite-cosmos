@@ -547,6 +547,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 "an array column takes the array guard, not the fragment's");
         }
 
+        /// <summary>
+        /// A null element is carried rather than dropped or refused, because the element type is
+        /// nullable and there is no way to say otherwise.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Nullability is not part of the type, so <c>RETURNING INTEGER ARRAY</c> means nullable
+        /// elements.</b> In SQL it is a constraint rather than a component of a data type, the
+        /// <c>RETURNING</c> clause names a type, and there is no syntax to narrow it — measured,
+        /// <c>INTEGER NOT NULL ARRAY</c> and <c>INTEGER ARRAY NOT NULL</c> are both parse errors. The
+        /// column reads back as <c>int?[]</c> for that reason, and <c>int[]</c> could not represent
+        /// what the type describes.
+        /// </para>
+        /// <para>
+        /// Calcite forces the array and its elements nullable deliberately —
+        /// <see href="https://issues.apache.org/jira/browse/CALCITE-6208">CALCITE-6208</see> — because
+        /// non-null elements let a <c>WHERE c IS NOT NULL</c> over an unnested array be optimised away
+        /// and rows be lost. So carrying the null through is the reading that agrees with the engine,
+        /// and dropping it or refusing it would not.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldCarryANullArrayElement()
+        {
+            Given("""{ "q": [1, null, 2] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"q\" FROM products AS c"));
+
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(3, "the null is an element and not an absence");
+            list.get(0).Should().Be(java.lang.Integer.valueOf(1));
+            list.get(1).Should().BeNull("and it survives as a null entry");
+            list.get(2).Should().Be(java.lang.Integer.valueOf(2));
+        }
+
         /// <remarks>
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.
