@@ -1117,7 +1117,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static bool IsCollectionJsonValue(RexNode node)
         {
-            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+            if (node is not RexCall call)
+                return false;
+
+            // Either accessor: a RETURNING that names an array type means the array at the path, and
+            // which function was written decides what happens to a value that is not one rather than
+            // what happens to one that is. Measured, JSON_QUERY with an array RETURNING is the
+            // spelling that actually produces one in process, where JSON_VALUE's answers null.
+            if (call.getOperator().getName() != "JSON_VALUE" && IsPlainJsonQuery(call) == false)
                 return false;
 
             var name = call.getType()?.getSqlTypeName();
@@ -1562,7 +1569,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             expression = null;
 
-            if (IsPlainJsonQuery(node) == false)
+            // The text-typed form only. A RETURNING that names an array type is a collection column
+            // and is rendered as one by TryJsonArrayProjection, which runs first -- reading it as a
+            // fragment would hand a string to a column the plan typed an array.
+            if (IsPlainJsonQuery(node) == false || IsCharacter(node) == false)
                 return false;
 
             var call = (RexCall)node;
