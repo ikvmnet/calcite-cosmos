@@ -956,6 +956,32 @@ path happens to be nullable — see the geography items in section 4, and
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
+### A row's width is a column count — *medium, and the cost model rests on it*
+
+`CosmosToClrEnumerableConverter` is the wire, and since #125 it costs rows times the width it
+carries rather than rows alone — which is what lets a partial projection win, a pushed projection
+having no measurable benefit before it. Width is `getRowType().getFieldCount()`.
+
+**A count is the wrong unit and the remarks on the node say so.** The `DOC` column carries an entire
+item where a projected scalar carries a value, so a statement returning the document and a scalar
+scores two and one returning five scalars scores five — and in bytes the first is far the larger.
+Every decision it makes *here* still comes out right, because pushing a projection only ever removes
+columns and never trades one kind for another; what is wrong is the magnitude, and the day something
+asks it to compare two plans that differ in **which** columns rather than how many, it will answer
+badly.
+
+**`getAverageRowSize` is the metadata for this and it does not answer.** It was tried first: measured
+over these plans it returns `null` at every node — scan, projection and converter alike — so nothing
+was scaled by it and the count was doing all the work. Scaling by a value that is always null
+documents a mechanism that never runs, which is why the call is not there.
+
+What would fix it is a `RelMdSize` handler registered for the Cosmos nodes, answering
+`averageRowSize` and `averageColumnSizes` from what the adapter knows that Calcite cannot infer: the
+document column is an item and the rest are values, and `CosmosContainerStatistics` already carries a
+measured document size for the container. That is a metadata provider rather than a patch to the
+converter, and it would also feed every other cost decision that currently sees rows and nothing
+else.
+
 ### Recorded decisions worth revisiting
 
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,

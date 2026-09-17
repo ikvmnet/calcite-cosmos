@@ -113,6 +113,12 @@ namespace Apache.Calcite.Cosmos.Adapter
             // clause — and whose middle node, a projected score, is a statement the service rejects.
             yield return CosmosRankRule.Create(convention);
             yield return CosmosProjectRule.Create(convention);
+
+            // The partial counterpart of the rule above, for the same reason the filter has one: a
+            // projection mixing renderable columns with one that is not pushed none of them, so a
+            // constant timestamp beside a document column shipped every document whole (#125).
+            yield return CosmosProjectSplitRule.Create(convention);
+
             yield return CosmosSortRule.Create(convention);
 
             // Calcite's own transpose, registered for the same reason as the rewrites above: a bare

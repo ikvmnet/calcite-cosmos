@@ -499,11 +499,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// And it is the declaration doing it: the same query over a container that says nothing about
-        /// the identifier keeps the cast, and with it the sort, in process.
+        /// And it is the declaration doing it — but what it buys is narrower than it was. Without one
+        /// the cast still cannot render, so the document is shipped for it; the sort and the page go
+        /// to the service regardless, because the projection now splits around the cast.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This test asserted the opposite until the projection could split</b>, and the change is
+        /// an improvement rather than a drift. The sort used to be held above a projection that did
+        /// not convert, so the container was read whole and sorted in memory;
+        /// <see cref="Rel.Convert.CosmosProjectSplitRule"/> pushes the half that renders — the name,
+        /// which is what the sort is on — and the sort rides down with it (#125).
+        /// </para>
+        /// <para>
+        /// So what the declaration is worth is no longer the sort. It is the <em>width</em>: declared,
+        /// the cast renders as its guarded path and nothing else crosses the wire; undeclared, the
+        /// residual cast is computed in process and needs the document, so <c>DOC</c> is projected
+        /// beside the name. Twenty documents against the whole container is the difference the split
+        /// already made; the declaration turns twenty documents into twenty pairs of scalars.
+        /// </para>
+        /// </remarks>
         [TestMethod]
-        public void WithoutTheDeclarationTheProjectedCastStillHoldsTheSortBack()
+        public void WithoutTheDeclarationTheProjectedCastShipsTheDocumentButNotTheSort()
         {
             const string Sql = """
             SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id", JSON_VALUE(c."DOC", '$.name') AS "Name"
@@ -512,12 +529,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var declared = Container(CatalogWithoutTheIdentifier);
             var best = PlanToCosmos(Sql, declared, out _);
+            var sql = Query(FindCosmos(best), declared).Sql;
 
-            Query(FindCosmos(best), declared).Sql.Should().NotContain("ORDER BY",
-                "nothing says what the stored text is, so the cast has no form to render as");
+            sql.Should().NotContain("c.ref",
+                "nothing says what the stored text is, so the cast still has no form to render as: " + sql);
 
-            PlanText(best).Should().Contain("ClrEnumerableSort",
-                "and the sort stays above the projection that did not convert: " + PlanText(best));
+            sql.Should().Contain("ORDER BY c.name",
+                "but the half the sort is on does render, and the split sends it: " + sql);
+
+            sql.Should().Contain("\": c }",
+                "with the document beside it, which is what the residual cast needs and what declaring "
+                + "the identifier would save: " + sql);
+
+            PlanText(best).Should().NotContain("ClrEnumerableSort",
+                "and nothing sorts the container in memory any more: " + PlanText(best));
         }
 
         /// <summary>
