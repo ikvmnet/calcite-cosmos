@@ -1617,6 +1617,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// spelling of the same column agreed with the engine and the other did not.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// A <c>COALESCE</c> over an accessor pushes, and used to take the whole projection in process
+        /// with it (#130).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Nothing about <c>COALESCE</c> was unrenderable.</b> The validator expands
+        /// <c>COALESCE(x, y)</c> to <c>CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y)</c> before a
+        /// <c>RexCall</c> exists, and measured, every piece of that already pushed on its own — a
+        /// <c>CASE</c>, an <c>IS NOT NULL</c>, the accessor. What did not was the cast, which converts
+        /// nothing: Calcite writes it to assert what the null test just proved. One refused node fails
+        /// the whole expression, so the projection lifted and the entire document crossed the wire to
+        /// supply one column.
+        /// </para>
+        /// <para>
+        /// <b>The guard is written three times, and that is the shape rather than a mistake.</b> The
+        /// accessor appears three times in the expansion — in the test, in the asserted branch and
+        /// nowhere else — and each occurrence carries the guard #131 gave it. Read through:
+        /// an absent path makes <c>IS_PRIMITIVE</c> undefined, so the ternary is undefined and
+        /// <c>IS_DEFINED</c> is false; an object makes it null, which <c>IS_NULL</c> catches; a scalar
+        /// passes. All three take the fallback exactly where Calcite's <c>JSON_VALUE</c> answers null.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ACoalesceOverAnAccessorPushes()
+        {
+            Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null)) AND NOT IS_NULL((IS_PRIMITIVE(c.a) ? c.a : null))) ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) } FROM products c");
+        }
+
+        /// <summary>
+        /// The same over array columns, which is the shape #130 was reported from.
+        /// </summary>
+        /// <remarks>
+        /// The reporter models an array column that reads as an empty collection where the document
+        /// has none. Both operands here address a path, so both render; a fallback that is a
+        /// <em>constant</em> — their <c>JSON_QUERY('[]', '$')</c> — addresses none and is a separate
+        /// question, which <c>TODO.md</c> carries.
+        /// </remarks>
+        [TestMethod]
+        public void ACoalesceOverArrayAccessorsPushes()
+        {
+            Render(PlanToCosmos("SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : (IS_ARRAY(c.other) ? c.other : null)) } FROM products c");
+        }
+
+        /// <summary>
+        /// A scalar <c>RETURNING</c> carries no guard into the coalesce, as it carries none alone.
+        /// </summary>
+        /// <remarks>
+        /// The bare path is what a declared scalar renders as — see
+        /// <see cref="AScalarReturningAccessorIsRenderedAsTheBarePath"/> — and the reason is the same nested: a document
+        /// whose value is the wrong shape fails the read either way, and the plan declared the type.
+        /// Worth pinning beside the two guarded forms so the difference is deliberate rather than
+        /// discovered.
+        /// </remarks>
+        [TestMethod]
+        public void ACoalesceOverAScalarReturningIsTheBarePath()
+        {
+            Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n)) ? c.n : @p0) } FROM products c");
+        }
+
         [TestMethod]
         public void ANestedAccessorCarriesItsGuard()
         {

@@ -2121,6 +2121,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // A cast that differs from its operand only in nullability converts nothing, and refusing it
+            // cost every COALESCE its pushdown (#130). The validator expands COALESCE(x, y) to
+            // CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y) before a RexCall exists: the accessor, the
+            // null test and the CASE all render, and that one cast -- Calcite asserting what the guard
+            // already proved -- failed the whole expression, so the projection lifted and DOC crossed
+            // the wire. Nothing about COALESCE or about arrays was involved; a scalar one with a string
+            // literal fallback de-pushed identically.
+            //
+            // Narrow on purpose, in two ways that a test caught rather than the reasoning did. A cast
+            // that changes the type family, the precision or the scale is still a conversion and is
+            // still refused -- the service would not perform it, which is what the refusal is for. And
+            // the direction matters: this is a *nullable operand cast to a non-nullable target*, not
+            // any cast whose types match. A cast between two identical types is a marker rather than a
+            // conversion -- WriteComparand reads one to decide what an equality is comparing, and
+            // CosmosFilterSplitRule writes one to say the comparison is against the raw value -- so
+            // stripping those would quietly push equalities the filter side declines on purpose. See
+            // CosmosRexTranslatorTests.EqualityThroughACastOverATypedColumnKeepsTheCast and
+            // CosmosCastTests.ACastToAnExactTypeIsDeclined, both of which failed to the broader test.
+            if (call.getOperands().size() == 1
+                && call.getType()?.isNullable() == false
+                && Operand(call, 0).getType()?.isNullable() == true
+                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType()))
+            {
+                Write(builder, Operand(call, 0));
+                return;
+            }
+
             if (call.getOperands().size() != 1 || Operand(call, 0) is not RexLiteral literal)
                 throw new CosmosTranslationException("A cast of anything but a literal has no Cosmos equivalent.");
 
