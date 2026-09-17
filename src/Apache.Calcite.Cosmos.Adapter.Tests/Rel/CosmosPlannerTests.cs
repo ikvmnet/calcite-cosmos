@@ -1601,6 +1601,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// A residual that consumes an array reads the array as a pushed column.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>`TODO.md` said this could not work, and it was measured rather than taken on trust.</b>
+        /// The entry read: a residual that consumes an array evaluates in process, where Calcite
+        /// cannot produce one — the correctness half of #125, left standing where the bytes half was
+        /// closed. It was written while the adapter pushed <c>JSON_VALUE(… RETURNING … ARRAY)</c>,
+        /// whose in-process answer is null, so lifting a projection into process emptied the column.
+        /// </para>
+        /// <para>
+        /// Two things since have removed it. <c>JSON_QUERY</c>'s array <c>RETURNING</c> does produce an
+        /// array in process — measured against Calcite's own runtime — so the fragment goes down as a
+        /// real array column and the residual reads a <see cref="java.util.List"/>. And
+        /// <c>JSON_VALUE</c>'s is refused in every clause, so the spelling the sentence was about is
+        /// not pushed at all, and its null is the engine's own answer rather than a divergence this
+        /// introduced.
+        /// </para>
+        /// <para>
+        /// <c>ITEM</c> is the operator here because it has no Cosmos form over an array, which is what
+        /// makes the expression residual; <c>CARDINALITY</c> would not do, rendering whole as
+        /// <c>ARRAY_LENGTH</c>. What the column is read <em>as</em> is pinned end to end by
+        /// <c>CosmosToClrEnumerableConverterTests.ShouldReadAnArrayReturningJsonQueryAsTheArray</c>;
+        /// running the residual over it is not available offline — see
+        /// <see href="https://github.com/ikvmnet/calcite-dotnet/issues/155">calcite-dotnet#155</see>.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void AResidualConsumingAnArrayReadsThePushedColumn()
+        {
+            var best = PlanToAsync(
+                "SELECT (JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY))[1] AS \"n\" FROM products AS c");
+
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrEnumerableProject(n=[ITEM($0, 1)])",
+                "the operator has no Cosmos form, so it stays: " + plan);
+
+            Render(FindCosmos(best))
+                .Should().Be("SELECT VALUE { \"$f0\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM products c");
+        }
+
+        /// <summary>
         /// A projection every part of which renders is not split.
         /// </summary>
         /// <remarks>

@@ -976,10 +976,26 @@ cannot be rendered in place inside an expression, because its value is text the 
 the service cannot, but lifted out into a column there is a reading to produce it. The split supplies
 what the refusal said was missing rather than working around it.
 
-**What it still does not do** is the correctness half of #125: a residual that *consumes* an array
-evaluates in process, where Calcite cannot produce one. And a fragment is only ever as good as the
-translator — an operator with no Cosmos form over operands that also have none pushes nothing, as
-before.
+**The correctness half of #125 is closed too, and this entry said otherwise until it was measured.**
+It read: a residual that *consumes* an array still evaluates in process, where Calcite cannot produce
+one. That was written while the adapter pushed `JSON_VALUE(… RETURNING … ARRAY)`, whose in-process
+answer is null — so lifting a projection emptied the column. Two things since have removed it.
+`JSON_QUERY`'s array `RETURNING` does produce an array in process, so a residual over one reads a real
+list; and `JSON_VALUE`'s is now refused in every clause, so the case the sentence was about is not
+pushed at all and its null is the engine's own answer rather than a divergence. Measured:
+
+```
+CARDINALITY(JSON_QUERY(DOC, '$.tags' RETURNING VARCHAR ARRAY))  ->  pushes whole, ARRAY_LENGTH(...)
+(JSON_QUERY(DOC, '$.tags' RETURNING VARCHAR ARRAY))[1]          ->  array pushed as a column, ITEM above
+CARDINALITY(JSON_VALUE(DOC, '$.tags' RETURNING VARCHAR ARRAY))  ->  nothing pushed, null in process
+```
+
+`AResidualConsumingAnArrayReadsThePushedColumn` holds the middle one.
+
+**What it still does not do**: a fragment is only ever as good as the translator — an operator with no
+Cosmos form over operands that also have none pushes nothing, as before. And executing a residual is
+not verified in this repo's offline harness, `ClrEnumerableProject` being unimplementable there —
+[ikvmnet/calcite-dotnet#155](https://github.com/ikvmnet/calcite-dotnet/issues/155).
 
 One thing fell out that was not asked for: because the pushed half is now a `CosmosProject` binding a
 path, a sort above it has something to name. The temporal cast this file recorded as blocked before the
