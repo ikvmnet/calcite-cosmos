@@ -121,14 +121,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         const string Here = """{"type":"Point","coordinates":[-122.33,47.61]}""";
 
         /// <summary>
-        /// <c>ST_GEOG_DISTANCE(c.location, &lt;a literal point&gt;)</c>, the one computed expression the
+        /// <c>CLR_ST_GEOG_DISTANCE(c.location, &lt;a literal point&gt;)</c>, the one computed expression the
         /// service will order by.
         /// </summary>
         RexNode Distance() => _rex.makeCall(
-            Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogDistance,
+            Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogDistance,
             Doc("location"),
             _rex.makeCall(
-                Apache.Calcite.Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson,
+                Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson,
                 _rex.makeLiteral(Here, _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR, Here.Length))));
 
         RexNode Str(string value) => _rex.makeLiteral(value, _cluster.getTypeFactory().createSqlType(SqlTypeName.VARCHAR, value.Length));

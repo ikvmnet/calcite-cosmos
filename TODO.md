@@ -526,7 +526,7 @@ is not offered, and one thing that cannot be fixed here at all.
   by a projection alias — and `CosmosSortRule` admits the sort when the projection beneath it is a
   geodesic distance.
 
-  Narrow on purpose. Only `ST_GEOG_DISTANCE` qualifies: the service accepts it in the clause and
+  Narrow on purpose. Only `CLR_ST_GEOG_DISTANCE` qualifies: the service accepts it in the clause and
   refuses `DateTimeToTicks` and `IIF` with 400, error 2206, so `CosmosProject` records that one
   expression and nothing else. And it is the whole collation or none — a second key beside it draws
   the same 2206 — which is narrower than the multi-key sort the composite-index path handles.
@@ -542,7 +542,7 @@ is not offered, and one thing that cannot be fixed here at all.
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
   where this adapter's own operators live. It answers with a document rather than a boolean, so what
   it is typed as wants deciding first.
-- **`ST_GEOG_X` and `ST_GEOG_Y` are not pushed** — *not available; recorded so nobody looks again.*
+- **`CLR_ST_GEOG_X` and `CLR_ST_GEOG_Y` are not pushed** — *not available; recorded so nobody looks again.*
   They look like `c.location.coordinates[0]` and `[1]` and are only that for a `Point`. Nothing
   declares a path's shape, and over a `Polygon` the service would return a ring array where the
   in-process answer throws — a wrong answer in place of an error, which is the trade this adapter
@@ -570,11 +570,11 @@ is not offered, and one thing that cannot be fixed here at all.
   answer on the ellipsoid, which is `Apache.Calcite.Geography`'s to change.
 
   What the same run settles is the boundary: the service's comparison is exact, `<=` matching at the
-  distance it reports and `<` not, so rendering `ST_GEOG_DWITHIN` as `<=` is right rather than an
+  distance it reports and `<` not, so rendering `CLR_ST_GEOG_DWITHIN` as `<=` is right rather than an
   inference from PostGIS.
 - **A mixed expression is not refused** — *not available; recorded so nobody looks again.* There is no
   `GEOGRAPHY` type — a geography and a geometry are the same type carried by the same class — so
-  `ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees, measures in metres, and both halves run.
+  `CLR_ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees, measures in metres, and both halves run.
   Nothing in this adapter can see the difference, and the type that would show it cannot exist while
   `SqlTypeName` is closed. See `DESIGN.md`.
 - **A geometry cannot be an `ORDER BY` key at the service** — *not available; recorded so nobody looks

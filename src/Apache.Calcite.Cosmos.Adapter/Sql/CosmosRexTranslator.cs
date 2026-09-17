@@ -1643,7 +1643,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return Translate(operand);
             }
 
-            // ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
+            // CLR_ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
             // GeoJSON, so parsing it into a geometry and writing it back out is a round trip the service
             // never asked for. What comes back is an object where the projection is declared VARCHAR, so
             // it is read as the JSON the service sent — the same reading the DOC column takes, and for
@@ -1962,7 +1962,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether a projection is <c>ST_GEOG_ASGEOJSON</c> over a stored geography.
+        /// Determines whether a projection is <c>CLR_ST_GEOG_ASGEOJSON</c> over a stored geography.
         /// </summary>
         /// <remarks>
         /// A projection only. In a predicate the same call is declined and evaluated in process, because
@@ -1974,7 +1974,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             path = null;
 
             return node is RexCall call
-                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.StGeogAsGeoJson.getName()
+                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.ClrStGeogAsGeoJson.getName()
                 && call.getOperands().size() == 1
                 && TryResolveGeography(Operand(call, 0), out path);
         }
@@ -2811,17 +2811,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // The geography operators, whose Cosmos spellings are the unprefixed ones. The prefix exists
             // because Calcite's own ST_* are planar and mean something else — see DESIGN.md — and it goes
             // away here because the service has only the one reading, which is the geodesic one.
-            [Geography.Sql.GeographyOperatorTable.StGeogDistance.getName()] = ("ST_DISTANCE", 2, 2),
-            [Geography.Sql.GeographyOperatorTable.StGeogWithin.getName()] = ("ST_WITHIN", 2, 2),
-            [Geography.Sql.GeographyOperatorTable.StGeogIntersects.getName()] = ("ST_INTERSECTS", 2, 2),
-            [Geography.Sql.GeographyOperatorTable.StGeogIsValid.getName()] = ("ST_ISVALID", 1, 1),
+            [Geography.Sql.GeographyOperatorTable.ClrStGeogDistance.getName()] = ("ST_DISTANCE", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.ClrStGeogWithin.getName()] = ("ST_WITHIN", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.ClrStGeogIntersects.getName()] = ("ST_INTERSECTS", 2, 2),
+            [Geography.Sql.GeographyOperatorTable.ClrStGeogIsValid.getName()] = ("ST_ISVALID", 1, 1),
         };
 
         /// <summary>
         /// Every name the geography package declares, whether or not this adapter translates it.
         /// </summary>
         /// <remarks>
-        /// Taken from the operator table rather than matched on the <c>ST_GEOG_</c> prefix, so that the
+        /// Taken from the operator table rather than matched on the <c>CLR_ST_GEOG_</c> prefix, so that the
         /// refusal over a planar container covers the whole surface the package offers — including the
         /// names translated in process, which would otherwise be pushed past the check by not being here.
         /// The operators cannot be compared by instance: a schema-registered function is rebuilt by
@@ -2854,13 +2854,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // Cosmos has no ST_DWITHIN and no constructor, so both are shapes rather than renames.
                 // Written as comparisons rather than switch labels because the names belong to the
                 // operators and a case label has to be a constant.
-                if (name == Geography.Sql.GeographyOperatorTable.StGeogDWithin.getName())
+                if (name == Geography.Sql.GeographyOperatorTable.ClrStGeogDWithin.getName())
                 {
                     WriteGeographyDWithin(builder, call);
                     return;
                 }
 
-                if (name == Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson.getName())
+                if (name == Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName())
                 {
                     WriteGeographyLiteral(builder, call);
                     return;
@@ -2868,7 +2868,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 // GeoJSON records the geometry type as a member of the shape, so over a stored geography
                 // this is a path rather than a function and no spatial machinery is involved.
-                if (name == Geography.Sql.GeographyOperatorTable.StGeogGeometryType.getName())
+                if (name == Geography.Sql.GeographyOperatorTable.ClrStGeogGeometryType.getName())
                 {
                     WriteGeographyType(builder, call);
                     return;
@@ -2932,7 +2932,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes <c>ST_GEOG_DWITHIN</c> as the comparison it is defined as.
+        /// Writes <c>CLR_ST_GEOG_DWITHIN</c> as the comparison it is defined as.
         /// </summary>
         /// <remarks>
         /// Cosmos has no <c>ST_DWITHIN</c>. It has <c>ST_DISTANCE</c>, and the reference documents a
@@ -2957,7 +2957,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes <c>ST_GEOG_GEOMETRYTYPE</c> as the GeoJSON member that already holds it.
+        /// Writes <c>CLR_ST_GEOG_GEOMETRYTYPE</c> as the GeoJSON member that already holds it.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -2988,14 +2988,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Resolves the document path a geography was read from, seeing through the constructor.
         /// </summary>
         /// <remarks>
-        /// A stored geography is written as <c>ST_GEOG_GEOMFROMGEOJSON</c> over the text a document path
+        /// A stored geography is written as <c>CLR_ST_GEOG_GEOMFROMGEOJSON</c> over the text a document path
         /// yields, because no column is typed as a geometry — so the path is one level down and the
         /// constructor has to be looked through rather than at.
         /// </remarks>
         bool TryResolveGeography(RexNode node, out CosmosPath? path)
         {
             if (node is RexCall call
-                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.StGeogGeomFromGeoJson.getName()
+                && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName()
                 && call.getOperands().size() == 1)
                 node = Operand(call, 0);
 
@@ -3003,7 +3003,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes <c>ST_GEOG_GEOMFROMGEOJSON</c> as the thing it names — a document path, or the object.
+        /// Writes <c>CLR_ST_GEOG_GEOMFROMGEOJSON</c> as the thing it names — a document path, or the object.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -3012,9 +3012,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// disappears in both cases and its argument is written where the call stood.
         /// </para>
         /// <para>
-        /// <b>The path case is what makes a stored geography reachable at all.</b> An <c>ST_GEOG_*</c>
+        /// <b>The path case is what makes a stored geography reachable at all.</b> An <c>CLR_ST_GEOG_*</c>
         /// operator takes a geometry and no column has that type, so a shape in a document reaches one
-        /// only by being parsed out of text — <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>.
+        /// only by being parsed out of text — <c>CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>.
         /// In process that is exactly what happens. Pushed down it is not: the service reads the property
         /// as the shape, so the text and the parsing are a round trip it never needed, and what it wants
         /// is the path.

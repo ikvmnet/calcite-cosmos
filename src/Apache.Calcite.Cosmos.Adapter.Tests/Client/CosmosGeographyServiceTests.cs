@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var distance = await Query(container, $"SELECT c.id, ST_DISTANCE(c.location, {Here}) AS d FROM c WHERE c.id = 'near'");
             distance.Should().ContainSingle().Which.Value<double>("d").Should().BeApproximately(1342, 50);
 
-            // What ST_GEOG_DWITHIN becomes, Cosmos having no ST_DWITHIN.
+            // What CLR_ST_GEOG_DWITHIN becomes, Cosmos having no ST_DWITHIN.
             (await Query(container, $"SELECT c.id FROM c WHERE ST_DISTANCE(c.location, {Here}) <= 50000")).Should().ContainSingle();
 
             (await Query(container, $"SELECT c.id FROM c WHERE ST_WITHIN(c.location, {Box})")).Should().ContainSingle();
@@ -186,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The geometry type is a member of the shape, spelled the way JTS spells it.
         /// </summary>
         /// <remarks>
-        /// Which is what lets <c>ST_GEOG_GEOMETRYTYPE</c> push as <c>c.location.type</c> rather than as a
+        /// Which is what lets <c>CLR_ST_GEOG_GEOMETRYTYPE</c> push as <c>c.location.type</c> rather than as a
         /// function the service does not have.
         /// </remarks>
         [TestMethod]

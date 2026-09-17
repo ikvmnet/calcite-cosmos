@@ -57,14 +57,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         RexNode Document() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 2);
 
-        RexNode Stored() => _rex.makeCall(GeographyOperatorTable.StGeogGeomFromGeoJson,
+        RexNode Stored() => _rex.makeCall(GeographyOperatorTable.ClrStGeogGeomFromGeoJson,
             _rex.makeCall(SqlStdOperatorTable.JSON_QUERY,
                 Document(),
                 _rex.makeLiteral("$.location", _types.createSqlType(SqlTypeName.VARCHAR, 11))));
 
         RexNode Num() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.DOUBLE), 1);
 
-        RexNode Literal() => _rex.makeCall(GeographyOperatorTable.StGeogGeomFromGeoJson, _rex.makeLiteral(Point, _types.createSqlType(SqlTypeName.VARCHAR, Point.Length)));
+        RexNode Literal() => _rex.makeCall(GeographyOperatorTable.ClrStGeogGeomFromGeoJson, _rex.makeLiteral(Point, _types.createSqlType(SqlTypeName.VARCHAR, Point.Length)));
 
         // ── Translation ───────────────────────────────────────────────────────────
 
@@ -74,10 +74,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void TheDirectOperatorsDropTheirPrefix()
         {
-            Translate(GeographyOperatorTable.StGeogDistance, Geo(), Literal()).Should().Be($"ST_DISTANCE(c.location, {Point})");
-            Translate(GeographyOperatorTable.StGeogWithin, Geo(), Literal()).Should().Be($"ST_WITHIN(c.location, {Point})");
-            Translate(GeographyOperatorTable.StGeogIntersects, Geo(), Literal()).Should().Be($"ST_INTERSECTS(c.location, {Point})");
-            Translate(GeographyOperatorTable.StGeogIsValid, Geo()).Should().Be("ST_ISVALID(c.location)");
+            Translate(GeographyOperatorTable.ClrStGeogDistance, Geo(), Literal()).Should().Be($"ST_DISTANCE(c.location, {Point})");
+            Translate(GeographyOperatorTable.ClrStGeogWithin, Geo(), Literal()).Should().Be($"ST_WITHIN(c.location, {Point})");
+            Translate(GeographyOperatorTable.ClrStGeogIntersects, Geo(), Literal()).Should().Be($"ST_INTERSECTS(c.location, {Point})");
+            Translate(GeographyOperatorTable.ClrStGeogIsValid, Geo()).Should().Be("ST_ISVALID(c.location)");
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void DWithinBecomesADistanceComparison()
         {
-            Translate(GeographyOperatorTable.StGeogDWithin, Geo(), Literal(), Num())
+            Translate(GeographyOperatorTable.ClrStGeogDWithin, Geo(), Literal(), Num())
                 .Should().Be($"ST_DISTANCE(c.location, {Point}) <= c.n");
         }
 
@@ -104,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AConstructorOverALiteralBecomesTheObject()
         {
-            Translate(GeographyOperatorTable.StGeogIsValid, Literal()).Should().Be($"ST_ISVALID({Point})");
+            Translate(GeographyOperatorTable.ClrStGeogIsValid, Literal()).Should().Be($"ST_ISVALID({Point})");
         }
 
         /// <summary>
@@ -119,8 +119,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void AConstructorOverAComputedStringIsDeclined()
         {
             var computed = _rex.makeCall(SqlStdOperatorTable.UPPER, _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1));
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogIsValid,
-                _rex.makeCall(GeographyOperatorTable.StGeogGeomFromGeoJson, computed));
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogIsValid,
+                _rex.makeCall(GeographyOperatorTable.ClrStGeogGeomFromGeoJson, computed));
 
             Translator().TryTranslate(call, out _).Should().BeFalse();
         }
@@ -138,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         public void APlanarContainerRefusesAGeodesicCall()
         {
             var planar = new CosmosContainerMetadata("products", readsGeography: false);
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogIsValid, Geo());
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogIsValid, Geo());
 
             Translator(planar).TryTranslate(call, out _).Should().BeFalse();
 
@@ -151,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A stored geography reaches the service as the path, not as parsed-out text.
         /// </summary>
         /// <remarks>
-        /// <c>ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c> is how a shape in a document
+        /// <c>CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c> is how a shape in a document
         /// reaches an operator at all — no column is typed as a geometry, so it has to be parsed out of
         /// text. In process that is what happens. Pushed down it is not: Cosmos reads the property itself
         /// as the shape, so the text and the parsing are a round trip it never needed.
@@ -159,9 +159,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AStoredGeographyPushesAsItsPath()
         {
-            Translate(GeographyOperatorTable.StGeogIsValid, Stored()).Should().Be("ST_ISVALID(c.location)");
+            Translate(GeographyOperatorTable.ClrStGeogIsValid, Stored()).Should().Be("ST_ISVALID(c.location)");
 
-            Translate(GeographyOperatorTable.StGeogDWithin, Stored(), Literal(), Num())
+            Translate(GeographyOperatorTable.ClrStGeogDWithin, Stored(), Literal(), Num())
                 .Should().Be($"ST_DISTANCE(c.location, {Point}) <= c.n");
         }
 
@@ -177,7 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void TheGeometryTypeIsAMemberOfTheShape()
         {
-            Translate(GeographyOperatorTable.StGeogGeometryType, Stored()).Should().Be("c.location.type");
+            Translate(GeographyOperatorTable.ClrStGeogGeometryType, Stored()).Should().Be("c.location.type");
         }
 
         /// <summary>
@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void AConstructedGeometryHasNoTypeMemberToRead()
         {
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogGeometryType, Literal());
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogGeometryType, Literal());
 
             Translator().TryTranslate(call, out _).Should().BeFalse();
         }
@@ -207,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void SerialisingAStoredGeographyIsTheProperty()
         {
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Stored());
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Stored());
 
             Translator().TranslateProjection(call, out var reading).Should().Be("c.location");
             reading.Should().Be(CosmosReading.Json);
@@ -219,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void SerialisingAConstructedGeographyIsDeclined()
         {
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Literal());
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Literal());
 
             Translator().TryTranslateProjection(call, out _, out _).Should().BeFalse();
         }
@@ -231,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [TestMethod]
         public void SerialisingIsAProjectionOnly()
         {
-            var call = _rex.makeCall(GeographyOperatorTable.StGeogAsGeoJson, Stored());
+            var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Stored());
 
             Translator().TryTranslate(call, out _).Should().BeFalse();
         }

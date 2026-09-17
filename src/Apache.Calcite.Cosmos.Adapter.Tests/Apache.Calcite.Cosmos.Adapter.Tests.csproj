@@ -14,13 +14,20 @@
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.11.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.167" />
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.167" />
+        <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.188" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.188" />
         <PackageReference Include="Testcontainers" Version="4.15.0" />
     </ItemGroup>
 
     <ItemGroup>
-        <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0" />
+        <MavenReference Include="org.apache.commons:commons-lang3" Version="3.18.0" />
+        <MavenReference Include="com.fasterxml.jackson.core:jackson-annotations" Version="2.22" />
+        <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0">
+            <Dependencies>
+                com.jayway.jsonpath:json-path/com.fasterxml.jackson.core:jackson-databind:2.22.2,optional=true;
+                com.jayway.jsonpath:json-path/com.fasterxml.jackson.core:jackson-core:2.22.2,optional=true
+            </Dependencies>
+        </MavenReference>
         <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.28.0" />
         <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.9" />
     </ItemGroup>

@@ -127,9 +127,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         const string Ordered = """
             SELECT c."id" FROM products AS c
-            ORDER BY ST_GEOG_DISTANCE(
-                ST_GEOG_GEOMFROMGEOJSON(CAST(c."DOC" AS VARCHAR)),
-                ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.33,47.61]}'))
+            ORDER BY CLR_ST_GEOG_DISTANCE(
+                CLR_ST_GEOG_GEOMFROMGEOJSON(CAST(c."DOC" AS VARCHAR)),
+                CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.33,47.61]}'))
             """;
 
         /// <summary>
