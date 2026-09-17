@@ -519,10 +519,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Both accessors take an array <c>RETURNING</c>, and it means the same thing on either.</b>
-        /// The fragment rendering is for the text-typed form alone: reading this one as text would
-        /// hand a string to a column the plan typed <c>String[]</c>, which is the cast failure the
-        /// guard was written to avoid one function earlier.
+        /// <b>The fragment rendering is for the text-typed form alone.</b> Reading this one as text
+        /// hands a string to a column the plan typed <c>String[]</c>, which is the cast failure the
+        /// guard was written to avoid one function earlier — and which #129 reports from the field
+        /// against 1.0.0-pre.212, the release #127 merged as.
         /// </para>
         /// <para>
         /// Worth a test of its own because the two tests are different questions —
@@ -545,6 +545,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             _executor.Executed!.Value.Sql.Should().Contain("IS_ARRAY(c.v)",
                 "an array column takes the array guard, not the fragment's");
+        }
+
+        /// <summary>
+        /// The same through a view, which is the spelling #129 was reported from.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The shape a typed caller actually writes.</b> A view gives the container a relational
+        /// row and an ORM reads the column off it, so the accessor is a projection inside a derived
+        /// table rather than the statement's own <c>SELECT</c> list. Calcite collapses the two
+        /// projections into one before anything here sees them, which is why the fix needs no separate
+        /// handling — but "needs none" is worth holding to a test rather than reasoning to, because
+        /// the report is against this spelling and not the flat one.
+        /// </para>
+        /// <para>
+        /// The reported failure is a materialiser reaching for a <see cref="java.util.List"/> and
+        /// finding a <c>String</c>, so the assertion is on the value's own type rather than on
+        /// whether it prints the same.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayReturningJsonQueryThroughAView()
+        {
+            Given("""{ "Cities": ["Bryson City","Gatlinburg","Cherokee"] }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT v.\"Cities\" FROM (SELECT JSON_QUERY(c.\"DOC\", '$.data.address.city' RETURNING VARCHAR ARRAY) AS \"Cities\" FROM products AS c) AS v"));
+
+            rows.Should().HaveCount(1);
+            rows[0].Should().BeAssignableTo<java.util.List>("a materialiser reads the column as a list, and a String is the regression");
+
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(3);
+            list.get(0).Should().Be("Bryson City");
+            list.get(2).Should().Be("Cherokee");
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_ARRAY(c.data.address.city)",
+                "the view's column is the accessor's own rendering, collapsed into one projection");
         }
 
         /// <summary>
