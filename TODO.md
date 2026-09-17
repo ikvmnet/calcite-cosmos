@@ -954,39 +954,38 @@ promoted `id` is not, so a distance-ordered query needs `LOW` in every case rath
 path happens to be nullable — see the geography items in section 4, and
 `CosmosDistanceSortPlanningTests`, which sets it for that reason.
 
-### Pushing part of an expression — *medium, and the split rule stops one level short*
+### Pushing part of an expression — *done*
 
-`CosmosProjectSplitRule` (#125) partitions a projection by whole expressions: each one either renders
-or it does not, and the ones that do not are computed above with whatever inputs they read projected
-beside them. What it never does is look *inside* one.
+`CosmosProjectSplitRule` partitioned a projection by whole expressions and never looked inside one, so
+`CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE)` was residual whole and what it needed was
+`DOC` — a document across the wire for one scalar the service was willing to extract. It now walks the
+residual for the maximal sub-expressions that translate, projects each as a column, and rewrites the
+residual to read them. `DESIGN.md` records it under *Splitting inside an expression, not only between
+them*.
 
-**A residual is usually mostly pushable.** `CAST(JSON_VALUE(DOC, '$.n' RETURNING VARCHAR) AS DOUBLE)`
-cannot render, because the cast converts where the service would not; the accessor inside it renders
-perfectly well. Today that whole expression is computed in process and `DOC` is projected for it, so
-an entire document crosses the wire to supply one scalar the service was willing to extract. The same
-holds for any operator with no Cosmos form over operands that have one — a temporal conversion, an
-unsupported function, an `IIF` the service will not take.
+The two things the entry said to get right were the ones that mattered. **Maximality** is the walk
+being top-down with the first success taken whole, so a split cannot push a path and then compute an
+accessor above it. And **what the residual still reads** is collected by that same walk rather than
+from the original expression, which is what saves the bytes: an input reached inside a fragment is
+supplied by the fragment, and sweeping the original would have projected `DOC` beside the scalar taken
+out of it.
 
-**Two neighbours are now done and this is what is left of them.** #130 asked for a `COALESCE` over
-accessors to push, and it does — the blocker was a nullability-only cast rather than anything about
-`COALESCE`, and an accessor over a literal document is now computed rather than addressed. Neither is
-this entry: both make a *whole* expression renderable, where this one is about an expression that
-stays partly unrenderable however many of its pieces work.
+The reading worry turned out to be the opposite of a trap. A fragment is a column, so it is read by the
+column's own rules — and that is precisely what makes a rendering reading *safe*: a plain `JSON_QUERY`
+cannot be rendered in place inside an expression, because its value is text the reading produces and
+the service cannot, but lifted out into a column there is a reading to produce it. The split supplies
+what the refusal said was missing rather than working around it.
 
-**What it would take.** Walk the residual and find the maximal sub-expressions that translate; project
-each as a column of its own in the pushed half; rewrite the residual to read them as input
-references. The top-level split is that algorithm with the walk stopping at depth zero, so the shape
-of the rule does not change — `TrySplit` returns ordinals now and would return a rewritten expression
-plus the columns it needs.
+**What it still does not do** is the correctness half of #125: a residual that *consumes* an array
+evaluates in process, where Calcite cannot produce one. And a fragment is only ever as good as the
+translator — an operator with no Cosmos form over operands that also have none pushes nothing, as
+before.
 
-Two things to get right. The sub-expressions must be *maximal*, or the split pushes `c.n` and computes
-a cast that could have been an accessor. And an operand pushed as a column is read back by its own
-rules, so a sub-expression whose reading is `Text` or `JsonText` arrives as a rendering rather than as
-the value, and the residual above must be rewritten against what actually arrives — the same trap
-`CosmosImplementor.RenderedExpressions` exists for, one level down.
-
-It subsumes the bytes half of #125 rather than the correctness half: a residual that *consumes* an
-array still evaluates in process, where Calcite cannot produce one.
+One thing fell out that was not asked for: because the pushed half is now a `CosmosProject` binding a
+path, a sort above it has something to name. The temporal cast this file recorded as blocked before the
+sort now pushes where the container declares the shape — and `DESIGN.md`'s account of when
+`SORT_PROJECT_TRANSPOSE` declines a cast key was corrected with it, a declaration being a licence the
+old wording did not allow for.
 
 ### Smaller rules
 

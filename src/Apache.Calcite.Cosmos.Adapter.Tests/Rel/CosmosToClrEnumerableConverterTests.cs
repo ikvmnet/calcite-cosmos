@@ -196,6 +196,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
+        /// The same, with the engine's own rules registered beside the adapter's.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="PlanToClr"/> registers only the Cosmos rules, which is enough while the whole
+        /// projection pushes: what is left above the converter is nothing at all. A split leaves a
+        /// residual projection there, and nothing in the adapter's set converts a <c>LogicalProject</c>
+        /// into the CLR convention — so the planner reports that it cannot produce the root rather
+        /// than choosing a worse plan, which is a statement about the harness and not about the plan.
+        /// A test whose subject <em>is</em> the residual registers what a host would.
+        /// </remarks>
+        RelNode PlanToClrWithHostRules(string sql)
+        {
+            var logical = PlanLogical(sql);
+            var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+
+            foreach (var rule in CosmosRules.GetRules(_table.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+                planner.addRule(rule);
+
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            planner.setRoot(planner.changeTraits(logical, desired));
+
+            return planner.findBestExp();
+        }
+
+        /// <summary>
         /// Compiles a planned tree and reads every row it produces.
         /// </summary>
         async Task<List<object>> Execute(RelNode rel)
@@ -512,6 +540,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             (await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.s') AS \"q\" FROM products AS c")))
                 .Should().Equal(new object[] { null! });
+        }
+
+        /// <summary>
+        /// A residual cast is planned over the column the split pushed for it, and executing that plan
+        /// is a question this harness cannot answer.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What is asserted is the shape and the statement</b>: the accessor is the service's to
+        /// answer, the cast is the engine's, and the document does not travel. The half that would
+        /// complete it — running the plan and reading 30.5 back out — is not available here, and the
+        /// reason is worth recording rather than leaving as a gap somebody rediscovers.
+        /// </para>
+        /// <para>
+        /// <b>No <c>ClrEnumerableProject</c> can be code-generated in this harness at all.</b> Measured,
+        /// <c>ClrEnumerableProject.Implement</c> raises a bare <c>UnsupportedOperationException</c>, and
+        /// it does so for the constant-residual shape #125 already ships as readily as for this one —
+        /// so it is a property of the harness or of the enumerable adapter, not of the split. Every
+        /// other test in this class executes a plan whose projection pushes <em>whole</em>, which is
+        /// why nothing here has met it before.
+        /// </para>
+        /// <para>
+        /// The fragment's own reading is covered: it is a column like any other, and the accessor
+        /// columns in this class are exactly that column read back. What is uncovered is a residual
+        /// consuming one, and the service-backed classes are where that runs.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ShouldPlanAResidualCastOverThePushedFragment()
+        {
+            var rel = PlanToClrWithHostRules(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\" FROM products AS c");
+
+            var plan = org.apache.calcite.plan.RelOptUtil.toString(rel);
+
+            plan.Should().Contain("ClrEnumerableProject(x=[CAST($0)", "the cast is the engine's: " + plan);
+            plan.Should().Contain("CosmosProject($f0=[JSON_VALUE($0, '$.n')])", "the accessor is the service's: " + plan);
         }
 
         /// <summary>

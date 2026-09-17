@@ -520,7 +520,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// </para>
         /// </remarks>
         [TestMethod]
-        public void WithoutTheDeclarationTheProjectedCastShipsTheDocumentButNotTheSort()
+        public void WithoutTheDeclarationTheCastStaysInProcessAndTheDocumentStaysHome()
         {
             const string Sql = """
             SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id", JSON_VALUE(c."DOC", '$.name') AS "Name"
@@ -531,18 +531,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var best = PlanToCosmos(Sql, declared, out _);
             var sql = Query(FindCosmos(best), declared).Sql;
 
-            sql.Should().NotContain("c.ref",
+            sql.Should().NotContain("\"Id\": c.ref",
                 "nothing says what the stored text is, so the cast still has no form to render as: " + sql);
 
-            sql.Should().Contain("ORDER BY c.name",
-                "but the half the sort is on does render, and the split sends it: " + sql);
+            sql.Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)",
+                "but the accessor inside it renders on its own merits, and goes down as a column: " + sql);
 
-            sql.Should().Contain("\": c }",
-                "with the document beside it, which is what the residual cast needs and what declaring "
-                + "the identifier would save: " + sql);
+            sql.Should().Contain("ORDER BY c.name",
+                "the half the sort is on renders too, and the split sends it: " + sql);
+
+            sql.Should().NotContain("\": c }",
+                "and the document no longer travels for the cast, which is what this test used to "
+                + "record as the price of not declaring: " + sql);
 
             PlanText(best).Should().NotContain("ClrEnumerableSort",
-                "and nothing sorts the container in memory any more: " + PlanText(best));
+                "nothing sorts the container in memory: " + PlanText(best));
         }
 
         /// <summary>
@@ -635,10 +638,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'B'""",
                 container, out _);
 
+            // The accessor goes down on its own merits, which needs no declaration at all -- guarded,
+            // as any accessor is. What must not go down is the *declared* rendering, the bare path
+            // standing for the stored spelling, and that is what the guard being present shows.
             Query(FindCosmos(best), container).Sql
-                .Should().NotContain("IS_PRIMITIVE(c.ref)", "the form is declared only of the documents the guard admits");
+                .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor")
+                .And.NotContain("\"Id\": c.ref", "and not as the form, which is declared only of the documents the guard admits");
 
-            PlanText(best).Should().Contain("ClrEnumerableProject(Id=[CAST(JSON_VALUE(",
+            PlanText(best).Should().Contain("ClrEnumerableProject(Id=[CAST($0)",
                 "so the cast is still computed in process: " + PlanText(best));
         }
 
@@ -909,6 +916,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <c>AFixedIsoShapeCarriesATemporalSort</c>.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// The control for it: without the declaration the same sort stays in process.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is what makes the pushed one a licence rather than an accident.</b> Ordering by the
+        /// stored text is ordering by the timestamp only where the text has a shape whose lexical order
+        /// is the temporal one, and the declaration is the only thing that says so. Undeclared, the
+        /// same query keeps a <c>ClrEnumerableSort</c> and the service is asked for no order at all.
+        /// </para>
+        /// <para>
+        /// Both plans push the accessor rather than the document, which is the part that does not
+        /// depend on the declaration — an accessor renders on its own merits. The declaration decides
+        /// only what may be <em>ordered</em> by.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void TheTemporalSortNeedsTheDeclaration()
+        {
+            const string Sql = """SELECT CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP) AS "at" FROM items AS c ORDER BY 1""";
+
+            var plain = Container(Catalog);
+            var best = PlanToCosmos(Sql, plain, out _);
+
+            PlanText(best).Should().Contain("ClrEnumerableSort",
+                "nothing licenses ordering by the stored text: " + PlanText(best));
+
+            var sql = Query(FindCosmos(best), plain).Sql;
+
+            sql.Should().NotContain("ORDER BY", "so the service is asked for no order: " + sql);
+            sql.Should().Contain("(IS_PRIMITIVE(c.at) ? c.at : null)",
+                "while the accessor goes down either way: " + sql);
+        }
+
         [TestMethod]
         public void TheTemporalCastSpellingIsBlockedBeforeTheSort()
         {
@@ -918,11 +959,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var best = PlanToCosmos(Sql, container, out _);
 
-            PlanText(best).Should().Contain("ClrEnumerableProject",
-                "the projection is what does not push, and the sort follows it out: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrEnumerableProject(at=[CAST($0)",
+                "the cast is still the engine's: " + PlanText(best));
 
-            Query(FindCosmos(best), container).Sql.Should().NotContain("ORDER BY",
-                "so there is no CosmosProject to record an ordering path on");
+            // And the sort now pushes, which is what the remarks above said would happen the moment the
+            // projection did. Measured against the same query on an undeclared container, where it
+            // stays a ClrEnumerableSort -- see TheTemporalSortNeedsTheDeclaration.
+            Query(FindCosmos(best), container).Sql.Should().Contain("ORDER BY c.at ASC",
+                "the declared shape is what licenses ordering by the stored text");
         }
 
         /// <summary>
