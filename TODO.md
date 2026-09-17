@@ -371,10 +371,14 @@ accessor, which is the spelling every typed caller writes and which had been pus
 did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
 proof, and a sort still has no weakening to fall back on if one is found.
 
-Two things the measurement settled that are worth keeping. `UNNEST` needs
-`JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY)` — `RETURNING` names array types, and that is the
-spelling; `JSON_QUERY` is `VARCHAR(2000)` even `WITH ARRAY WRAPPER` and can never be an unnest
-source. And the accepted path grammar is `$` followed by `.name`, `['name']` and `[0]` steps: a
+Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
+which is what names an array type — **and either accessor may carry it.** This entry used to say
+`JSON_QUERY` is `VARCHAR(2000)` whatever it is asked for and can never be an unnest source; that was
+wrong, and wrong about the accessor that actually works. A wrapper clause leaves it `VARCHAR`, but a
+`RETURNING` does not, and measured, `JSON_QUERY(…, '$.v' RETURNING VARCHAR ARRAY)` answers
+`string[2]{a,b}` where `JSON_VALUE`'s answers null. Pushed down the two are indistinguishable — every
+spelling renders `JOIN t0 IN c.tags`, the adapter reading the path rather than the function — so the
+correction costs nothing here and matters entirely to a plan that does not push. And the accepted path grammar is `$` followed by `.name`, `['name']` and `[0]` steps: a
 wildcard, a descent or a filter is refused rather than approximated, and the path argument must be a
 literal for the reason the full text functions' first argument must be.
 
@@ -383,10 +387,12 @@ Every `JSON_VALUE` was rendered as the bare accessor's guard, `IIF(IS_PRIMITIVE(
 read as text — whatever the `RETURNING` clause said. `IS_PRIMITIVE` is false of an array, so the
 array a traversal read elements out of was null as a column; and a scalar `RETURNING` carried the text
 reading into a column the plan had declared a number, which the row builder could not hand over at
-all. The guard and the reading now follow the accessor's declared type: `IS_ARRAY` and a
-`java.util.List` for an array type, the bare path and the declared type for every other, and
-`IS_PRIMITIVE` and text for the bare accessor it was written for. A collection is read to its element
-type as well, so `INTEGER ARRAY` holds `Integer` rather than the `Long` a schemaless read discovers.
+all. The guard and the reading now follow the accessor and its declared type: `IS_PRIMITIVE` and text
+for the bare accessor it was written for, the bare path and the declared type for a scalar
+`RETURNING`, and — on `JSON_QUERY` — `IS_ARRAY` and a `java.util.List` for an array one. An array
+`RETURNING` on `JSON_VALUE` is refused outright rather than rendered, which reverses what #119 first
+shipped; the paragraph below says why. A collection is read to its element type as well, so
+`INTEGER ARRAY` holds `Integer` rather than the `Long` a schemaless read discovers.
 `DESIGN.md` records it under *Projecting a cast to text*. **`JSON_QUERY`, the mirror, is handled too
 now** — it was wrong in the way this was and in the other direction besides: the bare path was sent
 and read as the declared `VARCHAR`, so the object or array the function exists to return was refused
@@ -394,17 +400,33 @@ by `CosmosJson.GetString` while a scalar came back as itself, where SQL/JSON say
 guarded by the complement of the scalar guard, `IS_OBJECT(p) OR IS_ARRAY(p)`, and reads as
 `CosmosReading.JsonText`.
 
-**And the column is the implementation of that construct, not a departure from it — worth saying
-because the engine disagrees.** Measured at `JsonFunctions.jsonValue` itself, with no plan, no code
-generation and no reader in the way, the extraction is scalar-only: an array `RETURNING` answers null
-over an array and throws over a scalar, while the validator admits the array type and `UNNEST`
-consumes it. Against what the construct means the pushed column is right in all five cases and the
-engine is wrong in two. The authority is Calcite's own extension rather than SQL:2016, which permits
-no array `RETURNING` at all — see [CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208),
-which tunes element nullability for exactly `unnest(json_value(col, '$.c' returning bigint array))`.
-**Nothing upstream is filed for the extraction itself**, and filing it is the owner's call; the fix
-that would converge on this adapter is repairing the runtime, while tightening the validator to refuse
-a non-scalar `RETURNING` would take the traversal with it.
+**And the array `RETURNING` on `JSON_VALUE` is refused rather than rendered — a reversal of what #119
+shipped, on the same measurement read differently.** Measured at `JsonFunctions.jsonValue` itself,
+with no plan, no code generation and no reader in the way, the extraction is scalar-only: an array
+`RETURNING` answers null over an array and throws over a scalar, while the validator admits the array
+type and `UNNEST` consumes it. #119 read those as defects and rendered the array at the service. What
+that missed is that SQL restricts the clause to a predefined scalar type and gives `JSON_QUERY` for
+structure, so there is no construct here to be faithful to — only a spelling Calcite accepts. Giving
+it a meaning invents one, and invents it *only here*, so a query moved off this adapter silently
+returns different rows; and under `ERROR ON ERROR` the engine raises, which a pushed column cannot
+reproduce at all, so rendering could only ever have been right for one of the two clauses. The column
+is left in process, where a caller gets null or the raised failure exactly as the engine gives them.
+[CALCITE-6208](https://issues.apache.org/jira/browse/CALCITE-6208) — which tunes element nullability
+for exactly `unnest(json_value(col, '$.c' returning bigint array))` — is the strongest case the other
+way, and `DESIGN.md` answers it: a JIRA touching an example is not a construct, and the measurement is
+against a release that already has that fix. **Nothing upstream is filed for the extraction itself**,
+and filing it is the owner's call.
+
+**The traversal goes with it, and that is what makes the refusal mean anything.** A first pass
+refused the column and left `UNNEST(JSON_VALUE(…, '$.tags' RETURNING VARCHAR ARRAY))` resolving to
+the path — measured, still `CosmosUnnest` over the scan — which moved the divergence rather than
+removing it: in process the null array unnests to *no rows*, which
+`CalciteJsonValueArrayMeasurementTests` pins, so the adapter answered rows the engine does not. The
+refusal therefore lives in `IsJsonAccessor`, the one gate a projection, a filter, a partition key and
+a traversal all pass through, and the spelling addresses no path in any clause. The cost is named
+rather than hidden: a caller who wrote it and got rows now gets none, because that is what the
+statement means. `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))` agrees pushed and in process and is
+where such a caller should be pointed.
 
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
 `JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the

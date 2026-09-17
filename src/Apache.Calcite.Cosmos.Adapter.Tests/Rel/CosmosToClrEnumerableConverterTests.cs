@@ -384,7 +384,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": ["a", "b"] }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
 
             rows.Should().HaveCount(1);
             rows[0].Should().BeAssignableTo<java.util.List>();
@@ -405,7 +405,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c"));
 
             rows.Should().Equal(new object[] { null! });
         }
@@ -424,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": [1, 2] }""");
 
-            var rows = await Execute(PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING INTEGER ARRAY) AS \"T\" FROM products AS c"));
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING INTEGER ARRAY) AS \"T\" FROM products AS c"));
 
             var list = (java.util.List)rows[0];
             list.get(0).Should().Be(java.lang.Integer.valueOf(1));
@@ -441,7 +441,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             Given("""{ "T": [1, 2] }""");
 
-            var plan = PlanToClr("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c");
+            var plan = PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"T\" FROM products AS c");
 
             var act = async () => await Execute(plan);
             (await act.Should().ThrowAsync<CosmosMaterializationException>()).WithMessage("*Expected a JSON string*");
@@ -512,6 +512,112 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             (await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.s') AS \"q\" FROM products AS c")))
                 .Should().Equal(new object[] { null! });
+        }
+
+        /// <summary>
+        /// An array <c>RETURNING</c> on <c>JSON_QUERY</c> is a collection column, not a fragment.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The fragment rendering is for the text-typed form alone.</b> Reading this one as text
+        /// hands a string to a column the plan typed <c>String[]</c>, which is the cast failure the
+        /// guard was written to avoid one function earlier — and which #129 reports from the field
+        /// against 1.0.0-pre.212, the release #127 merged as.
+        /// </para>
+        /// <para>
+        /// Worth a test of its own because the two tests are different questions —
+        /// <c>IsPlainJsonQuery</c> asks what the clauses say and the collection test asks what the
+        /// call is typed, and matching on the first alone is what let this through.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayReturningJsonQueryAsTheArray()
+        {
+            Given("""{ "q": ["a","b"] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.v' RETURNING VARCHAR ARRAY) AS \"q\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(2);
+            list.get(0).Should().Be("a");
+            list.get(1).Should().Be("b");
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_ARRAY(c.v)",
+                "an array column takes the array guard, not the fragment's");
+        }
+
+        /// <summary>
+        /// The same through a view, which is the spelling #129 was reported from.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The shape a typed caller actually writes.</b> A view gives the container a relational
+        /// row and an ORM reads the column off it, so the accessor is a projection inside a derived
+        /// table rather than the statement's own <c>SELECT</c> list. Calcite collapses the two
+        /// projections into one before anything here sees them, which is why the fix needs no separate
+        /// handling — but "needs none" is worth holding to a test rather than reasoning to, because
+        /// the report is against this spelling and not the flat one.
+        /// </para>
+        /// <para>
+        /// The reported failure is a materialiser reaching for a <see cref="java.util.List"/> and
+        /// finding a <c>String</c>, so the assertion is on the value's own type rather than on
+        /// whether it prints the same.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldReadAnArrayReturningJsonQueryThroughAView()
+        {
+            Given("""{ "Cities": ["Bryson City","Gatlinburg","Cherokee"] }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT v.\"Cities\" FROM (SELECT JSON_QUERY(c.\"DOC\", '$.data.address.city' RETURNING VARCHAR ARRAY) AS \"Cities\" FROM products AS c) AS v"));
+
+            rows.Should().HaveCount(1);
+            rows[0].Should().BeAssignableTo<java.util.List>("a materialiser reads the column as a list, and a String is the regression");
+
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(3);
+            list.get(0).Should().Be("Bryson City");
+            list.get(2).Should().Be("Cherokee");
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_ARRAY(c.data.address.city)",
+                "the view's column is the accessor's own rendering, collapsed into one projection");
+        }
+
+        /// <summary>
+        /// A null element is carried rather than dropped or refused, because the element type is
+        /// nullable and there is no way to say otherwise.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Nullability is not part of the type, so <c>RETURNING INTEGER ARRAY</c> means nullable
+        /// elements.</b> In SQL it is a constraint rather than a component of a data type, the
+        /// <c>RETURNING</c> clause names a type, and there is no syntax to narrow it — measured,
+        /// <c>INTEGER NOT NULL ARRAY</c> and <c>INTEGER ARRAY NOT NULL</c> are both parse errors. The
+        /// column reads back as <c>int?[]</c> for that reason, and <c>int[]</c> could not represent
+        /// what the type describes.
+        /// </para>
+        /// <para>
+        /// Calcite forces the array and its elements nullable deliberately —
+        /// <see href="https://issues.apache.org/jira/browse/CALCITE-6208">CALCITE-6208</see> — because
+        /// non-null elements let a <c>WHERE c IS NOT NULL</c> over an unnested array be optimised away
+        /// and rows be lost. So carrying the null through is the reading that agrees with the engine,
+        /// and dropping it or refusing it would not.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public async Task ShouldCarryANullArrayElement()
+        {
+            Given("""{ "q": [1, null, 2] }""");
+
+            var rows = await Execute(PlanToClr("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"q\" FROM products AS c"));
+
+            var list = (java.util.List)rows[0];
+            list.size().Should().Be(3, "the null is an element and not an absence");
+            list.get(0).Should().Be(java.lang.Integer.valueOf(1));
+            list.get(1).Should().BeNull("and it survives as a null entry");
+            list.get(2).Should().Be(java.lang.Integer.valueOf(2));
         }
 
         /// <remarks>
