@@ -1601,6 +1601,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// whether or not the projection pushes.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// An accessor nested in an expression carries the guard it carries alone (#131).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The guard used to be dropped merely by nesting.</b> Measured before this change,
+        /// <c>UPPER(JSON_VALUE(DOC, '$.a'))</c> rendered <c>UPPER(c.a)</c> and the concatenation
+        /// rendered <c>CONCAT(c.a, @p0)</c> — the bare path in both. <c>JSON_VALUE</c> extracts
+        /// scalars, so for a document holding an object at <c>$.a</c> Calcite answers null and the
+        /// service was handing the object to the enclosing function instead.
+        /// </para>
+        /// <para>
+        /// The bare accessor was guarded the whole time, which is what made this hard to see: one
+        /// spelling of the same column agreed with the engine and the other did not.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ANestedAccessorCarriesItsGuard()
+        {
+            Render(PlanToCosmos("SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": UPPER((IS_PRIMITIVE(c.a) ? c.a : null)) } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) || 'x' AS \"a\" FROM products AS c"))
+                .Should().Contain("CONCAT((IS_PRIMITIVE(c.a) ? c.a : null)");
+        }
+
+        /// <summary>
+        /// The array accessor carries its own guard nested, which is the half that would have been a
+        /// cast failure rather than a wrong value.
+        /// </summary>
+        /// <remarks>
+        /// Bare, an object at the path reaches a column the plan typed a list and the read throws —
+        /// #129 by another route. <c>IS_ARRAY</c> is the same guard
+        /// <see cref="AnArrayReturningAccessorIsGuardedByIsArray"/> holds at the top level.
+        /// </remarks>
+        [TestMethod]
+        public void ANestedArrayAccessorCarriesTheArrayGuard()
+        {
+            Render(PlanToCosmos("SELECT CASE WHEN c.\"id\" = '1' THEN JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) ELSE JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY) END AS \"a\" FROM products AS c"))
+                .Should().Contain("(IS_ARRAY(c.tags) ? c.tags : null)")
+                .And.Contain("(IS_ARRAY(c.other) ? c.other : null)");
+        }
+
+        /// <summary>
+        /// A plain <c>JSON_QUERY</c> nested in an expression is refused rather than guarded.
+        /// </summary>
+        /// <remarks>
+        /// A guard is not what it needs. Its column is the fragment <em>as text</em>, and the text is
+        /// produced by the reading — <see cref="CosmosReading.JsonText"/> — not by the service. Nested,
+        /// there is no reading to do it, and the enclosing operator would run over the object where
+        /// Calcite runs over the text. No rendering of the path closes that, so the expression is
+        /// declined and computed in process.
+        /// </remarks>
+        [TestMethod]
+        public void ANestedJsonQueryIsRefusedRatherThanGuessedAt()
+        {
+            var plan = Plan(PlanToAsync("SELECT UPPER(JSON_QUERY(c.\"DOC\", '$.o')) AS \"a\" FROM products AS c"));
+
+            plan.Should().Contain("ClrEnumerableProject", "the text is the engine's to produce: " + plan);
+            plan.Should().NotContain("CosmosProject", "and nothing of it is rendered: " + plan);
+        }
+
         [TestMethod]
         public void AnArrayReturningOnJsonValueIsNotPushed()
         {

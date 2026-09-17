@@ -625,7 +625,119 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
         }
 
+        /// <summary>
+        /// Whether an accessor reached inside a larger expression carries the guard it would carry as
+        /// a projection of its own.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Set for the compound branch of <see cref="TranslateProjection"/> and nowhere else, which is
+        /// exactly the scope of #131. A projection's result <em>is</em> the column, so an accessor in
+        /// it has to answer what the accessor answers; a filter compares the raw value the service
+        /// holds on purpose — see <see cref="WriteComparand"/> and
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> — and is left alone.
+        /// </para>
+        /// <para>
+        /// A field rather than a parameter because <see cref="Write"/> recurses through a dozen
+        /// writers that have no business knowing about it, and the alternative is threading a flag
+        /// through every one of them to be read in a single place.
+        /// </para>
+        /// </remarks>
+        bool _guardNestedAccessors;
+
+        /// <summary>
+        /// Writes an accessor that sits inside a larger expression, with the guard its own projection
+        /// would carry.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The same guard, decided the same way, one level down.</b> Bare, the path hands the
+        /// service's raw value to whatever encloses it, and the accessor's own meaning is lost:
+        /// measured on main, <c>UPPER(JSON_VALUE(DOC, '$.a'))</c> rendered <c>UPPER(c.a)</c>, so a
+        /// document holding an object at <c>$.a</c> — which the accessor answers null for — had the
+        /// object handed to <c>UPPER</c> instead (#131).
+        /// </para>
+        /// <para>
+        /// <b>The plain <c>JSON_QUERY</c> is refused rather than guarded</b>, because a guard is not
+        /// what it needs. Its column is the fragment <em>as text</em>, which the reading produces by
+        /// re-serialising what comes back — see <see cref="TryJsonQueryProjection"/> and
+        /// <see cref="CosmosReading.JsonText"/>. Nested, there is no reading to do that: the enclosing
+        /// operator would run at the service over the object itself, where Calcite runs it over the
+        /// text. No rendering of the path fixes that, so the expression is declined and computed in
+        /// process.
+        /// </para>
+        /// <para>
+        /// A scalar <c>RETURNING</c> stays bare, as it is alone: the service holds the value the plan
+        /// declared, and there is nothing to guard against that would not equally fail a column of its
+        /// own.
+        /// </para>
+        /// </remarks>
+        void WriteGuardedAccessor(StringBuilder builder, RexCall call, string rendered)
+        {
+            if (IsCollectionJsonQuery(call))
+            {
+                builder.Append('(').Append(CosmosOperators.IsArray.getName()).Append('(').Append(rendered)
+                    .Append(") ? ").Append(rendered).Append(" : null)");
+                return;
+            }
+
+            if (IsPlainJsonQuery(call))
+                throw new CosmosTranslationException("A JSON_QUERY inside an expression is the fragment as text, which the service has no way to produce -- the enclosing operator would run over the value instead. JSON_QUERY renders as a column of its own, where the reading writes the text.");
+
+            if (IsTextJsonValue(call))
+            {
+                builder.Append('(').Append(CosmosOperators.IsPrimitive.getName()).Append('(').Append(rendered)
+                    .Append(") ? ").Append(rendered).Append(" : null)");
+                return;
+            }
+
+            builder.Append(rendered);
+        }
+
+        /// <summary>
+        /// Writes a call, holding back the nested-accessor guard where the call is one whose operand is
+        /// an address rather than a value.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A geography function consumes what the document holds, not what the accessor extracts.</b>
+        /// A stored geography is a GeoJSON <em>object</em>, and
+        /// <c>ST_DISTANCE(JSON_VALUE(DOC, '$.location'), …)</c> is how a query names it — the accessor
+        /// is typed <c>VARCHAR</c> and is an addressing device, which is the same liberty
+        /// <see cref="IsTextRendering"/> records for the filter side. Guarded, <c>IS_PRIMITIVE</c> is
+        /// false of that object and the function would be handed null for every document that has one,
+        /// so the pushdown geography exists for would answer nothing.
+        /// </para>
+        /// <para>
+        /// This was found by a test rather than reasoned to —
+        /// <c>CosmosRelImplementTests.ASortOverADistanceRendersTheExpression</c> failed the moment the
+        /// guard went in — which is the argument for the narrow rule: the guard is for operators whose
+        /// Calcite meaning is computed over the accessor's own result, and these are the ones where it
+        /// is not.
+        /// </para>
+        /// </remarks>
         void WriteCall(StringBuilder builder, RexCall call)
+        {
+            if (_guardNestedAccessors && GeographyFunctions.Contains(call.getOperator().getName()))
+            {
+                _guardNestedAccessors = false;
+
+                try
+                {
+                    WriteCallCore(builder, call);
+                }
+                finally
+                {
+                    _guardNestedAccessors = true;
+                }
+
+                return;
+            }
+
+            WriteCallCore(builder, call);
+        }
+
+        void WriteCallCore(StringBuilder builder, RexCall call)
         {
             // A SQL/JSON accessor over the document is the path it addresses, and is written as one:
             // the service returns the value at the path, and the RETURNING clause is what told the
@@ -634,7 +746,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // of its own.
             if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
-                builder.Append(jsonPath.ToString());
+                if (_guardNestedAccessors)
+                    WriteGuardedAccessor(builder, call, jsonPath.ToString());
+                else
+                    builder.Append(jsonPath.ToString());
+
                 return;
             }
 
@@ -1412,8 +1528,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException(
                     "JSON_VALUE with an array RETURNING is not a construct SQL defines -- the clause names a predefined scalar type -- so it is left to the engine, which answers null. JSON_QUERY is the accessor that returns an array.");
 
+            // Every shape above is one this recognises whole and renders with the guard its own
+            // reading needs. What is left is a compound expression -- a CASE, a function call, a
+            // concatenation -- and an accessor inside one rendered as the bare path, dropping the
+            // guard merely by being nested (#131). The flag is what carries it down; see
+            // WriteGuardedAccessor for what each accessor gets.
             reading = CosmosReading.Typed;
-            return Translate(node);
+
+            _guardNestedAccessors = true;
+
+            try
+            {
+                return Translate(node);
+            }
+            finally
+            {
+                _guardNestedAccessors = false;
+            }
         }
 
         /// <summary>
