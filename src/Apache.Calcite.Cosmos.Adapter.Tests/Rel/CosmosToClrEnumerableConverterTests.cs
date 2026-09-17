@@ -196,15 +196,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// The same, with the engine's own rules registered beside the adapter's.
+        /// The same, with the engine's own rules registered beside the adapter's and the calc pass a
+        /// host runs after them.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <see cref="PlanToClr"/> registers only the Cosmos rules, which is enough while the whole
         /// projection pushes: what is left above the converter is nothing at all. A split leaves a
-        /// residual projection there, and nothing in the adapter's set converts a <c>LogicalProject</c>
-        /// into the CLR convention — so the planner reports that it cannot produce the root rather
-        /// than choosing a worse plan, which is a statement about the harness and not about the plan.
-        /// A test whose subject <em>is</em> the residual registers what a host would.
+        /// residual projection there, and that needs two more things — the engine's rules to carry it
+        /// into the CLR convention, and <b>a calc pass to turn it into something implementable</b>.
+        /// </para>
+        /// <para>
+        /// <b>The calc pass is separate on purpose, and it is not optional.</b>
+        /// <c>ClrEnumerableProject.Implement</c> raises <c>UnsupportedOperationException</c>, exactly as
+        /// Calcite's own <c>EnumerableProject.implement</c> does — <em>"EnumerableCalcRel is always
+        /// better"</em> — and the rule that rewrites one into a calc is a <c>TransformationRule</c>.
+        /// <c>VolcanoPlanner.addRule</c> does not register a transformation rule's operand against a
+        /// <c>PhysicalNode</c>, and <c>ClrEnumerableRel</c> is one, so no calc rule can fire during the
+        /// Volcano pass however it is registered. It has to run afterwards, over the chosen plan, on a
+        /// <see cref="HepPlanner"/>. Calcite protects itself the same way, with
+        /// <c>Programs.standard</c>'s last pass.
+        /// </para>
+        /// <para>
+        /// This was worth writing down because leaving the pass out looks exactly like a defect in the
+        /// enumerable adapter — it was reported as one, and is not: see
+        /// <see href="https://github.com/ikvmnet/calcite-dotnet/issues/155">calcite-dotnet#155</see>.
+        /// A wholly-pushed plan compiles without it, which makes the gap invisible until a projection
+        /// survives.
+        /// </para>
         /// </remarks>
         RelNode PlanToClrWithHostRules(string sql)
         {
@@ -220,7 +239,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
-            return planner.findBestExp();
+            var best = planner.findBestExp();
+
+            var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
+
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.CalcRules())
+                program.addRuleInstance(rule);
+
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
+            hep.setRoot(best);
+
+            return hep.findBestExp();
         }
 
         /// <summary>
@@ -543,40 +572,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <summary>
-        /// A residual cast is planned over the column the split pushed for it, and executing that plan
-        /// is a question this harness cannot answer.
+        /// A residual cast reads the column the split pushed for it, and the value is right.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What is asserted is the shape and the statement</b>: the accessor is the service's to
-        /// answer, the cast is the engine's, and the document does not travel. The half that would
-        /// complete it — running the plan and reading 30.5 back out — is not available here, and the
-        /// reason is worth recording rather than leaving as a gap somebody rediscovers.
+        /// <b>The half a planner test cannot answer.</b> That the accessor goes down as <c>$f0</c> is a
+        /// statement about the plan; that the cast above it produces the number is a statement about
+        /// the row, and the two halves of the split are only correct together — the pushed column is
+        /// read by its own rules, so what arrives is the rendering rather than the raw value, and the
+        /// residual has to be right about what it is reading.
         /// </para>
         /// <para>
-        /// <b>No <c>ClrEnumerableProject</c> can be code-generated in this harness at all.</b> Measured,
-        /// <c>ClrEnumerableProject.Implement</c> raises a bare <c>UnsupportedOperationException</c>, and
-        /// it does so for the constant-residual shape #125 already ships as readily as for this one —
-        /// so it is a property of the harness or of the enumerable adapter, not of the split. Every
-        /// other test in this class executes a plan whose projection pushes <em>whole</em>, which is
-        /// why nothing here has met it before.
+        /// The canned document is shaped like the <em>pushed</em> row, because that is what the split
+        /// makes the statement return.
         /// </para>
         /// <para>
-        /// The fragment's own reading is covered: it is a column like any other, and the accessor
-        /// columns in this class are exactly that column read back. What is uncovered is a residual
-        /// consuming one, and the service-backed classes are where that runs.
+        /// Runs through <see cref="PlanToClrWithHostRules"/> rather than <see cref="PlanToClr"/>,
+        /// because a residual projection needs the calc pass; the reason that is a pass rather than a
+        /// rule is recorded there.
+        /// </para>
+        /// <para>
+        /// The value arrives as a <see cref="java.lang.Double"/> rather than a CLR one, because it was
+        /// computed by Calcite's runtime rather than read out of a document — the same box an array
+        /// column arrives in as a <see cref="java.util.List"/>. Asserted as such rather than converted,
+        /// since what a residual hands a caller is part of what the split has to be right about.
         /// </para>
         /// </remarks>
         [TestMethod]
-        public void ShouldPlanAResidualCastOverThePushedFragment()
+        public async Task ShouldComputeAResidualCastOverThePushedFragment()
         {
-            var rel = PlanToClrWithHostRules(
-                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\" FROM products AS c");
+            Given("""{ "$f0": "30.5" }""");
 
-            var plan = org.apache.calcite.plan.RelOptUtil.toString(rel);
+            var rows = await Execute(PlanToClrWithHostRules(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING VARCHAR) AS DOUBLE) AS \"x\" FROM products AS c"));
 
-            plan.Should().Contain("ClrEnumerableProject(x=[CAST($0)", "the cast is the engine's: " + plan);
-            plan.Should().Contain("CosmosProject($f0=[JSON_VALUE($0, '$.n')])", "the accessor is the service's: " + plan);
+            rows.Should().HaveCount(1);
+            rows[0].Should().BeOfType<java.lang.Double>("a residual is computed by Calcite's runtime, which hands back its own box")
+                .Which.doubleValue().Should().Be(30.5d);
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_PRIMITIVE(c.n)",
+                "the accessor was the service's to answer");
+            _executor.Executed!.Value.Sql.Should().NotContain("\"\": c",
+                "and the document had no reason to travel");
         }
 
         /// <summary>

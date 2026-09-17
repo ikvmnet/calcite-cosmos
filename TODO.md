@@ -993,9 +993,17 @@ CARDINALITY(JSON_VALUE(DOC, '$.tags' RETURNING VARCHAR ARRAY))  ->  nothing push
 `AResidualConsumingAnArrayReadsThePushedColumn` holds the middle one.
 
 **What it still does not do**: a fragment is only ever as good as the translator — an operator with no
-Cosmos form over operands that also have none pushes nothing, as before. And executing a residual is
-not verified in this repo's offline harness, `ClrEnumerableProject` being unimplementable there —
-[ikvmnet/calcite-dotnet#155](https://github.com/ikvmnet/calcite-dotnet/issues/155).
+Cosmos form over operands that also have none pushes nothing, as before.
+
+An earlier version of this entry said executing a residual could not be verified offline, the
+enumerable adapter's `ClrEnumerableProject` being unimplementable. **It is verifiable, and the claim
+was a missing pass read as a defect.** `ClrEnumerableProject.Implement` throws exactly as Calcite's
+own `EnumerableProject.implement` does, and the rule that rewrites one into a calc is a
+`TransformationRule` — `VolcanoPlanner.addRule` will not register one against a `PhysicalNode`, so it
+can only fire in a hep pass run over the chosen plan, which is what `Programs.standard`'s last pass is
+for. The harness now runs it, and `ShouldComputeAResidualCastOverThePushedFragment` reads the row
+back. Filed and closed as not-a-defect:
+[calcite-dotnet#155](https://github.com/ikvmnet/calcite-dotnet/issues/155).
 
 One thing fell out that was not asked for: because the pushed half is now a `CosmosProject` binding a
 path, a sort above it has something to name. The temporal cast this file recorded as blocked before the
