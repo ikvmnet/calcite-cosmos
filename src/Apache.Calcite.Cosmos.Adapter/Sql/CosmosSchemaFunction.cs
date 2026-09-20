@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <para>
     /// <b>The type tests are the exception, and they earned it by measurement rather than by argument.</b>
     /// "It might answer differently from the service" is a question with an answer, and
-    /// <c>CosmosTypeTestDifferentialTests</c> asks it: Cosmos and <see cref="CosmosFunctionBodies"/> are
+    /// <c>CosmosFunctionBodiesTests</c> asks it: Cosmos and <see cref="CosmosFunctionBodies"/> are
     /// given the same question about a document of every JSON kind — including the two the whole thing
     /// turns on, a path holding null and a path that is absent — and they agree on every one. So those
     /// eight are implemented and everything else still refuses, which makes this a decision per function
@@ -109,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var name = _operator.getName();
 
             // A type test over a document path has a body, and it answers what the service answers —
-            // held to that by CosmosTypeTestDifferentialTests, which asks Cosmos and the body the same
+            // held to that by CosmosFunctionBodiesTests, which asks Cosmos and the body the same
             // question about a document of every JSON kind. Everything else refuses here, at prepare
             // time, rather than later and less legibly.
             if (CosmosTypeTestImplementor.Answers(name))

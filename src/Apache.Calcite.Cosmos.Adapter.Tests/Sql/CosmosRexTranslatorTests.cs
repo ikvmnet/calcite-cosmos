@@ -17,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
     [TestClass]
-    public class CosmosRexTranslatorTests
+    public partial class CosmosRexTranslatorTests
     {
 
         readonly JavaTypeFactoryImpl _types = new();

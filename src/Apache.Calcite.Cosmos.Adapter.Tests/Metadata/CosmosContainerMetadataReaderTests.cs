@@ -13,7 +13,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
 
     [TestClass]
-    public class CosmosContainerMetadataReaderTests
+    public partial class CosmosContainerMetadataReaderTests
     {
 
         static Collection<CompositePath> Composite(params (string Path, CompositePathSortOrder Order)[] paths)

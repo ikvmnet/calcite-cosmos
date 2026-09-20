@@ -194,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// It decided wrongly, measured on a join across three containers: one of the two joins fetched
         /// by key and the other read its container whole. Two containers never showed it, for a reason
         /// that is worth knowing and not worth relying on —
-        /// <c>CosmosLookupJoinPlannerTests.EveryContainerInAQueryCanBeOnTheProbeSide</c> records both.
+        /// <c>CosmosLookupJoinRuleTests.EveryContainerInAQueryCanBeOnTheProbeSide</c> records both.
         /// </para>
         /// <para>
         /// The binding had nothing to do anyway. The container is named by the probe side, which

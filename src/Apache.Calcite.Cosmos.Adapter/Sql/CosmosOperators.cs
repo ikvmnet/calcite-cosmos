@@ -179,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// True of the type tests and nothing else. They ask what kind of thing a document holds at a
         /// path, which is answerable from the document the row already carries, and
         /// <see cref="CosmosFunctionBodies"/> answers it the way the service does — see
-        /// <c>CosmosTypeTestDifferentialTests</c>. Everything else either needs state only the service
+        /// <c>CosmosFunctionBodiesTests</c>. Everything else either needs state only the service
         /// has, or has simply not been given a body.
         /// </remarks>
         /// <param name="name">The function's name.</param>
