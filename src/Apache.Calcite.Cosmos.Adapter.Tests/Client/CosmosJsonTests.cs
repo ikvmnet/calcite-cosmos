@@ -116,17 +116,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <remarks>
+        /// <para>
         /// Cosmos has no UUID type, so a column the plan types one is a string property whose spelling
-        /// a container's declared facts pinned. The box is <c>java.util.UUID</c> because that is what
-        /// Calcite holds a <c>UUID</c> in, and the conversion is Calcite's own, so a pushed projection
-        /// and the in-process cast it replaced cannot answer differently.
+        /// a container's declared facts pinned. The box is <c>org.apache.calcite.util.UuidValue</c>
+        /// because that is what Calcite holds a <c>UUID</c> in, and the conversion is Calcite's own
+        /// — <c>UuidValue.fromString</c>, which is the method <c>BuiltInMethod.UUID_FROM_STRING</c>
+        /// names — so a pushed projection and the in-process cast it replaced cannot answer
+        /// differently.
+        /// </para>
+        /// <para>
+        /// <b>The class is asserted and not just the value</b>, because the two are indistinguishable
+        /// everywhere but the one place it mattered: reading as the <c>java.util.UUID</c> inside the
+        /// wrapper gave the right value in the wrong box, which only a single-column row ever cast
+        /// (#150). See
+        /// <see cref="Rel.Convert.CosmosToClrEnumerableConverterTests.ShouldReadALoneUuidColumn"/>.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void ShouldReadStringAsJavaUuid()
+        public void ShouldReadStringAsUuidValue()
         {
             Read("\"123e4567-e89b-12d3-a456-426614174000\"", SqlTypeName.UUID)
-                .Should().BeOfType<java.util.UUID>()
-                .And.Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
+                .Should().BeOfType<org.apache.calcite.util.UuidValue>()
+                .And.Be(org.apache.calcite.util.UuidValue.fromString("123e4567-e89b-12d3-a456-426614174000"));
         }
 
         /// <remarks>
@@ -137,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public void ShouldReadEitherSpellingAsTheSameUuid()
         {
             Read("\"123E4567-E89B-12D3-A456-426614174000\"", SqlTypeName.UUID)
-                .Should().Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
+                .Should().Be(org.apache.calcite.util.UuidValue.fromString("123e4567-e89b-12d3-a456-426614174000"));
         }
 
         /// <summary>
@@ -160,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [Fact]
         public void ShouldReadEverySpellingThisRecognises()
         {
-            var expected = java.util.UUID.fromString("0123456f-89ab-7cde-8f01-23456789abcd");
+            var expected = org.apache.calcite.util.UuidValue.fromString("0123456f-89ab-7cde-8f01-23456789abcd");
 
             foreach (var text in new[]
             {

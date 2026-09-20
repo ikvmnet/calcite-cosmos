@@ -438,7 +438,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Reads a JSON string as the <c>java.util.UUID</c> a <c>UUID</c> value holds.
+        /// Reads a JSON string as the <c>org.apache.calcite.util.UuidValue</c> a <c>UUID</c> value
+        /// holds.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -446,7 +447,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// plan types <c>UUID</c> is a string property whose spelling a declaration pinned; reading it
         /// back is the conversion Calcite's own <c>CAST(… AS UUID)</c> performs, and it is literally
         /// that function rather than a second implementation of it, so the pushed statement and the
-        /// in-process plan cannot answer differently.
+        /// in-process plan cannot answer differently. <c>UuidValue.fromString</c> is that function:
+        /// <c>BuiltInMethod.UUID_FROM_STRING</c> names it, so it is what a cast Calcite generated
+        /// itself calls.
+        /// </para>
+        /// <para>
+        /// <b>The box is <c>UuidValue</c>, and reading it as a bare <c>java.util.UUID</c> was only
+        /// ever visible on a narrow row.</b> CALCITE-7716 moved the runtime representation of a
+        /// <c>UUID</c> onto <c>UuidValue</c> — it is what <c>JavaTypeFactoryImpl</c> answers for the
+        /// type, and what a <c>RexLiteral</c> of one holds — while leaving
+        /// <c>SqlFunctions.stringToUuid</c> returning the <c>java.util.UUID</c> it always returned,
+        /// which is the value the wrapper wraps. Reading through the inner function therefore handed
+        /// back a class the plan does not use, and a wide row never noticed: two columns or more is
+        /// an <c>object[]</c>, which boxes whatever it is given. One column <em>is</em> the value,
+        /// and <see cref="Rel.Convert.CosmosConverters.RowBuilder"/> casts it to the physical type
+        /// — so a projection of a lone UUID column threw <c>java.util.UUID cannot be cast to
+        /// UuidValue</c> at the first row, while the same column read beside any other was fine
+        /// (#150).
         /// </para>
         /// <para>
         /// A value that is not a string, or a string that is not a UUID, is a failure and not a null.
@@ -459,13 +476,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="value">The value to read.</param>
         /// <returns>The value.</returns>
         /// <exception cref="CosmosMaterializationException">The value is not a UUID.</exception>
-        static java.util.UUID GetUuid(JsonElement value)
+        static org.apache.calcite.util.UuidValue GetUuid(JsonElement value)
         {
             var text = GetString(value);
 
             try
             {
-                return org.apache.calcite.runtime.SqlFunctions.stringToUuid(text);
+                return org.apache.calcite.util.UuidValue.fromString(text);
             }
             catch (java.lang.IllegalArgumentException e)
             {

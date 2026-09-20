@@ -136,6 +136,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// The schema of a catalog row: an identifier stored as a canonical UUID, and a name.
+        /// </summary>
+        const string Catalog = """
+        { "type": "object",
+          "required": ["ref", "name"],
+          "properties": {
+            "ref": { "type": "string",
+                     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+            "name": { "type": "string" } } }
+        """;
+
+        /// <summary>
+        /// Exposes a table whose container declares <see cref="Catalog"/>, and holds the given
+        /// documents.
+        /// </summary>
+        /// <remarks>
+        /// A declaration is the only way a cast to a type Cosmos has no equivalent of renders, so it
+        /// is the only way a pushed statement's row carries a column the plan types <c>UUID</c>.
+        /// What a declaration licenses is argued in <c>CosmosDeclaredFactPlanningTests</c>; this
+        /// wants one only to reach the reading on the other side.
+        /// </remarks>
+        void GivenDeclared(params string[] documents)
+        {
+            _executor = new StubExecutor(documents);
+
+            Register(new CosmosTable(
+                Products.WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Catalog))),
+                _executor));
+        }
+
+        /// <summary>
         /// Exposes a table built from container metadata alone, with no client behind it.
         /// </summary>
         void GivenNoExecutor()
@@ -613,6 +644,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 "the accessor was the service's to answer");
             _executor.Executed!.Value.Sql.Should().NotContain("\"\": c",
                 "and the document had no reason to travel");
+        }
+
+        /// <summary>
+        /// A pushed projection whose only column is a <c>UUID</c> reads back, which is what #150 said
+        /// it did not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The row shape is the whole of it.</b> <c>JavaRowFormat.optimize</c> makes a one-field
+        /// row the value itself rather than an <c>object[]</c>, so
+        /// <see cref="CosmosConverters.RowBuilder"/> casts what it read to the field's physical type
+        /// — and for a <c>UUID</c> that type is <c>org.apache.calcite.util.UuidValue</c>. Reading
+        /// through <c>SqlFunctions.stringToUuid</c> produced the <c>java.util.UUID</c> that wrapper
+        /// holds, which the cast refused: <em>java.util.UUID cannot be cast to UuidValue</em>, at the
+        /// first row rather than at planning.
+        /// </para>
+        /// <para>
+        /// Held here rather than in <c>CosmosJsonTests</c> alone because the reader's own test could
+        /// not see it. The class was the right value in the wrong box, and nothing but a compiled row
+        /// builder over a narrow row ever asked which box it was — which is also why the field
+        /// reported it through a <c>$count</c> and an <c>$expand</c>, the two OData shapes that
+        /// project a key on its own.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ShouldReadALoneUuidColumn()
+        {
+            GivenDeclared("""{ "Id": "0123456f-89ab-7cde-8f01-23456789abcd" }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.ref') AS UUID) AS \"Id\" FROM products AS c"));
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_PRIMITIVE(c.ref) ? c.ref : null",
+                "the cast rendered, so the column really is the pushed one: " + _executor.Executed!.Value.Sql);
+
+            rows.Should().HaveCount(1);
+            rows[0].Should().BeOfType<org.apache.calcite.util.UuidValue>(
+                    "which is what Calcite holds a UUID in, and what a one-column row is cast to")
+                .And.Be(org.apache.calcite.util.UuidValue.fromString("0123456f-89ab-7cde-8f01-23456789abcd"));
+        }
+
+        /// <remarks>
+        /// The shape that hid it. A row of two columns is an <c>object[]</c>, so the row builder boxes
+        /// each column rather than casting it, and the wrong class survived to a reader that converts
+        /// either one — measured in <c>CalciteUuidReadingMeasurementTests</c>, where the bare
+        /// <c>java.util.UUID</c> reaches a caller as a <c>Guid</c> at two columns and raises at one.
+        /// So this read fine throughout, and still does, now in the same box as the narrow row. Both
+        /// halves are asserted because agreeing is the claim: one reader, one representation,
+        /// whatever the arity.
+        /// </remarks>
+        [Fact]
+        public async Task ShouldReadAUuidColumnTheSameWayBesideAnother()
+        {
+            GivenDeclared("""{ "Id": "0123456f-89ab-7cde-8f01-23456789abcd", "Name": "widget" }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT CAST(JSON_VALUE(c.\"DOC\", '$.ref') AS UUID) AS \"Id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"Name\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+            ((object[])rows[0]).Should().Equal(
+                org.apache.calcite.util.UuidValue.fromString("0123456f-89ab-7cde-8f01-23456789abcd"),
+                "widget");
         }
 
         /// <summary>
