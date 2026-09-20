@@ -1079,31 +1079,38 @@ old wording did not allow for.
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
-### A row's width is a column count — *medium, and the cost model rests on it*
+### A row's width is weighed at the wire and nowhere else — *medium*
 
 `CosmosToClrEnumerableConverter` is the wire, and since #125 it costs rows times the width it
 carries rather than rows alone — which is what lets a partial projection win, a pushed projection
-having no measurable benefit before it. Width is `getRowType().getFieldCount()`.
+having no measurable benefit before it.
 
-**A count is the wrong unit and the remarks on the node say so.** The `DOC` column carries an entire
-item where a projected scalar carries a value, so a statement returning the document and a scalar
-scores two and one returning five scalars scores five — and in bytes the first is far the larger.
-Every decision it makes *here* still comes out right, because pushing a projection only ever removes
-columns and never trades one kind for another; what is wrong is the magnitude, and the day something
-asks it to compare two plans that differ in **which** columns rather than how many, it will answer
-badly.
+**Width used to be a column count, and #145 was the day that broke.** The entry here predicted the
+shape of it: a count answers badly the moment two plans differ in *which* columns rather than how
+many. Field trimming makes that the ordinary case rather than an exotic one — Calcite's trimmer runs
+in every host and leaves a `LogicalProject(DOC)` above the scan, so the subtree being converted is
+already one column wide and pushing the query's real projection *widens* it. Counted, that charged
+back exactly what the projection saved; the two plans then tied on rows, which is the only component
+`VolcanoCost` compares — it does not consult `cpu` or `io` at all — and the tie went to whichever was
+registered first. One column passed and two failed, which is what made a cost problem look like
+anything but one. The converter weighs the document now: by `CosmosContainerStatistics` where a size
+was measured, and by a floor of six values where none was, six being the system properties the
+service returns with every item and therefore needing no measurement.
 
-**`getAverageRowSize` is the metadata for this and it does not answer.** It was tried first: measured
-over these plans it returns `null` at every node — scan, projection and converter alike — so nothing
-was scaled by it and the count was doing all the work. Scaling by a value that is always null
-documents a mechanism that never runs, which is why the call is not there.
+**What is still owed is the metadata provider, not another patch to the converter.**
+`getAverageRowSize` is the metadata for this and it does not answer: measured over these plans it
+returns `null` at every node — scan, projection and converter alike — so nothing was scaled by it and
+the count was doing all the work. A `RelMdSize` handler registered for the Cosmos nodes would answer
+`averageRowSize` and `averageColumnSizes` from what the adapter knows and Calcite cannot infer, and
+would feed every *other* cost decision that still sees rows and nothing else. The converter knowing
+its own width leaves those untouched: nothing below it prices what it returns, so a projection pushed
+under a sort or an aggregate is still free as far as the model can see, and `io` is still `0.0` at
+every node of every plan.
 
-What would fix it is a `RelMdSize` handler registered for the Cosmos nodes, answering
-`averageRowSize` and `averageColumnSizes` from what the adapter knows that Calcite cannot infer: the
-document column is an item and the rest are values, and `CosmosContainerStatistics` already carries a
-measured document size for the container. That is a metadata provider rather than a patch to the
-converter, and it would also feed every other cost decision that currently sees rows and nothing
-else.
+**And what a value weighs is a guess.** The document is weighed in values, so something has to say
+what one value is worth; 64 bytes is chosen to over-state a value and therefore under-state the
+document, which is the direction that can only ever under-sell projecting and never over-sell it. A
+measured figure would come from the same place the handler above would.
 
 ### Recorded decisions worth revisiting
 

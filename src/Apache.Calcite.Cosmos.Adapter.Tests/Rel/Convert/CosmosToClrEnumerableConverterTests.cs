@@ -736,6 +736,104 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             (await act.Should().ThrowAsync<CosmosExecutionException>()).WithMessage("*has no query executor*");
         }
 
+        // ── What crosses the wire decides the plan ────────────────────────────────
+
+        /// <summary>
+        /// Plans a statement with the columns nothing reads trimmed off the scan, which is what a
+        /// host does and what <see cref="PlanToClr"/> leaves out.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>RelFieldTrimmer</c> is in Calcite's own prepare, so every host runs it, and what it
+        /// does to this adapter is particular: a Cosmos scan presents five columns and a query that
+        /// reads paths out of the document reads one of them, so the trimmer puts a
+        /// <c>LogicalProject(DOC=[$0])</c> between the scan and whatever is above it. That projection
+        /// is the whole of the shape this section is about — it takes the statement's one
+        /// <c>SELECT</c>, and what the query actually projects then has nowhere to go.
+        /// </para>
+        /// <para>
+        /// The engine's rules are registered beside the adapter's for the reason
+        /// <see cref="PlanToClrWithHostRules"/> gives, and here it is load-bearing rather than
+        /// incidental: without them the in-process alternative cannot be built at all, and a test
+        /// that cannot express the losing plan cannot show the winning one was preferred.
+        /// </para>
+        /// </remarks>
+        /// <param name="sql">The statement.</param>
+        /// <returns>The best plan.</returns>
+        RelNode PlanToClrAsAHostDoes(string sql)
+        {
+            var logical = PlanLogical(sql);
+
+            var builder = org.apache.calcite.tools.RelBuilder.proto(Contexts.EMPTY_CONTEXT).create(logical.getCluster(), null);
+            var trimmed = new RelFieldTrimmer(null, builder).trim(logical);
+
+            var planner = (VolcanoPlanner)trimmed.getCluster().getPlanner();
+
+            foreach (var rule in CosmosRules.GetRules(_table.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in ClrEnumerableRules.Rules())
+                planner.addRule(rule);
+
+            var desired = trimmed.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            planner.setRoot(planner.changeTraits(trimmed, desired));
+
+            return planner.findBestExp();
+        }
+
+        /// <summary>
+        /// A projection of any width pushes over a filter, rather than the query keeping the document
+        /// and extracting the columns here.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The rows are the same either way and the bytes are not</b>, which is exactly what makes
+        /// this a cost question the model has to get right rather than a correctness one. Measured on
+        /// a container of 9,370 documents carrying registration points and image metadata, the same
+        /// two columns over the same rows took 248 seconds unprojected against 2 seconds projected
+        /// (#145).
+        /// </para>
+        /// <para>
+        /// <b>One column used to pass and two used to fail</b>, which is what made this look like
+        /// anything but a cost problem. It was one: this node was priced by counting the columns
+        /// crossing it, the trimmed subtree presents one column, and so pushing a two-column
+        /// projection doubled this node's cost and charged back precisely what the projection saved.
+        /// The two plans then tied on rows, which is the only component <c>VolcanoCost</c> compares,
+        /// and the tie went to whichever was registered first. At one column the multipliers matched
+        /// and the pushed plan won on its own merits, which is why the width the query asks for
+        /// appeared to decide anything at all.
+        /// </para>
+        /// <para>
+        /// So the widths are the assertion. <c>products</c> declares no statistics — the container the
+        /// rest of this class uses, and the ordinary case — so nothing here rests on a measured
+        /// document size, only on <see cref="CosmosToClrEnumerableConverter.MinimumDocumentWidth"/>.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void ShouldPushAProjectionOfAnyWidthOverAFilterTheTrimmerLeftAProjectionAbove(int columns)
+        {
+            var paths = new[] { "id", "name", "region" };
+            var projected = string.Join(", ", System.Linq.Enumerable.Select(
+                System.Linq.Enumerable.Take(paths, columns),
+                (path, i) => $"JSON_VALUE(c.\"DOC\", '$.data.{path}') AS \"c{i}\""));
+
+            var plan = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                $"SELECT {projected} FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park'"));
+
+            plan.Should().NotContain("CosmosProject(DOC=[$0])",
+                "the trimmer's projection of the document must not be the statement's SELECT");
+
+            for (var i = 0; i < columns; i++)
+                plan.Should().Contain($"c{i}=[JSON_VALUE($0, '$.data.{paths[i]}')]",
+                    "every column the query asks for is extracted by the service");
+
+            plan.Should().NotContain("ClrEnumerableProject",
+                "and nothing is left above the converter to extract here");
+        }
+
     }
 
 }
