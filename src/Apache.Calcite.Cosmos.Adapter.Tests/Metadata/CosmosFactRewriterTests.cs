@@ -195,7 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// UUIDs as two <em>signed</em> 64-bit halves, so an unconfined canonical form preserved
         /// equality and not order and lowering a range on one would have returned the wrong rows.
         /// CALCITE-7716 made the comparison unsigned in 1.43 and
-        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it.
+        /// <see cref="CosmosUuidForms.CanonicalLower"/> preserves order with it.
         /// </para>
         /// <para>
         /// A keyset-paginated <c>WHERE id &gt; @last</c> is the shape that wants it, and the whole of

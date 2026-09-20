@@ -337,7 +337,7 @@ class spelled out, and a container generating v7 identifiers within a known epoc
 of those was a row, and an unrecognised pattern states **nothing** — so each of them lost the path its
 *equality* as well as its order, and every comparison against it read whole documents.
 
-`CosmosStoredForms.RecogniseUuid` decides the shape instead: 32 nibble slots, hyphens at four fixed
+`CosmosUuidForms.Recognise` decides the shape instead: 32 nibble slots, hyphens at four fixed
 positions, anchored at both ends, every slot admitting some set of hex digits. Three things follow for
 every string such a pattern accepts, with nothing enumerated — one spelling per value so long as the
 whole pattern draws from a single case, lexical order being nibble order because the hyphens are fixed
@@ -389,7 +389,7 @@ says the lexical order *is* Calcite's order under the signed comparison, and the
 that each half's sign is constant — across the container. A comparison is against one of each: a path
 confined to a first digit of `0`–`7` holds only values whose high half is signed-positive, so `>`
 against a literal whose high half is signed-negative is true of every document and lexically true of
-none. `CosmosStoredForms.RenderUuid` therefore asks the literal for the two bits the confinement pins
+none. `CosmosUuidForms.Render` therefore asks the literal for the two bits the confinement pins
 and declines rather than answering wrongly — and asks **only** where the answer can differ, which is
 the switch being off. Under the unsigned default every pair of canonical spellings compares lexically
 as Calcite compares it, in the container or out of it, so refusing there would decline sound rewrites
@@ -409,6 +409,15 @@ numeric ones still do, which is what keeps the two bits independent:
 | an integer written without padding | ✔ | ✘ |
 | an integer zero-padded to a fixed width | ✔ | ✔ |
 | an `enum` of strings | ✔ | ✘ |
+
+**A family per file, because the three differ in kind.** `CosmosStoredForms` is the dispatcher and
+nothing else: it normalises the pattern once and offers it to each family in turn. What it dispatches
+to does not share an implementation, only an output — `CosmosTemporalForms` is a generated **table**
+because a temporal shape has a width and a zone spelling and nothing else to vary; `CosmosUuidForms`
+**decides a shape** because a UUID pattern's axes do not close; `CosmosNumericForms` is **parametric**
+because a fixed width is a family with one member per width. `CosmosPatternLanguage` holds what they
+do share, which is the four rewrites that make one language written several ways into one key. They
+were one 1,400-line class, and the shape of the argument was the thing that got lost in it.
 
 **The temporal case needs its own measurement, and it moves what to look for.** `CAST(<string> AS
 TIMESTAMP)` accepts only `yyyy-MM-dd HH:mm:ss`; every ISO-8601 form a document stores raises. But the
