@@ -795,8 +795,39 @@ hand. Two tests pin both directions.
 
 **Built, with the ordering licensed:**
 
-- **The temporal rows are generated rather than written out**, the way the UUID rows are, because
-  what makes a shape usable is its *fixedness* and not which shape it is. Five spellings became
+- **A UUID pattern is read as a shape rather than matched against a table.** The rows were generated
+  across four axes and the product was eighty patterns — which was the wrong shape for the problem,
+  because the axes a UUID pattern varies along do not close. `[1-5]` is what a schema written against
+  RFC 4122 pins and is the commonest spelling published; `[8-9a-b]` is the variant as ranges;
+  `[0-9abcdef]` is the hex class spelled out; a v7 container within a known epoch pins a prefix. None
+  was a row, and an unrecognised pattern states **nothing**, so each lost the path its *equality* as
+  well as its order and every comparison against it read whole documents.
+  `CosmosStoredForms.RecogniseUuid` decides the shape instead — 32 nibble slots, hyphens at four fixed
+  positions, anchored, every slot a set of hex digits — and the confinement the signed comparison
+  needs is read off slots 1 and 17 rather than matched. An alternation is a **union** of its branches,
+  which derives the nil-UUID rule that was written by hand, in any of the four ways its anchors can be
+  spelled. A class range is read over **code points**, which is the trap rather than the spelling:
+  `[8-f]` spans `0x38`–`0x66` and admits `@` and `A`–`F`, so it is refused, and so is `[0-;]`, which
+  has no letter to give the case away. `DESIGN.md` carries the argument.
+- **The brace and the hyphen are axes of the spelling**, so a brace-wrapped and a hyphenless UUID are
+  forms of their own — sixteen in all, the product of brace, hyphen, case and confinement. Neither
+  costs a relation: a character in the same place in every stored string never decides a comparison.
+  What licensed them and refuses `urn:uuid:` and the parenthesised `(…)` spelling is the **reader**,
+  measured — a projected `CAST(<path> AS UUID)` renders as the raw path, and
+  `SqlFunctions.stringToUuid` takes all four shapes in either case and raises on those two. So both
+  remain unclaimed although each is as canonical and as sortable as the four; claiming either means
+  the projection rendering a transformation rather than the path.
+- **`RenderUuid` refuses a literal outside a confined form's sign class**, and only where the answer
+  can differ. The confined rows say lexical order *is* Calcite's order under the signed comparison,
+  and the argument is that each half's sign is constant — across the container, which the literal is
+  not in. Against a path confined to a first digit of `0`–`7`, `>` on a signed-negative literal is
+  true of every document and lexically true of none. Under the unsigned default the sign decides
+  nothing and nothing is refused, which is why the refusing branch has **no test**: it needs
+  `calcite.uuid.unsigned.comparison` off before Calcite loads, which is a process rather than a test.
+- **The temporal rows are generated rather than written out**, because what makes a shape usable is
+  its *fixedness* and not which shape it is. The UUID rows were generated the same way and are not
+  any more — see the entry above — because their axes do not close the way
+  these do: a fraction has a width and a zone has a spelling, and there is nothing else to vary. Five spellings became
   seventy-seven, across four axes: fraction width (0–9 digits, seven being a tick and nine what a Java
   or Go writer produces), zero-offset spelling (`Z`, `+00:00`, absent), extended against basic format
   (`2024-01-15T12:30:00Z` against `20240115T123000Z`), and how much of the instant is stored at all —

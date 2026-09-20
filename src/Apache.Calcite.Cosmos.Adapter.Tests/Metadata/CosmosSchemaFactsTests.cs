@@ -293,13 +293,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$", lower),
                 ("^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$", upper),
 
-                // Every RFC version nibble, and the range of them.
+                // Every RFC version nibble, and the ranges of them: the five RFC 4122 defined, the
+                // eight RFC 9562 does, and a pair from a writer that generates both.
                 ("^[a-f0-9]{8}-[a-f0-9]{4}-1[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", lower),
                 ("^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
                 ("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-[45][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", lower),
 
-                // The variant class written out of order.
+                // The variant class written out of order, and written as ranges — one set, four
+                // spellings.
                 ("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[ba98][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[8-9a-b][0-9a-f]{3}-[0-9a-f]{12}$", lower),
+
+                // The hex class spelled out rather than ranged.
+                ("^[0-9abcdef]{8}-[0-9abcdef]{4}-[0-9abcdef]{4}-[0-9abcdef]{4}-[0-9abcdef]{12}$", lower),
 
                 // The nil-UUID alternation the uuid package documents, which is registered as the
                 // plain row rather than the confined one: the nil value's variant nibble is 0 rather
@@ -321,6 +329,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 // Unanchored, which admits a conforming value with anything around it.
                 ("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", null),
+
+                // And the range that looks like the set it is not: [8-f] spans 0x38-0x66, so it
+                // admits A-F beside a-f and punctuation between them.
+                ("^[8-f][0-9a-f]{7}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", null),
             };
 
             foreach (var (pattern, expected) in recognised)
