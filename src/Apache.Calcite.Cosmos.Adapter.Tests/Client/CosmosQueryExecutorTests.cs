@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
 using FluentAssertions;
 

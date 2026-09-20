@@ -304,7 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Binding a body to a schema function lets a call that cannot be pushed down plan anyway and
         /// then answer with something Cosmos never computed — which is a reason to refuse unless the
         /// body demonstrably answers what the service answers. For the type tests it does:
-        /// <c>CosmosTypeTestDifferentialTests</c> asks Cosmos and <c>CosmosFunctionBodies</c> the same
+        /// <c>CosmosFunctionBodiesTests</c> asks Cosmos and <c>CosmosFunctionBodies</c> the same
         /// question about a document of every JSON kind and they agree throughout. So those have a body
         /// and the rest do not, which is a decision per function.
         /// </para>

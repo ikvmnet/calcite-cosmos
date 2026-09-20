@@ -1930,8 +1930,8 @@ two containers differing only in `geospatialConfig`:
 | `Geography` | `1342.1433132701966` — metres |
 | `Geometry` | `0.014142135623733162` — the planar hypotenuse in degrees |
 
-Nothing in either response says which question was answered. `CosmosGeographyServiceTests` holds this
-and the rest of the forms.
+Nothing in either response says which question was answered.
+`CosmosGeographyServiceMeasurementTests` holds this and the rest of the forms.
 
 **A geography is not promoted to a column, and does not need to be.** The row model is unchanged: the
 document column, `DOC`, and the columns the service guarantees. Nothing in Calcite converts a document
@@ -2308,11 +2308,32 @@ src/
     Internal/
       BigDecimalConverter.cs          ✔ Lossless BigDecimal → decimal
   Apache.Calcite.Cosmos.Adapter.Tests/
+    <mirrors the tree above>       A class under test has one FooTests beside it, at the same
+                                   relative namespace: Adapter.Sql.CosmosPath is tested by
+                                   Adapter.Tests.Sql.CosmosPathTests
+    EndToEnd/                      Whole-pipeline tests, which belong to no one class
+      Corpus/                      The corpus, its schema, and the harness that plans it
+    Measurements/                  What Calcite, IKVM or the service does — not this adapter
+    Infrastructure/                The emulator fixture and the assembly's boot-time setup
 ```
 
 ✔ marks what exists today. The `Sql/` layer is deliberately free of any dependency on the
 convention or on the CLR conventions in `calcite-dotnet`, which is what let it be completed and
 tested ahead of them, and is why it remains testable without one.
+
+The mirror is the rule, and the three folders that break it say so by their names. A test asserts
+something about one class or it does not; where it does, it is named for that class and sits where
+that class sits, so the tests for a thing are found by knowing where the thing is rather than by
+searching. Two consequences worth stating:
+
+- **One test class per class under test, even where its tests want different fixtures.** A group
+  that needs its own becomes a nested `[TestClass]` inside the partial — `CosmosRexTranslatorTests`
+  carries `Casts`, `Geography`, `FullText` and `Functions` that way, each with the builder and
+  operand set it wants, filed under one name and filtered by it.
+- **What does not belong to one class is not filed as though it did.** `EndToEnd/CosmosPlannerTests`
+  drives the whole rule set over real SQL; `Measurements/` holds what is asked of something other
+  than this adapter, so a failure there is news about Calcite or the service rather than a
+  regression here. Naming either for a class would be a claim about coverage that is not true.
 
 ---
 

@@ -1,0 +1,339 @@
+﻿using System;
+
+using Apache.Calcite.Cosmos.Adapter.Client;
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Rel;
+
+using Apache.Calcite.Extensions.Adapter.Enumerable;
+
+using FluentAssertions;
+
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+using org.apache.calcite.avatica.util;
+using org.apache.calcite.config;
+using org.apache.calcite.jdbc;
+using org.apache.calcite.plan;
+using org.apache.calcite.plan.volcano;
+using org.apache.calcite.prepare;
+using org.apache.calcite.rel;
+using org.apache.calcite.rel.type;
+using org.apache.calcite.rex;
+using org.apache.calcite.sql.fun;
+using org.apache.calcite.sql.parser;
+using org.apache.calcite.sql.validate;
+using org.apache.calcite.sql2rel;
+
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
+{
+
+    /// <summary>
+    /// Covers how a write reaches the adapter: what the validator permits, what the planner produces,
+    /// and which of it is selected.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same direct wiring as <see cref="EndToEnd.CosmosSqlPlanningTests"/>, for the same
+    /// reason — Calcite's usual entry points open an internal JDBC connection, which fails under
+    /// IKVM — with <c>parseStmt</c> in place of <c>parseQuery</c>, DML not being a query.
+    /// </para>
+    /// <para>
+    /// The plan text is asserted exactly, because the shapes here were observed rather than derived and
+    /// several of them are load-bearing: that the modify's input is always the table's whole row type,
+    /// that an unmentioned column arrives as a typed null, and that an <c>UPDATE</c> hands over its
+    /// <c>SET</c> list separately.
+    /// </para>
+    /// </remarks>
+    [TestClass]
+    public partial class CosmosTableModifyRuleTests
+    {
+
+        static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
+
+        static readonly CosmosContainerMetadata Archive = new("archive", new[] { "/category" });
+
+        CosmosTable _products = null!;
+        CosmosTable _archive = null!;
+
+        [TestInitialize]
+        public void Initialize()
+        {
+            _products = new CosmosTable(Products);
+            _archive = new CosmosTable(Archive);
+        }
+
+        string PlanText(string sql) => RelOptUtil.toString(PlanLogical(sql)).Trim().Replace("\r\n", "\n");
+
+        RelNode PlanLogical(string sql)
+        {
+            var typeFactory = new JavaTypeFactoryImpl();
+
+            var rootSchema = CalciteSchema.createRootSchema(false);
+            rootSchema.add("products", _products);
+            rootSchema.add("archive", _archive);
+
+            var properties = new java.util.Properties();
+            properties.setProperty("caseSensitive", "true");
+
+            var catalogReader = new CalciteCatalogReader(
+                rootSchema,
+                java.util.Collections.emptyList(),
+                typeFactory,
+                new CalciteConnectionConfigImpl(properties));
+
+            var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseStmt();
+
+            var validator = SqlValidatorUtil.newValidator(
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
+
+            var planner = new VolcanoPlanner();
+            planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+
+            // As in the lookup join's tests: the CLR join rules ask their inputs for a collation and
+            // fail where the trait is not registered, whether or not anything produces one.
+            planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
+
+            var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
+
+            return converter.convertQuery(validator.validate(parsed), false, true).rel;
+        }
+
+        /// <summary>
+        /// Plans a statement for the CLR convention, with the adapter's rules and the CLR ones.
+        /// </summary>
+        RelNode Plan(string sql)
+        {
+            var logical = PlanLogical(sql);
+            var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+
+            foreach (var rule in CosmosRules.GetRules(_products.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in CosmosRules.GetRules(_archive.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in ClrEnumerableRules.Rules())
+                planner.addRule(rule);
+
+            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            planner.setRoot(planner.changeTraits(logical, desired));
+
+            return planner.findBestExp();
+        }
+
+        static T? Find<T>(RelNode rel) where T : class
+        {
+            if (rel is T found)
+                return found;
+
+            var inputs = rel.getInputs();
+            for (var i = 0; i < inputs.size(); i++)
+                if (Find<T>((RelNode)inputs.get(i)) is T inner)
+                    return inner;
+
+            return null;
+        }
+
+        // ---- what the validator permits -------------------------------------------------------
+
+        /// <summary>
+        /// The reason <see cref="CosmosColumnStrategies"/> exists, pinned as the behaviour it produces.
+        /// </summary>
+        /// <remarks>
+        /// Without the strategies this statement does not reach a rule at all: <c>DOC</c> is declared
+        /// <c>NOT NULL</c>, and the validator refuses an insert that omits a column which is neither
+        /// nullable nor defaulted.
+        /// </remarks>
+        [TestMethod]
+        public void ColumnsMayBeOmittedFromAnInsert()
+        {
+            PlanText("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "    LogicalValues(tuples=[[{ '{\"id\":\"1\",\"category\":\"books\"}' }]])");
+        }
+
+        /// <summary>
+        /// An unmentioned column reaches the write as a null, which is what makes the "contributes only
+        /// when not null" rule necessary rather than merely convenient.
+        /// </summary>
+        [TestMethod]
+        public void AnUnmentionedColumnArrivesAsANull()
+        {
+            PlanText("INSERT INTO products (\"DOC\") SELECT \"DOC\" FROM archive").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "    CosmosTableScan(table=[[archive]])");
+        }
+
+        /// <summary>
+        /// The service's own properties cannot be written, and the validator is what says so.
+        /// </summary>
+        [TestMethod]
+        public void ServiceMaintainedColumnsCannotBeInserted()
+        {
+            var act = () => PlanText("INSERT INTO products (\"_ts\") VALUES (5)");
+
+            act.Should().Throw<java.lang.Throwable>()
+                .Where(e => e.ToString().Contains("Cannot INSERT into generated column '_ts'"));
+        }
+
+        /// <summary>
+        /// With <c>_ts</c> and <c>_etag</c> excluded, a column list may be omitted and the remaining
+        /// four columns supplied positionally — both document columns among them, since either may
+        /// describe the document being written.
+        /// </summary>
+        [TestMethod]
+        public void AnInsertWithoutAColumnListSuppliesTheWritableColumns()
+        {
+            PlanText("INSERT INTO products SELECT \"DOC\" FROM archive").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "    CosmosTableScan(table=[[archive]])");
+        }
+
+        [TestMethod]
+        public void DeletePlansToAModifyOverTheRowsToDelete()
+        {
+            PlanText("DELETE FROM products WHERE \"id\" = 'x'").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[DELETE], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[$1], _ts=[$2], _etag=[$3], $.category=[$4])\n" +
+                "    LogicalFilter(condition=[=($1, 'x')])\n" +
+                "      CosmosTableScan(table=[[products]])");
+        }
+
+        /// <summary>
+        /// What an <c>UPDATE</c> works from: the named columns and their new values arrive separately
+        /// from the rows, trailing the table's own columns.
+        /// </summary>
+        /// <remarks>
+        /// This is the shape <see cref="CosmosTableModify"/> consumes — the table columns hold what
+        /// the scan read, and the trailing expressions hold each <c>SET</c> value — and it is also
+        /// what would make a patch implementation possible; see <c>DESIGN.md</c> under
+        /// <em>Updating</em>.
+        /// </remarks>
+        [TestMethod]
+        public void UpdateCarriesItsSetListSeparatelyFromTheRows()
+        {
+            PlanText("UPDATE products SET \"DOC\" = '{}' WHERE \"id\" = 'y'").Should().Be(
+                "LogicalTableModify(table=[[products]], operation=[UPDATE], updateColumnList=[[DOC]], sourceExpressionList=[[$5]], flattened=[false])\n" +
+                "  LogicalProject(DOC=[$0], id=[$1], _ts=[$2], _etag=[$3], $.category=[$4], EXPR$0=['{}'])\n" +
+                "    LogicalFilter(condition=[=($1, 'y')])\n" +
+                "      CosmosTableScan(table=[[products]])");
+        }
+
+        // ---- what the planner selects ----------------------------------------------------------
+
+        /// <summary>
+        /// An <c>INSERT</c> from <c>VALUES</c>, which is the shape that found the collation bug.
+        /// </summary>
+        /// <remarks>
+        /// A <c>Values</c> node advertises several collations at once — every ordering a single row
+        /// trivially satisfies — and a trait set holding more than one value for a trait throws when
+        /// asked for its single value. The rule simplifies the input's traits for that reason. A
+        /// <c>DELETE</c> never showed it: its input is a scan, which claims no collation at all.
+        /// </remarks>
+        [TestMethod]
+        public void InsertFromValuesIsSelectedByThePlanner()
+        {
+            var modify = Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')"));
+
+            modify.Should().NotBeNull();
+            modify!.Write.Should().Be(CosmosWriteOperation.Insert);
+        }
+
+        [TestMethod]
+        public void DeleteIsSelectedByThePlanner()
+        {
+            var modify = Find<CosmosTableModify>(Plan("DELETE FROM products WHERE \"id\" = 'x'"));
+
+            modify.Should().NotBeNull();
+            modify!.Write.Should().Be(CosmosWriteOperation.Delete);
+        }
+
+        /// <summary>
+        /// A second container's rules must not displace the first's.
+        /// </summary>
+        /// <remarks>
+        /// This is the case the rule was originally written wrongly for. A converter rule's description
+        /// comes from the traits it converts between, and this one names no container, so one instance
+        /// per container gives several rules with the same description — of which a planner keeps one.
+        /// Both containers are registered in <see cref="Plan"/>, so a rule bound to either would fail
+        /// this for the other.
+        /// </remarks>
+        [TestMethod]
+        public void EitherContainerCanBeWrittenTo()
+        {
+            Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')")).Should().NotBeNull();
+            Find<CosmosTableModify>(Plan("INSERT INTO archive (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')")).Should().NotBeNull();
+        }
+
+        /// <summary>
+        /// An <c>UPDATE</c> of the document column is a whole-document assignment, carried as a replace.
+        /// </summary>
+        /// <remarks>
+        /// SQL assigns whole values to named columns, and <c>DOC</c> is the document — so the
+        /// statement means "the document becomes this expression of the old one", and a replace is
+        /// that, priced as what it is. The rows arrive from the scan the plan shows, exactly as a
+        /// <c>DELETE</c>'s do.
+        /// </remarks>
+        [TestMethod]
+        public void UpdateOfTheDocumentColumnIsSelectedAsAReplace()
+        {
+            var modify = Find<CosmosTableModify>(Plan("UPDATE products SET \"DOC\" = \"DOC\" WHERE \"id\" = 'y'"));
+
+            modify.Should().NotBeNull();
+            modify!.Write.Should().Be(CosmosWriteOperation.Update);
+        }
+
+        /// <summary>
+        /// A <c>SET</c> naming a partition key column is declined: placement is not the statement's
+        /// to change, and the service forbids it on an existing document.
+        /// </summary>
+        /// <remarks>
+        /// Declined at planning, where the refusal is a plan that fails, rather than at the service,
+        /// where it would be a request that fails per row. Moving a document is a delete and a
+        /// create, which is a different statement.
+        /// </remarks>
+        [TestMethod]
+        public void UpdateOfThePartitionKeyIsDeclined()
+        {
+            var act = () => Plan("UPDATE products SET \"$.category\" = 'x' WHERE \"id\" = 'y'");
+
+            act.Should().Throw<java.lang.Throwable>();
+        }
+
+        /// <summary>
+        /// A <c>SET</c> naming <c>id</c> is declined for the same reason: identity is not a property.
+        /// </summary>
+        [TestMethod]
+        public void UpdateOfIdIsDeclined()
+        {
+            var act = () => Plan("UPDATE products SET \"id\" = 'z' WHERE \"id\" = 'y'");
+
+            act.Should().Throw<java.lang.Throwable>();
+        }
+
+        /// <summary>
+        /// The regression the column strategies nearly caused, and which the row type does not show.
+        /// </summary>
+        /// <remarks>
+        /// Declaring <c>_ts</c> and <c>_etag</c> <c>VIRTUAL</c> also refuses a write, and additionally
+        /// tells Calcite they are not stored: <c>RelOptTableImpl.toRel</c> then drops them from the scan
+        /// and projects a literal null, so every read of either returns nothing. The row type is
+        /// identical either way, which is why this asserts the plan rather than the type.
+        /// </remarks>
+        [TestMethod]
+        public void ServiceMaintainedColumnsAreStillRead()
+        {
+            var plan = PlanText("SELECT \"_ts\", \"_etag\" FROM products");
+
+            plan.Should().Contain("_ts=[$2]");
+            plan.Should().Contain("_etag=[$3]");
+            plan.Should().NotContain("null:BIGINT");
+        }
+
+    }
+
+}

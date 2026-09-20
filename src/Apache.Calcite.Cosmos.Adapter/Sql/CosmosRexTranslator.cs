@@ -711,7 +711,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </para>
         /// <para>
         /// This was found by a test rather than reasoned to —
-        /// <c>CosmosRelImplementTests.ASortOverADistanceRendersTheExpression</c> failed the moment the
+        /// <c>CosmosSortTests.Implement.ASortOverADistanceRendersTheExpression</c> failed the moment the
         /// guard went in — which is the argument for the narrow rule: the guard is for operators whose
         /// Calcite meaning is computed over the accessor's own result, and these are the ones where it
         /// is not.
@@ -2310,7 +2310,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // CosmosFilterSplitRule writes one to say the comparison is against the raw value -- so
             // stripping those would quietly push equalities the filter side declines on purpose. See
             // CosmosRexTranslatorTests.EqualityThroughACastOverATypedColumnKeepsTheCast and
-            // CosmosCastTests.ACastToAnExactTypeIsDeclined, both of which failed to the broader test.
+            // CosmosRexTranslatorTests.Casts.ACastToAnExactTypeIsDeclined, both of which failed to
+            // the broader test.
             if (call.getOperands().size() == 1
                 && call.getType()?.isNullable() == false
                 && Operand(call, 0).getType()?.isNullable() == true

@@ -532,7 +532,7 @@ is not offered, and one thing that cannot be fixed here at all.
   the same 2206 — which is narrower than the multi-key sort the composite-index path handles.
 
   **What is not verified is the shape a connection presents.** The node and the rule are covered by
-  `CosmosRelImplementTests`, which builds `Sort(Project(scan))` directly. A connection wraps the
+  `CosmosSortTests.Implement`, which builds `Sort(Project(scan))` directly. A connection wraps the
   finished plan in a calc, which is what strands `ORDER BY RANK` in
   [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46) — that case cannot project its score, and
   this one can, so the outer projection should merely drop a column that the statement still carries.
@@ -952,7 +952,7 @@ for the same reason. So the two-statement shape is not one option among several;
 **A distance makes this more pressing than it was.** A computed distance is always nullable, where a
 promoted `id` is not, so a distance-ordered query needs `LOW` in every case rather than only when the
 path happens to be nullable — see the geography items in section 4, and
-`CosmosDistanceSortPlanningTests`, which sets it for that reason.
+`CosmosSortRuleTests`, which sets it for that reason.
 
 ### Pushing part of an expression — *done*
 
