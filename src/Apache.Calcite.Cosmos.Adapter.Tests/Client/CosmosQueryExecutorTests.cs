@@ -175,6 +175,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return _container!;
         }
 
+        /// <summary>
+        /// Takes a document away again when the test that wrote it ends, however it ends.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The container this class seeds is shared by every test in it, and three of them count what
+        /// it holds — <c>IdentityQueryReturnsEveryDocument</c> asserts four documents,
+        /// <c>IsNullTranslationMatchesAbsentProperties</c> and <c>GroupByRunsAgainstTheService</c>
+        /// read across all of them. Two other tests write a document of their own to have something
+        /// with every JSON type in it. So the counting tests are right only while the writing tests
+        /// have not run yet.
+        /// </para>
+        /// <para>
+        /// <b>Nothing ever promised that order.</b> MSTest happened to give it and xUnit gives the
+        /// other one, which is how this surfaced — three failures against a container holding six
+        /// documents where the seed puts four. Removing the document is the fix rather than pinning
+        /// the order, because the order was never the thing being tested.
+        /// </para>
+        /// <para>
+        /// <c>await using</c> at statement level, so the removal runs at the end of the method with
+        /// no <c>try</c>/<c>finally</c> around a test body, and runs on the failing path too — which
+        /// matters most, a failed assertion being exactly when the leftover would go on to fail
+        /// something unrelated.
+        /// </para>
+        /// </remarks>
+        /// <param name="id">The document's id.</param>
+        /// <param name="partition">Its partition key.</param>
+        /// <returns>A handle that deletes the document when disposed.</returns>
+        static IAsyncDisposable RemovedWhenTheTestEnds(string id, string partition) => new Removal(id, partition);
+
+        /// <summary>
+        /// The handle <see cref="RemovedWhenTheTestEnds"/> hands out.
+        /// </summary>
+        sealed class Removal(string id, string partition) : IAsyncDisposable
+        {
+
+            public async ValueTask DisposeAsync()
+            {
+                // A document the test never managed to write is not an error to clean up after.
+                try
+                {
+                    await Container().DeleteItemStreamAsync(id, new PartitionKey(partition));
+                }
+                catch (CosmosException)
+                {
+                }
+            }
+
+        }
+
         static async Task<List<JsonElement>> Execute(CosmosQuery query, PartitionKey? partitionKey = null)
         {
             var executor = new CosmosQueryExecutor(Container());
@@ -748,6 +798,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 await Container().UpsertItemStreamAsync(stream, new PartitionKey("types"));
 
+            await using var removal = RemovedWhenTheTestEnds(id, "types");
+
             var parameters = new CosmosParameterList();
             var builder = Builder();
             builder.SelectValue("c");
@@ -806,6 +858,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 await Container().UpsertItemStreamAsync(stream, new PartitionKey("types"));
+
+            await using var removal = RemovedWhenTheTestEnds("types-2", "types");
 
             var parameters = new CosmosParameterList();
             var builder = Builder();
