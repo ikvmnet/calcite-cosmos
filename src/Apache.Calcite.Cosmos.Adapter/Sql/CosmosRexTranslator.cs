@@ -1663,6 +1663,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return stored;
             }
 
+            // A stored geography projected as itself. The constructor disappears and the path goes
+            // down, the reader putting it back -- the same shape the UUID cast takes, and for the same
+            // reason: the service holds the value in a form the plan's type is a reading of. Guarded,
+            // unlike the predicate form -- see TryStoredGeographyProjection.
+            if (TryStoredGeographyProjection(node, out var shape) && shape is not null)
+            {
+                reading = CosmosReading.Typed;
+                return shape;
+            }
+
             if (TryJsonValueProjection(node, out var guarded) && guarded is not null)
             {
                 reading = CosmosReading.Text;
@@ -1977,6 +1987,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.ClrStGeogAsGeoJson.getName()
                 && call.getOperands().size() == 1
                 && TryResolveGeography(Operand(call, 0), out path);
+        }
+
+        /// <summary>
+        /// Renders a stored geography projected as itself, as the guarded path the shape lives at.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The read side of what every geography predicate already does.</b> A stored shape reaches
+        /// an operator as <c>CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>, no
+        /// column being typed a geometry; pushed down the constructor disappears and the path is sent,
+        /// because Cosmos reads the property as the shape. Selecting one is the same statement with
+        /// nothing around it, and <see cref="Client.CosmosJson"/> puts the constructor back — which
+        /// until #149 it could not, there being no reading for <c>GEOMETRY</c> at all.
+        /// </para>
+        /// <para>
+        /// <b>Guarded, where the predicate form is bare, and the difference is not an inconsistency.</b>
+        /// <see cref="WriteCall"/> holds the nested-accessor guard back for a geography function
+        /// because the function consumes the object the path holds and <c>IS_PRIMITIVE</c> is false of
+        /// it — guarded, <c>ST_DISTANCE</c> would be handed null for every document that has a shape.
+        /// That argument is about the <em>scalar</em> guard and about an operand. Here the path is the
+        /// whole column, and what it needs is the guard a <c>JSON_QUERY</c> carries, which admits the
+        /// object and the array and excludes the scalar. Measured: over a scalar at the path the
+        /// in-process accessor answers null and the constructor is never reached, while the bare path
+        /// would send the scalar and fail the read — an error where the engine answers a value. Over an
+        /// array both raise, so the guard lets through exactly what agrees.
+        /// </para>
+        /// <para>
+        /// The literal form is not this and falls through to <see cref="WriteGeographyLiteral"/>, which
+        /// writes the object out where the call stood: there is no path to guard, and the reader
+        /// converts what the statement itself carried.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryStoredGeographyProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (node is not RexCall call
+                || call.getOperator().getName() != Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName()
+                || call.getOperands().size() != 1)
+                return false;
+
+            // A container reading its coordinates as a plane refuses a geodesic operator, and a
+            // projection is no exception -- the fall-through this stands in front of asks the same
+            // question of every geography name it writes.
+            RequireGeographyReading(call.getOperator().getName());
+
+            // The literal form resolves to no path, and is written by WriteGeographyLiteral instead.
+            if (TryResolveGeography(node, out var path) == false || path is null)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsObject.getName()}({rendered}) OR {CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            return true;
         }
 
         /// <inheritdoc cref="TranslateProjection(RexNode, out CosmosReading)" />

@@ -195,7 +195,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
 
             var validator = SqlValidatorUtil.newValidator(
-                org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance), catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
+                org.apache.calcite.sql.util.SqlOperatorTables.chain(
+                    SqlStdOperatorTable.instance(),
+                    Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance,
+                    // The geography operators are a host's to chain, and a geography column exists only
+                    // where one has: no column is typed a geometry, so a shape reaches a query as
+                    // CLR_ST_GEOG_GEOMFROMGEOJSON over a path.
+                    Apache.Calcite.Geography.Sql.GeographyOperatorTable.Instance()),
+                catalogReader, _typeFactory, SqlValidator.Config.DEFAULT);
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -706,6 +713,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             ((object[])rows[0]).Should().Equal(
                 org.apache.calcite.util.UuidValue.fromString("0123456f-89ab-7cde-8f01-23456789abcd"),
                 "widget");
+        }
+
+        /// <summary>
+        /// A projected geography reads back, which is what #149 said it did not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The statement was right and there was nothing to receive it.</b> No column is typed a
+        /// geometry, so a stored shape reaches a query as
+        /// <c>CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>; pushed down the
+        /// constructor disappears and the path goes, because Cosmos reads the property as the shape.
+        /// What came back was the GeoJSON object and the plan had typed the column <c>GEOMETRY</c>,
+        /// for which <c>CosmosJson.GetValue</c> had no case at all — <em>No Cosmos JSON reading is
+        /// defined for SQL type 'GEOMETRY'</em>, at the first row rather than at planning.
+        /// </para>
+        /// <para>
+        /// The value is a JTS <see cref="org.locationtech.jts.geom.Geometry"/> stamped 4326, because
+        /// the reading is the geography package's own constructor rather than a second one. A caller
+        /// gets what it would have got had the projection stayed in process.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ShouldReadAProjectedGeography()
+        {
+            Given("""{ "g": { "type": "Point", "coordinates": [0.5, 0.25] } }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c.\"DOC\", '$.location')) AS \"g\" FROM products AS c"));
+
+            _executor.Executed!.Value.Sql.Should().Contain("IS_OBJECT(c.location) OR IS_ARRAY(c.location) ? c.location : null",
+                "the shape is the path under a JSON_QUERY's own guard: " + _executor.Executed!.Value.Sql);
+
+            rows.Should().HaveCount(1);
+
+            var geometry = rows[0].Should().BeAssignableTo<org.locationtech.jts.geom.Geometry>().Subject;
+            geometry.toText().Should().Be("POINT (0.5 0.25)");
+            geometry.getSRID().Should().Be(4326, "the geography package's constructor stamps WGS84, and it is that constructor");
+        }
+
+        /// <summary>
+        /// A scalar at the path reads as null rather than failing, which is what the accessor answers
+        /// in process.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The guard is what makes the two agree, and without it they did not.</b> Measured in
+        /// <c>CalciteGeographyReadingMeasurementTests</c>: in process
+        /// <c>JSON_QUERY</c> over a scalar answers null and the constructor is never reached, so the
+        /// column is null. The bare path would have sent the scalar, and the reader would have raised
+        /// over text that is not GeoJSON — an error where the engine answers a value, which is the one
+        /// trade this adapter refuses everywhere.
+        /// </para>
+        /// <para>
+        /// The stub ignores the SQL, so what is asserted here is the <em>reading</em> of a guard that
+        /// answered null; that the service evaluates the guard is the statement asserted above it.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ShouldReadAGeographyAsNullWhereTheGuardAnsweredNull()
+        {
+            Given("""{ }""");
+
+            (await Execute(PlanToClr(
+                "SELECT CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c.\"DOC\", '$.location')) AS \"g\" FROM products AS c")))
+                .Should().Equal(new object[] { null! });
+        }
+
+        /// <remarks>
+        /// An object at the path that is not GeoJSON fails rather than lies, which is the refusal every
+        /// other declared reading makes — and the in-process constructor raises over the same input, so
+        /// the two agree by both failing.
+        /// </remarks>
+        [Fact]
+        public async Task ShouldRefuseAnObjectThatIsNotGeoJson()
+        {
+            Given("""{ "g": { "kind": "somewhere" } }""");
+
+            var plan = PlanToClr(
+                "SELECT CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c.\"DOC\", '$.location')) AS \"g\" FROM products AS c");
+
+            var act = async () => await Execute(plan);
+            (await act.Should().ThrowAsync<CosmosMaterializationException>()).WithMessage("*not GeoJSON*");
+        }
+
+        /// <summary>
+        /// A geography beside another column reads the same way, the row being an <c>object[]</c>.
+        /// </summary>
+        /// <remarks>
+        /// Unlike the UUID case in <see cref="ShouldReadALoneUuidColumn"/>, the arity decided nothing
+        /// here: with no reading for <c>GEOMETRY</c> at all the reader raised before any row shape was
+        /// reached, which is why #149 reports it at one column and several alike.
+        /// </remarks>
+        [Fact]
+        public async Task ShouldReadAGeographyBesideAnotherColumn()
+        {
+            Given("""{ "g": { "type": "Point", "coordinates": [0.5, 0.25] }, "n": "widget" }""");
+
+            var rows = await Execute(PlanToClr(
+                "SELECT CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c.\"DOC\", '$.location')) AS \"g\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c"));
+
+            rows.Should().HaveCount(1);
+
+            var row = (object[])rows[0];
+            row[0].Should().BeAssignableTo<org.locationtech.jts.geom.Geometry>().Subject.toText().Should().Be("POINT (0.5 0.25)");
+            row[1].Should().Be("widget");
         }
 
         /// <summary>
