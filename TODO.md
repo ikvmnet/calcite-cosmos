@@ -802,7 +802,7 @@ hand. Two tests pin both directions.
   `[0-9abcdef]` is the hex class spelled out; a v7 container within a known epoch pins a prefix. None
   was a row, and an unrecognised pattern states **nothing**, so each lost the path its *equality* as
   well as its order and every comparison against it read whole documents.
-  `CosmosStoredForms.RecogniseUuid` decides the shape instead — 32 nibble slots, hyphens at four fixed
+  `CosmosUuidForms.Recognise` decides the shape instead — 32 nibble slots, hyphens at four fixed
   positions, anchored, every slot a set of hex digits — and the confinement the signed comparison
   needs is read off slots 1 and 17 rather than matched. An alternation is a **union** of its branches,
   which derives the nil-UUID rule that was written by hand, in any of the four ways its anchors can be
@@ -847,7 +847,7 @@ hand. Two tests pin both directions.
   varies along most — `\d\d\d\d-\d\d-\d\d` is as common as `\d{4}-\d{2}-\d{2}`. Only the counted
   quantifier merges; `?`, `*`, `+` and `{m,n}` all admit a range of widths, which is the one property
   these forms turn on, so an atom carrying one ends the run beside it.
-- `CosmosStoredForms.RenderDateTime` — the instant analogue of `RenderUuid`, writing a literal in the
+- `CosmosTemporalForms.Render` — the instant analogue of `CosmosUuidForms.Render`, writing a literal in the
   path's own shape, driven by the same generated table. It **refuses a literal finer than the form**
   rather than truncating: against a seconds path, `> '…12:30:00.5'` truncated to `> '…12:30:00Z'`
   admits a stored `12:30:00Z` that is earlier than the literal. A coarser literal is written out in

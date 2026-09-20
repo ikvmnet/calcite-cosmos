@@ -109,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
                 facts.Derive(null).RepresentationOf(parkId).Should().BeNull();
                 facts.Derive(new[] { new CosmosFact(type, new CosmosClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
-                    .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+                    .Should().Be(CosmosUuidForms.CanonicalLower);
             }
 
             [Fact]

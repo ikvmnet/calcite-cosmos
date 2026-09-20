@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             ((java.lang.Boolean)CalciteSystemProperty.UUID_UNSIGNED_COMPARISON.value()).booleanValue()
                 .Should().BeTrue("CALCITE-7716 defaults calcite.uuid.unsigned.comparison to on");
 
-            CosmosStoredForms.UuidCanonicalLower.PreservesOrder.Should().BeTrue(
+            CosmosUuidForms.CanonicalLower.PreservesOrder.Should().BeTrue(
                 "and an unconfined canonical form carries the order under it");
         }
 

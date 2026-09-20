@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(new[] { Equals(Type, "Park") }).RepresentationOf(ParkId).Should().BeNull();
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId)
-                .Should().Be(CosmosStoredForms.UuidCanonicalLower,
+                .Should().Be(CosmosUuidForms.CanonicalLower,
                     "the discriminator selects the branch, and the branch is where the pattern was declared");
         }
 
@@ -89,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             // The pattern is not in the branch; it is in $defs, reached through a $ref.
             Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId)
-                .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+                .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
         [Fact]
@@ -118,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// The UUID half was the other way round until CALCITE-7716 made the engine's comparison
         /// unsigned in 1.43; <c>CalciteUuidOrderingMeasurementTests</c> is what says it is so, and
-        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> records what the claim now rests on.
+        /// <see cref="CosmosUuidForms.CanonicalLower"/> records what the claim now rests on.
         /// That the two bits remain independent is shown by the forms that still separate on them —
         /// an unpadded integer, and an instant at mixed precision.
         /// </remarks>
@@ -135,8 +135,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             derived.RepresentationOf(ParkId)!.Value.PreservesEquality.Should().BeTrue();
 
-            CosmosStoredForms.IntegerUnpadded.PreservesEquality.Should().BeTrue();
-            CosmosStoredForms.IntegerUnpadded.PreservesOrder.Should().BeFalse(
+            CosmosNumericForms.IntegerUnpadded.PreservesEquality.Should().BeTrue();
+            CosmosNumericForms.IntegerUnpadded.PreservesOrder.Should().BeFalse(
                 "'9' sorts after '42', so the two properties are still carried separately");
         }
 
@@ -146,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </summary>
         /// <remarks>
         /// The confined row is kept because it is what survives <c>calcite.uuid.unsigned.comparison</c>
-        /// being turned off — see <see cref="CosmosStoredForms.UuidCanonicalLowerSortable"/>. Which
+        /// being turned off — see <see cref="CosmosUuidForms.CanonicalLowerSortable"/>. Which
         /// pattern yields which form is therefore still worth pinning, even where the licence is now
         /// the same.
         /// </remarks>
@@ -163,11 +163,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var derived = Compile(Sortable).Derive(null);
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v7")).Should().Be(CosmosStoredForms.UuidCanonicalLowerSortable);
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v4")).Should().Be(CosmosStoredForms.UuidCanonicalLower);
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v7")).Should().Be(CosmosUuidForms.CanonicalLowerSortable);
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v4")).Should().Be(CosmosUuidForms.CanonicalLower);
 
-            CosmosStoredForms.UuidCanonicalLowerSortable.PreservesOrder.Should().BeTrue("the confinement licenses the order under either comparison");
-            CosmosStoredForms.UuidCanonicalLower.PreservesOrder.Should().BeTrue("and the unsigned comparison licenses it without one");
+            CosmosUuidForms.CanonicalLowerSortable.PreservesOrder.Should().BeTrue("the confinement licenses the order under either comparison");
+            CosmosUuidForms.CanonicalLower.PreservesOrder.Should().BeTrue("and the unsigned comparison licenses it without one");
 
             derived.RepresentationOf(CosmosDocumentPath.Root.Property("loose")).Should().BeNull(
                 "a case-insensitive class is a different language and gets no entry, which is the whole point of recognising rather than probing");
@@ -200,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
             const string Loose = "^[0-9a-fA-F]{8}-.*$";
 
-            var lower = CosmosStoredForms.UuidCanonicalLower;
+            var lower = CosmosUuidForms.CanonicalLower;
 
             //     the subschema for $.v                                  form    string  string-or-null
             var cases = new (string Subschema, CosmosRepresentation? Form, bool Strict, bool OrNull)[]
@@ -269,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     "a document storing a number conforms to it, and would have been claimed a string");
 
             Compile("""{ "properties": { "ref": { "type": "string", "pattern": "PATTERN" } } }""".Replace("PATTERN", Uuid))
-                .Derive(null).RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalLower,
+                .Derive(null).RepresentationOf(reference).Should().Be(CosmosUuidForms.CanonicalLower,
                     "and says it once the type is there to make it say anything");
         }
 
@@ -283,9 +283,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void TheSpellingsInTheWildAreRecognised()
         {
-            var lower = CosmosStoredForms.UuidCanonicalLower;
-            var upper = CosmosStoredForms.UuidCanonicalUpper;
-            var sortable = CosmosStoredForms.UuidCanonicalLowerSortable;
+            var lower = CosmosUuidForms.CanonicalLower;
+            var upper = CosmosUuidForms.CanonicalUpper;
+            var sortable = CosmosUuidForms.CanonicalLowerSortable;
 
             var recognised = new (string Pattern, CosmosRepresentation? Expected)[]
             {
@@ -496,7 +496,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var reference = CosmosDocumentPath.Root.Property("ref");
             var derived = Compile(Upper).Derive(null);
 
-            derived.RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalUpper);
+            derived.RepresentationOf(reference).Should().Be(CosmosUuidForms.CanonicalUpper);
 
             // And the two are different forms, not one form read twice: a container is written one way
             // or the other, and a schema admitting both spellings is canonical at neither.
@@ -510,7 +510,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Compile("""
             { "properties": { "ref": { "type": "string",
                 "pattern": "^[0-7][0-9A-F]{7}-[0-9A-F]{4}-7[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" } } }
-            """).Derive(null).RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalUpperSortable);
+            """).Derive(null).RepresentationOf(reference).Should().Be(CosmosUuidForms.CanonicalUpperSortable);
         }
 
         [Fact]
@@ -547,7 +547,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             theory.Derive(null).RepresentationOf(at).Should().BeNull();
             theory.Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "map") }).RepresentationOf(at)
-                .Should().Be(CosmosStoredForms.Iso8601Date);
+                .Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
         [Fact]
@@ -638,7 +638,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(null).RepresentationOf(reference).Should().BeNull();
             theory.Derive(new[] { Equals(kind, "order") }).RepresentationOf(reference).Should().BeNull();
             theory.Derive(new[] { Equals(kind, "shipment") }).RepresentationOf(reference)
-                .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+                .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
         /// <summary>
@@ -661,7 +661,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             Compile(Implicit).Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "Shipment") })
                 .RepresentationOf(CosmosDocumentPath.Root.Property("ref"))
-                .Should().Be(CosmosStoredForms.UuidCanonicalLower);
+                .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
         /// <summary>
@@ -698,7 +698,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             theory.Rules.Should().NotBeEmpty();
             theory.Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("id"))
-                .Should().Be(CosmosStoredForms.Iso8601Date);
+                .Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
         /// <summary>
@@ -727,7 +727,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             schemas.Derive(null).RepresentationOf(b).Should().BeNull();
             schemas.Derive(new[] { new CosmosFact(a, new CosmosClaim.Present()) }).RepresentationOf(b)
-                .Should().Be(CosmosStoredForms.Iso8601Date);
+                .Should().Be(CosmosTemporalForms.Iso8601Date);
 
             // not: failing {properties: {k: {const: "A"}}} means k is there and is not "A" -- the
             // negation of the schema, which is vacuous on an absent k, rather than of the atom.

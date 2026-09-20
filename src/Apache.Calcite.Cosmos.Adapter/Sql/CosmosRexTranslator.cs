@@ -1786,7 +1786,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
                 return false;
 
-            if (Metadata.CosmosStoredForms.IsUuid(representation) == false)
+            if (Metadata.CosmosUuidForms.IsUuid(representation) == false)
                 return false;
 
             var rendered = path.ToString();

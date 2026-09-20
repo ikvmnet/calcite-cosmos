@@ -49,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// spelling's.</b> Calcite compared UUIDs as two <em>signed</em> 64-bit halves, so the lexical
     /// order of the canonical string was not its order unless the schema also confined the first hex
     /// digit. CALCITE-7716 made the comparison unsigned in 1.43 and
-    /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it, so
+    /// <see cref="CosmosUuidForms.CanonicalLower"/> preserves order with it, so
     /// <see cref="TryLowerUuid"/> takes the operator and the reversal exactly as the other two do.
     /// The gate did not move: it is still the two bits, asked separately.
     /// </para>
@@ -297,7 +297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <a href="https://issues.apache.org/jira/browse/CALCITE-7716">CALCITE-7716</a> the engine
         /// compared the two 64-bit halves as signed longs, so a canonical form gave that only where
         /// the schema also confined the first hex digit. The comparison is unsigned from 1.43 and
-        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it — but the rows
+        /// <see cref="CosmosUuidForms.CanonicalLower"/> preserves order with it — but the rows
         /// still carry the two bits separately, and this gates on them separately, because the engine
         /// keeps a switch that puts the old semantics back.
         /// </para>
@@ -430,8 +430,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Measured, Calcite's cast reads <c>'042'</c>, <c>'+42'</c>, <c>' 42'</c> and <c>'42'</c> as
         /// the same number, so a form admitting any two of them gives one value two spellings and a
         /// string equality would miss documents. A pattern that forbids the padding, or fixes it,
-        /// admits exactly one — which is what <see cref="CosmosStoredForms.IntegerUnpadded"/> and
-        /// <see cref="CosmosStoredForms.IntegerFixedWidth"/> record.
+        /// admits exactly one — which is what <see cref="CosmosNumericForms.IntegerUnpadded"/> and
+        /// <see cref="CosmosNumericForms.IntegerFixedWidth"/> record.
         /// </para>
         /// <para>
         /// <b>Ordering asks the stronger question and only the padded form answers it.</b> A lexical
