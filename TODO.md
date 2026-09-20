@@ -1463,6 +1463,18 @@ answer.
   the only thing that would change it is a column the sort can name — which is the surface this
   section declines. A standing cost of the row model, then, rather than an open item. See
   `DESIGN.md` under *Projecting a cast to text is a reading, not a translation*.
+- **A column with no reading is refused while the plan is made** — *built, and the list it guards is
+  worth reading.* `CosmosJson.CanRead` says what the reader covers; a projection of anything else is
+  declined and a row carrying one is refused, so a failure that used to arrive as a truncated `200`
+  arrives as a statement that does not prepare. Nothing reachable is refused today — `GEOMETRY` was
+  the one live case and #149 gave it a reading — so what this holds is the boundary.
+
+  **What is outside it**, from `EveryTypeAgreesWithWhatCanReadSays`: the thirteen `INTERVAL_*` types,
+  the four unsigned integers, and `TIME_TZ`, `TIME_WITH_LOCAL_TIME_ZONE` and
+  `TIMESTAMP_WITH_LOCAL_TIME_ZONE`. The last three are the ones worth a second look — `CosmosProject.IsStoredAsText`
+  already names two of them as ordering candidates, so the adapter contemplates a type its reader
+  cannot read. Neither is reachable, because nothing renders a cast to one; the pair is recorded
+  because the two halves disagreeing is how #149 happened.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch

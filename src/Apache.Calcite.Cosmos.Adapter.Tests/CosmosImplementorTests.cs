@@ -38,6 +38,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         RexNode Str(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, value.Length));
 
+        /// <summary>
+        /// A row type of the given columns, named after their types.
+        /// </summary>
+        org.apache.calcite.rel.type.RelDataType Row(params SqlTypeName[] types)
+        {
+            var builder = _types.builder();
+
+            for (var i = 0; i < types.Length; i++)
+                builder = builder.add("c" + i, _types.createSqlType(types[i]));
+
+            return builder.build();
+        }
+
+        // ── Refusing a row that cannot be read ───────────────────────────────────────
+
+        /// <remarks>
+        /// The ordinary row, and the half that says the refusal below is about the type rather than
+        /// about the check being on at all.
+        /// </remarks>
+        [Fact]
+        public void ARowOfReadableColumnsIsAccepted()
+        {
+            var act = () => CosmosImplementor.RequireReadableRow(Row(SqlTypeName.VARCHAR, SqlTypeName.BIGINT, SqlTypeName.UUID));
+
+            act.Should().NotThrow();
+        }
+
+        /// <summary>
+        /// A column the reader has no reading for is refused while the plan is being built.
+        /// </summary>
+        /// <remarks>
+        /// <b>Which is the whole point of the check, and the reason it is not left to the reader.</b>
+        /// Reached at the first row instead, a caller over HTTP has already had its <c>200</c> and its
+        /// headers, so the failure arrives as a truncated body rather than as an error — that is what
+        /// #149 cost. <c>INTERVAL DAY</c> stands in for the class: Calcite has thirteen interval types,
+        /// four unsigned integer ones and three more temporal spellings that this reader does not
+        /// cover, none of which anything renders today.
+        /// </remarks>
+        [Fact]
+        public void AColumnWithNoReadingIsRefused()
+        {
+            var act = () => CosmosImplementor.RequireReadableRow(Row(SqlTypeName.VARCHAR, SqlTypeName.INTERVAL_DAY));
+
+            act.Should().Throw<CosmosTranslationException>()
+                .WithMessage("*'c1'*INTERVAL_DAY*no reading*");
+        }
+
+        /// <summary>
+        /// A reading other than <c>Typed</c> is not asked about, because it never consults the type.
+        /// </summary>
+        /// <remarks>
+        /// <c>Text</c>, <c>Json</c> and <c>JsonText</c> read what the service sent whatever the plan
+        /// calls it — which is exactly why they exist, the <c>DOC</c> column being an object in a
+        /// column declared <c>VARCHAR</c>. Refusing on the declared type there would refuse the row
+        /// model itself.
+        /// </remarks>
+        [Fact]
+        public void AColumnReadAsSomethingOtherThanItsTypeIsNotAsked()
+        {
+            var act = () => CosmosImplementor.RequireReadableRow(
+                Row(SqlTypeName.VARCHAR, SqlTypeName.INTERVAL_DAY),
+                new[] { CosmosReading.Typed, CosmosReading.Json });
+
+            act.Should().NotThrow();
+        }
+
+        /// <remarks>
+        /// A list shorter than the row leaves the rest <c>Typed</c>, which is what
+        /// <c>CosmosConverters.RowBuilder</c> means by a short list and has to mean here too.
+        /// </remarks>
+        [Fact]
+        public void AShortReadingListLeavesTheRestTyped()
+        {
+            var act = () => CosmosImplementor.RequireReadableRow(
+                Row(SqlTypeName.VARCHAR, SqlTypeName.INTERVAL_DAY),
+                new[] { CosmosReading.Json });
+
+            act.Should().Throw<CosmosTranslationException>().WithMessage("*'c1'*");
+        }
+
+        /// <summary>
+        /// A collection is refused for its element type, the failure otherwise arriving one level down.
+        /// </summary>
+        [Fact]
+        public void ACollectionIsRefusedForItsElementType()
+        {
+            var element = _types.createSqlType(SqlTypeName.INTERVAL_DAY);
+            var rowType = _types.builder().add("a", _types.createArrayType(element, -1)).build();
+
+            var act = () => CosmosImplementor.RequireReadableRow(rowType);
+
+            act.Should().Throw<CosmosTranslationException>().WithMessage("*'a'*");
+        }
+
         [Fact]
         public void StartsBoundToTheWholeDocument()
         {

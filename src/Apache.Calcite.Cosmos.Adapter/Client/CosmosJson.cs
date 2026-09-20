@@ -316,8 +316,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 case nameof(SqlTypeName.OTHER):
                     return GetNatural(value);
                 default:
-                    throw new CosmosMaterializationException($"No Cosmos JSON reading is defined for SQL type '{typeName?.name() ?? "null"}'.");
+                    throw new CosmosMaterializationException(NoReadingMessage(typeName));
             }
+        }
+
+        /// <summary>
+        /// The message a type with no reading fails with, in one place because two things say it.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="GetValue(JsonElement, SqlTypeName, SqlTypeName?)"/> throws it and
+        /// <c>CosmosJsonTests.EveryTypeAgreesWithWhatCanReadSays</c> recognises it, which is what
+        /// makes <see cref="CanRead(SqlTypeName?, SqlTypeName?)"/> a claim about this switch rather
+        /// than a second list beside it.
+        /// </remarks>
+        internal static string NoReadingMessage(SqlTypeName? typeName) =>
+            $"No Cosmos JSON reading is defined for SQL type '{typeName?.name() ?? "null"}'.";
+
+        /// <summary>
+        /// Determines whether a value of the given SQL type can be read back at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The same switch, asked in advance.</b> Cosmos has no row schema, so the plan's type is
+        /// the whole of what a <see cref="CosmosReading.Typed"/> column is read by; a type this has no
+        /// case for is a column that renders, executes, and then fails at the first row. #149 is that,
+        /// and what made it expensive is <em>when</em> it failed: over HTTP a caller had already had a
+        /// <c>200</c>, the headers and part of the body by the time the reader was asked. So the
+        /// question is asked while the plan is being made instead —
+        /// <see cref="CosmosRexTranslator.TranslateProjection"/> declines to push such a column, and
+        /// <see cref="CosmosImplementor.RequireReadableRow"/> refuses to build a reader for one.
+        /// </para>
+        /// <para>
+        /// <b>It is a second list, and a test is what keeps it from becoming a different one.</b>
+        /// Writing it as a switch beside the reader's rather than deriving it from one table is a
+        /// choice: the reader is on the per-value path and a dictionary of delegates would price every
+        /// row for a question asked once per statement. <c>EveryTypeAgreesWithWhatCanReadSays</c>
+        /// walks <c>SqlTypeName.values()</c> and asserts the two answer alike, so a type added to one
+        /// and not the other is reported here rather than in a caller's response body.
+        /// </para>
+        /// </remarks>
+        /// <param name="typeName">The SQL type the plan was built against.</param>
+        /// <param name="componentTypeName">
+        /// The element type, where <paramref name="typeName"/> is a collection. A collection whose
+        /// element type is not given is read naturally and needs nothing of this.
+        /// </param>
+        /// <returns><c>true</c> where a value of that type can be read.</returns>
+        public static bool CanRead(SqlTypeName? typeName, SqlTypeName? componentTypeName = null)
+        {
+            // Dispatched on the name for the reason GetValue is: a Java enum's ordinals are not stable
+            // across versions, its names are.
+            var readable = typeName?.name() switch
+            {
+                nameof(SqlTypeName.NULL) => true,
+                nameof(SqlTypeName.BOOLEAN) => true,
+                nameof(SqlTypeName.TINYINT) => true,
+                nameof(SqlTypeName.SMALLINT) => true,
+                nameof(SqlTypeName.INTEGER) => true,
+                nameof(SqlTypeName.BIGINT) => true,
+                nameof(SqlTypeName.REAL) => true,
+                nameof(SqlTypeName.FLOAT) => true,
+                nameof(SqlTypeName.DOUBLE) => true,
+                nameof(SqlTypeName.DECIMAL) => true,
+                nameof(SqlTypeName.CHAR) => true,
+                nameof(SqlTypeName.VARCHAR) => true,
+                nameof(SqlTypeName.UUID) => true,
+                nameof(SqlTypeName.GEOMETRY) => true,
+                nameof(SqlTypeName.BINARY) => true,
+                nameof(SqlTypeName.VARBINARY) => true,
+                nameof(SqlTypeName.DATE) => true,
+                nameof(SqlTypeName.TIME) => true,
+                nameof(SqlTypeName.TIMESTAMP) => true,
+                nameof(SqlTypeName.TIMESTAMP_TZ) => true,
+                nameof(SqlTypeName.MAP) => true,
+                nameof(SqlTypeName.ARRAY) => true,
+                nameof(SqlTypeName.MULTISET) => true,
+                nameof(SqlTypeName.ANY) => true,
+                nameof(SqlTypeName.OTHER) => true,
+                _ => false,
+            };
+
+            if (readable == false)
+                return false;
+
+            // A collection is read to its element type, so an unreadable element is an unreadable
+            // column -- the failure would simply arrive one level down. Where no element type was
+            // given the elements are read by their own JSON type and there is nothing to refuse.
+            return componentTypeName is null || CanRead(componentTypeName);
+        }
+
+        /// <inheritdoc cref="CanRead(SqlTypeName?, SqlTypeName?)" />
+        /// <param name="type">The column's type, whose element type is read off it.</param>
+        public static bool CanRead(org.apache.calcite.rel.type.RelDataType? type) =>
+            type is not null && CanRead(type.getSqlTypeName(), ComponentTypeNameOf(type));
+
+        /// <summary>
+        /// Returns the element type of a collection type, or <c>null</c> where the type is not one.
+        /// </summary>
+        /// <remarks>
+        /// What tells <c>VARCHAR ARRAY</c> from <c>INTEGER ARRAY</c> at the point the value is read.
+        /// The reader needs it because a JSON array carries no element type of its own — see
+        /// <see cref="GetList(JsonElement, SqlTypeName?)"/> — and it lives here rather than with the
+        /// row builder because it is a fact about how this takes its arguments.
+        /// </remarks>
+        /// <param name="type">The type.</param>
+        /// <returns>The element type, or <c>null</c>.</returns>
+        public static SqlTypeName? ComponentTypeNameOf(org.apache.calcite.rel.type.RelDataType? type)
+        {
+            var name = type?.getSqlTypeName();
+            if (name != SqlTypeName.ARRAY && name != SqlTypeName.MULTISET)
+                return null;
+
+            return type!.getComponentType()?.getSqlTypeName();
         }
 
         /// <summary>

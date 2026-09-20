@@ -1632,6 +1632,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
 
+            var expression = TranslateProjectionCore(node, out reading);
+
+            // A column the reader has no reading for must not go down. The statement would be right
+            // and the row unbuildable, which is a failure at the first row -- and a read that has
+            // begun has already sent a caller 200 and the headers, so what arrives is a truncated
+            // body rather than an error (#149). Declining is the ordinary refusal this class is built
+            // out of: the column stays in process, where Calcite computes it, and the query answers.
+            //
+            // Only a Typed reading asks the reader about the declared type at all. Text, Json and
+            // JsonText read what the service sent whatever the plan calls it, which is why a
+            // projected JSON fragment is not caught here for being an object in a VARCHAR column.
+            if (reading == CosmosReading.Typed && Client.CosmosJson.CanRead(node.getType()) == false)
+                throw new CosmosTranslationException(
+                    $"A projection typed '{node.getType()}' has no Cosmos JSON reading, so pushing it would render a column that cannot be read back.");
+
+            return expression;
+        }
+
+        /// <inheritdoc cref="TranslateProjection(RexNode, out CosmosReading)" />
+        /// <remarks>
+        /// The recognisers, without the readability gate <see cref="TranslateProjection"/> puts in
+        /// front of them. Separate because every shape below returns early with a reading of its own,
+        /// and one question asked once after them all is the only way to be sure none skipped it.
+        /// </remarks>
+        string TranslateProjectionCore(RexNode node, out CosmosReading reading)
+        {
             // A cast to VARCHAR over a SQL/JSON accessor converts nothing -- the accessor is already
             // VARCHAR -- so it is dropped here rather than treated as a rendering, and what is left
             // is rendered as the accessor it is.

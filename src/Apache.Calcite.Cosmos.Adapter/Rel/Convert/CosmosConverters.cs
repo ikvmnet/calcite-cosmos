@@ -319,6 +319,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>The lambda.</returns>
         public static LambdaExpression RowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosReading>? readings = null)
         {
+            // Refused here rather than discovered at the first row -- see
+            // CosmosImplementor.RequireReadableRow, which is also what the lookup join's own row
+            // builder goes through.
+            CosmosImplementor.RequireReadableRow(rowType, readings);
+
             var row = Expression.Parameter(typeof(JsonElement), "row");
             var fields = rowType.getFieldList();
             var fieldCount = fields.size();
@@ -361,6 +366,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>The lambda, or <c>null</c> where a field addresses nothing and a read cannot serve.</returns>
         public static LambdaExpression? DocumentRowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosPath?> fields)
         {
+            // A read produces every field by its declared type, so there is no reading to exempt one.
+            CosmosImplementor.RequireReadableRow(rowType);
+
             var row = Expression.Parameter(typeof(JsonElement), "document");
             var typeFields = rowType.getFieldList();
             var fieldCount = typeFields.size();
@@ -442,18 +450,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Returns the element type of a collection type, or <c>null</c> where the type is not one.
         /// </summary>
         /// <remarks>
-        /// What tells <c>VARCHAR ARRAY</c> from <c>INTEGER ARRAY</c> at the point the value is read.
-        /// The reader needs it because a JSON array carries no element type of its own — see
-        /// <see cref="CosmosJson.GetList(JsonElement, SqlTypeName?)"/>.
+        /// The reader's own, because what a collection's element type is <em>for</em> is the reading:
+        /// a JSON array carries no element type, so <see cref="CosmosJson.GetList(JsonElement, SqlTypeName?)"/>
+        /// is told one. Kept as a forwarder so the call sites below read as they did.
         /// </remarks>
-        static SqlTypeName? ComponentTypeNameOf(org.apache.calcite.rel.type.RelDataType type)
-        {
-            var name = type?.getSqlTypeName();
-            if (name != SqlTypeName.ARRAY && name != SqlTypeName.MULTISET)
-                return null;
-
-            return type!.getComponentType()?.getSqlTypeName();
-        }
+        static SqlTypeName? ComponentTypeNameOf(org.apache.calcite.rel.type.RelDataType type) =>
+            CosmosJson.ComponentTypeNameOf(type);
 
         /// <summary>
         /// Returns the reading recorded for an ordinal, which is <see cref="CosmosReading.Typed"/>

@@ -353,6 +353,66 @@ namespace Apache.Calcite.Cosmos.Adapter
         }
 
         /// <summary>
+        /// Refuses a row carrying a column the reader has no reading for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The statement and the reader are one contract, and this is where the two halves are
+        /// held together.</b> <see cref="BindReadings"/> says how each field is to be read; this says
+        /// whether it <em>can</em> be. A column whose type
+        /// <see cref="Client.CosmosJson.CanRead(org.apache.calcite.rel.type.RelDataType?)"/> answers
+        /// no for is a statement that renders, executes, and fails on the first row — which is #149,
+        /// and which cost what it cost because of when it failed rather than that it failed. A read
+        /// that has begun has already sent a caller <c>200</c> and the headers, so the body is
+        /// truncated rather than the request refused; raised here the statement does not prepare, and
+        /// a caller gets an error it can still act on.
+        /// </para>
+        /// <para>
+        /// <b>Second of two, and the one that cannot be gone around.</b>
+        /// <see cref="Sql.CosmosRexTranslator.TranslateProjection"/> asks the same question of one
+        /// expression, which is the better place to ask it: a refusal there is a column left in
+        /// process and a query that still answers. But a translator sees expressions, and a row is
+        /// assembled by rules — a split, an aggregate, a lookup join, an unnest — each of which
+        /// composes a row type of its own. This sees the row the plan actually carries, so a future
+        /// rule that composes an unreadable column is caught whether or not it went through the
+        /// translator.
+        /// </para>
+        /// <para>
+        /// <b>Only a <see cref="CosmosReading.Typed"/> column is asked about.</b> The other readings
+        /// do not consult the declared type at all: <see cref="CosmosReading.Text"/>,
+        /// <see cref="CosmosReading.Json"/> and <see cref="CosmosReading.JsonText"/> read what the
+        /// service sent, whatever the plan calls it, which is exactly why they exist.
+        /// </para>
+        /// </remarks>
+        /// <param name="rowType">The row the plan carries.</param>
+        /// <param name="readings">
+        /// How each ordinal is to be read. A list shorter than the row type, or none at all, leaves
+        /// every remaining ordinal <see cref="CosmosReading.Typed"/>.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="rowType"/> is <c>null</c>.</exception>
+        /// <exception cref="CosmosTranslationException">A column cannot be read.</exception>
+        public static void RequireReadableRow(org.apache.calcite.rel.type.RelDataType rowType, IReadOnlyList<CosmosReading>? readings = null)
+        {
+            if (rowType is null)
+                throw new ArgumentNullException(nameof(rowType));
+
+            var fields = rowType.getFieldList();
+
+            for (var i = 0; i < fields.size(); i++)
+            {
+                if ((readings is not null && i < readings.Count ? readings[i] : CosmosReading.Typed) != CosmosReading.Typed)
+                    continue;
+
+                var field = (org.apache.calcite.rel.type.RelDataTypeField)fields.get(i);
+                if (Client.CosmosJson.CanRead(field.getType()))
+                    continue;
+
+                throw new CosmosTranslationException(
+                    $"Output field '{field.getName()}' is typed '{field.getType()}', which this adapter has no reading for, so the statement's rows could not be built.");
+            }
+        }
+
+        /// <summary>
         /// Derives the binding a node's <em>output</em> carries, by walking the subtree the way
         /// implementation will.
         /// </summary>

@@ -2204,6 +2204,49 @@ metadata: nothing addressed this way has a type, a key or a collation, so it can
 reasoned about. The one limit is that the path must be a literal — a path assembled at run time names
 a property whose name is not known until the row is read, and is declined.
 
+#### A column with no reading is refused while the plan is made
+
+The table above is the whole of what this reads, and Calcite's type list is longer than it. Thirteen
+interval types, four unsigned integer ones, three further temporal spellings and a dozen internal
+names have no entry — 32 of 57 when this was written. A column typed one of them renders, goes to the
+service, comes back, and fails as the first row is built.
+
+**What that costs is not the failure but its timing.** A read that has begun has already sent a
+caller `200` and the headers, so a failure there arrives as a *truncated body* rather than as an
+error: nothing downstream can tell it from a short answer. #149 was exactly this, over `GEOMETRY`, and
+the report leads with the truncation rather than with the missing case. So the question is asked while
+the plan is being made instead, in two places that answer it differently on purpose.
+
+**`CosmosRexTranslator.TranslateProjection` declines to push such a column**, which is the better of
+the two outcomes and the ordinary refusal this adapter is built out of: the column stays in process,
+Calcite computes it, and the query answers. It is asked once, after the recognisers, because each of
+them returns early with a reading of its own and one question after them all is the only way to be
+sure none skipped it. A predicate is not asked — a `WHERE` renders an expression the service evaluates
+and returns nothing of, so what can be read back is not a question about it.
+
+**`CosmosImplementor.RequireReadableRow` refuses to build a reader for one**, which is the half that
+cannot be gone around. A translator sees expressions; a row is assembled by *rules* — a projection
+split, an aggregate, a lookup join, an unnest — each composing a row type of its own, and both row
+builders go through this whatever composed them. The statement then does not prepare, and a caller
+gets an error while it can still act on one.
+
+**Only a `Typed` column is asked about.** `Text`, `Json` and `JsonText` read what the service sent
+whatever the plan calls it — that is why they exist, the `DOC` column being an object in a column
+declared `VARCHAR`. Gating those on the declared type would refuse the row model itself.
+
+**`CosmosJson.CanRead` is a second switch beside the reader's, and a test is what keeps it from
+becoming a different one.** Deriving both from one table would put a dictionary lookup and a delegate
+call on the per-value path for a question asked once per statement, so they are written twice;
+`EveryTypeAgreesWithWhatCanReadSays` walks `SqlTypeName.values()` and asserts the two answer alike for
+every one. A type added to Calcite, or to one switch and not the other, fails there — which is the
+failure this guard exists to move earlier, applied to itself.
+
+**Nothing reachable is refused by this today**, and that is the intended state rather than a gap.
+`GEOMETRY` was the one type a pushed projection could produce without a reading, and it has one now.
+Measured: an interval, a local-time-zone cast and a date difference all leave their expression above
+the converter, so what the guard holds is the boundary for the next operator, cast or rule that
+renders something new.
+
 ### The row model
 
 Calcite has **no JSON type**. `SqlTypeName` in 1.41.0 has no `JSON` constant, and Calcite's

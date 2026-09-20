@@ -28,6 +28,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         static object? Read(string json, SqlTypeName typeName) => CosmosJson.GetValue(Value(json), typeName);
 
+        // ── What this reads at all ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// <c>CanRead</c> answers for every SQL type exactly what <c>GetValue</c> does, and the list
+        /// is Calcite's rather than one written here.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is what makes <c>CanRead</c> a claim about the reader rather than a second list
+        /// beside it.</b> The two are separate switches on purpose — the reader is on the per-value
+        /// path and a table of delegates would price every row for a question asked once per
+        /// statement — so the thing that keeps them the same switch is this walk over
+        /// <c>SqlTypeName.values()</c>. A type added to one and not the other fails here, which is the
+        /// failure this whole guard exists to move earlier.
+        /// </para>
+        /// <para>
+        /// The probe value is a JSON string, so a readable type may still refuse it — reading
+        /// <c>"x"</c> as an <c>INTEGER</c> is a failure about the <em>value</em>. Only the
+        /// <em>no reading</em> message is the answer being compared, which is why that message has one
+        /// spelling and both sides use it.
+        /// </para>
+        /// <para>
+        /// Calcite carried 57 type names when this was written and 32 of them have no reading here:
+        /// thirteen intervals, four unsigned integers, three further temporal spellings, and the rest
+        /// internal things no column is ever typed. None of them is reachable through a pushed
+        /// projection today — <c>GEOMETRY</c> was, which is #149 — so what this pins is the boundary
+        /// rather than a live gap.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EveryTypeAgreesWithWhatCanReadSays()
+        {
+            var values = (SqlTypeName[])SqlTypeName.values();
+
+            values.Should().HaveCountGreaterThan(40, "this walks Calcite's own enumeration rather than a list of its own");
+
+            foreach (var type in values)
+            {
+                bool hasReading;
+
+                try
+                {
+                    CosmosJson.GetValue(Value("\"x\""), type);
+                    hasReading = true;
+                }
+                catch (CosmosMaterializationException e)
+                {
+                    // A readable type may still refuse this particular value; only the absence of a
+                    // reading is what is being compared.
+                    hasReading = e.Message.Contains("No Cosmos JSON reading") == false;
+                }
+
+                CosmosJson.CanRead(type).Should().Be(hasReading, "for " + type.name());
+            }
+        }
+
+        /// <summary>
+        /// A collection is readable only where its element type is, the failure otherwise arriving one
+        /// level down.
+        /// </summary>
+        /// <remarks>
+        /// An element is read as the type the <c>RETURNING</c> named — see
+        /// <c>ShouldReadArrayElementsAsTheDeclaredComponentType</c> — so an unreadable element is an
+        /// unreadable column. Where no element type is given the elements are read by their own JSON
+        /// type and there is nothing to refuse.
+        /// </remarks>
+        [Fact]
+        public void ACollectionIsReadableOnlyWhereItsElementIs()
+        {
+            CosmosJson.CanRead(SqlTypeName.ARRAY, SqlTypeName.VARCHAR).Should().BeTrue();
+            CosmosJson.CanRead(SqlTypeName.ARRAY, SqlTypeName.INTERVAL_DAY).Should().BeFalse();
+            CosmosJson.CanRead(SqlTypeName.MULTISET, SqlTypeName.INTERVAL_DAY).Should().BeFalse();
+
+            CosmosJson.CanRead(SqlTypeName.ARRAY).Should().BeTrue("an element type nobody named is read by its own JSON type");
+        }
+
+        /// <remarks>
+        /// The two types a container has to earn, asserted by name because each arrived with a defect
+        /// of its own: #150 for the UUID's box, #149 for the geography's absence.
+        /// </remarks>
+        [Fact]
+        public void TheEarnedTypesAreReadable()
+        {
+            CosmosJson.CanRead(SqlTypeName.UUID).Should().BeTrue();
+            CosmosJson.CanRead(SqlTypeName.GEOMETRY).Should().BeTrue();
+        }
+
+        [Fact]
+        public void NoTypeAtAllIsNotReadable()
+        {
+            CosmosJson.CanRead((SqlTypeName?)null).Should().BeFalse();
+            CosmosJson.CanRead((org.apache.calcite.rel.type.RelDataType?)null).Should().BeFalse();
+        }
+
         [Fact]
         public void ShouldReadStringAsString()
         {

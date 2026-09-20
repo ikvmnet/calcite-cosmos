@@ -59,6 +59,84 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         RexNode Num(int value) => _rex.makeExactLiteral(new java.math.BigDecimal(value));
 
+        // ── A column that could not be read back ────────────────────────────────────
+
+        /// <summary>
+        /// A projection whose type has no Cosmos JSON reading is declined, however well it renders.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The statement and the reader are one contract.</b> Pushed, such a column would render, go
+        /// to the service, come back, and fail as the first row was built — and by then a caller over
+        /// HTTP has had its <c>200</c> and its headers, so what arrives is a truncated body rather than
+        /// an error. That is #149, and what it cost was <em>when</em> it failed. Declining is the
+        /// ordinary refusal this class is built out of: the column stays in process, Calcite computes
+        /// it, and the query answers.
+        /// </para>
+        /// <para>
+        /// A column passed straight through is the shape that makes the point: it renders as its path,
+        /// which is the simplest thing this translates, so nothing but the type decides. The type is
+        /// <c>INTERVAL DAY</c> because it is representative and unreachable — nothing composes such a
+        /// column today, which is the point: the guard is for the next one rather than for a live one.
+        /// <c>GEOMETRY</c> was the live one and now has a reading.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AProjectionWithNoReadingForItsTypeIsDeclined()
+        {
+            var interval = Ref(1, SqlTypeName.INTERVAL_DAY);
+
+            Translator().TryTranslateProjection(interval, out _, out _).Should().BeFalse();
+
+            var act = () => Translator().TranslateProjection(interval, out _);
+            act.Should().Throw<CosmosTranslationException>().WithMessage("*no Cosmos JSON reading*");
+
+            Translator().TryTranslateProjection(Ref(1, SqlTypeName.BIGINT), out var rendered, out _)
+                .Should().BeTrue("and it is the type deciding, the same reference rendering the same way");
+            rendered.Should().Be("c.price");
+        }
+
+        /// <summary>
+        /// The same expression is <em>not</em> refused in a predicate, which never materializes.
+        /// </summary>
+        /// <remarks>
+        /// The gate is on the projection alone, and deliberately: a <c>WHERE</c> renders an expression
+        /// the service evaluates and returns nothing of, so what this adapter can read back is not a
+        /// question about it. Refusing there would decline pushdowns for a reason that does not apply
+        /// — which is the same distinction <c>CLR_ST_GEOG_ASGEOJSON</c> is a projection only for.
+        /// </remarks>
+        [Fact]
+        public void APredicateIsNotAskedWhatItsTypeReadsAs()
+        {
+            var comparison = _rex.makeCall(SqlStdOperatorTable.IS_NOT_NULL, Ref(1, SqlTypeName.INTERVAL_DAY));
+
+            Translator().TryTranslate(comparison, out var rendered).Should().BeTrue();
+            rendered.Should().Be("(IS_DEFINED(c.price) AND NOT IS_NULL(c.price))");
+        }
+
+        /// <summary>
+        /// A reading that does not consult the declared type is not gated on it.
+        /// </summary>
+        /// <remarks>
+        /// The <c>DOC</c> column is an object in a column declared <c>VARCHAR</c>, and a projected
+        /// <c>JSON_QUERY</c> is a fragment in one — both read what the service sent rather than what
+        /// the plan called it. Asking the reader about the declared type there would refuse the row
+        /// model itself, so only a <c>Typed</c> reading is asked.
+        /// </remarks>
+        [Fact]
+        public void ARenderedColumnIsNotGatedOnItsDeclaredType()
+        {
+            var fragment = _rex.makeCall(SqlStdOperatorTable.JSON_QUERY,
+                Ref(2, SqlTypeName.VARCHAR),
+                Str("$.tags"),
+                _rex.makeFlag(org.apache.calcite.sql.SqlJsonQueryWrapperBehavior.WITHOUT_ARRAY),
+                _rex.makeFlag(org.apache.calcite.sql.SqlJsonQueryEmptyOrErrorBehavior.NULL),
+                _rex.makeFlag(org.apache.calcite.sql.SqlJsonQueryEmptyOrErrorBehavior.NULL));
+
+            Translator().TryTranslateProjection(fragment, out _, out var reading).Should().BeTrue();
+            reading.Should().Be(CosmosReading.JsonText);
+        }
+
         RexNode Call(SqlOperator op, params RexNode[] operands) => _rex.makeCall(op, operands);
 
         string Translate(RexNode node) => Translator().Translate(node);
