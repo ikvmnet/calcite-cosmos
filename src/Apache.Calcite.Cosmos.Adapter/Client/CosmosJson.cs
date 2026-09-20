@@ -295,6 +295,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     return GetString(value);
                 case nameof(SqlTypeName.UUID):
                     return GetUuid(value);
+                case nameof(SqlTypeName.GEOMETRY):
+                    return GetGeography(value);
                 case nameof(SqlTypeName.BINARY):
                 case nameof(SqlTypeName.VARBINARY):
                     return GetBinary(value);
@@ -488,6 +490,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 throw new CosmosMaterializationException($"A value read as a UUID is not one: '{text}'.", e);
             }
+        }
+
+        /// <summary>
+        /// Reads a JSON value as the <c>org.locationtech.jts.geom.Geometry</c> a <c>GEOMETRY</c> value
+        /// holds.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service sends the shape and the reader puts the constructor back.</b> No column is
+        /// typed as a geometry, so a stored shape reaches an operator by being parsed out of the
+        /// document — <c>CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))</c>. Pushed
+        /// down the constructor disappears and the path is sent, because Cosmos reads the property
+        /// itself as the shape; what comes back is therefore the GeoJSON object, and this is the half
+        /// that makes the column materialize. Without it a projection carrying a geography planned,
+        /// rendered, executed, and then threw at the first row (#149).
+        /// </para>
+        /// <para>
+        /// <b>The conversion is the geography package's own.</b>
+        /// <c>GeographyFunctions.FromGeoJson</c> is what <c>CLR_ST_GEOG_GEOMFROMGEOJSON</c> is
+        /// implemented as, so the pushed projection and the in-process constructor it replaced are one
+        /// function rather than two — including the SRID, which that function stamps 4326 and Calcite's
+        /// own planar reader does not.
+        /// </para>
+        /// <para>
+        /// A value that is not GeoJSON is a failure and not a null, which is the refusal every other
+        /// declared reading makes and is what the in-process constructor does over the same input. A
+        /// scalar at the path is the one case that would disagree — there the accessor answers null
+        /// rather than reaching the constructor at all — and it never arrives here, because
+        /// <c>CosmosRexTranslator.TryStoredGeographyProjection</c> sends the path under the same guard
+        /// a <c>JSON_QUERY</c> carries.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The value to read.</param>
+        /// <returns>The value.</returns>
+        /// <exception cref="CosmosMaterializationException">The value is not GeoJSON.</exception>
+        static org.locationtech.jts.geom.Geometry GetGeography(JsonElement value)
+        {
+            var text = value.GetRawText();
+
+            try
+            {
+                return Geography.Runtime.GeographyFunctions.FromGeoJson(text);
+            }
+            catch (java.lang.RuntimeException e)
+            {
+                throw new CosmosMaterializationException($"A value read as a geography is not GeoJSON: {Abbreviate(text)}.", e);
+            }
+        }
+
+        /// <summary>
+        /// Shortens a value for a message, a shape being large enough to bury one.
+        /// </summary>
+        static string Abbreviate(string text)
+        {
+            return text.Length <= 120 ? $"'{text}'" : $"'{text.Substring(0, 120)}…' ({text.Length} characters)";
         }
 
         static double GetDouble(JsonElement value)

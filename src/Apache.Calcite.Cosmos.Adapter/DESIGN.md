@@ -2111,6 +2111,31 @@ where the projection is declared `VARCHAR`. In a *predicate* the call is decline
 carries text where the path carries an object and a comparison against one is not a comparison against
 the other.
 
+**Selecting the shape itself is the third, and it is the constructor with nothing around it.** A query
+returning a geography writes `CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location'))` in the
+select list, the same expression it would write to reach any operator, and the same collapse applies:
+the path goes down and `CosmosJson` puts the constructor back, reading the GeoJSON object into the JTS
+geometry through `GeographyFunctions.FromGeoJson` — the geography package's own function, so the
+pushed column and the in-process constructor are one rather than two. The SRID is what makes that
+matter rather than a preference: the geodesic constructor stamps 4326 and Calcite's planar GeoJSON
+reader does not.
+
+**Until #149 there was no reading for `GEOMETRY` at all**, so the column planned, rendered, executed,
+and then raised *No Cosmos JSON reading is defined for SQL type 'GEOMETRY'* at the first row. It had
+been latent since the operators went in and became reachable when projection push-down was fixed
+(#145): a projection that used to stay in process now goes to the service, so a query returning a
+shape started failing where it had worked.
+
+**This projection is guarded where the operand form is bare**, which looks like an inconsistency and
+is the opposite. The nested-accessor guard is held back for a geography *operand* because the function
+consumes the object the path holds and `IS_PRIMITIVE` is false of it — recorded above, under the one
+exception a test found. That argument is about the scalar guard and about an operand. A projected
+shape is the whole column, and what it needs is the guard `JSON_QUERY` itself carries: object or
+array, not scalar. Measured in `CalciteGeographyReadingMeasurementTests` — in process a scalar at the
+path makes the accessor answer null and the constructor never runs, while the bare path would have
+sent the scalar and the reader would have raised over text that is not GeoJSON. An array raises on
+both sides, so the guard admits exactly what agrees.
+
 **What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
 weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
 with the service. The geography package computes one over S2, and nothing has measured whether it
@@ -2146,6 +2171,7 @@ first Calcite operator that casts it, a long way from where it was produced.
 | JSON | as `ANY` / inside `MAP` | as a declared type |
 | --- | --- | --- |
 | string | `string` | `CHAR`, `VARCHAR`; `UUID` where a container declared the spelling |
+| object, GeoJSON | `java.util.LinkedHashMap` | `GEOMETRY`, where a geography operator asked for one |
 | number, whole | `java.lang.Long` | `TINYINT`…`BIGINT` as their boxes, `DECIMAL` from the raw digits |
 | number, fractional | `java.lang.Double` | `REAL`, `FLOAT`, `DOUBLE` |
 | `true` / `false` | `java.lang.Boolean` | `BOOLEAN` |
@@ -2158,6 +2184,12 @@ a string whose spelling a declared form pinned; the conversion is Calcite's own 
 which is what makes a pushed projection and the in-process cast it replaced the same conversion rather
 than two of them — and the box is the `UuidValue` that method returns, not the `java.util.UUID` inside
 it. See *A form reads back as well as it compares*.
+
+`GEOMETRY` is the other row a query has to earn, and it earns it the same way. Cosmos has no such type
+either, so the value is the GeoJSON object a geography operator named; the conversion is
+`GeographyFunctions.FromGeoJson`, which is what `CLR_ST_GEOG_GEOMFROMGEOJSON` is implemented as, so
+again the pushed column and the constructor it replaced are one function. See *Geography*, and #149 for
+what it cost to have the statement without the reading.
 
 Two choices worth stating. A whole number reads as a `Long` rather than a `Double` so that an
 identifier or a count does not surface as `42.0`; the choice is the value's, there being no schema to

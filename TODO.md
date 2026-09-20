@@ -520,6 +520,21 @@ The translations, the refusal and the path pushdown are in place, and every form
 executed against an account. What is left is one sort that could push and does not, one operator that
 is not offered, and one thing that cannot be fixed here at all.
 
+- **Selecting a shape materializes** — *built, by #149, and the gap is worth remembering.* Everything
+  above was about reaching an *operator*, and nothing had asked what happens when the geography is
+  the answer rather than an argument. `CosmosJson.GetValue` had no `GEOMETRY` case, so a projected
+  shape planned, rendered, executed and raised at the first row. Latent since the operators went in
+  and reachable once a projection pushed (#145). The reading is
+  `GeographyFunctions.FromGeoJson`, and the projection now sends the path under the guard
+  `JSON_QUERY` carries rather than bare — a scalar at the path being the one thing the two readings
+  disagreed about. `CalciteGeographyReadingMeasurementTests` is the measurement.
+
+  **`CLR_ST_GEOG_ASGEOJSON` has the same divergence and still has it** — *small.* It projects the
+  bare path and reads it as JSON text, so over a *scalar* at the path it answers that scalar's text
+  where the in-process expression answers null, `JSON_QUERY` being null for a scalar. The same guard
+  closes it. Left out of #149 deliberately: it is a different column type and a different reading,
+  and folding it in would have made that fix two.
+
 - **`ORDER BY` over a distance now pushes** — *built; one shape left to verify.* A distance-ordered
   query used to read every matching document and sort in process. `CosmosSort` now writes the
   expression into the clause — twice over, once selected and once ordered, because Cosmos cannot order

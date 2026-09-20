@@ -216,6 +216,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
+            /// Selecting a stored geography is the path, guarded as a <c>JSON_QUERY</c> is.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// The constructor disappears for the reason it does everywhere else — Cosmos reads the
+            /// property as the shape — and <c>CosmosJson</c> puts it back, which until #149 it could
+            /// not: there was no reading for <c>GEOMETRY</c> at all, so the column planned, rendered,
+            /// executed and threw at the first row.
+            /// </para>
+            /// <para>
+            /// The guard is the accessor's own, admitting the object and the array and excluding the
+            /// scalar, because that is what the expression means in process — see
+            /// <c>CalciteGeographyReadingMeasurementTests</c>.
+            /// </para>
+            /// </remarks>
+            [Fact]
+            public void SelectingAStoredGeographyIsTheGuardedPath()
+            {
+                Translator().TranslateProjection(Stored(), out var reading)
+                    .Should().Be("(IS_OBJECT(c.location) OR IS_ARRAY(c.location) ? c.location : null)");
+
+                reading.Should().Be(CosmosReading.Typed);
+            }
+
+            /// <summary>
+            /// The predicate form stays bare, and the difference is deliberate.
+            /// </summary>
+            /// <remarks>
+            /// A geography function consumes the object the path holds, so an operand carries no guard
+            /// — see <c>CosmosRexTranslator.WriteCall</c>. A projected shape is the whole column and
+            /// carries the accessor's. Held together in one test because reading either alone makes the
+            /// other look like an oversight.
+            /// </remarks>
+            [Fact]
+            public void AGeographyOperandStaysBareWhereAProjectedOneIsGuarded()
+            {
+                Translator().TranslateProjection(_rex.makeCall(GeographyOperatorTable.ClrStGeogIsValid, Stored()), out _)
+                    .Should().Be("ST_ISVALID(c.location)");
+
+                Translator().TranslateProjection(Stored(), out _)
+                    .Should().Be("(IS_OBJECT(c.location) OR IS_ARRAY(c.location) ? c.location : null)");
+            }
+
+            /// <summary>
+            /// A geography built in the query has no path, so the literal is written where the call
+            /// stood and the reader converts what the statement carried.
+            /// </summary>
+            [Fact]
+            public void SelectingAConstructedGeographyIsTheObjectItself()
+            {
+                Translator().TranslateProjection(Literal(), out var reading).Should().Be(Point);
+                reading.Should().Be(CosmosReading.Typed);
+            }
+
+            /// <summary>
+            /// A planar container refuses the projection as it refuses every other geodesic call.
+            /// </summary>
+            [Fact]
+            public void APlanarContainerRefusesAProjectedGeography()
+            {
+                var planar = new CosmosContainerMetadata("products", readsGeography: false);
+
+                Translator(planar).TryTranslateProjection(Stored(), out _, out _).Should().BeFalse();
+                Translator().TryTranslateProjection(Stored(), out _, out _).Should().BeTrue();
+            }
+
+            /// <summary>
             /// A geography built in the query has nothing stored to select, so it is serialised in process.
             /// </summary>
             [Fact]
