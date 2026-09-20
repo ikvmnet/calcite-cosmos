@@ -1,8 +1,8 @@
 ﻿using System;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -14,7 +14,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// Covers the lookup cache operands' parsing — the only part of the policy that arrives as
         /// untyped model JSON.
         /// </summary>
-        [TestClass]
         public class LookupCache
         {
 
@@ -28,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 return operand;
             }
 
-            [TestMethod]
+            [Fact]
             public void BothOperandsReadAsAPolicy()
             {
                 var policy = CosmosSchemaFactory.ReadLookupCache(Operand("10000", "300"));
@@ -38,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 policy.Value.ExpireAfterWrite.Should().Be(TimeSpan.FromSeconds(300));
             }
 
-            [TestMethod]
+            [Fact]
             public void NeitherOperandReadsAsNoCache()
             {
                 CosmosSchemaFactory.ReadLookupCache(Operand(null, null)).Should().BeNull();
@@ -48,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             /// A cache without a bound or without a freshness policy is not something to guess into
             /// existence, so half a configuration is a model mistake and says so.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void HalfAConfigurationIsAModelError()
             {
                 var rowsOnly = () => CosmosSchemaFactory.ReadLookupCache(Operand("10000", null));
@@ -58,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 expireOnly.Should().Throw<ArgumentException>().WithMessage("*come together*");
             }
 
-            [TestMethod]
+            [Fact]
             public void ANonPositiveValueIsAModelError()
             {
                 var zero = () => CosmosSchemaFactory.ReadLookupCache(Operand("0", "300"));

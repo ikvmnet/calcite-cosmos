@@ -3,8 +3,8 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -13,7 +13,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     /// The account level, where Cosmos's account → database → container lines up with Calcite's
     /// schema → subschema → table.
     /// </summary>
-    [TestClass]
     public class CosmosAccountSchemaTests
     {
 
@@ -33,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             new("sales", new[] { new CosmosContainerMetadata("orders"), new CosmosContainerMetadata("returns") }),
         ]);
 
-        [TestMethod]
+        [Fact]
         public void EachDatabaseIsASubschema()
         {
             org.apache.calcite.schema.Schema account = Account();
@@ -41,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             Names(account.subSchemas()).Should().BeEquivalentTo("inventory", "sales");
         }
 
-        [TestMethod]
+        [Fact]
         public void ASubschemaCarriesItsOwnContainers()
         {
             org.apache.calcite.schema.Schema account = Account();
@@ -55,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// database schema, carrying the same declared metadata — the nesting is where it is found, not
         /// what it is.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AContainerKeepsItsMetadataThroughTheNesting()
         {
             org.apache.calcite.schema.Schema account = Account();
@@ -70,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A database schema built without a client plans and cannot read, and that survives the extra
         /// level: the account passes no executor down, so its tables have none either.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutAnExecutorFactoryTheTablesHaveNone()
         {
             org.apache.calcite.schema.Schema account = Account();

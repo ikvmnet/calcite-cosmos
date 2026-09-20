@@ -4,8 +4,8 @@ using System.Collections.Generic;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -18,7 +18,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// discriminated by a property, where only one kind carries the path a fact is declared for. A
     /// fact about that path is unusable until the query has proven which kind it is filtering.
     /// </remarks>
-    [TestClass]
     public class CosmosSchemaFactsTests
     {
 
@@ -71,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
         """;
 
-        [TestMethod]
+        [Fact]
         public void AFactUnderADiscriminatorNeedsTheDiscriminatorProven()
         {
             var theory = Compile(Parks);
@@ -86,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     "the discriminator selects the branch, and the branch is where the pattern was declared");
         }
 
-        [TestMethod]
+        [Fact]
         public void AReferenceIsFollowedToWhereThePatternIsDeclared()
         {
             // The pattern is not in the branch; it is in $defs, reached through a $ref.
@@ -94,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Be(CosmosStoredForms.UuidCanonicalLower);
         }
 
-        [TestMethod]
+        [Fact]
         public void RequiredIsRead_AndIsAboutTheChild()
         {
             var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
@@ -113,7 +112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ADateAtOneFixedShapePreservesOrderWhereAUuidDoesNot()
         {
             var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
@@ -127,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             derived.RepresentationOf(ParkId)!.Value.PreservesEquality.Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void AFirstDigitConfinedUuidIsSortableAndAPlainOneIsNot()
         {
             const string Sortable = """
@@ -167,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// care is not told something the schema did not say.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheKeywordsThatBearOnAStoredFormInCombination()
         {
             const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
@@ -231,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// have claimed the value is a string -- which is what deletes the guard admitting non-strings
         /// from a comparison that still has to decide one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APatternStatesNothingWithoutADeclaredStringType()
         {
             var reference = CosmosDocumentPath.Root.Property("ref");
@@ -253,7 +252,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Each row here was found in a published schema, a validator guide or the uuid package own
         /// documentation. They describe the same handful of languages and are written a dozen ways.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSpellingsInTheWildAreRecognised()
         {
             var lower = CosmosStoredForms.UuidCanonicalLower;
@@ -307,7 +306,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// whole of what makes its lexical order chronological. The shape itself does not matter —
         /// which is why they are generated rather than chosen between.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EveryFixedTemporalShapeIsRecognisedAndSortable()
         {
             foreach (var pattern in new[]
@@ -364,7 +363,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// character that follows the fraction outranks <c>'.'</c>. The .NET SDK's default serializer
         /// writes the first of these, which is why it is the common case rather than the exotic one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AShapeThatVariesIsNotRecognised()
         {
             foreach (var pattern in new[]
@@ -405,7 +404,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// failure is the safe direction: unrecognised, so the comparison stays in process.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASpaceSeparatedInstantIsNotYetRecognised()
         {
             CosmosStoredForms.Recognise(@"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
@@ -415,7 +414,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Each form writes a literal in its own spelling, and refuses a value it cannot hold.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void EachTemporalFormWritesItsOwnSpelling()
         {
             var value = new System.DateTime(2024, 1, 15, 12, 30, 0, System.DateTimeKind.Utc);
@@ -445,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Be("2024-01", "a value that does land on the form is written");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnUppercaseSpellingIsCanonicalToo()
         {
             const string Upper = """
@@ -473,7 +472,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             """).Derive(null).RepresentationOf(reference).Should().Be(CosmosStoredForms.UuidCanonicalUpperSortable);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnUndiscriminatedBranchYieldsOnlyWhatEveryBranchAgreesOn()
         {
             const string Vague = """
@@ -492,7 +491,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeFalse("only one branch says so, and nothing selects it");
         }
 
-        [TestMethod]
+        [Fact]
         public void IfThenIsReadAsAGuard()
         {
             const string Conditional = """
@@ -510,7 +509,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().Be(CosmosStoredForms.Iso8601Date);
         }
 
-        [TestMethod]
+        [Fact]
         public void AConditionCarryingAnythingNotUnderstoodContributesNothing()
         {
             // The condition is "kind is 'map' AND serial matches ^S". Reading only the first half
@@ -530,7 +529,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     "the whole condition has to be understood, or the guard is weaker than the schema's");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnElseIsReachableWhenTheConditionIsOneEquality()
         {
             const string Conditional = """
@@ -552,7 +551,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void AnEnumIsADomainAndADiscriminatorIsAValue()
         {
             const string Enumerated = """
@@ -573,7 +572,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// the branches are bare references that repeat no <c>const</c>, and a mapping says which
         /// value selects which.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOpenApiDiscriminatorSelectsABranchThroughItsMapping()
         {
             const string Mapped = """
@@ -604,7 +603,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// And with no mapping, OpenAPI's implicit rule: the value is the schema's own name.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOpenApiDiscriminatorWithNoMappingUsesTheSchemaName()
         {
             const string Implicit = """
@@ -628,7 +627,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A nested <c>$id</c> moves the base a reference resolves against, and resolution here is
         /// against the root — so nothing is followed at all rather than followed to the wrong node.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ASchemaThatRebasesItsReferencesIsNotFollowed()
         {
             const string Rebased = """
@@ -643,7 +642,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeNull("a reference resolved against the wrong base states facts about the wrong path");
         }
 
-        [TestMethod]
+        [Fact]
         public void ARecursiveReferenceTerminates()
         {
             const string Recursive = """
@@ -665,7 +664,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// The two keywords that key a constraint on a property merely being there, and the one shape
         /// of <c>not</c> whose negation is a conjunction.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void PresenceKeyedConditionalsAndANegationAreRead()
         {
             var a = CosmosDocumentPath.Root.Property("a");
@@ -705,7 +704,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Keywords that constrain nothing this model can state, and one that quietly unstates a type.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void WhatIsNotInterpretedStatesNothing()
         {
             // OpenAPI 3.0 puts nullability beside the type rather than inside it.
@@ -743,7 +742,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "a negated schema states nothing, and reading it as though it did would invert the claim");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnUnreadableSchemaIsNoFactsRatherThanAFailure()
         {
             CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))

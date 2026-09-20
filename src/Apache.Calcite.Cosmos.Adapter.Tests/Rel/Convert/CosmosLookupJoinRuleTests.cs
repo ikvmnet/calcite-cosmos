@@ -8,8 +8,6 @@ using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -23,6 +21,8 @@ using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
 using org.apache.calcite.util;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -35,7 +35,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// never chosen is a rule that does nothing. These are the tests that say it is chosen — and, as
     /// importantly, that it is not chosen where fetching per batch would answer a different question.
     /// </remarks>
-    [TestClass]
     public class CosmosLookupJoinRuleTests
     {
 
@@ -47,8 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         CosmosTable _orders = null!;
         CosmosTable _archive = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        public CosmosLookupJoinRuleTests()
         {
             _products = new CosmosTable(Products);
             _orders = new CosmosTable(Orders);
@@ -167,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// The whole feature in one query: two containers joined on a key both address, where without
         /// this the plan reads every document of both.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEquiJoinOnAnAddressableKeyBecomesALookup()
         {
             var plan = Plan("SELECT * FROM orders o JOIN products p ON o.id = p.id");
@@ -211,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// that did not.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EveryContainerInAQueryCanBeOnTheProbeSide()
         {
             var onProducts = Find<CosmosLookupJoin>(Plan("SELECT * FROM orders o JOIN products p ON o.id = p.id"));
@@ -236,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <c>TOP 5</c> of the container is not <c>TOP 5</c> of each batch. Running it per batch would
         /// return rows the plan never asked for, so the restriction is refused and both sides are read.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AJoinAgainstALimitedSubqueryIsNotALookup()
         {
             var plan = Plan("SELECT * FROM orders o JOIN (SELECT * FROM products FETCH FIRST 5 ROWS ONLY) p ON o.id = p.id");
@@ -248,7 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// An outer join has to preserve build rows with no match. That is expressible and not written,
         /// so it declines rather than quietly dropping them.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ALeftJoinIsNotALookup()
         {
             var plan = Plan("SELECT * FROM orders o LEFT JOIN products p ON o.id = p.id");
@@ -260,7 +258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A partition key column is typed <c>ANY</c>, which says nothing about what would be bound as a
         /// parameter or compared once fetched.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AJoinOnAnUntypedColumnIsNotALookup()
         {
             var plan = Plan("SELECT * FROM orders o JOIN products p ON o.\"$.customer\" = p.\"$.category\"");
@@ -271,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <remarks>
         /// A non-equality is not a key. There is nothing to put in an <c>IN</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANonEquiJoinIsNotALookup()
         {
             var plan = Plan("SELECT * FROM orders o JOIN products p ON o.id < p.id");

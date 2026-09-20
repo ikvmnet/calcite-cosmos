@@ -5,8 +5,8 @@ using System.Text.Json;
 using Apache.Calcite.Cosmos.Adapter.Client;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
@@ -20,7 +20,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// single SDK call. The rules being pinned are recorded in <c>DESIGN.md</c> under <em>What an insert
     /// writes</em>.
     /// </remarks>
-    [TestClass]
     public class CosmosDocumentTests
     {
 
@@ -31,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// The document column is the document, verbatim.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheDocumentColumnIsTheDocument()
         {
             Build("""{"id":"1","name":"Trail Blazer","price":120}""", null, null, null, null)
@@ -47,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// the old row's, which an update carries alongside the new document. Writing them would
         /// describe the same document twice.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OnlyTheDocumentColumnDescribesTheDocument()
         {
             Build("""{"id":"1"}""", "2", java.lang.Long.valueOf(99), "etag", "bikes")
@@ -57,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// No document column, no document.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ARowWithoutTheDocumentColumnDescribesNothing()
         {
             Build(null, "1", null, null, "bikes").Should().Be("{}");
@@ -70,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// It appears whenever the document came from a scan, the document column being the document
         /// as the service returned it. Copying a row would otherwise write another item's identity.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ServicePropertiesAreNotWritten()
         {
             Build("""{"id":"1","_ts":1700000000,"_etag":"abc","_rid":"r","_self":"s","_attachments":"a","name":"Trail Blazer"}""", null, null, null, null)
@@ -84,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Properties are copied rather than read and rewritten, so a large integer does not lose
         /// precision to a double and an exponential is not reformatted.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheDocumentKeepsTheDigitsItWasGiven()
         {
             Build("""{"big":9007199254740993,"exp":1e30,"exact":0.1000000000000000055511151231257827}""", null, null, null, null)
@@ -94,21 +93,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// And it keeps the order it arrived in.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void PropertyOrderIsPreserved()
         {
             Build("""{"z":1,"a":2,"m":3}""", null, null, null, null)
                 .Should().Be("""{"z":1,"a":2,"m":3}""");
         }
 
-        [TestMethod]
+        [Fact]
         public void NestedShapesComeThroughWhole()
         {
             Build("""{"id":"1","inventory":{"sku":"S-1","count":3},"tags":["steel","road"]}""", null, null, null, null)
                 .Should().Be("""{"id":"1","inventory":{"sku":"S-1","count":3},"tags":["steel","road"]}""");
         }
 
-        [TestMethod]
+        [Fact]
         public void ADocumentColumnHoldingSomethingElseIsRefused()
         {
             var act = () => Build(java.lang.Long.valueOf(3), null, null, null, null);
@@ -116,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             act.Should().Throw<CosmosExecutionException>().WithMessage("*rather than JSON text*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ADocumentThatIsNotAnObjectIsRefused()
         {
             var act = () => Build("[1,2,3]", null, null, null, null);
@@ -124,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             act.Should().Throw<CosmosExecutionException>().WithMessage("*rather than an object*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ADocumentThatIsNotWellFormedIsRefused()
         {
             var act = () => Build("{\"id\":", null, null, null, null);
@@ -132,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             act.Should().Throw<CosmosExecutionException>().WithMessage("*well-formed JSON*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ANestedPathIsRead()
         {
             using var document = JsonDocument.Parse("""{"id":"1","inventory":{"sku":"S-1","count":3}}""");

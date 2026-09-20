@@ -16,8 +16,6 @@ using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite;
 using org.apache.calcite.adapter.java;
 using org.apache.calcite.avatica.util;
@@ -33,6 +31,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -47,7 +47,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// above the seam is the real thing: the real planner, the real statement, the real compiled
     /// expression tree.
     /// </remarks>
-    [TestClass]
     public class CosmosToClrEnumerableConverterTests
     {
 
@@ -121,8 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         CalciteSchema _rootSchema = null!;
         JavaTypeFactoryImpl _typeFactory = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        public CosmosToClrEnumerableConverterTests()
         {
             _typeFactory = new JavaTypeFactoryImpl();
             Given();
@@ -299,7 +297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// Without the converter rule the pushed-down subtree is a statement nothing can read the rows
         /// of, and the planner has no complete plan to return.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ThePlannerReachesTheClrConventionThroughTheConverter()
         {
             var plan = PlanToClr("SELECT \"id\" FROM products AS c");
@@ -314,7 +312,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A one-column result is the value rather than a one-element row, which is what
         /// <c>ImplementRootAsync</c> arranges and what every caller of a query expects.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadASingleColumnAsTheValueItself()
         {
             Given("""{ "id": "a" }""", """{ "id": "b" }""");
@@ -335,7 +333,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// documented rather than asserted. A test cannot tell a blocked thread from a fast one.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadTheSameRowsWhenThePlanIsPulledRatherThanAwaited()
         {
             Given("""{ "id": "a" }""", """{ "id": "b" }""");
@@ -357,7 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// ever stops happening and the baked-in token is what arrives.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldCarryTheReadersTokenIntoTheExecutor()
         {
             Given("""{ "id": "a" }""");
@@ -385,7 +383,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// The statement the stub is handed is the projected object constructor, not <c>SELECT VALUE c</c>.
         /// One row shape reaches the reader whatever the query did.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldProjectAnObjectKeyedByOutputFieldName()
         {
             Given("""{ "id": "a" }""");
@@ -399,7 +397,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// Cosmos omits a property whose value is undefined, so a row is a subset of the output fields and
         /// their positions are not the fields' positions. Reading by name is what makes that survivable.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAnAbsentPropertyAsNull()
         {
             Given("""{ "id": "a" }""", """{ }""");
@@ -409,7 +407,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             rows.Should().Equal(new object[] { "a", null! });
         }
 
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadEveryColumnOfAWiderRow()
         {
             Given("""{ "id": "a", "_ts": 17 }""");
@@ -437,7 +435,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// where the plan had declared a collection and the cast to a list failed outright.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAnArrayColumnAsTheArray()
         {
             Given("""{ "T": ["a", "b"] }""");
@@ -458,7 +456,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// column reads as SQL null rather than failing the query — which is the point of guarding
         /// rather than emitting the bare path.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAnArrayColumnAsNullWhereTheGuardAnsweredNull()
         {
             Given("""{ }""");
@@ -477,7 +475,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// and an integral one arriving as a Long wherever there is no schema to consult. Here there
         /// is one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadArrayElementsAsTheDeclaredComponentType()
         {
             Given("""{ "T": [1, 2] }""");
@@ -494,7 +492,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <c>CosmosJson.GetString</c> makes for a scalar column and the reason a <c>RETURNING</c>
         /// clause is worth trusting at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldRefuseAnElementThatContradictsTheDeclaredComponentType()
         {
             Given("""{ "T": [1, 2] }""");
@@ -514,7 +512,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// carried a string and the row could not be built. Held here because the array case alone
         /// would not have caught it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAScalarReturningAsTheTypeItNames()
         {
             Given("""{ "N": 7, "B": true }""");
@@ -547,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// exactly those spaces.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAJsonQueryColumnAsCompactJsonText()
         {
             Given("""{ "q": { "a" : 1 } }""");
@@ -563,7 +561,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// The guard answers null at the service for a scalar, and the column reads as SQL null —
         /// which is what the function means, and what it did not do when the bare path was sent.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAJsonQueryOverAScalarAsNull()
         {
             Given("""{ }""");
@@ -599,7 +597,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// since what a residual hands a caller is part of what the split has to be right about.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldComputeAResidualCastOverThePushedFragment()
         {
             Given("""{ "$f0": "30.5" }""");
@@ -633,7 +631,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// call is typed, and matching on the first alone is what let this through.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAnArrayReturningJsonQueryAsTheArray()
         {
             Given("""{ "q": ["a","b"] }""");
@@ -668,7 +666,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// whether it prints the same.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldReadAnArrayReturningJsonQueryThroughAView()
         {
             Given("""{ "Cities": ["Bryson City","Gatlinburg","Cherokee"] }""");
@@ -709,7 +707,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// and dropping it or refusing it would not.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldCarryANullArrayElement()
         {
             Given("""{ "q": [1, null, 2] }""");
@@ -727,7 +725,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A table built from container metadata alone plans identically and cannot be read from. This is
         /// the first point at which that could show, and it says so rather than throwing a null reference.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ShouldRefuseToExecuteATableWithNoExecutor()
         {
             GivenNoExecutor();

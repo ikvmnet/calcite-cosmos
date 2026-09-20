@@ -3,8 +3,8 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -20,7 +20,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// and one comma-separated string — because a schema is something a caller adds for the container
         /// it matters for, not something every container grows.
         /// </remarks>
-        [TestClass]
         public class Containers
         {
 
@@ -67,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 return entry;
             }
 
-            [TestMethod]
+            [Fact]
             public void PlainNamesStillRead()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List("products", "orders")));
@@ -78,7 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 declared[1].Name.Should().Be("orders");
             }
 
-            [TestMethod]
+            [Fact]
             public void OneCommaSeparatedStringStillReads()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand("products, orders"));
@@ -88,7 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 declared[1].Name.Should().Be("orders");
             }
 
-            [TestMethod]
+            [Fact]
             public void NamesAndDeclarationsMixInOneList()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List("products", Entry("parks", ParksSchema))));
@@ -99,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 declared[1].Facts.Should().NotBeEmpty();
             }
 
-            [TestMethod]
+            [Fact]
             public void ADeclaredSchemaCompilesToTheFactsAPushdownWouldAsk()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks", ParksSchema))));
@@ -113,14 +112,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                     .Should().Be(CosmosStoredForms.UuidCanonicalLower);
             }
 
-            [TestMethod]
+            [Fact]
             public void AnEntryWithNoSchemaDeclaresNothing()
             {
                 CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks")))).Should()
                     .ContainSingle().Which.Facts.Should().BeEmpty();
             }
 
-            [TestMethod]
+            [Fact]
             public void AnEntryWithNoNameIsAModelError()
             {
                 var entry = new java.util.HashMap();
@@ -130,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 read.Should().Throw<ArgumentException>().WithMessage("*must carry a 'name'*");
             }
 
-            [TestMethod]
+            [Fact]
             public void ASchemaThatIsNotAnObjectIsAModelError()
             {
                 var entry = new java.util.HashMap();
@@ -142,14 +141,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                     "a string there is a path or a document and nothing has decided which, so it is a mistake rather than a guess");
             }
 
-            [TestMethod]
+            [Fact]
             public void AnAbsentOperandDeclaresNoContainers()
             {
                 CosmosSchemaFactory.ReadContainerDeclarations(new java.util.HashMap()).Should().BeEmpty(
                     "which is what asks the database to discover them");
             }
 
-            [TestMethod]
+            [Fact]
             public void ASchemaWithNothingRecognisableIsNotAnError()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(
@@ -159,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                     "an unreadable schema loses pushdowns; it must never be a reason a container stops working");
             }
 
-            [TestMethod]
+            [Fact]
             public void TheCompiledFactsReachTheContainerMetadata()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks", ParksSchema))));

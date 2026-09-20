@@ -2327,13 +2327,27 @@ that class sits, so the tests for a thing are found by knowing where the thing i
 searching. Two consequences worth stating:
 
 - **One test class per class under test, even where its tests want different fixtures.** A group
-  that needs its own becomes a nested `[TestClass]` inside the partial — `CosmosRexTranslatorTests`
+  that needs its own becomes a nested class inside the partial — `CosmosRexTranslatorTests`
   carries `Casts`, `Geography`, `FullText` and `Functions` that way, each with the builder and
   operand set it wants, filed under one name and filtered by it.
 - **What does not belong to one class is not filed as though it did.** `EndToEnd/CosmosPlannerTests`
   drives the whole rule set over real SQL; `Measurements/` holds what is asked of something other
   than this adapter, so a failure there is news about Calcite or the service rather than a
   regression here. Naming either for a class would be a claim about coverage that is not true.
+
+The framework is xUnit v3. Three of its defaults are set against, and each for a reason worth
+knowing before changing it:
+
+- **Parallelism is off** — `[assembly: Parallelization(Mode = ParallelMode.None)]`. The boot class
+  path is process-wide, Calcite's registries are static, and the service-backed classes share one
+  account and one emulator. MSTest ran serially and nothing was written to survive otherwise, so
+  turning this on is a change to make and measure rather than one to inherit.
+- **One-time setup is a class fixture**, not a static hook. A class that provisions a container
+  declares `IClassFixture<Fixture>` and the nested `Fixture` drives the same static methods MSTest
+  called by attribute, so what the tests read did not move.
+- **A test that needs an account skips itself** with `Assert.Skip`, which v3 allows during
+  execution. That is what `Assert.Inconclusive` did, and it is why v3 rather than v2: there is no
+  dynamic skip in v2 to say it with.
 
 ---
 
@@ -2770,8 +2784,8 @@ ikvm.runtime.Startup.addBootClassPathAssembly(typeof(org.apache.calcite.jdbc.Cal
 ```
 
 This must run before the driver is first touched, since a type initializer runs once and caches
-its failure. The test assembly does it from a `[ModuleInitializer]`; `[AssemblyInitialize]` is
-not reliably early enough.
+its failure. The test assembly does it from a `[ModuleInitializer]`; a test framework's own
+assembly-level hook is not reliably early enough.
 
 The adapter itself does not need any of this: it never opens a connection, and the SQL planning
 in `CosmosSqlPlanningTests` drives `SqlParser`, `SqlValidator` and `SqlToRelConverter` directly,

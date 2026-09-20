@@ -4,8 +4,8 @@ using System.Collections.Generic;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -30,7 +30,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// the point of measuring: a difference that is not written down here is a bug in this repository.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CalciteJsonValueMeasurementTests
     {
 
@@ -79,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// An object, an array, a JSON null and an absent path all answer SQL null: the first two by
         /// the standard's error path, since neither is a scalar.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheBareAccessorRendersEveryScalarAsText()
         {
             var expected = new (string Json, string? Value)[]
@@ -155,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// for that reason.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void JsonQueryAnswersStructureOnlyAndWritesItCompactly()
         {
             const string Spaced = "'{\"v\": [ \"a\" ,   \"b\" ] , \"o\": { \"a\" : 1 }, \"s\": \"bikes\", \"n\": null }'";
@@ -179,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// path carries the value, and these carry something built around it. Held here because the
         /// refusal rests on what they do rather than on their being unfamiliar.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void JsonQueryWrapperAndBehaviourClausesAnswerSomethingElse()
         {
             const string Spaced = "'{\"s\": \"bikes\"}'";
@@ -191,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "and a behaviour clause substitutes one on the error the scalar causes");
         }
 
-        [TestMethod]
+        [Fact]
         public void ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt()
         {
             // Where the document holds exactly the type named, it answers.
@@ -271,7 +270,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// already does.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnArrayReturningAnswersNullForAnArrayAndThrowsForAScalar()
         {
             // An array — what the clause is for — comes back null.

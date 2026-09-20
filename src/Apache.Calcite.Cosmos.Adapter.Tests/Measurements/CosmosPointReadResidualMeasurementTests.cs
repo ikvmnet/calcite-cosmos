@@ -12,8 +12,8 @@ using Azure.Identity;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -50,9 +50,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// argument that a fan-out cannot cost less than the single-partition query measured here.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class CosmosPointReadResidualMeasurementTests
+    public class CosmosPointReadResidualMeasurementTests : IClassFixture<CosmosPointReadResidualMeasurementTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
         static readonly string? Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT");
         static readonly string? Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY");
@@ -86,8 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static Container? _container;
         static string? _initializationFailure;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             if (string.IsNullOrEmpty(Endpoint))
             {
@@ -175,8 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             // The database is not dropped here: deleting one is the same control plane operation an
             // Entra token cannot perform. It is torn down the way it was raised, outside the fixture.
@@ -190,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static Container Container()
         {
             if (_container is null)
-                Assert.Inconclusive("This measurement needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
+                Assert.Skip("This measurement needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
 
             return _container!;
         }
@@ -320,7 +330,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// What is asserted is the relations rather than the charges, which the service may reprice.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AReadThenFilterCostsLessThanTheQueryTheResidualForces()
         {
             var live = D(0);
@@ -379,7 +389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// the single-document result would make the batch path worse at every size but one.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheBatchReadAndTheSetQueryCrossOverAsTheIdSetGrows()
         {
             var sizes = new[] { 1, 2, 4, 8, 16, 32, 64, 128 };
@@ -427,7 +437,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Sweeps document size, which is what the whole gate turns on, and reads the crossing off a
         /// line rather than off two points.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task TheCrossingIsWhereTheTwoPointFitSaysItIs()
         {
             Say("");
@@ -477,7 +487,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Prices a projection, which the model does not carry and which moves the break-even if it
         /// matters: a query can return one field where a point read always returns the document whole.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task AProjectionCostsTheQueryLessAndTheReadNothing()
         {
             var smallWide = await Mean(async () => (await Query(LookupQuery(D(0), Partition), Partition)).Charge);
@@ -530,7 +540,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// resource for another — which is what would have made a conversion constant necessary.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheCheaperRouteIsAlsoTheFasterOne()
         {
             const int Rounds = 30;
@@ -598,7 +608,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// estimates — not on the shape of the predicate alone.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ALargeBodyIsWhereTheRejectingCaseCouldReverse()
         {
             var readLive = await Mean(() => PointRead("big-live", LargePartition));

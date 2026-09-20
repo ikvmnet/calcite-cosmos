@@ -3,17 +3,16 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
 
-    [TestClass]
     public class CosmosConventionTests
     {
 
-        [TestMethod]
+        [Fact]
         public void ConventionIsNamedForItsContainer()
         {
             var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
@@ -24,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A convention is bound to one container, so two containers yield two conventions and the
         /// planner inserts converters between them.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void DistinctContainersYieldDistinctConventions()
         {
             var a = CosmosConvention.Create(new CosmosContainerMetadata("products"));
@@ -33,14 +32,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             a.getName().Should().NotBe(b.getName());
         }
 
-        [TestMethod]
+        [Fact]
         public void ContainerMetadataIsReachableFromTheConvention()
         {
             var container = new CosmosContainerMetadata("products", new[] { "/tenant" });
             CosmosConvention.Create(container).Container.Should().BeSameAs(container);
         }
 
-        [TestMethod]
+        [Fact]
         public void RulesAreBoundToTheConvention()
         {
             var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
@@ -65,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// claiming the service can join, which it cannot.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NothingInexpressibleIsConvertedIntoTheConvention()
         {
             var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
@@ -86,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// The lookup join leaves the convention, exactly as the converter does, and for the same
         /// reason: below it is a statement, above it are rows.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheLookupJoinConvertsOutOfTheConvention()
         {
             var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));

@@ -6,11 +6,11 @@ using Apache.Calcite.FullText.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -26,7 +26,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// every function is a property path, and the <c>ALL</c> and <c>ANY</c> forms take one or more
         /// keywords after it.
         /// </remarks>
-        [TestClass]
         public class FullText
         {
 
@@ -67,21 +66,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             bool CanTranslate(org.apache.calcite.sql.SqlOperator op, params RexNode[] operands) =>
                 Translator().TryTranslate(_rex.makeCall(op, operands), out _);
 
-            [TestMethod]
+            [Fact]
             public void ContainsTakesAPathAndOneKeyword()
             {
                 Translate(CosmosOperators.FullTextContains, Text(), Keyword("search phrase"))
                     .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
             }
 
-            [TestMethod]
+            [Fact]
             public void ContainsAllTakesEveryKeyword()
             {
                 Translate(CosmosOperators.FullTextContainsAll, Text(), Keyword("one"), Keyword("two"), Keyword("three"))
                     .Should().Be("FULLTEXTCONTAINSALL(c.text, @p0, @p1, @p2)");
             }
 
-            [TestMethod]
+            [Fact]
             public void ContainsAnyTakesEveryKeyword()
             {
                 Translate(CosmosOperators.FullTextContainsAny, Text(), Keyword("one"), Keyword("two"))
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// else; they are two spellings of one rendering rather than two implementations.
             /// </para>
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheSharedPredicatesRenderAsTheServiceSpelling()
             {
                 Translate(FullTextOperatorTable.ClrFtContains, Text(), Keyword("search phrase"))
@@ -126,7 +125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// and this is that line being drawn. Cosmos permits a score in <c>ORDER BY RANK</c> and
             /// nowhere else, so the shared spelling is refused everywhere the service's own is.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheSharedScoreIsRankClauseOnly()
             {
                 CanTranslate(FullTextOperatorTable.ClrFtScore, Text(), Keyword("steel"))
@@ -146,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// So the rendering is the text, and what the constructor buys is that the query said which it
             /// meant.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APhraseIsTheTermItself()
             {
                 Translate(FullTextOperatorTable.ClrFtContains, Text(),
@@ -170,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// adapter did not offer. It does now, because the shared vocabulary gave it a spelling.
             /// Bound as a parameter like every other keyword.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AFuzzyTermIsTheObjectTheServiceDocuments()
             {
                 var parameters = new CosmosParameterList();
@@ -204,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// The call then has no body, so the query says so.
             /// </para>
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APrefixTermIsDeclined()
             {
                 CanTranslate(FullTextOperatorTable.ClrFtContains, Text(),
@@ -216,7 +215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Keywords bind as parameters like any other literal, so the statement text is independent of
             /// what is being searched for.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void KeywordsAreBoundRatherThanInlined()
             {
                 var parameters = new CosmosParameterList();
@@ -231,13 +230,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// The reference calls the first argument a property path, not an expression. A call over
             /// something with no path is refused rather than rendered into a statement the service rejects.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APredicateOverAComputedColumnIsDeclined()
             {
                 CanTranslate(CosmosOperators.FullTextContains, Computed(), Keyword("phrase")).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void APredicateWithNoKeywordIsDeclined()
             {
                 CanTranslate(CosmosOperators.FullTextContains, Text()).Should().BeFalse();
@@ -247,7 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// The operator table exists so a query can name these at all; Calcite's standard table has
             /// nothing to resolve them to.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheOperatorTableCarriesEveryPredicate()
             {
                 var names = new List<string>();
@@ -274,7 +273,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// are legal in that clause alone. The translator is what holds them to it, so naming one
             /// anywhere else declines rather than rendering a statement the service rejects.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AScoringFunctionIsRefusedOutsideARankClause()
             {
                 CanTranslate(CosmosOperators.FullTextScore, Text(), Keyword("steel")).Should().BeFalse();
@@ -284,7 +283,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// And renders in one. This is the only entry point that permits it.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AScoringFunctionRendersInARankClause()
             {
                 Translator().TranslateRank(_rex.makeCall(CosmosOperators.FullTextScore, Text(), Keyword("steel")))
@@ -294,7 +293,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// An ordinary expression is not something to rank by.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ARankClauseTakesOnlyAScoringFunction()
             {
                 var act = () => Translator().TranslateRank(Text());
@@ -311,7 +310,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// path, so what the container declares is what the call costs and not whether it renders
             /// (#85). A container declaring the path renders as it always did.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APredicateOverADeclaredPathRenders()
             {
                 var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
@@ -320,7 +319,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
             }
 
-            [TestMethod]
+            [Fact]
             public void APredicateOverAnUndeclaredPathRendersToo()
             {
                 var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
@@ -333,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Every form of the predicate, and the score, over a container that declares nothing at all
             /// — the dev1 <c>parks</c> row of the measurement, which answered every one of them.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void EveryFullTextFormRendersWithoutADeclaration()
             {
                 var container = new CosmosContainerMetadata("products");
@@ -351,7 +350,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// A caller that has not said which container this is written against gets what it always got.
             /// Nothing but the rules and the implementor supplies one, and both of those know.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void WithoutAContainerNothingIsGated()
             {
                 Translate(CosmosOperators.FullTextContains, Other(), Keyword("steel"))
@@ -363,7 +362,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// neighbours of a supplied embedding is the point — so it is enough that one of them is a
             /// declared path.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AVectorDistanceNeedsOneDeclaredVector()
             {
                 var container = new CosmosContainerMetadata("products", vectorPaths: new[] { "/text" });
@@ -384,7 +383,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// — a full text function renders over any path, and what the declarations say about it is a
             /// price, which the planner tests check (#85).
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AFullTextDeclarationDoesNotDeclareAVectorPath()
             {
                 var fullText = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/text" });
@@ -399,7 +398,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// A container has no row schema, so what a property holds is a question about the document.
             /// These are the functions that ask, and every one was accepted by the emulator.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TypeTestsRenderUnderTheirOwnNames()
             {
                 Translate(CosmosOperators.IsDefined, Text()).Should().Be("IS_DEFINED(c.text)");
@@ -416,7 +415,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Unlike a full text predicate, the argument is an ordinary expression: asking the type of a
             /// computed value is meaningful, so nothing requires it to be a path.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ATypeTestOverAComputedColumnIsStillDeclined()
             {
                 // Not because the function objects, but because the ordinal has no path to render at all.

@@ -5,13 +5,13 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -23,7 +23,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// Covers the pure resolution logic the Rel nodes and their rules share. The nodes themselves
         /// require a table and schema layer that does not yet exist.
         /// </summary>
-        [TestClass]
         public class Resolution
         {
 
@@ -79,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // ── Field binding ─────────────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void TheDocumentColumnBindsToTheDocumentRoot()
             {
                 var rowType = _types.builder()
@@ -89,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 CosmosImplementor.BindFields(rowType).Should().ContainSingle().Which!.ToString().Should().Be("c");
             }
 
-            [TestMethod]
+            [Fact]
             public void PromotedColumnsBindToTheirProperties()
             {
                 var rowType = _types.builder()
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 fields[2]!.ToString().Should().Be("c._ts");
             }
 
-            [TestMethod]
+            [Fact]
             public void BindingHonoursTheRootAlias()
             {
                 var rowType = _types.builder().add("id", SqlTypeName.VARCHAR).build();
@@ -116,14 +115,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             CosmosRexTranslator Translator() => new(_rex, Fields, new CosmosParameterList());
 
-            [TestMethod]
+            [Fact]
             public void FieldReferenceResolvesToAPath()
             {
                 Translator().TryResolvePath(_rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1), out var path).Should().BeTrue();
                 path!.ToString().Should().Be("c.name");
             }
 
-            [TestMethod]
+            [Fact]
             public void ItemChainResolvesToAPath()
             {
                 var map = _rex.makeInputRef(_types.createSqlType(SqlTypeName.ANY), 0);
@@ -134,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 path!.ToString().Should().Be("c.address.city");
             }
 
-            [TestMethod]
+            [Fact]
             public void ComputedExpressionDoesNotResolveToAPath()
             {
                 var node = _rex.makeCall(
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // ── Sort key resolution ───────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void SortKeysResolveToPolicyPaths()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -165,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 paths[1].ToString().Should().Be("c.inventory.quantity");
             }
 
-            [TestMethod]
+            [Fact]
             public void StrictDirectionsAreTreatedAsPlainDirections()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -182,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <remarks>
             /// Cosmos ORDER BY offers only ASC and DESC; a clustered collation has no equivalent.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ClusteredCollationIsRefused()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -194,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     out _).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void OutOfRangeFieldIsRefused()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -206,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     out _).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void EmptyCollationResolvesToNoKeys()
             {
                 CosmosSort.TryResolveSortKeys(RelCollations.EMPTY, Fields, RowType(), "c", out var keys, out _).Should().BeTrue();
@@ -237,7 +236,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// is the whole of the change: the same collation, the same nullable row type, a different
             /// answer.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AGuaranteedNonNullKeyAcceptsEitherPlacement()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), 1).Should().BeTrue();
@@ -248,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Calcite's defaults are the two placements Cosmos cannot honour, so this is the shape an
             /// ordinary <c>ORDER BY name</c> arrives in.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AGuaranteedNonNullKeyAcceptsCalciteDefaultPlacement()
             {
                 var ascending = new java.util.ArrayList();
@@ -264,7 +263,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// The guarantee is per ordinal and not a blanket one. A predicate over one column says
             /// nothing about the column beside it.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AGuaranteeOverAnotherOrdinalDoesNotReachTheKey()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), 2).Should().BeFalse();
@@ -274,7 +273,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Every key has to be covered, not merely one of them. The container declares no composite
             /// index here, so this is about resolution alone; index legality is decided separately.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AMultiKeySortNeedsTheGuaranteeOnEveryNullableKey()
             {
                 var partial = new java.util.ArrayList();
@@ -289,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// An empty guarantee is the state before any predicate, and has to leave the rule exactly
             /// as it was rather than weakening it.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void NoGuaranteeLeavesThePlacementRuleUnchanged()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST), System.Array.Empty<int>()).Should().BeFalse();
@@ -325,7 +324,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Refused however few keys there are: the service rejects ordering by an element alias
             /// outright, so there is no arity at which it becomes legal.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void SingleKeyOnAnUnnestAliasIsRefused()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -340,7 +339,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <remarks>
             /// Its index-addressability cannot be established, so the sort must not be pushed down.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void MultiKeyInvolvingAnUnnestAliasIsRefused()
             {
                 CosmosSort.TryResolveSortKeys(
@@ -352,19 +351,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     out _).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void AscendingWithNullsFirstIsAccepted()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.FIRST)).Should().BeTrue();
             }
 
-            [TestMethod]
+            [Fact]
             public void DescendingWithNullsLastIsAccepted()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.DESCENDING, RelFieldCollation.NullDirection.LAST)).Should().BeTrue();
             }
 
-            [TestMethod]
+            [Fact]
             public void UnspecifiedNullPlacementIsAccepted()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.UNSPECIFIED)).Should().BeTrue();
@@ -375,13 +374,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Cosmos cannot place nulls last while ascending. Pushing this down would return rows in
             /// an order the plan did not ask for — a silent wrong answer rather than a failure.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AscendingWithNullsLastIsRefused()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.LAST)).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void DescendingWithNullsFirstIsRefused()
             {
                 Resolves(Collation(1, RelFieldCollation.Direction.DESCENDING, RelFieldCollation.NullDirection.FIRST)).Should().BeFalse();
@@ -392,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Cosmos on both counts. Sorting a nullable key therefore cannot be pushed down unless the
             /// plan explicitly asks for Cosmos's own placement.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void CalciteDefaultPlacementConflictsOnANullableKey()
             {
                 var ascending = new java.util.ArrayList();
@@ -409,7 +408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// collation pushes down normally. In practice this is what keeps sorting on <c>id</c> and
             /// the system properties available.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void NonNullableKeyAcceptsAnyPlacement()
             {
                 var list = new java.util.ArrayList();

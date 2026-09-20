@@ -1,8 +1,8 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -17,7 +17,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// an account: if the service reprices and the measurement moves, these move with it, and the
     /// orderings below are what must survive either way.
     /// </remarks>
-    [TestClass]
     public class CosmosRequestUnitModelTests
     {
 
@@ -30,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>How far a fitted estimate may sit from the charge it was fitted to.</summary>
         const double Tolerance = 0.9d;
 
-        [TestMethod]
+        [Fact]
         public void TheModelReproducesTheMeasuredPointReadChargeForASmallDocument()
         {
             CosmosRequestUnitModel.PointRead(SmallDocument).Should().BeApproximately(1.00d, Tolerance);
@@ -44,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// from the two endpoints — mis-ordered a 32 KB document. These are the swept charges, and what
         /// is asserted is that the model agrees on the winner at every one of them.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheModelOrdersEveryMeasuredSizeTheWayTheChargesDo()
         {
             // kilobytes, measured point read, measured query
@@ -66,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
         }
 
-        [TestMethod]
+        [Fact]
         public void TheModelReproducesTheMeasuredQueryCharges()
         {
             // One small document returned, partition key pinned.
@@ -85,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// The batch fit, over the range it claims: two to thirty-two documents.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheModelReproducesTheMeasuredBatchReadCharges()
         {
             // One document is charged as the point read it is, which is the step the fit must not smooth
@@ -104,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// flatters the batch rather than the query, which is the error that cannot flip an ordering
         /// the model is already deciding by fourfold.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheBatchFitUnderestimatesBeyondItsRange()
         {
             CosmosRequestUnitModel.ReadMany(64, SmallDocument).Should().BeLessThan(18.35d);
@@ -118,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// The ordering issue #92 turns on, for the shape that motivated it.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void APointReadBeatsTheQueryItReplacesForASmallDocument()
         {
             var read = CosmosRequestUnitModel.PointRead(SmallDocument);
@@ -131,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// And the ordering that reverses it, which is the reason the decision is not a constant.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AQueryBeatsThePointReadForALargeDocument()
         {
             var read = CosmosRequestUnitModel.PointRead(LargeDocument);
@@ -140,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             read.Should().BeGreaterThan(query, "a point read is charged for the body at several times the query's rate");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheBreakEvenSitsWhereTheMeasuredCurvesCross()
         {
             var breakEven = CosmosRequestUnitModel.BreakEvenDocumentSizeInBytes;
@@ -158,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// The set leg: a batch read wins only at one document, which is the single read's case.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ABatchReadLosesToOneQueryBeyondASingleDocument()
         {
             // At one id the batch is a point read, and wins.
@@ -182,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             large.Should().BeGreaterThan(small);
         }
 
-        [TestMethod]
+        [Fact]
         public void AFanOutMultipliesTheFloorRatherThanWhatIsReturned()
         {
             var pinned = CosmosRequestUnitModel.Query(1, SmallDocument);
@@ -192,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             fanned.Should().BeLessThan(pinned * 5d, "what is returned is not multiplied with it");
         }
 
-        [TestMethod]
+        [Fact]
         public void ARatioIsOneWhereTheReferenceIsNotUsable()
         {
             CosmosRequestUnitModel.RelativeTo(5d, 0d).Should().Be(1d);
@@ -200,7 +199,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosRequestUnitModel.RelativeTo(1d, 4d).Should().Be(0.25d);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnUnknownDocumentSizeCostsAsTheFloorAlone()
         {
             CosmosRequestUnitModel.PointRead(0d).Should().Be(CosmosRequestUnitModel.PointReadFloor);

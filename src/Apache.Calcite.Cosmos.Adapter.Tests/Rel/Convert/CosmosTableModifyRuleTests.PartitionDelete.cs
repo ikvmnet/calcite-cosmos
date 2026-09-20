@@ -14,8 +14,6 @@ using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -28,6 +26,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -45,7 +45,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// stubbed on both answers. That is the point of the gate: the recovery must be invisible where
         /// the answer is no, and no test can reach an account where it is yes.
         /// </remarks>
-        [TestClass]
         public class PartitionDelete
         {
 
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// read is a row the service will remove — which is what makes the single request faithful
             /// rather than merely cheaper.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APartitionKeyOnlyDeleteBecomesOneRequestWhereTheAccountAllowsIt()
             {
                 var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes'"));
@@ -119,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// account without it answers 400. Planning the fast path there would turn a working
             /// statement into a failing one, which is the one thing a pushdown must never do.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheSameDeleteStaysARowAtATimeWhereTheAccountCannot()
             {
                 var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: false)), "DELETE FROM products WHERE \"$.category\" = 'bikes'"));
@@ -132,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// A residual conjunct means the statement asked for some of the partition, and the service
             /// would empty all of it — data loss rather than a slow plan.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AResidualPredicateStaysARowAtATime()
             {
                 var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes' AND \"_ts\" > 5"));
@@ -145,7 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// An <c>id</c> alongside the key is a single-document delete, which the per-row path
             /// already does with a point operation.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ADeleteNamingAnIdStaysARowAtATime()
             {
                 var modify = Find<CosmosTableModify>(Plan(new CosmosTable(Container(supported: true)), "DELETE FROM products WHERE \"$.category\" = 'bikes' AND \"id\" = 'x'"));
@@ -158,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// The capability is asked at most once, and only where a statement could use it — a plan
             /// with no whole-partition delete in it must not pay for a round trip it cannot spend.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheCapabilityIsNotProbedForAStatementThatCannotUseIt()
             {
                 var probes = 0;

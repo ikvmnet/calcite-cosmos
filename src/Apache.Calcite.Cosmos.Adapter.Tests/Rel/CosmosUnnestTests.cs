@@ -6,8 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -15,6 +13,8 @@ using org.apache.calcite.schema;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -22,11 +22,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// <summary>
     /// The <c>JOIN IN</c> a traversal renders, and the alias it binds the element to.
     /// </summary>
-    [TestClass]
     public class CosmosUnnestTests : CosmosRelNodeFixture
     {
 
-        [TestMethod]
+        [Fact]
         public void UnnestRendersJoinIn()
         {
             var unnest = UnnestOver(Scan(), MapItem("tags"));
@@ -34,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Sql(unnest, Implementor()).Should().Be("SELECT VALUE c FROM products c JOIN t0 IN c.tags");
         }
 
-        [TestMethod]
+        [Fact]
         public void UnnestBindsTheElementToItsAlias()
         {
             var implementor = Implementor();
@@ -44,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             implementor.Fields[5]!.ToString().Should().Be("t0");
         }
 
-        [TestMethod]
+        [Fact]
         public void StackedUnnestsGetDistinctAliases()
         {
             var inner = UnnestOver(Scan(), MapItem("tags"));
@@ -53,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Sql(outer, Implementor()).Should().Be("SELECT VALUE c FROM products c JOIN t0 IN c.tags JOIN t1 IN c.sizes");
         }
 
-        [TestMethod]
+        [Fact]
         public void FilterAboveUnnestAddressesTheElement()
         {
             var unnest = UnnestOver(Scan(), MapItem("tags"));
@@ -67,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// The array expression of a lateral unnest addresses a correlation variable rather than
         /// the input directly, so it must resolve through the same bindings.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void CorrelationVariableResolvesToTheInputBinding()
         {
             var correlationId = _cluster.createCorrel();
@@ -94,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// the shape.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AForeignCorrelationVariableDoesNotResolve()
         {
             var correlated = _rex.makeCorrel(_table.getRowType(), _cluster.createCorrel());
@@ -122,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// it refused the feature. See <c>CosmosPlannerTests.UnnestOverAHoistedArrayCarriesTheElement</c>.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnnestAboveAProjectionAddsTheElementToIt()
         {
             // The document first, so that the traversed array is addressed through the projection
@@ -143,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// of an already-distinct set to be multiplied. Two documents sharing a tag would yield one
         /// row rather than two.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnnestAboveADistinctIsRefused()
         {
             var distinct = new CosmosAggregate(
@@ -156,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>().WithMessage("*DISTINCT*");
         }
 
-        [TestMethod]
+        [Fact]
         public void UnnestOfANonPathIsRefused()
         {
             var computed = _rex.makeCall(SqlStdOperatorTable.PLUS, Ref(2), Num(1));

@@ -15,8 +15,6 @@ using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite;
 using org.apache.calcite.adapter.java;
 using org.apache.calcite.avatica.util;
@@ -32,6 +30,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -44,7 +44,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// is what says the two are connected — that the statement the rule's node renders is the statement
     /// the service is given, carrying the keys the build side actually had.
     /// </remarks>
-    [TestClass]
     public class CosmosLookupJoinTests
     {
 
@@ -214,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// that two rows come back, but that the container was asked for the two keys the orders had —
         /// which is the difference between this feature working and it being an expensive no-op.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AJoinFetchesOnlyTheKeysTheOtherSideHas()
         {
             Given(
@@ -253,7 +252,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// The join is still a join: a build row whose key no document has contributes nothing, and a
         /// document no build row asked for is not returned to begin with.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task OnlyMatchingPairsAreProduced()
         {
             Given(
@@ -273,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A build side with no rows never asks the container anything at all, which is the extreme case
         /// of the saving and the one a rendered predicate could not have reached.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AnEmptyBuildSideAsksTheContainerNothing()
         {
             Given(orders: System.Array.Empty<string>(), products: new[] { """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""" });

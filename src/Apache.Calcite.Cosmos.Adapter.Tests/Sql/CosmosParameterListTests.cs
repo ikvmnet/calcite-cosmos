@@ -3,17 +3,16 @@ using System;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
-    [TestClass]
     public class CosmosParameterListTests
     {
 
-        [TestMethod]
+        [Fact]
         public void NamesAreAssignedInOrder()
         {
             var p = new CosmosParameterList();
@@ -24,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             p.Count.Should().Be(3);
         }
 
-        [TestMethod]
+        [Fact]
         public void ValuesArePreservedInOrder()
         {
             var p = new CosmosParameterList();
@@ -36,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 x => { x.Name.Should().Be("@p1"); x.Value.Should().Be(2); });
         }
 
-        [TestMethod]
+        [Fact]
         public void EqualValuesAreBoundSeparately()
         {
             var p = new CosmosParameterList();
@@ -45,16 +44,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             p.Add("a").Should().Be("@p1");
         }
 
-        [TestMethod]
+        [Fact]
         public void PrefixIsHonored()
         {
             var p = new CosmosParameterList("@arg");
             p.Add(1).Should().Be("@arg0");
         }
 
-        [DataTestMethod]
-        [DataRow("")]
-        [DataRow("p")]
+        [Theory]
+        [InlineData("")]
+        [InlineData("p")]
         public void InvalidPrefixIsRejected(string prefix)
         {
             var act = () => new CosmosParameterList(prefix);

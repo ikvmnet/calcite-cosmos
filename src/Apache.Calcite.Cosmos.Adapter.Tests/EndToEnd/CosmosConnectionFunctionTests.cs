@@ -14,8 +14,8 @@ using Apache.Calcite.Data;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -38,9 +38,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// Reports inconclusive where none is reachable, like the rest of the tests that need one.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class CosmosConnectionFunctionTests
+    public class CosmosConnectionFunctionTests : IClassFixture<CosmosConnectionFunctionTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
 
         static string Endpoint => CosmosEmulator.Endpoint!;
@@ -58,8 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static CosmosClient? _client;
         static string? _initializationFailure;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             // A model names its schema factory by type name, resolved through IKVM, and only finds it
             // if the assembly is loaded. Nothing else in this file mentions the type, so this does.
@@ -144,8 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
@@ -156,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static void RequireService()
         {
             if (_client is null)
-                Assert.Inconclusive("These need a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+                Assert.Skip("These need a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
         }
 
         /// <summary>
@@ -267,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// turns a query that was merely slow into one that does not run.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AContradictedPredicateReturnsNothingAtTheService()
         {
             RequireService();
@@ -280,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And the same container answers a predicate the domain admits, so the row above is empty
         /// because of the contradiction rather than because nothing is there.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task TheSameContainerStillAnswersASatisfiablePredicate()
         {
             RequireService();
@@ -297,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// this asserts rather than reporting inconclusive wherever the suite runs. What it measures is
         /// resolution, which is the same for every operator in the family.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AFunctionResolvesThroughAConnection()
         {
             RequireService();
@@ -324,7 +334,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// for, and it is worth executing rather than merely planning.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ATypeTestFinishesInProcessOverAPointRead()
         {
             RequireService();
@@ -349,7 +359,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// would answer with the row rather than with nothing, which is the failure worth a test of its
         /// own — it is silent, and it is wrong rather than slow.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ATypeTestThatRejectsRemovesTheRowItWasReadFrom()
         {
             RequireService();
@@ -367,7 +377,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The negation, so that the predicate is doing something.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task TheFunctionIsEvaluatedRatherThanIgnored()
         {
             RequireService();
@@ -381,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A function qualified by the schema that declares it, which is what a query rooted elsewhere
         /// has to write.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task AQualifiedNameResolvesFromAnotherSchema()
         {
             RequireService();
@@ -410,7 +420,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// could not resolve never reaches the service at all, and that is asserted.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AFullTextPredicateResolvesAndReachesTheService()
         {
             RequireService();
@@ -426,7 +436,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 Describe(e).Should().NotContain("No match found for function signature",
                     "the name has to resolve whatever the service then does with the statement");
 
-                Assert.Inconclusive("The name resolved and the account refused the statement — an emulator does not implement full text search: " + Describe(e));
+                Assert.Skip("The name resolved and the account refused the statement — an emulator does not implement full text search: " + Describe(e));
             }
         }
 
@@ -451,7 +461,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// only one of them is this adapter's. A name that fails to resolve is neither, and fails.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AScoreResolvesThroughAConnection()
         {
             RequireService();
@@ -470,9 +480,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     "the name has to resolve whatever is then done with the statement");
 
                 if (described.Contains("could not push the whole ordering down"))
-                    Assert.Inconclusive("The name resolved and the rank clause did not survive the connection's plan. " + described);
+                    Assert.Skip("The name resolved and the rank clause did not survive the connection's plan. " + described);
 
-                Assert.Inconclusive("The name resolved and the service refused the statement, which this emulator does: " + described);
+                Assert.Skip("The name resolved and the service refused the statement, which this emulator does: " + described);
             }
         }
 
@@ -497,7 +507,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// because the statement is refused while the plan is being turned into code.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AProjectedScoreIsRefusedWithAReason()
         {
             RequireService();
@@ -525,7 +535,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// schema's own functions are what the catalog reader resolves. So declaring a function on a
         /// schema is the route into a view, and this is the measurement.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AModelViewCanNameASchemaDeclaredFunction()
         {
             RequireService();
@@ -543,7 +553,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// is the shorter spelling of the test above and the one worth reaching for in a model that
         /// gives a container a relational shape.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AModelViewRootedInTheSchemaNeedsNoQualifier()
         {
             RequireService();

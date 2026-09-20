@@ -5,12 +5,12 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -24,7 +24,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// lowers or does not depending on what the container declared and on what the query proved, and
     /// both directions have to hold or the feature is either useless or wrong.
     /// </remarks>
-    [TestClass]
     public class CosmosFactRewriterTests
     {
 
@@ -117,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// An ordering over a path confined to one fixed shape lowers to a string comparison, with
         /// the literal written in that shape.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOrderingOverAFixedShapeLowersToAStringComparison()
         {
             Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
@@ -129,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A literal carrying less precision than the path stores is written out in full, which loses
         /// nothing and is the ordinary case.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ACoarserLiteralIsWrittenOutInTheStoredShape()
         {
             Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
@@ -145,7 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// written turns <c>&lt;literal&gt; &gt; &lt;path&gt;</c> into <c>&lt;path&gt; &gt;
         /// &lt;literal&gt;</c>, which selects the complement of what the query asked for.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheOperatorIsReversedWhenTheLiteralIsOnTheLeft()
         {
             Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsInstant()), Millis)
@@ -162,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// would admit the stored value <c>12:30:00Z</c>, which is earlier than the literal. So the
         /// comparison stays where it was and is applied in process.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ALiteralFinerThanTheStoredShapeLowersNothing()
         {
             var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00.500"));
@@ -178,7 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// trailing zeros from the fraction, so a container written without a converter holds exactly
         /// the mixed path this refuses.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnshapedPathLowersNoOrdering()
         {
             var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00"));
@@ -195,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// canonical UUID has one spelling per value, so equality is exact, while Calcite's order over
         /// it is not the lexical one. Nothing about the ordering follows from the equality.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEqualityOnlyFormStillRefusesTheOrdering()
         {
             var ordering = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
@@ -206,14 +205,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(UuidEquality(), Unconditional).Should().Contain("'" + Canonical + "'", "while the equality still lowers");
         }
 
-        [TestMethod]
+        [Fact]
         public void ADeclaredFormLowersTheComparisonToAStringEquality()
         {
             Rewrite(UuidEquality(), Unconditional).Should().Be($"=($0, '{Canonical}')",
                 "the stored spelling is the canonical one, so comparing the strings answers what comparing the values answers");
         }
 
-        [TestMethod]
+        [Fact]
         public void NothingDeclaredLeavesThePredicateAlone()
         {
             var original = UuidEquality();
@@ -222,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "which is every container today, and asking has to cost nothing");
         }
 
-        [TestMethod]
+        [Fact]
         public void AGuardedFormNeedsTheQueryToHaveProvenTheGuard()
         {
             var alone = UuidEquality();
@@ -237,7 +236,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "the guard is proven by a conjunct of the very predicate being rewritten, and that conjunct stays");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheLoweredFormIsWhatRoutingReads()
         {
             var rewritten = CosmosFactRewriter.Rewrite(UuidEquality(), _fields, Container(Unconditional), "c", _rex);
@@ -251,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeFalse("and the cast form pins nothing, which is the state of things today");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheLiteralIsWrittenInTheStoredSpelling()
         {
             var upper = _rex.makeCall(SqlStdOperatorTable.EQUALS,
@@ -273,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// fails the conjunction is false however the branch reads, and over one where it holds the
         /// fact holds too. Refusing cost the <c>IN</c> case, which is a disjunction once expanded.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADisjunctionIsDescendedInto()
         {
             var disjunction = _rex.makeCall(SqlStdOperatorTable.OR, UuidEquality(), KindIs("B"));
@@ -290,7 +289,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "and the conjunct that proves it holds of every row the predicate keeps, branch or no branch");
         }
 
-        [TestMethod]
+        [Fact]
         public void APathTheSchemaSaysNothingAboutIsLeftAlone()
         {
             var other = _rex.makeCall(SqlStdOperatorTable.EQUALS,

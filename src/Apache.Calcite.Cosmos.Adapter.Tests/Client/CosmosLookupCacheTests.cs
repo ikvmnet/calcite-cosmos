@@ -6,13 +6,12 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
 
-    [TestClass]
     public class CosmosLookupCacheTests
     {
 
@@ -37,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return rows;
         }
 
-        [TestMethod]
+        [Fact]
         public void RemembersWhatWasSet()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
@@ -52,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Absence is the answer a cache most needs to hold: without it, every batch mentioning the
         /// key asks again and is told nothing again.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RemembersAbsence()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
@@ -63,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().BeEmpty();
         }
 
-        [TestMethod]
+        [Fact]
         public void AnEntryExpiresAfterItsTimeToLive()
         {
             var clock = new ManualClock();
@@ -82,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Two plans rendering different statements must not share answers, and neither may two
         /// bindings of the same text — a filter's parameter value is part of the identity.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void StatementsDoNotShareEntries()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
@@ -92,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             cache.TryGet("SELECT b", "bikes", out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void TheIdentityCarriesTheNonKeyParameters()
         {
             var one = new CosmosQuery("SELECT * FROM c WHERE c.p > @p0", new[] { new CosmosParameter("@p0", 5L) });
@@ -106,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Expiry is the only eviction: a full cache purges what has expired, and otherwise declines
         /// the new entry rather than evicting something for it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFullCacheDeclinesRatherThanEvicts()
         {
             var cache = new CosmosLookupCache(2, TimeSpan.FromMinutes(5));
@@ -119,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             cache.TryGet("s", "b", out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ExpiredEntriesMakeRoom()
         {
             var clock = new ManualClock();
@@ -137,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <remarks>
         /// An absence entry counts as one row: absence must not be free to hold without limit.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AbsenceCountsAgainstTheBound()
         {
             var cache = new CosmosLookupCache(1, TimeSpan.FromMinutes(5));
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             cache.Rows.Should().Be(1);
         }
 
-        [TestMethod]
+        [Fact]
         public void ClearForgetsEverything()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
@@ -159,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             cache.TryGet("s", "a", out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ResettingAKeyReplacesItsRows()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));
@@ -202,7 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The container changed, so what the cache remembers about it may be wrong. A write from
         /// outside the process is the TTL's problem; one through the adapter is this test's.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async System.Threading.Tasks.Task AWriteThroughTheAdapterClearsTheCache()
         {
             var cache = new CosmosLookupCache(10, TimeSpan.FromMinutes(5));

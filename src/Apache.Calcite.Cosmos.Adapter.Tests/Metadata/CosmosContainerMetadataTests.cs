@@ -5,13 +5,12 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
 
-    [TestClass]
     public class CosmosContainerMetadataTests
     {
 
@@ -38,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Legality, not cost ────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void NoSortIsAlwaysLegal()
         {
             WithIndex().IsSortSupported(Sort()).Should().BeTrue();
@@ -48,26 +47,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A single-property sort on an unindexed path costs more but still runs, so it is legal
         /// regardless of the indexing policy. Only multi-property sorts can be outright rejected.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SingleKeySortIsLegalWithoutAnyCompositeIndex()
         {
             WithIndex().IsSortSupported(Sort(("/name", false))).Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void MultiKeySortWithoutACompositeIndexIsRejected()
         {
             WithIndex().IsSortSupported(Sort(("/name", false), ("/price", false))).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void MultiKeySortWithAMatchingCompositeIndexIsAccepted()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false)));
             container.IsSortSupported(Sort(("/name", false), ("/price", false))).Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void AnyOfSeveralIndexesMayMatch()
         {
             var container = WithIndex(
@@ -79,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Path sequence ─────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void PathOrderMustMatch()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false)));
@@ -90,14 +89,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A composite index on three paths does not serve an ORDER BY over the first two. This is
         /// an easy assumption to get wrong — prefixes do not qualify.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PrefixOfALongerIndexDoesNotQualify()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false), ("/_ts", false)));
             container.IsSortSupported(Sort(("/name", false), ("/price", false))).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void SortLongerThanTheIndexDoesNotQualify()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false)));
@@ -106,21 +105,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Direction ─────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void FullyInvertedDirectionsQualify()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false)));
             container.IsSortSupported(Sort(("/name", true), ("/price", true))).Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void PartiallyInvertedDirectionsDoNotQualify()
         {
             var container = WithIndex(Index(("/name", false), ("/price", false)));
             container.IsSortSupported(Sort(("/name", false), ("/price", true))).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void MixedIndexDirectionsMatchExactly()
         {
             var container = WithIndex(Index(("/name", false), ("/price", true)));
@@ -132,21 +131,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Construction ──────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void CompositeIndexRequiresAtLeastTwoPaths()
         {
             var act = () => Index(("/name", false));
             act.Should().Throw<ArgumentException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void HierarchicalPartitionKeyIsLimitedToThreePaths()
         {
             var act = () => new CosmosContainerMetadata("products", new[] { "/a", "/b", "/c", "/d" });
             act.Should().Throw<ArgumentException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void PartitionKeyPathsArePreserved()
         {
             var container = new CosmosContainerMetadata("products", new[] { "/tenant", "/user" });
@@ -155,25 +154,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Bridge from CosmosPath to policy form ─────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void PolicyPathDropsTheAlias()
         {
             CosmosPath.Root("c").Property("inventory").Property("quantity").ToPolicyPath().Should().Be("/inventory/quantity");
         }
 
-        [TestMethod]
+        [Fact]
         public void PolicyPathRendersSubscriptsAsTheArrayWildcard()
         {
             CosmosPath.Root("c").Property("distributors").Index(0).Property("name").ToPolicyPath().Should().Be("/distributors/[]/name");
         }
 
-        [TestMethod]
+        [Fact]
         public void RootPolicyPathIsASlash()
         {
             CosmosPath.Root("c").ToPolicyPath().Should().Be("/");
         }
 
-        [TestMethod]
+        [Fact]
         public void PolicyPathMatchesACompositeIndexEntry()
         {
             var container = WithIndex(Index(("/name", false), ("/inventory/quantity", false)));
@@ -192,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// An exact comparison, unlike the included and excluded path patterns: a full text policy
         /// or index cannot name a wildcard, so a declared path is a literal one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredFullTextPathIsSearchable()
         {
             var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name", "/inventory/notes" });
@@ -208,7 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <see cref="CosmosContainerMetadata.IsPathIndexed"/>, where an empty policy means the
         /// service's own, which indexes everything: there is no default full text policy.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AContainerDeclaringNothingSearchesNothing()
         {
             var container = new CosmosContainerMetadata("products");
@@ -217,7 +216,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             container.IsPathVectorSearchable("/embedding").Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ADeclaredVectorPathIsSearchable()
         {
             var container = new CosmosContainerMetadata("products", vectorPaths: new[] { "/embedding" });
@@ -229,7 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// The two lists are separate. Nothing about a text path says it holds a vector.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheDeclarationsDoNotCrossOver()
         {
             var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name" }, vectorPaths: new[] { "/embedding" });
@@ -243,7 +242,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// a statistics provider, a partition delete probe. They are read once and the planner asks
         /// for them at every one of those stages.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void DeclarationsSurviveTheAttachments()
         {
             var container = new CosmosContainerMetadata("products", fullTextPaths: new[] { "/name" }, vectorPaths: new[] { "/embedding" });

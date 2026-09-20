@@ -4,8 +4,6 @@ using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -18,6 +16,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -32,7 +32,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// declared stored form lowers it to a string equality, the statement carries it, the partition
     /// key is recovered from it, and the plan stops carrying an in-process filter.
     /// </remarks>
-    [TestClass]
     public class CosmosDeclaredFactPlanningTests
     {
 
@@ -124,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
-        [TestMethod]
+        [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
         {
             var container = Declared(false);
@@ -142,7 +141,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().Contain("ClrEnumerableFilter", "the comparison is still Calcite's to make: " + PlanText(best));
         }
 
-        [TestMethod]
+        [Fact]
         public void ADeclaredStoredFormPutsTheComparisonInTheStatement()
         {
             var container = Declared(true);
@@ -156,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
         }
 
-        [TestMethod]
+        [Fact]
         public void TheLoweredComparisonRoutesToItsPartition()
         {
             var container = Declared(true);
@@ -166,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "which is the largest single cost lever there is, and it needed no change of its own");
         }
 
-        [TestMethod]
+        [Fact]
         public void WithoutTheDiscriminatorNothingIsProvenAndNothingLowers()
         {
             var container = Declared(true);
@@ -185,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the extracted type rather than converting to it, and JSON has no UUID, so it validates and
         /// then throws at run time whatever the document holds.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheReturningVarcharSpellingLowersToo()
         {
             var container = Declared(true);
@@ -210,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// equality — and the discriminator conjunct is exactly such a conjunct. What changed is that
         /// <c>CosmosPointReadSplitRule</c> partitions the conjunction instead of relaxing the standard.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ALoweredComparisonUnderAGuardStillReachesAPointRead()
         {
             var container = Declared(true);
@@ -233,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// renderings, and where the container says the path holds a string there is no second type
         /// for them to disagree over.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ADeclaredTypeMakesAnOrderingComparisonExactRatherThanWeakened()
         {
             const string Typed = """
@@ -257,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And without the declaration it is weakened exactly as it was.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void WithoutADeclaredTypeAnOrderingComparisonIsStillWeakened()
         {
             var container = Declared(false);
@@ -276,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// stays and the recheck with it. What goes is the disjunct admitting non-numbers, which is
         /// every document the service would otherwise return for the recheck to throw away.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredTypeDeletesTheGuardThatAdmittedTheOtherTypes()
         {
             const string Numeric = """{ "properties": { "n": { "type": "integer" } } }""";
@@ -298,7 +297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And a declared presence deletes the definedness test, which is there only to stop the type
         /// guard admitting every document that lacks the path.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ADeclaredPresenceDeletesTheDefinednessTest()
         {
             // required without a type: presence known, kind not, so the type guard stays and the
@@ -322,7 +321,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And the whole of it pays on a container that declares nothing, because the service's own
         /// guarantees are facts too.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheServiceGuaranteesPayWithNoSchemaAtAll()
         {
             var container = Declared(false);
@@ -347,7 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// has always satisfied that; this is the container doing it instead, once and for every
         /// query rather than one predicate at a time.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredScalarThatIsAlwaysThereMakesAPathSortable()
         {
             const string Always = """
@@ -372,7 +371,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Both claims are needed, and a nullable type is not one of them.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void PresenceAloneAndANullableTypeAreBothTooWeakToSort()
         {
             const string Sql = """SELECT JSON_VALUE(c."DOC", '$.at') AS "at" FROM items AS c ORDER BY 1""";
@@ -404,7 +403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// passing it by, and the membership fell to a client-side recheck over a scan. Expanded it is
         /// a disjunction of equalities, each lowered the way a lone one is.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASetOfIdsOverADeclaredPathReachesTheService()
         {
             const string Ids = """
@@ -477,7 +476,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// container whole and sorted it in memory, while the same query without the identifier pushed
         /// both. Every query that returns an entity selects its identifier.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ProjectingADeclaredUuidLetsTheSortAndThePagePush()
         {
             const string Sql = """
@@ -519,7 +518,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// already made; the declaration turns twenty documents into twenty pairs of scalars.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutTheDeclarationTheCastStaysInProcessAndTheDocumentStaysHome()
         {
             const string Sql = """
@@ -556,7 +555,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The control for the pair above. Both halves of the query were always pushable on their own;
         /// what the issue was about is that selecting the identifier gave up the other half.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSameQueryWithoutTheIdentifierAlwaysPushed()
         {
             const string Sql = """
@@ -574,7 +573,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// An uppercase container is addressable on the same terms, the projection asking only that
         /// the stored text be a UUID rather than which spelling it is.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnUppercaseContainerProjectsOnTheSameTerms()
         {
             const string Upper = """
@@ -606,7 +605,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// path is not the value either way. The column binding to no path is what keeps the question
         /// from being asked at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OrderingByTheRenderedIdentifierIsStillRefused()
         {
             const string Sql = """
@@ -629,7 +628,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// reading that off the subtree is a further step this does not take. The filter still pushes,
         /// and the projection stays in process.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AGuardedFormDoesNotRenderAProjection()
         {
             var container = Declared(true);
@@ -653,7 +652,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The half that the split rule has to get right: a predicate carrying something with no
         /// Cosmos form at all still pushes the part the declaration licensed.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void APredicateThatOnlyPartlyTranslatesStillPushesTheLoweredHalf()
         {
             var container = Declared(true);
@@ -704,7 +703,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// ordering rather than of the placement rule beside it.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnconfinedShapeWillNotCarryATemporalSort()
         {
             var container = Instant(null);
@@ -717,7 +716,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The same sort pushes once the declared pattern confines the shape.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AFixedIsoShapeCarriesATemporalSort()
         {
             foreach (var pattern in new[]
@@ -751,7 +750,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the form licensed it.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ARangeOverAFixedShapeReachesTheStatement()
         {
             var confined = Instant(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$");
@@ -777,7 +776,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The same range over an unconfined path stays in process.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ARangeOverAnUnconfinedShapeStaysInProcess()
         {
             var container = Instant(null);
@@ -832,7 +831,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// container read in process is the largest difference in this area.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortOnAConvertedColumnOrdersByThePathUnderneath()
         {
             var container = Reference(SortableUuid);
@@ -857,7 +856,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// order of that spelling is not the order it sorts in. Nothing about the ordering follows from
         /// the equality, which is why the two bits are separate.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFormThatOnlyPreservesEqualityCarriesNoSuchSort()
         {
             var container = Reference(PlainUuid);
@@ -877,7 +876,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// column would. A path declared present and a scalar admits no such document; without the
         /// declaration nothing rules one out.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AGuardThatMightDecideSomethingCarriesNoSuchSort()
         {
             var container = Reference(SortableUuid, required: false);
@@ -932,7 +931,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// only what may be <em>ordered</em> by.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheTemporalSortNeedsTheDeclaration()
         {
             const string Sql = """SELECT CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP) AS "at" FROM items AS c ORDER BY 1""";
@@ -950,7 +949,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "while the accessor goes down either way: " + sql);
         }
 
-        [TestMethod]
+        [Fact]
         public void TheTemporalCastSpellingIsBlockedBeforeTheSort()
         {
             var container = Instant(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$");
@@ -988,7 +987,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <em>lowered</em> comparison rather than the cast, the rewrite having run before the split.
         /// The cast is gone from the plan altogether, which is the thing worth asserting.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AZeroPaddedNumberComparesAsANumber()
         {
             const string Padded = """
@@ -1015,7 +1014,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The service compares strings ordinally — measured — so over equal-length digit strings a
         /// lexical comparison compares digits at equal significance, which is numeric comparison.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AZeroPaddedNumberOrdersAsANumber()
         {
             const string Padded = """
@@ -1036,7 +1035,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Without the padding the equality still lowers and the ordering does not, which is the two
         /// properties being asked separately.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void WithoutPaddingOnlyTheEqualityLowers()
         {
             const string Unpadded = """
@@ -1064,7 +1063,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// every document written the other way. The declaration is read as saying nothing rather
         /// than as saying that.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnyRunOfDigitsLicensesNothing()
         {
             const string Loose = """
@@ -1086,7 +1085,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Six digits have no five-character spelling, and writing them anyway would compare strings
         /// of different lengths — which answers by length rather than by value.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AValueTooWideForTheContainerIsDeclined()
         {
             const string Padded = """
@@ -1127,7 +1126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// guarded fact the query proved its way into; nothing read one as a statement about the data.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AContradictedPredicateIsReducedToTheConstant()
         {
             foreach (var schema in new[]
@@ -1154,7 +1153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The direction that has to hold or the feature is worse than useless: a value inside the
         /// declared domain contradicts nothing, and the comparison reaches the service unchanged.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASatisfiablePredicateIsUntouched()
         {
             var container = Declaring("""{ "type": "object", "properties": { "status": { "enum": ["active", "archived"] } } }""");
@@ -1169,7 +1168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A container declaring nothing settles nothing, whatever the query asks for.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void WithNothingDeclaredNoPredicateIsContradicted()
         {
             var container = Declared(false);
@@ -1215,7 +1214,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// backlog claimed and still worth taking.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredTautologyIsNotAsked()
         {
             var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'A' AND JSON_VALUE(c."DOC", '$.id') = 'x' AND {Ref} = UUID'{Canonical}'""";
@@ -1240,7 +1239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>kind</c>, over which <c>kind = 'A'</c> is unknown and the row is dropped. Removing the
         /// conjunct would keep that row, which is a different answer rather than a faster one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutAPresenceClaimTheComparisonStays()
         {
             var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'A' AND JSON_VALUE(c."DOC", '$.id') = 'x' AND {Ref} = UUID'{Canonical}'""";
@@ -1255,7 +1254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And a value the declaration does not guarantee is asked as written.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AComparisonTheDeclarationDoesNotGuaranteeIsUntouched()
         {
             var sql = $"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'Z' AND JSON_VALUE(c."DOC", '$.id') = 'x'""";
@@ -1303,7 +1302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// nothing but the <c>id</c>, so the document returned is the document asked for.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredPartitionKeyRoutesAQueryThatPinsOnlyAnId()
         {
             var container = PartitionKey(present: true);
@@ -1326,7 +1325,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>const</c> without <c>required</c> still admits a document with no such property, which
         /// Cosmos places in its own partition, and routing past it would lose it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutAPresenceClaimTheKeyIsNotPinned()
         {
             var container = PartitionKey(present: false);
@@ -1339,7 +1338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And a container declaring nothing routes nothing, as before.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void WithNothingDeclaredTheKeyIsNotPinned()
         {
             var container = Declared(false);
@@ -1370,7 +1369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// to call.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredTypeMakesAParameterisedComparisonExact()
         {
             var container = Declaring("""{ "type": "object", "properties": { "t": { "type": "string" } } }""");
@@ -1399,7 +1398,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>CosmosPlannerTests</c> pins the undeclared shape, so this is only the other side.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADeclaredTypeDeletesTheStoredNumberAlternative()
         {
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t') = '30'""";
@@ -1419,7 +1418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// accessor renders as digits, so the equality might select a document the service would not.
         /// Weakening is sound and the rows are right either way — it is the plan that is worse.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutADeclaredTypeTheParameterIsStillWeakened()
         {
             var container = Declared(false);

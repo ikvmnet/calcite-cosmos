@@ -5,8 +5,6 @@ using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -19,6 +17,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -42,7 +42,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// rather than being told.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CosmosPointReadSplitRuleTests
     {
 
@@ -161,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// nothing else, which is the standard <c>TryExtractPointRead</c> always applied — the rule moved
         /// the predicate rather than lowering the bar.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualIsHeldBackSoThePointReadIsRecovered()
         {
             Use(SmallDocuments());
@@ -187,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <see cref="CosmosRequestUnitModel.BreakEvenDocumentSizeInBytes"/> holding the residual back
         /// buys a more expensive plan, and the planner declines it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ALargeBodyKeepsTheWholePredicatePushed()
         {
             Use(LargeDocuments());
@@ -209,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// structural reason above rather than a pricing one, and this pins that so the two causes are
         /// not confused if one of them changes.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnmeasuredContainerTakesTheRead()
         {
             Use(Unmeasured());
@@ -223,7 +222,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// Nothing changes for the predicate that was always a point read: there is no residual to hold
         /// back, so the rule does not fire and the existing path answers.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APredicateWithNoResidualIsUnaffected()
         {
             Use(SmallDocuments());
@@ -242,7 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// see <c>ATypeTestResidualIsLiftedBecauseItHasABody</c>.
         /// The rule has to decline rather than offer a plan that is cheaper and impossible.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualOnlyTheServiceCanEvaluateIsNotLifted()
         {
             Use(SmallDocuments());
@@ -264,7 +263,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// soft-delete shape issue #92 was really about, which asks <c>IS_NULL</c> rather than SQL's
         /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ATypeTestResidualIsLiftedBecauseItHasABody()
         {
             Use(SmallDocuments());
@@ -282,7 +281,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// And nothing changes where the pinned half is not a complete point read on its own: holding a
         /// residual back would weaken the pushed predicate for no read in return.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnIncompletePinningIsNotWorthHoldingBack()
         {
             Use(SmallDocuments());

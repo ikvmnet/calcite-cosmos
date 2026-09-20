@@ -1,4 +1,21 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
+
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+
+using Xunit;
+using Xunit.Sdk;
+using Xunit.v3;
+
+// MSTest ran this assembly's tests one at a time, and nothing here is safe to run otherwise: the
+// boot class path below is process-wide, Calcite's planner registries are static, and the
+// service-backed classes share one emulator and one account. Parallelism is therefore a change to
+// make deliberately and measure, not one to inherit from a framework default.
+[assembly: Parallelization(Mode = ParallelMode.None)]
+
+// Stops the emulator container once the whole assembly is done, which is what MSTest's
+// [AssemblyCleanup] did.
+[assembly: AssemblyFixture(typeof(CosmosEmulatorLifetime))]
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
 {
@@ -30,10 +47,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// Java code was written against.
         /// </para>
         /// <para>
-        /// A module initializer rather than <c>[AssemblyInitialize]</c>: the addition has to
-        /// precede the first load of the driver, and a type initializer runs once with its failure
-        /// cached for the life of the process. Test-framework hooks do not reliably run early
-        /// enough.
+        /// A module initializer rather than an assembly fixture: the addition has to precede the
+        /// first load of the driver, and a type initializer runs once with its failure cached for
+        /// the life of the process. Test-framework hooks do not reliably run early enough, whichever
+        /// framework it is.
         /// </para>
         /// </remarks>
         [ModuleInitializer]
@@ -41,6 +58,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         {
             ikvm.runtime.Startup.addBootClassPathAssembly(typeof(org.apache.calcite.jdbc.CalciteFactory).Assembly);
         }
+
+    }
+
+    /// <summary>
+    /// Holds the emulator container open for the run and disposes it at the end.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CosmosEmulator"/> starts a container only where no account is named and none is
+    /// already listening, so on most runs there is nothing to stop and this does nothing.
+    /// </remarks>
+    public sealed class CosmosEmulatorLifetime : IAsyncLifetime
+    {
+
+        public ValueTask InitializeAsync() => default;
+
+        public async ValueTask DisposeAsync() => await CosmosEmulator.StopAsync();
 
     }
 

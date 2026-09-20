@@ -4,9 +4,9 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
@@ -21,7 +21,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// operator that casts, which is a long way from here; asserting the box is what keeps that from
     /// being discovered at run time.
     /// </remarks>
-    [TestClass]
     public class CosmosJsonTests
     {
 
@@ -29,31 +28,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         static object? Read(string json, SqlTypeName typeName) => CosmosJson.GetValue(Value(json), typeName);
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadStringAsString()
         {
             Read("\"widget\"", SqlTypeName.VARCHAR).Should().Be("widget");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadBooleanAsJavaBoolean()
         {
             Read("true", SqlTypeName.BOOLEAN).Should().BeOfType<java.lang.Boolean>().And.Be(java.lang.Boolean.TRUE);
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadIntegerAsJavaInteger()
         {
             Read("42", SqlTypeName.INTEGER).Should().BeOfType<java.lang.Integer>().And.Be(java.lang.Integer.valueOf(42));
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadBigintAsJavaLong()
         {
             Read("1717171717", SqlTypeName.BIGINT).Should().BeOfType<java.lang.Long>().And.Be(java.lang.Long.valueOf(1717171717L));
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadDoubleAsJavaDouble()
         {
             Read("1.5", SqlTypeName.DOUBLE).Should().BeOfType<java.lang.Double>().And.Be(java.lang.Double.valueOf(1.5d));
@@ -63,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A Cosmos number is an IEEE double, so an integral column legitimately arrives with a fractional
         /// part written out. It is the same value and reads as one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadWholeNumberWithFractionalNotationAsInteger()
         {
             Read("42.0", SqlTypeName.INTEGER).Should().Be(java.lang.Integer.valueOf(42));
@@ -73,14 +72,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Rounding here would answer a question the query did not ask. Refusing is the only reading that
         /// cannot be silently wrong.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseFractionalNumberAsInteger()
         {
             var act = () => Read("42.5", SqlTypeName.INTEGER);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*not a whole number*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseNumberOutsideTheRangeOfItsType()
         {
             var act = () => Read("2147483648", SqlTypeName.INTEGER);
@@ -91,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Built from the digits JSON carried rather than from a double, which is the whole point of a
         /// decimal.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadDecimalLosslessly()
         {
             Read("0.1234567890123456789012345", SqlTypeName.DECIMAL)
@@ -103,14 +102,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A container is schemaless and a property may hold a number where the plan expected text.
         /// Coercing it would make the row type a suggestion rather than a declaration.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseNumberAsString()
         {
             var act = () => Read("42", SqlTypeName.VARCHAR);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadNullAsNull()
         {
             Read("null", SqlTypeName.VARCHAR).Should().BeNull();
@@ -122,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Calcite holds a <c>UUID</c> in, and the conversion is Calcite's own, so a pushed projection
         /// and the in-process cast it replaced cannot answer differently.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadStringAsJavaUuid()
         {
             Read("\"123e4567-e89b-12d3-a456-426614174000\"", SqlTypeName.UUID)
@@ -134,14 +133,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Either spelling reads, which is what lets a container written in uppercase be projected on
         /// the same terms as one written in lowercase. The value is the same value.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadEitherSpellingAsTheSameUuid()
         {
             Read("\"123E4567-E89B-12D3-A456-426614174000\"", SqlTypeName.UUID)
                 .Should().Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadNullAsNullUuid()
         {
             Read("null", SqlTypeName.UUID).Should().BeNull();
@@ -152,21 +151,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// advance, so it fails rather than answering a null the query would take for a missing value.
         /// Calcite's own cast fails over the same input, which is the agreement that matters.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseAStringThatIsNotAUuid()
         {
             var act = () => Read("\"bikes\"", SqlTypeName.UUID);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*not one*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseANumberAsUuid()
         {
             var act = () => Read("30", SqlTypeName.UUID);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadObjectAsJavaMapPreservingDocumentOrder()
         {
             var map = (java.util.Map)Read("""{ "b": 1, "a": "x" }""", SqlTypeName.MAP)!;
@@ -177,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             ((string)map.keySet().toArray()[0]).Should().Be("b");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadArrayAsJavaList()
         {
             var list = (java.util.List)Read("""[ 1, "two", null ]""", SqlTypeName.ARRAY)!;
@@ -197,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// is a <see cref="java.lang.Long"/> discovered and a <see cref="java.lang.Integer"/> declared,
         /// and a plan that said <c>INTEGER</c> wants the latter.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadArrayElementsAsTheDeclaredComponentType()
         {
             var list = CosmosJson.GetList(Value("""[ 1, 2 ]"""), SqlTypeName.INTEGER);
@@ -211,14 +210,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// And refuses one that contradicts it, rather than coercing — the same refusal a scalar
         /// column makes, for the same reason.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseAnElementThatContradictsTheDeclaredComponentType()
         {
             var act = () => CosmosJson.GetList(Value("""[ "a", 2 ]"""), SqlTypeName.VARCHAR);
             act.Should().Throw<CosmosMaterializationException>().WithMessage("*Expected a JSON string*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadNestedStructureUnderAny()
         {
             var map = (java.util.Map)Read("""{ "inner": { "n": 2 }, "list": [ true ] }""", SqlTypeName.ANY)!;
@@ -231,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A whole JSON number reads as a Long so that an identifier or a count does not surface as a
         /// double. The choice is the value's, there being no schema to consult.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadWholeNumberUnderAnyAsLong()
         {
             Read("7", SqlTypeName.ANY).Should().BeOfType<java.lang.Long>();
@@ -241,13 +240,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <remarks>
         /// Calcite's internal encoding, not a date object: days since 1970-01-01.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadIsoDateAsDayCount()
         {
             Read("\"1970-01-11\"", SqlTypeName.DATE).Should().Be(java.lang.Integer.valueOf(10));
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadIsoTimestampAsEpochMilliseconds()
         {
             Read("\"1970-01-01T00:00:01Z\"", SqlTypeName.TIMESTAMP).Should().Be(java.lang.Long.valueOf(1000L));
@@ -257,19 +256,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Cosmos elides a property whose value is undefined, so absence is the ordinary case rather than
         /// an exceptional one, and reads as SQL NULL.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldReadAbsentPropertyAsNull()
         {
             CosmosJson.GetProperty(Value("""{ "id": "a" }"""), "missing", SqlTypeName.VARCHAR).Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldReadPresentPropertyByName()
         {
             CosmosJson.GetProperty(Value("""{ "id": "a" }"""), "id", SqlTypeName.VARCHAR).Should().Be("a");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseARowThatIsNotAnObject()
         {
             var act = () => CosmosJson.GetProperty(Value("42"), "id", SqlTypeName.VARCHAR);
@@ -283,19 +282,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         // measured against the emulator, and the table is in DESIGN.md. A change here that these do
         // not catch is a change the differential oracle will.
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAStringAsItself()
         {
             CosmosJson.GetText(Value("\"bikes\"")).Should().Be("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAnIntegralNumberWithoutAFraction()
         {
             CosmosJson.GetText(Value("30")).Should().Be("30");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAFractionalNumberAsJavaDoes()
         {
             CosmosJson.GetText(Value("30.7")).Should().Be("30.7");
@@ -305,7 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Java's rendering of a double, not the JSON text: <c>1e30</c> arrives written that way and
         /// comes back as <c>1.0E30</c>, which is what the in-process cast returns.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRenderALargeNumberInJavaNotation()
         {
             CosmosJson.GetText(Value("1e30")).Should().Be("1.0E30");
@@ -315,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Lower case, which is Java's and not SQL's — a <c>BOOLEAN</c> column renders <c>TRUE</c>.
         /// This is a rendering of an <c>ANY</c> value and follows the box it is held in.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRenderABooleanInLowerCase()
         {
             CosmosJson.GetText(Value("true")).Should().Be("true");
@@ -324,37 +323,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <remarks>
         /// Java's collection rendering rather than JSON's: no quotes, and a space after each comma.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAnArrayAsAJavaList()
         {
             CosmosJson.GetText(Value("""["x","y"]""")).Should().Be("[x, y]");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAnObjectAsAJavaMap()
         {
             CosmosJson.GetText(Value("""{ "v": "bikes" }""")).Should().Be("{v=bikes}");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderJsonNullAsNull()
         {
             CosmosJson.GetText(Value("null")).Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAnAbsentPropertyAsNull()
         {
             CosmosJson.GetTextProperty(Value("""{ "id": "a" }"""), "missing").Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRenderAPresentPropertyByName()
         {
             CosmosJson.GetTextProperty(Value("""{ "n": 30 }"""), "n").Should().Be("30");
         }
 
-        [TestMethod]
+        [Fact]
         public void ShouldRefuseARowThatIsNotAnObjectWhenRendering()
         {
             var act = () => CosmosJson.GetTextProperty(Value("42"), "id");
@@ -366,7 +365,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// column reached the ordinary way still refuses a number rather than coercing it, which is what
         /// keeps the row type from becoming a suggestion.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RenderingDoesNotLoosenTheTypedReading()
         {
             var act = () => CosmosJson.GetValue(Value("30"), SqlTypeName.VARCHAR);

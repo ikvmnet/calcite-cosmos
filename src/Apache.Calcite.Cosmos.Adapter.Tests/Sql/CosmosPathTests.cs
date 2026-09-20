@@ -3,36 +3,35 @@ using System;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
-    [TestClass]
     public class CosmosPathTests
     {
 
-        [TestMethod]
+        [Fact]
         public void RootRendersAsAlias()
         {
             CosmosPath.Root("c").ToString().Should().Be("c");
             CosmosPath.Root("c").IsRoot.Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void NestedPropertiesUseDotNotation()
         {
             CosmosPath.Root("c").Property("address").Property("city").ToString().Should().Be("c.address.city");
         }
 
-        [TestMethod]
+        [Fact]
         public void AwkwardPropertyNamesUseBracketNotation()
         {
             CosmosPath.Root("c").Property("odd name").ToString().Should().Be("c[\"odd name\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void MixedNotationComposes()
         {
             CosmosPath.Root("p")
@@ -43,7 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("p.metadata[\"odd name\"].sku");
         }
 
-        [TestMethod]
+        [Fact]
         public void ArrayIndexRenders()
         {
             CosmosPath.Root("p").Property("tags").Index(0).Property("key").ToString().Should().Be("p.tags[0].key");
@@ -53,19 +52,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// "value" is reserved, so it must be bracketed even mid-path. This matches the form the
         /// Cosmos documentation itself uses — <c>p.tags[0]["value"]</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ReservedPropertyIsBracketedMidPath()
         {
             CosmosPath.Root("p").Property("tags").Index(0).Property("value").ToString().Should().Be("p.tags[0][\"value\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void SystemPropertiesRenderBare()
         {
             CosmosPath.Root("c").Property("_ts").ToString().Should().Be("c._ts");
         }
 
-        [TestMethod]
+        [Fact]
         public void ExtendingDoesNotMutateTheOriginal()
         {
             var root = CosmosPath.Root("c");
@@ -76,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             root.Segments.Should().BeEmpty();
         }
 
-        [TestMethod]
+        [Fact]
         public void EqualPathsCompareEqual()
         {
             var a = CosmosPath.Root("c").Property("x").Index(2);
@@ -86,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             a.GetHashCode().Should().Be(b.GetHashCode());
         }
 
-        [TestMethod]
+        [Fact]
         public void DifferentPathsCompareUnequal()
         {
             CosmosPath.Root("c").Property("x").Should().NotBe(CosmosPath.Root("c").Property("y"));
@@ -94,20 +93,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosPath.Root("c").Property("x").Should().NotBe(CosmosPath.Root("c").Property("x").Index(0));
         }
 
-        [TestMethod]
+        [Fact]
         public void PathsAreCaseSensitive()
         {
             CosmosPath.Root("c").Property("Name").Should().NotBe(CosmosPath.Root("c").Property("name"));
         }
 
-        [TestMethod]
+        [Fact]
         public void EmptyAliasIsRejected()
         {
             var act = () => CosmosPath.Root("");
             act.Should().Throw<ArgumentException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void NegativeIndexIsRejected()
         {
             var act = () => CosmosPath.Root("c").Index(-1);

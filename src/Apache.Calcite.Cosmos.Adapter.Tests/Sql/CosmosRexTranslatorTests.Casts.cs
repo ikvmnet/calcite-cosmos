@@ -4,12 +4,12 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -25,7 +25,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the service compares it as it stands, so the two select different documents. A cast over a
         /// <em>literal</em> is the exception: its value is known while the statement is being written.
         /// </remarks>
-        [TestClass]
         public class Casts
         {
 
@@ -51,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// comparison arrives with a cast wrapped around the constant. Declining that cast declines the
             /// predicate â€” which for <c>VECTORDISTANCE</c> is the predicate that bounds the search.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AComparisonAgainstACastLiteralRenders()
             {
                 var distance = _rex.makeCall(CosmosOperators.VectorDistance, Path(), Path());
@@ -63,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// And the value is bound, not inlined â€” it is the part that varies with what is being asked.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheCastLiteralIsBound()
             {
                 var parameters = new CosmosParameterList();
@@ -79,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// A cast of a document value is still refused, and everything the design says about that
             /// stands.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ACastOfADocumentValueIsDeclined()
             {
                 Translator().TryTranslate(_rex.makeCast(_types.createSqlType(SqlTypeName.DOUBLE), Path()), out _)
@@ -90,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// And a cast of a literal to an exact type, which truncates or throws depending on the value â€”
             /// a question worth answering when something asks it, and nothing does.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ACastToAnExactTypeIsDeclined()
             {
                 // Abstract, because makeCast folds a cast of a literal to a literal and there would be no

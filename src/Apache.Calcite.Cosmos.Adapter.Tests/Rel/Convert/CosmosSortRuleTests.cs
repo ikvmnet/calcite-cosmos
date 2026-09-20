@@ -7,8 +7,6 @@ using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -21,6 +19,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -50,7 +50,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// harness below sets it for the same reason the README tells a caller to.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CosmosSortRuleTests
     {
 
@@ -135,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// The sort pushes when the plan is taken the way a host takes it.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ADistanceSortPushesForAHost()
         {
             ContainsSort(Plan(Ordered, asConnection: false)).Should().BeTrue();
@@ -149,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// projected, so the statement carries the column and the calc merely drops it; a full text
         /// score may not, which is why that case cannot be recovered the same way.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADistanceSortPushesForAConnection()
         {
             ContainsSort(Plan(Ordered, asConnection: true)).Should().BeTrue();

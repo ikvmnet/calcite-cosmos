@@ -4,13 +4,13 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -22,7 +22,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Scalar function translation. The mappings and the two argument adjustments were measured
         /// against the service; see <c>DESIGN.md</c>.
         /// </summary>
-        [TestClass]
         public class Functions
         {
 
@@ -67,27 +66,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // ── Direct mappings ───────────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void CaseFunctionsMapDirectly()
             {
                 Translate(SqlStdOperatorTable.UPPER, Str()).Should().Be("UPPER(c.s)");
                 Translate(SqlStdOperatorTable.LOWER, Str()).Should().Be("LOWER(c.s)");
             }
 
-            [TestMethod]
+            [Fact]
             public void CharLengthMapsToLength()
             {
                 Translate(SqlStdOperatorTable.CHAR_LENGTH, Str()).Should().Be("LENGTH(c.s)");
                 Translate(SqlStdOperatorTable.CHARACTER_LENGTH, Str()).Should().Be("LENGTH(c.s)");
             }
 
-            [TestMethod]
+            [Fact]
             public void ReplaceMapsDirectly()
             {
                 Translate(SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().Be("REPLACE(c.s, @p0, @p1)");
             }
 
-            [TestMethod]
+            [Fact]
             public void NumericFunctionsMapDirectly()
             {
                 Translate(SqlStdOperatorTable.ABS, Num()).Should().Be("ABS(c.n)");
@@ -100,14 +99,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// Cosmos's natural logarithm is spelled LOG; its LOG10 is separate.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void NaturalLogMapsToLog()
             {
                 Translate(SqlStdOperatorTable.LN, Num()).Should().Be("LOG(c.n)");
                 Translate(SqlStdOperatorTable.LOG10, Num()).Should().Be("LOG10(c.n)");
             }
 
-            [TestMethod]
+            [Fact]
             public void FloorMapsDirectly()
             {
                 Translate(SqlStdOperatorTable.FLOOR, Num()).Should().Be("FLOOR(c.n)");
@@ -116,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// Cosmos rejects CEIL; the function is named CEILING.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void CeilMapsToCeiling()
             {
                 Translate(SqlStdOperatorTable.CEIL, Num()).Should().Be("CEILING(c.n)");
@@ -127,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// SQL positions are one-based, Cosmos's are zero-based.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void SubstringShiftsTheStartPosition()
             {
                 Translate(SqlStdOperatorTable.SUBSTRING, Str(), Int(1), Int(5))
@@ -137,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// Cosmos requires a length, so taking the rest of the string cannot be expressed.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void SubstringWithoutALengthIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.SUBSTRING, Str(), Int(2)).Should().BeFalse();
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// INDEX_OF is zero-based and yields -1 when absent, so adding one reproduces SQL exactly
             /// on both counts. Note the operands swap: SQL is POSITION(needle IN haystack).
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void PositionBecomesIndexOfPlusOne()
             {
                 Translate(SqlStdOperatorTable.POSITION, Lit("World"), Str())
@@ -156,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // ── Trigonometry and the rest of the numeric set ──────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void TrigonometricFunctionsMapDirectly()
             {
                 Translate(SqlStdOperatorTable.SIN, Num()).Should().Be("SIN(c.n)");
@@ -173,19 +172,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The one name in the set that differs: Cosmos spells it ATN2, after T-SQL.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void Atan2IsSpelledAtn2()
             {
                 Translate(SqlStdOperatorTable.ATAN2, Num(), Num()).Should().Be("ATN2(c.n, c.n)");
             }
 
-            [TestMethod]
+            [Fact]
             public void PiIsWrittenAsANiladicCall()
             {
                 Translate(SqlStdOperatorTable.PI).Should().Be("PI()");
             }
 
-            [TestMethod]
+            [Fact]
             public void TruncateIsSpelledTrunc()
             {
                 Translate(SqlStdOperatorTable.TRUNCATE, Num()).Should().Be("TRUNC(c.n)");
@@ -195,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Truncating to a number of decimal places is left out rather than guessed at; the arity of
             /// Cosmos's TRUNC has not been verified against the service.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TruncateToDecimalPlacesIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.TRUNCATE, Num(), Int(2)).Should().BeFalse();
@@ -203,7 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // ── Collections ───────────────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void CardinalityOverAnArrayCountsIt()
             {
                 Translate(SqlStdOperatorTable.CARDINALITY, Array()).Should().Be("ARRAY_LENGTH(c.a)");
@@ -213,7 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// SQL defines CARDINALITY over a map too, and ARRAY_LENGTH counts only an array. Emitting it
             /// for a map would report something meaningless rather than fail.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void CardinalityOverAMapIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.CARDINALITY, Map()).Should().BeFalse();
@@ -222,7 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The operands swap: SQL is value MEMBER OF multiset, and ARRAY_CONTAINS takes the array first.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void MemberOfBecomesArrayContainsWithTheOperandsSwapped()
             {
                 Translate(SqlStdOperatorTable.MEMBER_OF, Lit("x"), Multiset()).Should().Be("ARRAY_CONTAINS(c.m, @p0)");
@@ -230,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // ── TRIM ──────────────────────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void TrimSpecificationPicksTheCosmosFunction()
             {
                 Translate(SqlStdOperatorTable.TRIM, Flag(SqlTrimFunction.Flag.BOTH), Lit(" "), Str()).Should().Be("TRIM(c.s)");
@@ -242,7 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Cosmos's two-argument TRIM forms have not been verified, and emitting the one-argument form
             /// here would trim spaces where the query asked for something else.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TrimOfANonSpaceCharacterIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.TRIM, Flag(SqlTrimFunction.Flag.BOTH), Lit("x"), Str()).Should().BeFalse();
@@ -250,13 +249,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // ── Declined ──────────────────────────────────────────────────────────────
 
-            [TestMethod]
+            [Fact]
             public void UnmappedFunctionIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.INITCAP, Str()).Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void WrongArityIsDeclined()
             {
                 CanTranslate(SqlStdOperatorTable.REPLACE, Str(), Lit("a")).Should().BeFalse();

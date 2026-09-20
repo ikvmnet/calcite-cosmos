@@ -8,11 +8,11 @@ using Apache.Calcite.Data;
 using FluentAssertions;
 using FluentAssertions.Execution;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.rel.type;
 using org.apache.calcite.schema;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -43,7 +43,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// a value reaches them by any route other than the extraction.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CalciteJsonValueArrayMeasurementTests
     {
 
@@ -238,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>GetValue</c>, the indexer, the strongly typed accessor, the untyped one, and the
         /// provider-specific one alike.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheDriverCarriesArrayValues()
         {
             var array = Ask("SELECT ARRAY['a','b']")!;
@@ -291,7 +290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// None of the seven differ here.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NoArrayReturningFormYieldsAnArray()
         {
             Func<CalciteDataReader, object?> text = r => r.GetArray<string>(0);
@@ -352,7 +351,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <see cref="NoArrayReturningFormYieldsAnArray"/> is measuring without changing its result.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheCollectionAccessorsRefuseANullCollection()
         {
             using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
@@ -401,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// rather than a way around one.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheCollectionAccessorsReachAnArrayInSuchAColumn()
         {
             var read = Ask($"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY DEFAULT ARRAY['z'] ON ERROR)")!;
@@ -421,7 +420,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// one <see href="https://issues.apache.org/jira/browse/CALCITE-6208">CALCITE-6208</see>
         /// treats as supported, and the one this adapter renders to a traversal at the service.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NeitherUnnestNorCardinalityFindsAnything()
         {
             Ask("SELECT u.c FROM \"docs\", UNNEST(JSON_VALUE(\"J\", '$.v' RETURNING VARCHAR ARRAY)) AS u(c)", withTable: true)
@@ -450,7 +449,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// and strict rows above agree.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheExtractionRefusesTheArrayAsNonScalar()
         {
             var act = () => Ask($"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY ERROR ON ERROR)");
@@ -478,7 +477,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>ON ERROR</c> would never appear if the extraction had merely found nothing.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADefaultOnErrorProvesEverythingBelowTheExtractionWorks()
         {
             var read = Ask($"SELECT JSON_VALUE({Literal}, '$.v' RETURNING VARCHAR ARRAY DEFAULT ARRAY['z'] ON ERROR)")!;
@@ -502,7 +501,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// column. <c>WITH UNCONDITIONAL ARRAY WRAPPER</c> wraps the text in another layer of
         /// brackets and is still text.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void JsonQueryIsTextWhateverTheWrapper()
         {
             var plain = Ask($"SELECT JSON_QUERY({Literal}, '$.v')")!;

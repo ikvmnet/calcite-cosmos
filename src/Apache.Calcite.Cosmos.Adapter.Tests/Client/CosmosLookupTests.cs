@@ -12,8 +12,8 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
@@ -26,7 +26,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// statement and the right rows — which is where this feature can be wrong in ways that look like a
     /// correct answer.
     /// </remarks>
-    [TestClass]
     public class CosmosLookupTests
     {
 
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         // ── What it fetches ───────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public async Task OnlyTheBatchesKeysAreFetched()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
@@ -120,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The reason the keys are carried as data rather than rendered into a predicate. A hundred
         /// build rows over two keys is two keys, and the statement is the same length either way.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task RepeatedKeysAreFetchedOnce()
         {
             var executor = new RecordingExecutor();
@@ -135,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The statement carries a fixed number of key parameters because it is rendered once. A short
         /// batch therefore repeats a key it already has, which selects the same documents.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AShortBatchPadsWithAKeyItAlreadyCarries()
         {
             var executor = new RecordingExecutor();
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             keys.Distinct().Should().Equal("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task RowsBeyondTheBatchSizeFetchAgain()
         {
             var executor = new RecordingExecutor();
@@ -163,7 +162,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A null key joins to nothing, so it contributes no key — and a batch of nothing but those
         /// asks the service for nothing at all, which is the saving this whole path exists for.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ABatchOfOnlyNullKeysFetchesNothing()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
@@ -185,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         // ── What it pairs up ──────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public async Task MatchingRowsArePaired()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""", """{"category":"shoes"}""");
@@ -195,7 +194,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().Equal("bikes/bikes", "shoes/shoes");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task ABuildRowWithNoMatchYieldsNothing()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
@@ -205,7 +204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().Equal("bikes/bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task EveryMatchingDocumentIsPaired()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""", """{"category":"bikes"}""");
@@ -225,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// report a smaller result as though it were the answer — which is why the keys are normalised
         /// rather than compared as they arrive.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task NumericKeysMatchAcrossTheirClrTypes()
         {
             var executor = new RecordingExecutor("""{"n":7}""");
@@ -244,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().Equal("7/7");
         }
 
-        [TestMethod]
+        [Fact]
         public void NormalizeReducesEveryNumberToTheSameForm()
         {
             CosmosLookup.Normalize(7).Should().Be(CosmosLookup.Normalize(7L));
@@ -260,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// them by definition, and this is where the saving is: a thousand build rows over one key
         /// should ask once, not once per batch.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AKeyRepeatedAcrossBatchesIsFetchedOnce()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
@@ -275,7 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The case a cache most needs to hold. Without remembering absence, a key the container has
         /// nothing for is asked about again in every batch that mentions it, and told nothing again.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AKeyWithNoMatchIsRememberedToo()
         {
             var executor = new RecordingExecutor();
@@ -286,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().BeEmpty();
         }
 
-        [TestMethod]
+        [Fact]
         public async Task WithoutACacheEveryBatchFetches()
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
@@ -301,7 +300,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// left alone rather than evicted — nothing here knows which key is worth keeping, and a wrong
         /// eviction costs a request.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheCacheStopsGrowingAtItsBound()
         {
             var executor = new RecordingExecutor();
@@ -321,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The point of the whole feature: a second execution over the same keys and the same
         /// statement asks the service nothing.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ASecondExecutionIsServedFromTheSharedCache()
         {
             var shared = new CosmosLookupCache(100, TimeSpan.FromMinutes(5));
@@ -337,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             two.Should().Equal(one);
         }
 
-        [TestMethod]
+        [Fact]
         public async Task AbsenceIsSharedAcrossExecutions()
         {
             var shared = new CosmosLookupCache(100, TimeSpan.FromMinutes(5));
@@ -355,7 +354,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Two plans rendering different statements must not share answers: the entries are keyed by
         /// the statement as well as the key.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task DifferentStatementsDoNotShareTheCache()
         {
             var shared = new CosmosLookupCache(100, TimeSpan.FromMinutes(5));
@@ -374,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// the shared cache still fills the per-join one, so the same key in a later batch of the
         /// same join costs neither a request nor a rebuild.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ASharedHitStillFillsThePerJoinCache()
         {
             var shared = new CosmosLookupCache(100, TimeSpan.FromMinutes(5));
@@ -390,7 +389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         // ── Binding ───────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void BindKeepsTheStatementsOwnParameters()
         {
             var query = new CosmosQuery("SELECT VALUE c FROM products c WHERE c.price > @p0 AND c.category IN (@k0, @k1)", new[] { new CosmosParameter("@p0", 100) });
@@ -403,7 +402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 new CosmosParameter("@k1", "bikes"));
         }
 
-        [TestMethod]
+        [Fact]
         public void BindRefusesMoreKeysThanTheStatementCarries()
         {
             var bind = () => CosmosLookup.Bind(Query(), "@k", 2, new object?[] { "a", "b", "c" });

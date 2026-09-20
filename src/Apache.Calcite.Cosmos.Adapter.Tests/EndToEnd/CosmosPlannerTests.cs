@@ -7,8 +7,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -21,6 +19,9 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+using Xunit.Sdk;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -34,7 +35,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// the step between them: that the planner reaches a plan wholly in the Cosmos convention, and
     /// that the plan renders to the expected statement.
     /// </remarks>
-    [TestClass]
     public class CosmosPlannerTests
     {
 
@@ -62,8 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         CosmosTable _table = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        public CosmosPlannerTests()
         {
             _table = new CosmosTable(Products);
         }
@@ -170,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// filters nothing, so the rows are decided by the same comparison either way — which is why
         /// this is a cost change and not a behaviour change.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverThePartitionKeyConfinesExecution()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'bikes'"));
@@ -179,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAnOrdinaryPathPushesAsAComparison()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'"))
@@ -191,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// — and the comparison itself would select differently at the service. Neither the predicate
         /// nor the routing is taken, which is the container read whole, exactly as before.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastAgainstTextANumberRendersAsIsNotTaken()
         {
             // No plan wholly in the convention exists, which is this harness's way of saying the filter
@@ -205,7 +204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A cast to a number converts, and no Cosmos comparison reproduces that — so it is declined
         /// and Calcite answers it over the whole container. Slower, and the rows SQL says.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToANumberIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) = 30");
@@ -224,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// value is 30 has a raw value strictly between 29 and 31. The predicate itself stays above and
         /// decides the rows; this only decides which documents cross the wire.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AComparisonThroughANumericCastPushesABoundOnTheRawValue()
         {
             var query = Query(FindCosmos(PlanToAsync(
@@ -247,7 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// storing <c>"30"</c> — so a filter that kept only numbers would lose it. Anything that is not
         /// a number passes untouched and is decided above.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheTypeTestAdmitsNonNumbersRatherThanExcludingThem()
         {
             var sql = Query(FindCosmos(PlanToAsync(
@@ -257,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().NotContain("IS_NUMBER(c.price) AND");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnInequalityPushesTheBoundOnOneSideOnly()
         {
             var query = Query(FindCosmos(PlanToAsync(
@@ -272,7 +271,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The bound is on the side the cast is, so a comparison written the other way round is the
         /// mirrored operator over the same bound.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheBoundIsTheSameWithTheOperandsTheOtherWayRound()
         {
             var query = Query(FindCosmos(PlanToAsync(
@@ -286,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Calcite widens a literal to the type it is compared against, so the bound arrives wrapped in
         /// a cast of its own. A cast of a constant to a number is that constant.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ABoundWrappedInItsOwnCastIsStillRead()
         {
             var query = Query(FindCosmos(PlanToAsync(
@@ -306,7 +305,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// did, and the differential corpus caught it as a lost row. Only equality is affected: the
         /// inequalities already admit everything past the limit.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AComparisonAtTheSaturationLimitDoesNotBoundThatSide()
         {
             var query = Query(FindCosmos(PlanToAsync(
@@ -328,7 +327,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// from <c>1e30</c>. <c>DECIMAL</c> raises where the value does not fit its declared precision,
         /// and excluding the document would turn a failing query into a passing one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ATargetThatWrapsOrRoundsOrRaisesStatesNoBound()
         {
             foreach (var type in new[] { "SMALLINT", "TINYINT", "REAL", "FLOAT", "DECIMAL(10, 2)" })
@@ -345,7 +344,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Nothing is known about where converting to a date lands, so there is no bound to state — and
         /// the definedness the comparison implies is still worth pushing.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastWithNoBoundToStateStillPushesDefinedness()
         {
             var sql = Query(FindCosmos(PlanToAsync(
@@ -361,7 +360,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Naming the partition key confines execution to one physical partition rather than
         /// fanning out across every one. It changes nothing about the statement itself.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PredicateOnThePartitionKeyIsRecovered()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'"));
@@ -374,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A single trailing wildcard is a prefix match, which the index serves as
         /// <c>STARTSWITH</c> where <c>LIKE</c> is a scan.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PrefixLikeIsPushedAsStartsWith()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" LIKE 'bi%'"));
@@ -388,7 +387,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// arrives from the planner as a <c>SEARCH</c>, which is why this is asserted from real SQL
         /// rather than a hand-built predicate.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASetOfIdsWithThePartitionKeyIsRecoveredAsABatchOfPointReads()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b')"));
@@ -402,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The reads are blind, so anything beyond the pinned predicate withdraws them and the
         /// statement runs as the query it already is.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualPredicateWithdrawsTheBatchOfPointReads()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b') AND c.\"_ts\" > 5"));
@@ -411,13 +410,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void PredicateOnANonPartitionKeyRecoversNothing()
         {
             Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x'")).PartitionKeyValues.Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void QueryWithoutAPredicateRecoversNothing()
         {
             Query(PlanToCosmos("SELECT * FROM products")).PartitionKeyValues.Should().BeNull();
@@ -425,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         // ── The planner selects Cosmos nodes ──────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void ScanAlonePlansInTheCosmosConvention()
         {
             var best = PlanToCosmos("SELECT * FROM products");
@@ -434,7 +433,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             best.getConvention().Should().BeSameAs(_table.Convention);
         }
 
-        [TestMethod]
+        [Fact]
         public void FilterIsSelectedByThePlanner()
         {
             var best = PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x'");
@@ -443,7 +442,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(best).Should().Contain("WHERE (c.id = @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void ProjectIsSelectedByThePlanner()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c");
@@ -452,7 +451,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(best).Should().Be("SELECT VALUE { \"id\": c.id } FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void FilterAndProjectPlanTogether()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes'");
@@ -466,7 +465,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The container declares a composite index over (/id, /_ts), so this multi-key sort is
         /// legal and the rule may fire.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortIsSelectedWhenTheCompositeIndexPermitsIt()
         {
             var best = PlanToCosmos("SELECT * FROM products AS c ORDER BY c.\"id\", c.\"_ts\"");
@@ -479,7 +478,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The end of the chain: an array traversal planned from SQL, selected by the planner, and
         /// rendered to Cosmos SQL.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void UnnestIsSelectedByThePlanner()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
@@ -507,7 +506,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// ikvmnet/calcite-cosmos#36.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnnestOverAHoistedArrayCarriesTheElement()
         {
             var best = PlanToAsync("SELECT c.\"id\", CAST(t AS VARCHAR) FROM (SELECT p.\"id\", p.\"DOC\" FROM products AS p) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
@@ -534,7 +533,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// wire to be discarded here. See ikvmnet/calcite-cosmos#36.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APredicateOverTheTraversedElementIsPushedAsAWhere()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
@@ -557,7 +556,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// eliding the call is what makes the statement run rather than merely what makes it cheaper.
         /// The path already holds the array; there is nothing at the service left to convert.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnArrayReachedThroughTheDocumentColumnIsTraversed()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
@@ -569,7 +568,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And a predicate over the element pushes with it.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void APredicateOverAnElementReachedThroughTheDocumentColumnIsPushed()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'steel'");
@@ -587,7 +586,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// a string means Cosmos's function and means it to run; only the composition with an accessor
         /// names an array that is already an array.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void StringToArrayOverAnythingButAnAccessorDoesNotTraverse()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(CAST(JSON_VALUE(c.\"DOC\", '$.tags') AS VARCHAR))) AS t"));
@@ -604,7 +603,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// document holding the tag elsewhere — a wrong answer rather than a slow one, and silent. The
         /// extractor refuses a path rooted at a traversal alias; this is that refusal reached from SQL.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APredicateOverTheElementDoesNotPinThePartitionKey()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE CAST(t AS VARCHAR) = 'bikes'"));
@@ -622,7 +621,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// still above the correlate survives — and where the predicate does not render, that is the
         /// plan the planner is left with. The traversal is not lost with it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUntranslatablePredicateOverTheElementLeavesTheTraversalPushed()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t WHERE INITCAP(CAST(t AS VARCHAR)) = 'Steel'"));
@@ -634,7 +633,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         // ── Aggregation ───────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void GroupByWithCountIsSelectedByThePlanner()
         {
             var best = PlanToCosmos("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\"");
@@ -648,7 +647,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>_ts</c> is service-guaranteed and therefore non-nullable, so Cosmos and SQL agree on
         /// the aggregate's value.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AggregateOverANonNullableColumnIsSelected()
         {
             var best = PlanToCosmos("SELECT c.\"$.category\", MAX(c.\"_ts\") FROM products AS c GROUP BY c.\"$.category\"");
@@ -664,7 +663,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>WHERE</c> beside it still names the plain path, and so does the partition key it pins:
         /// nothing about a predicate needs the two brought together.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void GroupByRendersTheWholeStatement()
         {
             var sql = Render(PlanToCosmos("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\""));
@@ -679,7 +678,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// where it is an ordinary <c>WHERE</c> the service applies before grouping, and where a
         /// predicate on the partition key confines execution the way it does anywhere else.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void HavingOnAGroupingKeyIsPushedAsAWhere()
         {
             var query = Query(PlanToCosmos(
@@ -703,7 +702,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// until a column can be declared non-nullable.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void DistinctAndOrderByPushAsOneStatement()
         {
             var sql = Render(PlanToCosmos("SELECT DISTINCT c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\""));
@@ -717,7 +716,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Measured on the emulator, Cosmos <c>COUNT(x)</c> counts a JSON null where SQL excludes
         /// it, so the two disagree on any nullable column.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void CountOfANullableColumnIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT COUNT(c.\"$.category\") FROM products AS c");
@@ -731,7 +730,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// always safe. Pinned because it is why <see cref="CosmosAggregate.CanImplement"/> needs
         /// no non-nullable <c>COUNT(x)</c> case — that branch was probed and found dead.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void CountOfANonNullableColumnIsPushedDown()
         {
             var sql = Render(PlanToCosmos("SELECT COUNT(c.\"_ts\") AS n FROM products AS c"));
@@ -742,7 +741,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <c>SUM</c> over a set containing a JSON null returns undefined rather than ignoring it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SumOfANullableColumnIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT SUM(c.\"$.category\") FROM products AS c");
@@ -757,7 +756,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// partial form is covered in <see cref="Rel.Convert.CosmosAggregateSplitRuleTests"/>,
         /// where there is somewhere outside the convention for the count to live.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void DistinctAggregateIsNotPushedDownWhole()
         {
             var act = () => PlanToCosmos("SELECT COUNT(DISTINCT c.\"id\") FROM products AS c");
@@ -771,7 +770,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// registered the planner cannot reach a plan at all, which is the correct outcome: in a
         /// real planning context the operator is left to Calcite's own runtime.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UntranslatableFilterIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT * FROM products AS c WHERE INITCAP(c.\"id\") = 'X'");
@@ -783,7 +782,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A multi-key sort with no matching composite index is rejected by the service, so the
         /// rule must not fire.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortWithoutAMatchingCompositeIndexIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT * FROM products AS c ORDER BY c.\"id\", c.\"$.category\"");
@@ -804,7 +803,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and both refused without the predicate — see
         /// <see cref="ANullableKeyIsStillRefusedWithoutTheGuarantee"/>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnIsNotNullPredicateMakesANullableColumnASortKey()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
@@ -818,7 +817,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The predicate and the ordering leave as one statement, which is what makes the guarantee
         /// hold at the service rather than only in the plan.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ThePredicateAndTheOrderingPushAsOneStatement()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
@@ -829,7 +828,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The row limit becomes pushable at the same moment the ordering does, a limit being sound
         /// only once the ordering above it is.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheRowLimitRidesAlongWithTheOrdering()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" FETCH NEXT 10 ROWS ONLY"))
@@ -840,7 +839,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The control. Without the predicate the same statement is refused, which is what says the
         /// tests above depend on the predicate rather than on anything else that changed.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANullableKeyIsStillRefusedWithoutTheGuarantee()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\"");
@@ -852,7 +851,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The guarantee has to be about the sort key. A predicate over a different column removes
         /// no null from the one being ordered by.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APredicateOverAnotherColumnDoesNotUnlockTheSort()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"id\" IS NOT NULL ORDER BY c.\"$.category\"");
@@ -866,7 +865,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// through a projection only where the projection is a reference. Recorded as the boundary of
         /// what this reaches — see <c>TODO.md</c> section 6, where the fix is a column.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnpromotedDocumentPathIsNotReached()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
@@ -880,7 +879,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The control for the two below. The key is <c>id</c> rather than <c>category</c> because a
         /// nullable column is refused on its null placement, whatever the projection does.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortPushesPastAnAllPathProjection()
         {
             var best = PlanToCosmos("SELECT c.\"id\" AS \"i\" FROM products AS c ORDER BY c.\"id\"");
@@ -893,7 +892,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// ordinal is what lets this sort push: the key names <c>id</c>, a plain path, and never reads
         /// the computed one. Bound all-or-nothing, as it was, the whole sort was declined.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortOnAPlainColumnPushesPastAComputedProjection()
         {
             var best = PlanToCosmos("SELECT UPPER(c.\"id\") AS \"u\", c.\"id\" AS \"i\" FROM products AS c ORDER BY c.\"id\"");
@@ -908,7 +907,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// walking the input rather than reading alias names off the input row type, so it declines here
         /// for the same reason implementation would, and no plan is produced to render.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortOnAComputedColumnIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT UPPER(c.\"id\") AS \"u\", c.\"id\" AS \"i\" FROM products AS c ORDER BY UPPER(c.\"id\")");
@@ -938,7 +937,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the point: planning wholly in the convention and rendering are the two things this used
         /// to fail at, in that order.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OrderingByAColumnOutsideTheSelectListPushesAsOneStatement()
         {
             var best = PlanToCosmos("SELECT c.\"$.category\" FROM products AS c ORDER BY c.\"id\"");
@@ -969,7 +968,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A statement has one ORDER BY. The inner sort takes it and its page, and the outer one runs
         /// over the rows that come back.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortIsNotPushedOntoASubtreeThatHasAlreadySorted()
         {
             var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
@@ -989,7 +988,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// particular order and an ordering of those. Different rows, and nothing anywhere to say so
         /// — which is why the answer has to be the rule's rather than the node's.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortIsNotPushedOntoAPushedRowLimit()
         {
             var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
@@ -1004,7 +1003,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// WHERE is evaluated before OFFSET/LIMIT, so a predicate cannot join a statement that has
         /// taken its page: it would filter the container and page what survived.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFilterIsNotPushedOntoAPushedRowLimit()
         {
             var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x WHERE x.\"$.category\" = 'bikes'");
@@ -1021,7 +1020,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// pairing that is allowed, and is covered by
         /// <see cref="UnnestOverAHoistedArrayCarriesTheElement"/>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnArrayTraversalIsNotPushedOntoAPagedOrDistinctSubtree()
         {
             var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"id\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
@@ -1040,7 +1039,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the whole SELECT itself — so a subtree that has ordered, paged or projected leaves it
         /// nowhere to go, and the three nodes it would have collapsed stay as they are.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnOrderByRankIsNotPushedOntoASubtreeThatHasWrittenItsClauses()
         {
             var paged = PlanToAsync(
@@ -1077,7 +1076,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// keeps the measurement. What changes is that the statement stops carrying whole documents.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextInAProjectionPushes()
         {
             var best = PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c");
@@ -1098,7 +1097,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>'bik'</c> and <c>CHAR(8)</c> pads it to <c>'bikes&#160;&#160;&#160;'</c>. Rendering either as the bare value
         /// would return a different string, so both are refused.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextWithAWidthIsNotRendered()
         {
             Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(3)) AS \"n\" FROM products AS c"))
@@ -1113,7 +1112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// string <c>"30"</c> as 30 and truncates 30.7 — and nothing the service returns reproduces that.
         /// It stays in process, as it did.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToANumberInAProjectionIsStillDeclined()
         {
             Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c"))
@@ -1132,7 +1131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Stated <c>NULLS FIRST</c> deliberately: under Calcite's default placement the sort would be
         /// refused on its null placement instead, and the test would pass without saying anything.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortOnARenderedCastColumnIsNotPushed()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
@@ -1145,7 +1144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The same for a filter, and for the same reason: <c>= '30'</c> is true of the rendered number
         /// and false at the service.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFilterOnARenderedCastColumnIsNotPushed()
         {
             var plan = Plan(PlanToAsync(
@@ -1160,14 +1159,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // clause the accessor reads the value as text, which is the rendering the cast over ANY
         // performs, so the argument on TryTextCastOperand carries over.
 
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAJsonAccessorPushesAsAComparison()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'bikes'"))
                 .Should().Contain("WHERE (c.label = @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAJsonAccessorToThePartitionKeyConfinesExecution()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR) = 'bikes'"));
@@ -1179,7 +1178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// Text a stored number renders as is refused, because the accessor renders the number too.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '30'");
@@ -1192,7 +1191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// declares renders as digits and never as this text, where the path holds whatever the
         /// document says. The cast is not dropped over one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAConvertingJsonAccessorIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS VARCHAR) = 'bikes'");
@@ -1204,7 +1203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// JSON_QUERY returns the JSON text of an object or array and nothing for a scalar, so the
         /// cast over it matches no document that stores this text. Not an accessor the cast drops over.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAJsonQueryIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_QUERY(c.\"DOC\", '$.location') AS VARCHAR) = 'bikes'");
@@ -1216,7 +1215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A behaviour clause substitutes a value where the path has none, which is a document the
         /// path itself does not match. Refused, whatever the clause says.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAJsonAccessorWithABehaviourClauseIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label' DEFAULT 'bikes' ON EMPTY) AS VARCHAR) = 'bikes'");
@@ -1231,7 +1230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // the service holds the number and does not. So an equality over the bare accessor is held to
         // the literal test the cast form is held to, and behaves like Calcite either way.
 
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverAJsonAccessorAgainstUnambiguousTextPushes()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'bikes'"))
@@ -1242,7 +1241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Declined rather than pushed, and what it implies is pushed instead — see the section on the
         /// alternatives below.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverAJsonAccessorAgainstTextANumberRendersAsIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'");
@@ -1258,7 +1257,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The accessor renders scalars only, so a literal no scalar renders as — a JSON null comes
         /// back as SQL null, and Calcite's boolean is lowercase — is exact and pushes as it stands.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverAJsonAccessorAgainstTextNoScalarRendersAsPushes()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'null'"))
@@ -1276,7 +1275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // makes. The looseness is one spelling: a stored 30.0 renders as `30.0`, is not matched, and
         // crosses the wire to be discarded above. Better than the IS_DEFINED this used to push.
 
-        [TestMethod]
+        [Fact]
         public void ATextEqualityAgainstTextANumberRendersAsPushesTheStringOrTheNumber()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'")));
@@ -1285,7 +1284,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Select(p => p.Value).Should().Equal("30", 30d);
         }
 
-        [TestMethod]
+        [Fact]
         public void TheAlternativesPushUnderTheCastFormToo()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'")));
@@ -1294,7 +1293,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Select(p => p.Value).Should().Equal("1.0E30", 1e30);
         }
 
-        [TestMethod]
+        [Fact]
         public void TextABooleanRendersAsPushesTheStringOrTheBoolean()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'true'")));
@@ -1308,7 +1307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// form's literal test is case-insensitive and refuses it, and the rule pushes the string
         /// alone, which is exact.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TextInTheWrongCasePushesTheStringAlone()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = 'TRUE'")));
@@ -1322,7 +1321,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// no stored array matches however the literal looks, and the string comparison is exact. A
         /// cast over the accessor is dropped rather than treated as a second rendering.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ABracketedLiteralNeedsNoArrayBranch()
         {
             foreach (var sql in new[]
@@ -1342,7 +1341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A number the double cannot hold has no literal to compare against, so the type test stands
         /// in for it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANumberBeyondTheDoubleRangeTakesTheTypeTest()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '1E+400'")));
@@ -1353,7 +1352,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// The alternatives are not the comparison, so the comparison is still made above them.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheComparisonStaysAboveTheAlternatives()
         {
             var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
@@ -1366,7 +1365,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Against anything but a literal there is no text to reason from: the other side may hold the
         /// text a number renders as, and Calcite would match the number.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverAJsonAccessorAgainstAnotherExpressionIsNotTaken()
         {
             var plan = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = c.\"id\"");
@@ -1378,7 +1377,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A RETURNING clause is a different cast, with its own argument still to be made; nothing
         /// changes for it here.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverAConvertingJsonAccessorStillPushes()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 30"))
@@ -1404,7 +1403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// documents the function carries nothing for, and the projection pushes.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextOverAJsonAccessorInAProjectionIsRenderedGuarded()
         {
             var best = PlanToAsync(
@@ -1435,7 +1434,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// offline suite could not see it, the fault being in what came back rather than in the plan.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADistinctOverAnAccessorKeepsTheGuard()
         {
             var best = PlanToCosmos("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
@@ -1478,7 +1477,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// document does not travel at all.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProjectionSplitsAroundAnExpressionThatCannotRender()
         {
             var best = PlanToAsync(
@@ -1503,7 +1502,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The document stays where it is, which is the bytes half this split was written for and did
         /// not originally reach.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSplitCarriesWhatTheResidualReads()
         {
             var best = PlanToAsync(
@@ -1531,7 +1530,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// back. What changed is what comes back.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualExpressionPushesTheAccessorInsideIt()
         {
             var best = PlanToAsync(
@@ -1554,7 +1553,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the service's own conditional to be evaluated in process over it. One column, and the whole
         /// of what the service was willing to answer.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFragmentIsTheLargestRenderablePartRatherThanTheFirst()
         {
             var best = PlanToAsync(
@@ -1576,7 +1575,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the alternative is silent: two identical columns cost a little and read the same, so nothing
         /// would ever fail.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASubExpressionWrittenTwiceIsOneColumn()
         {
             var best = PlanToAsync(
@@ -1598,7 +1597,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// holding because the walk must not lose that — an expression it can do nothing with has to
         /// come out the same way it went in.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualWithNoRenderablePartStillCarriesItsInputs()
         {
             var best = PlanToAsync(
@@ -1638,7 +1637,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <see href="https://github.com/ikvmnet/calcite-dotnet/issues/155">calcite-dotnet#155</see>.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualConsumingAnArrayReadsThePushedColumn()
         {
             var best = PlanToAsync(
@@ -1661,7 +1660,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <see cref="CosmosProject"/> the all-or-nothing rule already made. Worth holding because a
         /// split that fired here would add a node and a wrapping projection for nothing.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AWhollyRenderableProjectionIsNotSplit()
         {
             var best = PlanToAsync(
@@ -1682,7 +1681,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// that line at the service, so the rendered column carries a value for exactly the documents
         /// the function carries one for.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APlainJsonQueryIsGuardedByIsObjectOrIsArray()
         {
             var best = PlanToCosmos("SELECT JSON_QUERY(c.\"DOC\", '$.o') AS \"q\" FROM products AS c");
@@ -1706,7 +1705,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// form is recognised by what the three symbols say rather than by their absence.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AJsonQueryWithAWrapperDoesNotPush()
         {
             var plan = Plan(PlanToAsync("SELECT JSON_QUERY(c.\"DOC\", '$.o' WITH UNCONDITIONAL ARRAY WRAPPER) AS \"q\" FROM products AS c"));
@@ -1715,7 +1714,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plan.Should().NotContain("CosmosProject", "and nothing of it is pushed: " + plan);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnArrayReturningAccessorIsGuardedByIsArray()
         {
             var best = PlanToCosmos("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c");
@@ -1783,7 +1782,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// what the query asked for and what it answers in process.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheReportedCoalesceToAnEmptyArrayPushesWhole()
         {
             var query = Query(PlanToCosmos(
@@ -1805,7 +1804,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and null for anything else. A wildcard or a descent is refused, as it is over a document
         /// column — one grammar, not two.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AConstantAccessorIsComputedRatherThanAddressed()
         {
             Query(PlanToCosmos("SELECT JSON_VALUE('{\"v\":3}', '$.v' RETURNING INTEGER) AS \"a\" FROM products AS c"))
@@ -1847,7 +1846,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// passes. All three take the fallback exactly where Calcite's <c>JSON_VALUE</c> answers null.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACoalesceOverAnAccessorPushes()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c"))
@@ -1863,7 +1862,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <em>constant</em> — their <c>JSON_QUERY('[]', '$')</c> — addresses none and is a separate
         /// question, which <c>TODO.md</c> carries.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACoalesceOverArrayAccessorsPushes()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"))
@@ -1880,7 +1879,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Worth pinning beside the two guarded forms so the difference is deliberate rather than
         /// discovered.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACoalesceOverAScalarReturningIsTheBarePath()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
@@ -1904,7 +1903,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>SqlUtil.lookupSubjectRoutines</c>.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSharedVocabularyResolvesAndPushes()
         {
             Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')"))
@@ -1922,7 +1921,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <em>name</em> — so teaching it the shared spellings was one line, and the three-node shape
         /// it collapses is unchanged.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSharedScoreReachesTheRankClause()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY CLR_FT_SCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')");
@@ -1940,7 +1939,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// conjunct goes to the service and the rest is rechecked above. Dropping a conjunct only ever
         /// weakens, so the service discards nothing the whole predicate would have kept.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASharedPredicateBesideAResidualStillPushes()
         {
             var best = PlanToAsync(
@@ -1961,7 +1960,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// fails with a sentence saying so rather than answering a different question — which is what
         /// rendering <c>STARTSWITH</c> over the same property would have been.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APrefixTermIsNotPushed()
         {
             var plan = Plan(PlanToAsync(
@@ -1971,7 +1970,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plan.Should().NotContain("CosmosFilter(condition=[CLR_FT_CONTAINS", "and nothing of it is rendered: " + plan);
         }
 
-        [TestMethod]
+        [Fact]
         public void ANestedAccessorCarriesItsGuard()
         {
             Render(PlanToCosmos("SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c"))
@@ -1990,7 +1989,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// #129 by another route. <c>IS_ARRAY</c> is the same guard
         /// <see cref="AnArrayReturningAccessorIsGuardedByIsArray"/> holds at the top level.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANestedArrayAccessorCarriesTheArrayGuard()
         {
             Render(PlanToCosmos("SELECT CASE WHEN c.\"id\" = '1' THEN JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) ELSE JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY) END AS \"a\" FROM products AS c"))
@@ -2017,7 +2016,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// missing.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANestedJsonQueryIsLiftedOutRatherThanRenderedInPlace()
         {
             var best = PlanToAsync("SELECT UPPER(JSON_QUERY(c.\"DOC\", '$.o')) AS \"a\" FROM products AS c");
@@ -2031,7 +2030,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().NotContain("UPPER", "which is not the same as rendering it in place: " + sql);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnArrayReturningOnJsonValueIsNotPushed()
         {
             var plan = Plan(PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
@@ -2065,7 +2064,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// it to the same path.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnArrayReturningOnJsonValueIsNotTraversedEither()
         {
             var plan = Plan(PlanToAsync(
@@ -2082,7 +2081,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// because <c>JOIN … IN</c> iterates it; the projection guards it because a column has to
         /// answer something for a document whose path holds no array. Both address <c>c.tags</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProjectedArrayAddressesTheSamePathATraversalDoes()
         {
             var projected = Render(PlanToCosmos(
@@ -2113,7 +2112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the whole reason the clause is worth trusting.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AScalarReturningAccessorIsRenderedAsTheBarePath()
         {
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c"))
@@ -2142,7 +2141,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// well formed and the rows being what disagreed.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANegatedConjunctionPushesNoDefinednessRestriction()
         {
             var best = PlanToAsync(
@@ -2157,7 +2156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A negated comparison still does, which is the case the rule measured.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ANegatedComparisonStillPushesItsDefinedness()
         {
             var best = PlanToAsync(
@@ -2177,7 +2176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// An ordering comparison pushes where the value is a string, and admits the rest.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOrderingComparisonOverATextAccessorIsWeakenedToTheStringCase()
         {
             var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'steel'")));
@@ -2193,7 +2192,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And the comparison itself stays above, because the pushed form is a superset.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheOrderingComparisonStaysAboveTheWeakening()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'steel'"));
@@ -2209,7 +2208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the accessor answers null for an object or an array where the raw value compares unequal
         /// to anything. Measured: <c>label &lt;&gt; 'bikes'</c> gained the array and the object.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnInequalityOverATextAccessorIsWeakenedToo()
         {
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') <> 'steel'")))
@@ -2224,7 +2223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>30</c>, and the service's <c>STARTSWITH</c> over a number is undefined rather than
         /// true.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void LikeOverATextAccessorIsWeakenedToo()
         {
             var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') LIKE 'st%'")));
@@ -2241,7 +2240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the raw value on purpose, and is exactly the comparison the service should make. Declining
         /// it made the numeric bound unrenderable and stopped it being pushed at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AComparisonAgainstANumberIsNotWeakened()
         {
             var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) > 10")));
@@ -2268,7 +2267,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// <c>LIKE</c> over the view's column takes the guard the accessor takes, and stays above it.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void LikeOverAViewsTextColumnIsWeakenedToTheStringCase()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'");
@@ -2291,7 +2290,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// expression and a re-typed field would lose the type that said it. See
         /// <c>CosmosFilterSplitRule.RawValue</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void LikeOverAViewsTextColumnSurvivesAHostsTransposition()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" LIKE 'st%'", hostRewrites: true);
@@ -2308,7 +2307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The ordering comparisons the same way.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOrderingComparisonOverAViewsTextColumnIsWeakenedToo()
         {
             foreach (var hostRewrites in new[] { false, true })
@@ -2327,7 +2326,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// An equality against unambiguous text is exact over the accessor, so it is exact over the
         /// column too, and nothing is left above.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnExactEqualityOverAViewsTextColumnStillPushesWhole()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = 'steel'");
@@ -2340,7 +2339,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And an equality against text a number renders as pushes the alternatives the accessor's
         /// spelling pushes: the string, or the number.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnAmbiguousEqualityOverAViewsTextColumnPushesItsAlternatives()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = '30'");
@@ -2357,7 +2356,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // is declined and weakened like LIKE; the guard's own comparison is the one rendered as the
         // native function.
 
-        [TestMethod]
+        [Fact]
         public void ACaseFoldedContainsIsTheServicesCaseInsensitiveContains()
         {
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%'");
@@ -2369,7 +2368,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Plan(best).Should().Contain("ClrEnumerableFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
         }
 
-        [TestMethod]
+        [Fact]
         public void ACaseFoldedPrefixOverAViewsColumnIsACaseInsensitiveStartsWith()
         {
             foreach (var hostRewrites in new[] { false, true })
@@ -2385,7 +2384,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
         /// fold renders as the native function directly.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
@@ -2412,7 +2411,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and an object all came back — and those are exactly the documents Calcite throws on and
         /// the standard excludes.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnInequalityThroughAReturningRestrictsToItsType()
         {
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) <> 30")))
@@ -2422,7 +2421,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// And the ordering comparisons do not, because the service already restricts them.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnOrderingThroughAReturningNeedsNoTypeTest()
         {
             foreach (var op in new[] { ">", "<", ">=", "<=" })
@@ -2437,7 +2436,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// An equality needs none either, the service's <c>=</c> not crossing types.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnEqualityThroughAReturningNeedsNoTypeTest()
         {
             var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 30")));
@@ -2449,7 +2448,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A boolean <c>RETURNING</c> takes the boolean test.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ABooleanReturningTakesTheBooleanTest()
         {
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.flag' RETURNING BOOLEAN) <> TRUE")))
@@ -2468,7 +2467,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The sort and its row limit reach the statement even though the projection above them
         /// cannot be rendered.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ASortOnAnUncastColumnPushesPastAnUnrenderableProjection()
         {
             var best = PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
@@ -2490,7 +2489,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// be refused on its null placement instead, and the test would pass without saying anything
         /// about the transpose.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortOnTheCastColumnItselfDoesNotTranspose()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY"));
@@ -2507,7 +2506,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the predicate matched; it now reads ten — and, since the cast to text is rendered rather
         /// than declined, nothing is left in process at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APagedViewReadsAPageRatherThanTheMatchingDocuments()
         {
             var best = PlanToAsync(
@@ -2527,7 +2526,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The control for both: with no cast the projection pushes and the sort goes with it, which
         /// is the plan the transpose is trying to get back to the shape of.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithNoCastTheWholeStatementPushesAsBefore()
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY"));
@@ -2588,7 +2587,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// sound because dropping a conjunct only ever weakens: the service discards nothing the full
         /// predicate would have kept.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RenderablePartOfAPredicateIsPushedAndTheRestRechecked()
         {
             var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
@@ -2608,7 +2607,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the original, so it discards nothing the original would have kept — and the original is
         /// rechecked above it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADisjunctionWithAnUntranslatableBranchIsWeakened()
         {
             var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'");
@@ -2628,7 +2627,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// it cannot imply the path is there. Weakening it anyway would strengthen the predicate and
         /// lose rows — the failure this whole design is arranged to make impossible.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ABranchThatObservesAbsenceIsNotWeakened()
         {
             var best = PlanToAsync(
@@ -2651,7 +2650,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// true with the path absent, and weakening it to <c>IS_DEFINED</c> would have discarded
         /// exactly those rows.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ABranchUsingSqlNullTestsIsNotWeakened()
         {
             var best = PlanToAsync(
@@ -2674,7 +2673,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// planning something slower. Declining in the rule is also the better plan: the sort then runs
         /// over one row per group instead of over the container.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASortAboveAPushedAggregateStaysInCalcite()
         {
             var best = PlanToAsync("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\" ORDER BY c.\"$.category\"");
@@ -2693,7 +2692,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// to match a filter directly over the scan and nothing else, which meant a projection between
         /// the two cost the whole pushdown rather than the untranslatable half of it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APredicateAboveAProjectionIsSplitToo()
         {
             var best = PlanToAsync(
@@ -2712,7 +2711,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// that it is a comparison at all says the path it reads is defined, and that much the service
         /// can apply. The partition key is still recovered from the conjunct that pins it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ThePushedHalfCarriesTheRenderableConjunctAndWhatTheOtherImplies()
         {
             var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
@@ -2728,7 +2727,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// A wholly renderable predicate is not split; there is nothing to leave behind.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AWhollyRenderablePredicateIsNotSplit()
         {
             var best = PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = 'x'");
@@ -2760,7 +2759,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A document path of any depth resolves, and the translator folds the whole path into one
         /// Cosmos path rather than nesting accessors.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NestedPropertiesResolveToASinglePath()
         {
             var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.metadata.sku') AS \"sku\" FROM products AS c");
@@ -2768,7 +2767,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(best).Should().Be("SELECT VALUE { \"sku\": (IS_PRIMITIVE(c.metadata.sku) ? c.metadata.sku : null) } FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void ThreeLevelsResolveJustAsFar()
         {
             var best = PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.a.b.c') AS \"deep\" FROM products AS c");
@@ -2779,7 +2778,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// An array index is a path segment like any other.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ArrayIndexingIsPartOfThePath()
         {
             // Subscripted in the path rather than around it. A JSON path carries the index, and
@@ -2793,7 +2792,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A non-constant key has no path form — the statement addresses a property by name, and the
         /// name is not known until the row is read — so it is declined rather than guessed at.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ANonConstantKeyIsNotAPath()
         {
             var act = () => PlanToCosmos("SELECT c.\"DOC\"[c.\"id\"] AS \"dynamic\" FROM products AS c");
@@ -2809,7 +2808,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// does not, so this renders as both tests — which is what makes it match a document that simply
         /// lacks the property.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IsNotNullOnADocumentPropertyTestsBothCosmosStates()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL");
@@ -2821,7 +2820,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The exact spelling, for a query that needs to tell absent from null — which SQL cannot say and
         /// this adapter's own operator can. It reaches the validator through the chained operator table.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IsDefinedTestsExistenceAlone()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.metadata'))");
@@ -2832,7 +2831,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// Existence of a nested property, which is the same question one level down and the same path.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IsDefinedReachesANestedProperty()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))");
@@ -2848,7 +2847,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the first is a statement Cosmos rejects, a scoring function not being projectable. The whole
         /// shape collapses into one clause, and the score never appears in the select list.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OrderingByAScoreBecomesOrderByRank()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
@@ -2861,7 +2860,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// The keyword binds like any other literal, so the statement text does not vary with it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheRankKeywordIsBound()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 5 ROWS ONLY"));
@@ -2872,7 +2871,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// RRF fuses two scores, and its arguments are themselves scoring functions rather than paths.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RrfFusesTwoScores()
         {
             var best = PlanToCosmos(
@@ -2887,7 +2886,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A scoring function anywhere but the rank clause is refused: the service will not project one,
         /// and will not filter on one either.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProjectedScoreIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') AS \"s\" FROM products AS c");
@@ -2895,7 +2894,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             act.Should().Throw<Exception>();
         }
 
-        [TestMethod]
+        [Fact]
         public void AScoreInAPredicateIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') > 1");
@@ -2909,7 +2908,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// against a function that returns a double coerces the literal, so the predicate arrives with a
         /// cast wrapped around the bound. Declining it would decline the predicate.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AComparisonAgainstAVectorDistancePushes()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(JSON_VALUE(c.\"DOC\", '$.a'), JSON_VALUE(c.\"DOC\", '$.b')) < 0.5");
@@ -2931,7 +2930,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The predicate pushes over an undeclared path, and costs more than over a declared one.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AFullTextPredicateOverAnUndeclaredPathIsPushedDownAndPricedAsAScan()
         {
             var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')");
@@ -2947,7 +2946,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And the score, which reaches the rank clause through a different rule and is priced by
         /// the node it becomes.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ARankOverAnUndeclaredPathIsPushedDownAndPricedAsAScan()
         {
             var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') FETCH FIRST 10 ROWS ONLY");
@@ -2977,7 +2976,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 if (Find<T>((RelNode)inputs.get(i)) is T inner)
                     return inner;
 
-            throw new AssertFailedException($"No {typeof(T).Name} in the plan: " + Plan(node));
+            throw new XunitException($"No {typeof(T).Name} in the plan: " + Plan(node));
         }
 
         /// <remarks>
@@ -2985,7 +2984,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>/b</c> is not, so the test above pushes on the strength of the first argument alone;
         /// with neither declared there is nothing for the service to search.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AVectorDistanceOverUndeclaredPathsIsNotPushedDown()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE VECTORDISTANCE(JSON_VALUE(c.\"DOC\", '$.b'), JSON_VALUE(c.\"DOC\", '$.d')) < 0.5");
@@ -2999,7 +2998,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A lookup by id and a complete partition key is a read, not a query: about 1 RU against the
         /// 2.3 a query costs at best, and no query engine.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IdAndPartitionKeyBecomeAPointRead()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes'"));
@@ -3014,7 +3013,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// than a slow one. The statement is still rendered and still executed; it is just executed as a
         /// query.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualPredicateRulesOutAPointRead()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND c.\"_ts\" > 100"));
@@ -3023,13 +3022,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnIdWithoutThePartitionKeyIsNotAPointRead()
         {
             Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x'")).PointReadId.Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void APartitionKeyWithoutAnIdIsNotAPointRead()
         {
             Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes'")).PointReadId.Should().BeNull();
@@ -3039,7 +3038,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A read returns one document whole. A row limit and an ordering describe a result set rather
         /// than a document, so either rules it out even though the predicate would allow it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ARowLimitRulesOutAPointRead()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' FETCH FIRST 1 ROWS ONLY"));
@@ -3051,7 +3050,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Under a disjunction an equality does not constrain the whole predicate, so it pins nothing —
         /// the same reason the partition key is not recovered from one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADisjunctionIsNotAPointRead()
         {
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE (c.\"id\" = 'x' AND c.\"$.category\" = 'bikes') OR c.\"id\" = 'y'"));
@@ -3063,7 +3062,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A projection of plain paths still reads: the converter walks each path in the returned
         /// document rather than naming a property of an object the statement never constructed.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProjectionOfPathsStillPointReads()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes'"));
@@ -3102,7 +3101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// partitions under that tenant rather than every partition in the container. Recovering only a
         /// complete key threw that away.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APinnedOutermostPathRoutesOnThePrefix()
         {
             var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme'");
@@ -3111,7 +3110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.PartitionKeyIsComplete.Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void PinningEveryPathIsACompleteKey()
         {
             var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme' AND c.\"$.user\" = 'kim'");
@@ -3124,7 +3123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Prefix means prefix. Routing is on the leading components, so pinning an inner path without
         /// the one above it narrows nothing and must not be presented as though it did.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnInnerPathWithoutTheOuterRoutesNothing()
         {
             var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.user\" = 'kim'");
@@ -3136,7 +3135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A prefix routes to a set of partitions and does not identify a document, so it cannot carry
         /// a point read however much of the predicate is an id.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APrefixCannotCarryAPointRead()
         {
             var query = TenantedQuery("SELECT * FROM products AS c WHERE c.\"$.tenant\" = 'acme' AND c.\"id\" = 'x'");
@@ -3153,7 +3152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// collations, and RelMdCollation reports them as the collation <em>of a scan</em> — that is,
         /// the order rows already arrive in. Whether the planner is being told that is what this asks.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AScanIsNotClaimedToBeSorted()
         {
             var best = PlanToCosmos("SELECT * FROM products");
