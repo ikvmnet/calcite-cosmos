@@ -825,9 +825,21 @@ hand. Two tests pin both directions.
   TIMESTAMP)` and over `JSON_VALUE(…, RETURNING TIMESTAMP)`, lowered to a string comparison. The
   flipped orientation reverses the operator, which is the case that would have been silently wrong
   rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
-  `PreservesOrder`, so a UUID still reaches the equality alone.
+  `PreservesOrder`.
 
 **Not built, and each for a stated reason:**
+
+- **A UUID *range* still lowers nothing, and since #142 that is a gap rather than a proof.** It was a
+  proof: Calcite compared UUIDs as two signed 64-bit halves, so an unconfined canonical form
+  preserved equality and not order and `CosmosFactRewriter.TryLower` was right to take no operator
+  and build an `EQUALS`. [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) made the
+  comparison unsigned in 1.43 and `CosmosStoredForms.UuidCanonicalLower` preserves order with it, so
+  `<`, `<=`, `>`, `>=` over `CAST(<path> AS UUID)` are licensed and merely unwritten. The work is
+  `TryLower` taking the operator and the reversal the way `TryLowerInstant` does, gated on
+  `PreservesOrder` and rendering the literal through `RenderUuid` as it already does — a
+  keyset-paginated `WHERE id > @last` is the shape that wants it. `AUuidRangeStillLowersNothing` is
+  the row that would flip. Note the sort is a *different* site and is built: #142 was about
+  `CosmosProject.IsOrderable`, and that reads `PreservesOrder` already.
 
 - **`ORDER BY CAST(<path> AS TIMESTAMP)` still does not push** — measured, `SELECT VALUE c FROM items
   c` under a `ClrEnumerableSort`. This is the cast-drop the paragraph above calls *the* change, and it
@@ -1120,11 +1132,11 @@ terms:
 ### Ordering by a rendered column — *built; the temporal spelling is not, and the reason is recorded*
 
 Projecting `CAST(<path> AS UUID)` renders as of #100, so a sort on a *neighbouring* column pushes.
-The column itself still binds to no path, a cast resolving to none, so `ORDER BY` on it is refused —
-correctly, since the guarded accessor is not the value and a UUID's stored order is the compared
-order only where the form says so. Binding it would mean recording that an ordinal addresses a path
-*for ordering only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked
-at a different site.
+The column itself binds to no path, a cast resolving to none, so `ORDER BY` on it was refused —
+correctly, the guarded accessor not being the value and a stored order being the compared order only
+where the form says so. Binding it meant recording that an ordinal addresses a path *for ordering
+only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked at a different
+site.
 
 **Built.** `CosmosImplementor.OrderingPaths` carries, per ordinal, a path a sort may order by where
 the ordinal binds to none — recorded by `CosmosProject.Implement` the way it already records
@@ -1136,6 +1148,16 @@ SELECT VALUE { "id": (IS_PRIMITIVE(c.ref) ? c.ref : null) } FROM items c ORDER B
 ```
 
 — a page read at the service, against a whole container read in process before.
+
+**And #142 is what made the first condition reachable for an ordinary container.** The form had to
+preserve order, and only a `pattern` confining the first hex digit gave that — which in practice
+meant v7 and nothing else, so every v4 identifier and every unconfined declaration was refused and
+the sort ran in process with the projection collapsing to whole documents beside it. That was the
+signed comparison, and [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) removed it
+in 1.43; `CosmosStoredForms` now reads `calcite.uuid.unsigned.comparison` and the unconfined rows
+carry `PreservesOrder` from it. Measured in the report: ordering a 9,370-row view by its key did not
+return in 120 seconds in process. Nothing in this entry's machinery changed — the condition it asks
+is simply now met.
 
 **Two conditions, and the second was not in this entry's original statement.** The form has to
 preserve order, which is the two-bit question above. And the guard the projection renders has to be

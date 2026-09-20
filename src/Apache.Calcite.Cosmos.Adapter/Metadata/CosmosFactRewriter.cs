@@ -37,12 +37,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// well as an equality — see <see cref="TryLowerInstant"/>.
     /// </para>
     /// <para>
-    /// <b>Which of the two a form licenses is not a matter of degree.</b> Calcite compares UUIDs as two
-    /// <em>signed</em> 64-bit halves, so the lexical order of the canonical string is not its order
-    /// unless the schema also confines the first hex digit — see <see cref="CosmosStoredForms"/>. A
-    /// form may therefore preserve equality and not order, and lowering a range on one would return
-    /// the wrong rows. So the two comparisons are gated on the two properties separately, on exactly
-    /// what <see cref="CosmosRepresentation"/> carries, and a UUID reaches the equality alone.
+    /// <b>Which of the two a form licenses is not a matter of degree.</b> An instant written at mixed
+    /// precision has one spelling per value while <c>'…:56.5Z'</c> sorts before <c>'…:56Z'</c>, and an
+    /// unpadded integer has one spelling while <c>'9'</c> sorts after <c>'42'</c> — see
+    /// <see cref="CosmosStoredForms"/>. A form may therefore preserve equality and not order, and
+    /// lowering a range on one would return the wrong rows. So the two comparisons are gated on the
+    /// two properties separately, on exactly what <see cref="CosmosRepresentation"/> carries.
+    /// </para>
+    /// <para>
+    /// <b>A UUID reaches the equality alone, and that is now a gap rather than a proof.</b> It was a
+    /// proof: Calcite compared UUIDs as two <em>signed</em> 64-bit halves, so the lexical order of the
+    /// canonical string was not its order unless the schema also confined the first hex digit.
+    /// CALCITE-7716 made the comparison unsigned in 1.43 and
+    /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> now preserves order with it, so the range
+    /// comparisons are licensed and merely unbuilt — <c>TODO.md</c> records what building them costs.
     /// </para>
     /// <para>
     /// <b>Why a guard needs no extra check here.</b> A fact may be conditional — a path holds a UUID
@@ -174,8 +182,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);
 
-            // A UUID has no order to lower — see the remarks — so only the equality reaches it. The
-            // flipped orientation needs no reversed operator, equality being symmetric.
+            // Only the equality reaches the UUID lowering, and as of CALCITE-7716 that is a gap
+            // rather than a proof: a canonical form now preserves order too, so the range
+            // comparisons are licensed and simply not built — TODO.md records what building them
+            // costs. The flipped orientation needs no reversed operator, equality being symmetric.
             if (kind == nameof(SqlKind.__Enum.EQUALS))
             {
                 var lowered = TryLower(left, right, translator, known, rootAlias, rexBuilder)

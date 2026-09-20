@@ -188,22 +188,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A form that preserves equality and not order lowers the equality and refuses the ordering.
+        /// A UUID range comparison still lowers nothing, and as of CALCITE-7716 that is a gap rather
+        /// than a proof.
         /// </summary>
         /// <remarks>
-        /// The two properties are independent, and this is the pair that shows it: an unconfined
-        /// canonical UUID has one spelling per value, so equality is exact, while Calcite's order over
-        /// it is not the lexical one. Nothing about the ordering follows from the equality.
+        /// <para>
+        /// It was a proof. Calcite compared UUIDs as two <em>signed</em> 64-bit halves, so an
+        /// unconfined canonical form preserved equality and not order, and lowering a range on one
+        /// would have returned the wrong rows. The comparison is unsigned as of 1.43 and
+        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it, so what stops
+        /// the range now is that <c>CosmosFactRewriter</c> lowers only the equality for a UUID —
+        /// <c>TryLower</c> takes no operator and builds an <c>EQUALS</c>. <c>TODO.md</c> records what
+        /// building the rest costs.
+        /// </para>
+        /// <para>
+        /// The invariant this used to carry has not gone anywhere; it is asked of a form that is still
+        /// equality-only, in <c>WithoutPaddingOnlyTheEqualityLowers</c>.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void AnEqualityOnlyFormStillRefusesTheOrdering()
+        public void AUuidRangeStillLowersNothing()
         {
             var ordering = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
                 _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Ref(0, SqlTypeName.VARCHAR)),
                 Uuid(Canonical));
 
-            Rewrite(ordering, Unconditional).Should().Be(ordering.ToString(), "only the equality was ever licensed");
+            Rewrite(ordering, Unconditional).Should().Be(ordering.ToString(), "only the equality is built");
             Rewrite(UuidEquality(), Unconditional).Should().Contain("'" + Canonical + "'", "while the equality still lowers");
+
+            CosmosStoredForms.UuidCanonicalLower.PreservesOrder.Should().BeTrue(
+                "so the refusal above is the rewriter's and not the form's");
         }
 
         [TestMethod]

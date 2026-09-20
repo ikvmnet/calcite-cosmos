@@ -29,12 +29,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <c>format: uuid</c> does not say what is stored. The pattern beside it does.
     /// </para>
     /// <para>
-    /// <b>Why the UUID rows differ in what they license.</b> Calcite compares UUIDs as two
-    /// <em>signed</em> 64-bit halves, so lexical order of the canonical string matches its order only
-    /// where the top bit of each half is constant — the 1st and 17th hex digits confined to one side of
-    /// 8. RFC 4122 and 9562 pin the 17th to <c>8</c>–<c>b</c> for every conforming value, so the low
-    /// half always agrees; the first digit is what varies, and a pattern that confines it is the
-    /// difference between an equality-only form and a sortable one. Measured; see
+    /// <b>Why the UUID rows differ in what they license, and why the difference is now conditional.</b>
+    /// A canonical UUID's ordinal text order is the <em>unsigned</em> order of the 128-bit value, for
+    /// every value and with nothing pinned. Whether that is the order Calcite compares in is a
+    /// property of the engine rather than of the spelling, and it changed: see
+    /// <see cref="UnsignedUuidComparison"/>, which is what the unconfined rows read. Measured; see
     /// <c>DESIGN.md</c> under <em>A fact says which relations it preserves</em>.
     /// </para>
     /// </remarks>
@@ -42,13 +41,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     {
 
         /// <summary>
-        /// A lowercase canonical UUID whose order is not the order Calcite compares in.
+        /// Whether the engine orders UUIDs as unsigned 128-bit values, which is what the two
+        /// unconfined canonical rows rest on.
         /// </summary>
-        public static readonly CosmosRepresentation UuidCanonicalLower = new("uuid-canonical-lower", PreservesEquality: true, PreservesOrder: false);
+        /// <remarks>
+        /// <para>
+        /// <b>It was not always so, and this reads the switch on the fix.</b>
+        /// <c>java.util.UUID.compareTo</c> compares the two 64-bit halves as <em>signed</em> longs — a
+        /// documented JDK quirk — so the lexical order of the canonical string was Calcite's order
+        /// only where the top bit of each half was constant across the container, which is the 1st and
+        /// 17th hex digits confined to one side of <c>8</c>. CALCITE-7716 treated that as a defect
+        /// rather than as semantics and added <c>org.apache.calcite.util.UuidValue</c>, which compares
+        /// unsigned, in 1.43.
+        /// </para>
+        /// <para>
+        /// <b>Read rather than assumed, because the fix sits behind a property.</b>
+        /// <c>calcite.uuid.unsigned.comparison</c> defaults to on, and a runtime that turns it off
+        /// gets the old semantics back — over which an unconfined row claiming an order is a sort
+        /// pushed to the service that returns the rows in the wrong order, which is the one failure
+        /// this whole model exists to avoid. Calcite reads the property once into <c>UuidValue</c>'s
+        /// own static, so reading it once here agrees with it for the life of the process.
+        /// </para>
+        /// <para>
+        /// Measured, in <c>CalciteUuidOrderingMeasurementTests</c>: the property defaults to on, and
+        /// under it <c>ORDER BY</c> over UUIDs is exactly <see cref="StringComparer.Ordinal"/> over
+        /// their canonical spellings.
+        /// </para>
+        /// </remarks>
+        static readonly bool UnsignedUuidComparison =
+            ((java.lang.Boolean)org.apache.calcite.config.CalciteSystemProperty.UUID_UNSIGNED_COMPARISON.value()).booleanValue();
 
         /// <summary>
-        /// A lowercase canonical UUID whose first hex digit is confined, so that lexical order is Calcite's order.
+        /// A lowercase canonical UUID, whose ordinal text order is the unsigned order of the value.
         /// </summary>
+        /// <remarks>
+        /// The hyphens sit at fixed positions so they never decide anything, and <c>0</c>–<c>9</c>
+        /// then <c>a</c>–<c>f</c> sort in nibble order, so comparing the stored strings compares the
+        /// 32 nibbles in significance order — which is the unsigned comparison of the 128-bit value,
+        /// for every value the form admits. Whether that is the order licensed is therefore not a
+        /// question about the pattern at all but about the engine, and
+        /// <see cref="UnsignedUuidComparison"/> is where it is asked.
+        /// </remarks>
+        public static readonly CosmosRepresentation UuidCanonicalLower = new("uuid-canonical-lower", PreservesEquality: true, PreservesOrder: UnsignedUuidComparison);
+
+        /// <summary>
+        /// A lowercase canonical UUID whose first hex digit is confined and whose variant nibble is
+        /// pinned, so that lexical order is Calcite's order under a signed comparison too.
+        /// </summary>
+        /// <remarks>
+        /// Under the unsigned comparison that is the default this licenses nothing
+        /// <see cref="UuidCanonicalLower"/> does not, and it is kept rather than folded into it
+        /// because the engine's switch can be turned off. Signed and unsigned comparison of two 64-bit
+        /// values agree exactly where their top bits match, and that is what confining the 1st hex
+        /// digit to <c>[0-7]</c> and pinning the 17th to the RFC variant range <c>8</c>–<c>b</c> buys:
+        /// the high half's sign is then constant across the container and the low half's always was.
+        /// </remarks>
         public static readonly CosmosRepresentation UuidCanonicalLowerSortable = new("uuid-canonical-lower-sortable", PreservesEquality: true, PreservesOrder: true);
 
         /// <summary>
@@ -59,11 +106,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// A container written in uppercase throughout is exactly as addressable; what changes is which
         /// way a comparison has to render its literal, and <see cref="RenderUuid"/> is where that is
         /// decided. What is <em>not</em> canonical is a container holding both, which no pattern here
-        /// recognises.
+        /// recognises — and which is why the case never costs the ordering either: <c>A</c>–<c>F</c>
+        /// sit above <c>0</c>–<c>9</c> in code point order exactly as <c>a</c>–<c>f</c> do, so an
+        /// all-uppercase container sorts in nibble order on the same terms as an all-lowercase one.
         /// </remarks>
-        public static readonly CosmosRepresentation UuidCanonicalUpper = new("uuid-canonical-upper", PreservesEquality: true, PreservesOrder: false);
+        public static readonly CosmosRepresentation UuidCanonicalUpper = new("uuid-canonical-upper", PreservesEquality: true, PreservesOrder: UnsignedUuidComparison);
 
-        /// <inheritdoc cref="UuidCanonicalUpper" />
+        /// <inheritdoc cref="UuidCanonicalLowerSortable" />
         public static readonly CosmosRepresentation UuidCanonicalUpperSortable = new("uuid-canonical-upper-sortable", PreservesEquality: true, PreservesOrder: true);
 
         /// <summary>
@@ -186,10 +235,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// Each also gets the nil-UUID alternation the uuid package documents, which admits
         /// <c>00000000-0000-0000-0000-000000000000</c> beside the base pattern. That value is
-        /// canonical in either case, having no letters, so equality survives — but its variant nibble
+        /// canonical in either case, having no letters, so equality survives — and the alternation is
+        /// registered as the plain row rather than the confined one whatever the pattern it wraps,
+        /// which is right under either comparison. Under a signed one the nil value's variant nibble
         /// is <c>0</c> rather than <c>8</c>–<c>b</c>, which puts the low half on the other side of
-        /// zero and breaks the ordering argument. So the alternation is never sortable, whatever the
-        /// pattern it wraps.
+        /// zero and breaks the confined row's argument; under the unsigned default the plain row
+        /// carries the order anyway and the nil value is the least of them both lexically and
+        /// numerically.
         /// </para>
         /// </remarks>
         /// <returns>The table.</returns>
@@ -211,8 +263,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 foreach (var confined in new[] { false, true })
                 {
-                    // The high half's sign is constant only where the first digit is confined, which
-                    // is what v7 gives for any timestamp anyone will store.
+                    // Under a signed comparison the high half's sign is constant only where the first
+                    // digit is confined, which is what v7 gives for any timestamp anyone will store.
+                    // Under the unsigned default it decides nothing and the plain row carries the
+                    // order regardless — see UnsignedUuidComparison.
                     var head = confined ? $"[0-7]{hex}{{7}}" : $"{hex}{{8}}";
 
                     foreach (var version in versions)
@@ -221,8 +275,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                         foreach (var pinned in new[] { false, true })
                         {
-                            // The low half's sign is constant only where the variant nibble is pinned,
-                            // which RFC 4122 does for every conforming value anyway.
+                            // And the low half's sign only where the variant nibble is pinned, which
+                            // RFC 4122 does for every conforming value anyway.
                             var fourth = pinned ? $"{variant}{hex}{{3}}" : $"{hex}{{4}}";
                             var body = $"^{head}-{hex}{{4}}-{third}-{fourth}-{hex}{{12}}$";
 

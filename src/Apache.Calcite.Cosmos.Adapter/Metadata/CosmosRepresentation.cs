@@ -10,12 +10,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The obvious model is that a path "is a UUID" or "is a date-time", and it is wrong. Calcite
-    /// compares UUIDs as two <em>signed</em> 64-bit halves, so for half of all v4 values the lexical
-    /// order of the canonical string is not the order Calcite sorts in — while equality agrees for all
-    /// of them. A date-time at one fixed ISO-8601 UTC shape preserves both. So the two properties are
-    /// independent and a representation has to carry them separately, or a sort gets pushed that
-    /// returns the wrong rows. Measured; see <c>DESIGN.md</c> under <em>A fact says which relations it preserves</em>.
+    /// The obvious model is that a path "is a UUID" or "is a date-time", and it is wrong. A date-time
+    /// written at mixed precision has one spelling per value, so equality agrees for all of them,
+    /// while <c>'…:56.5Z'</c> sorts before <c>'…:56Z'</c> and the order does not — and an unpadded
+    /// integer fails the same way, <c>'9'</c> sorting after <c>'42'</c>. One fixed ISO-8601 UTC shape
+    /// preserves both. So the two properties are independent and a representation has to carry them
+    /// separately, or a sort gets pushed that returns the wrong rows. Measured; see <c>DESIGN.md</c>
+    /// under <em>A fact says which relations it preserves</em>.
     /// </para>
     /// <para>
     /// Both are claims about the <em>stored</em> string against the <em>logical</em> value Calcite

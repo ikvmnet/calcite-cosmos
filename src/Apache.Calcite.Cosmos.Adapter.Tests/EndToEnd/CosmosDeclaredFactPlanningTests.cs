@@ -597,25 +597,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A rendered identifier addresses nothing afterwards, so ordering <em>by</em> it is still
-        /// refused.
+        /// Ordering <em>by</em> the rendered identifier reaches the service, the path underneath
+        /// carrying the order the column would.
         /// </summary>
         /// <remarks>
-        /// The scope line. Equality is all the form was asked for; whether the lexical order of the
-        /// stored strings is the order Calcite compares UUIDs in is a separate claim, and the guarded
-        /// path is not the value either way. The column binding to no path is what keeps the question
-        /// from being asked at all.
+        /// <para>
+        /// The shape every consumer that orders by a key produces, and the one #142 measured the cost
+        /// of: OData's <c>EnsureStableOrdering</c> appends the key to every ordering, and EF Core
+        /// orders by the principal key to group a collection navigation, so this is what a trailing
+        /// <c>, Id</c> or an <c>$expand</c> plans as. Refused, the sort ran in process and dragged the
+        /// projection down with it — whole documents for every matching row.
+        /// </para>
+        /// <para>
+        /// The column still addresses no path, a cast resolving to none; what carries the sort is
+        /// <c>CosmosProject.OrderingPathOf</c>, which binds the ordinal for ordering alone where the
+        /// form preserves order and the projection's guard is vacuous. The form does preserve it as of
+        /// CALCITE-7716 — see <see cref="AnUnconfinedCanonicalUuidCarriesTheSort"/>, which is where
+        /// that half is stated.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void OrderingByTheRenderedIdentifierIsStillRefused()
+        public void OrderingByTheRenderedIdentifierReachesTheService()
         {
             const string Sql = """
             SELECT CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID) AS "Id" FROM items AS c ORDER BY 1
             """;
 
             var declared = Container(Catalog);
-            Query(FindCosmos(PlanToCosmos(Sql, declared, out _)), declared).Sql
-                .Should().NotContain("ORDER BY", "the projected column resolves to no path to order by");
+            var best = PlanToCosmos(Sql, declared, out _);
+
+            Query(FindCosmos(best), declared).Sql
+                .Should().Contain("ORDER BY c.ref", "the path underneath orders the rows the column would");
+
+            PlanText(best).Should().NotContain("ClrEnumerableSort",
+                "so the container is not read whole and sorted in memory: " + PlanText(best));
         }
 
         /// <summary>
@@ -849,21 +864,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The same sort over a form that preserves equality and not order is refused.
+        /// The same sort over an <em>unconfined</em> canonical UUID carries too, the confinement
+        /// having stopped being what licenses the order.
         /// </summary>
         /// <remarks>
-        /// An unconfined canonical UUID has one spelling per value, so equality is exact — and Calcite
-        /// compares UUIDs as two <em>signed</em> 64-bit halves, so for half of all values the lexical
-        /// order of that spelling is not the order it sorts in. Nothing about the ordering follows from
-        /// the equality, which is why the two bits are separate.
+        /// <para>
+        /// This was refused, and the refusal was right at the time: Calcite compared UUIDs as two
+        /// <em>signed</em> 64-bit halves, so for half of all v4 values the lexical order of the
+        /// canonical spelling was not the order it sorted in, and only a pattern confining the first
+        /// hex digit closed the gap. CALCITE-7716 made the comparison unsigned in 1.43 and the
+        /// confinement became unnecessary — a canonical lowercase spelling draws from <c>0-9a-f</c>
+        /// alone, over which ordinal text order <em>is</em> the unsigned 128-bit order, for every
+        /// value.
+        /// </para>
+        /// <para>
+        /// Which is #142, and it is a cost rather than a nicety: the refusal landed on every consumer
+        /// that orders by a key, and one measured container's 9,370-row view did not return in 120
+        /// seconds sorted in process where the same shape pushed pages at the service.
+        /// <c>CalciteUuidOrderingMeasurementTests</c> is what pins the engine half of the claim; the
+        /// form's half is conditioned on <c>calcite.uuid.unsigned.comparison</c> rather than assumed,
+        /// and the confined row above is what survives that switch being off.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void AFormThatOnlyPreservesEqualityCarriesNoSuchSort()
+        public void AnUnconfinedCanonicalUuidCarriesTheSort()
         {
             var container = Reference(PlainUuid);
+            var best = PlanToCosmos(OrderByRendered, container, out _);
 
-            Query(FindCosmos(PlanToCosmos(OrderByRendered, container, out _)), container).Sql
-                .Should().NotContain("ORDER BY", "the stored order is not the compared order for this form");
+            Query(FindCosmos(best), container).Sql
+                .Should().Contain("ORDER BY c.ref", "the unsigned comparison makes the stored order the compared order");
+
+            PlanText(best).Should().NotContain("ClrEnumerableSort", "and nothing is left to sort in process");
         }
 
         /// <summary>
