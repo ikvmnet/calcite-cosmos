@@ -140,6 +140,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 .Should().Be(java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"));
         }
 
+        /// <summary>
+        /// Every shape <c>CosmosStoredForms</c> recognises reads back, which is what lets a projection
+        /// hand the stored text over untouched.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the measurement the brace and hyphenless forms rest on, and it is a claim about
+        /// the <em>reader</em> rather than about the pattern table: <c>CosmosRexTranslator</c> renders
+        /// <c>CAST(&lt;path&gt; AS UUID)</c> as the raw path, so whatever a form admits has to be
+        /// something this converts. All four shapes are, in either case.
+        /// </para>
+        /// <para>
+        /// The two refused are why <c>urn:uuid:</c> and the parenthesised spelling are not forms: each
+        /// is as canonical and as sortable as the others, and a projection over one would raise at
+        /// read time rather than answer.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ShouldReadEverySpellingThisRecognises()
+        {
+            var expected = java.util.UUID.fromString("0123456f-89ab-7cde-8f01-23456789abcd");
+
+            foreach (var text in new[]
+            {
+                "0123456f-89ab-7cde-8f01-23456789abcd",
+                "{0123456f-89ab-7cde-8f01-23456789abcd}",
+                "0123456f89ab7cde8f0123456789abcd",
+                "{0123456f89ab7cde8f0123456789abcd}",
+                "0123456F-89AB-7CDE-8F01-23456789ABCD",
+                "{0123456F89AB7CDE8F0123456789ABCD}",
+            })
+                Read($"\"{text}\"", SqlTypeName.UUID).Should().Be(expected, "for " + text);
+
+            foreach (var text in new[]
+            {
+                "urn:uuid:0123456f-89ab-7cde-8f01-23456789abcd",
+                "(0123456f-89ab-7cde-8f01-23456789abcd)",
+            })
+            {
+                var act = () => Read($"\"{text}\"", SqlTypeName.UUID);
+
+                act.Should().Throw<CosmosMaterializationException>("for " + text);
+            }
+        }
+
         [Fact]
         public void ShouldReadNullAsNullUuid()
         {

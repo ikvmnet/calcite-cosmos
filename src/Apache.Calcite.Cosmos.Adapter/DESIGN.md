@@ -328,6 +328,73 @@ distinguishes them: `B` before `a`, `a-b` before `a_b`, and `0000000A-…` befor
 collation is not quietly reordering what the argument rests on — and this half of it was never about
 the sign bit, which is why it survives the change above intact.
 
+**And the pattern is read as a shape rather than matched against a table.** The rows above were
+generated across four axes — case, first-digit confinement, version nibble, variant nibble — and the
+product was eighty patterns. It was the wrong shape for the problem, because the axes a UUID pattern
+varies along do not close: `[1-5]` is what a schema written against RFC 4122 pins and is the single
+commonest spelling published, `[8-9a-b]` is the variant written as ranges, `[0-9abcdef]` is the hex
+class spelled out, and a container generating v7 identifiers within a known epoch pins a prefix. None
+of those was a row, and an unrecognised pattern states **nothing** — so each of them lost the path its
+*equality* as well as its order, and every comparison against it read whole documents.
+
+`CosmosStoredForms.RecogniseUuid` decides the shape instead: 32 nibble slots, hyphens at four fixed
+positions, anchored at both ends, every slot admitting some set of hex digits. Three things follow for
+every string such a pattern accepts, with nothing enumerated — one spelling per value so long as the
+whole pattern draws from a single case, lexical order being nibble order because the hyphens are fixed
+and `0`–`9` sort below `a`–`f` and `A`–`F` alike, and nibble order in significance order being the
+unsigned order of the 128-bit value. Confining a slot only removes strings, so a narrower pattern
+inherits all three. The confinement the signed comparison needs is then read off the shape rather than
+matched: slot 1 within `0`–`7` and slot 17 within `8`–`f` are exactly the two sign bits, so
+`uuid-canonical-lower-sortable` is what the shape *says* rather than what a row asserted.
+
+Two things fall out of it. An alternation is a **union** of its branches' slots, which *derives* the
+nil-UUID rule that was previously written by hand: the nil value's variant nibble is `0`, the union's
+17th slot becomes `[089ab]`, the confinement is gone, and the pattern lands on the plain row — in any
+of the four ways the alternation and its anchors can be spelled. And a character-class range is read
+over **code points**, which is a trap rather than a spelling: `[8-f]` spans `0x38`–`0x66`, so it
+admits `@`, `Z` and `_`, and admits `A`–`F` beside `a`–`f`, which is two spellings of one nibble. It
+is refused, and so is `[0-;]`, which admits no letter to give the case away. Every member of a range
+is asked rather than its two ends.
+
+**The brace and the hyphen are axes of the spelling, not of the argument.** A UUID is also written
+brace-wrapped and written without its hyphens, and both are read as forms of their own — sixteen in
+all, the product of brace, hyphen, case and confinement. Neither new axis costs a relation, for the
+reason the hyphens already did not: a character in the same place in every stored string never decides
+a comparison, so the strings still compare nibble by nibble in significance order and one value still
+has one spelling. What the shape decides is only how `RenderUuid` writes a literal. The names are
+systematic — `uuid-braced-lower`, `uuid-hyphenless-upper-sortable` — and the four canonical ones are
+what the scheme already spells, so they are unchanged.
+
+**What licensed those two and refuses two others is the reader, measured.** `CosmosRexTranslator`
+renders a projected `CAST(<path> AS UUID)` as the raw path and lets the row builder convert, so a form
+may admit only text the reader takes. `SqlFunctions.stringToUuid` reads all four shapes in either
+case, and **raises** on `urn:uuid:…` and on the parenthesised `(…)` spelling. So those two are not
+forms here although each is exactly as canonical and as sortable as the four — a projection over one
+would raise at read time rather than answer. `ShouldReadEverySpellingThisRecognises` is the
+measurement.
+
+A branch of an alternation may not disagree with its siblings about the shape, which is the one place
+the union is not slot-wise: a value written hyphenated in one branch and hyphenless in the other has
+two spellings, and no equality survives that.
+
+One case is deliberately not claimed. A shape sign-constant the *other* way round — a first digit
+confined to `8`–`f`, so that the high half is negative throughout — is sortable under the signed
+comparison on exactly the argument above, and is read as the plain row anyway. The claim would need a
+form of its own, because `RenderUuid` refuses a literal outside the confined form's sign class and has
+only the form's name to decide which class that is; under the unsigned default the plain row carries
+the order regardless, so the name would buy nothing but a name.
+
+**The literal is not in the container, which the confinement argument nearly missed.** A confined row
+says the lexical order *is* Calcite's order under the signed comparison, and the argument for it is
+that each half's sign is constant — across the container. A comparison is against one of each: a path
+confined to a first digit of `0`–`7` holds only values whose high half is signed-positive, so `>`
+against a literal whose high half is signed-negative is true of every document and lexically true of
+none. `CosmosStoredForms.RenderUuid` therefore asks the literal for the two bits the confinement pins
+and declines rather than answering wrongly — and asks **only** where the answer can differ, which is
+the switch being off. Under the unsigned default every pair of canonical spellings compares lexically
+as Calcite compares it, in the container or out of it, so refusing there would decline sound rewrites
+including the equality ones, which never needed the sign at all.
+
 So a representation carries two independent bits — whether comparing the stored strings for *equality*
 answers what comparing the values answers, and whether their *order* does — and `CosmosStoredForms`
 sets them per recognised pattern. The UUID rows no longer separate on the second, and the temporal and
