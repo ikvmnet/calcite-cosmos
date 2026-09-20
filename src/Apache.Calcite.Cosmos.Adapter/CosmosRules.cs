@@ -97,6 +97,25 @@ namespace Apache.Calcite.Cosmos.Adapter
             // no HAVING.
             yield return org.apache.calcite.rel.rules.CoreRules.FILTER_AGGREGATE_TRANSPOSE;
 
+            // And the transpose that decides whether a filtered query projects anything at all.
+            //
+            // A Cosmos scan presents five columns and a query reading paths out of the document reads
+            // one of them, so Calcite's field trimmer — which is in its own prepare, and therefore in
+            // every host — leaves a LogicalProject(DOC) between the scan and the filter above it. That
+            // projection takes the statement's one SELECT, and the projection the query actually asks
+            // for then has nowhere to go: it stays above the converter and every matching document
+            // crosses the wire whole to have two columns extracted from it here (#145).
+            //
+            // Transposed, the filter sits under the trimmer's projection rather than over it, which
+            // puts the two projections next to each other where PROJECT_MERGE below can make them
+            // one. Neither rule reaches it alone. A transformation adds an equivalence rather than
+            // replacing one, so the untransposed plan survives and the planner costs both.
+            //
+            // Registered here for the reason the other rewrites are: a host on Calcite's standard
+            // rule set already carries it, and a pushdown must not depend on which rules a caller
+            // happened to add.
+            yield return org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE;
+
             yield return CosmosFilterRule.Create(convention);
 
             // Partial pushdown: where only some of a predicate renders, the service still evaluates

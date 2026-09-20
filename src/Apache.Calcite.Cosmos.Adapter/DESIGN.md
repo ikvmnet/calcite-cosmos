@@ -2923,6 +2923,32 @@ Everything above is *inference* — from declared metadata and, where the servic
 measured row count. The service reports what a request actually cost, and that number is the only
 one in the system that is not a guess.
 
+### What the wire costs is width, and the document is not one value
+
+`CosmosToClrEnumerableConverter` is the one node every pushed row crosses, so it is where what
+crosses it is priced: rows times the width they carry. Width is counted in *values*, and the `DOC`
+column counts as many — it carries an entire item where every other column carries a scalar.
+
+A count of columns was tried first and is wrong in a way that decides plans. Calcite's field trimmer
+runs in every host and leaves a `LogicalProject(DOC)` above a Cosmos scan, so the subtree being
+converted is one column wide before the query's own projection is pushed and two or more after it.
+Counted, pushing a projection therefore *widens* this node and charges back precisely what the
+projection saved — and since `VolcanoCost` compares `rowCount` alone, the two plans tie rather than
+one winning, and the tie falls to registration order. That is #145: a two-column query read a
+container whole while the one-column form of it did not.
+
+The document's weight comes from `CosmosContainerStatistics` where the account was asked for one.
+Where it was not — the common case — it falls to a floor of six values, which needs no measurement:
+the service generates `id`, `_rid`, `_self`, `_etag`, `_attachments` and `_ts` on every item and
+returns them with it, so selecting the document returns six values before anything the document
+itself holds. What a single value weighs is the one guess, and it is made in the direction that can
+only under-sell projecting.
+
+`RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
+plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what
+`TODO.md` still asks for, and would reach the cost decisions below this node, which price nothing
+about what they return.
+
 ### A spelling is not a price — measured
 
 `expandSearch` rewrites `IN` and `BETWEEN` into chains of comparisons before anything here sees

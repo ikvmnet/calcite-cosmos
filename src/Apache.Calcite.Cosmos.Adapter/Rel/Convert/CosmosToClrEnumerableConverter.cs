@@ -85,20 +85,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the planner then discarded every time (#125).
         /// </para>
         /// <para>
-        /// <b>Width is a count of columns, and that is cruder than it sounds.</b>
-        /// <c>getAverageRowSize</c> is the metadata that would say what a row actually weighs, and it
-        /// was tried first: measured over these plans it answers <c>null</c> at every node, scan and
-        /// projection alike, so nothing was being scaled by it and the count was doing all the work.
-        /// Asking for it and quietly falling back would have described a mechanism that never ran.
+        /// <b>Width is values, not columns, and the whole difference is the document.</b> The
+        /// <c>DOC</c> column carries an entire item where every other column carries a value, and
+        /// counting both as one made pushing a projection <em>cost</em> rather than save. After field
+        /// trimming that is the ordinary case and not a corner: the trimmer leaves a projection of
+        /// <c>DOC</c> alone above the scan, so the subtree this node converts is one column wide
+        /// already, and pushing the query's real projection widens it to as many columns as the
+        /// query selects. Counted, that charged back exactly what the projection saved, the two
+        /// plans tied on rows — which is the only component <c>VolcanoCost</c> compares — and a
+        /// two-column query read the container whole (#145).
         /// </para>
         /// <para>
-        /// <b>What the count gets wrong is the document.</b> The <c>DOC</c> column carries an entire
-        /// item and a projected scalar carries a value, and counting both as one column calls a
-        /// statement returning the document plus a scalar cheaper than one returning five scalars —
-        /// which in bytes it is not. The direction is still right wherever it decides anything here,
-        /// because pushing a projection only ever removes columns; the magnitude is wrong. Sizing the
-        /// document properly means a <c>RelMdSize</c> handler for the Cosmos nodes, which is a larger
-        /// piece of work and is not attempted for this.
+        /// <b>So the document is weighed rather than counted</b>, by the container's average document
+        /// size where that has been measured and by <see cref="MinimumDocumentWidth"/> where it has
+        /// not. <c>getAverageRowSize</c> is the metadata that would answer this properly, and it was
+        /// tried first: measured over these plans it answers <c>null</c> at every node, scan and
+        /// projection alike, so asking for it and quietly falling back would have described a
+        /// mechanism that never ran. A <c>RelMdSize</c> handler for the Cosmos nodes is what would
+        /// make it answer, and is still the larger piece of work this stands in for.
         /// </para>
         /// </remarks>
         public override RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq)
@@ -107,7 +111,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (cost == null)
                 return null!;
 
-            return cost.multiplyBy(ClrEnumerableConvention.CostMultiplier * System.Math.Max(1, getInput().getRowType().getFieldCount()));
+            return cost.multiplyBy(ClrEnumerableConvention.CostMultiplier * Math.Max(1d, Width(getInput())));
+        }
+
+        /// <summary>
+        /// What one projected value is taken to weigh, in bytes.
+        /// </summary>
+        /// <remarks>
+        /// A guess, and deliberately a generous one: a UUID rendered as JSON is 38 bytes and a
+        /// timestamp 26, so 64 over-states a value and therefore under-states how many values a
+        /// document is worth. That is the harmless direction — the ratio only ever argues for
+        /// projecting, so under-stating it can leave a projection unpushed and can never push one
+        /// that should not be.
+        /// </remarks>
+        public const double BytesPerValue = 64d;
+
+        /// <summary>
+        /// The fewest values the document column is ever worth.
+        /// </summary>
+        /// <remarks>
+        /// The half that needs no measurement, which is what makes it the half that works on a
+        /// container nobody has asked for statistics — and that container is the common case, since
+        /// the statistics are read only where the account will answer for them. The service generates
+        /// <c>id</c>, <c>_rid</c>, <c>_self</c>, <c>_etag</c>, <c>_attachments</c> and <c>_ts</c> on
+        /// every item and returns them with it, so a statement selecting the document returns six
+        /// values before anything the document itself holds, while one projecting two paths returns
+        /// two.
+        /// </remarks>
+        public const double MinimumDocumentWidth = 6d;
+
+        /// <summary>
+        /// Returns how many values a row of the converted subtree is worth.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Read off the row type rather than off the plan, because the row type is what crosses this
+        /// node: a subtree that has pushed a projection presents the projected columns here, and one
+        /// that has not presents the document. Which column <em>is</em> the document is left to
+        /// <see cref="CosmosImplementor.BindReadings"/> rather than tested again here — it is the one
+        /// column the row model reserves, and one place should say so.
+        /// </para>
+        /// <para>
+        /// <b>That answer is the column's name, so an alias can fool it either way</b>, and neither
+        /// direction reaches a decision. A computed column aliased <c>DOC</c> is weighed as a document
+        /// and over-prices a pushed projection; the document column aliased to anything else is
+        /// weighed as a value and under-prices one. Both only matter where one plan ships the document
+        /// and the other does not — and a statement that names the document at all ships it on every
+        /// plan, so the two alternatives are mis-priced identically and rank the same.
+        /// </para>
+        /// </remarks>
+        /// <param name="input">The subtree being converted.</param>
+        /// <returns>The width, in values.</returns>
+        static double Width(RelNode input)
+        {
+            var container = input.getConvention() is CosmosConvention convention ? convention.Container : null;
+            var document = Metadata.CosmosRequestUnitModel.AverageDocumentSizeInBytes(container);
+            var documentWidth = Math.Max(MinimumDocumentWidth, document / BytesPerValue);
+
+            var readings = CosmosImplementor.BindReadings(input.getRowType());
+            var width = 0d;
+
+            for (var i = 0; i < readings.Count; i++)
+                width += readings[i] == CosmosReading.Json ? documentWidth : 1d;
+
+            return width;
         }
 
         /// <inheritdoc />
