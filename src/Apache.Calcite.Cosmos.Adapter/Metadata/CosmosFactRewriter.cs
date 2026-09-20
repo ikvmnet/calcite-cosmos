@@ -636,7 +636,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// The value and not a spelling: which spelling a conforming document stores is the path form
-        /// to say, and <see cref="CosmosStoredForms.RenderUuid"/> is what says it. The fallback exists
+        /// to say, and <see cref="CosmosStoredForms.RenderUuid"/> is what says it. The box is
+        /// <c>org.apache.calcite.util.UuidValue</c>, which is what <c>RexBuilder.makeUuidLiteral</c>
+        /// wraps a <c>java.util.UUID</c> into since CALCITE-7716 — the same move that put
+        /// <c>UuidValue</c> on the read path, in <see cref="Client.CosmosJson"/>. The fallback exists
         /// because the boxed representation of a literal is Calcite business rather than this adapter
         /// business, and text that will not parse yields no rewrite rather than a guess.
         /// </remarks>
@@ -647,7 +650,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (literal.isNull() || literal.getTypeName() != SqlTypeName.UUID)
                 return null;
 
-            var text = literal.getValue() is java.util.UUID uuid ? uuid.toString() : literal.getValue()?.ToString();
+            var text = literal.getValue() is org.apache.calcite.util.UuidValue uuid ? uuid.toString() : literal.getValue()?.ToString();
 
             return text is not null && Guid.TryParse(text, out var value) ? value : null;
         }

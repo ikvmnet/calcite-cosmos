@@ -367,9 +367,10 @@ what the scheme already spells, so they are unchanged.
 
 **What licensed those two and refuses two others is the reader, measured.** `CosmosRexTranslator`
 renders a projected `CAST(<path> AS UUID)` as the raw path and lets the row builder convert, so a form
-may admit only text the reader takes. `SqlFunctions.stringToUuid` reads all four shapes in either
-case, and **raises** on `urn:uuid:…` and on the parenthesised `(…)` spelling. So those two are not
-forms here although each is exactly as canonical and as sortable as the four — a projection over one
+may admit only text the reader takes. `UuidValue.fromString` — `SqlFunctions.stringToUuid` under the
+wrapper — reads all four shapes in either case, and **raises** on `urn:uuid:…` and on the
+parenthesised `(…)` spelling. So those two are not forms here although each is exactly as canonical
+and as sortable as the four — a projection over one
 would raise at read time rather than answer. `ShouldReadEverySpellingThisRecognises` is the
 measurement.
 
@@ -637,8 +638,30 @@ the same fact answers it, because a spelling that is exact enough to compare is 
 The case that forced it is `CAST(JSON_VALUE(doc, '$.ref') AS UUID)` in a projection. Without a form
 there is nothing to send: the service holds a string and the plan wants a `UUID`, and no Cosmos
 expression converts one to the other. With one, the statement sends the guarded path and
-`CosmosJson` reads the text back as `java.util.UUID` — using Calcite's own `stringToUuid`, so the
-pushed projection and the in-process cast it replaced are not two implementations that could drift.
+`CosmosJson` reads the text back as `UuidValue` — through `UuidValue.fromString`, which is the method
+`BuiltInMethod.UUID_FROM_STRING` names and therefore the one a cast Calcite generated itself calls, so
+the pushed projection and the in-process cast it replaced are not two implementations that could
+drift.
+
+**The box is `UuidValue` and not the `java.util.UUID` inside it**, and reading the inner one was wrong
+in a way only a narrow row could see. CALCITE-7716 moved the representation of a `UUID` onto
+`UuidValue` — it is what `JavaTypeFactoryImpl` answers for the type and what a `RexLiteral` holds —
+but left `SqlFunctions.stringToUuid` returning the bare `UUID` it always returned, which is the value
+the wrapper wraps. Calling the inner function therefore produced the right value in a class the plan
+does not use. A row of two columns or more is an `object[]`, so the row builder boxes each column
+rather than casting it, and the wrong class survives to a reader that converts either one; a row of
+**one** column is the value itself, and `CosmosConverters.RowBuilder` casts it to the field's physical
+type. So `SELECT <a lone UUID column>` threw `java.util.UUID cannot be cast to
+UuidValue` at the first row while the same column beside any other read fine — which is #150, and why
+it surfaced through a `$count` and an `$expand` rather than through an ordinary page.
+
+**Measured, and below this adapter.** `CalciteUuidReadingMeasurementTests` puts each of the two
+classes into a `UUID` column of a plain in-process table and reads it through `CalciteDataReader`:
+a `UuidValue` arrives as a `System.Guid` at either arity, and the bare `java.util.UUID` arrives as
+one at two columns and raises exactly the reported cast at one. So the defect is Calcite's
+convention rather than anything about Cosmos, the `Guid` a caller maps is what the right box buys,
+and a change to `stringToUuid` upstream is reported there. `ShouldReadALoneUuidColumn` is the same
+shape through the adapter, over a pushed statement.
 
 **What it costs to leave a cast untranslated is not the cast.** A projection that does not convert
 stays in the client, and a sort cannot be pushed through one — `SORT_PROJECT_TRANSPOSE` has nothing to
@@ -2131,9 +2154,10 @@ first Calcite operator that casts it, a long way from where it was produced.
 | `null`, or absent | `null` | `null` |
 
 `UUID` is the one row of that column a container has to earn. Cosmos has no such type, so the value is
-a string whose spelling a declared form pinned; the conversion is Calcite's own `stringToUuid`, which
-is what makes a pushed projection and the in-process cast it replaced the same conversion rather than
-two of them. See *A form reads back as well as it compares*.
+a string whose spelling a declared form pinned; the conversion is Calcite's own `UuidValue.fromString`,
+which is what makes a pushed projection and the in-process cast it replaced the same conversion rather
+than two of them — and the box is the `UuidValue` that method returns, not the `java.util.UUID` inside
+it. See *A form reads back as well as it compares*.
 
 Two choices worth stating. A whole number reads as a `Long` rather than a `Double` so that an
 identifier or a count does not surface as `42.0`; the choice is the value's, there being no schema to
