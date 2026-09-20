@@ -236,7 +236,8 @@ closes the gap is a proof about the *stored* form: if every value at a path is t
 of its UUID, then comparing the stored strings answers exactly what comparing the values answers, and
 the comparison lowers to a string equality. Everything after that is machinery that already existed —
 the translator renders it, the index serves it, `CosmosPartitionKeyExtractor` pins a partition from
-it, and a point read follows where the predicate says nothing else.
+it, and a point read follows where the predicate says nothing else. A *range* against one lowers on
+the second bit rather than the first, and pins no partition, having named no value.
 
 **What it is worth, measured.** On a serverless container of 2000 documents, one matching:
 
@@ -266,8 +267,14 @@ with the mismatch now unavoidable rather than merely possible.
 
 #### A fact says which relations it preserves, not what type it is
 
-The obvious model — a path "is a UUID" — is wrong, and one measurement kills it. **Calcite orders
-UUIDs as two signed 64-bit halves** (`java.util.UUID.compareTo`):
+The obvious model — a path "is a UUID" — is wrong, and it is wrong for a reason that outlived the
+measurement that first showed it. A form is a claim about a *spelling*; what a comparison does with
+the values is the *engine's*; and the two are separate claims that can each change without the other.
+The UUID row is where that was learned, and then where it was demonstrated a second time by the
+engine's half moving, so it is worth reading in order.
+
+**What was measured, and was true.** Calcite used to order UUIDs as two signed 64-bit halves
+(`java.util.UUID.compareTo`):
 
 | | |
 | --- | --- |
@@ -275,47 +282,65 @@ UUIDs as two signed 64-bit halves** (`java.util.UUID.compareTo`):
 | `ORDER BY` over four values | `8000…`, `ffff…`, `0000…`, `7fff…` |
 | the same four as text | `0000…`, `7fff…`, `8000…`, `ffff…` |
 
-So for half of all v4 UUIDs the lexical order of the canonical string is not Calcite's order. A proof
-of canonical form licenses `=`, `IN`, `DISTINCT` and routing, and licenses **nothing** about `<`,
-`ORDER BY`, `MIN` or `MAX`.
+So for half of all v4 UUIDs the lexical order of the canonical string was not Calcite's order, and a
+proof of canonical form licensed `=`, `IN`, `DISTINCT` and routing while licensing **nothing** about
+`<`, `ORDER BY`, `MIN` or `MAX`. The condition under which it did was expressible as a `pattern` —
+which is the argument for taking the whole vocabulary rather than a flag — and the argument was about
+two bits rather than about the value being a UUID. Lexical order of the canonical string compares the
+same two halves as *unsigned*: the dashes sit at fixed positions so they never decide anything, and
+the hex characters sort in value order. Signed and unsigned comparison of two 64-bit values agree
+exactly when their top bits match, so the two orders coincided over a *set* of values only where the
+top bit of each half was constant across all of them — the top bit of `mostSigBits` being the top bit
+of the 1st hex digit, which `[0-7]` pins to 0, and the top bit of `leastSigBits` the top bit of the
+17th, which RFC 4122's `10xx` variant pins to 1 for every conforming value. Pin both and the orders
+were the same order; a v4 pattern was not sortable and a v7 one was.
 
-**And the condition under which it does is expressible as a `pattern`**, which is the argument for
-taking the whole vocabulary rather than a flag. The orders agree exactly when the top bit of each half
-is constant across the values — the 1st and 17th hex digits confined to one side of `8`. Measured:
-`UUID'…-0000-…' < UUID'…-a000-…'` is **False** though `0000` sorts before `a000` as text, because the
-17th digit decides the sign of the low half; with both in the RFC variant range `8`–`b` it is
-**True**. RFC 4122 and 9562 pin that digit for every conforming value, so the low half always agrees.
-The first digit is what varies: v4 spreads it over `0`–`f`, and v7 confines it to `0`–`7` for every
-realistic timestamp.
+**[CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) removed the condition, in 1.43.0.**
+The JIRA treats the signed comparison as a defect rather than as semantics — `UUID#compareTo`'s
+halves-as-signed-longs is a long-documented JDK quirk (JDK-7025832), Postgres orders UUIDs unsigned,
+and every other part of Calcite's UUID feature reads the other way. The fix added
+`org.apache.calcite.util.UuidValue`, which compares with `Long.compareUnsigned`, behind
+`calcite.uuid.unsigned.comparison` — **defaulting to on**. Measured here, through Calcite's own JDBC
+driver with the ADO.NET wrapper out of the path: the property is on, all three comparisons the signed
+order got wrong now answer **True**, and `ORDER BY` over a set chosen to separate the two on *both*
+halves is exactly `StringComparer.Ordinal` over the canonical spellings.
+`CalciteUuidOrderingMeasurementTests` is the measurement.
 
-**Why two digits decide it, and why it is about the set rather than the value.** Lexical order of the
-canonical string compares the same two halves as *unsigned*: the dashes sit at fixed positions so they
-never decide anything, and the hex characters sort in value order. Signed and unsigned comparison of
-two 64-bit values agree exactly when their top bits match — so the two orders coincide over a *set* of
-values only where the top bit of each half is constant across all of them. The top bit of `mostSigBits`
-is the top bit of the 1st hex digit, which `[0-7]` pins to 0; the top bit of `leastSigBits` is the top
-bit of the 17th, which RFC 4122's `10xx` variant pins to 1 for every conforming value. Pin both and
-the orders are the same order. It is an argument about two bits, not about the value being a UUID, and
-it is why a v4 pattern is not sortable while a v7 one is: v4 leaves the first digit free, so the sign
-of the high half varies across the container.
+So the confinement is unnecessary now, and for the reason the paragraph above already contains: a
+canonical **lowercase** UUID draws from `0-9a-f` alone, over which ordinal text order *is* the
+unsigned 128-bit order — for every value, with nothing pinned. Uppercase is the same within `0-9A-F`,
+`A`–`F` sitting above `0`–`9` in code point order exactly as `a`–`f` do. A container holding both
+cases is not canonical and no pattern recognises it, so nothing changes there.
+
+**What is conditioned on, and why it is read rather than assumed.** The property can be turned off,
+and under it the old semantics return — over which an unconfined row claiming an order is a sort
+pushed to the service that comes back in the wrong order, silently. So `CosmosStoredForms` reads
+`CalciteSystemProperty.UUID_UNSIGNED_COMPARISON` once, and the unconfined rows carry `PreservesOrder`
+from it; Calcite reads the same property once into `UuidValue`'s own static, so the two agree for the
+life of the process. The confined rows stay, unchanged and always sortable, because they are what
+survives the switch being off — under the default they license nothing the unconfined rows do not.
 
 **And the service orders strings by code point, measured.** The whole argument is about *lexical*
 order, which is the adapter's word for what Cosmos will do — so it was worth asking rather than
 assuming. Over values chosen to separate an ordinal comparison from a linguistic one, `ORDER BY`
 matched `StringComparer.Ordinal` exactly and differed from `InvariantCulture` on every case that
 distinguishes them: `B` before `a`, `a-b` before `a_b`, and `0000000A-…` before `0000000a-…`. So a
-collation is not quietly reordering what the sign-bit argument rests on.
+collation is not quietly reordering what the argument rests on — and this half of it was never about
+the sign bit, which is why it survives the change above intact.
 
 So a representation carries two independent bits — whether comparing the stored strings for *equality*
 answers what comparing the values answers, and whether their *order* does — and `CosmosStoredForms`
-sets them per recognised pattern.
+sets them per recognised pattern. The UUID rows no longer separate on the second, and the temporal and
+numeric ones still do, which is what keeps the two bits independent:
 
 | representation | equality | order |
 | --- | --- | --- |
-| canonical lowercase UUID, any version | ✔ | ✘ |
-| the same, first digit `0`–`7` | ✔ | ✔ |
+| canonical lowercase UUID, any version | ✔ | ✔ under unsigned comparison, ✘ without it |
+| the same, first digit `0`–`7` and variant pinned | ✔ | ✔ |
 | ISO-8601 UTC at one fixed precision | ✔ | ✔ |
 | ISO-8601 at mixed precision or mixed `Z`/offset | ✘ | ✘ |
+| an integer written without padding | ✔ | ✘ |
+| an integer zero-padded to a fixed width | ✔ | ✔ |
 | an `enum` of strings | ✔ | ✘ |
 
 **The temporal case needs its own measurement, and it moves what to look for.** `CAST(<string> AS

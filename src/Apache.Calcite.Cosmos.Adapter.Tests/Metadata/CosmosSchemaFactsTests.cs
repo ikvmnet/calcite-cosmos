@@ -113,22 +113,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();
         }
 
+        /// <summary>
+        /// A date at one fixed shape and a canonical UUID both preserve order, each on its own
+        /// argument about the stored alphabet.
+        /// </summary>
+        /// <remarks>
+        /// The UUID half was the other way round until CALCITE-7716 made the engine's comparison
+        /// unsigned in 1.43; <c>CalciteUuidOrderingMeasurementTests</c> is what says it is so, and
+        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> records what the claim now rests on.
+        /// That the two bits remain independent is shown by the forms that still separate on them —
+        /// an unpadded integer, and an instant at mixed precision.
+        /// </remarks>
         [TestMethod]
-        public void ADateAtOneFixedShapePreservesOrderWhereAUuidDoesNot()
+        public void ADateAtOneFixedShapeAndACanonicalUuidBothPreserveOrder()
         {
             var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
 
             derived.RepresentationOf(At)!.Value.PreservesOrder.Should().BeTrue(
                 "one fixed ISO-8601 UTC shape sorts lexically the way it sorts chronologically");
 
-            derived.RepresentationOf(ParkId)!.Value.PreservesOrder.Should().BeFalse(
-                "Calcite compares UUIDs as two signed halves, so the canonical string does not sort in its order");
+            derived.RepresentationOf(ParkId)!.Value.PreservesOrder.Should().BeTrue(
+                "a canonical lowercase spelling draws from 0-9a-f alone, over which ordinal text order is the unsigned 128-bit order the engine compares in");
 
             derived.RepresentationOf(ParkId)!.Value.PreservesEquality.Should().BeTrue();
+
+            CosmosStoredForms.IntegerUnpadded.PreservesEquality.Should().BeTrue();
+            CosmosStoredForms.IntegerUnpadded.PreservesOrder.Should().BeFalse(
+                "'9' sorts after '42', so the two properties are still carried separately");
         }
 
+        /// <summary>
+        /// A confined UUID and a plain one are recognised as different forms, and under the unsigned
+        /// comparison both preserve order.
+        /// </summary>
+        /// <remarks>
+        /// The confined row is kept because it is what survives <c>calcite.uuid.unsigned.comparison</c>
+        /// being turned off — see <see cref="CosmosStoredForms.UuidCanonicalLowerSortable"/>. Which
+        /// pattern yields which form is therefore still worth pinning, even where the licence is now
+        /// the same.
+        /// </remarks>
         [TestMethod]
-        public void AFirstDigitConfinedUuidIsSortableAndAPlainOneIsNot()
+        public void AFirstDigitConfinedUuidAndAPlainOneAreDistinctFormsAndBothSort()
         {
             const string Sortable = """
             { "type": "object", "properties": {
@@ -142,6 +167,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             derived.RepresentationOf(CosmosDocumentPath.Root.Property("v7")).Should().Be(CosmosStoredForms.UuidCanonicalLowerSortable);
             derived.RepresentationOf(CosmosDocumentPath.Root.Property("v4")).Should().Be(CosmosStoredForms.UuidCanonicalLower);
+
+            CosmosStoredForms.UuidCanonicalLowerSortable.PreservesOrder.Should().BeTrue("the confinement licenses the order under either comparison");
+            CosmosStoredForms.UuidCanonicalLower.PreservesOrder.Should().BeTrue("and the unsigned comparison licenses it without one");
+
             derived.RepresentationOf(CosmosDocumentPath.Root.Property("loose")).Should().BeNull(
                 "a case-insensitive class is a different language and gets no entry, which is the whole point of recognising rather than probing");
         }
@@ -274,8 +303,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 // The variant class written out of order.
                 ("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[ba98][0-9a-f]{3}-[0-9a-f]{12}$", lower),
 
-                // The nil-UUID alternation the uuid package documents. Equality survives, ordering
-                // does not: the nil value variant nibble is 0, which is on the other side of the sign.
+                // The nil-UUID alternation the uuid package documents, which is registered as the
+                // plain row rather than the confined one: the nil value's variant nibble is 0 rather
+                // than 8-b, so it is on the other side of the sign the confinement argument needs.
                 ("(?:^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$)|(?:^0{8}-0{4}-0{4}-0{4}-0{12}$)", lower),
                 ("(?:^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[a-f0-9]{4}-[a-f0-9]{12}$)|(?:^0{8}-0{4}-0{4}-0{4}-0{12}$)", lower),
 

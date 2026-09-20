@@ -267,12 +267,14 @@ the plan declared text, which the reader refuses rather than coerces.
 
 Two limits are worth knowing. A cast to a **number** converts rather than renders — `CAST(x AS
 INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service reproduces that, so it
-stays in process, as does any cast carrying a width. And a rendered column **cannot be an `ORDER BY`
-key at the service**: the rendering is not the path underneath, and the service will not order by an
-expression in any case, answering one with *"ORDER BY item expression could not be mapped to a
-document path"*. So a page ordered by such a column reads every matching document. Order by the path
-itself and it reads a page — subject to the null placement above, which `id`, `_ts` and `_etag` are
-exempt from, being non-nullable.
+stays in process, as does any cast carrying a width. And a rendered column is **not itself an `ORDER
+BY` key at the service**: the rendering is not the path underneath, and the service will not order by
+an expression in any case, answering one with *"ORDER BY item expression could not be mapped to a
+document path"*. What the adapter can do instead is order by the path the column was rendered from,
+where a declared schema says the stored spelling sorts the way the values do — see *Describing what a
+container holds*. Without that it reads every matching document. Ordering by the path itself always
+reads a page — subject to the null placement above, which `id`, `_ts` and `_etag` are exempt from,
+being non-nullable.
 
 ### Describing what a container holds
 
@@ -344,6 +346,10 @@ without a schema   the container is read whole and the comparison is made in pro
 with one          WHERE c.trackingId = @p0, routed to the partition holding it
 ```
 
+`<`, `<=`, `>` and `>=` lower the same way — a keyset cursor, `WHERE id > @last ORDER BY id FETCH
+NEXT 50 ROWS ONLY`, becomes a page the service serves rather than a container read whole for every
+page. A range names no single value, so it is not routed to one partition the way the equality is.
+
 A declared `type` earns its keep on its own. A comparison over a document path is normally pushed
 *weakened* — `IS_DEFINED(c.carrier) AND (NOT IS_STRING(c.carrier) OR c.carrier >= @p0)` — and
 rechecked in process, because the service orders values across JSON types where SQL orders their
@@ -366,7 +372,8 @@ with one           ORDER BY c.carrier at the service, 20 documents returned
 
 The service sends the stored text and the adapter parses it back to a UUID on the way out, which is
 exact for the same reason the comparison was: the schema said which spelling is stored. Sorting *by*
-such a column is still declined — that is the ordering question below, and it is a different claim.
+such a column — `ORDER BY 1` above — is a further claim, that the stored strings sort the way the
+values do; the schema settles that too, and the ordering question below is where it is settled.
 
 **The pattern is what does the work, not `format`.** JSON Schema calls `format` an annotation rather
 than an assertion, and RFC 9562 dropped the lowercase-output rule, so `"format": "uuid"` does not say
@@ -376,9 +383,9 @@ yields no fact:
 
 | declared `pattern` | what it proves |
 |---|---|
-| `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` | equality, `IN`, `DISTINCT`, routing, point reads |
+| `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` | equality, `IN`, `DISTINCT`, routing, point reads, **and** ordering |
 | the same with the variant nibble `[89ab]` or a version digit pinned | the same |
-| `^[0-7][0-9a-f]{7}-…-[89ab][0-9a-f]{3}-…$` — first digit confined | the above **and** ordering |
+| the same in uppercase throughout | the same |
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` | equality and ordering |
 | the same with `.[0-9]{3}` or `.[0-9]{6}` before the `Z` | equality and ordering |
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | equality and ordering |
@@ -406,13 +413,19 @@ one value two spellings — so the adapter reads it as saying nothing rather tha
 that would miss half your documents. Say `^[0-9]{5}$` if the values are padded, or
 `^(0|[1-9][0-9]*)$` if they are not.
 
-**Why a UUID pattern does not always give you ordering**, which is the surprising row above. SQL
-compares two UUIDs as two *signed* 64-bit halves, so the order of the canonical strings is not the
-order of the values — `UUID'80000000-…' > UUID'00000000-…'` is **false**. The two agree only where
-the top bit of each half is constant across your values: the 1st and 17th hex digits confined to one
-side of `8`. RFC 4122 pins the 17th for you; the first digit is version-dependent, and UUIDv7 keeps
-it under `8` for any timestamp you will store. So a v7 pattern is sortable and a v4 pattern is not,
-and the adapter will not push a sort it cannot vouch for.
+**Why a UUID pattern gives you ordering, and what it depends on.** A canonical lowercase UUID is
+written in `0-9a-f` with the hyphens always in the same places, so sorting the stored strings sorts
+the values — provided the engine compares UUIDs as unsigned 128-bit numbers, which Calcite does from
+1.43 ([CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716)). An uppercase container is
+the same story in `0-9A-F`.
+
+Before 1.43, `java.util.UUID.compareTo` compared the two 64-bit halves as *signed* longs — a JDK
+quirk — and `UUID'80000000-…' > UUID'00000000-…'` was **false**, so only a pattern confining the
+first hex digit could be sorted and a plain v4 pattern could not. Calcite keeps the old behaviour
+available behind `calcite.uuid.unsigned.comparison`, which defaults to on; the adapter reads that
+property and withdraws the ordering claim from the unconfined patterns if you turn it off, so a
+confined pattern like `^[0-7][0-9a-f]{7}-…-[89ab][0-9a-f]{3}-…$` still sorts either way. The adapter
+will not push a sort it cannot vouch for.
 
 **A container that holds more than one kind of document** describes them with `oneOf` and a
 discriminating `const`, or with `if`/`then`/`else`:

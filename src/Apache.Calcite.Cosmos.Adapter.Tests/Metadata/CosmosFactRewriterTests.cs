@@ -73,13 +73,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         RexNode Str(string value) => _rex.makeLiteral(value);
 
+        /// <summary><c>CAST(&lt;ref&gt; AS UUID)</c>, the shape a view over a typed column produces.</summary>
+        RexNode AsUuid() => _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Ref(0, SqlTypeName.VARCHAR));
+
         /// <summary>
         /// <c>CAST(&lt;ref&gt; AS UUID) = UUID'…'</c>, the shape a view over a typed column produces.
         /// </summary>
-        RexNode UuidEquality() =>
-            _rex.makeCall(SqlStdOperatorTable.EQUALS,
-                _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Ref(0, SqlTypeName.VARCHAR)),
-                Uuid(Canonical));
+        RexNode UuidEquality() => _rex.makeCall(SqlStdOperatorTable.EQUALS, AsUuid(), Uuid(Canonical));
 
         RexNode KindIs(string value) => _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(1, SqlTypeName.VARCHAR), Str(value));
 
@@ -188,22 +188,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A form that preserves equality and not order lowers the equality and refuses the ordering.
+        /// A UUID range comparison lowers to a string comparison, with the literal written in the
+        /// stored spelling.
         /// </summary>
         /// <remarks>
-        /// The two properties are independent, and this is the pair that shows it: an unconfined
-        /// canonical UUID has one spelling per value, so equality is exact, while Calcite's order over
-        /// it is not the lexical one. Nothing about the ordering follows from the equality.
+        /// <para>
+        /// This lowered nothing until #142, and the refusal was right at the time: Calcite compared
+        /// UUIDs as two <em>signed</em> 64-bit halves, so an unconfined canonical form preserved
+        /// equality and not order and lowering a range on one would have returned the wrong rows.
+        /// CALCITE-7716 made the comparison unsigned in 1.43 and
+        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it.
+        /// </para>
+        /// <para>
+        /// A keyset-paginated <c>WHERE id &gt; @last</c> is the shape that wants it, and the whole of
+        /// what it is worth: without the lowering the comparison has no Cosmos form and the container
+        /// is read whole for every page.
+        /// </para>
         /// </remarks>
         [TestMethod]
-        public void AnEqualityOnlyFormStillRefusesTheOrdering()
+        public void AUuidRangeLowersToAStringComparison()
         {
-            var ordering = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
-                _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Ref(0, SqlTypeName.VARCHAR)),
-                Uuid(Canonical));
+            foreach (var (operator_, rendered) in new (org.apache.calcite.sql.SqlOperator, string)[]
+            {
+                (SqlStdOperatorTable.GREATER_THAN, ">"),
+                (SqlStdOperatorTable.GREATER_THAN_OR_EQUAL, ">="),
+                (SqlStdOperatorTable.LESS_THAN, "<"),
+                (SqlStdOperatorTable.LESS_THAN_OR_EQUAL, "<="),
+                (SqlStdOperatorTable.NOT_EQUALS, "<>"),
+            })
+                Rewrite(_rex.makeCall(operator_, AsUuid(), Uuid(Canonical)), Unconditional)
+                    .Should().Be($"{rendered}($0, '{Canonical}')", "for " + rendered);
+        }
 
-            Rewrite(ordering, Unconditional).Should().Be(ordering.ToString(), "only the equality was ever licensed");
-            Rewrite(UuidEquality(), Unconditional).Should().Contain("'" + Canonical + "'", "while the equality still lowers");
+        /// <summary>
+        /// Reading the path off the right-hand operand means reading the comparison backwards, so the
+        /// operator is reversed with it.
+        /// </summary>
+        /// <remarks>
+        /// The case that would be silently wrong rather than merely unpushed, and the one the UUID
+        /// lowering could not get wrong while it only ever built an <c>EQUALS</c>. It can now, so it
+        /// is pinned here exactly as the instant's reversal is.
+        /// </remarks>
+        [TestMethod]
+        public void TheOperatorIsReversedWhenTheUuidLiteralIsOnTheLeft()
+        {
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Uuid(Canonical), AsUuid()), Unconditional)
+                .Should().Be($"<($0, '{Canonical}')", "`literal > path` is `path < literal`");
+
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, Uuid(Canonical), AsUuid()), Unconditional)
+                .Should().Be($">=($0, '{Canonical}')");
+        }
+
+        /// <summary>
+        /// A range over a path whose declared form is not a UUID lowers nothing, the literal having no
+        /// spelling there.
+        /// </summary>
+        /// <remarks>
+        /// The gate that is not the order bit. An instant path preserves order, so the ordering is
+        /// licensed and the rewrite still declines — <c>RenderUuid</c> answers null for a form that
+        /// stores something else, and comparing a UUID against an ISO-8601 string would select
+        /// whatever the code points happened to say.
+        /// </remarks>
+        [TestMethod]
+        public void AUuidRangeOverAnInstantPathLowersNothing()
+        {
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsUuid(), Uuid(Canonical));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString());
+            Rewrite(condition, Unshaped).Should().Be(condition.ToString(), "and an undeclared shape says nothing either");
         }
 
         [TestMethod]
