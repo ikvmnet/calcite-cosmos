@@ -1,8 +1,8 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -23,14 +23,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// length — so padding to a fixed width buys the ordering and forbidding padding does not.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CosmosStoredFormsTests
     {
 
         /// <summary>
         /// A fixed width gives one spelling per value and a lexical order that is the numeric one.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AFixedWidthIsBothFaithfulAndSortable()
         {
             var form = CosmosStoredForms.Recognise("^[0-9]{5}$");
@@ -44,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Written with <c>\d</c> it is the same pattern, which normalisation already knew.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheDigitShorthandIsTheSamePattern()
         {
             CosmosStoredForms.Recognise(@"^\d{5}$").Should().Be(CosmosStoredForms.Recognise("^[0-9]{5}$"));
@@ -57,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Both spellings of the constraint are recognised — one admitting zero and one not — because
         /// the only thing being asked is whether a value has two spellings, and neither lets it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ForbiddingTheLeadingZeroBuysEqualityAndNotOrder()
         {
             foreach (var pattern in new[] { "^(0|[1-9][0-9]*)$", "^[1-9][0-9]*$" })
@@ -79,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// document written the other way, which is the one failure mode the whole model exists to
         /// avoid.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnyRunOfDigitsIsNotFaithfulAndIsRecognisedAsNothing()
         {
             CosmosStoredForms.Recognise("^[0-9]+$").Should().BeNull();
@@ -94,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Calcite reads <c>'-0'</c> as zero, so a form admitting a sign gives zero two spellings and
         /// stops being injective before ordering is even asked about.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASignedPatternIsRecognisedAsNothing()
         {
             CosmosStoredForms.Recognise("^-?[0-9]{5}$").Should().BeNull();
@@ -108,7 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <c>[0-9]{5}</c> is satisfied by <c>x12345y</c>. Treating it as a fixed width would be a
         /// claim about documents the schema never made.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnanchoredPatternIsRecognisedAsNothing()
         {
             CosmosStoredForms.Recognise("[0-9]{5}").Should().BeNull();
@@ -119,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// A literal is written into the container's own shape, and refused where it has none there.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void RenderingPadsToTheDeclaredWidth()
         {
             var form = CosmosStoredForms.Recognise("^[0-9]{5}$")!.Value;
@@ -137,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <c>'100000'</c> beside five-character strings would compare by length rather than by
         /// value. A negative has none either, the form being unsigned.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AValueWithNoSpellingInTheFormIsRefused()
         {
             var padded = CosmosStoredForms.Recognise("^[0-9]{5}$")!.Value;
@@ -154,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// A form that stores something else is not a numeric one, however well declared.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ATemporalFormRendersNoInteger()
         {
             var iso = CosmosStoredForms.Recognise("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")!.Value;

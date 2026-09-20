@@ -3,8 +3,8 @@
 using Azure.Identity;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -19,7 +19,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A client is built without talking to anything — the SDK connects on first use — so what a set of
         /// operands resolves to can be checked here rather than against an account.
         /// </remarks>
-        [TestClass]
         public class Credentials
         {
 
@@ -38,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 return operand;
             }
 
-            [TestMethod]
+            [Fact]
             public void AKeyIsUsedWhereOneIsGiven()
             {
                 using var client = CosmosSchemaFactory.CreateClient(Operand((CosmosSchemaFactory.EndpointOperand, Endpoint), (CosmosSchemaFactory.KeyOperand, Key)));
@@ -53,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             /// The absence is the request. There is no other sensible reading of "no key and no factory",
             /// and requiring a second operand to say so would only be a way to get it wrong.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AnEndpointWithoutAKeyAuthenticatesAsTheAmbientIdentity()
             {
                 using var client = CosmosSchemaFactory.CreateClient(Operand((CosmosSchemaFactory.EndpointOperand, Endpoint)));
@@ -61,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 client.Endpoint.Should().Be(new Uri(Endpoint));
             }
 
-            [TestMethod]
+            [Fact]
             public void AnEmptyKeyIsTreatedAsNoKey()
             {
                 using var client = CosmosSchemaFactory.CreateClient(Operand((CosmosSchemaFactory.EndpointOperand, Endpoint), (CosmosSchemaFactory.KeyOperand, "")));
@@ -69,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 client.Endpoint.Should().Be(new Uri(Endpoint));
             }
 
-            [TestMethod]
+            [Fact]
             public void AnEndpointIsStillRequired()
             {
                 var create = () => CosmosSchemaFactory.CreateClient(Operand((CosmosSchemaFactory.KeyOperand, Key)));
@@ -78,7 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                     .WithMessage($"*{CosmosSchemaFactory.EndpointOperand}*");
             }
 
-            [TestMethod]
+            [Fact]
             public void TheCredentialIsBuiltFromTheAmbientIdentity()
             {
                 CosmosSchemaFactory.CreateCredential(Operand()).Should().BeOfType<DefaultAzureCredential>();
@@ -89,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             /// right one, and a client id where more than one managed identity is assigned. Neither is a
             /// credential in itself, which is why they are accepted rather than required.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TenantAndClientNarrowTheIdentityWithoutBeingRequired()
             {
                 var credential = CosmosSchemaFactory.CreateCredential(Operand(

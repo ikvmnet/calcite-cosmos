@@ -4,13 +4,12 @@ using System.Text;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
-    [TestClass]
     public class CosmosSqlTests
     {
 
@@ -28,124 +27,124 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             return builder.ToString();
         }
 
-        [DataTestMethod]
-        [DataRow("name")]
-        [DataRow("_ts")]
-        [DataRow("_etag")]
-        [DataRow("a1")]
-        [DataRow("A_B_9")]
+        [Theory]
+        [InlineData("name")]
+        [InlineData("_ts")]
+        [InlineData("_etag")]
+        [InlineData("a1")]
+        [InlineData("A_B_9")]
         public void BareIdentifiersAreAccepted(string name)
         {
             CosmosSql.IsBareIdentifier(name).Should().BeTrue();
         }
 
-        [DataTestMethod]
-        [DataRow("")]
-        [DataRow("odd name")]
-        [DataRow("0abc")]
-        [DataRow("has-dash")]
-        [DataRow("has.dot")]
-        [DataRow("café")]
+        [Theory]
+        [InlineData("")]
+        [InlineData("odd name")]
+        [InlineData("0abc")]
+        [InlineData("has-dash")]
+        [InlineData("has.dot")]
+        [InlineData("café")]
         public void NonBareIdentifiersAreRejected(string name)
         {
             CosmosSql.IsBareIdentifier(name).Should().BeFalse();
         }
 
-        [DataTestMethod]
-        [DataRow("TOP")]
-        [DataRow("top")]
-        [DataRow("VALUE")]
-        [DataRow("order")]
+        [Theory]
+        [InlineData("TOP")]
+        [InlineData("top")]
+        [InlineData("VALUE")]
+        [InlineData("order")]
         public void ReservedWordsAreNotBareIdentifiers(string name)
         {
             CosmosSql.IsBareIdentifier(name).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void BarePropertyUsesDotNotation()
         {
             Property("name").Should().Be(".name");
         }
 
-        [TestMethod]
+        [Fact]
         public void NonBarePropertyUsesBracketNotation()
         {
             Property("odd name").Should().Be("[\"odd name\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void ReservedPropertyUsesBracketNotation()
         {
             Property("VALUE").Should().Be("[\"VALUE\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void StringLiteralEscapesQuotesAndBackslashes()
         {
             Literal("say \"hi\"\\").Should().Be("\"say \\\"hi\\\"\\\\\"");
         }
 
-        [TestMethod]
+        [Fact]
         public void StringLiteralEscapesControlCharacters()
         {
             Literal("a\r\n\tb\u0001").Should().Be("\"a\\r\\n\\tb\\u0001\"");
         }
 
-        [TestMethod]
+        [Fact]
         public void PropertyNameWithQuoteIsEscapedInBrackets()
         {
             Property("a\"b").Should().Be("[\"a\\\"b\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void NullRendersAsJsonNull()
         {
             Literal(null).Should().Be("null");
         }
 
-        [DataTestMethod]
-        [DataRow(true, "true")]
-        [DataRow(false, "false")]
+        [Theory]
+        [InlineData(true, "true")]
+        [InlineData(false, "false")]
         public void BooleanRendersAsJsonBoolean(bool value, string expected)
         {
             Literal(value).Should().Be(expected);
         }
 
-        [TestMethod]
+        [Fact]
         public void IntegersRenderWithoutSeparators()
         {
             Literal(1234567).Should().Be("1234567");
             Literal(-42L).Should().Be("-42");
         }
 
-        [TestMethod]
+        [Fact]
         public void DecimalRendersInvariant()
         {
             Literal(1.5m).Should().Be("1.5");
         }
 
-        [TestMethod]
+        [Fact]
         public void DoubleRoundTrips()
         {
             Literal(0.1d).Should().Be("0.1");
             Literal(1e20d).Should().Be("1E+20");
         }
 
-        [TestMethod]
+        [Fact]
         public void NonFiniteDoubleIsRejected()
         {
             var act = () => Literal(double.NaN);
             act.Should().Throw<NotSupportedException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void UnsupportedTypeIsRejected()
         {
             var act = () => Literal(new object());
             act.Should().Throw<NotSupportedException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void NegativeIndexIsRejected()
         {
             var act = () => CosmosSql.WriteIndexAccess(new StringBuilder(), -1);

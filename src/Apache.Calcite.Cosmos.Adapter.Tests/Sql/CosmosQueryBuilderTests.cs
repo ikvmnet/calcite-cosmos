@@ -3,25 +3,24 @@
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
-    [TestClass]
     public class CosmosQueryBuilderTests
     {
 
         static CosmosQueryBuilder Builder() => new("products", "c");
 
-        [TestMethod]
+        [Fact]
         public void NoProjectionReturnsTheDocument()
         {
             Builder().Build().Should().Be("SELECT VALUE c FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void ValueProjectionIsUnwrapped()
         {
             var b = Builder();
@@ -29,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c.name FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void PropertyProjectionBecomesAnObjectConstructor()
         {
             var b = Builder();
@@ -38,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE { \"id\": c.id, \"city\": c.address.city } FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void ProjectionAliasesAreQuoted()
         {
             var b = Builder();
@@ -46,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE { \"odd name\": c.x } FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void DistinctAndTopArePlacedBeforeTheProjection()
         {
             var b = Builder();
@@ -56,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT DISTINCT TOP 5 VALUE c.category FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void WhereIsEmitted()
         {
             var b = Builder();
@@ -64,7 +63,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c WHERE c.price > @p0");
         }
 
-        [TestMethod]
+        [Fact]
         public void UnnestBecomesJoinIn()
         {
             var b = Builder();
@@ -73,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE t FROM products c JOIN t IN c.tags");
         }
 
-        [TestMethod]
+        [Fact]
         public void MultipleUnnestsAreOrdered()
         {
             var b = Builder();
@@ -82,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c JOIN t IN c.tags JOIN s IN c.sizes");
         }
 
-        [TestMethod]
+        [Fact]
         public void GroupByIsEmitted()
         {
             var b = Builder();
@@ -91,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE { \"category\": c.category } FROM products c GROUP BY c.category");
         }
 
-        [TestMethod]
+        [Fact]
         public void OrderByCarriesDirection()
         {
             var b = Builder();
@@ -100,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c ORDER BY c.price ASC, c.name DESC");
         }
 
-        [TestMethod]
+        [Fact]
         public void OffsetAndLimitAreEmittedTogether()
         {
             var b = Builder();
@@ -109,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c OFFSET 10 LIMIT 20");
         }
 
-        [TestMethod]
+        [Fact]
         public void FetchWithoutOffsetStillEmitsOffsetZero()
         {
             var b = Builder();
@@ -117,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c OFFSET 0 LIMIT 20");
         }
 
-        [TestMethod]
+        [Fact]
         public void OffsetWithoutFetchStillEmitsLimit()
         {
             var b = Builder();
@@ -125,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().EndWith("OFFSET 10 LIMIT 2147483647");
         }
 
-        [TestMethod]
+        [Fact]
         public void ClausesAppearInOrder()
         {
             var b = Builder();
@@ -143,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         // The language constraints. These are the reason the builder exists.
 
-        [TestMethod]
+        [Fact]
         public void GroupByWithOrderByIsRejected()
         {
             var b = Builder();
@@ -154,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             act.Should().Throw<InvalidOperationException>().WithMessage("*GROUP BY and ORDER BY*");
         }
 
-        [TestMethod]
+        [Fact]
         public void TopWithOffsetLimitIsRejected()
         {
             var b = Builder();
@@ -165,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             act.Should().Throw<InvalidOperationException>().WithMessage("*TOP*OFFSET*");
         }
 
-        [TestMethod]
+        [Fact]
         public void ValueProjectionCannotBeMixedWithProperties()
         {
             var b = Builder();
@@ -175,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             act.Should().Throw<InvalidOperationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void PropertyProjectionCannotBeMixedWithValue()
         {
             var b = Builder();
@@ -185,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             act.Should().Throw<InvalidOperationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void NegativeFetchIsRejected()
         {
             var b = Builder();
@@ -201,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <remarks>
         /// No direction: the scoring function defines the ranking.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RankByEmitsOrderByRank()
         {
             var b = new CosmosQueryBuilder("products", "c");
@@ -210,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             b.Build().Should().Be("SELECT VALUE c FROM products c ORDER BY RANK FULLTEXTSCORE(c.text, @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void RankByCombinesWithTop()
         {
             var b = new CosmosQueryBuilder("products", "c");
@@ -224,7 +223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A statement has one ORDER BY clause, and the reference says RRF cannot be combined with
         /// ordering on other property paths.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RankByWithAnOrdinaryOrderByIsRefused()
         {
             var b = new CosmosQueryBuilder("products", "c");
@@ -235,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             act.Should().Throw<System.InvalidOperationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void RankByWithGroupByIsRefused()
         {
             var b = new CosmosQueryBuilder("products", "c");

@@ -6,8 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -15,6 +13,8 @@ using org.apache.calcite.schema;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -52,8 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         protected RexBuilder _rex = null!;
         protected CosmosConvention _convention = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        protected CosmosRelNodeFixture()
         {
             // A catalog reader resolves a Table into a RelOptTable without opening the internal
             // Calcite connection that RelBuilder.create would, which needs the JDBC driver.

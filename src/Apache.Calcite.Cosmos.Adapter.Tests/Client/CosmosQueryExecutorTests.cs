@@ -18,9 +18,9 @@ using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
@@ -33,9 +33,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// one where Docker is available and nothing is already listening; these report inconclusive only
     /// where it can do neither.
     /// </remarks>
-    [TestClass]
-    public class CosmosQueryExecutorTests
+    public class CosmosQueryExecutorTests : IClassFixture<CosmosQueryExecutorTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
 
         /// <summary>
@@ -70,8 +82,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static CosmosClient? _client;
         static Container? _container;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             var options = new CosmosClientOptions
             {
@@ -144,8 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             // Dropped rather than left behind: the name carries the framework version, so leaving them
             // accumulates a database per SDK the suite was ever run under — on a real account that is
@@ -160,9 +170,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static Container Container()
         {
             if (_container is null)
-                Assert.Inconclusive("No Cosmos DB account reachable at " + Endpoint);
+                Assert.Skip("No Cosmos DB account reachable at " + Endpoint);
 
             return _container!;
+        }
+
+        /// <summary>
+        /// Takes a document away again when the test that wrote it ends, however it ends.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The container this class seeds is shared by every test in it, and three of them count what
+        /// it holds — <c>IdentityQueryReturnsEveryDocument</c> asserts four documents,
+        /// <c>IsNullTranslationMatchesAbsentProperties</c> and <c>GroupByRunsAgainstTheService</c>
+        /// read across all of them. Two other tests write a document of their own to have something
+        /// with every JSON type in it. So the counting tests are right only while the writing tests
+        /// have not run yet.
+        /// </para>
+        /// <para>
+        /// <b>Nothing ever promised that order.</b> MSTest happened to give it and xUnit gives the
+        /// other one, which is how this surfaced — three failures against a container holding six
+        /// documents where the seed puts four. Removing the document is the fix rather than pinning
+        /// the order, because the order was never the thing being tested.
+        /// </para>
+        /// <para>
+        /// <c>await using</c> at statement level, so the removal runs at the end of the method with
+        /// no <c>try</c>/<c>finally</c> around a test body, and runs on the failing path too — which
+        /// matters most, a failed assertion being exactly when the leftover would go on to fail
+        /// something unrelated.
+        /// </para>
+        /// </remarks>
+        /// <param name="id">The document's id.</param>
+        /// <param name="partition">Its partition key.</param>
+        /// <returns>A handle that deletes the document when disposed.</returns>
+        static IAsyncDisposable RemovedWhenTheTestEnds(string id, string partition) => new Removal(id, partition);
+
+        /// <summary>
+        /// The handle <see cref="RemovedWhenTheTestEnds"/> hands out.
+        /// </summary>
+        sealed class Removal(string id, string partition) : IAsyncDisposable
+        {
+
+            public async ValueTask DisposeAsync()
+            {
+                // A document the test never managed to write is not an error to clean up after.
+                try
+                {
+                    await Container().DeleteItemStreamAsync(id, new PartitionKey(partition));
+                }
+                catch (CosmosException)
+                {
+                }
+            }
+
         }
 
         static async Task<List<JsonElement>> Execute(CosmosQuery query, PartitionKey? partitionKey = null)
@@ -183,14 +243,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         // ── Generated statements actually run ─────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public async Task IdentityQueryReturnsEveryDocument()
         {
             var results = await Execute(Query(Builder()));
             results.Should().HaveCount(4);
         }
 
-        [TestMethod]
+        [Fact]
         public async Task ValueProjectionIsUnwrapped()
         {
             var builder = Builder();
@@ -201,7 +261,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("Trail Blazer", "Road Runner", "Sprint", "Marathon");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task PropertyProjectionProducesObjects()
         {
             var builder = Builder();
@@ -215,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Should().Contain(x => x.GetProperty("n").GetString() == "Sprint" && x.GetProperty("p").GetInt32() == 80);
         }
 
-        [TestMethod]
+        [Fact]
         public async Task BoundParametersAreSent()
         {
             var parameters = new CosmosParameterList();
@@ -232,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Confirms against the service that the emitted form matches both an absent property and
         /// one present with a null value, which <c>= null</c> would not.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task IsNullTranslationMatchesAbsentProperties()
         {
             var builder = Builder();
@@ -245,7 +305,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("4");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task OrderByAndOffsetLimitRun()
         {
             var builder = Builder();
@@ -260,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().Equal("Trail Blazer");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task UnnestRendersAndRuns()
         {
             var builder = Builder();
@@ -272,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("outdoor", "steel");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task NestedPathProjectionRuns()
         {
             var builder = Builder();
@@ -288,7 +348,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The executor uses a partition key the predicate pinned without being told to, so a
         /// query naming its partition key is single-partition automatically.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task RecoveredPartitionKeyIsAppliedWithoutBeingPassed()
         {
             var parameters = new CosmosParameterList();
@@ -302,7 +362,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("3", "4");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task PartitionKeyRestrictsExecutionToOnePartition()
         {
             var builder = Builder();
@@ -313,7 +373,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("3", "4");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task GroupByRunsAgainstTheService()
         {
             var builder = Builder();
@@ -333,7 +393,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The measurement the aggregate pushdown rules are built on: Cosmos counts a JSON null
         /// where SQL excludes it, so <c>COUNT(x)</c> over a nullable column disagrees with SQL.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task CountOfAColumnCountsNullsUnlikeSql()
         {
             var builder = Builder();
@@ -350,7 +410,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// the missing one is simply absent from the result — the answer the query this stands in
         /// for would have given.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ABatchOfPointReadsReturnsTheDocumentsThatExist()
         {
             var query = new CosmosQuery(
@@ -374,7 +434,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// pattern as a character range, where SQL <c>LIKE</c> matches the brackets literally —
         /// so a pattern containing one must not be pushed.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task LikeReadsABracketAsACharacterRange()
         {
             var builder = Builder();
@@ -388,7 +448,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             results.Select(x => x.GetString()).Should().BeEquivalentTo("Sprint");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task StartsWithMatchesThePrefix()
         {
             var builder = Builder();
@@ -410,7 +470,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// accepted. The aggregate-in-an-object-constructor rejection was invisible to every other
         /// layer, so each emitted form is exercised here rather than assumed valid.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task EveryEmittedFormIsAcceptedByTheService()
         {
             var cases = new (string Label, Action<CosmosQueryBuilder> Configure)[]
@@ -594,7 +654,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// then they are the one part of the translator that no service has confirmed.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task FullTextFormsAreAcceptedWhereTheEmulatorSupportsThem()
         {
             var cases = new (string Label, Action<CosmosQueryBuilder> Configure)[]
@@ -647,7 +707,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             }
 
             if (rejected.Count == cases.Length)
-                Assert.Inconclusive("This emulator does not implement full text search; none of " + string.Join(", ", rejected) + " was accepted.");
+                Assert.Skip("This emulator does not implement full text search; none of " + string.Join(", ", rejected) + " was accepted.");
 
             string.Join(", ", rejected).Should().BeEmpty("the emulator accepted some full text forms, so the rest are genuine failures");
         }
@@ -671,7 +731,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// decision, and this is the measurement it should be made against.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task OutOfDomainArithmeticFailsTheQuery()
         {
             var verdicts = new Dictionary<string, bool>();
@@ -723,7 +783,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// which is a long way from here, so the box is the thing worth pinning.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task EveryJsonTypeSurvivesTheRoundTrip()
         {
             const string id = "types-1";
@@ -737,6 +797,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 await Container().UpsertItemStreamAsync(stream, new PartitionKey("types"));
+
+            await using var removal = RemovedWhenTheTestEnds(id, "types");
 
             var parameters = new CosmosParameterList();
             var builder = Builder();
@@ -786,7 +848,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// This is the path a promoted column takes: the plan says what the type is and the materializer
         /// reads it as that, refusing where the document disagrees rather than coercing.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task DeclaredTypesReadFromAStoredDocument()
         {
             const string json = """
@@ -796,6 +858,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
                 await Container().UpsertItemStreamAsync(stream, new PartitionKey("types"));
+
+            await using var removal = RemovedWhenTheTestEnds("types-2", "types");
 
             var parameters = new CosmosParameterList();
             var builder = Builder();
@@ -828,7 +892,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The read returns the document, not the projection the statement would have constructed —
         /// which is the whole reason the converter builds a different row builder for this path.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task APointReadReturnsTheDocument()
         {
             var builder = Builder();
@@ -847,7 +911,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A missing document is an empty result rather than an error: the query this stands in for
         /// would have returned no rows, and a read answering "no such document" is that answer.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task APointReadOfAMissingDocumentReturnsNothing()
         {
             var builder = Builder();
@@ -868,7 +932,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// point of not writing the gap into the test as a constant.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task APointReadCostsLessThanTheQuery()
         {
             var sql = "SELECT VALUE c FROM products c WHERE c.id = \"1\" AND c.category = \"bikes\"";
@@ -891,7 +955,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             // modelling request charges, and the comparison would be asserting a fiction.
             if (readCharge == queryCharge)
             {
-                Assert.Inconclusive(
+                Assert.Skip(
                     $"This service reports a flat request charge — {readCharge} RU for both a point read and the equivalent query — so the two cannot be told apart here.");
             }
 
@@ -909,13 +973,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// measuring rather than assuming. Inconclusive where the account does not report it, so that
         /// what is being claimed stays visible.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task StatisticsAreReadFromTheContainer()
         {
             var metadata = await CosmosContainerMetadataReader.ReadAsync(Container());
 
             if (metadata.Statistics is null)
-                Assert.Inconclusive("This account reports no resource usage for the container.");
+                Assert.Skip("This account reports no resource usage for the container.");
 
             var statistics = metadata.Statistics!.Value;
 
@@ -953,7 +1017,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// a hand-built definition. Verifying it end to end needs a real account.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task MetadataReaderReadsTheLiveContainerDefinition()
         {
             var metadata = await CosmosContainerMetadataReader.ReadAsync(Container());
@@ -990,21 +1054,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return schema.tables().get("products") as CosmosTable;
         }
 
-        [TestMethod]
+        [Fact]
         public void SchemaFactoryBuildsASchemaFromNamedContainers()
         {
             Container();
             Products(listContainers: true).Should().NotBeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void SchemaFactoryDiscoversContainersWhenNoneAreNamed()
         {
             Container();
             Products(listContainers: false).Should().NotBeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void SchemaFactoryTableCarriesTheContainerMetadata()
         {
             Container();
@@ -1024,7 +1088,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// documented case, so a run that reports this empty on the emulator and populated on Azure has
         /// told us which.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SchemaFactoryTableCarriesTheFullTextDeclaration()
         {
             Container();
@@ -1032,7 +1096,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var table = Products(listContainers: true)!;
 
             if (table.Container.FullTextPaths.Count == 0)
-                Assert.Inconclusive("This account did not return a full text policy or index for the fixture's container.");
+                Assert.Skip("This account did not return a full text policy or index for the fixture's container.");
 
             table.Container.FullTextPaths.Should().Contain("/name");
             table.Container.IsPathFullTextSearchable("/name").Should().BeTrue();
@@ -1081,7 +1145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 return [.. measurements];
         }
 
-        [TestMethod]
+        [Fact]
         public async Task AQueryReportsWhatItWasCharged()
         {
             var measurements = await Collect(() => Execute(Query(Builder())));
@@ -1102,7 +1166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The kind tag is what makes the point read visible at all: it is charged and counted like any
         /// other request, and without the tag it is indistinguishable from the query it replaced.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task APointReadReportsUnderItsOwnKind()
         {
             var builder = Builder();
@@ -1140,7 +1204,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return captured;
         }
 
-        [TestMethod]
+        [Fact]
         public async Task AQuerySpanCarriesTheStatementAndItsTotalCost()
         {
             var activity = await Trace(() => Execute(Query(Builder())));
@@ -1171,7 +1235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// that, and asserting through it would be asserting the emulator rather than the service.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task IndexMetricsArriveOnlyWhereTheyWereAskedFor()
         {
             static async Task Run(bool indexMetrics)
@@ -1186,7 +1250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             if (asked!.GetTagItem("cosmos.index_metrics") is not string metrics)
             {
-                Assert.Inconclusive("This account returns no index metrics.");
+                Assert.Skip("This account returns no index metrics.");
                 return;
             }
 
@@ -1213,7 +1277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Inconclusive on the emulator, which reports no index metrics at all.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheLookupRestrictionIsServedByTheIndex()
         {
             var names = new List<string>();
@@ -1243,7 +1307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             if (metrics is null)
             {
-                Assert.Inconclusive("This account returns no index metrics.");
+                Assert.Skip("This account returns no index metrics.");
                 return;
             }
 
@@ -1274,7 +1338,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// for a second worker to read. The SDK otherwise sizes its fan-out for a query that might span
         /// every partition.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APinnedPartitionKeyNeedsNoConcurrency()
         {
             var query = new CosmosQuery("SELECT VALUE c FROM products c", Array.Empty<CosmosParameter>());
@@ -1289,7 +1353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// container's spread, which this does not know — and the SDK's own default is a better guess
         /// than a constant invented here.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACrossPartitionQueryKeepsTheSdkDefault()
         {
             var query = new CosmosQuery("SELECT VALUE c FROM products c", Array.Empty<CosmosParameter>());
@@ -1299,7 +1363,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             options.MaxConcurrency.Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void APushedLimitBecomesThePageSize()
         {
             var query = new CosmosQuery("SELECT VALUE c FROM products c OFFSET 0 LIMIT 5", Array.Empty<CosmosParameter>(), MaxItemCount: 5);
@@ -1338,7 +1402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Document 4 has no <c>price</c>. Everything below turns on whether it comes back.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AnUndefinedPropertyIsNotReachedByAComparisonEvenUnderNot()
         {
             // The baseline: IS_DEFINED answers about absence, so its negation finds the absent one.
@@ -1362,7 +1426,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// without a <c>price</c>, it would be observing absence and could not imply the path is
         /// defined.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task NullIsNotUndefined()
         {
             (await Matching("c.price = null")).Should().NotContain("4",
@@ -1398,7 +1462,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// skip, which is the point of not writing the gap in as a constant.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AMultiKeyOrderByNeedsACompositeIndex()
         {
             // Two different reasons to report inconclusive, and this is the first: no service at
@@ -1460,7 +1524,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 // composite index is not implementing them, and has nothing to say about the guard.
                 if (multi is null)
                 {
-                    Assert.Inconclusive(
+                    Assert.Skip(
                         "This service accepts a multi-key ORDER BY over a container with no composite index, so it does not implement them and cannot answer what the sort guard is built on.");
                 }
 
@@ -1501,7 +1565,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// no service that could answer differently and leave the rule standing.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task NullAndAbsentSortFirstAscendingAndLastDescending()
         {
             Container();

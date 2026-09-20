@@ -7,8 +7,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -22,6 +20,8 @@ using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.util;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -46,7 +46,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     /// a call for its name rather than for its identity.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CosmosSchemaFunctionTests
     {
 
@@ -149,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// The whole point: no operator table, and the name still resolves.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AFunctionResolvesThroughTheSchemaAlone()
         {
             Render(Plan("SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))"))
@@ -165,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// so the chained operator wins and the schema's declaration is never reached. The README's
         /// instruction is therefore stale rather than wrong, and says so.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ChainingTheOperatorTableAsWellIsNotADuplicate()
         {
             const string Sql = "SELECT c.\"id\" FROM products AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))";
@@ -176,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// The full text predicates, including the variadic ones.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheFullTextPredicatesResolve()
         {
             Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')"))
@@ -201,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// answers the same call, its checker being genuinely variadic; that is what the second half
         /// asserts, and it is the workaround for a query that needs more keywords than this.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AVariadicFunctionResolvesUpToTheDeclaredLimit()
         {
             static string Keywords(int count) => string.Join(", ", Enumerable.Range(0, count).Select(i => $"'k{i}'"));
@@ -225,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// The rule that recognises the shape asks the ordering expression whether it is a scoring
         /// function, and asks by name. This is what that buys.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OrderingByAScoreBecomesARankClause()
         {
             Render(Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY"))
@@ -235,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <summary>
         /// And <c>RRF</c>, whose arguments are themselves scores.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ScoresFuseThroughTheSchemaRouteToo()
         {
             Render(Plan(
@@ -253,7 +252,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// it elsewhere by name, so a call resolved through the schema is refused for the same reason
         /// — which is the half of this that a name-based check had to keep.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProjectedScoreIsStillRefused()
         {
             var projected = () => Plan("SELECT FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') AS \"s\" FROM products AS c");
@@ -273,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// so a call Calcite built around a schema declaration renders as the operator does.
         /// <c>/name</c> is declared and <c>/description</c> is not.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUndeclaredPathIsReachedThroughTheSchemaToo()
         {
             Render(Plan("SELECT c.\"id\" FROM products AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c.\"DOC\", '$.description'), 'steel')"))
@@ -289,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// against the account it descended from. Declaring them at both levels is what makes that
         /// work, and this is the case that needs the account level.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnAccountRootedQueryResolvesThemToo()
         {
             Render(Plan("SELECT c.\"id\" FROM \"inventory\".\"products\" AS c WHERE IS_DEFINED(JSON_VALUE(c.\"DOC\", '$.price'))", account: true))
@@ -315,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the function and say why.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OnlyTheTypeTestsHaveABody()
         {
             var schema = new CosmosSchema(new[] { Products });
@@ -368,7 +367,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// reachable through a planner a host built but not through a connection is the defect the
         /// schema declarations exist to close.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheSchemaOffersEverythingTheOperatorTableDoes()
         {
             var declared = new List<string>();
@@ -402,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// quietly wrong.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheFunLibrariesDoNotShadowThem()
         {
             Render(Plan("SELECT REVERSE(c.\"id\") AS \"r\" FROM products AS c", libraries: true))
@@ -442,7 +441,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// rather than different spellings. See <see cref="CosmosOperators"/>.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NoneOfTheNamesIsOneCalciteAlreadyUses()
         {
             var libraries = java.util.EnumSet.allOf(java.lang.Class.forName("org.apache.calcite.sql.fun.SqlLibrary"));

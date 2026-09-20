@@ -12,8 +12,8 @@ using Azure.Identity;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -44,9 +44,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
     ///     --database-name calcite_cosmos_pointread --name jsonkinds --partition-key-path "/k"
     /// </code>
     /// </remarks>
-    [TestClass]
-    public class CosmosFunctionBodiesTests
+    public class CosmosFunctionBodiesTests : IClassFixture<CosmosFunctionBodiesTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
         static readonly string? Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT");
         static readonly string? Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY");
@@ -77,8 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             ("empty-object", """{"id":"empty-object","k":"kinds","v":{}}"""),
         };
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             if (string.IsNullOrEmpty(Endpoint))
             {
@@ -119,8 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             _client?.Dispose();
             _client = null;
@@ -130,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         static Container Container()
         {
             if (_container is null)
-                Assert.Inconclusive("This differential needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
+                Assert.Skip("This differential needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
 
             return _container!;
         }
@@ -148,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             ("IS_PRIMITIVE", CosmosFunctionBodies.IsPrimitive),
         };
 
-        [TestMethod]
+        [Fact]
         public async Task TheBodiesAnswerWhatTheServiceAnswers()
         {
             var projections = new List<string>();

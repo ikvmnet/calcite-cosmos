@@ -8,8 +8,6 @@ using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -23,6 +21,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 {
@@ -44,7 +44,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// <c>SET</c> list separately.
     /// </para>
     /// </remarks>
-    [TestClass]
     public partial class CosmosTableModifyRuleTests
     {
 
@@ -55,8 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         CosmosTable _products = null!;
         CosmosTable _archive = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        public CosmosTableModifyRuleTests()
         {
             _products = new CosmosTable(Products);
             _archive = new CosmosTable(Archive);
@@ -145,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <c>NOT NULL</c>, and the validator refuses an insert that omits a column which is neither
         /// nullable nor defaulted.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ColumnsMayBeOmittedFromAnInsert()
         {
             PlanText("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')").Should().Be(
@@ -158,7 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// An unmentioned column reaches the write as a null, which is what makes the "contributes only
         /// when not null" rule necessary rather than merely convenient.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnUnmentionedColumnArrivesAsANull()
         {
             PlanText("INSERT INTO products (\"DOC\") SELECT \"DOC\" FROM archive").Should().Be(
@@ -170,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// The service's own properties cannot be written, and the validator is what says so.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ServiceMaintainedColumnsCannotBeInserted()
         {
             var act = () => PlanText("INSERT INTO products (\"_ts\") VALUES (5)");
@@ -184,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// four columns supplied positionally — both document columns among them, since either may
         /// describe the document being written.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnInsertWithoutAColumnListSuppliesTheWritableColumns()
         {
             PlanText("INSERT INTO products SELECT \"DOC\" FROM archive").Should().Be(
@@ -193,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 "    CosmosTableScan(table=[[archive]])");
         }
 
-        [TestMethod]
+        [Fact]
         public void DeletePlansToAModifyOverTheRowsToDelete()
         {
             PlanText("DELETE FROM products WHERE \"id\" = 'x'").Should().Be(
@@ -213,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// what would make a patch implementation possible; see <c>DESIGN.md</c> under
         /// <em>Updating</em>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UpdateCarriesItsSetListSeparatelyFromTheRows()
         {
             PlanText("UPDATE products SET \"DOC\" = '{}' WHERE \"id\" = 'y'").Should().Be(
@@ -234,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// asked for its single value. The rule simplifies the input's traits for that reason. A
         /// <c>DELETE</c> never showed it: its input is a scan, which claims no collation at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void InsertFromValuesIsSelectedByThePlanner()
         {
             var modify = Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')"));
@@ -243,7 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             modify!.Write.Should().Be(CosmosWriteOperation.Insert);
         }
 
-        [TestMethod]
+        [Fact]
         public void DeleteIsSelectedByThePlanner()
         {
             var modify = Find<CosmosTableModify>(Plan("DELETE FROM products WHERE \"id\" = 'x'"));
@@ -262,7 +260,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// Both containers are registered in <see cref="Plan"/>, so a rule bound to either would fail
         /// this for the other.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EitherContainerCanBeWrittenTo()
         {
             Find<CosmosTableModify>(Plan("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')")).Should().NotBeNull();
@@ -278,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// that, priced as what it is. The rows arrive from the scan the plan shows, exactly as a
         /// <c>DELETE</c>'s do.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UpdateOfTheDocumentColumnIsSelectedAsAReplace()
         {
             var modify = Find<CosmosTableModify>(Plan("UPDATE products SET \"DOC\" = \"DOC\" WHERE \"id\" = 'y'"));
@@ -296,7 +294,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// where it would be a request that fails per row. Moving a document is a delete and a
         /// create, which is a different statement.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UpdateOfThePartitionKeyIsDeclined()
         {
             var act = () => Plan("UPDATE products SET \"$.category\" = 'x' WHERE \"id\" = 'y'");
@@ -307,7 +305,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// A <c>SET</c> naming <c>id</c> is declined for the same reason: identity is not a property.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void UpdateOfIdIsDeclined()
         {
             var act = () => Plan("UPDATE products SET \"id\" = 'z' WHERE \"id\" = 'y'");
@@ -324,7 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// and projects a literal null, so every read of either returns nothing. The row type is
         /// identical either way, which is why this asserts the plan rather than the type.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ServiceMaintainedColumnsAreStillRead()
         {
             var plan = PlanText("SELECT \"_ts\", \"_etag\" FROM products");

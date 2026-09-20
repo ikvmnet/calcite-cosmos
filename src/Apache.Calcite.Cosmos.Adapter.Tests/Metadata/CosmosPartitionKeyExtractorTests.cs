@@ -5,12 +5,12 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -19,7 +19,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// Recovering the partition key a predicate pins. Getting this wrong in the permissive
     /// direction loses rows, so only a conjunction of equalities against constants qualifies.
     /// </summary>
-    [TestClass]
     public class CosmosPartitionKeyExtractorTests
     {
 
@@ -58,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         // ── Recovered ─────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void EqualityOnThePartitionKeyIsRecovered()
         {
             Extract(Eq(Ref(1), Str("bikes")), Container("/category"), out var values).Should().BeTrue();
@@ -82,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// documents either way. Routing narrows which partitions are visited and filters nothing; the
         /// predicate is still in the statement.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APartitionKeyReachedThroughACastToTextIsRoutedOn()
         {
             ExtractPrefix(Eq(TextCast(Ref(1)), Str("bikes")), Container("/category"), out var values).Should().BeTrue();
@@ -95,7 +94,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// partition holding a matching document. Measured against the differential container, where
         /// exactly that document exists.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APartitionKeyReachedThroughACastAgainstAmbiguousTextIsNotRoutedOn()
         {
             ExtractPrefix(Eq(TextCast(Ref(1)), Str("30")), Container("/category"), out _).Should().BeFalse();
@@ -104,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// A cast to a number is not dropped anywhere, and least of all here.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APartitionKeyReachedThroughANumericCastIsNotRoutedOn()
         {
             var cast = _rex.makeAbstractCast(_types.createSqlType(SqlTypeName.INTEGER), Ref(1), false);
@@ -121,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// conjuncts accounted for in a stronger sense than routing does. Nothing about the cast form is
         /// known to fail there; it is simply not the place to find out, and a delete least of all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastToTextIsNotUsedWhereThePredicateWouldBeReplaced()
         {
             var condition = Eq(TextCast(Ref(1)), Str("bikes"));
@@ -136,14 +135,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void OperandOrderDoesNotMatter()
         {
             Extract(Eq(Str("bikes"), Ref(1)), Container("/category"), out var values).Should().BeTrue();
             values.Should().Equal("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void PartitionKeyWithinAConjunctionIsRecovered()
         {
             var condition = And(Eq(Ref(3), Str("x")), Eq(Ref(1), Str("bikes")));
@@ -152,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             values.Should().Equal("bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void HierarchicalKeyIsRecoveredInDeclaredOrder()
         {
             var condition = And(Eq(Ref(1), Str("bikes")), Eq(Ref(2), Str("acme")));
@@ -161,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             values.Should().Equal("acme", "bikes");
         }
 
-        [TestMethod]
+        [Fact]
         public void MapPropertyPathIsRecovered()
         {
             var item = _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("region"));
@@ -179,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// The shape <c>pk = 'x' AND id IN ('a', 'b')</c>, after <c>IN</c> has expanded to the
         /// disjunction of equalities the planner carries.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASetOfIdsWithACompleteKeyIsRecovered()
         {
             var condition = And(Eq(Ref(1), Str("bikes")), Or(Eq(Ref(3), Str("a")), Eq(Ref(3), Str("b"))));
@@ -189,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ids.Should().Equal("a", "b");
         }
 
-        [TestMethod]
+        [Fact]
         public void DuplicateIdsCollapse()
         {
             var condition = And(Eq(Ref(1), Str("bikes")), Or(Eq(Ref(3), Str("a")), Eq(Ref(3), Str("a"))));
@@ -202,7 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// The batch read applies no predicate, so a residual conjunct rules it out — the same
         /// blindness the single point read answers for.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AResidualConjunctIsNotRecovered()
         {
             var condition = And(
@@ -213,7 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ExtractSet(condition, Container("/category"), out _, out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ABranchThatIsNotAnIdIsNotRecovered()
         {
             var condition = And(Eq(Ref(1), Str("bikes")), Or(Eq(Ref(3), Str("a")), Eq(Ref(1), Str("shoes"))));
@@ -221,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ExtractSet(condition, Container("/category"), out _, out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ASetWithoutACompleteKeyIsNotRecovered()
         {
             ExtractSet(Or(Eq(Ref(3), Str("a")), Eq(Ref(3), Str("b"))), Container("/category"), out _, out _).Should().BeFalse();
@@ -230,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// A lone id equality is the single point read's question, asked first by the filter.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ASingleIdEqualityIsLeftToThePointRead()
         {
             var condition = And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("a")));
@@ -244,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Under a disjunction an equality does not constrain the predicate, so the query may
         /// match several partitions.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityUnderADisjunctionIsNotRecovered()
         {
             var condition = Or(Eq(Ref(1), Str("bikes")), Eq(Ref(1), Str("shoes")));
@@ -252,7 +251,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Extract(condition, Container("/category"), out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void RangePredicateIsNotRecovered()
         {
             var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Ref(1), Str("bikes"));
@@ -260,19 +259,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Extract(condition, Container("/category"), out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void PartiallyPinnedHierarchicalKeyIsNotRecovered()
         {
             Extract(Eq(Ref(1), Str("bikes")), Container("/tenant", "/category"), out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void EqualityOnADifferentPropertyIsNotRecovered()
         {
             Extract(Eq(Ref(3), Str("x")), Container("/category"), out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void EqualityBetweenTwoPathsIsNotRecovered()
         {
             Extract(Eq(Ref(1), Ref(2)), Container("/category"), out _).Should().BeFalse();
@@ -281,13 +280,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// A path rooted at an array-traversal alias addresses an element, not the document.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityOnAnUnnestAliasIsNotRecovered()
         {
             Extract(Eq(Ref(4), Str("bikes")), Container("/category"), out _).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ContainerWithNoDeclaredPartitionKeyRecoversNothing()
         {
             Extract(Eq(Ref(1), Str("bikes")), Container(), out _).Should().BeFalse();

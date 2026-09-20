@@ -4,8 +4,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -18,6 +16,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -32,7 +32,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// <c>ClassNotFoundException: org.apache.calcite.jdbc.CalciteJdbc41Factory</c>. The parser,
     /// validator, and converter do not need one, so they are wired up directly here.
     /// </remarks>
-    [TestClass]
     public class CosmosSqlPlanningTests
     {
 
@@ -97,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Confirms the table's <c>toRel</c> is reached from SQL, so a scan arrives already in the
         /// Cosmos convention.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ScanIsProducedByTheTable()
         {
             PlanText("SELECT * FROM products").Should().Be(
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "  CosmosTableScan(table=[[products]])");
         }
 
-        [TestMethod]
+        [Fact]
         public void FilterPlansOverTheScan()
         {
             PlanText("SELECT * FROM products AS c WHERE c.\"id\" = 'x'").Should().Contain("LogicalFilter(condition=[=($1, 'x')])");
@@ -114,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// The shape <see cref="CosmosUnnestRule"/> matches, observed rather than assumed.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnnestPlansToACorrelateOverUncollect()
         {
             var plan = PlanText(UnnestSql);
@@ -135,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// predicate did not. Transposed into the correlate it becomes the shape the rule renders as a
         /// <c>WHERE</c> over the traversal alias.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnElementPredicatePlansAboveTheCorrelate()
         {
             var plan = PlanText(UnnestSql + " WHERE CAST(t AS VARCHAR) = 'steel'");
@@ -147,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The rule's shape recognition, driven from real planner output.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void UnnestRuleRecognisesThePlannedCorrelate()
         {
             var correlate = FindCorrelate(Plan(UnnestSql));
@@ -159,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The extracted array expression resolves to the document path the traversal will emit.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void PlannedArrayExpressionResolvesToAPath()
         {
             var correlate = FindCorrelate(Plan(UnnestSql))!;

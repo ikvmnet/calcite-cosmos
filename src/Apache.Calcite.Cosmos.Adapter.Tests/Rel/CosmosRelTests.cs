@@ -6,8 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -15,6 +13,8 @@ using org.apache.calcite.schema;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -23,7 +23,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// The part of <c>Implement</c> that belongs to no single node: the order a plan is allowed to
     /// write its clauses in, and the refusal to visit anything outside the Cosmos convention.
     /// </summary>
-    [TestClass]
     public class CosmosRelTests : CosmosRelNodeFixture
     {
 
@@ -35,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         CosmosSort LimitOver(RelNode input, int fetch) =>
             SortOver(input, RelCollations.EMPTY, null, _rex.makeExactLiteral(new java.math.BigDecimal(fetch)));
 
-        [TestMethod]
+        [Fact]
         public void FilterAboveARowLimitIsRefused()
         {
             var filter = new CosmosFilter(_cluster, Traits(), LimitOver(Scan(), 5),
@@ -45,7 +44,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>().WithMessage("*row limit*");
         }
 
-        [TestMethod]
+        [Fact]
         public void AggregateAboveARowLimitIsRefused()
         {
             var aggregate = new CosmosAggregate(
@@ -56,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>().WithMessage("*row limit*");
         }
 
-        [TestMethod]
+        [Fact]
         public void UnnestAboveARowLimitIsRefused()
         {
             var unnest = UnnestOver(LimitOver(Scan(), 5), MapItem("tags"));
@@ -69,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A traversal multiplies rows, so folding one above a sort would sort the unmultiplied
         /// set.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnnestAboveASortIsRefused()
         {
             var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)));
@@ -82,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <remarks>
         /// A sort without a restriction commutes with a filter, so this stays available.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void FilterAboveAnUnlimitedSortIsAllowed()
         {
             var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)));
@@ -94,7 +93,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         // ── Convention boundary ───────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void VisitingANonCosmosNodeIsRefused()
         {
             var logical = org.apache.calcite.rel.logical.LogicalTableScan.create(_cluster, _table, java.util.Collections.emptyList());

@@ -179,27 +179,33 @@ jobs:
         # scan and process test assemblies
         $tests = $(gi .\tests\$tst\$tfm\*.Tests.dll)
         if ($tests) {
+            New-Item -ItemType Directory -Force TestResults | Out-Null
+
+            # The assembly is its own runner under xunit.v3, so it is executed rather than handed to
+            # `dotnet test`. That matters here rather than being a preference: `dotnet test` drives it
+            # through VSTest, whose xunit adapter launches the test assembly out of process via its
+            # **app host** -- and the app host in this artifact is the one the build job produced, on
+            # ubuntu-24.04. Every other leg in this matrix downloads that same artifact, so it fails to
+            # start with "Could not find app host executable ...Tests.exe" before a test runs.
+            # `dotnet exec` needs only the managed assembly, which is platform-neutral; and
+            # --roll-forward Major is what lets the net8.0 assembly run on the runtimes this job
+            # installs, which are 9 and 10.
             $argl = @(
-                "-f", $tfm,
-                "-v:diag",
-                "--results-directory", "TestResults",
-                "--logger:console;verbosity=diag",
-                "--logger:trx"
+                "exec", "--roll-forward", "Major", $tests[0].FullName,
+                "-result-trx", "TestResults/$tst--$tfm--$sys.trx"
             )
 
-            $runsettings = $(gi .\tests\$tst\$tfm\*.runsettings)
-            if ($runsettings) {
-                $argl += "--settings:$runsettings"
-            }
-
+            # xunit.v3's own filter, which is not VSTest's: a suite name may carry
+            # `?-class- *Foo*`, `?-method- *Bar*` or the `/assembly/namespace/class/method` query
+            # language, and the words are split the way a shell would split them.
             if ($qry -ne "" -and $qry -ne $null) {
-                $argl += @("--filter", $qry)
+                $argl += [regex]::Matches($qry, '[^\s"]+|"([^"]*)"') | ForEach-Object { $_.Value.Trim('"') }
                 Add-Content $env:GITHUB_ENV "`nRET=TestResults--$tst-$qry--$tfm--$sys"
             } else {
                 Add-Content $env:GITHUB_ENV "`nRET=TestResults--$tst--$tfm--$sys"
             }
 
-            dotnet test @argl $tests[0].FullName
+            dotnet @argl
         }
     - name: Archive Test Results
       if: always() && startsWith(env.RET, 'TestResults--')

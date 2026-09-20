@@ -4,8 +4,10 @@ using System.Linq;
 using System.Text;
 
 using FluentAssertions;
+using System.Threading.Tasks;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
 {
@@ -33,9 +35,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
     /// <see cref="PlannerSchema"/>'s declared containers.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class PlannerCorpusTests
+    public class PlannerCorpusTests : IClassFixture<PlannerCorpusTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public ValueTask InitializeAsync() { Initialize(); return default; }
+
+            public ValueTask DisposeAsync() => default;
+
+        }
 
         /// <summary>
         /// What one statement did.
@@ -59,8 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// only the validator and the planner are per statement, which <see cref="PlannerHarness"/>
         /// builds as such.
         /// </remarks>
-        [ClassInitialize]
-        public static void Initialize(TestContext context)
+        static void Initialize()
         {
             _harness = new PlannerHarness();
 
@@ -129,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// it, never a costing that came out badly.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EveryStatementInTheCorpusPlans()
         {
             // Projected to text before asserting, so the report reads as a list of statements
@@ -162,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// number.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheWhollyPushedListAgreesWithThePlanner()
         {
             var drifted = new List<string>();
@@ -195,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// says. Caught here rather than by <see cref="PlannerQueries.WhollyPushed"/> throwing out of
         /// a property, so that the report names the offenders.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EveryWhollyPushedNameNamesAStatement()
         {
             var names = PlannerQueries.All.Select(q => q.Name).ToHashSet(StringComparer.Ordinal);

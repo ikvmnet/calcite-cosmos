@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -6,8 +6,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Data;
 
 using FluentAssertions;
-
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 using org.apache.calcite.config;
 
@@ -41,7 +40,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <c>CalciteConnection</c> then says the two agree.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CalciteUuidOrderingMeasurementTests
     {
 
@@ -107,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// reason the claim is conditioned rather than hard-coded, a runtime that turns it off getting
         /// the signed semantics back.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheUnsignedComparisonIsOnByDefault()
         {
             ((java.lang.Boolean)CalciteSystemProperty.UUID_UNSIGNED_COMPARISON.value()).booleanValue()
@@ -127,7 +125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// engine orders that way too. Under the signed comparison the two lists differed on four of
         /// the nine values.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OrderingIsTheOrdinalOrderOfTheCanonicalSpelling()
         {
             Jdbc(OrderByUuid()).Should().Equal(Values.OrderBy(v => v, StringComparer.Ordinal).ToArray(),
@@ -137,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// The wrapper agrees with the driver, so the ordering above is the engine's and not a layer's.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void TheWrapperReportsTheSameOrder()
         {
             using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);
@@ -163,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// is why the low half used to agree wherever the variant nibble was in the pattern. All three
         /// answered <b>False</b> before 1.43.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheComparisonsTheSignedOrderGotWrongAnswerTheOtherWay()
         {
             Jdbc("""

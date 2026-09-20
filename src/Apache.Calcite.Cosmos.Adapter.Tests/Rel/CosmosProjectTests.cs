@@ -6,8 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -15,6 +13,8 @@ using org.apache.calcite.schema;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -22,11 +22,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
     /// <summary>
     /// The object constructor a projection renders, and what it leaves bound above it.
     /// </summary>
-    [TestClass]
     public class CosmosProjectTests : CosmosRelNodeFixture
     {
 
-        [TestMethod]
+        [Fact]
         public void ProjectRendersAnObjectConstructor()
         {
             var project = ProjectOver(Scan(), new[] { ("theId", Ref(1)), ("stamp", Ref(2)) });
@@ -34,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Sql(project, Implementor()).Should().Be("SELECT VALUE { \"theId\": c.id, \"stamp\": c._ts } FROM products c");
         }
 
-        [TestMethod]
+        [Fact]
         public void ProjectOfADocumentPropertyRendersAPath()
         {
             var project = ProjectOver(Scan(), new[] { ("city", Doc("city")) });
@@ -47,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// a projection must reference the underlying path. That only works because the projection
         /// rebinds the field ordinals to the paths it projected.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortAboveAPathProjectionUsesTheUnderlyingPath()
         {
             var project = ProjectOver(Scan(), new[] { ("theId", Ref(1)) });
@@ -60,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A computed projection has no path to rebind to, so downstream operators that need one
         /// must decline rather than address the wrong value.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SortAboveAComputedProjectionIsRefused()
         {
             var computed = _rex.makeCall(SqlStdOperatorTable.PLUS, Ref(2), Num(1));
@@ -71,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void ComputedProjectionStillRenders()
         {
             var computed = _rex.makeCall(SqlStdOperatorTable.PLUS, Ref(2), Num(1));
@@ -86,7 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// after a path-only projection admits the same documents. Once refused wholesale; what
         /// stays refused is a predicate that reads a computed column, covered next.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void FilterAboveAPathOnlyProjectionRendersAsAWhere()
         {
             var project = ProjectOver(Scan(), new[] { ("theId", Ref(1)) });
@@ -100,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A computed column has no path for WHERE to name — a projection alias is not visible to
         /// it — so the reference itself is refused.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void FilterReadingAComputedProjectionIsRefused()
         {
             var computed = _rex.makeCall(SqlStdOperatorTable.PLUS, Ref(2), Num(1));
@@ -112,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>().WithMessage("*computed*");
         }
 
-        [TestMethod]
+        [Fact]
         public void StackedProjectionsAreRefused()
         {
             var inner = ProjectOver(Scan(), new[] { ("theId", Ref(1)) });
@@ -122,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             act.Should().Throw<CosmosTranslationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void ProjectionOverFilterCombinesBothClauses()
         {
             var filter = new CosmosFilter(_cluster, Traits(), Scan(),

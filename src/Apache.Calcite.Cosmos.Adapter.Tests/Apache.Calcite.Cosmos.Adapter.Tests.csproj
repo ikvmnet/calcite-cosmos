@@ -1,4 +1,4 @@
-﻿<Project Sdk="MSTest.Sdk/4.4.0">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
@@ -6,6 +6,9 @@
         <Nullable>enable</Nullable>
         <NoWarn>$(NoWarn);CS1591</NoWarn>
         <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+        <!-- xunit.v3 builds the assembly as its own runner, and writes the entry point itself. -->
+        <OutputType>Exe</OutputType>
+        <GenerateProgramFile>false</GenerateProgramFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -14,6 +17,8 @@
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
         <PackageReference Include="FluentAssertions" Version="8.11.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="xunit.v3" Version="4.0.1" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
         <PackageReference Include="Apache.Calcite.Data" Version="2.0.1-pre.188" />
         <PackageReference Include="Apache.Calcite.FullText" Version="2.0.1-pre.188" />
         <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.188" />

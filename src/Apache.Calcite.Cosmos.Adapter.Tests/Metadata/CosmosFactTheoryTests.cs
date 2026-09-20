@@ -6,8 +6,8 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using StatementPath = Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath;
 
 using FluentAssertions;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -21,7 +21,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// subsumption is not a rule — a known value settles presence, type and disequality without any of
     /// them being derived, which is what keeps the rule set linear in the schema.
     /// </remarks>
-    [TestClass]
     public class CosmosFactTheoryTests
     {
 
@@ -39,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static CosmosFact Represents(CosmosDocumentPath path, CosmosRepresentation representation) => new(path, new CosmosClaim.Represents(representation));
 
-        [TestMethod]
+        [Fact]
         public void AnUnconditionalFactHoldsWithNothingEstablished()
         {
             var theory = new CosmosFactTheory(new[] { CosmosFactRule.Unconditional(Represents(ParkId, EqualityOnly)) });
@@ -47,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(null).RepresentationOf(ParkId).Should().Be(EqualityOnly);
         }
 
-        [TestMethod]
+        [Fact]
         public void AGuardedFactIsUnusableUntilItsGuardIsProven()
         {
             var theory = new CosmosFactTheory(new[]
@@ -64,7 +63,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly);
         }
 
-        [TestMethod]
+        [Fact]
         public void AKnownValueSettlesPresenceTypeMembershipAndDisequality()
         {
             var set = CosmosFactTheory.Empty.Derive(new[] { Equals(Type, "ParkMap") });
@@ -78,7 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.Integer))).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void ADomainSettlesWhatEveryMemberAgreesOn()
         {
             var set = CosmosFactTheory.Empty.Derive(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) });
@@ -90,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             set.Knows(Equals(Type, "Park")).Should().BeFalse("a domain is not a value");
         }
 
-        [TestMethod]
+        [Fact]
         public void AGuardIsSatisfiedThroughSubsumptionRatherThanLiterally()
         {
             var theory = new CosmosFactTheory(new[]
@@ -111,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// every document what the schema claimed of none — and a grouping key drops its
         /// <c>IS_DEFINED</c> normalisation on the strength of it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NoClaimAboutAValueImpliesThePathHasOne()
         {
             var set = CosmosFactTheory.Empty.Derive(new[]
@@ -129,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue("which required states outright");
         }
 
-        [TestMethod]
+        [Fact]
         public void ChainingReachesAFactWhoseGuardIsItselfDerived()
         {
             // if type = 'ParkMap' then the kind is 'v2'; if the kind is 'v2' then the instant is fixed shape.
@@ -146,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "the second rule's body is satisfied by the first rule's head, which is what chaining is for");
         }
 
-        [TestMethod]
+        [Fact]
         public void EveryAtomOfAConjunctiveBodyHasToHold()
         {
             var version = CosmosDocumentPath.Root.Property("v");
@@ -161,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }).RepresentationOf(At).Should().Be(Ordered);
         }
 
-        [TestMethod]
+        [Fact]
         public void TheStrongestRepresentationWins()
         {
             var theory = new CosmosFactTheory(new[]
@@ -174,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "both were proven, and the caller wants the one that licenses the most");
         }
 
-        [TestMethod]
+        [Fact]
         public void MutuallyDependentRulesTerminate()
         {
             var a = CosmosDocumentPath.Root.Property("a");
@@ -192,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(null).Knows(Equals(a, 1)).Should().BeFalse("neither rule can start itself");
         }
 
-        [TestMethod]
+        [Fact]
         public void ADocumentPathIsTheStatementsPathWithoutTheAlias()
         {
             var path = StatementPath.Root("c").Property("data").Property("parkId");

@@ -7,8 +7,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -31,9 +31,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// range and reports inconclusive otherwise — and drop the database afterwards.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class CosmosLookupRoutingMeasurementTests
+    public class CosmosLookupRoutingMeasurementTests : IClassFixture<CosmosLookupRoutingMeasurementTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
         static readonly string? Endpoint = Environment.GetEnvironmentVariable("COSMOS_TEST_ENDPOINT");
         static readonly string? Key = Environment.GetEnvironmentVariable("COSMOS_TEST_KEY");
@@ -49,8 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static int _feedRangeCount;
         static string? _initializationFailure;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             if (string.IsNullOrEmpty(Endpoint) || string.IsNullOrEmpty(Key))
             {
@@ -115,8 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
@@ -130,10 +140,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static Container Container()
         {
             if (_container is null)
-                Assert.Inconclusive("This measurement needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
+                Assert.Skip("This measurement needs a real account. " + (_initializationFailure ?? "The fixture did not run."));
 
             if (_feedRangeCount < 2)
-                Assert.Inconclusive($"This measurement needs a container spanning several physical partitions; this one has {_feedRangeCount} feed range(s).");
+                Assert.Skip($"This measurement needs a container spanning several physical partitions; this one has {_feedRangeCount} feed range(s).");
 
             return _container!;
         }
@@ -208,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// grouping buys nothing, padding costs nothing.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheLookupRestrictionIsAlreadyRoutedByTheSdk()
         {
             // Ten keys spread across the key space, so they land on every physical partition with

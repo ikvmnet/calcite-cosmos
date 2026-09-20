@@ -8,8 +8,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -22,6 +20,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -37,7 +37,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// weakened to a definedness test and rechecked in process. Both were asking for a value the plan
     /// was never going to have.
     /// </remarks>
-    [TestClass]
     public class CosmosParameterPlanningTests
     {
 
@@ -122,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// — so a plan that carried a parameter there planned happily and threw only when it ran, and
         /// <c>Take</c> and <c>First</c> over a Cosmos-backed entity failed outright.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AParameterisedRowLimitReachesTheService()
         {
             var query = Query("""SELECT c."id" FROM items AS c FETCH NEXT ? ROWS ONLY""");
@@ -135,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Both halves of the clause, and the one <c>ORDER BY RANK</c> writes, are the same question.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AParameterisedOffsetAndLimitBothReachTheService()
         {
             var query = Query("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY""");
@@ -152,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Not a loss: <c>MaxItemCount</c> is a hint about how many rows come back per round trip, and
         /// what bounds the result is the <c>LIMIT</c> the statement already carries.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AnUnknownLimitLeavesThePageSizeToTheService()
         {
             Query("""SELECT c."id" FROM items AS c FETCH NEXT ? ROWS ONLY""").MaxItemCount
@@ -170,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// second type for the comparison to disagree over and nothing to weaken. Whoever supplies the
         /// value does not enter into it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AParameterisedComparisonOverATypedPathIsPushedExactly()
         {
             const string Sql = """SELECT c."id" FROM items AS c WHERE c."id" = ?""";
@@ -198,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// unfortunate: the rows are right either way.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OverAnUndeclaredPathTheComparisonIsWeakenedRatherThanRefused()
         {
             const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.type') = ?""";
@@ -218,7 +217,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL
         /// should, gives it the type as well.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheValueIsNeverRead()
         {
             var query = Query("""SELECT c."id" FROM items AS c WHERE c."id" = ?""");
@@ -231,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The slot is closed at execution, out of the context the run supplies.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void BindingFillsTheSlotFromTheDataContext()
         {
             var query = Query("""SELECT c."id" FROM items AS c FETCH NEXT ? ROWS ONLY""");
@@ -245,7 +244,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A statement carrying no parameter of its own is handed back untouched.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void BindingLeavesAnOrdinaryStatementAlone()
         {
             var query = Query("""SELECT c."id" FROM items AS c FETCH NEXT 3 ROWS ONLY""");

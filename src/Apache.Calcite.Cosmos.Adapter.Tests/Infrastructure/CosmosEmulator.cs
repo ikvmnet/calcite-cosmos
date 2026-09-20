@@ -7,7 +7,8 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 
 using Microsoft.Azure.Cosmos;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
 {
@@ -18,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
     /// <remarks>
     /// <para>
     /// Four test classes need a service, and until this they each said so the same way: a constant
-    /// endpoint, a constant key, and an <c>Assert.Inconclusive</c> when nothing answered. That works
+    /// endpoint, a constant key, and a skip when nothing answered. That works
     /// and it hides things. A whole class of defect — a pushdown that plans correctly and returns the
     /// wrong rows — is invisible without a service, so a suite that quietly skips them reports success
     /// for a run that checked none of it. Three such defects reached a pull request that way.
@@ -36,7 +37,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
     /// emulator working untouched. Only then is one started here.
     /// </para>
     /// </remarks>
-    [TestClass]
     public static class CosmosEmulator
     {
 
@@ -98,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         public static void RequireAccount()
         {
             if (Unavailable is string reason)
-                Assert.Inconclusive(reason);
+                Assert.Skip(reason);
         }
 
         static (string? Endpoint, string? Key, bool IsEmulator, string? Unavailable) Resolve()
@@ -255,8 +255,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// <summary>
         /// Stops the container, where this run started one.
         /// </summary>
-        [AssemblyCleanup]
-        public static async Task AssemblyCleanup()
+        public static async Task StopAsync()
         {
             if (_container is IContainer container)
             {

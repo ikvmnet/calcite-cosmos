@@ -11,8 +11,8 @@ using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 {
@@ -32,9 +32,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// specific four. Reports inconclusive where no account is reachable, as the read tests do.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class CosmosWriteTests
+    public class CosmosWriteTests : IClassFixture<CosmosWriteTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
 
         static string Endpoint => CosmosEmulator.Endpoint!;
@@ -61,8 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static CosmosClient? _client;
         static Container? _container;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             var options = new CosmosClientOptions
             {
@@ -96,8 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             }
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
@@ -109,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static Container Container()
         {
             if (_container is null)
-                Assert.Inconclusive("No Cosmos DB account reachable at " + Endpoint);
+                Assert.Skip("No Cosmos DB account reachable at " + Endpoint);
 
             return _container!;
         }
@@ -190,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// comes from the partition before it is emptied, that the input rows are never read, and
         /// that the service is asked for exactly the partition the predicate named.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task AWholePartitionDeleteCountsFirstAndReadsNoRows()
         {
             await Write(CosmosWriteOperation.Insert, ["""{"id":"wp1","category":"bikes"}""", null, null, null, null]);
@@ -243,7 +253,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return document.RootElement.Clone();
         }
 
-        [TestMethod]
+        [Fact]
         public async Task ADocumentDescribedByTheDocumentColumnIsWritten()
         {
             var count = await Write(CosmosWriteOperation.Insert,
@@ -267,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// same document twice; the service refuses the empty document that results, which is the
         /// loud failure the row model wants rather than a document assembled out of projections.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ARowCarryingOnlyProjectionsDescribesNothing()
         {
             var act = async () => await Write(CosmosWriteOperation.Insert, [null, "p1", null, null, "shoes"]);
@@ -287,7 +297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// column. A property present in the old document and absent from the new one is gone
         /// afterwards, which is what distinguishes a replace from a merge.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task UpdateOfTheDocumentColumnReplacesTheDocument()
         {
             await Write(CosmosWriteOperation.Insert,
@@ -311,7 +321,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// A document gone by the time the replace arrives was deleted by someone else, and a
         /// smaller count is the honest answer — the same stance the delete takes.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task UpdateOfAMissingDocumentCountsNothing()
         {
             var count = await WriteSets(["DOC"],
@@ -338,7 +348,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// decision about what the adapter writes rather than something the service requires.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ServicePropertiesSuppliedByARowAreReplacedByTheService()
         {
             var count = await Write(CosmosWriteOperation.Insert,
@@ -362,7 +372,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// the document to the wrong partition rather than failing, so it is checked by reading it back
         /// from the partition it should be in.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ADocumentWithoutAPartitionKeyGoesToTheNonePartition()
         {
             var count = await Write(CosmosWriteOperation.Insert,
@@ -376,7 +386,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// <c>INSERT</c> creates, so a repeat is a conflict rather than a replacement.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task ADuplicateIdIsRefused()
         {
             await Write(CosmosWriteOperation.Insert, ["""{"id":"d1","category":"bikes","name":"First"}""", null, null, null, null]);
@@ -390,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             written!.Value.GetProperty("name").GetString().Should().Be("First");
         }
 
-        [TestMethod]
+        [Fact]
         public async Task ADeletedDocumentIsGone()
         {
             await Write(CosmosWriteOperation.Insert, ["""{"id":"x1","category":"shoes"}""", null, null, null, null]);
@@ -408,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// The rows were read before they were deleted, so a document gone by the time the delete
         /// arrives was deleted by someone else. Reporting a smaller count is the honest answer.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task DeletingWhatIsNotThereAffectsNothing()
         {
             var count = await Write(CosmosWriteOperation.Delete, ["""{"id":"absent","category":"shoes"}""", null, null, null, null]);
@@ -416,7 +426,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             count.Should().Be(0);
         }
 
-        [TestMethod]
+        [Fact]
         public async Task EveryRowIsWrittenAndCounted()
         {
             var count = await Write(CosmosWriteOperation.Insert,
@@ -434,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// A write is charged, and is reported as a write rather than as a query.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task AWriteIsMeasured()
         {
             var charges = new List<double>();

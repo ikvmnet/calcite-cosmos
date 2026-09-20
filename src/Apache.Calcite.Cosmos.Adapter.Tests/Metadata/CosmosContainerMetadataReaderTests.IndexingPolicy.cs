@@ -3,8 +3,8 @@
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
@@ -16,14 +16,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Whether a path is covered by the container's index. This bears on cost only — an unindexed
         /// path still queries, it just scans.
         /// </summary>
-        [TestClass]
         public class IndexingPolicy
         {
 
             static CosmosContainerMetadata Policy(string[] included, string[] excluded) =>
                 new("products", new[] { "/category" }, null, included, excluded);
 
-            [TestMethod]
+            [Fact]
             public void DefaultPolicyIndexesEverything()
             {
                 var container = new CosmosContainerMetadata("products");
@@ -32,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 container.IsPathIndexed("/inventory/quantity").Should().BeTrue();
             }
 
-            [TestMethod]
+            [Fact]
             public void RootInclusionIndexesEverything()
             {
                 var container = Policy(new[] { "/*" }, new string[0]);
@@ -41,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 container.IsPathIndexed("/deeply/nested/path").Should().BeTrue();
             }
 
-            [TestMethod]
+            [Fact]
             public void ExplicitlyExcludedPathIsNotIndexed()
             {
                 var container = Policy(new[] { "/*" }, new[] { "/notes/?" });
@@ -50,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 container.IsPathIndexed("/name").Should().BeTrue();
             }
 
-            [TestMethod]
+            [Fact]
             public void ExcludedSubtreeCoversPathsBeneathIt()
             {
                 var container = Policy(new[] { "/*" }, new[] { "/blob/*" });
@@ -63,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             /// <remarks>
             /// The documented precedence: a deeper inclusion overrides a shallower exclusion.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void DeeperInclusionOverridesShallowerExclusion()
             {
                 var container = Policy(new[] { "/model/manufacturer/*" }, new[] { "/model/*" });
@@ -76,14 +75,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             /// <remarks>
             /// At equal depth <c>/?</c> is more precise than <c>/*</c>.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ExactPatternOutranksSubtreeAtTheSameDepth()
             {
                 Policy(new[] { "/a/?" }, new[] { "/a/*" }).IsPathIndexed("/a").Should().BeTrue();
                 Policy(new[] { "/a/*" }, new[] { "/a/?" }).IsPathIndexed("/a").Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void PathMatchingNoInclusionIsNotIndexed()
             {
                 var container = Policy(new[] { "/name/?" }, new string[0]);
@@ -95,7 +94,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             /// <remarks>
             /// The service always indexes these and does not permit excluding them.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void IdAndTimestampAreAlwaysIndexed()
             {
                 var container = Policy(new string[0], new[] { "/*" });
@@ -105,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 container.IsPathIndexed("/_etag").Should().BeFalse();
             }
 
-            [TestMethod]
+            [Fact]
             public void PolicyPathsAreReadFromTheContainerDefinition()
             {
                 var properties = new ContainerProperties("products", "/pk");

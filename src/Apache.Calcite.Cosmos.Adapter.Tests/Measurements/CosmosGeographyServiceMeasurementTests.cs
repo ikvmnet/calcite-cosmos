@@ -5,9 +5,10 @@ using System.Threading.Tasks;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using Newtonsoft.Json.Linq;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -27,9 +28,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// and refuse features it implements, which is exactly the kind of answer these ask for.
     /// </para>
     /// </remarks>
-    [TestClass]
-    public class CosmosGeographyServiceMeasurementTests
+    public class CosmosGeographyServiceMeasurementTests : IClassFixture<CosmosGeographyServiceMeasurementTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await Initialize();
+
+            public async ValueTask DisposeAsync() => await Cleanup();
+
+        }
 
         const string Here = """{"type":"Point","coordinates":[-122.33,47.61]}""";
         const string Box = """{"type":"Polygon","coordinates":[[[-123.0,47.0],[-121.0,47.0],[-121.0,48.0],[-123.0,48.0],[-123.0,47.0]]]}""";
@@ -43,8 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static Container? _geometry;
         static string? _unavailable;
 
-        [ClassInitialize]
-        public static async Task Initialize(TestContext context)
+        static async Task Initialize()
         {
             if (string.IsNullOrEmpty(Endpoint) || string.IsNullOrEmpty(Key))
             {
@@ -66,8 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        [ClassCleanup]
-        public static async Task Cleanup()
+        static async Task Cleanup()
         {
             if (_client is null)
                 return;
@@ -128,7 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static Container Geography()
         {
             if (_unavailable is not null)
-                Assert.Inconclusive(_unavailable);
+                Assert.Skip(_unavailable);
 
             return _geography!;
         }
@@ -142,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// be mapped to a document path"</i>, recorded in <c>DESIGN.md</c> — so spatial being admitted
         /// there is a special case rather than the general rule, and this is what says so.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task ADistanceOrdersAtTheService()
         {
             var ordered = await Query(Geography(), $"SELECT c.id FROM c ORDER BY ST_DISTANCE(c.location, {Here})");
@@ -155,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// And under a filter and a page, which is the shape a pushed sort actually takes.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task ADistanceOrdersUnderAFilterAndAPage()
         {
             var page = await Query(Geography(), $"SELECT c.id FROM c WHERE c.pk = 'a' ORDER BY ST_DISTANCE(c.location, {Here}) OFFSET 0 LIMIT 1");
@@ -166,7 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// The forms the translator emits, executed.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task TheEmittedFormsExecute()
         {
             var container = Geography();
@@ -189,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Which is what lets <c>CLR_ST_GEOG_GEOMETRYTYPE</c> push as <c>c.location.type</c> rather than as a
         /// function the service does not have.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task TheTypeMemberSpellsWhatJtsSpells()
         {
             var types = await Query(Geography(), "SELECT c.id, c.location.type AS t FROM c WHERE c.id = 'near'");
@@ -206,11 +217,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The same statement over the same shapes answers 1342 metres one way and 0.0141 the other —
         /// the planar hypotenuse in degrees — with nothing in the response to tell them apart.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task APlanarContainerAnswersInCoordinateUnits()
         {
             if (_unavailable is not null)
-                Assert.Inconclusive(_unavailable);
+                Assert.Skip(_unavailable);
 
             var planar = await Query(_geometry!, $"SELECT c.id, ST_DISTANCE(c.location, {Here}) AS d FROM c WHERE c.id = 'near'");
 

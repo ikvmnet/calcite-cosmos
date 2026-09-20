@@ -2,10 +2,10 @@
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.rel;
 using org.apache.calcite.util;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -14,7 +14,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     /// The statistics a container can honestly supply. Everything here comes from the container
     /// definition; nothing is inferred from documents.
     /// </summary>
-    [TestClass]
     public class CosmosTableTests
     {
 
@@ -29,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         // Row type ordinals: 0 DOC, 1 id, 2 _ts, 3 _etag, then declared paths.
 
-        [TestMethod]
+        [Fact]
         public void PromotedColumnsResolveToOrdinals()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
@@ -40,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             table.GetColumnOrdinal("/category").Should().Be(4);
         }
 
-        [TestMethod]
+        [Fact]
         public void UnpromotedPathsHaveNoOrdinal()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
@@ -53,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <c>id</c> is unique within a logical partition, so partition key plus <c>id</c> is
         /// unique across the container.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PartitionKeyPlusIdIsAKey()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
@@ -63,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ((ImmutableBitSet)keys.get(0)).Should().Be(ImmutableBitSet.of(new[] { 1, 4 }));
         }
 
-        [TestMethod]
+        [Fact]
         public void HierarchicalPartitionKeyContributesEveryPath()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/tenant", "/user" }));
@@ -85,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// The key is expressed over field ordinals, so it needed the path to have a column. Naming
         /// the column for the path itself gives every declared path one, however deep.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NestedPartitionKeyYieldsAKey()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/inventory/sku" }));
@@ -97,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             ((ImmutableBitSet)keys.get(0)).Should().Be(ImmutableBitSet.of(new[] { 1, 4 }));
         }
 
-        [TestMethod]
+        [Fact]
         public void UndeclaredPartitionKeyYieldsNoKey()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products"));
@@ -119,7 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// its clustering order in the rule for the same reason, and that really is the storage order.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACompositeIndexIsNotACollation()
         {
             var container = new CosmosContainerMetadata(
@@ -141,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A composite index over an unpromoted document path names nothing the planner can address,
         /// and remains valid for the sort guard regardless.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void CompositeIndexOverUnpromotedPathsIsStillUsableForTheSortGuard()
         {
             var container = new CosmosContainerMetadata(
@@ -159,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             }).Should().BeTrue();
         }
 
-        [TestMethod]
+        [Fact]
         public void RowCountIsNotInvented()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
@@ -173,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A container built from a definition alone has no row count, and the planner compares plans
         /// without one exactly as it did before. Nothing here samples documents.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void WithoutStatisticsTheRowCountIsUnknown()
         {
             new CosmosTable(new CosmosContainerMetadata("products")).getStatistic().getRowCount().Should().BeNull();
@@ -199,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A row count measures something that keeps changing, so a schema living for the life of a
         /// process must not plan for ever against the count it read first.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheRowCountIsFetchedAgainOnceItHasExpired()
         {
             var clock = new ManualClock();
@@ -227,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// The capability beside it does not expire, and should not: it changes only when someone
         /// enables a preview on the account, which no running process can observe happening.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TheCapabilityIsNotFetchedAgain()
         {
             var clock = new ManualClock();
@@ -245,7 +244,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             probes.Should().Be(1, "a capability is asked once, however long the process runs");
         }
 
-        [TestMethod]
+        [Fact]
         public void AMeasuredRowCountIsReported()
         {
             var container = new CosmosContainerMetadata("products").WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
@@ -256,13 +255,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <remarks>
         /// What a row costs to move, which for a row model carrying whole documents dominates.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AverageDocumentSizeIsDerivedFromTheTotal()
         {
             new CosmosContainerStatistics(100, 50_000, 2).AverageDocumentSizeInBytes.Should().Be(500d);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnEmptyContainerHasNoAverageDocumentSize()
         {
             new CosmosContainerStatistics(0, 0, 1).AverageDocumentSizeInBytes.Should().Be(0d);
@@ -278,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// touches. Flink's FLIP-231 collects connector statistics during optimisation for the same
         /// reason.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AStatisticsProviderIsNotInvokedUntilItIsAsked()
         {
             var invocations = 0;
@@ -297,7 +296,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             invocations.Should().Be(1);
         }
 
-        [TestMethod]
+        [Fact]
         public void AStatisticsProviderIsInvokedOnlyOnce()
         {
             var invocations = 0;
@@ -323,7 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// The moment worth re-reading after is a bulk load, and the clock does not know when one
         /// finished. Without this a plan uses the old number until the time to live runs out.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ARefreshMakesTheNextAskReadAgain()
         {
             var invocations = 0;
@@ -355,7 +354,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// lags the writes that produced it — so the moment a caller says the load is done is the worst
         /// moment to capture a number.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ARefreshAsksTheServiceNothingByItself()
         {
             var invocations = 0;
@@ -380,7 +379,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <summary>
         /// Metadata with no provider has no row count to forget, and says so by doing nothing.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ARefreshWithoutAProviderIsHarmless()
         {
             var container = new CosmosContainerMetadata("products");
@@ -394,7 +393,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <summary>
         /// The schema is what a host holds across connections, so it is what a host says this to.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void ASchemaRefreshesEveryContainer()
         {
             var products = 0;
@@ -435,7 +434,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// An account that cannot answer leaves the planner where it would have been without one,
         /// rather than failing the query — which is what Flink does with an unavailable statistic too.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AProviderReturningNothingLeavesTheRowCountUnknown()
         {
             var container = new CosmosContainerMetadata("products").WithStatisticsProvider(() => null);
@@ -445,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         // ── Row type ──────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void RowTypeIsTheDocumentColumnPlusPromotedColumns()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
@@ -461,7 +460,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <remarks>
         /// A partition key of <c>/id</c> must not promote <c>id</c> a second time.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PartitionKeyOnIdDoesNotDuplicateTheColumn()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("c", new[] { "/id" }));
@@ -473,7 +472,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// while a column took a path's last segment for its name, which is why a container keyed on
         /// one used to report no unique key at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NestedPartitionKeyIsPromoted()
         {
             var table = new CosmosTable(new CosmosContainerMetadata("c", new[] { "/inventory/sku" }));

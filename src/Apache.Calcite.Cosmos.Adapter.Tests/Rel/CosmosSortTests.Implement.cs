@@ -6,8 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rex;
@@ -15,6 +13,8 @@ using org.apache.calcite.schema;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 {
@@ -25,18 +25,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <summary>
         /// The <c>ORDER BY</c> clause a sort renders, and the orderings it refuses to render.
         /// </summary>
-        [TestClass]
         public class Implement : CosmosRelNodeFixture
         {
 
-            [TestMethod]
+            [Fact]
             public void SingleKeySortRendersOrderBy()
             {
                 var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)));
                 Sql(sort, Implementor()).Should().Be("SELECT VALUE c FROM products c ORDER BY c.id ASC");
             }
 
-            [TestMethod]
+            [Fact]
             public void DescendingSortRendersDesc()
             {
                 var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.DESCENDING)));
@@ -52,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// service makes for spatial, measured in <c>CosmosGeographyServiceMeasurementTests</c>; a computed key of
             /// any other kind is refused with 400, error 2206.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void ASortOverADistanceRendersTheExpression()
             {
                 var project = ProjectOver(Scan(), new[]
@@ -69,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <summary>
             /// And a second key beside it is declined, because the service refuses one.
             /// </summary>
-            [TestMethod]
+            [Fact]
             public void ASecondKeyBesideADistanceIsDeclined()
             {
                 var project = ProjectOver(Scan(), new[]
@@ -93,7 +92,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <c>ORDER BY UPPER(…)</c> would render into a statement the service answers with 400, error
             /// 2206, so the projection records nothing for it and the sort has nothing to write.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AComputedKeyThatIsNotADistanceIsDeclined()
             {
                 var project = ProjectOver(Scan(), new[]
@@ -108,7 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 implement.Should().Throw<CosmosTranslationException>();
             }
 
-            [TestMethod]
+            [Fact]
             public void SortOverFilterCombinesBothClauses()
             {
                 var filter = new CosmosFilter(_cluster, Traits(), Scan(),
@@ -118,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 Sql(sort, Implementor()).Should().Be("SELECT VALUE c FROM products c WHERE (c.category = @p0) ORDER BY c.id ASC");
             }
 
-            [TestMethod]
+            [Fact]
             public void OffsetAndFetchRenderAsOffsetLimit()
             {
                 var sort = SortOver(
@@ -133,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <remarks>
             /// The container declares a composite index over (/id, /_ts), which are fields 1 and 2.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void MultiKeySortWithAMatchingCompositeIndexIsAccepted()
             {
                 var sort = SortOver(Scan(), Collation(
@@ -146,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// <remarks>
             /// A composite index also serves the fully inverted sort.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void FullyInvertedMultiKeySortIsAccepted()
             {
                 var sort = SortOver(Scan(), Collation(
@@ -156,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 Sql(sort, Implementor()).Should().EndWith("ORDER BY c.id DESC, c._ts DESC");
             }
 
-            [TestMethod]
+            [Fact]
             public void PartiallyInvertedMultiKeySortIsRefused()
             {
                 var sort = SortOver(Scan(), Collation(
@@ -171,7 +170,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Without a matching composite index the service rejects the query outright, so pushing
             /// it down would be a defect rather than a pessimisation.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void MultiKeySortWithoutACompositeIndexIsRefused()
             {
                 var sort = SortOver(Scan(), Collation(
@@ -182,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 act.Should().Throw<CosmosTranslationException>().WithMessage("*composite index*");
             }
 
-            [TestMethod]
+            [Fact]
             public void StackedSortsAreRefused()
             {
                 var inner = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)));
@@ -192,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 act.Should().Throw<CosmosTranslationException>();
             }
 
-            [TestMethod]
+            [Fact]
             public void SortIsRefusedWhenGroupingIsPresent()
             {
                 var implementor = Implementor();

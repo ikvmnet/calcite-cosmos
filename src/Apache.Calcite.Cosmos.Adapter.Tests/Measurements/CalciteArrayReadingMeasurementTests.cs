@@ -2,11 +2,11 @@ using Apache.Calcite.Data;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.rel.type;
 using org.apache.calcite.schema;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -29,7 +29,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// changes it this fails here rather than in a caller's materialiser.
     /// </para>
     /// </remarks>
-    [TestClass]
     public class CalciteArrayReadingMeasurementTests
     {
 
@@ -71,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// reading each element as the declared component type, rather than by its own JSON type, is
         /// what keeps the two in step.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AListInAnArrayColumnReachesTheReaderAsAClrArray()
         {
             using var connection = new CalciteConnection(new CalciteConnectionStringBuilder().ConnectionString);

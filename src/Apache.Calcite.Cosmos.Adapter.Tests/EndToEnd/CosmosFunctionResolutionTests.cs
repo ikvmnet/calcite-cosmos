@@ -6,8 +6,6 @@ using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.avatica.util;
 using org.apache.calcite.config;
 using org.apache.calcite.jdbc;
@@ -20,6 +18,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -33,7 +33,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// statement the service evaluates. What that costs, and whether it should be paid differently, is
     /// what these measure.
     /// </remarks>
-    [TestClass]
     public class CosmosFunctionResolutionTests
     {
 
@@ -41,8 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         CosmosTable _table = null!;
 
-        [TestInitialize]
-        public void Initialize()
+        public CosmosFunctionResolutionTests()
         {
             _table = new CosmosTable(Products);
         }
@@ -92,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// measurement of the table rather than of resolution in general. The other route, which is
         /// the one a connection takes, is <c>CosmosSchemaFunctionTests</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFunctionNeedsSomethingToResolveAgainst()
         {
             var withTable = () => PlanToAsync("SELECT * FROM products AS c WHERE IS_DEFINED(c.\"$.category\")");
@@ -118,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// see <c>CosmosSchemaFunctions</c>.
         /// </para>
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AFunctionThatCannotBePushedFailsWhilePlanning()
         {
             var plan = () => PlanToAsync("SELECT IS_DEFINED(t.x) FROM (SELECT INITCAP(c.\"_etag\") AS x FROM products AS c) AS t");

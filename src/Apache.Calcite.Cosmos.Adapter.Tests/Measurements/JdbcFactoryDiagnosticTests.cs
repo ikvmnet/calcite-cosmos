@@ -3,9 +3,9 @@ using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.tools;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
@@ -13,7 +13,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <summary>
     /// Pins the class loading behaviour that <see cref="TestInitialization"/> works around.
     /// </summary>
-    [TestClass]
     public class JdbcFactoryDiagnosticTests
     {
 
@@ -23,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The class is present and loadable — the original diagnosis that IKVM had failed to
         /// compile it was wrong.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void FactoryClassIsPresent()
         {
             java.lang.Class.forName(Factory).getName().Should().Be(Factory);
@@ -34,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// one belonging to an assembly that does not reference it. This is the mechanism behind
         /// the driver failure.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ClassesAreScopedToTheirAssemblyLoader()
         {
             var calcite = java.lang.Class.forName("org.apache.calcite.jdbc.CalciteFactory");
@@ -55,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// With <c>calcite.core</c> on the boot class path the driver initializes, so the Calcite
         /// entry points that open an internal connection work normally.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void FrameworksEntryPointsWorkOnceTheAssemblyIsOnTheBootClassPath()
         {
             var root = Frameworks.createRootSchema(true);

@@ -4,19 +4,18 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
 using org.apache.calcite.util;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
 
-    [TestClass]
     public partial class CosmosRexTranslatorTests
     {
 
@@ -68,13 +67,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         // ── Field references ──────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void InputRefResolvesToItsPath()
         {
             Translate(Ref(0, SqlTypeName.VARCHAR)).Should().Be("c.name");
         }
 
-        [TestMethod]
+        [Fact]
         public void UnboundOrdinalIsDeclined()
         {
             CanTranslate(Translator(), Ref(99, SqlTypeName.VARCHAR)).Should().BeFalse();
@@ -82,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         // ── Literals ──────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void LiteralsAreBoundNotInlined()
         {
             var t = Translator();
@@ -90,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be("abc");
         }
 
-        [TestMethod]
+        [Fact]
         public void IntegerLiteralBindsAsLong()
         {
             var t = Translator();
@@ -98,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters[0].Value.Should().Be(42L);
         }
 
-        [TestMethod]
+        [Fact]
         public void BooleanLiteralBinds()
         {
             var t = Translator();
@@ -106,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters[0].Value.Should().Be(true);
         }
 
-        [TestMethod]
+        [Fact]
         public void ApproximateLiteralBindsAsDouble()
         {
             var t = Translator();
@@ -118,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Cosmos has no date type and nothing declares whether a container stores dates as ISO
         /// strings or epoch numbers, so a temporal literal must not be guessed.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TemporalLiteralIsDeclined()
         {
             CanTranslate(Translator(), _rex.makeDateLiteral(new DateString("2020-01-01"))).Should().BeFalse();
@@ -126,7 +125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         // ── Operators ─────────────────────────────────────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void ComparisonRenders()
         {
             Translate(Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("abc")))
@@ -139,14 +138,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// would be kept. Its <c>=</c> over a null is already false, which is what SQL's unknown does
         /// here. See <c>CosmosRexTranslator.WriteComparison</c>.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NotEqualsUsesCosmosSpellingAndGuardsAgainstNull()
         {
             Translate(Call(SqlStdOperatorTable.NOT_EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("abc")))
                 .Should().Be("(IS_DEFINED(c.name) AND NOT IS_NULL(c.name) AND (c.name != @p0))");
         }
 
-        [TestMethod]
+        [Fact]
         public void ConjunctionChainsWithoutNesting()
         {
             var a = Call(SqlStdOperatorTable.GREATER_THAN, Ref(1, SqlTypeName.INTEGER), Num(5));
@@ -156,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("((c.price > @p0) AND (c.price < @p1))");
         }
 
-        [TestMethod]
+        [Fact]
         public void ArithmeticRenders()
         {
             Translate(Call(SqlStdOperatorTable.MULTIPLY, Ref(1, SqlTypeName.INTEGER), Num(2)))
@@ -169,7 +168,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// position. The service's equality over a null is false, so <c>NOT</c> alone would have kept
         /// exactly the row SQL discards; measured, it did.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NotOverAComparisonGuardsInTheOppositeDirection()
         {
             var inner = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("x"));
@@ -183,7 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// again. A guard applied to every negation rather than to the position made this keep both the
         /// null-valued document and the absent one, and the corpus said so.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ADoubleNegationWritesTheComparisonPlainly()
         {
             var inner = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("x"));
@@ -198,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// unknown AND false is false, and its negation is true. Guarding the negation as a whole
         /// would have discarded it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void NegationReachesThroughAConjunctionToBothArms()
         {
             var a = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("x"));
@@ -214,21 +213,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// SQL has one null; Cosmos distinguishes absent from present-and-null. Both states must
         /// be tested or a filter would miss documents that simply lack the property.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IsNullTestsBothUndefinedAndNull()
         {
             Translate(Call(SqlStdOperatorTable.IS_NULL, Ref(0, SqlTypeName.VARCHAR)))
                 .Should().Be("(NOT IS_DEFINED(c.name) OR IS_NULL(c.name))");
         }
 
-        [TestMethod]
+        [Fact]
         public void IsNotNullTestsBothUndefinedAndNull()
         {
             Translate(Call(SqlStdOperatorTable.IS_NOT_NULL, Ref(0, SqlTypeName.VARCHAR)))
                 .Should().Be("(IS_DEFINED(c.name) AND NOT IS_NULL(c.name))");
         }
 
-        [TestMethod]
+        [Fact]
         public void LikeRenders()
         {
             Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("%bike%")))
@@ -240,7 +239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>STARTSWITH</c> where <c>LIKE</c> is a scan. The bound parameter is the prefix, not
         /// the pattern.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void PrefixLikeRendersAsStartsWith()
         {
             var t = Translator();
@@ -250,7 +249,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be("bike");
         }
 
-        [TestMethod]
+        [Fact]
         public void LikeWithAnInnerWildcardStaysLike()
         {
             Translate(Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("bi%ke%")))
@@ -264,7 +263,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Cosmos <c>LIKE</c> reads <c>[…]</c> as a character range; SQL matches the brackets
         /// literally. Pushing such a pattern would change which rows match, so it is declined.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void LikeWithABracketIsDeclined()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("[b]ike%")))
@@ -275,7 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// A computed pattern cannot be checked for the bracket divergence, so it is declined whole
         /// rather than pushed on the hope that no value contains one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void LikeWithAComputedPatternIsDeclined()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Ref(0, SqlTypeName.VARCHAR)))
@@ -289,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// and the service has one: the third argument of <c>CONTAINS</c>, <c>STARTSWITH</c> and
         /// <c>ENDSWITH</c>. The text is bound as written, the flag making its case irrelevant.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACaseFoldUnderASubstringPatternRendersAsCaseInsensitiveContains()
         {
             var t = Translator();
@@ -299,7 +298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be("ACADIA");
         }
 
-        [TestMethod]
+        [Fact]
         public void ACaseFoldUnderAPrefixOrSuffixPatternRendersAsCaseInsensitiveStartsOrEndsWith()
         {
             Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.LOWER, Ref(0, SqlTypeName.VARCHAR)), Str("acadia%")))
@@ -316,7 +315,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// and text outside ASCII is where the two foldings are not known to agree; both are left as
         /// written too.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACaseFoldUnderAnyOtherPatternStaysLike()
         {
             foreach (var pattern in new[] { "%acadia%", "%ACA_IA%", "%ACA%IA%", "%ÄCADIA%", "ACADIA" })
@@ -333,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         // document, and read it as text, so a comparison over it compares the rendering. It is
         // held to every test the accessor itself is (#83); without the reading it was pushed raw.
 
-        [TestMethod]
+        [Fact]
         public void LikeOverARenderedFieldIsDeclined()
         {
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.LIKE, Ref(0, SqlTypeName.VARCHAR), Str("bike%")))
@@ -346,7 +345,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().BeTrue("the same field read as its own type is the path");
         }
 
-        [TestMethod]
+        [Fact]
         public void AnOrderingComparisonOverARenderedFieldIsDeclined()
         {
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.GREATER_THAN, Ref(0, SqlTypeName.VARCHAR), Str("bikes")))
@@ -356,7 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void AnEqualityOverARenderedFieldIsHeldToTheAccessorsLiteralTest()
         {
             TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes")))
@@ -371,7 +370,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// rather than a re-typed reference, because a host's transpose through the projection
         /// replaces the reference and keeps a cast — and the comparison over that is the raw one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ACastOfARenderedFieldToAnyIsTheRawValue()
         {
             var t = TranslatorOverARendering();
@@ -392,7 +391,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Spelled alike at both ends, and meaning alike: the count is a character count and both
         /// clamp rather than fail where it exceeds the string.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void LeftAndRightRenderUnchanged()
         {
             Translate(Call(SqlLibraryOperators.LEFT, Ref(0, SqlTypeName.VARCHAR), Num(3)))
@@ -402,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("RIGHT(c.name, @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void ReverseRendersUnchanged()
         {
             Translate(Call(SqlLibraryOperators.REVERSE, Ref(0, SqlTypeName.VARCHAR)))
@@ -413,7 +412,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// The one string function whose name differs: SQL repeats with <c>REPEAT</c> and Cosmos
         /// with <c>REPLICATE</c>, same arguments in the same order.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RepeatBecomesReplicate()
         {
             Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
@@ -425,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// premise that Calcite's origin is one, the way SQL's <c>SUBSTRING</c> is — measured against
         /// the differential corpus, it is not, and the adjustment returned the wrong element.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ArraySliceSharesCosmosOriginAndIsNotShifted()
         {
             Translate(Call(SqlLibraryOperators.ARRAY_SLICE, Ref(2, SqlTypeName.ANY), Num(1), Num(2)))
@@ -436,14 +435,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// SQL's <c>SUBSTRING</c> really does count from one, so its adjustment stays. Pinned beside
         /// the slice so the two are not taken for the same question again.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SubstringIsStillShifted()
         {
             Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(1), Num(3)))
                 .Should().Be("SUBSTRING(c.name, (@p0 - 1), @p1)");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheSetFunctionsMapFromTheirSqlCounterparts()
         {
             Translate(Call(SqlLibraryOperators.ARRAY_CONCAT, Ref(2, SqlTypeName.ANY), Ref(2, SqlTypeName.ANY)))
@@ -460,7 +459,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Under its own name deliberately: regular expression dialects differ in ways a query
         /// cannot see, and the <c>LIKE</c> measurement is the argument for not quietly equating two.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RegexMatchRendersUnderItsOwnName()
         {
             Translate(Call(CosmosOperators.RegexMatch, Ref(0, SqlTypeName.VARCHAR), Str("^Tr")))
@@ -470,7 +469,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("REGEXMATCH(c.name, @p0, @p1)");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheJsonConversionsRender()
         {
             Translate(Call(CosmosOperators.ToStringFunction, Ref(1, SqlTypeName.ANY)))
@@ -483,7 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("ObjectToArray(c)");
         }
 
-        [TestMethod]
+        [Fact]
         public void CaseBecomesNestedTernary()
         {
             var cond = Call(SqlStdOperatorTable.GREATER_THAN, Ref(1, SqlTypeName.INTEGER), Num(5));
@@ -493,14 +492,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         // ── ITEM, which reaches into a value typed ANY ────────────────────────────
 
-        [TestMethod]
+        [Fact]
         public void ItemBecomesAPathExtension()
         {
             Translate(Call(SqlStdOperatorTable.ITEM, Ref(2, SqlTypeName.ANY), Str("city")))
                 .Should().Be("c.city");
         }
 
-        [TestMethod]
+        [Fact]
         public void NestedItemChainsThePath()
         {
             var inner = Call(SqlStdOperatorTable.ITEM, Ref(2, SqlTypeName.ANY), Str("address"));
@@ -508,14 +507,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("c.address.city");
         }
 
-        [TestMethod]
+        [Fact]
         public void ItemQuotesAwkwardPropertyNames()
         {
             Translate(Call(SqlStdOperatorTable.ITEM, Ref(2, SqlTypeName.ANY), Str("odd name")))
                 .Should().Be("c[\"odd name\"]");
         }
 
-        [TestMethod]
+        [Fact]
         public void ItemWithIntegerAccessorIndexesTheArrayFromTheServiceOrigin()
         {
             // SQL subscripts from one and Cosmos from zero. Passed through unchanged this read one
@@ -532,7 +531,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// whose reading by the service has not been measured, so the operator is refused and Calcite
         /// answers it.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ItemWithASubscriptBelowOneIsDeclined()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.ITEM, Ref(2, SqlTypeName.ANY), Num(0))).Should().BeFalse();
@@ -545,7 +544,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         // be built to test against. The guard remains as defence against operand shapes Calcite
         // does admit.
 
-        [TestMethod]
+        [Fact]
         public void ItemWithNonConstantAccessorIsDeclined()
         {
             var node = Call(SqlStdOperatorTable.ITEM, Ref(2, SqlTypeName.ANY), Ref(0, SqlTypeName.VARCHAR));
@@ -559,13 +558,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// offset adjustment is implemented and tested; approximating it would silently return
         /// wrong values.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnsupportedFunctionIsDeclined()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.INITCAP, Ref(0, SqlTypeName.VARCHAR))).Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void DecliningLeavesNoPartialExpression()
         {
             var t = Translator();
@@ -579,7 +578,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Calcite rewrites comparison chains and IN lists into SEARCH over a Sarg. Without
         /// expanding them first, ordinary range and set predicates would never push down.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SearchIsExpandedRatherThanDeclined()
         {
             var node = _rex.makeIn(Ref(1, SqlTypeName.INTEGER), java.util.Arrays.asList(Num(1), Num(2), Num(3)));
@@ -607,13 +606,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the stored value as text and compares, a stored string renders as itself, and no other JSON
         /// value renders as text this restrictive.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityAgainstTextDropsTheCast()
         {
             Translate(EqText(Cast(Any(0), SqlTypeName.VARCHAR), "bikes")).Should().Be("(c.name = @p0)");
         }
 
-        [TestMethod]
+        [Fact]
         public void TheCastIsDroppedWhicheverSideItIsOn()
         {
             Translate(Call(SqlStdOperatorTable.EQUALS, Str("bikes"), Cast(Any(0), SqlTypeName.VARCHAR)))
@@ -629,7 +628,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the service's comparison matches neither. Each of these is a row that would have gone
         /// missing.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityAgainstAmbiguousTextKeepsTheCast()
         {
             foreach (var text in new[] { "30", "-4", "30.7", "1e3", " 30 ", "true", "TRUE", "false", "null", "[bikes]", "{\"v\":1}", "\"bikes\"" })
@@ -641,7 +640,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// The argument is about equality against a constant and does not carry to another operator, so
         /// nothing else looks through a cast.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OnlyEqualityDropsTheCast()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.GREATER_THAN, Cast(Any(0), SqlTypeName.VARCHAR), Str("bikes"))).Should().BeFalse();
@@ -655,7 +654,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>30.7</c> into 30 and the service compares neither as 30 — so there is no equivalent form
         /// and the operator is declined.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityThroughANumericCastKeepsTheCast()
         {
             CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, Cast(Any(1), SqlTypeName.INTEGER), Num(30))).Should().BeFalse();
@@ -665,7 +664,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// Dropping a cast reinterprets an untyped document value; it does not convert one that already
         /// has a type. Over the <c>VARCHAR</c> ordinal the cast is Calcite's own conversion and stays.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void EqualityThroughACastOverATypedColumnKeepsTheCast()
         {
             CanTranslate(Translator(), EqText(Cast(Ref(0, SqlTypeName.VARCHAR), SqlTypeName.VARCHAR), "bikes")).Should().BeFalse();

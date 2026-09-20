@@ -7,13 +7,13 @@ using Apache.Calcite.Geography.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 {
@@ -31,7 +31,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// a geography and a geometry are the same type carried by the same class, and the operator's name is
         /// the whole of the marking. See <c>DESIGN.md</c>.
         /// </remarks>
-        [TestClass]
         public class Geography
         {
 
@@ -74,7 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <remarks>
             /// The prefix goes away because the service has only the one reading of a coordinate.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheDirectOperatorsDropTheirPrefix()
             {
                 Translate(GeographyOperatorTable.ClrStGeogDistance, Geo(), Literal()).Should().Be($"ST_DISTANCE(c.location, {Point})");
@@ -90,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Which is also the form the reference documents the spatial index as answering, so this is the
             /// shape the service wanted rather than a consolation.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void DWithinBecomesADistanceComparison()
             {
                 Translate(GeographyOperatorTable.ClrStGeogDWithin, Geo(), Literal(), Num())
@@ -104,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Written out rather than parameterised. A string parameter would arrive as a string, and
             /// <c>ST_DISTANCE</c> over one is not the same query.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AConstructorOverALiteralBecomesTheObject()
             {
                 Translate(GeographyOperatorTable.ClrStGeogIsValid, Literal()).Should().Be($"ST_ISVALID({Point})");
@@ -118,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// be evaluated to be rendered, and evaluating it is what the service is being asked to do. Such a
             /// call stays in process, where the geography package answers it.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AConstructorOverAComputedStringIsDeclined()
             {
                 var computed = _rex.makeCall(SqlStdOperatorTable.UPPER, _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 1));
@@ -137,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// planar container the service would answer the planar question in the units of the coordinate
             /// system, and say nothing about having done so — which is why this refuses while planning.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void APlanarContainerRefusesAGeodesicCall()
             {
                 var planar = new CosmosContainerMetadata("products", readsGeography: false);
@@ -159,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// text. In process that is what happens. Pushed down it is not: Cosmos reads the property itself
             /// as the shape, so the text and the parsing are a round trip it never needed.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AStoredGeographyPushesAsItsPath()
             {
                 Translate(GeographyOperatorTable.ClrStGeogIsValid, Stored()).Should().Be("ST_ISVALID(c.location)");
@@ -177,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// The two vocabularies agree for anything a container can hold: JTS also spells `LinearRing`,
             /// which GeoJSON has no member for, so a stored shape cannot be one.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void TheGeometryTypeIsAMemberOfTheShape()
             {
                 Translate(GeographyOperatorTable.ClrStGeogGeometryType, Stored()).Should().Be("c.location.type");
@@ -190,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// Which is also where the two vocabularies could have differed: a `LinearRing` cannot come out
             /// of a document, and this is the case that would have let one in.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void AConstructedGeometryHasNoTypeMemberToRead()
             {
                 var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogGeometryType, Literal());
@@ -207,7 +206,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// is a round trip. What comes back is an object where the projection is declared <c>VARCHAR</c>,
             /// which is the reading the <c>DOC</c> column takes and for the same reason.
             /// </remarks>
-            [TestMethod]
+            [Fact]
             public void SerialisingAStoredGeographyIsTheProperty()
             {
                 var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Stored());
@@ -219,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// <summary>
             /// A geography built in the query has nothing stored to select, so it is serialised in process.
             /// </summary>
-            [TestMethod]
+            [Fact]
             public void SerialisingAConstructedGeographyIsDeclined()
             {
                 var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Literal());
@@ -231,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// In a predicate the same call is declined: the column carries text where the path carries an
             /// object, and a comparison against one is not a comparison against the other.
             /// </summary>
-            [TestMethod]
+            [Fact]
             public void SerialisingIsAProjectionOnly()
             {
                 var call = _rex.makeCall(GeographyOperatorTable.ClrStGeogAsGeoJson, Stored());

@@ -5,12 +5,12 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite.jdbc;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.type;
+using Xunit;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests
 {
@@ -20,7 +20,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     /// between field bindings, expression translation, parameter accumulation, and statement
     /// assembly.
     /// </summary>
-    [TestClass]
     public class CosmosImplementorTests
     {
 
@@ -39,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         RexNode Str(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, value.Length));
 
-        [TestMethod]
+        [Fact]
         public void StartsBoundToTheWholeDocument()
         {
             var implementor = Implementor();
@@ -48,7 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Fields.Should().ContainSingle().Which!.ToString().Should().Be("c");
         }
 
-        [TestMethod]
+        [Fact]
         public void BareImplementorRendersAnIdentityQuery()
         {
             var query = Implementor().Build();
@@ -57,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             query.Parameters.Should().BeEmpty();
         }
 
-        [TestMethod]
+        [Fact]
         public void RootAliasCanBeOverridden()
         {
             var implementor = new CosmosImplementor(_rex, new CosmosContainerMetadata("products"), "p");
@@ -66,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Root.ToString().Should().Be("p");
         }
 
-        [TestMethod]
+        [Fact]
         public void TranslatedPredicateAndParametersFlowIntoTheStatement()
         {
             var implementor = Implementor();
@@ -81,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             query.Parameters.Should().ContainSingle().Which.Value.Should().Be("bike");
         }
 
-        [TestMethod]
+        [Fact]
         public void ParametersAccumulateAcrossTranslations()
         {
             var implementor = Implementor();
@@ -99,7 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A projection rebinds the field ordinals, so a translator created afterwards must see
         /// the new paths rather than the ones captured at construction.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void RebindingFieldsAffectsSubsequentTranslations()
         {
             var implementor = Implementor();
@@ -111,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Translate(Ref(0, SqlTypeName.ANY)).Should().Be("c.b");
         }
 
-        [TestMethod]
+        [Fact]
         public void ContainerMetadataIsReachableForRuleGuards()
         {
             var container = new CosmosContainerMetadata("products", new[] { "/tenant" });
@@ -122,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// The builder's refusal of combinations Cosmos rejects must survive being driven through
         /// the implementor.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void IllegalClauseCombinationStillFailsAtBuild()
         {
             var implementor = Implementor();
@@ -133,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             act.Should().Throw<System.InvalidOperationException>();
         }
 
-        [TestMethod]
+        [Fact]
         public void UntranslatableExpressionIsDeclined()
         {
             var implementor = Implementor();
@@ -149,13 +148,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A statement with no row restriction reads to the end, so there is no page size worth
         /// asking for and the SDK's own default stands.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void UnboundedStatementAsksForNoParticularPageSize()
         {
             Implementor().Build().MaxItemCount.Should().BeNull();
         }
 
-        [TestMethod]
+        [Fact]
         public void LimitBecomesThePageSize()
         {
             var implementor = Implementor();
@@ -167,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <remarks>
         /// The service still walks the rows the offset skips, so the page worth asking for spans both.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OffsetIsCountedIntoThePageSize()
         {
             var implementor = Implementor();
@@ -177,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Build().MaxItemCount.Should().Be(15);
         }
 
-        [TestMethod]
+        [Fact]
         public void TopBecomesThePageSize()
         {
             var implementor = Implementor();
@@ -189,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <remarks>
         /// An offset alone bounds nothing — the statement still reads to the end of the container.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void OffsetAloneAsksForNoParticularPageSize()
         {
             var implementor = Implementor();

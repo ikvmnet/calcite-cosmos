@@ -2352,13 +2352,43 @@ that class sits, so the tests for a thing are found by knowing where the thing i
 searching. Two consequences worth stating:
 
 - **One test class per class under test, even where its tests want different fixtures.** A group
-  that needs its own becomes a nested `[TestClass]` inside the partial — `CosmosRexTranslatorTests`
+  that needs its own becomes a nested class inside the partial — `CosmosRexTranslatorTests`
   carries `Casts`, `Geography`, `FullText` and `Functions` that way, each with the builder and
   operand set it wants, filed under one name and filtered by it.
 - **What does not belong to one class is not filed as though it did.** `EndToEnd/CosmosPlannerTests`
   drives the whole rule set over real SQL; `Measurements/` holds what is asked of something other
   than this adapter, so a failure there is news about Calcite or the service rather than a
   regression here. Naming either for a class would be a claim about coverage that is not true.
+
+The framework is xUnit v3. Three of its defaults are set against, and each for a reason worth
+knowing before changing it:
+
+- **Parallelism is off** — `[assembly: Parallelization(Mode = ParallelMode.None)]`. The boot class
+  path is process-wide, Calcite's registries are static, and the service-backed classes share one
+  account and one emulator. MSTest ran serially and nothing was written to survive otherwise, so
+  turning this on is a change to make and measure rather than one to inherit.
+- **One-time setup is a class fixture**, not a static hook. A class that provisions a container
+  declares `IClassFixture<Fixture>` and the nested `Fixture` drives the same static methods MSTest
+  called by attribute, so what the tests read did not move.
+- **A test that needs an account skips itself** with `Assert.Skip`, which v3 allows during
+  execution. That is what `Assert.Inconclusive` did, and it is why v3 rather than v2: there is no
+  dynamic skip in v2 to say it with.
+
+**And CI executes the assembly rather than handing it to `dotnet test`**, which is a consequence of
+how this repository is built rather than a preference. A v3 test assembly is its own runner, and
+`dotnet test` drives it through VSTest, whose xunit adapter launches it **out of process through its
+app host**. The app host is a native executable built for the platform that produced it — and the
+`build` job runs on `ubuntu-24.04` while the `test` matrix downloads that one artifact onto Windows,
+macOS and arm64 runners. So every leg but `linux-x64` failed before a test ran, with *"Could not find
+app host executable `…Tests.exe`"*. `dotnet exec` needs only the managed assembly, which is
+platform-neutral; `--roll-forward Major` is what lets the `net8.0` assembly run on the runtimes that
+job installs, which are 9 and 10. The consequences for anyone changing the workflow:
+
+- **The `?` filter after a suite name is xunit's now, not VSTest's.** `-class- "*FooTests*"` where it
+  was `FullyQualifiedName!~FooTests`, and the query language is the other spelling.
+- **The TRX comes from `-result-trx`** rather than from `--logger:trx`, and the results directory is
+  made rather than implied.
+- **`.runsettings` no longer applies**, there being no VSTest to read one. The repository has none.
 
 ---
 
@@ -2795,8 +2825,8 @@ ikvm.runtime.Startup.addBootClassPathAssembly(typeof(org.apache.calcite.jdbc.Cal
 ```
 
 This must run before the driver is first touched, since a type initializer runs once and caches
-its failure. The test assembly does it from a `[ModuleInitializer]`; `[AssemblyInitialize]` is
-not reliably early enough.
+its failure. The test assembly does it from a `[ModuleInitializer]`; a test framework's own
+assembly-level hook is not reliably early enough.
 
 The adapter itself does not need any of this: it never opens a connection, and the SQL planning
 in `CosmosSqlPlanningTests` drives `SqlParser`, `SqlValidator` and `SqlToRelConverter` directly,

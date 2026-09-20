@@ -6,13 +6,12 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+using Xunit;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
 
-    [TestClass]
     public partial class CosmosContainerMetadataReaderTests
     {
 
@@ -25,28 +24,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             return collection;
         }
 
-        [TestMethod]
+        [Fact]
         public void ContainerIdBecomesTheName()
         {
             var properties = new ContainerProperties("products", "/pk");
             CosmosContainerMetadataReader.FromProperties(properties).Name.Should().Be("products");
         }
 
-        [TestMethod]
+        [Fact]
         public void SinglePartitionKeyIsRead()
         {
             var properties = new ContainerProperties("products", "/category");
             CosmosContainerMetadataReader.FromProperties(properties).PartitionKeyPaths.Should().Equal("/category");
         }
 
-        [TestMethod]
+        [Fact]
         public void HierarchicalPartitionKeyIsReadInOrder()
         {
             var properties = new ContainerProperties("products", new List<string> { "/tenant", "/user" });
             CosmosContainerMetadataReader.FromProperties(properties).PartitionKeyPaths.Should().Equal("/tenant", "/user");
         }
 
-        [TestMethod]
+        [Fact]
         public void CompositeIndexesAreRead()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -61,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 p => { p.Path.Should().Be("/price"); p.Descending.Should().BeTrue(); });
         }
 
-        [TestMethod]
+        [Fact]
         public void SeveralCompositeIndexesAreRead()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -76,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// indexes are consulted for. Skipping it is preferable to refusing to build metadata for
         /// an otherwise-valid container.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void SinglePathCompositeIndexIsSkippedRatherThanRejected()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -90,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// defensively keeps comparison against <c>CosmosPath.ToPolicyPath</c> independent of
         /// which form the service returned.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void TrailingPathSpecifiersAreStripped()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -103,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             index.Paths[1].Path.Should().Be("/inventory/quantity");
         }
 
-        [TestMethod]
+        [Fact]
         public void NoCompositeIndexesYieldsAnEmptyList()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -120,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// A container says nothing about its coordinates, and the service's default is geography.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public void AnUnconfiguredContainerReadsGeography()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -141,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// own <c>ST_*</c> already describe them correctly; typing them <c>GEOGRAPHY</c> would take a
         /// working query away rather than enable one.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AGeometryContainerDeclaresNoGeography()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -153,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             container.ReadsGeography.Should().BeFalse();
         }
 
-        [TestMethod]
+        [Fact]
         public void FullTextPolicyAndIndexPathsAreBothRead()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -176,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A path declared by both is one path. The usual container declares every searchable path in
         /// the policy and indexes the same ones.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void APathDeclaredTwiceIsReadOnce()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -190,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosContainerMetadataReader.FromProperties(properties).FullTextPaths.Should().Equal("/name");
         }
 
-        [TestMethod]
+        [Fact]
         public void VectorPolicyAndIndexPathsAreBothRead()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -212,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A container declaring neither is the case the gate exists for, and it must read as empty
         /// rather than as unknown.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void AContainerWithNoDeclarationsReadsEmpty()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -226,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Stripped as composite index paths are, so that comparison against a path produced by
         /// <c>CosmosPath.ToPolicyPath</c> does not depend on which form the service returned.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void DeclaredPathSpecifiersAreStripped()
         {
             var properties = new ContainerProperties("products", "/pk");
@@ -239,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// The read metadata must drive the sort guard, so check it end to end rather than only
         /// asserting the shape.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public void ReadMetadataDrivesTheSortGuard()
         {
             var properties = new ContainerProperties("products", "/pk");

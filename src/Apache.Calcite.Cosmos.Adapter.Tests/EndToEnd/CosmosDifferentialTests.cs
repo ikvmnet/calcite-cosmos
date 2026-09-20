@@ -17,8 +17,6 @@ using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 using org.apache.calcite;
 using org.apache.calcite.adapter.java;
 using org.apache.calcite.avatica.util;
@@ -34,6 +32,9 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+using Xunit;
+using Xunit.Sdk;
+
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -50,9 +51,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// that have bitten: null against absent, <c>NOT</c> over both, grouping by a key some documents
     /// lack, <c>LIKE</c>'s shapes, and the aggregate forms.
     /// </remarks>
-    [TestClass]
-    public class CosmosDifferentialTests
+    public class CosmosDifferentialTests : IClassFixture<CosmosDifferentialTests.Fixture>
     {
+
+        /// <summary>
+        /// The class's one-time setup and teardown. xUnit drives these through a fixture the
+        /// class asks for rather than through static hooks the framework calls by attribute.
+        /// </summary>
+        public sealed class Fixture : IAsyncLifetime
+        {
+
+            public async ValueTask InitializeAsync() => await ClassInitialize();
+
+            public ValueTask DisposeAsync() { ClassCleanup(); return default; }
+
+        }
 
 
         static string Endpoint => CosmosEmulator.Endpoint!;
@@ -127,8 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static Container? _typedContainer;
         static string? _initializationFailure;
 
-        [ClassInitialize]
-        public static async Task ClassInitialize(TestContext context)
+        static async Task ClassInitialize()
         {
             var options = new CosmosClientOptions
             {
@@ -189,8 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             return container;
         }
 
-        [ClassCleanup]
-        public static void ClassCleanup()
+        static void ClassCleanup()
         {
             try { _client?.GetDatabase(DatabaseName).DeleteAsync().GetAwaiter().GetResult(); } catch (CosmosException) { }
 
@@ -410,10 +421,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             List<string> oracle;
 
             try { oracle = (await Run(sql, pushdown: false)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not AssertInconclusiveException) { return $"{sql}\n  the oracle failed to run: {e.Message}"; }
+            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the oracle failed to run: {e.Message}"; }
 
             try { pushed = (await Run(sql, pushdown: true)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not AssertInconclusiveException) { return $"{sql}\n  the pushdown failed to run: {e.Message}\n  oracle: [{string.Join("; ", oracle)}]"; }
+            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the pushdown failed to run: {e.Message}\n  oracle: [{string.Join("; ", oracle)}]"; }
 
             if (ordered == false)
             {
@@ -849,13 +860,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // predicate pushdown is about: one of the two elements, not both and not none.
         ];
 
-        [TestMethod]
+        [Fact]
         public async Task EveryStatementAgreesWithTheOracle()
         {
             // Gated here, outside any catch: raising the gate inside Run turned "no emulator" into
             // twenty-seven failures on every platform without one, which is how CI first said so.
             if (_container is null)
-                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
 
             var failures = new List<string>();
 
@@ -866,11 +877,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             failures.Should().BeEmpty("every pushdown must answer as Calcite would:\n" + string.Join("\n", failures));
         }
 
-        [TestMethod]
+        [Fact]
         public async Task EveryRecordedDivergenceStillDiverges()
         {
             if (_container is null)
-                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
 
             var agreed = new List<string>();
 
@@ -891,11 +902,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// cannot be built for these — see <see cref="WithoutAnOracle"/>. It still catches a pushdown
         /// that stops running at all.
         /// </remarks>
-        [TestMethod]
+        [Fact]
         public async Task EveryStatementWithoutAnOracleStillRuns()
         {
             if (_container is null)
-                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
 
             var failures = new List<string>();
 
@@ -905,7 +916,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 {
                     await Run(sql, pushdown: true);
                 }
-                catch (Exception e) when (e is not AssertInconclusiveException)
+                catch (Exception e) when (e is not SkipException)
                 {
                     failures.Add($"{sql}\n  no oracle because: {reason}\n  and the pushdown failed to run: {e.Message}");
                 }
@@ -917,11 +928,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Runs what cannot be compared but whose answer is known, and checks it against that answer.
         /// </summary>
-        [TestMethod]
+        [Fact]
         public async Task EveryStatementWithStatedRowsReturnsThem()
         {
             if (_container is null)
-                Assert.Inconclusive("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
 
             var failures = new List<string>();
 
@@ -930,7 +941,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 List<string> returned;
 
                 try { returned = (await Run(sql, pushdown: true)).Select(Canonical).ToList(); }
-                catch (Exception e) when (e is not AssertInconclusiveException) { failures.Add($"{sql}\n  failed to run: {e.Message}"); continue; }
+                catch (Exception e) when (e is not SkipException) { failures.Add($"{sql}\n  failed to run: {e.Message}"); continue; }
 
                 returned.Sort(StringComparer.Ordinal);
                 var stated = rows.OrderBy(r => r, StringComparer.Ordinal).ToList();
