@@ -825,7 +825,16 @@ hand. Two tests pin both directions.
   TIMESTAMP)` and over `JSON_VALUE(…, RETURNING TIMESTAMP)`, lowered to a string comparison. The
   flipped orientation reverses the operator, which is the case that would have been silently wrong
   rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
-  `PreservesOrder`, so a UUID still reaches the equality alone.
+  `PreservesOrder`.
+- `CosmosFactRewriter.TryLowerUuid` — the same six over `CAST(<path> AS UUID)`, on the same two
+  gates, **as of #142**. It took no operator and built an `EQUALS` before, which was right while the
+  engine compared UUIDs as signed halves and an unconfined canonical form preserved equality alone;
+  [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) made the comparison unsigned in
+  1.43, so the range is licensed and is now written. A keyset-paginated `WHERE id > @last ORDER BY
+  id FETCH NEXT n` is the shape that wants it, and the page beside it is the entry below. The
+  reversal is pinned in two places, the rewriter's own test and the planning one, because it is the
+  case that selects the complement rather than merely failing to push; and a range pins no partition,
+  `CosmosPartitionKeyExtractor` reading an equality and nothing looser.
 
 **Not built, and each for a stated reason:**
 
@@ -1120,11 +1129,11 @@ terms:
 ### Ordering by a rendered column — *built; the temporal spelling is not, and the reason is recorded*
 
 Projecting `CAST(<path> AS UUID)` renders as of #100, so a sort on a *neighbouring* column pushes.
-The column itself still binds to no path, a cast resolving to none, so `ORDER BY` on it is refused —
-correctly, since the guarded accessor is not the value and a UUID's stored order is the compared
-order only where the form says so. Binding it would mean recording that an ordinal addresses a path
-*for ordering only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked
-at a different site.
+The column itself binds to no path, a cast resolving to none, so `ORDER BY` on it was refused —
+correctly, the guarded accessor not being the value and a stored order being the compared order only
+where the form says so. Binding it meant recording that an ordinal addresses a path *for ordering
+only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked at a different
+site.
 
 **Built.** `CosmosImplementor.OrderingPaths` carries, per ordinal, a path a sort may order by where
 the ordinal binds to none — recorded by `CosmosProject.Implement` the way it already records
@@ -1136,6 +1145,16 @@ SELECT VALUE { "id": (IS_PRIMITIVE(c.ref) ? c.ref : null) } FROM items c ORDER B
 ```
 
 — a page read at the service, against a whole container read in process before.
+
+**And #142 is what made the first condition reachable for an ordinary container.** The form had to
+preserve order, and only a `pattern` confining the first hex digit gave that — which in practice
+meant v7 and nothing else, so every v4 identifier and every unconfined declaration was refused and
+the sort ran in process with the projection collapsing to whole documents beside it. That was the
+signed comparison, and [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) removed it
+in 1.43; `CosmosStoredForms` now reads `calcite.uuid.unsigned.comparison` and the unconfined rows
+carry `PreservesOrder` from it. Measured in the report: ordering a 9,370-row view by its key did not
+return in 120 seconds in process. Nothing in this entry's machinery changed — the condition it asks
+is simply now met.
 
 **Two conditions, and the second was not in this entry's original statement.** The form has to
 preserve order, which is the two-bit question above. And the guard the projection renders has to be

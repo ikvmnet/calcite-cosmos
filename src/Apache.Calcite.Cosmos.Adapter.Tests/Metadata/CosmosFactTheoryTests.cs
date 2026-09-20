@@ -28,8 +28,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly CosmosDocumentPath ParkId = CosmosDocumentPath.Root.Property("data").Property("parkId");
         static readonly CosmosDocumentPath At = CosmosDocumentPath.Root.Property("data").Property("at");
 
-        static readonly CosmosRepresentation UuidLower = new("uuid-canonical-lower", PreservesEquality: true, PreservesOrder: false);
-        static readonly CosmosRepresentation IsoSeconds = new("iso8601-utc-seconds", PreservesEquality: true, PreservesOrder: true);
+        // Stand-ins rather than rows out of CosmosStoredForms: what a theory does with a
+        // representation is carry it, so the pair is chosen to be two distinguishable values with
+        // the two licences between them, and nothing here turns on which pattern yields either.
+        static readonly CosmosRepresentation EqualityOnly = new("equality-only", PreservesEquality: true, PreservesOrder: false);
+        static readonly CosmosRepresentation Ordered = new("ordered", PreservesEquality: true, PreservesOrder: true);
 
         static CosmosFact Equals(CosmosDocumentPath path, object? value) => new(path, new CosmosClaim.EqualTo(value));
 
@@ -38,9 +41,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AnUnconditionalFactHoldsWithNothingEstablished()
         {
-            var theory = new CosmosFactTheory(new[] { CosmosFactRule.Unconditional(Represents(ParkId, UuidLower)) });
+            var theory = new CosmosFactTheory(new[] { CosmosFactRule.Unconditional(Represents(ParkId, EqualityOnly)) });
 
-            theory.Derive(null).RepresentationOf(ParkId).Should().Be(UuidLower);
+            theory.Derive(null).RepresentationOf(ParkId).Should().Be(EqualityOnly);
         }
 
         [Fact]
@@ -48,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var theory = new CosmosFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, UuidLower)),
+                new CosmosFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)),
             });
 
             theory.Derive(null).RepresentationOf(ParkId).Should().BeNull(
@@ -57,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             theory.Derive(new[] { Equals(Type, "Park") }).RepresentationOf(ParkId).Should().BeNull(
                 "the wrong discriminator proves nothing");
 
-            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(UuidLower);
+            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly);
         }
 
         [Fact]
@@ -91,10 +94,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var theory = new CosmosFactTheory(new[]
             {
-                new CosmosFactRule(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, UuidLower)),
+                new CosmosFactRule(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, EqualityOnly)),
             });
 
-            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(UuidLower,
+            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly,
                 "an equality establishes membership, so the guard holds without the query having said so");
         }
 
@@ -113,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var set = CosmosFactTheory.Empty.Derive(new[]
             {
                 Equals(Type, "ParkMap"),
-                Represents(ParkId, UuidLower),
+                Represents(ParkId, EqualityOnly),
                 new CosmosFact(At, new CosmosClaim.OfType(CosmosJsonType.String)),
             });
 
@@ -134,11 +137,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var theory = new CosmosFactTheory(new[]
             {
                 new CosmosFactRule(new[] { Equals(Type, "ParkMap") }, Equals(kind, "v2")),
-                new CosmosFactRule(new[] { Equals(kind, "v2") }, Represents(At, IsoSeconds)),
+                new CosmosFactRule(new[] { Equals(kind, "v2") }, Represents(At, Ordered)),
             });
 
             theory.Derive(null).RepresentationOf(At).Should().BeNull();
-            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(At).Should().Be(IsoSeconds,
+            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(At).Should().Be(Ordered,
                 "the second rule's body is satisfied by the first rule's head, which is what chaining is for");
         }
 
@@ -149,12 +152,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var theory = new CosmosFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }, Represents(At, IsoSeconds)),
+                new CosmosFactRule(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }, Represents(At, Ordered)),
             });
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(At).Should().BeNull();
             theory.Derive(new[] { Equals(version, 2) }).RepresentationOf(At).Should().BeNull();
-            theory.Derive(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }).RepresentationOf(At).Should().Be(IsoSeconds);
+            theory.Derive(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }).RepresentationOf(At).Should().Be(Ordered);
         }
 
         [Fact]
@@ -163,10 +166,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var theory = new CosmosFactTheory(new[]
             {
                 CosmosFactRule.Unconditional(Represents(At, new CosmosRepresentation("iso8601-loose", PreservesEquality: true, PreservesOrder: false))),
-                CosmosFactRule.Unconditional(Represents(At, IsoSeconds)),
+                CosmosFactRule.Unconditional(Represents(At, Ordered)),
             });
 
-            theory.Derive(null).RepresentationOf(At).Should().Be(IsoSeconds,
+            theory.Derive(null).RepresentationOf(At).Should().Be(Ordered,
                 "both were proven, and the caller wants the one that licenses the most");
         }
 
