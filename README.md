@@ -346,6 +346,10 @@ without a schema   the container is read whole and the comparison is made in pro
 with one          WHERE c.trackingId = @p0, routed to the partition holding it
 ```
 
+`<`, `<=`, `>` and `>=` lower the same way — a keyset cursor, `WHERE id > @last ORDER BY id FETCH
+NEXT 50 ROWS ONLY`, becomes a page the service serves rather than a container read whole for every
+page. A range names no single value, so it is not routed to one partition the way the equality is.
+
 A declared `type` earns its keep on its own. A comparison over a document path is normally pushed
 *weakened* — `IS_DEFINED(c.carrier) AND (NOT IS_STRING(c.carrier) OR c.carrier >= @p0)` — and
 rechecked in process, because the service orders values across JSON types where SQL orders their

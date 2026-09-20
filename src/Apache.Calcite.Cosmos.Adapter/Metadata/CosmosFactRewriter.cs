@@ -45,12 +45,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// two properties separately, on exactly what <see cref="CosmosRepresentation"/> carries.
     /// </para>
     /// <para>
-    /// <b>A UUID reaches the equality alone, and that is now a gap rather than a proof.</b> It was a
-    /// proof: Calcite compared UUIDs as two <em>signed</em> 64-bit halves, so the lexical order of the
-    /// canonical string was not its order unless the schema also confined the first hex digit.
-    /// CALCITE-7716 made the comparison unsigned in 1.43 and
-    /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> now preserves order with it, so the range
-    /// comparisons are licensed and merely unbuilt — <c>TODO.md</c> records what building them costs.
+    /// <b>A UUID used to reach the equality alone, and the reason was the engine's rather than the
+    /// spelling's.</b> Calcite compared UUIDs as two <em>signed</em> 64-bit halves, so the lexical
+    /// order of the canonical string was not its order unless the schema also confined the first hex
+    /// digit. CALCITE-7716 made the comparison unsigned in 1.43 and
+    /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it, so
+    /// <see cref="TryLowerUuid"/> takes the operator and the reversal exactly as the other two do.
+    /// The gate did not move: it is still the two bits, asked separately.
     /// </para>
     /// <para>
     /// <b>Why a guard needs no extra check here.</b> A fact may be conditional — a path holds a UUID
@@ -182,27 +183,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);
 
-            // Only the equality reaches the UUID lowering, and as of CALCITE-7716 that is a gap
-            // rather than a proof: a canonical form now preserves order too, so the range
-            // comparisons are licensed and simply not built — TODO.md records what building them
-            // costs. The flipped orientation needs no reversed operator, equality being symmetric.
-            if (kind == nameof(SqlKind.__Enum.EQUALS))
-            {
-                var lowered = TryLower(left, right, translator, known, rootAlias, rexBuilder)
-                    ?? TryLower(right, left, translator, known, rootAlias, rexBuilder);
-
-                if (lowered is not null)
-                    return lowered;
-            }
-
-            // An instant does have one, where the stored form is a fixed shape. Reading the operand
-            // on the right means reading the comparison backwards, so the operator is reversed with
-            // it: `<literal> > <path>` is `<path> < <literal>`, and keeping the operator as written
-            // would select the complement.
+            // Reading the operand on the right means reading the comparison backwards, so the
+            // operator is reversed with it: `<literal> > <path>` is `<path> < <literal>`, and keeping
+            // the operator as written would select the complement. `=` and `<>` are their own
+            // reverse, so the equalities are unaffected by passing through the same machinery.
             if (ComparisonOf(kind) is not SqlOperator comparison)
                 return null;
 
-            return TryLowerInstant(left, right, comparison, translator, known, rootAlias, rexBuilder)
+            return TryLowerUuid(left, right, comparison, translator, known, rootAlias, rexBuilder)
+                ?? TryLowerUuid(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
+                ?? TryLowerInstant(left, right, comparison, translator, known, rootAlias, rexBuilder)
                 ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(left, right, comparison, translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
@@ -295,10 +285,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Lowers <c>CAST(&lt;path&gt; AS UUID) = UUID'…'</c> to a string equality, where the path's
-        /// stored form is declared.
+        /// Lowers a comparison between a UUID read out of a path and a UUID literal into a comparison
+        /// between the stored strings, where the path's declared form licenses it.
         /// </summary>
-        static RexNode? TryLower(RexNode castNode, RexNode literalNode, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        /// <remarks>
+        /// <para>
+        /// <b>Equality and ordering ask different things of the form, and the second only recently
+        /// gets an answer.</b> Equality needs one spelling per value, which a canonical form has by
+        /// being canonical. An ordering needs the lexical order of the stored strings to be the order
+        /// the engine compares the values in, and until
+        /// <a href="https://issues.apache.org/jira/browse/CALCITE-7716">CALCITE-7716</a> the engine
+        /// compared the two 64-bit halves as signed longs, so a canonical form gave that only where
+        /// the schema also confined the first hex digit. The comparison is unsigned from 1.43 and
+        /// <see cref="CosmosStoredForms.UuidCanonicalLower"/> preserves order with it — but the rows
+        /// still carry the two bits separately, and this gates on them separately, because the engine
+        /// keeps a switch that puts the old semantics back.
+        /// </para>
+        /// <para>
+        /// <b>The literal is rendered into the path's own spelling</b>, which is the whole of what the
+        /// UUID forms differ by; <see cref="CosmosStoredForms.RenderUuid"/> decides it, and refuses
+        /// where the form stores something other than a UUID.
+        /// </para>
+        /// <para>
+        /// <b><c>&lt;&gt;</c> comes with the range rather than with the order.</b> It asks the
+        /// equality's question and is gated with it, and it lowers now only because the operator is
+        /// carried through at all — the previous spelling reached this from the <c>EQUALS</c> branch
+        /// alone and left the inequality in process for no reason either bit gives.
+        /// </para>
+        /// </remarks>
+        /// <param name="castNode">The operand that may read a path as a UUID.</param>
+        /// <param name="literalNode">The operand that may be the literal.</param>
+        /// <param name="comparison">The operator, already reversed where the operands were read backwards.</param>
+        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="rootAlias">The alias a path must be rooted at.</param>
+        /// <param name="rexBuilder">Builds the lowered comparison.</param>
+        /// <returns>The lowered comparison, or <c>null</c>.</returns>
+        static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)
                 return null;
@@ -327,13 +350,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (known.RepresentationOf(document) is not CosmosRepresentation representation)
                 return null;
 
-            // The form has to be one whose stored spelling this knows how to write, and one whose
-            // equality means the value's equality. A representation that pins some other shape is not
-            // this rewrite's business, however well declared.
-            if (representation.PreservesEquality == false || CosmosStoredForms.RenderUuid(representation, value) is not string stored)
+            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
+
+            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
                 return null;
 
-            return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, operand, rexBuilder.makeLiteral(stored));
+            // And the form has to be one whose stored spelling this knows how to write. A
+            // representation that pins some other shape is not this rewrite's business, however well
+            // declared.
+            if (CosmosStoredForms.RenderUuid(representation, value) is not string stored)
+                return null;
+
+            return rexBuilder.makeCall(comparison, operand, rexBuilder.makeLiteral(stored));
         }
 
         /// <summary>

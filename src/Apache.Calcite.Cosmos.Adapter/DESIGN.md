@@ -236,7 +236,8 @@ closes the gap is a proof about the *stored* form: if every value at a path is t
 of its UUID, then comparing the stored strings answers exactly what comparing the values answers, and
 the comparison lowers to a string equality. Everything after that is machinery that already existed —
 the translator renders it, the index serves it, `CosmosPartitionKeyExtractor` pins a partition from
-it, and a point read follows where the predicate says nothing else.
+it, and a point read follows where the predicate says nothing else. A *range* against one lowers on
+the second bit rather than the first, and pins no partition, having named no value.
 
 **What it is worth, measured.** On a serverless container of 2000 documents, one matching:
 

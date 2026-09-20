@@ -826,20 +826,17 @@ hand. Two tests pin both directions.
   flipped orientation reverses the operator, which is the case that would have been silently wrong
   rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
   `PreservesOrder`.
+- `CosmosFactRewriter.TryLowerUuid` — the same six over `CAST(<path> AS UUID)`, on the same two
+  gates, **as of #142**. It took no operator and built an `EQUALS` before, which was right while the
+  engine compared UUIDs as signed halves and an unconfined canonical form preserved equality alone;
+  [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) made the comparison unsigned in
+  1.43, so the range is licensed and is now written. A keyset-paginated `WHERE id > @last ORDER BY
+  id FETCH NEXT n` is the shape that wants it, and the page beside it is the entry below. The
+  reversal is pinned in two places, the rewriter's own test and the planning one, because it is the
+  case that selects the complement rather than merely failing to push; and a range pins no partition,
+  `CosmosPartitionKeyExtractor` reading an equality and nothing looser.
 
 **Not built, and each for a stated reason:**
-
-- **A UUID *range* still lowers nothing, and since #142 that is a gap rather than a proof.** It was a
-  proof: Calcite compared UUIDs as two signed 64-bit halves, so an unconfined canonical form
-  preserved equality and not order and `CosmosFactRewriter.TryLower` was right to take no operator
-  and build an `EQUALS`. [CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716) made the
-  comparison unsigned in 1.43 and `CosmosStoredForms.UuidCanonicalLower` preserves order with it, so
-  `<`, `<=`, `>`, `>=` over `CAST(<path> AS UUID)` are licensed and merely unwritten. The work is
-  `TryLower` taking the operator and the reversal the way `TryLowerInstant` does, gated on
-  `PreservesOrder` and rendering the literal through `RenderUuid` as it already does — a
-  keyset-paginated `WHERE id > @last` is the shape that wants it. `AUuidRangeStillLowersNothing` is
-  the row that would flip. Note the sort is a *different* site and is built: #142 was about
-  `CosmosProject.IsOrderable`, and that reads `PreservesOrder` already.
 
 - **`ORDER BY CAST(<path> AS TIMESTAMP)` still does not push** — measured, `SELECT VALUE c FROM items
   c` under a `ClrEnumerableSort`. This is the cast-drop the paragraph above calls *the* change, and it

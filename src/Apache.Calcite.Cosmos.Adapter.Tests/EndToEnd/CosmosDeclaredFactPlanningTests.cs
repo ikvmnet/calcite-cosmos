@@ -156,6 +156,84 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
         }
 
+        /// <summary>
+        /// A range over the same path reaches the statement too, and does not pin a partition.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The keyset page, which is what wants it: <c>WHERE id &gt; @last ORDER BY id FETCH NEXT n</c>
+        /// is how a cursor is written over an identifier, and without the lowering the comparison has
+        /// no Cosmos form and the container is read whole for every page. It lowers because the stored
+        /// order is the compared order, which #142 is the whole of — before CALCITE-7716 this was
+        /// refused and was right to be.
+        /// </para>
+        /// <para>
+        /// <b>And no partition is pinned, which is the half worth asserting.</b> A range names no
+        /// value, so there is nothing to route on;
+        /// <see cref="Adapter.Metadata.CosmosPartitionKeyExtractor"/> reads an equality and nothing
+        /// looser, and this says the lowering did not quietly turn a range into one.
+        /// </para>
+        /// </remarks>
+        [TestMethod]
+        public void ADeclaredStoredFormPutsARangeInTheStatementToo()
+        {
+            var container = Declared(true);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'B' AND {Ref} > UUID'{Canonical}'""", container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.ref > @", "the stored order is the compared order, so the range lowers: " + query.Sql);
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical, "written in the stored spelling");
+            query.PartitionKeyValues.Should().BeNull("a range names no value to route to");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// Written the other way round it is the same comparison, and the operator is reversed with
+        /// the operands.
+        /// </summary>
+        /// <remarks>
+        /// The case that would be silently wrong rather than merely unpushed: keeping the operator as
+        /// written turns <c>&lt;literal&gt; &gt; &lt;path&gt;</c> into <c>&lt;path&gt; &gt;
+        /// &lt;literal&gt;</c>, which selects the complement of what the query asked for.
+        /// </remarks>
+        [TestMethod]
+        public void AReversedRangeReversesTheOperatorWithIt()
+        {
+            var container = Declared(true);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'B' AND UUID'{Canonical}' > {Ref}""", container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.ref < @", "`literal > path` is `path < literal`: " + query.Sql);
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical);
+        }
+
+        /// <summary>
+        /// And so does <c>&lt;&gt;</c>, which asks the equality's question and was left in process for
+        /// no reason either bit gives.
+        /// </summary>
+        /// <remarks>
+        /// It reached the lowering from the <c>EQUALS</c> branch alone before, so carrying the
+        /// operator through picked it up along with the range. One spelling per value is what makes
+        /// it exact: two stored strings differ exactly where the values do.
+        /// </remarks>
+        [TestMethod]
+        public void TheInequalityLowersWithTheRest()
+        {
+            var container = Declared(true);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'B' AND {Ref} <> UUID'{Canonical}'""", container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical,
+                "the stored spelling is what the comparison is made against: " + query.Sql);
+            query.PartitionKeyValues.Should().BeNull("an inequality names no value to route to");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
+        }
+
         [TestMethod]
         public void TheLoweredComparisonRoutesToItsPartition()
         {
