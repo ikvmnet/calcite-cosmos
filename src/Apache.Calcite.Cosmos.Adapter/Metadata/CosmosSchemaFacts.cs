@@ -43,17 +43,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="schema">The schema document, as the tree the model delivered.</param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <c>null</c>.</exception>
-        /// <summary>
-        /// The <c>format</c> a container writes to declare that a path holds a geography.
-        /// </summary>
-        /// <remarks>
-        /// <c>geojson</c> rather than <c>geography</c>, because what is being claimed is the encoding
-        /// the service reads — a GeoJSON object at the path — and not which of the two readings an
-        /// operator will take over it. Whether a coordinate is read geodesically is the operator's
-        /// name, which is the same thing <c>Apache.Calcite.Geography</c>'s own README says.
-        /// </remarks>
-        public const string GeographyFormat = "geojson";
-
         public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema)
         {
             if (schema is null)
@@ -65,6 +54,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Walk(schema, CosmosDocumentPath.Root, Array.Empty<CosmosFact>(), rules, resolver, new HashSet<string>(StringComparer.Ordinal));
 
             return rules;
+        }
+
+        /// <summary>
+        /// The published GeoJSON schemas whose subject is a geometry.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Taken from geojson.org rather than invented.</b> An earlier draft of this declared a
+        /// <c>format</c> of its own, which JSON Schema permits and no peer implementation is expected
+        /// to understand — and which a schema declaring the Format-Assertion vocabulary must
+        /// <em>reject</em> as an unknown format. These are real <c>$id</c>s that already mean exactly
+        /// what is being claimed, so a container that says a property is a GeoJSON geometry has said
+        /// it in the vocabulary of the thing it is describing.
+        /// </para>
+        /// <para>
+        /// <b>Geometries only.</b> <c>Feature.json</c> and <c>FeatureCollection.json</c> are not here:
+        /// a Feature is an envelope carrying a geometry, and a spatial function over the envelope
+        /// answers undefined exactly as it does over any other object that is not a shape.
+        /// <c>Geometry.json</c> is the union of the six the service indexes, and the six are admitted
+        /// beside it so that a container pinning one shape is not worse off than one pinning any.
+        /// </para>
+        /// </remarks>
+        static readonly HashSet<string> GeoJsonGeometrySchemas = new(StringComparer.Ordinal)
+        {
+            "geojson.org/schema/Geometry.json",
+            "geojson.org/schema/Point.json",
+            "geojson.org/schema/MultiPoint.json",
+            "geojson.org/schema/LineString.json",
+            "geojson.org/schema/MultiLineString.json",
+            "geojson.org/schema/Polygon.json",
+            "geojson.org/schema/MultiPolygon.json",
+        };
+
+        /// <summary>
+        /// Determines whether a reference names one of the published GeoJSON geometry schemas.
+        /// </summary>
+        /// <remarks>
+        /// The scheme is dropped before comparing, since the same <c>$id</c> is written both ways in
+        /// the wild, and a fragment is dropped with it so that a reference into the document still
+        /// names it. Anything else is a reference like any other and is followed rather than read.
+        /// </remarks>
+        /// <param name="reference">The reference.</param>
+        /// <returns><c>true</c> where it names a geometry schema.</returns>
+        static bool IsGeoJsonGeometry(string? reference)
+        {
+            if (string.IsNullOrEmpty(reference))
+                return false;
+
+            var text = reference!;
+
+            foreach (var scheme in new[] { "https://", "http://" })
+                if (text.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
+                {
+                    text = text.Substring(scheme.Length);
+                    break;
+                }
+
+            var fragment = text.IndexOf('#');
+            if (fragment >= 0)
+                text = text.Substring(0, fragment);
+
+            return GeoJsonGeometrySchemas.Contains(text);
         }
 
         /// <summary>
@@ -87,6 +138,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // recorded, and going round again would not add one.
             if (Text(node, "$ref") is string reference)
             {
+                // A reference to the published GeoJSON geometry schema is the declaration that a path
+                // holds a shape. It is recognised rather than followed: CosmosSchemaResolver answers
+                // only root-relative pointers, so an absolute URI resolves to nothing and would state
+                // nothing -- and following it would need the document fetched, which is not this
+                // compiler's business. What is wanted from it is its identity, not its contents.
+                if (IsGeoJsonGeometry(reference))
+                {
+                    State(new CosmosClaim.Geography());
+                    return;
+                }
+
                 if (visiting.Add(reference) == false)
                     return;
 
@@ -116,15 +178,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // path, one level over.
             if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
-
-            // A geography is declared rather than recognised, for the reason CosmosClaim.Geography
-            // gives: no subschema anyone can write rules out the coordinates the service refuses. So
-            // this reads `format`, whose standing in JSON Schema is annotation rather than validation
-            // -- which is the standing of every claim here. Beside a declared object type, because a
-            // format written next to no type, or next to a scalar one, constrains nothing and would
-            // otherwise claim of a number that the service can measure it.
-            if (declared?.Type == CosmosJsonType.Object && string.Equals(Text(node, "format"), GeographyFormat, StringComparison.Ordinal))
-                State(new CosmosClaim.Geography());
 
             // required names the children that are there whenever this object is. The claim is about
             // the child, and it is conditional on the parent: `required` constrains an object, and

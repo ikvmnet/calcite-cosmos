@@ -61,8 +61,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <b>So it is the container's word, on the same footing as every other.</b> Nothing verifies
         /// that a <c>pattern</c> naming a UUID is honoured by the documents either; a declaration is
         /// believed, and a document that contradicts it is the one thing the model has always said it
-        /// cannot check in advance. JSON Schema's <c>format</c> is annotation-only by default, which
-        /// is exactly that standing, and is why it is the keyword this reads.
+        /// cannot check in advance.
+        /// </para>
+        /// <para>
+        /// <b>It is said in GeoJSON's own vocabulary and not in one invented here.</b> A container
+        /// declares it by referencing a published geometry schema —
+        /// <c>https://geojson.org/schema/Geometry.json</c>, or one of the six concrete shapes beside
+        /// it — whose <c>$id</c> already means exactly this. An earlier draft read a <c>format</c>
+        /// token of this repository's own; JSON Schema permits such a thing, but no peer
+        /// implementation is expected to understand one, and a schema declaring the Format-Assertion
+        /// vocabulary must <em>reject</em> an unknown format outright. A <c>$ref</c> asks nothing of
+        /// anyone and is already what a schema author writes to say a property is a geometry.
         /// </para>
         /// <para>
         /// <b>What it buys is a sort.</b> A geodesic distance over a path this holds for can be

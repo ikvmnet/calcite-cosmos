@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static CosmosFactSet Facts(string json) => Compile(json).Derive(null);
 
         /// <summary>
-        /// <c>format: geojson</c> beside an object type declares that the path holds a geography.
+        /// <c>$ref</c> to a published geometry schema beside an object type declares that the path holds a geography.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -55,11 +55,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </para>
         /// </remarks>
         [Fact]
-        public void AGeoJsonFormatDeclaresAGeography()
+        public void AReferenceToTheGeoJsonSchemaDeclaresAGeography()
         {
             Facts("""
             { "type": "object",
-              "properties": { "location": { "type": "object", "format": "geojson" } } }
+              "properties": { "location": { "$ref": "https://geojson.org/schema/Geometry.json" } } }
             """)
                 .IsAlwaysGeography(Location).Should().BeTrue();
         }
@@ -86,11 +86,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// beside no declared type.
         /// </remarks>
         [Fact]
-        public void AFormatBesideAScalarTypeDeclaresNoGeography()
+        public void AReferenceToAnythingElseDeclaresNoGeography()
         {
             Facts("""
             { "type": "object",
-              "properties": { "location": { "type": "string", "format": "geojson" } } }
+              "properties": { "location": { "$ref": "https://example.com/not-a-geometry.json" } } }
             """)
                 .IsAlwaysGeography(Location).Should().BeFalse();
         }
@@ -109,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Facts("""
             { "type": "object",
-              "properties": { "location": { "type": "object", "format": "geojson" } } }
+              "properties": { "location": { "$ref": "https://geojson.org/schema/Geometry.json" } } }
             """);
 
             facts.Knows(new CosmosFact(Location, new CosmosClaim.Present())).Should().BeTrue();

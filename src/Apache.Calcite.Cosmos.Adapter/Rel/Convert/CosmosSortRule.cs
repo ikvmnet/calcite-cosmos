@@ -254,7 +254,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// produces and the sort pushes without any of this — which is what the README tells a caller
         /// to do. What a declaration adds is the default: an ORM writes a bare <c>ORDER BY</c> and
         /// cannot be told to write anything else, and a key that can be neither null nor undefined has
-        /// no placement to disagree about, so it pushes under either collation.
+        /// no placement to disagree about, so it pushes under either collation. The declaration is a
+        /// <c>$ref</c> to a published GeoJSON geometry schema — see <see cref="Metadata.CosmosClaim.Geography"/>.
         /// </para>
         /// <para>
         /// <b>And nothing is rewritten to make it true.</b> An earlier attempt added

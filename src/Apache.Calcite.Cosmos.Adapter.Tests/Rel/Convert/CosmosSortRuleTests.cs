@@ -165,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// </para>
         /// <para>
         /// A key that can be neither null nor undefined has no placement to disagree about, and
-        /// <c>format: geojson</c> is the declaration that gives one. Nothing is added to the statement
+        /// <c>$ref</c> to a published geometry schema is the declaration that gives one. Nothing is added to the statement
         /// to make it true — no guard, no filter, no rewrite; the rows are the rows.
         /// </para>
         /// </remarks>
@@ -239,7 +239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// </summary>
         const string Geography = """
         { "type": "object",
-          "properties": { "location": { "type": "object", "format": "geojson" } } }
+          "properties": { "location": { "$ref": "https://geojson.org/schema/Geometry.json" } } }
         """;
 
         /// <summary>
