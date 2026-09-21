@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -167,6 +167,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a path is guaranteed to hold a geography in every document.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The claim a distance sort rests on, and the reason it rests on this and not on a
+        /// type.</b> A geodesic distance is null where its operand is and undefined where the service
+        /// cannot measure the operand, and those are different sets: an object that is not a shape is
+        /// a perfectly good object. Declaring the <em>type</em> at the path closes the first and
+        /// leaves the second open, which is a key that still arrives undefined and still sorts at the
+        /// wrong end. This closes both, because there is no geography that is absent, null, or one the
+        /// service will not measure.
+        /// </para>
+        /// <para>
+        /// Two claims, as everywhere else here: the path has to be there, and what is there has to be
+        /// the declared thing. <see cref="CosmosClaim.Geography"/> entails
+        /// <see cref="CosmosClaim.Present"/> — see <see cref="CosmosFact.Entails"/> for why it is the
+        /// one claim that does — so a container that declares the format without marking the property
+        /// required has still said a shape is there.
+        /// </para>
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <returns><c>true</c> where every document holds a geography there.</returns>
+        public bool IsAlwaysGeography(CosmosDocumentPath path)
+        {
+            return path is not null && Knows(new CosmosFact(path, new CosmosClaim.Geography()));
         }
 
         /// <summary>

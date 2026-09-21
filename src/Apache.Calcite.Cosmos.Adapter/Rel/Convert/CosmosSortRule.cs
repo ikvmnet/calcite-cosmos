@@ -198,6 +198,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     all.Add(i);
             }
 
+            // And the computed case, which binds to no path and could therefore never qualify above.
+            // See AlwaysDefined: a geodesic distance over declared geographies is neither null nor
+            // undefined, which is what the placement needs and the only thing that gives it.
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out _, out _, out var candidates, out _))
+                for (var i = 0; i < candidates.Count; i++)
+                    if (all.Contains(i) == false && AlwaysDefined(facts, candidates[i]))
+                        all.Add(i);
+
             return all;
         }
 
@@ -222,6 +230,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool NeverNull(Metadata.CosmosFactSet facts, Metadata.CosmosDocumentPath path) =>
             facts.IsAlwaysScalar(path);
+
+        /// <summary>
+        /// Determines whether a sortable computed key can be neither null nor undefined, from what the
+        /// container declares about the paths it reads.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two ways a distance fails to be a number, and the declaration has to close both.</b> It
+        /// is <em>null</em> where an operand is — <c>JSON_QUERY</c> answering null over an absent
+        /// path, a JSON null or a scalar — and it is <em>undefined</em> at the service where the
+        /// operand is an object the service will not measure. Those are different sets, measured:
+        /// <c>{"kind":"somewhere"}</c> and <c>{"type":"Point","coordinates":[999,999]}</c> are both
+        /// objects and both answer undefined. A claim about the <em>type</em> at the path closes the
+        /// first and leaves the second, which is a key that still arrives undefined and still sorts at
+        /// the wrong end of the placement. <see cref="Metadata.CosmosFactSet.IsAlwaysGeography"/> is
+        /// the claim that closes both, and it is the only one that does.
+        /// </para>
+        /// <para>
+        /// <b>Why the placement is what this is for.</b> Cosmos orders undefined first ascending and
+        /// last descending and offers no control; Calcite's default is the opposite on both counts. A
+        /// connection setting <c>defaultNullCollation=LOW</c> asks for the order the service already
+        /// produces and the sort pushes without any of this — which is what the README tells a caller
+        /// to do. What a declaration adds is the default: an ORM writes a bare <c>ORDER BY</c> and
+        /// cannot be told to write anything else, and a key that can be neither null nor undefined has
+        /// no placement to disagree about, so it pushes under either collation. The declaration is a
+        /// <c>$ref</c> to a published GeoJSON geometry schema — see <see cref="Metadata.CosmosClaim.Geography"/>.
+        /// </para>
+        /// <para>
+        /// <b>And nothing is rewritten to make it true.</b> An earlier attempt added
+        /// <c>ST_ISVALID</c> to the statement so that undefined keys could not arrive; that removes
+        /// rows the query defines and the plan would have raised over, which is a wrong answer rather
+        /// than a slower one. A declaration that the paths hold geographies says those rows do not
+        /// exist. If one does, the container contradicted its own declaration — the single thing this
+        /// model has always said it cannot check in advance.
+        /// </para>
+        /// </remarks>
+        static bool AlwaysDefined(Metadata.CosmosFactSet facts, CosmosOrdering candidate)
+        {
+            if (candidate.Expression == false || candidate.Operands is not { } operands)
+                return false;
+
+            foreach (var operand in operands)
+                if (Metadata.CosmosDocumentPath.From(operand) is not Metadata.CosmosDocumentPath document
+                    || facts.IsAlwaysGeography(document) == false)
+                    return false;
+
+            return true;
+        }
 
         /// <summary>
         /// Initializes a new instance using the supplied rule configuration.

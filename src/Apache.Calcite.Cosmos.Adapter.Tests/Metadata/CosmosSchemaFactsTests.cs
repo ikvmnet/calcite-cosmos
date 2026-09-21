@@ -31,6 +31,102 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>The facts a schema states, assembled into the theory a container would ask.</summary>
         static CosmosFactTheory Compile(string json) => new(Read(json));
 
+        // -- A declared geography ---------------------------------------------------------------
+
+        static readonly CosmosDocumentPath Location = CosmosDocumentPath.Root.Property("location");
+
+        static CosmosFactSet Facts(string json) => Compile(json).Derive(null);
+
+        /// <summary>
+        /// <c>Point</c> schema with bounded ordinates beside an object type declares that the path holds a geography.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The one claim here that is declared rather than derived, and it has to be: measured
+        /// against an account, <c>{"type":"Point","coordinates":[999,999]}</c> validates against
+        /// every GeoJSON subschema anyone could write and the service still answers undefined for a
+        /// distance over it. <c>format</c> is annotation-only in JSON Schema, which is the standing
+        /// every claim here has — the container's word, believed.
+        /// </para>
+        /// <para>
+        /// What it buys is <c>CosmosSortRule.AlwaysDefined</c>: a distance over such a path is
+        /// neither null nor undefined, so the <c>ORDER BY</c> reaches the service under Calcite's
+        /// default placement rather than only under <c>LOW</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ASchemaPinningAPointDeclaresAGeography()
+        {
+            Facts("""
+            { "type": "object",
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+            """)
+                .IsAlwaysGeography(Location).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// An object type alone is the claim that is <em>not</em> enough, and the distinction is the
+        /// whole point: an object that is not a shape is a perfectly good object, and a distance over
+        /// it is undefined at the service.
+        /// </remarks>
+        [Fact]
+        public void AnObjectTypeAloneDeclaresNoGeography()
+        {
+            Facts("""
+            { "type": "object",
+              "required": ["location"],
+              "properties": { "location": { "type": "object" } } }
+            """)
+                .IsAlwaysGeography(Location).Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// A format beside a scalar type constrains nothing this can use, and reading it anyway would
+        /// claim of a string that the service can measure it — the same shape as a pattern written
+        /// beside no declared type.
+        /// </remarks>
+        [Fact]
+        public void ASchemaLeavingTheCoordinatesUnboundedDeclaresNone()
+        {
+            Facts("""
+            { "type": "object",
+              "properties": { "location": { "type": "object", "required": ["type"], "properties": { "type": { "const": "Point" } } } } }
+            """)
+                .IsAlwaysGeography(Location).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// The claim carries its own presence, which is why the property need not be required.
+        /// </summary>
+        /// <remarks>
+        /// Every other claim about a value is silent about whether the value is there — a schema's
+        /// <c>properties</c> constrains what a path holds <em>if</em> it holds anything. This one is
+        /// the exception, because there is no geography that is absent: declaring the format is
+        /// declaring a shape is there. <c>CosmosFact.Entails</c> carries it.
+        /// </remarks>
+        [Fact]
+        public void ADeclaredGeographyIsPresentAndAnObject()
+        {
+            var facts = Facts("""
+            { "type": "object",
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+            """);
+
+            facts.Knows(new CosmosFact(Location, new CosmosClaim.Present())).Should().BeTrue();
+            facts.Knows(new CosmosFact(Location, new CosmosClaim.OfType(CosmosJsonType.Object))).Should().BeTrue();
+            facts.IsAlwaysScalar(Location).Should().BeFalse("a shape is not a scalar");
+        }
+
         static CosmosFact Equals(CosmosDocumentPath path, object? value) => new(path, new CosmosClaim.EqualTo(value));
 
         const string Parks = """

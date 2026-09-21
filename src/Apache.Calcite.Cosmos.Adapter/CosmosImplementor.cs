@@ -135,7 +135,14 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// rather than referred to. Only a geodesic distance qualifies — see
     /// <see cref="CosmosImplementor.SortableExpressions"/> for what was measured and refused.
     /// </param>
-    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression);
+    /// <param name="Operands">
+    /// The document paths that expression reads, where every operand is one the structure accounts
+    /// for; <c>null</c> otherwise, and empty where the expression reads none. What it is for is the
+    /// null placement: a distance is null only where an operand is, so a container declaring these
+    /// paths always present makes the key non-nullable and the placement moot. See
+    /// <see cref="Rel.CosmosProject.SortableOperandsOf"/>.
+    /// </param>
+    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression, IReadOnlyList<Sql.CosmosPath>? Operands = null);
 
     /// <summary>
     /// Accumulates the state contributed by a tree of <see cref="CosmosRel"/> nodes and renders
@@ -583,7 +590,8 @@ namespace Apache.Calcite.Cosmos.Adapter
                         // licenses the path is the caller's pure lookup. See CosmosOrdering.
                         candidates[i] = new CosmosOrdering(
                             paths[i] ?? CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias),
-                            CosmosProject.IsSortableAtTheService(expression));
+                            CosmosProject.IsSortableAtTheService(expression),
+                            CosmosProject.SortableOperandsOf(expression, translator, DefaultRootAlias));
 
                         // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
                         // read as text is a rendering of the path it binds to, and a column passed

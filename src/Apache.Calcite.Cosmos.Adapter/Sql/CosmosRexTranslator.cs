@@ -3130,7 +3130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// yields, because no column is typed as a geometry — so the path is one level down and the
         /// constructor has to be looked through rather than at.
         /// </remarks>
-        bool TryResolveGeography(RexNode node, out CosmosPath? path)
+        public bool TryResolveGeography(RexNode node, out CosmosPath? path)
         {
             if (node is RexCall call
                 && call.getOperator().getName() == Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName()

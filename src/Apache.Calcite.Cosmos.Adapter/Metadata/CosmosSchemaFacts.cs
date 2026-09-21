@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 using com.fasterxml.jackson.databind;
@@ -105,6 +105,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // path, one level over.
             if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
+
+            // A geography is proven from the subschema rather than taken from a token, for the reason
+            // CosmosGeographyForms gives: GeoJSON validity is not Cosmos measurability, so neither a
+            // format of our own nor a $ref to the published schema says what has to be said. What
+            // does is the declaration pinning the type name, both members, and each ordinate's range
+            // -- which a schema can do for a point and a line and cannot do for a ring.
+            if (CosmosGeographyForms.Recognise(node))
+                State(new CosmosClaim.Geography());
 
             // required names the children that are there whenever this object is. The claim is about
             // the child, and it is conditional on the parent: `required` constrains an object, and
