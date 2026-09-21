@@ -63,6 +63,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
+        /// Draft-07 spells the positional constraint as an array-valued <c>items</c>, and it is read.
+        /// </summary>
+        /// <remarks>
+        /// A container writing an older dialect has no <c>prefixItems</c>, and refusing its schema
+        /// would refuse the declaration for the spelling rather than for what it says. The two
+        /// keywords mean the same thing here — constrain the first positions, in order.
+        /// </remarks>
+        [Fact]
+        public void TheDraft07ArrayFormOfItemsIsReadToo()
+        {
+            Recognise("""
+            { "type": "object", "required": ["type", "coordinates"],
+              "properties": { "type": { "const": "Point" },
+                              "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                                "items": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                           { "type": "number", "minimum": -90, "maximum": 90 } ] } } }
+            """).Should().BeTrue();
+        }
+
+        /// <summary>
         /// Unbounded ordinates prove nothing, which is the case a published schema leaves open.
         /// </summary>
         /// <remarks>
