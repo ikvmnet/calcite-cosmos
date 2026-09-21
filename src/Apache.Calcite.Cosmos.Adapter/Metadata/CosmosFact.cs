@@ -37,11 +37,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (Claim.Equals(other.Claim))
                 return true;
 
-            // Nothing here entails Present, and that is the whole of what a claim about a value means.
-            // A schema's `properties` constrains the value a path holds *if it holds one*; only
-            // `required` says it holds one at all. Reading "this is a canonical UUID" as "this is
-            // there" would claim of every document what the schema claimed of none, which is exactly
-            // the mistake a container holding more than one kind of document punishes.
+            // Almost nothing here entails Present, and that is the whole of what a claim about a
+            // value means. A schema's `properties` constrains the value a path holds *if it holds
+            // one*; only `required` says it holds one at all. Reading "this is a canonical UUID" as
+            // "this is there" would claim of every document what the schema claimed of none, which is
+            // exactly the mistake a container holding more than one kind of document punishes.
+            //
+            // Geography is the exception, and it is one because it is declared rather than read off a
+            // subschema: `format` sits beside the value's own keywords, and a container saying a path
+            // holds a shape is saying a shape is there. It is still conditional on its guard like
+            // every other rule, so a path under a discriminator says nothing until the discriminator
+            // is proven.
             return (Claim, other.Claim) switch
             {
                 // A known value settles membership, type and every disequality but its own.
@@ -58,6 +64,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // A stored form says what the strings at a path look like, and says nothing about
                 // whether a null is there beside them -- so it entails only the claim that admits one.
                 (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String && b.OrNull,
+
+                // A geography is an object, and one that is there: the declaration is about a value
+                // the service can measure, and there is no such value that is absent or null. So it
+                // settles the object claim either way round, unlike a stored form, which says what
+                // the strings look like without saying one is there.
+                (CosmosClaim.Geography, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Object,
+                (CosmosClaim.Geography, CosmosClaim.Present) => true,
 
                 // Admitting a null is weaker than not admitting one.
                 (CosmosClaim.OfType a, CosmosClaim.OfType b) => a.Type == b.Type && b.OrNull,

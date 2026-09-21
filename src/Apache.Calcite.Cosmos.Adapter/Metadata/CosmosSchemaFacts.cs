@@ -43,6 +43,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="schema">The schema document, as the tree the model delivered.</param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <c>null</c>.</exception>
+        /// <summary>
+        /// The <c>format</c> a container writes to declare that a path holds a geography.
+        /// </summary>
+        /// <remarks>
+        /// <c>geojson</c> rather than <c>geography</c>, because what is being claimed is the encoding
+        /// the service reads — a GeoJSON object at the path — and not which of the two readings an
+        /// operator will take over it. Whether a coordinate is read geodesically is the operator's
+        /// name, which is the same thing <c>Apache.Calcite.Geography</c>'s own README says.
+        /// </remarks>
+        public const string GeographyFormat = "geojson";
+
         public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema)
         {
             if (schema is null)
@@ -105,6 +116,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // path, one level over.
             if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
+
+            // A geography is declared rather than recognised, for the reason CosmosClaim.Geography
+            // gives: no subschema anyone can write rules out the coordinates the service refuses. So
+            // this reads `format`, whose standing in JSON Schema is annotation rather than validation
+            // -- which is the standing of every claim here. Beside a declared object type, because a
+            // format written next to no type, or next to a scalar one, constrains nothing and would
+            // otherwise claim of a number that the service can measure it.
+            if (declared?.Type == CosmosJsonType.Object && string.Equals(Text(node, "format"), GeographyFormat, StringComparison.Ordinal))
+                State(new CosmosClaim.Geography());
 
             // required names the children that are there whenever this object is. The claim is about
             // the child, and it is conditional on the parent: `required` constrains an object, and

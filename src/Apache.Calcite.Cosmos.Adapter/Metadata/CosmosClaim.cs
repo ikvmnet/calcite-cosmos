@@ -44,6 +44,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public sealed record Present : CosmosClaim;
 
         /// <summary>
+        /// The value at the path is a geography the service will measure.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Declared, not derived, and it is the one claim here that could not be either.</b> The
+        /// others restate something a schema says in its own vocabulary — a type, a domain, a
+        /// presence. This one cannot be: measured against an account,
+        /// <c>{"type":"Point","coordinates":[999,999]}</c> validates against every GeoJSON subschema
+        /// anyone could write and <c>ST_DISTANCE</c> over it still answers <em>undefined</em>, because
+        /// the service range-checks coordinates. Expressing that in a schema would take numeric bounds
+        /// on array elements, which this model does not carry. See
+        /// <c>CosmosGeographyValidityMeasurementTests</c>.
+        /// </para>
+        /// <para>
+        /// <b>So it is the container's word, on the same footing as every other.</b> Nothing verifies
+        /// that a <c>pattern</c> naming a UUID is honoured by the documents either; a declaration is
+        /// believed, and a document that contradicts it is the one thing the model has always said it
+        /// cannot check in advance. JSON Schema's <c>format</c> is annotation-only by default, which
+        /// is exactly that standing, and is why it is the keyword this reads.
+        /// </para>
+        /// <para>
+        /// <b>What it buys is a sort.</b> A geodesic distance over a path this holds for can be
+        /// neither null nor undefined, so the placement Calcite asks for has nothing to disagree with
+        /// and the <c>ORDER BY</c> reaches the service under either collation — see
+        /// <c>CosmosSortRule.AlwaysDefined</c>.
+        /// </para>
+        /// </remarks>
+        public sealed record Geography : CosmosClaim;
+
+        /// <summary>
         /// The value at the path is exactly this literal.
         /// </summary>
         /// <param name="Value">The literal, as a CLR value — a string, a boxed number, a boolean, or <c>null</c> for a JSON null.</param>

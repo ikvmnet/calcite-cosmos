@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
@@ -249,6 +250,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 return false;
 
             return facts.IsAlwaysScalar(document);
+        }
+
+        /// <summary>
+        /// Returns the document paths a sortable expression reads, where every operand is one this
+        /// can account for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What a sort needs to know beyond whether the expression renders.</b>
+        /// <see cref="IsSortableAtTheService"/> says the service will order by a geodesic distance;
+        /// it does not say the key can never be null, and on a nullable key
+        /// <c>CosmosSort.TryGetDescending</c> refuses any placement but Cosmos's own — which is the
+        /// default spelling for neither direction, so a generated <c>ORDER BY</c> is declined and the
+        /// container is read whole and sorted in process. A distance is null only where an operand
+        /// is, and an operand is a literal or a stored shape, so the question reduces to whether the
+        /// paths hold a value in every document.
+        /// </para>
+        /// <para>
+        /// <b>The two operand shapes are exactly the two the translator renders.</b>
+        /// <c>WriteGeographyLiteral</c> writes a geography that is a literal or resolves to a path and
+        /// declines everything else, so an expression whose operands this can account for is an
+        /// expression that reaches the service at all. Anything else answers <c>null</c> rather than a
+        /// partial list, because a list missing an operand would prove the wrong thing.
+        /// </para>
+        /// <para>
+        /// Structural, like <see cref="OrderingCandidateOf"/>, and derived on the one walk
+        /// <see cref="CosmosImplementor.TryBindOutput"/> makes. Whether the container licenses the
+        /// paths is a pure lookup the caller makes — <c>CosmosSortRule.NonNullFields</c> — for the
+        /// reason <see cref="CosmosOrdering"/> gives: two walks can disagree about which expression
+        /// sits at an ordinal, and a pure lookup cannot disagree with itself.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="translator">Resolves an expression to the path it addresses.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The paths, empty where every operand is a literal, or <c>null</c>.</returns>
+        public static IReadOnlyList<CosmosPath>? SortableOperandsOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
+        {
+            if (IsSortableAtTheService(node) == false || node is not RexCall call || translator is null)
+                return null;
+
+            var paths = new List<CosmosPath>();
+            var operands = call.getOperands();
+
+            for (var i = 0; i < operands.size(); i++)
+            {
+                var operand = (RexNode)operands.get(i);
+
+                // A geography written out of the statement itself. It is the object the constructor
+                // stood for, and an object is not null.
+                if (IsGeographyLiteral(operand))
+                    continue;
+
+                // A stored shape, reached through the constructor the same way every other geography
+                // operand is.
+                if (translator.TryResolveGeography(operand, out var path) == false
+                    || path is null
+                    || string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                    return null;
+
+                paths.Add(path);
+            }
+
+            return paths;
+        }
+
+        /// <summary>
+        /// Determines whether an operand is a geography the statement carries rather than reads.
+        /// </summary>
+        /// <remarks>
+        /// <c>CLR_ST_GEOG_GEOMFROMGEOJSON</c> over a character literal, which is the form
+        /// <c>WriteGeographyLiteral</c> writes into the statement as the object it denotes. A literal
+        /// that is SQL <c>NULL</c> is not one — it would make the distance null, which is the whole
+        /// thing being ruled out.
+        /// </remarks>
+        static bool IsGeographyLiteral(RexNode node)
+        {
+            return node is RexCall call
+                && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName(), StringComparison.Ordinal)
+                && call.getOperands().size() == 1
+                && call.getOperands().get(0) is RexLiteral literal
+                && literal.isNull() == false;
         }
 
         /// <summary>

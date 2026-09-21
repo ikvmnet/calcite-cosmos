@@ -63,12 +63,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <param name="sql">The statement.</param>
         /// <param name="asConnection"><c>true</c> to plan <c>RelRoot.rel</c>, as <c>Prepare</c> does.</param>
         /// <returns>The best plan.</returns>
-        static RelNode Plan(string sql, bool asConnection)
+        static RelNode Plan(string sql, bool asConnection) => Plan(sql, asConnection, NullCollation.LOW, null);
+
+        /// <inheritdoc cref="Plan(string, bool)" />
+        /// <param name="collation">The plan's default null placement.</param>
+        /// <param name="schema">What the container declares, or <c>null</c> where it declares nothing.</param>
+        static RelNode Plan(string sql, bool asConnection, NullCollation collation, string? schema)
         {
             var typeFactory = new JavaTypeFactoryImpl();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
-            var table = new CosmosTable(Products);
+            var metadata = schema is null
+                ? Products
+                : Products.WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+
+            var table = new CosmosTable(metadata);
             rootSchema.add("products", table);
 
             var properties = new java.util.Properties();
@@ -77,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             // Cosmos places nulls where LOW says, and a sort whose placement it cannot honour is
             // declined -- the same setting the README tells a caller to use, and a distance is
             // nullable like any other computed value.
-            properties.setProperty("defaultNullCollation", "LOW");
+            properties.setProperty("defaultNullCollation", collation == NullCollation.LOW ? "LOW" : "HIGH");
 
             var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
@@ -86,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 SqlStdOperatorTable.instance(),
                 Apache.Calcite.Geography.Sql.GeographyOperatorTable.Instance());
 
-            var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT.withDefaultNullCollation(NullCollation.LOW));
+            var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT.withDefaultNullCollation(collation));
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
@@ -141,6 +150,107 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// <summary>
+        /// A container declaring the shape carries the sort under Calcite's own placement, which is
+        /// the one an ORM writes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Everything above this rests on <c>LOW</c>, and a generated query cannot ask for it.</b>
+        /// Cosmos orders undefined first ascending and offers no control; Calcite's default is last.
+        /// A caller who sets <c>defaultNullCollation=LOW</c> asks for the order the service already
+        /// produces and every sort here pushes — which is what the README says to do. A caller going
+        /// through EF Core or OData writes a bare <c>ORDER BY</c> and gets <c>HIGH</c>, and the sort
+        /// was declined for disagreeing with a placement nobody chose.
+        /// </para>
+        /// <para>
+        /// A key that can be neither null nor undefined has no placement to disagree about, and
+        /// <c>format: geojson</c> is the declaration that gives one. Nothing is added to the statement
+        /// to make it true — no guard, no filter, no rewrite; the rows are the rows.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ADeclaredGeographyCarriesTheSortUnderTheDefaultPlacement()
+        {
+            var best = Plan(OrderedByPath, asConnection: true, NullCollation.HIGH, Geography);
+
+            ContainsSort(best).Should().BeTrue("a distance over a declared shape is neither null nor undefined");
+        }
+
+        /// <summary>
+        /// And an object type alone does not, which is the distinction the whole claim exists for.
+        /// </summary>
+        /// <remarks>
+        /// An object that is not a shape is a perfectly good object, and measured against an account
+        /// a distance over one answers <em>undefined</em> — as does a structurally perfect point whose
+        /// coordinates are out of range. So a claim about the type closes the null case and leaves the
+        /// undefined one, which is a key that still sorts at the wrong end. See
+        /// <c>CosmosGeographyValidityMeasurementTests</c>.
+        /// </remarks>
+        [Fact]
+        public void AnObjectTypeAloneDoesNot()
+        {
+            var best = Plan(OrderedByPath, asConnection: true, NullCollation.HIGH, ObjectOnly);
+
+            ContainsSort(best).Should().BeFalse("the type says nothing about whether the service can measure it");
+        }
+
+        /// <remarks>
+        /// The control: without a declaration the placement is all there is, and under <c>HIGH</c> it
+        /// disagrees. This is the behaviour the two above are a departure from.
+        /// </remarks>
+        [Fact]
+        public void WithoutADeclarationTheDefaultPlacementStillDeclines()
+        {
+            var best = Plan(OrderedByPath, asConnection: true, NullCollation.HIGH, null);
+
+            ContainsSort(best).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A container declaring the shape declares it for <c>LOW</c> too, which changes nothing.
+        /// </summary>
+        /// <remarks>
+        /// Worth pinning because the declaration must not start rewriting a statement that already
+        /// worked: under <c>LOW</c> the sort pushed before this claim existed and pushes the same way
+        /// after it.
+        /// </remarks>
+        [Fact]
+        public void ADeclarationChangesNothingUnderLow()
+        {
+            var best = Plan(OrderedByPath, asConnection: true, NullCollation.LOW, Geography);
+
+            ContainsSort(best).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// The same ordering, over a path rather than the whole document, since a declaration
+        /// is about a path. <c>Ordered</c> casts <c>DOC</c> itself, which resolves to the root.
+        /// </summary>
+        const string OrderedByPath = """
+            SELECT c."id" FROM products AS c
+            ORDER BY CLR_ST_GEOG_DISTANCE(
+                CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
+                CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.33,47.61]}'))
+            """;
+
+        /// <summary>
+        /// What a container declares to say a path holds a shape.
+        /// </summary>
+        const string Geography = """
+        { "type": "object",
+          "properties": { "location": { "type": "object", "format": "geojson" } } }
+        """;
+
+        /// <summary>
+        /// The same without the format, which declares the type and nothing the service can use.
+        /// </summary>
+        const string ObjectOnly = """
+        { "type": "object",
+          "required": ["location"],
+          "properties": { "location": { "type": "object" } } }
+        """;
+
         /// And when it is taken the way a connection takes it, which is where the rank clause is lost.
         /// </summary>
         /// <remarks>
