@@ -381,13 +381,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <see cref="CosmosStoredForms.RenderDateTime"/> is what decides that, and why truncating
         /// would not be sound is recorded there.
         /// </para>
+        /// <para>
+        /// <b>A parse is a chain rather than a cast, and carries a second condition.</b> A cast says
+        /// only that the text is to be read as an instant, and how is Calcite's business. A
+        /// <c>PARSE_DATE</c> or <c>PARSE_DATETIME</c> says how, in a format string, and the rewrite is
+        /// an equivalence only where that format reads <em>this</em> shape faithfully — a format that
+        /// reads it some other way maps the stored strings onto some other instants, and comparing the
+        /// strings then answers a different question. <see cref="CosmosStoredForms.ParsesExactly"/> is
+        /// where that is decided and where the measurements behind it are recorded.
+        /// </para>
         /// </remarks>
         static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || InstantOf(literal) is not DateTime value)
                 return null;
 
-            if (TextAccessorOf(temporalNode, rexBuilder) is not RexNode accessor)
+            if (TextAccessorOf(temporalNode, rexBuilder, out var format, out var held) is not RexNode accessor)
                 return null;
 
             if (translator.TryResolvePath(accessor, out var path) == false || path is null)
@@ -405,6 +414,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
             if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+                return null;
+
+            if (format is not null && CosmosStoredForms.ParsesExactly(representation, format, held) == false)
                 return null;
 
             if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
@@ -570,21 +582,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// without the clause is what recovers the text, the default return type being the text.
         /// </para>
         /// <para>
-        /// The type test is what keeps the two apart from an ordinary <c>VARCHAR</c> accessor, which
-        /// needs no lowering and must not be given one.
+        /// A third arrives as a <em>chain</em>: <c>PARSE_DATE</c> and <c>PARSE_DATETIME</c> carry the
+        /// text as their second operand and a format as their first, and the format is handed back
+        /// beside the accessor because it is half of what licenses the rewrite — see
+        /// <see cref="TryLowerInstant"/>. <c>PARSE_TIMESTAMP</c> is shaped identically and does not
+        /// reach here, its type being <c>TIMESTAMP WITH LOCAL TIME ZONE</c>: a comparison between one
+        /// of those and a zone-less literal is a question about the session's zone, and a declared
+        /// stored form answers nothing about that. <c>PARSE_TIME</c> is left out by the same test, a
+        /// <c>TIME</c> literal carrying a millisecond-of-day rather than the calendar
+        /// <see cref="InstantOf"/> reads.
+        /// </para>
+        /// <para>
+        /// The type test is what keeps all of them apart from an ordinary <c>VARCHAR</c> accessor,
+        /// which needs no lowering and must not be given one.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <param name="rexBuilder">Builds the rebuilt accessor.</param>
+        /// <param name="format">
+        /// On success, the format a parse reads the text with, or <c>null</c> where the expression
+        /// names no format and the conversion is Calcite's own.
+        /// </param>
+        /// <param name="held">On success, the halves of an instant the expression's value holds.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        static RexNode? TextAccessorOf(RexNode node, RexBuilder rexBuilder)
+        static RexNode? TextAccessorOf(RexNode node, RexBuilder rexBuilder, out string? format, out CosmosTemporalParts held)
         {
+            format = null;
+            held = CosmosTemporalParts.None;
+
             if (node is not RexCall call)
                 return null;
 
             var type = call.getType()?.getSqlTypeName();
             if (type != SqlTypeName.TIMESTAMP && type != SqlTypeName.DATE)
                 return null;
+
+            held = CosmosTemporalParse.PartsOf(type);
 
             var kind = call.getKind().name();
 
@@ -593,6 +626,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (string.Equals(call.getOperator().getName(), "JSON_VALUE", StringComparison.Ordinal) && call.getOperands().size() >= 2)
                 return rexBuilder.makeCall(SqlStdOperatorTable.JSON_VALUE, (RexNode)call.getOperands().get(0), (RexNode)call.getOperands().get(1));
+
+            if (CosmosTemporalParse.TryRead(call, out var text, out var written, out var parsed) && text is not null)
+            {
+                format = written;
+                held = parsed;
+                return text;
+            }
 
             return null;
         }

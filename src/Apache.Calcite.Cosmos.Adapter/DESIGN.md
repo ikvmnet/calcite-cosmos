@@ -422,13 +422,72 @@ were one 1,400-line class, and the shape of the argument was the thing that got 
 
 **The temporal case needs its own measurement, and it moves what to look for.** `CAST(<string> AS
 TIMESTAMP)` accepts only `yyyy-MM-dd HH:mm:ss`; every ISO-8601 form a document stores raises. But the
-function libraries do parse one — `PARSE_TIMESTAMP`, `PARSE_DATETIME` and `TO_TIMESTAMP` all read
-`2024-01-02T03:04:05Z` once the literal `T` and `Z` are given Java-style quoting, doubled for SQL, and
-without it each raises *Illegal pattern character 'T'*. So does the `REPLACE`/`SUBSTRING`/`CAST` chain
-a view writes by hand. What a rewrite has to recognise is therefore a *chain* rather than a cast, and
-the notion it needs is that an expression is **form-preserving for a relation**: under the path's
+function libraries do parse one — `PARSE_DATE`, `PARSE_DATETIME`, `PARSE_TIMESTAMP` and `TO_TIMESTAMP`
+all take a format and read the text with it. So does the `REPLACE`/`SUBSTRING`/`CAST` chain a view
+writes by hand. What a rewrite has to recognise is therefore a *chain* rather than a cast, and the
+notion it needs is that an expression is **form-preserving for a relation**: under the path's
 representation, comparing the expression's results agrees with comparing the raw stored strings. A
 cast to `UUID` is the degenerate one-link chain.
+
+**A parse carries a format, and the format had to be measured rather than read.** Built:
+`CosmosTemporalParse` recognises `PARSE_DATE(<format>, <path>)` and its siblings, and
+`CosmosTemporalForms` carries, per shape, the formats that read it — so a comparison against one
+lowers exactly as a cast's does, and a sort over one binds the ordinal to the path the way a rendered
+`UUID` column already did. `CalciteTemporalParseMeasurementTests` is the record.
+
+**An earlier version of this paragraph said these functions read `2024-01-02T03:04:05Z` "once the
+literal `T` and `Z` are given Java-style quoting", and that is wrong in the way that matters.** They
+do not raise on `yyyy-MM-dd'T'HH:mm:ss'Z'`; they answer **April the 2nd at 03:00:05** for a document
+storing January the 2nd at 03:04:05. Calcite reads the format with its own format model and lowers it
+to a Java `SimpleDateFormat` pattern, and the model matches its elements without regard to case: the
+`mm` is read as a second *month*, the pattern becomes `yyyy-MM-dd'T'HH:MM:s'Z'`, and the minute is
+never set at all. The measurement that produced the old sentence had checked only that nothing was
+thrown.
+
+**So a format is an input to a parser this does not own, and every row is asked rather than derived.**
+That is the difference between this table and every other form in the section. A stored shape is read
+out of a declared pattern by reasoning — the pattern *is* the language. A format has no such reading;
+what it means is whatever the engine's model makes of it, which changed under `TO_TIMESTAMP` once
+already. The claim a row makes is exactly what the rewrite needs and no more: over every string the
+shape admits, the parse answers the instant that string denotes, one for one. Injective and monotone
+follow, so the chain preserves whatever the shape preserves and the two bits answer for it unchanged.
+
+**What is spellable, measured.** The `%`-style and the `HH24`-style elements both work, quoting a
+literal `T` or `Z` as `'T'`, `'Z'`; a zero offset is `'+00:00'` or bare `+00:00`, its characters being
+literal either way. Mixed dialects are sound and are not generated, an unrecognised format costing a
+pushdown rather than an answer.
+
+| shape | reads | why |
+| --- | --- | --- |
+| `…T…:…:…Z`, `+00:00`, zone-less, minute precision | ✔ | `%Y-%m-%d'T'%H:%M:%S'Z'`, `YYYY-MM-DD'T'HH24:MI:SS'Z'` |
+| the same with three fraction digits | ✔ | `.%E3S`, `.MS`, `.FF3` |
+| a fraction of any other width | ✘ | every fraction element lowers to a Java *millisecond* field, so `.678901` reads as 11m18s |
+| `yyyyMMdd'T'HHmmss` and the basic instant | ✘ | the model's one-letter fields are greedy: `030405` reads as hour 0, minute 945 |
+| a calendar date, basic or extended, and a year-month | ✔ | `%Y-%m-%d`, `YYYY-MM-DD`, and here `yyyy-MM-dd` too |
+| a time of day | ✔ | `%H:%M:%S`, `HH24:MI:SS` |
+
+The fourth row is why the shape Azure recommends — seven fraction digits — gets a sort and a range
+through a `CAST` or a `RETURNING` clause and gets nothing at all through a parse. Calcite's timestamps
+are milliseconds, so there is no spelling to add rather than one that was not looked for.
+
+The fifth row is the measurement in a line: `yyyy-MM-dd` is a spelling for a *date* and for nothing
+else, a date having no minute to be mistaken for a month.
+
+**And the type the function answers is half the question.** `PARSE_DATE` over a path storing a full
+instant reads the format faithfully and then throws the clock away, so every instant on a day shares
+one value and the equality a rewrite would lower is finer than the one the query asked. The parse is
+licensed only where the type holds everything the shape carries. A projection asks the converse as
+well — the column comes back as the stored text and `CosmosJson` converts it, so a *reader* filling a
+half the shape does not carry invents one, and a time of day read back as a `TIMESTAMP` acquires
+today's date where the engine's parse gives it the epoch's.
+
+**Two functions are recognised and deliberately go no further.** `PARSE_TIMESTAMP` answers
+`TIMESTAMP WITH LOCAL TIME ZONE`, so a comparison against a zone-less literal is a question about the
+session's zone that no declared form answers, and `CosmosJson` has no reading for the type either.
+`TO_DATE` and `TO_TIMESTAMP` are each *two* operators under one SQL name — Calcite registers `TO_DATE`
+beside `TO_DATE_PG` — and which one a query resolves to depends on the libraries the connection
+enabled, which a `RexCall`'s name does not say; only one of the two was measured. Both are in
+`TODO.md`.
 
 #### A number spelled as a string, and what the spelling has to promise
 

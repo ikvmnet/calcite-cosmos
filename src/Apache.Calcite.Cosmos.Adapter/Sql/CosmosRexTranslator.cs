@@ -1689,6 +1689,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return stored;
             }
 
+            // A parse of a path the container declared a shape the format reads exactly. The same
+            // move as the UUID cast above and for the same reason -- the service holds the value in a
+            // form the plan's type is a reading of -- and the reason to bother is the sort above it.
+            // See TryStoredInstantProjection.
+            if (TryStoredInstantProjection(node, out var instant) && instant is not null)
+            {
+                reading = CosmosReading.Typed;
+                return instant;
+            }
+
             // A stored geography projected as itself. The constructor disappears and the path goes
             // down, the reader putting it back -- the same shape the UUID cast takes, and for the same
             // reason: the service holds the value in a form the plan's type is a reading of. Guarded,
@@ -1823,6 +1833,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return false;
 
             if (Metadata.CosmosUuidForms.IsUuid(representation) == false)
+                return false;
+
+            var rendered = path.ToString();
+            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            return true;
+        }
+
+        /// <summary>
+        /// Renders a parse over a path the container declared a shape the format reads exactly, as the
+        /// path itself.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The same shape as the UUID cast, and the reason to have it is a sort rather than a
+        /// column.</b> <c>PARSE_DATETIME(&lt;format&gt;, &lt;path&gt;)</c> is a computed projection, so
+        /// a projection carrying one stays in process — and Calcite does not transpose a sort through
+        /// a projection whose key is a function call, the way it does through a cast. So a query
+        /// ordering by a parsed timestamp read the whole container and sorted it in memory, with the
+        /// projection collapsing to whole documents beside it, and the key's form was never asked
+        /// about. Rendering the column is what puts a <c>CosmosProject</c> under the sort for
+        /// <c>CosmosImplementor.OrderingPaths</c> to record the binding on.
+        /// </para>
+        /// <para>
+        /// <b>Two conditions, and neither is the format on its own.</b> The format has to read the
+        /// declared shape exactly — <see cref="Metadata.CosmosStoredForms.ParsesExactly"/>, which is
+        /// measured rather than derived, the engine's own parser being what gives the format meaning.
+        /// And the stored text has to read back as the column's type without the reader inventing
+        /// anything, which is <see cref="Metadata.CosmosStoredForms.ReadsBackAs"/>: the service sends
+        /// the string it holds and <see cref="Client.CosmosJson"/> converts, so what the column
+        /// answers is that conversion rather than the engine's parse, and the two have to agree.
+        /// </para>
+        /// <para>
+        /// <b>The guard is the same one, for the same reason.</b> The parse reads a text accessor,
+        /// which answers null for an object, an array and an absent path where the bare path answers
+        /// the object; <c>IS_PRIMITIVE</c> is exactly that distinction. Over a document that
+        /// contradicts the declaration the two sides agree by both failing — the engine's parse raises
+        /// <c>Invalid format</c> and the reader refuses the text.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The projected expression.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the projection is one of these.</returns>
+        bool TryStoredInstantProjection(RexNode node, out string? expression)
+        {
+            expression = null;
+
+            if (Metadata.CosmosTemporalParse.TryRead(node, out var text, out var format, out var held) == false || text is null)
+                return false;
+
+            // A view over a container may write the parse over a cast to text, which converts nothing.
+            var operand = StripRedundantTextCast(text);
+            if (operand is not RexCall accessor || IsJsonAccessor(accessor) == false)
+                return false;
+
+            if (TryResolvePath(operand, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+                return false;
+
+            if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
+                return false;
+
+            if (Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
+                return false;
+
+            if (Metadata.CosmosStoredForms.ReadsBackAs(representation, held) == false)
+                return false;
+
+            // And the reader has to have a reading for the type at all, which is asked here rather
+            // than left to the gate in TranslateProjection so that PARSE_TIMESTAMP's
+            // TIMESTAMP WITH LOCAL TIME ZONE is a shape this declines rather than one it claims and
+            // then throws over.
+            if (Client.CosmosJson.CanRead(node.getType()) == false)
                 return false;
 
             var rendered = path.ToString();

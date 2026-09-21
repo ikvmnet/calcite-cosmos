@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -59,7 +60,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Whether a value lands on the form's own resolution. A form that cannot hold the value
         /// exactly renders nothing rather than a truncation; see <see cref="Render"/>.
         /// </param>
-        sealed record TemporalForm(string? Format, Func<DateTime, bool> Exact);
+        /// <param name="Carries">
+        /// Which halves of an instant the shape stores. A parse into a type holding less truncates,
+        /// and a reader filling a type holding more invents — see <see cref="CosmosTemporalParts"/>.
+        /// </param>
+        /// <param name="ReadsBack">
+        /// Whether <see cref="Client.CosmosJson"/> recovers the value from the stored text, which is
+        /// what lets a projection send the path down and put the conversion on the reader. Measured:
+        /// .NET's invariant <c>DateTime.TryParse</c> reads every extended ISO-8601 shape here and
+        /// refuses the separator-less ones, so the basic forms are recognised and not projected.
+        /// </param>
+        /// <param name="Parses">
+        /// The format strings a parse of this shape may be written with, and nothing else — see
+        /// <see cref="ParsesExactly"/> for what membership claims and
+        /// <c>CalciteTemporalParseMeasurementTests</c> for the measurement that pins every row.
+        /// </param>
+        sealed record TemporalForm(string? Format, Func<DateTime, bool> Exact, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses);
 
         /// <summary>
         /// How each temporal form writes a value, keyed by representation name. Populated by
@@ -126,16 +142,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="add">Registers one spelling.</param>
         static void AddTemporal(Action<string, CosmosRepresentation> add)
         {
-            void Register(string pattern, string name, string? format, Func<DateTime, bool> exact)
+            void Register(string pattern, string name, string? format, Func<DateTime, bool> exact, CosmosTemporalParts carries, bool readsBack, params string[] parses)
             {
-                Temporal[name] = new TemporalForm(format, exact);
+                Temporal[name] = new TemporalForm(format, exact, carries, readsBack, parses);
                 add(pattern, new CosmosRepresentation(name, PreservesEquality: true, PreservesOrder: true));
+            }
+
+            // One spelling per dialect and no mixtures. Whichever function was written, the format is
+            // read by the same model -- measured -- and that model spells each element two ways, so
+            // `%Y-%m-%d` and `YYYY-MM-DD` are both this shape's date. A mixture of the two would be as
+            // sound and is not generated: it buys a spelling nobody writes at the price of a cross
+            // product, and an unrecognised format costs a pushdown rather than an answer.
+            const int Bq = 0;
+            const int Pg = 1;
+
+            string[] Cross(string[] left, string[] right)
+            {
+                var product = new List<string>(left.Length * right.Length);
+
+                foreach (var l in left)
+                    foreach (var r in right)
+                        product.Add(l + r);
+
+                return product.ToArray();
             }
 
             // Zero to nine fraction digits. A tick is seven, so a wider form is written by padding and
             // still holds every value exactly; a narrower one has to land on its own resolution, which
             // is what its predicate tests.
-            var fractions = new (string Pattern, string Format, Func<DateTime, bool> Exact)[10];
+            //
+            // **Only three digits can be parsed, and that is the whole of why the recommended shape
+            // gets no parse.** Every fraction element the model has -- `%E1S` through `%E5S`, `FF1`
+            // through `FF5`, `MS` -- lowers to a Java millisecond field, which reads whatever digits
+            // are there as milliseconds: measured, `.678901` against any of them is 11 minutes and 18
+            // seconds rather than 679 milliseconds. So a fraction of exactly three digits has
+            // spellings and every other width has none, the microsecond and tick shapes included.
+            var fractions = new (string Pattern, string Format, Func<DateTime, bool> Exact, string[][] Parses)[10];
 
             for (var n = 0; n < fractions.Length; n++)
             {
@@ -146,20 +188,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 for (var i = 0; i < 7 - digits; i++)
                     resolution *= 10;
 
+                var parses = n switch
+                {
+                    0 => new[] { new[] { string.Empty }, new[] { string.Empty } },
+                    3 => new[] { new[] { ".%E3S" }, new[] { ".MS", ".FF3" } },
+                    _ => new[] { Array.Empty<string>(), Array.Empty<string>() },
+                };
+
                 fractions[n] = (
                     n == 0 ? string.Empty : $@"\.[0-9]{{{n}}}",
                     n == 0 ? string.Empty : "." + new string('f', digits) + (padding.Length > 0 ? "'" + padding + "'" : string.Empty),
-                    value => value.Ticks % resolution == 0);
+                    value => value.Ticks % resolution == 0,
+                    parses);
             }
 
             // How the zero offset is spelled. `Z` and `+00:00` denote the same instant and sort
             // differently against each other, which is why a path may use either and not both.
-            var zones = new (string Pattern, string Format, string Name)[]
+            //
+            // The offset is two spellings in a format because its characters are literal either way:
+            // quoted, the model passes `'+00:00'` through as a Java literal; bare, `+`, `0` and `:`
+            // are not pattern characters and mean themselves. `Z` has to be quoted, being one.
+            var zones = new (string Pattern, string Format, string Name, string[] Parses)[]
             {
-                ("Z", "'Z'", "z"),
-                (@"\+00:00", "'+00:00'", "offset"),
-                (string.Empty, string.Empty, "local"),
+                ("Z", "'Z'", "z", new[] { "'Z'" }),
+                (@"\+00:00", "'+00:00'", "offset", new[] { "'+00:00'", "+00:00" }),
+                (string.Empty, string.Empty, "local", new[] { string.Empty }),
             };
+
+            var dates = new[] { "%Y-%m-%d", "YYYY-MM-DD" };
+            var clocks = new[] { "%H:%M:%S", "HH24:MI:SS" };
+            var minutes = new[] { "%H:%M", "HH24:MI" };
 
             foreach (var zone in zones)
             {
@@ -167,18 +225,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 {
                     var fraction = fractions[n];
 
+                    var spellings = new List<string>();
+                    foreach (var dialect in new[] { Bq, Pg })
+                        spellings.AddRange(Cross(
+                            Cross(new[] { dates[dialect] + "'T'" + clocks[dialect] }, fraction.Parses[dialect]),
+                            zone.Parses));
+
                     Register(
                         $"^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}T[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fraction.Pattern}{zone.Pattern}$",
                         InstantName(n, zone.Name),
                         "yyyy-MM-dd'T'HH:mm:ss" + fraction.Format + zone.Format,
-                        fraction.Exact);
+                        fraction.Exact,
+                        CosmosTemporalParts.Instant,
+                        readsBack: true,
+                        spellings.ToArray());
 
-                    // The basic format, which drops the separators and is as fixed as the extended one.
+                    // The basic format, which drops the separators and is as fixed as the extended one
+                    // -- and which no parse reads and no reader reads either. Measured: the model
+                    // lowers `%H%M%S` to Java's one-letter fields, which are greedy, so `030405` is
+                    // read as hour 0 and minute 945; and .NET's `DateTime.TryParse` refuses
+                    // `20240102T030405Z` outright. Recognised, sorted by, and nothing else.
                     Register(
                         $"^[0-9]{{8}}T[0-9]{{6}}{fraction.Pattern}{zone.Pattern}$",
                         $"iso8601-basic-f{n}-{zone.Name}",
                         "yyyyMMdd'T'HHmmss" + fraction.Format + zone.Format,
-                        fraction.Exact);
+                        fraction.Exact,
+                        CosmosTemporalParts.Instant,
+                        readsBack: false);
                 }
 
                 // Minute precision, which plenty of feeds write and which is fixed like any other.
@@ -186,22 +259,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     $"^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}T[0-9]{{2}}:[0-9]{{2}}{zone.Pattern}$",
                     $"iso8601-instant-minutes-{zone.Name}",
                     "yyyy-MM-dd'T'HH:mm" + zone.Format,
-                    value => value.Ticks % TimeSpan.TicksPerMinute == 0);
+                    value => value.Ticks % TimeSpan.TicksPerMinute == 0,
+                    CosmosTemporalParts.Instant,
+                    readsBack: true,
+                    Cross(new[] { dates[Bq] + "'T'" + minutes[Bq], dates[Pg] + "'T'" + minutes[Pg] }, zone.Parses));
             }
 
             // Calendar shapes, which store no time of day at all. A value carrying one does not land
             // on them, and is refused rather than truncated.
-            Register("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "iso8601-date", "yyyy-MM-dd", value => value.TimeOfDay == TimeSpan.Zero);
-            Register("^[0-9]{8}$", "iso8601-date-basic", "yyyyMMdd", value => value.TimeOfDay == TimeSpan.Zero);
-            Register("^[0-9]{4}-[0-9]{2}$", "iso8601-year-month", "yyyy-MM", value => value.Day == 1 && value.TimeOfDay == TimeSpan.Zero);
+            //
+            // `yyyy-MM-dd` is a spelling here and is one nowhere else, which is the measurement in a
+            // line. The model reads it as year, month and day because it matches its elements without
+            // regard to case -- and for the same reason it reads the `mm` of
+            // `yyyy-MM-dd'T'HH:mm:ss'Z'` as a second *month*, so that shape reads January the 2nd at
+            // 03:04:05 as April the 2nd at 03:00:05. A date has no minute to be mistaken for a month.
+            Register("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "iso8601-date", "yyyy-MM-dd", value => value.TimeOfDay == TimeSpan.Zero,
+                CosmosTemporalParts.Date, readsBack: true, "%Y-%m-%d", "YYYY-MM-DD", "yyyy-MM-dd");
+
+            Register("^[0-9]{8}$", "iso8601-date-basic", "yyyyMMdd", value => value.TimeOfDay == TimeSpan.Zero,
+                CosmosTemporalParts.Date, readsBack: false, "%Y%m%d", "YYYYMMDD");
+
+            Register("^[0-9]{4}-[0-9]{2}$", "iso8601-year-month", "yyyy-MM", value => value.Day == 1 && value.TimeOfDay == TimeSpan.Zero,
+                CosmosTemporalParts.Date, readsBack: true, "%Y-%m", "YYYY-MM");
 
             // A time of day with no date. Recognised, because its lexical order is its chronological
             // order and a sort over one is sound on exactly those terms; not renderable, because
             // writing an instant into it would drop the date rather than refuse.
             for (var n = 0; n < fractions.Length; n++)
-                Register($"^[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fractions[n].Pattern}$", $"iso8601-time-f{n}", null, Never);
+                Register($"^[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fractions[n].Pattern}$", $"iso8601-time-f{n}", null, Never,
+                    CosmosTemporalParts.Time, readsBack: true,
+                    Cross(new[] { clocks[Bq] }, fractions[n].Parses[Bq]).Concat(Cross(new[] { clocks[Pg] }, fractions[n].Parses[Pg])).ToArray());
 
-            Register("^[0-9]{2}:[0-9]{2}$", "iso8601-time-minutes", null, Never);
+            Register("^[0-9]{2}:[0-9]{2}$", "iso8601-time-minutes", null, Never,
+                CosmosTemporalParts.Time, readsBack: true, minutes);
         }
 
         /// <summary>
@@ -233,6 +323,98 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 }
 
             return $"iso8601-instant-f{fraction}-{zone}";
+        }
+
+        /// <summary>
+        /// Determines whether reading this form's stored text with the given format, into a value
+        /// holding the given halves of an instant, answers exactly the instant the text denotes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What membership claims, and why a table rather than a reading of the format.</b> A
+        /// format string is not a description the adapter can interpret — it is an input to the
+        /// engine's own parser, and what that parser does with it is measured rather than derived.
+        /// The claim a row makes is the whole of what a rewrite needs: over every string this shape
+        /// admits, the parse answers the instant the string denotes, one for one. Injective, because
+        /// the shape has one spelling per value and the parse loses none of it; monotone, because the
+        /// map is the true one. So the chain <c>PARSE(&lt;format&gt;, &lt;path&gt;)</c> preserves
+        /// whatever the shape itself preserves, and the two bits on
+        /// <see cref="CosmosRepresentation"/> answer for it unchanged.
+        /// </para>
+        /// <para>
+        /// <b>A format outside the table says nothing, which is not the same as being wrong.</b>
+        /// Measured, the engine accepts <c>yyyy-MM-dd'T'HH:mm:ss'Z'</c> over an instant and answers
+        /// the wrong instant — it reads the <c>mm</c> as a second month — so a query written that way
+        /// is already returning the wrong rows, in process, before any of this. Declining to push it
+        /// leaves that answer exactly as it was; pushing it would replace one wrong answer with a
+        /// different one.
+        /// </para>
+        /// <para>
+        /// <b>And the type the function answers is half the question.</b> <c>PARSE_DATE</c> over a
+        /// path storing a full instant reads the format faithfully and then throws the clock away, so
+        /// many stored strings share one value and the equality a rewrite would lower is not the
+        /// equality the query asked. That is refused here rather than in the caller, the format alone
+        /// not being able to say it.
+        /// </para>
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="format">The format the query wrote, or <c>null</c>.</param>
+        /// <param name="held">The halves of an instant the value the parse answers can hold.</param>
+        /// <returns><c>true</c> where the parse is the identity on this shape's values.</returns>
+        public static bool ParsesExactly(CosmosRepresentation representation, string? format, CosmosTemporalParts held)
+        {
+            if (format is null || Temporal.TryGetValue(representation.Name, out var form) == false)
+                return false;
+
+            if ((form.Carries & ~held) != CosmosTemporalParts.None)
+                return false;
+
+            return form.Parses.Contains(format, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// Returns every format a parse of this form may be written with.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ParsesExactly"/> is what a rewrite asks, and this is what a <em>measurement</em>
+        /// asks: a claim nothing enumerates is a claim nothing can be run against the engine, and the
+        /// rows here are claims about the engine. <c>CalciteTemporalParseMeasurementTests</c> parses a
+        /// sample of every shape with every spelling this returns.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <returns>The formats, empty where the form has none and for a form that is not temporal.</returns>
+        public static IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>
+            Temporal.TryGetValue(representation.Name, out var form) ? form.Parses : Array.Empty<string>();
+
+        /// <summary>
+        /// Determines whether the stored text can be sent down as it stands and converted by the
+        /// reader, for a column holding the given halves of an instant.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two ways this fails, and neither is visible in the format.</b> The shape may be one the
+        /// reader does not read at all — measured, .NET's invariant <c>DateTime.TryParse</c> refuses
+        /// <c>20240102</c> and <c>20240102T030405Z</c>, so the separator-less shapes are out. Or the
+        /// column may hold a half the shape does not carry, and then the reader fills it from
+        /// somewhere: a time of day read back as a <c>TIMESTAMP</c> acquires <em>today's</em> date,
+        /// where the engine's parse gives it the epoch's. A missing clock is not the same case — both
+        /// sides put midnight there — so only a missing <em>date</em> is refused.
+        /// </para>
+        /// <para>
+        /// This is the read side of <see cref="ParsesExactly"/> and is asked beside it rather than
+        /// folded into it, because a filter needs the first alone: nothing comes back from a
+        /// comparison for a reader to get wrong.
+        /// </para>
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="held">The halves of an instant the projected column holds.</param>
+        /// <returns><c>true</c> where the reader answers what the engine's parse answers.</returns>
+        public static bool ReadsBackAs(CosmosRepresentation representation, CosmosTemporalParts held)
+        {
+            if (Temporal.TryGetValue(representation.Name, out var form) == false || form.ReadsBack == false)
+                return false;
+
+            return (held & ~form.Carries & CosmosTemporalParts.Date) == CosmosTemporalParts.None;
         }
 
         /// <summary>

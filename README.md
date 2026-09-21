@@ -413,6 +413,40 @@ one value two spellings — so the adapter reads it as saying nothing rather tha
 that would miss half your documents. Say `^[0-9]{5}$` if the values are padded, or
 `^(0|[1-9][0-9]*)$` if they are not.
 
+**A timestamp reached through `PARSE_DATE` or `PARSE_DATETIME` pushes too — but write the format
+BigQuery's way, not Java's.** Cosmos has no date type, so a stored instant is a string and a query
+usually reads it with a cast, a `RETURNING TIMESTAMP` clause, or one of the parse functions. The
+parse names a format, and the adapter pushes it only where that format is one it has measured to read
+the declared shape exactly:
+
+```
+WHERE PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at')) > TIMESTAMP '2024-02-01 00:00:00'
+                                                --> WHERE c.at > '2024-02-01T00:00:00Z'
+
+SELECT PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at')) AS "At"
+  FROM "events" AS c ORDER BY 1 FETCH NEXT 20 ROWS ONLY
+                                                --> ORDER BY c.at at the service, 20 documents returned
+```
+
+Write the format with BigQuery's `%Y-%m-%d` elements or Postgres's `YYYY-MM-DD` ones, and quote a
+literal `T` or `Z` as `'T'` and `'Z'` (doubled again for SQL, as above). A zero offset is `'+00:00'`
+or bare `+00:00`, and three fraction digits are `.%E3S`, `.MS` or `.FF3`.
+
+**Do not write `yyyy-MM-dd'T'HH:mm:ss'Z'`.** It looks like the Java pattern it resembles and Calcite
+accepts it without complaint, but it does not mean that: measured, a document storing
+`2024-01-02T03:04:05Z` comes back as **2024-04-02 03:00:05** — the format model reads the `mm` as a
+second *month* and never sets the minute. That is Calcite's answer with or without this adapter, and
+the adapter declines to push it rather than turning one wrong answer into a different one. (Over a
+plain `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` date the same spelling is correct and does push, a date having no
+minute to be mistaken for a month.)
+
+Two shapes get nothing from a parse, however they are written: a fraction that is not exactly three
+digits — including the seven-digit shape Azure's own documentation recommends, because Calcite's
+timestamps are milliseconds — and the separator-less `20240102T030405Z`. Both still push through
+`CAST(… AS TIMESTAMP)` and `JSON_VALUE(…, RETURNING TIMESTAMP)`. `PARSE_TIMESTAMP` is a
+`TIMESTAMP WITH LOCAL TIME ZONE` rather than a `TIMESTAMP` and pushes at neither site; use
+`PARSE_DATETIME`.
+
 **Why a UUID pattern gives you ordering, and what it depends on.** A canonical lowercase UUID is
 written in `0-9a-f` with the hyphens always in the same places, so sorting the stored strings sorts
 the values — provided the engine compares UUIDs as unsigned 128-bit numbers, which Calcite does from

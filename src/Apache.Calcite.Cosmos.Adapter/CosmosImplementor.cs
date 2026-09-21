@@ -142,7 +142,17 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// paths always present makes the key non-nullable and the placement moot. See
     /// <see cref="Rel.CosmosProject.SortableOperandsOf"/>.
     /// </param>
-    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression, IReadOnlyList<Sql.CosmosPath>? Operands = null);
+    /// <param name="Format">
+    /// The format a parse reads <paramref name="Path"/> with, where the ordinal holds a chain rather
+    /// than a cast; <c>null</c> otherwise. Structural, like the path — which format the query wrote is
+    /// a question about the expression at this ordinal, and whether it reads the declared shape is the
+    /// caller's pure lookup. See <see cref="Rel.CosmosProject.OrderingCandidateOf"/>.
+    /// </param>
+    /// <param name="Held">
+    /// The halves of an instant the conversion's value holds, which is what says whether the parse
+    /// truncates. See <see cref="Metadata.CosmosTemporalParts"/>.
+    /// </param>
+    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression, IReadOnlyList<Sql.CosmosPath>? Operands = null, string? Format = null, Metadata.CosmosTemporalParts Held = Metadata.CosmosTemporalParts.None);
 
     /// <summary>
     /// Accumulates the state contributed by a tree of <see cref="CosmosRel"/> nodes and renders
@@ -588,10 +598,19 @@ namespace Apache.Calcite.Cosmos.Adapter
                         // Derived here because here is where the walk is -- both halves of it are
                         // questions about which expression sits at this ordinal. Whether the container
                         // licenses the path is the caller's pure lookup. See CosmosOrdering.
+                        string? chain = null;
+                        var held = Metadata.CosmosTemporalParts.None;
+                        var candidate = paths[i];
+
+                        if (candidate is null)
+                            candidate = CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias, out chain, out held);
+
                         candidates[i] = new CosmosOrdering(
-                            paths[i] ?? CosmosProject.OrderingCandidateOf(expression, translator, DefaultRootAlias),
+                            candidate,
                             CosmosProject.IsSortableAtTheService(expression),
-                            CosmosProject.SortableOperandsOf(expression, translator, DefaultRootAlias));
+                            CosmosProject.SortableOperandsOf(expression, translator, DefaultRootAlias),
+                            chain,
+                            held);
 
                         // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
                         // read as text is a rendering of the path it binds to, and a column passed

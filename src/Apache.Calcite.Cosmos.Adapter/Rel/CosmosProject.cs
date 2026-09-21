@@ -136,8 +136,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // A computed column that converts a path the container confines to one stored shape
                 // may still be ordered by that path, even though it addresses none. A weaker claim
                 // than a binding and recorded apart from one -- see CosmosImplementor.OrderingPaths.
-                var candidate = paths[i] ?? OrderingCandidateOf(node, translator, implementor.RootAlias);
-                ordering[i] = paths[i] is not null || IsOrderable(facts, candidate) ? candidate : null;
+                string? chain = null;
+                var held = Metadata.CosmosTemporalParts.None;
+                var candidate = paths[i];
+
+                if (candidate is null)
+                    candidate = OrderingCandidateOf(node, translator, implementor.RootAlias, out chain, out held);
+
+                ordering[i] = paths[i] is not null || IsOrderable(facts, candidate, chain, held) ? candidate : null;
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -192,27 +198,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// stored spelling. A cast between two types the service compares natively is not this
         /// rewrite's business and gets no entry.
         /// </para>
+        /// <para>
+        /// <b>A parse is the same conversion written as a chain, and it hands back the format with the
+        /// path.</b> <c>PARSE_DATETIME(&lt;format&gt;, &lt;path&gt;)</c> converts the text the way a
+        /// cast does, except that the query said <em>how</em> — and ordering by the stored strings is
+        /// ordering by what the parse answers only where the format reads the declared shape. Which
+        /// format was written is structural, so it is read here; whether it reads the shape is the
+        /// pure lookup <see cref="IsOrderable"/> makes.
+        /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
         /// <param name="translator">Resolves an expression to the path it addresses.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="format">
+        /// On return, the format a parse reads the path with, or <c>null</c> where the conversion
+        /// names none and is Calcite's own.
+        /// </param>
+        /// <param name="held">On return, the halves of an instant the conversion's value holds.</param>
         /// <returns>The path, or <c>null</c>.</returns>
-        public static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
+        public static CosmosPath? OrderingCandidateOf(RexNode node, CosmosRexTranslator translator, string rootAlias, out string? format, out Metadata.CosmosTemporalParts held)
         {
+            format = null;
+            held = Metadata.CosmosTemporalParts.None;
+
             if (node is not RexCall call || translator is null)
                 return null;
 
+            RexNode? converted;
             var kind = call.getKind().name();
-            if (kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.CAST) && kind != nameof(org.apache.calcite.sql.SqlKind.__Enum.SAFE_CAST))
-                return null;
 
-            if (call.getOperands().size() != 1 || IsStoredAsText(call.getType()?.getSqlTypeName()) == false)
+            if ((kind == nameof(org.apache.calcite.sql.SqlKind.__Enum.CAST) || kind == nameof(org.apache.calcite.sql.SqlKind.__Enum.SAFE_CAST))
+                && call.getOperands().size() == 1
+                && IsStoredAsText(call.getType()?.getSqlTypeName()))
+            {
+                converted = (RexNode)call.getOperands().get(0);
+            }
+            else if (Metadata.CosmosTemporalParse.TryRead(call, out var text, out var written, out var parsed) && text is not null)
+            {
+                converted = text;
+                format = written;
+                held = parsed;
+            }
+            else
+            {
                 return null;
+            }
 
-            if (translator.TryResolvePath((RexNode)call.getOperands().get(0), out var path) == false || path is null)
+            if (translator.TryResolvePath(converted, out var path) == false || path is null
+                || string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+            {
+                format = null;
+                held = Metadata.CosmosTemporalParts.None;
                 return null;
+            }
 
-            return string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) ? path : null;
+            return path;
         }
 
         /// <summary>
@@ -237,8 +277,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </remarks>
         /// <param name="facts">What the container declares, already derived.</param>
         /// <param name="path">The candidate path, or <c>null</c>.</param>
+        /// <param name="format">
+        /// The format a parse reads the path with, where the candidate is a chain rather than a cast;
+        /// <c>null</c> otherwise. A format that does not read the declared shape maps the stored
+        /// strings onto instants of its own, and their order is then not the order the key asked for.
+        /// </param>
+        /// <param name="held">The halves of an instant the conversion's value holds.</param>
         /// <returns><c>true</c> where a sort may order by the path.</returns>
-        public static bool IsOrderable(Metadata.CosmosFactSet? facts, CosmosPath? path)
+        public static bool IsOrderable(Metadata.CosmosFactSet? facts, CosmosPath? path, string? format = null, Metadata.CosmosTemporalParts held = Metadata.CosmosTemporalParts.None)
         {
             if (facts is null || path is null)
                 return false;
@@ -247,6 +293,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 return false;
 
             if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
+                return false;
+
+            if (format is not null && Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
                 return false;
 
             return facts.IsAlwaysScalar(document);
