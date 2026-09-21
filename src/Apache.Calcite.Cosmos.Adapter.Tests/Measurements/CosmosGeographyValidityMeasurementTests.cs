@@ -81,6 +81,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             ("scalar", "moab"),
             ("nullval", null),
             ("badcoord", new { type = "Point", coordinates = new[] { 999.0, 999.0 } }),
+
+            // The shapes that are GeoJSON and are still not measurable. Each one is a reason
+            // CosmosGeographyForms refuses to prove something from a declaration.
+            ("wrongcase", new { type = "point", coordinates = new[] { 1.0, 2.0 } }),
+            ("lineone", new { type = "LineString", coordinates = new[] { new[] { 0.0, 0.0 } } }),
+            ("multipoint", new { type = "MultiPoint", coordinates = new[] { new[] { 0.0, 0.0 }, new[] { 1.0, 1.0 } } }),
+            ("ringopen", new { type = "Polygon", coordinates = new[] { new[] { new[] { 0.0, 0.0 }, new[] { 1.0, 0.0 }, new[] { 1.0, 1.0 }, new[] { 0.0, 1.0 } } } }),
+            ("ringcrossed", new { type = "Polygon", coordinates = new[] { new[] { new[] { 0.0, 0.0 }, new[] { 2.0, 2.0 }, new[] { 2.0, 0.0 }, new[] { 0.0, 2.0 }, new[] { 0.0, 0.0 } } } }),
+
+            // And the ones that are, including a polygon wound either way and a point with an
+            // elevation, so the refusals above are not read as a general suspicion of shapes.
+            ("ringclosed", new { type = "Polygon", coordinates = new[] { new[] { new[] { 0.0, 0.0 }, new[] { 1.0, 0.0 }, new[] { 1.0, 1.0 }, new[] { 0.0, 1.0 }, new[] { 0.0, 0.0 } } } }),
+            ("ringclockwise", new { type = "Polygon", coordinates = new[] { new[] { new[] { 0.0, 0.0 }, new[] { 0.0, 1.0 }, new[] { 1.0, 1.0 }, new[] { 1.0, 0.0 }, new[] { 0.0, 0.0 } } } }),
+            ("linetwo", new { type = "LineString", coordinates = new[] { new[] { 0.0, 0.0 }, new[] { 1.0, 1.0 } } }),
+            ("elevated", new { type = "Point", coordinates = new[] { 1.0, 2.0, 3.0 } }),
+        };
+
+        /// <summary>
+        /// The documents the service will measure, by id.
+        /// </summary>
+        static readonly string[] Measurable = { "valid", "ringclosed", "ringclockwise", "linetwo", "elevated" };
+
+        /// <summary>
+        /// The documents it will not, by id — six that are not shapes at all, and five that are
+        /// GeoJSON and still unmeasurable.
+        /// </summary>
+        static readonly string[] Unmeasurable =
+        {
+            "notgeo", "array", "scalar", "nullval", "absent", "badcoord",
+            "wrongcase", "lineone", "multipoint", "ringopen", "ringcrossed",
         };
 
         static async Task Initialize()
@@ -177,10 +207,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             foreach (var row in rows)
                 defined[(string)row["id"]!] = (bool)row["defined"]!;
 
-            defined["valid"].Should().BeTrue();
+            foreach (var id in Measurable)
+                defined[id].Should().BeTrue($"'{id}' is a shape the service measures");
 
-            foreach (var id in new[] { "notgeo", "array", "scalar", "nullval", "absent", "badcoord" })
-                defined[id].Should().BeFalse($"'{id}' is not a shape the service will measure");
+            foreach (var id in Unmeasurable)
+                defined[id].Should().BeFalse($"'{id}' is not one the service will measure");
         }
 
         /// <summary>
@@ -195,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         {
             var rows = await Query($"SELECT c.id, ST_ISVALID(c.location) AS valid, IS_DEFINED(ST_DISTANCE(c.location, {Point})) AS defined FROM c");
 
-            rows.Should().HaveCount(7);
+            rows.Should().HaveCount(Measurable.Length + Unmeasurable.Length);
 
             foreach (var row in rows)
                 ((bool)row["valid"]!).Should().Be((bool)row["defined"]!, "for " + row["id"]);
@@ -216,8 +247,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var ascending = await Query($"SELECT c.id FROM c ORDER BY ST_DISTANCE(c.location, {Point}) ASC");
             var descending = await Query($"SELECT c.id FROM c ORDER BY ST_DISTANCE(c.location, {Point}) DESC");
 
-            ((string)ascending[^1]["id"]!).Should().Be("valid", "the one defined distance sorts last ascending");
-            ((string)descending[0]["id"]!).Should().Be("valid", "and first descending");
+            var lastAscending = new List<string>();
+            for (var i = ascending.Count - Measurable.Length; i < ascending.Count; i++)
+                lastAscending.Add((string)ascending[i]["id"]!);
+
+            lastAscending.Should().BeEquivalentTo(Measurable, "the defined distances sort last ascending");
 
             var reversed = new List<string>();
             for (var i = descending.Count - 1; i >= 0; i--)
@@ -258,7 +292,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             // And the control: the distance alone is accepted, so the refusals are about what was
             // built around it rather than about the clause carrying a spatial call at all.
-            (await Query($"SELECT c.id FROM c ORDER BY ST_DISTANCE(c.location, {Point}) ASC")).Should().HaveCount(7);
+            (await Query($"SELECT c.id FROM c ORDER BY ST_DISTANCE(c.location, {Point}) ASC"))
+                .Should().HaveCount(Measurable.Length + Unmeasurable.Length);
         }
 
         /// <summary>
@@ -276,8 +311,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         {
             var rows = await Query($"SELECT c.id FROM c WHERE ST_ISVALID(c.location) ORDER BY ST_DISTANCE(c.location, {Point}) ASC");
 
-            rows.Should().HaveCount(1);
-            ((string)rows[0]["id"]!).Should().Be("valid");
+            var kept = new List<string>();
+            foreach (var row in rows)
+                kept.Add((string)row["id"]!);
+
+            kept.Should().BeEquivalentTo(Measurable);
         }
 
     }
