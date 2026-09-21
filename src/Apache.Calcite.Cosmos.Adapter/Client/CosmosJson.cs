@@ -649,6 +649,108 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Converts a JTS geometry into the value a Cosmos statement means by a geography.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The other direction of <see cref="GetGeography"/>, and the one a parameter needs.</b>
+        /// A geography in a Cosmos statement <em>is</em> a GeoJSON object — there is no constructor to
+        /// call and no text form the service accepts — so a constant is written into the SQL as that
+        /// object by <c>CosmosRexTranslator.WriteGeographyLiteral</c>. A parameter cannot be written
+        /// into the SQL, its value arriving with the execution, so it is bound; and what is bound has
+        /// to be the same object the constant form inlines, or the two spellings of one query mean
+        /// different things.
+        /// </para>
+        /// <para>
+        /// <b>Without this the bound value was the geometry itself</b>, and the SDK's serializer wrote
+        /// the IKVM object graph — <c>$0</c>-keyed, assembly-qualified, three kilobytes for a point.
+        /// The service received that in place of a shape, and where the statement also projected the
+        /// parameter it came back and was read as a geography, which is how it was reported (#154).
+        /// </para>
+        /// <para>
+        /// <b>A CLR object graph rather than text or a serializer's own tree.</b> The parameter is
+        /// handed to <c>QueryDefinition.WithParameter</c> and serialized by whichever serializer the
+        /// client carries; a dictionary and a list are the two shapes every JSON serializer writes as
+        /// an object and an array, so this does not depend on which one that is. Text would be worse
+        /// than wrong — it would arrive as a JSON <em>string</em>, and a spatial function over a string
+        /// is not a spatial function over a shape.
+        /// </para>
+        /// <para>
+        /// <b>The <c>crs</c> member is dropped, and it says nothing this loses.</b>
+        /// <c>GeographyFunctions.AsGeoJson</c> writes <c>"crs":{"type":"name","properties":{"name":"EPSG:4326"}}</c>
+        /// beside the shape. A geography is WGS84 and there is no second reference system for one to
+        /// be in, so the member is redundant; what decides it is that the constant form — the one
+        /// whose every emitted shape has been executed against an account — carries the caller's own
+        /// text and no <c>crs</c>. Sending one where the working spelling sends none would be a second
+        /// convention, tested nowhere.
+        /// </para>
+        /// </remarks>
+        /// <param name="geometry">The geometry to bind.</param>
+        /// <returns>The value to bind, as nested dictionaries, lists and primitives.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is <c>null</c>.</exception>
+        public static object ToGeoJsonValue(org.locationtech.jts.geom.Geometry geometry)
+        {
+            if (geometry is null)
+                throw new ArgumentNullException(nameof(geometry));
+
+            var text = Geography.Runtime.GeographyFunctions.AsGeoJson(geometry);
+
+            using var document = JsonDocument.Parse(text);
+            var value = ToClrValue(document.RootElement);
+
+            // Only ever at the top level -- a nested geometry of a collection is written without one.
+            if (value is Dictionary<string, object?> shape)
+                shape.Remove("crs");
+
+            return value!;
+        }
+
+        /// <summary>
+        /// Reads a JSON value into the CLR object graph a serializer writes back out unchanged.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately not <see cref="GetNatural"/>, which builds the <em>Java</em> collections
+        /// Calcite holds a value in. That is the shape a row carries; this is the shape a request
+        /// carries, and the two go opposite ways.
+        /// </remarks>
+        static object? ToClrValue(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    var shape = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+                    foreach (var property in value.EnumerateObject())
+                        shape[property.Name] = ToClrValue(property.Value);
+
+                    return shape;
+
+                case JsonValueKind.Array:
+                    var items = new List<object?>();
+
+                    foreach (var item in value.EnumerateArray())
+                        items.Add(ToClrValue(item));
+
+                    return items;
+
+                case JsonValueKind.String:
+                    return value.GetString();
+
+                case JsonValueKind.Number:
+                    return value.GetDouble();
+
+                case JsonValueKind.True:
+                    return true;
+
+                case JsonValueKind.False:
+                    return false;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
         /// Shortens a value for a message, a shape being large enough to bury one.
         /// </summary>
         static string Abbreviate(string text)

@@ -76,11 +76,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Reads one dynamic parameter's value out of the data context.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Into the same shapes <c>CosmosRexTranslator.GetLiteralValue</c> produces, so that a value
         /// arriving late is indistinguishable from one written into the statement: every integer width
         /// as a <c>long</c>, every approximate one as a <c>double</c>. A parameter that bound
         /// differently from a literal of the same type would be a second convention for the same
         /// thing, and the service would be the one to notice.
+        /// </para>
+        /// <para>
+        /// <b>A geography is the one type whose constant form is not a bound value at all</b>, so the
+        /// agreement has to be reached rather than inherited. <c>GetLiteralValue</c> refuses a
+        /// <c>GEOMETRY</c> literal — a geography in a Cosmos statement <em>is</em> a GeoJSON object, and
+        /// <c>CosmosRexTranslator.WriteGeographyLiteral</c> writes one into the SQL where the call
+        /// stood. A parameter's value arrives with the execution and cannot be written into the SQL,
+        /// so it is bound; <see cref="CosmosJson.ToGeoJsonValue"/> makes what is bound the same object
+        /// the constant form inlines.
+        /// </para>
+        /// <para>
+        /// <b>Left alone it was the geometry itself</b>, and the SDK's serializer wrote the IKVM
+        /// object graph — <c>$0</c>-keyed, assembly-qualified, three kilobytes for a point — which the
+        /// service got in place of a shape (#154). Switching on the value's class rather than on a
+        /// declared type is what every case here does, and is right for the same reason: what the
+        /// context hands over is a Java object, and which one it is decides what it means.
+        /// </para>
         /// </remarks>
         /// <param name="root">The data context.</param>
         /// <param name="value">The ordinal to read.</param>
@@ -98,6 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 java.lang.Double d => d.doubleValue(),
                 java.math.BigDecimal d => BigDecimalConverter.ToDecimal(d),
                 java.lang.Boolean b => b.booleanValue(),
+                org.locationtech.jts.geom.Geometry g => CosmosJson.ToGeoJsonValue(g),
                 var other => other,
             };
         }

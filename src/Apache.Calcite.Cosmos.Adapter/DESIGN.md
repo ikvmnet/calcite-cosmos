@@ -2136,6 +2136,27 @@ path makes the accessor answer null and the constructor never runs, while the ba
 sent the scalar and the reader would have raised over text that is not GeoJSON. An array raises on
 both sides, so the guard admits exactly what agrees.
 
+**A geography a caller passes in is bound as the same object.** A constant is inlined into the SQL,
+which is only possible because the plan holds it; a parameter's value arrives with the execution, so
+it is bound like every other and `CosmosJson.ToGeoJsonValue` shapes it on the way. That has to be
+said out loud because a geography is the one type whose constant form is *not* a bound value:
+`GetLiteralValue` refuses a `GEOMETRY` literal outright, so the agreement between a literal and a
+parameter is reached here rather than inherited.
+
+Left alone the bound value was the JTS geometry itself, and the SDK's serializer wrote the IKVM
+object graph — `$0`-keyed, assembly-qualified, three kilobytes for a point — which the service
+received in place of a shape. Where the statement also *projected* the parameter it came back and was
+read as a geography, and that is the stack #154 reports. What is bound is a CLR object graph rather
+than text or one serializer's tree: the parameter goes to `QueryDefinition.WithParameter` and is
+written by whichever serializer the client carries, and a dictionary and a list are the two shapes
+every serializer writes as an object and an array. Text would be worse than wrong — it would arrive
+as a JSON *string*, and a spatial function over a string is not one over a shape.
+
+The `crs` member `AsGeoJson` writes is dropped. A geography is WGS84 and has no second reference
+system to be in, so it says nothing; what decides it is that the constant form — whose every emitted
+shape has been executed against an account — carries the caller's own text and no `crs`, and sending
+one where the working spelling sends none would be a second convention tested nowhere.
+
 **What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
 weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
 with the service. The geography package computes one over S2, and nothing has measured whether it

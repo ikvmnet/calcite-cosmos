@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -113,6 +115,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             CosmosJson.CanRead(SqlTypeName.UUID).Should().BeTrue();
             CosmosJson.CanRead(SqlTypeName.GEOMETRY).Should().BeTrue();
+        }
+
+        // -- Writing a geography back out ----------------------------------------------------------
+
+        /// <summary>
+        /// A geometry converts to the GeoJSON object a Cosmos statement means by a geography.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The other direction of <c>GetGeography</c>, and the one a bound parameter needs: a
+        /// geography in a statement <em>is</em> a GeoJSON object, so a constant is written into the
+        /// SQL as one and a parameter has to be bound as the same thing. Left as the geometry, the
+        /// SDK's serializer wrote the IKVM object graph instead (#154).
+        /// </para>
+        /// <para>
+        /// Nested dictionaries and lists rather than one serializer's own tree, because which
+        /// serializer the client carries is the caller's choice — asserted through both.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("{\"type\":\"Point\",\"coordinates\":[-111.5,38.3]}")]
+        [InlineData("{\"type\":\"Polygon\",\"coordinates\":[[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0],[0.0,0.0]]]}")]
+        [InlineData("{\"type\":\"GeometryCollection\",\"geometries\":[{\"type\":\"Point\",\"coordinates\":[1.0,2.0]},{\"type\":\"LineString\",\"coordinates\":[[0.0,0.0],[1.0,1.0]]}]}")]
+        public void AGeometryWritesAsItsGeoJson(string geoJson)
+        {
+            var geometry = Apache.Calcite.Geography.Runtime.GeographyFunctions.FromGeoJson(geoJson);
+            var value = CosmosJson.ToGeoJsonValue(geometry);
+
+            Newtonsoft.Json.JsonConvert.SerializeObject(value).Should().Be(geoJson);
+
+            using var round = System.Text.Json.JsonDocument.Parse(
+                Newtonsoft.Json.JsonConvert.SerializeObject(value));
+
+            CosmosJson.GetValue(round.RootElement, SqlTypeName.GEOMETRY)
+                .Should().BeAssignableTo<org.locationtech.jts.geom.Geometry>()
+                .Which.equalsExact(geometry).Should().BeTrue("what is sent is what would be read back");
+        }
+
+        /// <summary>
+        /// The <c>crs</c> member the writer adds is dropped, and only at the top level because that is
+        /// the only place it appears.
+        /// </summary>
+        /// <remarks>
+        /// <c>AsGeoJson</c> writes <c>"crs":{"type":"name","properties":{"name":"EPSG:4326"}}</c>
+        /// beside the shape. A geography is WGS84 and has no second reference system to be in, so it
+        /// says nothing; what decides it is that the constant form — whose every emitted shape has been
+        /// executed against an account — carries the caller's own text and no <c>crs</c>. Sending one
+        /// where the working spelling sends none would be a second convention, tested nowhere.
+        /// </remarks>
+        [Fact]
+        public void TheReferenceSystemMemberIsDropped()
+        {
+            var geometry = Apache.Calcite.Geography.Runtime.GeographyFunctions.FromGeoJson(
+                "{\"type\":\"Point\",\"coordinates\":[-111.5,38.3]}");
+
+            Apache.Calcite.Geography.Runtime.GeographyFunctions.AsGeoJson(geometry)
+                .Should().Contain("crs", "the writer adds one, which is what this is about");
+
+            CosmosJson.ToGeoJsonValue(geometry).Should().BeOfType<Dictionary<string, object?>>()
+                .Which.Should().NotContainKey("crs");
+        }
+
+        [Fact]
+        public void NoGeometryAtAllIsRefused()
+        {
+            var act = () => CosmosJson.ToGeoJsonValue(null!);
+
+            act.Should().Throw<ArgumentNullException>();
         }
 
         [Fact]

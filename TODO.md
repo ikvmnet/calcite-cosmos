@@ -552,6 +552,18 @@ is not offered, and one thing that cannot be fixed here at all.
   [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46) — that case cannot project its score, and
   this one can, so the outer projection should merely drop a column that the statement still carries.
   Should. Plan the same statement from a `CalciteConnection` and see.
+- **A geography parameter binds as GeoJSON** — *built, by #154, and it is what makes a parameterised
+  proximity query possible at all.* The value a data context hands over is a JTS geometry, and a JTS
+  geometry is not a document value: bound as itself the SDK's serializer wrote its object graph and
+  the service got that in place of a shape. `CosmosJson.ToGeoJsonValue` shapes it, dropping the `crs`
+  member the writer adds, so a parameter and an inlined constant say the same thing.
+
+  **A projected parameter is still sent to the service and echoed back** — *small, and it is the
+  shape #154 was reported through.* `SELECT VALUE { "$f2": @p0 }` asks the service to return a value
+  the client already has; for a geography it also round-trips the instance through GeoJSON, which
+  keeps the shape and not the object. Declining to push a projection that is *only* a parameter or a
+  literal would remove both, and nothing needs the value to have travelled. Left out of #154 because
+  it changes which plans are chosen and the fix does not need it.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
