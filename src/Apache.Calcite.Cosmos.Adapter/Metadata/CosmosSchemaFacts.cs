@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 using com.fasterxml.jackson.databind;
@@ -57,68 +57,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// The published GeoJSON schemas whose subject is a geometry.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Taken from geojson.org rather than invented.</b> An earlier draft of this declared a
-        /// <c>format</c> of its own, which JSON Schema permits and no peer implementation is expected
-        /// to understand — and which a schema declaring the Format-Assertion vocabulary must
-        /// <em>reject</em> as an unknown format. These are real <c>$id</c>s that already mean exactly
-        /// what is being claimed, so a container that says a property is a GeoJSON geometry has said
-        /// it in the vocabulary of the thing it is describing.
-        /// </para>
-        /// <para>
-        /// <b>Geometries only.</b> <c>Feature.json</c> and <c>FeatureCollection.json</c> are not here:
-        /// a Feature is an envelope carrying a geometry, and a spatial function over the envelope
-        /// answers undefined exactly as it does over any other object that is not a shape.
-        /// <c>Geometry.json</c> is the union of the six the service indexes, and the six are admitted
-        /// beside it so that a container pinning one shape is not worse off than one pinning any.
-        /// </para>
-        /// </remarks>
-        static readonly HashSet<string> GeoJsonGeometrySchemas = new(StringComparer.Ordinal)
-        {
-            "geojson.org/schema/Geometry.json",
-            "geojson.org/schema/Point.json",
-            "geojson.org/schema/MultiPoint.json",
-            "geojson.org/schema/LineString.json",
-            "geojson.org/schema/MultiLineString.json",
-            "geojson.org/schema/Polygon.json",
-            "geojson.org/schema/MultiPolygon.json",
-        };
-
-        /// <summary>
-        /// Determines whether a reference names one of the published GeoJSON geometry schemas.
-        /// </summary>
-        /// <remarks>
-        /// The scheme is dropped before comparing, since the same <c>$id</c> is written both ways in
-        /// the wild, and a fragment is dropped with it so that a reference into the document still
-        /// names it. Anything else is a reference like any other and is followed rather than read.
-        /// </remarks>
-        /// <param name="reference">The reference.</param>
-        /// <returns><c>true</c> where it names a geometry schema.</returns>
-        static bool IsGeoJsonGeometry(string? reference)
-        {
-            if (string.IsNullOrEmpty(reference))
-                return false;
-
-            var text = reference!;
-
-            foreach (var scheme in new[] { "https://", "http://" })
-                if (text.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
-                {
-                    text = text.Substring(scheme.Length);
-                    break;
-                }
-
-            var fragment = text.IndexOf('#');
-            if (fragment >= 0)
-                text = text.Substring(0, fragment);
-
-            return GeoJsonGeometrySchemas.Contains(text);
-        }
-
-        /// <summary>
         /// Reads every fact one schema node states about <paramref name="path"/>, under
         /// <paramref name="guard"/>, and recurses into the nodes below it.
         /// </summary>
@@ -138,17 +76,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // recorded, and going round again would not add one.
             if (Text(node, "$ref") is string reference)
             {
-                // A reference to the published GeoJSON geometry schema is the declaration that a path
-                // holds a shape. It is recognised rather than followed: CosmosSchemaResolver answers
-                // only root-relative pointers, so an absolute URI resolves to nothing and would state
-                // nothing -- and following it would need the document fetched, which is not this
-                // compiler's business. What is wanted from it is its identity, not its contents.
-                if (IsGeoJsonGeometry(reference))
-                {
-                    State(new CosmosClaim.Geography());
-                    return;
-                }
-
                 if (visiting.Add(reference) == false)
                     return;
 
@@ -178,6 +105,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // path, one level over.
             if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
                 State(new CosmosClaim.Represents(representation));
+
+            // A geography is proven from the subschema rather than taken from a token, for the reason
+            // CosmosGeographyForms gives: GeoJSON validity is not Cosmos measurability, so neither a
+            // format of our own nor a $ref to the published schema says what has to be said. What
+            // does is the declaration pinning the type name, both members, and each ordinate's range
+            // -- which a schema can do for a point and a line and cannot do for a ring.
+            if (CosmosGeographyForms.Recognise(node))
+                State(new CosmosClaim.Geography());
 
             // required names the children that are there whenever this object is. The claim is about
             // the child, and it is conditional on the parent: `required` constrains an object, and

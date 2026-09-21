@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static CosmosFactSet Facts(string json) => Compile(json).Derive(null);
 
         /// <summary>
-        /// <c>$ref</c> to a published geometry schema beside an object type declares that the path holds a geography.
+        /// <c>Point</c> schema with bounded ordinates beside an object type declares that the path holds a geography.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -55,11 +55,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </para>
         /// </remarks>
         [Fact]
-        public void AReferenceToTheGeoJsonSchemaDeclaresAGeography()
+        public void ASchemaPinningAPointDeclaresAGeography()
         {
             Facts("""
             { "type": "object",
-              "properties": { "location": { "$ref": "https://geojson.org/schema/Geometry.json" } } }
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
             """)
                 .IsAlwaysGeography(Location).Should().BeTrue();
         }
@@ -86,11 +91,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// beside no declared type.
         /// </remarks>
         [Fact]
-        public void AReferenceToAnythingElseDeclaresNoGeography()
+        public void ASchemaLeavingTheCoordinatesUnboundedDeclaresNone()
         {
             Facts("""
             { "type": "object",
-              "properties": { "location": { "$ref": "https://example.com/not-a-geometry.json" } } }
+              "properties": { "location": { "type": "object", "required": ["type"], "properties": { "type": { "const": "Point" } } } } }
             """)
                 .IsAlwaysGeography(Location).Should().BeFalse();
         }
@@ -109,7 +114,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var facts = Facts("""
             { "type": "object",
-              "properties": { "location": { "$ref": "https://geojson.org/schema/Geometry.json" } } }
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
             """);
 
             facts.Knows(new CosmosFact(Location, new CosmosClaim.Present())).Should().BeTrue();
