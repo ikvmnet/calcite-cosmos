@@ -416,7 +416,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
                 return null;
 
-            if (format is not null && CosmosStoredForms.ParsesExactly(representation, format, held) == false)
+            // A parse names how the text is read and is licensed by the format reading the shape; a
+            // cast leaves it to the engine, and is licensed only where the engine can do it. Neither
+            // is optional: dropping a conversion the engine would have failed at answers rows where
+            // the query answers an error, which is a different query rather than a faster one.
+            if (format is not null
+                ? CosmosStoredForms.ParsesExactly(representation, format, held) == false
+                : CosmosStoredForms.EngineReads(representation, held) == false)
                 return null;
 
             if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
@@ -573,24 +579,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Two spellings reach here, and they arrive shaped differently.
-        /// <c>CAST(JSON_VALUE(…) AS TIMESTAMP)</c> carries the text accessor as its operand, so the
-        /// operand is the answer — the same one the UUID lowering takes.
-        /// <c>JSON_VALUE(…, '$.p' RETURNING TIMESTAMP)</c> carries none: the <c>RETURNING</c> clause
-        /// types the call itself, and by the time the planner has simplified it the node is a
-        /// two-operand accessor whose only mark of being temporal is its type. Rebuilding the call
-        /// without the clause is what recovers the text, the default return type being the text.
+        /// Two spellings reach here. <c>CAST(JSON_VALUE(…) AS TIMESTAMP)</c> carries the text
+        /// accessor as its operand, so the operand is the answer — the same one the UUID lowering
+        /// takes. And a <em>chain</em>: <c>PARSE_DATE</c> and <c>PARSE_DATETIME</c> carry the text as
+        /// their second operand and a format as their first, and the format is handed back beside the
+        /// accessor because it is half of what licenses the rewrite — see
+        /// <see cref="TryLowerInstant"/>.
         /// </para>
         /// <para>
-        /// A third arrives as a <em>chain</em>: <c>PARSE_DATE</c> and <c>PARSE_DATETIME</c> carry the
-        /// text as their second operand and a format as their first, and the format is handed back
-        /// beside the accessor because it is half of what licenses the rewrite — see
-        /// <see cref="TryLowerInstant"/>. <c>PARSE_TIMESTAMP</c> is shaped identically and does not
-        /// reach here, its type being <c>TIMESTAMP WITH LOCAL TIME ZONE</c>: a comparison between one
-        /// of those and a zone-less literal is a question about the session's zone, and a declared
-        /// stored form answers nothing about that. <c>PARSE_TIME</c> is left out by the same test, a
-        /// <c>TIME</c> literal carrying a millisecond-of-day rather than the calendar
-        /// <see cref="InstantOf"/> reads.
+        /// <b><c>JSON_VALUE(…, '$.p' RETURNING TIMESTAMP)</c> was a third and has been withdrawn,
+        /// because the clause does not mean what this read it as.</b> Measured at Calcite's own
+        /// runtime: it raises for <em>every</em> string — including <c>2024-01-15 12:30:00</c>, the
+        /// one shape the cast accepts — and answers correctly for a JSON <em>number</em> of epoch
+        /// milliseconds. <c>RETURNING</c> asserts the extracted type rather than converting to it,
+        /// which is the reading <see cref="NumericAccessorOf"/> already records for
+        /// <c>RETURNING INTEGER</c>. So over a path storing text the engine cannot evaluate the
+        /// expression at all, and lowering it onto the stored strings answered rows for a query that
+        /// raises. A path storing a number has no temporal form declared for it, so nothing that was
+        /// sound is lost by no longer looking.
+        /// </para>
+        /// <para>
+        /// <c>PARSE_TIMESTAMP</c> is shaped like the parse and does not reach here, its type being
+        /// <c>TIMESTAMP WITH LOCAL TIME ZONE</c>: a comparison between one of those and a zone-less
+        /// literal is a question about the session's zone, and a declared stored form answers nothing
+        /// about that. <c>PARSE_TIME</c> is left out by the same test, a <c>TIME</c> literal carrying
+        /// a millisecond-of-day rather than the calendar <see cref="InstantOf"/> reads.
         /// </para>
         /// <para>
         /// The type test is what keeps all of them apart from an ordinary <c>VARCHAR</c> accessor,
@@ -623,9 +636,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if ((kind == nameof(SqlKind.__Enum.CAST) || kind == nameof(SqlKind.__Enum.SAFE_CAST)) && call.getOperands().size() == 1)
                 return (RexNode)call.getOperands().get(0);
-
-            if (string.Equals(call.getOperator().getName(), "JSON_VALUE", StringComparison.Ordinal) && call.getOperands().size() >= 2)
-                return rexBuilder.makeCall(SqlStdOperatorTable.JSON_VALUE, (RexNode)call.getOperands().get(0), (RexNode)call.getOperands().get(1));
 
             if (CosmosTemporalParse.TryRead(call, out var text, out var written, out var parsed) && text is not null)
             {

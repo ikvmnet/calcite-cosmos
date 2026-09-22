@@ -373,6 +373,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// The conversions Calcite's own runtime performs on a stored string of each shape, and the
+        /// target types it performs them into.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Three rows, and the shortness is the finding.</b> Of the sixty-odd shapes this
+        /// recognises, Calcite's <c>CAST(&lt;string&gt; AS TIMESTAMP)</c> reads a calendar date and
+        /// two times of day, and nothing else. Every ISO-8601 instant — every <c>T</c>-separated
+        /// shape, at every precision, with or without a zone — <em>raises</em>
+        /// <c>Invalid DATE value</c>. The one instant spelling the cast does read is the
+        /// space-separated one, which <see cref="Recognise"/> does not recognise for the normaliser
+        /// reason <c>TODO.md</c> records.
+        /// </para>
+        /// <para>
+        /// <b>Two shapes are worse than a refusal and are absent for that reason.</b>
+        /// <c>CAST('20240115' AS TIME)</c> answers <c>09:37:03</c> — a value, silently wrong. And
+        /// <c>CAST('12:30:00.123' AS TIME)</c> answers <c>12:30:00</c>, dropping the fraction. A
+        /// conversion that loses or invents is no more usable than one that raises, so
+        /// <c>iso8601-date-basic</c> and every fractional time are out too.
+        /// </para>
+        /// <para>
+        /// <b>What this is for.</b> A pushdown has to answer what the engine would have answered, and
+        /// over a shape the engine cannot read there is no such answer — the engine raises and the
+        /// pushed plan returns rows. That is not an optimisation, it is a different query, and the
+        /// rows it returns are ones the caller could not otherwise have got. So every rewrite that
+        /// drops a conversion asks this first. <c>CalciteTemporalReadingMeasurementTests</c> is the
+        /// measurement.
+        /// </para>
+        /// <para>
+        /// <b><c>JSON_VALUE(…, RETURNING TIMESTAMP)</c> is not in here at all, and cannot be.</b>
+        /// Measured: it raises for <em>every</em> string, including the one the cast accepts, and
+        /// answers correctly for a JSON <em>number</em> of epoch milliseconds. The clause asserts the
+        /// extracted type rather than converting to it — the same reading this codebase already
+        /// arrived at for <c>RETURNING INTEGER</c>. So over a path storing text there is no shape it
+        /// reads, and no row here could say otherwise.
+        /// </para>
+        /// </remarks>
+        static readonly Dictionary<string, CosmosTemporalParts[]> EngineTargets = new(StringComparer.Ordinal)
+        {
+            ["iso8601-date"] = new[] { CosmosTemporalParts.Date, CosmosTemporalParts.Instant },
+            ["iso8601-time-f0"] = new[] { CosmosTemporalParts.Time },
+            ["iso8601-time-minutes"] = new[] { CosmosTemporalParts.Time },
+        };
+
+        /// <summary>
+        /// Determines whether Calcite's own conversion of this form's stored text, into a value
+        /// holding the given halves of an instant, succeeds and answers what the text denotes.
+        /// </summary>
+        /// <remarks>
+        /// The targets are listed per shape rather than derived from what it carries, because
+        /// widening is not uniform: a date read as a <c>TIMESTAMP</c> is midnight and is right, while
+        /// a time of day read as a <c>TIMESTAMP</c> raises rather than taking the epoch's date.
+        /// Measured, both.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="target">The halves of an instant the conversion's value holds.</param>
+        /// <returns><c>true</c> where the engine reads the shape into that type.</returns>
+        public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
+            EngineTargets.TryGetValue(representation.Name, out var targets) && Array.IndexOf(targets, target) >= 0;
+
+        /// <summary>
         /// Returns every format a parse of this form may be written with.
         /// </summary>
         /// <remarks>

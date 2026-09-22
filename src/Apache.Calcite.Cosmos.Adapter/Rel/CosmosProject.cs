@@ -232,6 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 && IsStoredAsText(call.getType()?.getSqlTypeName()))
             {
                 converted = (RexNode)call.getOperands().get(0);
+                held = Metadata.CosmosTemporalParse.PartsOf(call.getType()?.getSqlTypeName());
             }
             else if (Metadata.CosmosTemporalParse.TryRead(call, out var text, out var written, out var parsed) && text is not null)
             {
@@ -295,8 +296,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
                 return false;
 
-            if (format is not null && Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
+            // A parse names how the text is read and is licensed by the format; a cast leaves it to
+            // the engine and is licensed only where the engine can do it. A temporal cast over an
+            // ISO-8601 instant cannot be, measured -- so ordering by the stored strings would order
+            // rows for a query whose key raises. A candidate carrying neither is a UUID cast, whose
+            // conversion the engine performs and which `CalciteUuidReadingMeasurementTests` pins.
+            if (format is not null)
+            {
+                if (Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
+                    return false;
+            }
+            else if (held != Metadata.CosmosTemporalParts.None
+                && Metadata.CosmosStoredForms.EngineReads(representation, held) == false)
+            {
                 return false;
+            }
 
             return facts.IsAlwaysScalar(document);
         }

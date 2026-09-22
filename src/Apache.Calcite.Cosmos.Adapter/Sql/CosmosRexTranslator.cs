@@ -918,6 +918,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // of its own.
             if (IsJsonAccessor(call) && TryResolveJsonPath(call, out var jsonPath) && jsonPath is not null)
             {
+                RequireTheEngineCouldRead(call, jsonPath);
+
                 if (_guardNestedAccessors)
                     WriteGuardedAccessor(builder, call, jsonPath.ToString());
                 else
@@ -1838,6 +1840,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var rendered = path.ToString();
             expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
             return true;
+        }
+
+        /// <summary>
+        /// Refuses an accessor the plan types as temporal over a path the engine could not have read,
+        /// so that the pushed plan does not answer where the query raises.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The whole of this class is a claim that the service computes what the engine computes,
+        /// and here that claim was false.</b> <c>JSON_VALUE(…, RETURNING TIMESTAMP)</c> over a path
+        /// holding an ISO-8601 string <em>raises</em> in process — measured at Calcite's own runtime,
+        /// for every shape including the one <c>CAST</c> accepts, because <c>RETURNING</c> asserts the
+        /// extracted type rather than converting to it and the generated code wants a
+        /// <c>java.lang.Long</c>. Rendered as the bare path it does not raise: the service returns the
+        /// string and the reader parses it. So the column answered a value for a query that has none,
+        /// and a caller could get rows out of this adapter that the engine cannot produce.
+        /// </para>
+        /// <para>
+        /// <b>Refusing is the whole fix, and it costs what it costs.</b> The column stays in process,
+        /// where it raises — which is the answer the query has. What replaces it is the parse: a
+        /// caller who writes <c>PARSE_DATETIME(&lt;format&gt;, &lt;path&gt;)</c> names how the text is
+        /// read, the engine can read it, and <see cref="TryStoredInstantProjection"/> pushes it. That
+        /// is the spelling that works and the one <c>README.md</c> now points at.
+        /// </para>
+        /// <para>
+        /// <b>One choke point rather than one per clause.</b> Every clause reaches an accessor through
+        /// <c>WriteCallCore</c>, so asking here covers the projection, the predicate, the sort key and
+        /// the aggregate argument at once — and a rewrite that legitimately drops the conversion, as
+        /// <see cref="Metadata.CosmosFactRewriter"/> does for a licensed shape, has already replaced
+        /// the node by the time this would see it.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The accessor.</param>
+        /// <param name="path">The path it addresses.</param>
+        /// <exception cref="CosmosTranslationException">The engine could not have read the shape.</exception>
+        void RequireTheEngineCouldRead(RexCall call, CosmosPath path)
+        {
+            var held = Metadata.CosmosTemporalParse.PartsOf(call.getType()?.getSqlTypeName());
+            if (held == Metadata.CosmosTemporalParts.None)
+                return;
+
+            if (Metadata.CosmosDocumentPath.From(path) is Metadata.CosmosDocumentPath document
+                && _facts.RepresentationOf(document) is Metadata.CosmosRepresentation representation
+                && Metadata.CosmosStoredForms.EngineReads(representation, held))
+                return;
+
+            throw new CosmosTranslationException(
+                $"An accessor typed '{call.getType()}' over '{path}' has no Cosmos form: measured, Calcite reads a "
+                + "stored string into that type only for a calendar date and a whole-second time of day, and raises "
+                + "for every ISO-8601 instant. Sending the path down would answer a value where the query raises. "
+                + "PARSE_DATETIME with a format the declared shape is read by is the spelling that pushes.");
         }
 
         /// <summary>

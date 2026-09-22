@@ -429,6 +429,42 @@ notion it needs is that an expression is **form-preserving for a relation**: und
 representation, comparing the expression's results agrees with comparing the raw stored strings. A
 cast to `UUID` is the degenerate one-link chain.
 
+**A rewrite has to answer what the engine would have answered, and for two years the temporal ones
+did not.** The two bits say the *stored strings* compare the way the *values* do. They say nothing
+about whether the engine can produce the values at all — and over these shapes it cannot. Measured at
+Calcite's own runtime:
+
+| expression | over a stored | |
+| --- | --- | --- |
+| `CAST(<s> AS TIMESTAMP)` | `2024-01-15T12:30:00Z`, any precision, any zone | raises `Invalid DATE value` |
+| `CAST(<s> AS TIMESTAMP)` | `2024-01-15 12:30:00` — space-separated | ✔, and it is the only instant it reads |
+| `CAST(<s> AS DATE)` / `AS TIMESTAMP` | `2024-01-15` | ✔ |
+| `CAST(<s> AS TIME)` | `12:30:00`, `12:30` | ✔ |
+| `CAST(<s> AS TIME)` | `12:30:00.123` | `12:30:00` — the fraction is dropped |
+| `CAST(<s> AS TIME)` | `20240115` | `09:37:03` — a value, silently wrong |
+| `JSON_VALUE(…, RETURNING TIMESTAMP)` | any string at all | raises |
+| `JSON_VALUE(…, RETURNING TIMESTAMP)` | the JSON *number* `1705321800000` | ✔ |
+
+The last two rows are the ones that reframe the clause. `RETURNING` **asserts the extracted type
+rather than converting to it** — the reading this document already records for `RETURNING INTEGER`
+under *A number spelled as a string* — so it means "this property holds epoch milliseconds as a
+number", and over text there is no shape it reads. The adapter had been treating it as a parse.
+
+**So the pushed plan answered where the query raises**, which is not an optimisation: it is a
+different query, and it hands a caller rows the engine cannot produce. `CosmosTemporalForms.EngineReads`
+is the condition now, it is three rows long, and every site that drops a conversion asks it — the
+comparison in `CosmosFactRewriter`, the sort in `CosmosSort.OrderIsLexical`, the ordering candidate in
+`CosmosProject.IsOrderable`, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
+place every clause reaches an accessor through and therefore catches the projection too. The other two
+families never had this problem and it is worth saying why: `UuidValue.fromString` and Calcite's
+integer cast were both measured against the engine when their rows were written, and the temporal
+rows never were.
+
+**What is left after the cut**, and it is the shape of the section from here: a calendar date and a
+time of day through a cast, and *everything else through a parse*, which names a reading the engine
+performs. A container of ISO-8601 instants has exactly one spelling that pushes, and it is
+`PARSE_DATETIME`.
+
 **A parse carries a format, and the format had to be measured rather than read.** Built:
 `CosmosTemporalParse` recognises `PARSE_DATE(<format>, <path>)` and its siblings, and
 `CosmosTemporalForms` carries, per shape, the formats that read it — so a comparison against one

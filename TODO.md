@@ -1006,11 +1006,16 @@ hand. Two tests pin both directions.
   rather than truncating: against a seconds path, `> '…12:30:00.5'` truncated to `> '…12:30:00Z'`
   admits a stored `12:30:00Z` that is earlier than the literal. A coarser literal is written out in
   full and loses nothing.
-- `CosmosFactRewriter.TryLowerInstant` — `=`, `<>`, `<`, `<=`, `>`, `>=` over `CAST(<path> AS
-  TIMESTAMP)` and over `JSON_VALUE(…, RETURNING TIMESTAMP)`, lowered to a string comparison. The
-  flipped orientation reverses the operator, which is the case that would have been silently wrong
-  rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
-  `PreservesOrder`.
+- `CosmosFactRewriter.TryLowerInstant` — `=`, `<>`, `<`, `<=`, `>`, `>=` lowered to a string
+  comparison. The flipped orientation reverses the operator, which is the case that would have been
+  silently wrong rather than merely unpushed. Equality is gated on `PreservesEquality` and the rest on
+  `PreservesOrder`. **Which expressions it reads has since been cut back, and the cut is the
+  important part.** It took `CAST(<path> AS TIMESTAMP)` and `JSON_VALUE(…, RETURNING TIMESTAMP)`,
+  neither of which Calcite can *evaluate* over an ISO-8601 instant — so the lowered comparison
+  answered rows for a query that raises, which is a different query rather than a faster one. It now
+  reads a cast only where `CosmosTemporalForms.EngineReads` says the engine performs it (a calendar
+  date, and a whole-second or whole-minute time of day), and a parse only where the format reads the
+  shape. The `RETURNING` spelling is gone entirely.
 - `CosmosFactRewriter.TryLowerUuid` — the same six over `CAST(<path> AS UUID)`, on the same two
   gates, **as of #142**. It took no operator and built an `EQUALS` before, which was right while the
   engine compared UUIDs as signed halves and an unconfined canonical form preserved equality alone;
@@ -1051,7 +1056,11 @@ hand. Two tests pin both directions.
   `c.at` read as an instant — so that the rule and the implementation decide on the same binding. Note
   the spelling is less urgent than it looks: section 6 records that `CAST(<string> AS TIMESTAMP)`
   accepts only `yyyy-MM-dd HH:mm:ss` and *raises* on every ISO-8601 form a document stores, so the
-  cast is the spelling that cannot work in process, while `RETURNING` is the one that does.
+  cast is the spelling that cannot work in process — **and neither can `RETURNING`, which this entry
+  used to point at as the one that does.** Measured since: `JSON_VALUE(…, RETURNING TIMESTAMP)` raises
+  for every string, the clause asserting the extracted type rather than converting to it and wanting
+  a JSON number of epoch milliseconds. Both are refused now, and the parse is the spelling that
+  works — see *A parse carries a format* in `DESIGN.md`.
 - **A space-separated instant is not recognised, and the obstacle is the normaliser rather than the
   shape.** `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
   `isoformat(sep=' ')` and a good many SQL exports write it. But `Normalise` strips whitespace outside
