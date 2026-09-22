@@ -117,6 +117,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosJson.CanRead(SqlTypeName.GEOMETRY).Should().BeTrue();
         }
 
+        /// <remarks>
+        /// A promoted declared-path column is typed <c>VARIANT</c> (ikvmnet/calcite-cosmos#163), and
+        /// Calcite's runtime carries a VARIANT column as a
+        /// <c>org.apache.calcite.runtime.variant.VariantValue</c> — the raw object an <c>ANY</c> value is
+        /// throws when a predicate over the column is evaluated in process rather than pushed. Each
+        /// scalar the service holds at a partition key reads as one; a JSON null is SQL NULL and reads
+        /// as a bare null.
+        /// </remarks>
+        [Fact]
+        public void AVariantScalarReadsAsAVariantValue()
+        {
+            foreach (var json in new[] { "\"bikes\"", "30", "30.5", "true", "false" })
+                Read(json, SqlTypeName.VARIANT)
+                    .Should().BeAssignableTo<org.apache.calcite.runtime.variant.VariantValue>("for " + json);
+
+            Read("null", SqlTypeName.VARIANT).Should().BeNull("a JSON null is SQL NULL, carried as a bare null");
+        }
+
         // -- Writing a geography back out ----------------------------------------------------------
 
         /// <summary>

@@ -312,8 +312,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 case nameof(SqlTypeName.ARRAY):
                 case nameof(SqlTypeName.MULTISET):
                     return GetList(value, componentTypeName);
-                case nameof(SqlTypeName.ANY):
                 case nameof(SqlTypeName.VARIANT):
+                    return GetVariant(value);
+                case nameof(SqlTypeName.ANY):
                 case nameof(SqlTypeName.OTHER):
                     return GetNatural(value);
                 default:
@@ -468,6 +469,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 default:
                     throw new CosmosMaterializationException($"Unexpected JSON value kind '{value.ValueKind}'.");
             }
+        }
+
+        /// <summary>
+        /// Reads a value as a Calcite <c>VARIANT</c>: the natural value boxed with the runtime type
+        /// learned from its JSON shape.
+        /// </summary>
+        /// <remarks>
+        /// A promoted declared-path column is typed <c>VARIANT</c> — <see cref="CosmosTable.getRowType"/>
+        /// — and Calcite's runtime carries a VARIANT column as an
+        /// <c>org.apache.calcite.runtime.variant.VariantValue</c>, not the raw object an <c>ANY</c> value
+        /// is. When a predicate over the column does not push — or when the differential oracle evaluates
+        /// the pushed one in process — the value has to be a <c>VariantValue</c> or the cast to it throws
+        /// (ikvmnet/calcite-cosmos#163). A partition-key value is a scalar, which Cosmos requires, so the
+        /// JSON kind names the runtime type: a string is <c>VARCHAR</c>, an integral number <c>BIGINT</c>,
+        /// a fractional one <c>DOUBLE</c>, a boolean <c>BOOLEAN</c>, and an absent or null value the
+        /// variant null. An object or array is not a valid key and is read raw, as it was under <c>ANY</c>.
+        /// </remarks>
+        /// <param name="value">The value to read.</param>
+        /// <returns>The boxed variant, or the raw value where it is not a scalar.</returns>
+        static object? GetVariant(JsonElement value)
+        {
+            org.apache.calcite.runtime.rtti.RuntimeTypeInformation.RuntimeSqlTypeName typeName;
+
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Object:
+                case JsonValueKind.Array:
+                    return GetNatural(value);
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined:
+                    // SQL NULL, which Calcite's runtime carries as a bare null rather than a variant --
+                    // its null handling runs before any VariantValue operation, and a nullable column
+                    // reads its absent value as one.
+                    return null;
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    typeName = org.apache.calcite.runtime.rtti.RuntimeTypeInformation.RuntimeSqlTypeName.BOOLEAN;
+                    break;
+                case JsonValueKind.String:
+                    typeName = org.apache.calcite.runtime.rtti.RuntimeTypeInformation.RuntimeSqlTypeName.VARCHAR;
+                    break;
+                case JsonValueKind.Number:
+                    typeName = value.TryGetInt64(out _)
+                        ? org.apache.calcite.runtime.rtti.RuntimeTypeInformation.RuntimeSqlTypeName.BIGINT
+                        : org.apache.calcite.runtime.rtti.RuntimeTypeInformation.RuntimeSqlTypeName.DOUBLE;
+                    break;
+                default:
+                    throw new CosmosMaterializationException($"Unexpected JSON value kind '{value.ValueKind}'.");
+            }
+
+            var rtti = new org.apache.calcite.runtime.rtti.BasicSqlTypeRtti(typeName);
+            return org.apache.calcite.runtime.variant.VariantSqlValue.create(java.math.RoundingMode.HALF_UP, GetNatural(value), rtti);
         }
 
         /// <summary>
