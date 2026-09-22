@@ -76,6 +76,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static bool ReadsBackAs(CosmosRepresentation representation, CosmosTemporalParts held) =>
             CosmosTemporalForms.ReadsBackAs(representation, held);
 
+        /// <inheritdoc cref="CosmosTemporalForms.EngineReads" />
+        public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
+            CosmosTemporalForms.EngineReads(representation, target);
+
         /// <inheritdoc cref="CosmosTemporalForms.ParseFormats" />
         public static System.Collections.Generic.IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>
             CosmosTemporalForms.ParseFormats(representation);

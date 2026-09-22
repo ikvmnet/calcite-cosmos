@@ -442,10 +442,23 @@ minute to be mistaken for a month.)
 
 Two shapes get nothing from a parse, however they are written: a fraction that is not exactly three
 digits — including the seven-digit shape Azure's own documentation recommends, because Calcite's
-timestamps are milliseconds — and the separator-less `20240102T030405Z`. Both still push through
-`CAST(… AS TIMESTAMP)` and `JSON_VALUE(…, RETURNING TIMESTAMP)`. `PARSE_TIMESTAMP` is a
+timestamps are milliseconds — and the separator-less `20240102T030405Z`. `PARSE_TIMESTAMP` is a
 `TIMESTAMP WITH LOCAL TIME ZONE` rather than a `TIMESTAMP` and pushes at neither site; use
 `PARSE_DATETIME`.
+
+**And the parse is the only spelling that pushes, which is a change from earlier versions.** A cast
+and a `RETURNING` clause used to lower the same way, and they should not have: Calcite cannot
+*evaluate* either of them over an ISO-8601 instant. Measured at the engine,
+`CAST('2024-01-15T12:30:00Z' AS TIMESTAMP)` raises `Invalid DATE value`, and
+`JSON_VALUE(…, RETURNING TIMESTAMP)` raises for any string at all — that clause asserts the extracted
+type rather than converting to it, and wants a JSON *number* of epoch milliseconds. Pushing them
+handed back rows for queries that have none, so both now stay in process, where they raise as they
+always would have. The three conversions Calcite does perform over a stored string still push: a
+calendar date read as a `DATE` or a `TIMESTAMP`, and a whole-second or whole-minute time of day read
+as a `TIME`.
+
+If you have a container of ISO-8601 instants, `PARSE_DATETIME` with a format from the list above is
+the way to filter and sort it at the service.
 
 **Why a UUID pattern gives you ordering, and what it depends on.** A canonical lowercase UUID is
 written in `0-9a-f` with the hyphens always in the same places, so sorting the stored strings sorts

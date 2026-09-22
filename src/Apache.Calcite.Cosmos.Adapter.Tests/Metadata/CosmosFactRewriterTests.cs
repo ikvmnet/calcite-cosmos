@@ -109,7 +109,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         RexNode Instant(string text) => _rex.makeTimestampLiteral(new org.apache.calcite.util.TimestampString(text), 3);
 
         /// <summary><c>CAST(&lt;ref&gt; AS TIMESTAMP)</c>, the shape a view over an instant produces.</summary>
+        /// <remarks>
+        /// Recognised and no longer <em>licensed</em> over an instant shape: measured, Calcite's cast
+        /// raises for every ISO-8601 instant, so lowering it would answer rows for a query that has
+        /// none. See <c>ACastTheEngineCannotPerformLowersNothing</c>, and
+        /// <see cref="Adapter.Metadata.CosmosTemporalForms.EngineReads"/> for the measurement.
+        /// </remarks>
         RexNode AsInstant() => _rex.makeCast(_types.createSqlType(SqlTypeName.TIMESTAMP), Ref(0, SqlTypeName.VARCHAR));
+
+        /// <summary>
+        /// <c>PARSE_DATETIME(&lt;format&gt;, &lt;ref&gt;)</c>, which is the temporal spelling that
+        /// survives: it names how the text is read, and the engine can read it.
+        /// </summary>
+        RexNode AsParsedInstant(string format) =>
+            _rex.makeCall(org.apache.calcite.sql.fun.SqlLibraryOperators.PARSE_DATETIME, _rex.makeLiteral(format), Ref(0, SqlTypeName.VARCHAR));
+
+        /// <summary>The format that reads a milliseconds shape, in the spelling the model reads.</summary>
+        const string MillisFormat = @"%Y-%m-%d'T'%H:%M:%S.%E3S'Z'";
 
         /// <summary>
         /// An ordering over a path confined to one fixed shape lowers to a string comparison, with
@@ -118,9 +134,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AnOrderingOverAFixedShapeLowersToAStringComparison()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00")), Millis)
                 .Should().Be(""">($0, '2024-01-15T12:30:00.000Z')""",
                     "the lexical order of a fixed shape is the chronological one, and the literal joins that shape");
+        }
+
+        /// <summary>
+        /// A cast the engine could not perform lowers nothing, however fixed the shape is.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The condition that was missing until the engine was asked.</b> The shape is fixed, so
+        /// its lexical order is chronological and its equality is faithful — both bits hold. What does
+        /// not hold is that the expression means anything: measured,
+        /// <c>CAST('2024-01-15T12:30:00.123Z' AS TIMESTAMP)</c> raises <c>Invalid DATE value</c>, as
+        /// does every ISO-8601 instant. Lowering it onto the stored strings answered rows for a query
+        /// that raises, which is a different query rather than a faster one.
+        /// </para>
+        /// <para>
+        /// The same comparison written as a parse does lower — the row above — because a format the
+        /// shape is read by is one the engine reads too.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACastTheEngineCannotPerformLowersNothing()
+        {
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00"));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString(),
+                "the engine raises on the cast, so there is no answer for the service to give faster");
+        }
+
+        /// <summary>
+        /// And a format that does not read the shape lowers nothing either, which is the other half of
+        /// the same rule.
+        /// </summary>
+        [Fact]
+        public void AParseTheFormatDoesNotFitLowersNothing()
+        {
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(@"%Y-%m-%d"), Instant("2024-01-15 12:30:00"));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString(),
+                "a date format over an instant shape parses something else, where it parses at all");
         }
 
         /// <summary>
@@ -130,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ACoarserLiteralIsWrittenOutInTheStoredShape()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsInstant(), Instant("2024-01-15 12:30:00")), Millis)
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00")), Millis)
                 .Should().Be("""<=($0, '2024-01-15T12:30:00.000Z')""");
         }
 
@@ -146,7 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void TheOperatorIsReversedWhenTheLiteralIsOnTheLeft()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsInstant()), Millis)
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsParsedInstant(MillisFormat)), Millis)
                 .Should().Be("""<($0, '2024-01-15T12:30:00.000Z')""",
                     "`literal > path` is `path < literal`");
         }
@@ -163,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ALiteralFinerThanTheStoredShapeLowersNothing()
         {
-            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsInstant(), Instant("2024-01-15 12:30:00.500"));
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(@"%Y-%m-%d'T'%H:%M:%S'Z'"), Instant("2024-01-15 12:30:00.500"));
 
             Rewrite(condition, Seconds).Should().Be(condition.ToString(), "truncating the literal would select different rows");
         }

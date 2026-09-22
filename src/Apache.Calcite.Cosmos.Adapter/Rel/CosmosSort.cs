@@ -226,8 +226,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 // Cosmos has no temporal type, so a key the plan types as one is a string at the
                 // service and the ORDER BY compares it lexically. See OrderIsLexical.
+                //
+                // Asked only where the ordinal binds directly. A key reached through `ordered` is a
+                // chain whose licence was decided by CosmosProject.IsOrderable -- which asks the same
+                // two questions and, for a parse, asks the format instead of the engine.
                 var type = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().getSqlTypeName();
-                if (IsTemporal(type) && OrderIsLexical(container, path) == false)
+                if (ordered is null && IsTemporal(type) && OrderIsLexical(container, path, type) == false)
                     return false;
 
                 resolvedPaths[i] = path;
@@ -269,8 +273,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </remarks>
         /// <param name="container">The container, carrying whatever the model declared.</param>
         /// <param name="path">The path the key resolved to.</param>
+        /// <param name="type">The type the plan gives the key, which is what the engine would read into.</param>
         /// <returns><c>true</c> where the stored form makes the lexical order the plan's order.</returns>
-        static bool OrderIsLexical(Metadata.CosmosContainerMetadata? container, CosmosPath path)
+        static bool OrderIsLexical(Metadata.CosmosContainerMetadata? container, CosmosPath path, org.apache.calcite.sql.type.SqlTypeName type)
         {
             if (container is null)
                 return false;
@@ -278,8 +283,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
                 return false;
 
-            return container.Facts.Derive(null).RepresentationOf(document) is Metadata.CosmosRepresentation representation
-                && representation.PreservesOrder;
+            if (container.Facts.Derive(null).RepresentationOf(document) is not Metadata.CosmosRepresentation representation
+                || representation.PreservesOrder == false)
+                return false;
+
+            // And the engine has to be able to compute the key at all. A key it cannot compute is a
+            // query that raises, and ordering the container by the stored strings answers rows
+            // instead -- which is a different query rather than a faster one. Measured: every
+            // ISO-8601 instant raises, whether the plan reached it by a cast or by a RETURNING
+            // clause. See CosmosTemporalForms.EngineReads.
+            return Metadata.CosmosStoredForms.EngineReads(representation, Metadata.CosmosTemporalParse.PartsOf(type));
         }
 
         /// <summary>

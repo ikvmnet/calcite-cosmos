@@ -806,10 +806,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The same sort pushes once the declared pattern confines the shape.
+        /// A fixed shape does <em>not</em> carry a sort through a <c>RETURNING</c> clause, and the
+        /// reason is the engine rather than the shape.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This row asserted the opposite until the engine was asked.</b> The shape is fixed, so
+        /// its lexical order is chronological and <c>PreservesOrder</c> holds — which is what this
+        /// test was written to check and what it still shows. What was never checked is whether
+        /// Calcite can evaluate the key at all, and it cannot: measured at Calcite's own runtime,
+        /// <c>JSON_VALUE(…, RETURNING TIMESTAMP)</c> raises for <em>every</em> string, because the
+        /// clause asserts the extracted type rather than converting to it and wants a JSON number of
+        /// epoch milliseconds. So the pushed sort ordered rows for a query that raises.
+        /// </para>
+        /// <para>
+        /// What carries the sort now is the parse — <c>CosmosTemporalParsePlanningTests</c>,
+        /// <c>AParsedInstantCarriesTheSort</c> — which names a format the engine reads.
+        /// </para>
+        /// </remarks>
         [Fact]
-        public void AFixedIsoShapeCarriesATemporalSort()
+        public void AFixedIsoShapeStillCarriesNoTemporalSortThroughAReturningClause()
         {
             foreach (var pattern in new[]
             {
@@ -821,14 +837,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var container = Instant(pattern);
 
                 Query(FindCosmos(PlanToCosmos(Instants, container, out _)), container).Sql
-                    .Should().Contain("ORDER BY c.at",
-                        "one fixed shape makes the lexical order chronological, for " + pattern);
+                    .Should().NotContain("ORDER BY",
+                        "the shape is fixed and the engine still cannot read it, for " + pattern);
             }
         }
 
         /// <summary>
-        /// A range over an instant reaches the statement, in both spellings a query writes it.
+        /// A range over an instant stays in process, in both spellings a query writes it, because
+        /// neither is one the engine can evaluate.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This row asserted the opposite until the engine was asked, and the correction is the
+        /// same one the sort above carries.</b> Both shapes name the same path and both have a fixed
+        /// stored form, so both bits hold. Neither is a conversion Calcite performs: measured,
+        /// <c>CAST(&lt;iso&gt; AS TIMESTAMP)</c> raises <c>Invalid DATE value</c> and
+        /// <c>RETURNING TIMESTAMP</c> raises for any string at all. Lowering them onto the stored
+        /// strings answered rows where the query raises.
+        /// </para>
+        /// <para>
+        /// The parse is what reaches the statement now — see
+        /// <c>CosmosTemporalParsePlanningTests.ARangeOverAParsedInstantReachesTheStatement</c>, whose
+        /// assertions are the ones this row used to make.
+        /// </para>
+        /// </remarks>
         /// <remarks>
         /// <para>
         /// Both shapes name the same path and differ only in where the temporal type comes from — a
@@ -843,7 +875,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// </remarks>
         [Fact]
-        public void ARangeOverAFixedShapeReachesTheStatement()
+        public void ARangeOverAFixedInstantShapeStaysInProcess()
         {
             var confined = Instant(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$");
 
@@ -857,12 +889,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     $"""SELECT c."DOC" FROM items AS c WHERE {read} > TIMESTAMP '2024-01-15 12:30:00'""",
                     confined, out _);
 
-                Query(FindCosmos(best), confined).Sql.Should().Contain("c.at > @",
-                    "the ordering lowers to a string comparison the service can serve, for " + read);
+                Query(FindCosmos(best), confined).Sql.Should().NotContain("c.at > @",
+                    "the engine raises on the conversion, so there is no answer to serve faster, for " + read);
 
-                PlanText(best).Should().NotContain("ClrEnumerableFilter",
-                    "and nothing is left to recheck in process, for " + read);
+                PlanText(best).Should().Contain("ClrEnumerableFilter",
+                    "and the comparison stays where the query put it, for " + read);
             }
+        }
+
+        /// <summary>
+        /// A calendar date does reach the statement through a cast, which is what makes the refusal
+        /// above a gate rather than a blanket.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST('2024-01-15' AS DATE)</c> is one of the three conversions Calcite performs over a
+        /// stored string — measured — so here the pushed comparison answers exactly what the query
+        /// answers, and the literal goes out in the container's own spelling.
+        /// </remarks>
+        [Fact]
+        public void ARangeOverADateShapeReachesTheStatement()
+        {
+            var dates = Instant("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+
+            var best = PlanToCosmos(
+                """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS DATE) > DATE '2024-01-15'""",
+                dates, out _);
+
+            Query(FindCosmos(best), dates).Sql.Should().Contain("c.at > @",
+                "the engine reads a date, so the lowered comparison answers what the query answers");
+
+            PlanText(best).Should().NotContain("ClrEnumerableFilter", "with nothing left to recheck");
         }
 
         /// <summary>

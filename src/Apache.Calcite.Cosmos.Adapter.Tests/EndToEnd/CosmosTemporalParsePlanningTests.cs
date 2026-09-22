@@ -411,6 +411,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The parse pushes and the cast beside it does not, over one container and one shape.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>This is the whole argument for the parse in one row.</b> Both queries ask the same
+        /// question of the same path in the same container, and the declared shape gives both the
+        /// same two bits. What separates them is whether Calcite can evaluate the expression: it
+        /// reads a format it was given, and it raises on <c>CAST(&lt;iso&gt; AS TIMESTAMP)</c> —
+        /// measured, <c>Invalid DATE value</c>, for every ISO-8601 instant.
+        /// </para>
+        /// <para>
+        /// A pushdown has to answer what the engine would have answered. Over the cast there is no
+        /// such answer, so pushing it would not be an optimisation — it would hand the caller rows
+        /// their query cannot produce. The parse has an answer, and the pushed plan gives that one.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void TheParsePushesWhereTheCastBesideItCannot()
+        {
+            var container = Container(SecondsPattern);
+
+            const string Cast = """CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP)""";
+
+            var parsed = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE PARSE_DATETIME({Seconds}, {At}) > TIMESTAMP '2024-02-01 00:00:00'""",
+                container);
+
+            var cast = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE {Cast} > TIMESTAMP '2024-02-01 00:00:00'""",
+                container);
+
+            Query(FindCosmos(parsed), container).Sql.Should().Contain("c.at > @",
+                "the format names a reading the engine performs, so the service can be asked for the same rows");
+
+            Query(FindCosmos(cast), container).Sql.Should().NotContain("c.at > @",
+                "and the cast names one it raises on, so there are no rows to ask for");
+
+            PlanText(parsed).Should().NotContain("ClrEnumerableFilter");
+            PlanText(cast).Should().Contain("ClrEnumerableFilter");
+        }
+
+        /// <summary>
+        /// And the accessor the plan types as temporal does not go down as a column either.
+        /// </summary>
+        /// <remarks>
+        /// The projection is the site with no comparison to rewrite, so nothing stands between the
+        /// path and the reader: the service sends the stored string and
+        /// <c>CosmosJson</c> parses it, where the engine raises. Refused at the one place every
+        /// clause reaches an accessor through — see
+        /// <c>CosmosRexTranslator.RequireTheEngineCouldRead</c>.
+        /// </remarks>
+        [Fact]
+        public void AnAccessorTypedTemporalIsNotSentDownAsAColumn()
+        {
+            var container = Container(SecondsPattern);
+
+            var best = PlanToCosmos(
+                """SELECT JSON_VALUE(c."DOC", '$.at' RETURNING TIMESTAMP) AS "at" FROM items AS c""",
+                container);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("\"at\": c.at",
+                "the engine cannot read the string into a TIMESTAMP, so the column stays where it raises");
+        }
+
+        /// <summary>
         /// A format that is not a literal is refused, whatever the document happens to hold there.
         /// </summary>
         /// <remarks>
