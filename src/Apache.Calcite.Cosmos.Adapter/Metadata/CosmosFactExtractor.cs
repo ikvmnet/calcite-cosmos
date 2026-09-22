@@ -170,6 +170,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             path = null;
             value = null;
 
+            // A comparison with a promoted VARIANT key coerces its literal to CAST(… AS VARIANT); the
+            // box carries the value the fact is about. See CosmosRexTranslator.StripVariantCoercion.
+            valueNode = CosmosRexTranslator.StripVariantCoercion(valueNode);
+
             if (valueNode is not RexLiteral literal)
                 return false;
 

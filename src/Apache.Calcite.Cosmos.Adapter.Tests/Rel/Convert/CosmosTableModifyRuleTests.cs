@@ -148,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
             PlanText("INSERT INTO products (\"DOC\") VALUES ('{\"id\":\"1\",\"category\":\"books\"}')").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:VARIANT])\n" +
                 "    LogicalValues(tuples=[[{ '{\"id\":\"1\",\"category\":\"books\"}' }]])");
         }
 
@@ -161,7 +161,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
             PlanText("INSERT INTO products (\"DOC\") SELECT \"DOC\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:VARIANT])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 
@@ -187,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
             PlanText("INSERT INTO products SELECT \"DOC\" FROM archive").Should().Be(
                 "LogicalTableModify(table=[[products]], operation=[INSERT], flattened=[false])\n" +
-                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:ANY])\n" +
+                "  LogicalProject(DOC=[$0], id=[null:VARCHAR], _ts=[null:BIGINT], _etag=[null:VARCHAR], $.category=[null:VARIANT])\n" +
                 "    CosmosTableScan(table=[[archive]])");
         }
 

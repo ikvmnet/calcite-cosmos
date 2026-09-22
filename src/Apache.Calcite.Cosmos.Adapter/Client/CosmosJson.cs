@@ -313,6 +313,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 case nameof(SqlTypeName.MULTISET):
                     return GetList(value, componentTypeName);
                 case nameof(SqlTypeName.ANY):
+                case nameof(SqlTypeName.VARIANT):
                 case nameof(SqlTypeName.OTHER):
                     return GetNatural(value);
                 default:
@@ -391,6 +392,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 nameof(SqlTypeName.ARRAY) => true,
                 nameof(SqlTypeName.MULTISET) => true,
                 nameof(SqlTypeName.ANY) => true,
+                nameof(SqlTypeName.VARIANT) => true,
                 nameof(SqlTypeName.OTHER) => true,
                 _ => false,
             };

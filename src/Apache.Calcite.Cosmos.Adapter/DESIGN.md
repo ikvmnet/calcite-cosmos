@@ -2374,7 +2374,7 @@ What Calcite does have:
 | Option | Availability | Assessment |
 | --- | --- | --- |
 | SQL/JSON over `VARCHAR` | SQL:2016, honoured by Calcite | **Chosen.** JSON is character data here, which reads as the wrong substrate and is the right one: it is what the service already sent, and it is the only shape `JSON_SET` can be written over. |
-| `VARIANT` | 1.41.0 (`SqlTypeName.VARIANT`, `org.apache.calcite.runtime.variant`, operators `VARIANT`/`VARIANTNULL`/`TYPEOF`) | Semantically the best fit — `item`, `cast`, `getTypeString`. No shipped adapter models a row type on it; planner pushdown through VARIANT is unproven. Revisit. |
+| `VARIANT` | 1.41.0 (`SqlTypeName.VARIANT`, `org.apache.calcite.runtime.variant`, operators `VARIANT`/`VARIANTNULL`/`TYPEOF`) | Not the document substrate: no shipped adapter models a whole row type on it, and `JSON_SET` cannot be written over it. **Adopted for the promoted declared-path columns** (#163), where it is exactly right — a partition-key value is a scalar whose concrete type is learned per row, which is what `VARIANT` models and what `ANY`, the top "type unknown", erases. Pushdown was the open question and is now proven: the machinery reads `VARIANT` as "the value the service holds" wherever it read the accessor's `ANY`, so filter, sort and partition-key point-read pushdown carry through. See *Promoted columns* below and `CosmosTable.getRowType`. |
 | `DynamicRecordType` + `DYNAMIC_STAR` | Present in 1.41.0 | Nicer ergonomics (`c.name` rather than an accessor call), but nested paths fall back to field access on an `ANY` anyway. Worth evaluating as a surface layer, not as the substrate. |
 
 #### Base: one document column
@@ -2532,9 +2532,28 @@ is `DOC` **plus promoted scalar columns** for paths that are declared or service
 | `id` | `VARCHAR NOT NULL` | `getKeys` (with partition key) |
 | `_ts` | `BIGINT` | A genuinely typed timestamp |
 | `_etag` | `VARCHAR` | Optimistic concurrency |
-| Partition key path(s) | declared | `getDistribution`; single-partition detection |
-| Composite index paths | declared | `getCollations`; `CosmosSortRule` legality |
-| Computed properties | declared | Named projections |
+| Partition key path(s) | `VARIANT` | `getDistribution`; single-partition detection |
+| Composite index paths | `VARIANT` | `getCollations`; `CosmosSortRule` legality |
+| Computed properties | `VARIANT` | Named projections |
+
+**A promoted declared-path column is typed `VARIANT`** (#163). Cosmos requires a partition-key
+value to be a scalar — string, number, boolean or null; an object or array at the path is not a
+valid key — but *which* scalar is a per-row fact the schema does not fix, so the column is a value
+the service holds whose concrete type is learned at read time. That is the semi-structured shape
+`VARIANT` was added for; `ANY`, the top "type unknown", would erase that it is a document value at
+all. It stays nullable — a document may omit the path, landing in the "none" logical partition — so
+the planner does not rewrite `COUNT(x)` into `COUNT(*)`. The service-owned `id`, `_ts` and `_etag`
+keep the concrete types they are guaranteed to carry.
+
+The typing is load-bearing for pushdown, and the change from `ANY` to `VARIANT` is carried through
+rather than dropped. `CosmosRexTranslator.IsRenderedDocumentValue` reads a `VARIANT` operand as "the
+value the service holds", exactly as it read the `ANY` an accessor is re-typed to, so a cast over it
+renders rather than converts. Calcite coerces the *other* side of a comparison with a `VARIANT`
+column — a literal becomes `CAST(… AS VARIANT)`, a `LIKE` subject `CAST(… AS VARCHAR)` — where an
+`ANY` column left both bare; `StripVariantCoercion` and `StripTextCoercion` see through those
+coercions so the point-read and fact extractors read the literal and the raw path renders as it did.
+A rendered-text comparison is still declined against ambiguous text, `WriteCast` refusing what
+survives. See `CosmosTable.getRowType`.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it
@@ -2571,8 +2590,10 @@ incorrect plan, not a slow one.
     are present, where normalising would buy nothing and cost the plain path form an index is defined
     on. See `CosmosAggregate.GroupingKey`.
 - **Heterogeneous types per path.** The same path may be a string in one item and a number in
-  the next. `ANY` absorbs this; a promoted column does not, which is a second reason promotion
-  is restricted to declared paths.
+  the next. This is why a promoted declared-path column is typed `VARIANT` rather than a concrete
+  type: `VARIANT`, like the `ANY` a document accessor carries, learns the value's type per row and
+  absorbs the heterogeneity (#163). A concretely-typed promoted column could not, which is a second
+  reason a *sampled* path — whose type would have to be guessed and fixed — is never promoted.
 
 ---
 

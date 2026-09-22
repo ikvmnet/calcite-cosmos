@@ -60,9 +60,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// The types Cosmos itself has: a string, a number, or a boolean. A parameter is serialised into
         /// JSON, and a value with no JSON counterpart would either fail there or match nothing.
         /// <para>
-        /// <c>ANY</c> is refused, which is the type of every promoted partition key column and so costs
-        /// this on a join between two containers. Keys are also compared in process once fetched, and
-        /// <c>ANY</c> says nothing about what is being compared.
+        /// <c>VARIANT</c> is refused, which is the type of every promoted partition key column and so
+        /// costs this on a join between two containers. Keys are also compared in process once fetched,
+        /// and a promoted key's concrete type is learned per row — the row model says only that it is a
+        /// scalar the service holds, not which of string, number or boolean it is at this row, which is
+        /// what a bound parameter would have to be serialised as. (<c>ANY</c>, the type a re-typed
+        /// accessor carries, is refused for the same reason and by the same default.)
         /// </para>
         /// </remarks>
         static bool IsBindableKey(org.apache.calcite.rel.type.RelDataType type)

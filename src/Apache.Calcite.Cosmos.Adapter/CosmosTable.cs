@@ -179,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         public override RelDataType getRowType(RelDataTypeFactory typeFactory)
         {
             var varchar = typeFactory.createSqlType(SqlTypeName.VARCHAR);
-            var any = typeFactory.createSqlType(SqlTypeName.ANY);
+            var variant = typeFactory.createSqlType(SqlTypeName.VARIANT);
 
             var builder = typeFactory.builder();
 
@@ -196,12 +196,20 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // "none" logical partition. Declaring it non-nullable would licence the planner to
                 // rewrite COUNT(x) into COUNT(*) and to reason about null placement in ways the data
                 // does not support.
+                //
+                // A declared path is typed VARIANT rather than ANY. A partition-key value is a scalar
+                // from a small closed set — string, number, or boolean — whose concrete type is only
+                // knowable per row, which is precisely the semi-structured shape VARIANT was added for;
+                // ANY is the top "type unknown" and erases that this is a document value at all. The
+                // pushdown machinery reads VARIANT as "the value the service holds" wherever it read ANY
+                // — see CosmosRexTranslator.IsRenderedDocumentValue — so filter, sort and partition-key
+                // point-read pushdown carry through unchanged.
                 var type = name switch
                 {
                     CosmosContainerMetadata.TimestampPropertyName => typeFactory.createSqlType(SqlTypeName.BIGINT),
                     CosmosContainerMetadata.IdPropertyName => varchar,
                     CosmosContainerMetadata.ETagPropertyName => varchar,
-                    _ => typeFactory.createTypeWithNullability(any, true),
+                    _ => typeFactory.createTypeWithNullability(variant, true),
                 };
 
                 builder.add(name, type);
