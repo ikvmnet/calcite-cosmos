@@ -164,6 +164,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 paths[1].ToString().Should().Be("c.inventory.quantity");
             }
 
+            /// <remarks>
+            /// A promoted VARIANT column (a declared path; see CosmosTable.getRowType and #163) is
+            /// declined as a sort key. Calcite cannot order one in process — <c>VariantValue</c> is not
+            /// Comparable and names no order across types — so a pushed sort over it has no oracle, and
+            /// the SQL standard defines no ordering for a variant to match. A caller orders by
+            /// <c>JSON_VALUE</c> over the path instead, which is text. See #165.
+            /// </remarks>
+            [Fact]
+            public void AVariantColumnIsRefusedAsASortKey()
+            {
+                var fields = new List<CosmosPath?>
+                {
+                    CosmosPath.Root("c"),                        // 0 — the document column
+                    CosmosPath.Root("c").Property("name"),       // 1 — a plain VARCHAR path, the control
+                    CosmosPath.Root("c").Property("category"),   // 2 — the promoted VARIANT path
+                };
+
+                var rowType = _types.builder()
+                    .add(CosmosImplementor.DocumentColumnName, _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true))
+                    .add("name", _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true))
+                    .add("$.category", _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARIANT), true))
+                    .build();
+
+                // The VARCHAR path resolves — the control that isolates the type as the cause.
+                CosmosSort.TryResolveSortKeys(Collation((1, RelFieldCollation.Direction.ASCENDING)), fields, rowType, "c", out _, out _)
+                    .Should().BeTrue();
+
+                // The VARIANT column is declined.
+                CosmosSort.TryResolveSortKeys(Collation((2, RelFieldCollation.Direction.ASCENDING)), fields, rowType, "c", out _, out _)
+                    .Should().BeFalse();
+            }
+
             [Fact]
             public void StrictDirectionsAreTreatedAsPlainDirections()
             {

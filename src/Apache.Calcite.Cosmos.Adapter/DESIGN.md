@@ -2374,7 +2374,7 @@ What Calcite does have:
 | Option | Availability | Assessment |
 | --- | --- | --- |
 | SQL/JSON over `VARCHAR` | SQL:2016, honoured by Calcite | **Chosen.** JSON is character data here, which reads as the wrong substrate and is the right one: it is what the service already sent, and it is the only shape `JSON_SET` can be written over. |
-| `VARIANT` | 1.41.0 (`SqlTypeName.VARIANT`, `org.apache.calcite.runtime.variant`, operators `VARIANT`/`VARIANTNULL`/`TYPEOF`) | Not the document substrate: no shipped adapter models a whole row type on it, and `JSON_SET` cannot be written over it. **Adopted for the promoted declared-path columns** (#163), where it is exactly right — a partition-key value is a scalar whose concrete type is learned per row, which is what `VARIANT` models and what `ANY`, the top "type unknown", erases. Pushdown was the open question and is now proven: the machinery reads `VARIANT` as "the value the service holds" wherever it read the accessor's `ANY`, so filter, sort and partition-key point-read pushdown carry through. See *Promoted columns* below and `CosmosTable.getRowType`. |
+| `VARIANT` | 1.41.0 (`SqlTypeName.VARIANT`, `org.apache.calcite.runtime.variant`, operators `VARIANT`/`VARIANTNULL`/`TYPEOF`) | Not the document substrate: no shipped adapter models a whole row type on it, and `JSON_SET` cannot be written over it. **Adopted for the promoted declared-path columns** (#163), where it is exactly right — a partition-key value is a scalar whose concrete type is learned per row, which is what `VARIANT` models and what `ANY`, the top "type unknown", erases. Pushdown was the open question and is now mostly settled: the machinery reads `VARIANT` as "the value the service holds" wherever it read the accessor's `ANY`, so filter and partition-key point-read pushdown carry through. A *sort* keyed on the column does not — Calcite cannot order a `VARIANT` in process (`VariantValue` is not `Comparable`), so `CosmosSort` declines it (#165). See *Promoted columns* below and `CosmosTable.getRowType`. |
 | `DynamicRecordType` + `DYNAMIC_STAR` | Present in 1.41.0 | Nicer ergonomics (`c.name` rather than an accessor call), but nested paths fall back to field access on an `ANY` anyway. Worth evaluating as a surface layer, not as the substrate. |
 
 #### Base: one document column
@@ -2554,6 +2554,18 @@ column — a literal becomes `CAST(… AS VARIANT)`, a `LIKE` subject `CAST(… 
 coercions so the point-read and fact extractors read the literal and the raw path renders as it did.
 A rendered-text comparison is still declined against ambiguous text, `WriteCast` refusing what
 survives. See `CosmosTable.getRowType`.
+
+**In process, a `VARIANT` is not the raw object an `ANY` is, and that cuts two ways.** Calcite's
+runtime carries a `VARIANT` column as an `org.apache.calcite.runtime.variant.VariantValue`, so where a
+predicate over the column is evaluated in process rather than pushed — a residual, or the differential
+oracle — the value must *be* one or the cast to it throws. `CosmosJson.GetVariant` boxes the scalar the
+service holds with the runtime type its JSON shape names (`VariantSqlValue.create` over a
+`BasicSqlTypeRtti`); a JSON null stays SQL `NULL`. The other cut is ordering: `VariantValue` is not
+`Comparable` and names no order across types, and the SQL standard defines none for a variant — so
+Calcite cannot sort the column in process, no oracle can measure a pushed sort, and `CosmosSort`
+declines a sort keyed on a `VARIANT` column rather than push one on faith. A caller orders by
+`JSON_VALUE` over the path instead, which is text and sorts as text everywhere. This waits on an
+upstream Calcite decision about a canonical variant order; see #165.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it
