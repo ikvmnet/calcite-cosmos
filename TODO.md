@@ -656,6 +656,133 @@ is not offered, and one thing that cannot be fixed here at all.
   `IS DISTINCT FROM`, expressible with the `??` operator once the null-versus-undefined semantics are
   measured.
 
+#### The whole surface, enumerated
+
+The entries above are the ones that came up one at a time. What follows is the same question asked
+*systematically*, because a list assembled from whatever a query happened to decline is not a list of
+what is missing.
+
+**How it was made, and what each half is worth.** Three inputs, crossed.
+
+1. **Every operator Calcite offers**, read off `SqlStdOperatorTable` and every `SqlLibrary` table —
+   715 of them, of which 474 are scalar functions and 70 are aggregates. Enumerated rather than
+   recalled.
+2. **What the translator does with each**, by building a `CosmosRexTranslator` over a document column
+   and asking it to render a call. This half is *measured*: a row saying something does not push was
+   watched not to push, and it caught several beliefs that were wrong in both directions — see the
+   paragraph below.
+3. **What Cosmos offers**, from the published function list (`learn.microsoft.com`, revised
+   2025-11-10). This half is **not measured against an account**, and nothing below should be built
+   without measuring the Cosmos side first. The standing warning is the `IN`/`BETWEEN` result under
+   *Clause-level*: a native spelling that looks cheaper often is not.
+
+**Asking mechanically corrected four things.** `LTRIM`, `RTRIM`, `INSTR`, `STRPOS`, `LEN`, `SUBSTR`,
+`IF`, `IFNULL`, `NVL`, `NVL2`, `GREATEST` and `LEAST` all push already, by kind or by a convertlet
+that rewrites them before the translator sees them — they look missing in the source and are not.
+`ROUND` pushes at one argument and not two, which is Cosmos's arity rather than an omission. The
+numeric probes first ran over `CAST(JSON_VALUE(…) AS INTEGER)` and declined *for the cast*, which is
+section 6's subject and not the function's — every row below was re-run over an accessor that renders
+on its own. And `ARRAY_CONCAT`, `ARRAY_UNION` and `ARRAY_INTERSECT` decline against an array
+**literal** while pushing against two paths, which is a gap in one rendering rather than three
+functions.
+
+**Renames — a row in `DirectFunctions` and nothing else.** *Small, each.* The Cosmos function takes
+the same arguments in the same order and means the same thing; what is missing is the entry.
+
+| Calcite | Cosmos | note |
+| --- | --- | --- |
+| `POW` | `POWER` | an alias of `POWER`, which is already mapped |
+| `TRUNC` | `TRUNC` | the table carries `TRUNCATE` and not this spelling |
+| `STARTS_WITH`, `STARTSWITH` | `STARTSWITH` | reachable today only by writing `LIKE 'a%'` |
+| `ENDS_WITH`, `ENDSWITH` | `ENDSWITH` | and see the `LIKE` entry above, which is the same function by another road |
+| `ARRAY_LENGTH`, `ARRAY_SIZE` | `ARRAY_LENGTH` | `CARDINALITY` already maps; these are the library spellings of it |
+| `ARRAY_CONTAINS` | `ARRAY_CONTAINS` | `MEMBER OF` already maps; this is the same function with the operands the other way round |
+
+**A shape rather than a rename.** *Small to medium.* The Cosmos function exists and the call has to be
+rewritten rather than renamed.
+
+| Calcite | Cosmos | what has to happen |
+| --- | --- | --- |
+| `CONTAINS_SUBSTR` | `CONTAINS(s, t [, ignoreCase])` | already the target of the `LIKE '%…%'` rewrite; measure before adding a second road to it |
+| `SPLIT`, `STRING_TO_ARRAY` | `STRINGSPLIT` | argument order to check |
+| `ARRAY_JOIN`, `ARRAY_TO_STRING` | `STRINGJOIN` | the three-argument form (a null replacement) has no Cosmos counterpart |
+| `REGEXP_CONTAINS` | `REGEXMATCH` | already mapped under its Cosmos name; this is the portable spelling of it, and it inherits the dialect caveat recorded there |
+| `REGEXP_EXTRACT`, `REGEXP_EXTRACT_ALL` | `REGEXEXTRACT`, `REGEXEXTRACTALL` | same dialect caveat: Cosmos documents PCRE with constructs it does not support |
+| `REGEXP_REPLACE` | `REGEXREPLACE`, `REGEXREPLACEALL` | Cosmos splits first-match and all-matches into two functions, so the occurrence argument decides which name is written |
+| `SUBSTRING_INDEX` | `SUBSTRINGBEFORE`, `SUBSTRINGAFTER`, `LASTSUBSTRINGBEFORE`, `LASTSUBSTRINGAFTER` | a positive or negative count picks the pair, and only counts of ±1 are expressible |
+| `IS_INF`, `IS_NAN` | `IS_FINITE_NUMBER` | the negation covers `IS_INF` for a number; `IS_NAN` needs the type test beside it |
+| `ARRAYS_OVERLAP` | `ARRAY_CONTAINS_ANY` | close, not identical — `ARRAY_CONTAINS_ANY` takes loose values rather than an array |
+| `BITAND`, `BITOR`, `BITXOR`, `BITNOT`, `LEFTSHIFT`, `RIGHTSHIFT` | `INTBITAND`, `INTBITOR`, `INTBITXOR`, `INTBITNOT`, `INTBITLEFTSHIFT`, `INTBITRIGHTSHIFT` | Cosmos's are integer-only, so the operand type has to be known — which is section 6's question again |
+| `RAND`, `RANDOM` | `RAND` | non-deterministic, so pushing it moves *where* the value is drawn; the planner's treatment of a dynamic function has to be checked before this is a win rather than a change |
+
+**Gated on a declared stored shape, not on a translation.** *Large, and the machinery now exists.*
+Cosmos's date functions read and write ISO-8601 **strings**; Calcite's read and write its own
+`TIMESTAMP`. So each of these is a rewrite conditional on the path's declared shape, exactly as the
+comparison and the sort already are — `CosmosTemporalForms` is where the condition lives and
+`CosmosStoredForms.RenderDateTime` is what writes a literal back into the container's spelling.
+
+| Calcite | Cosmos |
+| --- | --- |
+| `EXTRACT(<unit> FROM …)`, `DATE_PART`, `DATEPART`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `QUARTER`, `WEEK`, `DAYOFYEAR` | `DATETIMEPART` |
+| `TIMESTAMPADD`, `DATE_ADD`, `DATETIME_ADD`, `DATEADD`, `TIMESTAMP_ADD`, and the `_SUB` forms | `DATETIMEADD` |
+| `TIMESTAMPDIFF`, `DATE_DIFF`, `DATETIME_DIFF`, `DATEDIFF` | `DATETIMEDIFF` |
+| `FLOOR(<ts> TO <unit>)`, `DATE_TRUNC`, `TIMESTAMP_TRUNC`, `DATETIME_TRUNC` | `DATETIMEBIN` |
+| `UNIX_MILLIS`, `UNIX_SECONDS` | `DATETIMETOTIMESTAMP` |
+| `TIMESTAMP_MILLIS`, `TIMESTAMP_SECONDS` | `TIMESTAMPTODATETIME` |
+| `CURRENT_TIMESTAMP`, `LOCALTIMESTAMP`, `CURRENT_DATE`, `CURRENT_DATETIME` | `GETCURRENTDATETIME`, and the `STATIC` variants where a statement wants one reading for every row |
+| `DATETIME(y, m, d, h, mi, s)` | `DATETIMEFROMPARTS` |
+
+Two of these need nothing from section 6 and could go first. `GETCURRENTDATETIME` has no stored value
+to interpret, and `_ts` is the one path whose encoding the service defines — the paragraph below says
+so already and is the entry this table supersedes rather than repeats.
+
+**Rewrites rather than mappings.** *Medium each, and the payoff is an aggregate that stops reading the
+container.* Cosmos has five aggregates and Calcite has seventy; several of the rest are expressible in
+the five.
+
+| Calcite | as |
+| --- | --- |
+| `COUNTIF(p)` | `SUM(IIF(p, 1, 0))` |
+| `EVERY`, `BOOL_AND`, `LOGICAL_AND` | `MIN(IIF(p, 1, 0)) = 1` |
+| `SOME`, `BOOL_OR`, `LOGICAL_OR` | `MAX(IIF(p, 1, 0)) = 1` |
+| `VAR_POP`, `VAR_SAMP`, `STDDEV_POP`, `STDDEV_SAMP` | `SUM(x)`, `SUM(x * x)` and `COUNT(x)`, combined above the scan — the shape Calcite's own `AggregateReduceFunctionsRule` already produces |
+| `ANY_VALUE` | `MIN` or `MAX`, which is a legal choice of *some* value |
+
+`ARRAY_AGG`, `COLLECT`, `LISTAGG` and `STRING_AGG` are **not** in this list: Cosmos's published
+aggregate set is `AVG`, `COUNT`, `MAX`, `MIN` and `SUM`, and nothing there accumulates a list.
+
+**Not a function, and it blocks a family.** *Small, and it is the cheapest thing here.* An **array
+literal** does not render — measured, `ARRAY['x','y']` declines — so `ARRAY_CONCAT(<path>, ARRAY[…])`,
+`SETINTERSECT`, `SETUNION` and an `ARRAY_CONTAINS` against a constant set all decline for the operand
+rather than for themselves. Cosmos writes one as JSON, `["x","y"]`, so this is a rendering and a null
+question and nothing more.
+
+**Cosmos has it and Calcite has no spelling for it**, so reaching these means declaring an operator in
+`CosmosOperators` the way `IS_DEFINED` and `ToString` already are — a feature rather than a pushdown,
+and listed so the asymmetry is visible: `IS_DATETIME`, `IS_INTEGER`, `STRINGTONULL`, `STRINGEQUALS`
+(with its case-insensitivity flag), `DOCUMENTID`, `CHOOSE`, `NUMBERBIN`, `SQUARE`, `ARRAY_CONTAINS_ALL`,
+`ST_ISVALIDDETAILED`, `GETCURRENTTICKS`, `DATETIMETOTICKS`, `TICKSTODATETIME`. **`ST_AREA` belongs
+here rather than among the renames**, which is the trap the geography package exists to avoid:
+Calcite's `ST_AREA` is planar and the service's is geodesic, so they are different measures under
+one name, and the package declares no `CLR_ST_GEOG_AREA` to carry the geodesic one yet.
+
+**No Cosmos form, recorded so nobody looks again.** Every one of these is a scalar function Calcite
+offers and the service does not: `LPAD`, `RPAD`, `INITCAP`, `SPACE`, `ASCII`, `CHR`, `TRANSLATE3`,
+`SOUNDEX`, `DIFFERENCE`, `LEVENSHTEIN`, `STRCMP`, `FIND_IN_SET`, `SPLIT_PART`, `PARSE_URL`,
+`URL_ENCODE`, `URL_DECODE`, `FORMAT_NUMBER`, `TO_CHAR`; `MD5`, `SHA1`, `SHA256`, `SHA512`, `CRC32`,
+`COMPRESS`, `BASE64`, `TO_BASE64`, `FROM_BASE64`, `TO_BASE32`, `FROM_BASE32`, `HEX`, `TO_HEX`,
+`FROM_HEX`, `CODE_POINTS_TO_STRING`, `TO_CODE_POINTS`; `CBRT`, `FACTORIAL`, `HYPOT`, `LOG2`, `LOG1P`,
+`BIT_COUNT`, `BIT_GET`, `GETBIT`, and the hyperbolic and degree-taking trigonometric families
+(`SINH`, `COSH`, `TANH`, `ASINH`, `ACOSH`, `ATANH`, `SEC`, `CSC`, `COTH`, `SECH`, `CSCH`, `SIND`,
+`COSD`, `TAND`, `ASIND`, `ACOSD`, `ATAND`); `ARRAY_POSITION`, `ARRAY_REVERSE`, `ARRAY_DISTINCT`,
+`ARRAY_EXCEPT`, `ARRAY_MAX`, `ARRAY_MIN`, `ARRAY_APPEND`, `ARRAY_PREPEND`, `ARRAY_REMOVE`,
+`ARRAY_REPEAT`, `ARRAY_INSERT`, `ARRAY_COMPACT`, `ARRAYS_ZIP`, `SORT_ARRAY`; the whole `MAP_*` family,
+JSON mutation (`JSON_SET`, `JSON_INSERT`, `JSON_REMOVE`, `JSON_REPLACE`) and JSON introspection
+(`JSON_TYPE`, `JSON_DEPTH`, `JSON_KEYS`, `JSON_LENGTH`, `JSON_PRETTY`, `JSON_STORAGE_SIZE`); the
+`SAFE_` arithmetic family, `CONVERT_TIMEZONE`, `LAST_DAY`, `AGE`, `ADD_MONTHS`, `DAYNAME`,
+`MONTHNAME`; and the planar `ST_*` surface, which is a different geometry from the service's and is
+already refused for that reason under *Geography*.
+
 ### Temporal — *large, and the representation is discovered rather than stated*
 
 Cosmos has `DateTimeAdd`, `DateTimeDiff`, `DateTimePart`, `DateTimeBin` and tick conversions; Calcite
