@@ -68,6 +68,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static string? RenderInteger(CosmosRepresentation representation, long value) =>
             CosmosNumericForms.Render(representation, value);
 
+        /// <inheritdoc cref="CosmosTemporalForms.ParsesExactly" />
+        public static bool ParsesExactly(CosmosRepresentation representation, string? format, CosmosTemporalParts held) =>
+            CosmosTemporalForms.ParsesExactly(representation, format, held);
+
+        /// <inheritdoc cref="CosmosTemporalForms.ReadsBackAs" />
+        public static bool ReadsBackAs(CosmosRepresentation representation, CosmosTemporalParts held) =>
+            CosmosTemporalForms.ReadsBackAs(representation, held);
+
+        /// <inheritdoc cref="CosmosTemporalForms.ParseFormats" />
+        public static System.Collections.Generic.IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>
+            CosmosTemporalForms.ParseFormats(representation);
+
     }
 
 }

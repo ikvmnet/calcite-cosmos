@@ -148,7 +148,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var facts = container.Facts.Derive(null);
 
             for (var i = 0; i < candidates.Count; i++)
-                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i].Path) ? candidates[i].Path : null;
+                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i].Path, candidates[i].Format, candidates[i].Held)
+                    ? candidates[i].Path
+                    : null;
 
             return ordering;
         }

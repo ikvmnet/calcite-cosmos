@@ -893,6 +893,24 @@ hand. Two tests pin both directions.
   reversal is pinned in two places, the rewriter's own test and the planning one, because it is the
   case that selects the complement rather than merely failing to push; and a range pins no partition,
   `CosmosPartitionKeyExtractor` reading an equality and nothing looser.
+- **The `PARSE_` chain, at both sites.** `CosmosTemporalParse` reads
+  `PARSE_DATE(<format>, <path>)`, `PARSE_DATETIME`, `PARSE_TIME` and `PARSE_TIMESTAMP`;
+  `CosmosTemporalForms` carries, per shape, the formats that read it exactly; and the two sites ask
+  the same question — `TryLowerInstant` for a comparison, `CosmosProject.OrderingCandidateOf` with
+  `IsOrderable` for a sort key. The sort needed a third thing that the entry below did not expect: the
+  projection has to *render*, or there is no `CosmosProject` under the sort to record the binding on,
+  and Calcite does not transpose a sort through a projection whose key is a function call the way it
+  does through a cast. `CosmosRexTranslator.TryStoredInstantProjection` sends the guarded path down
+  and leaves the conversion to the reader, which is the same move `TryStoredUuidProjection` makes.
+- **And the format had to be measured, which turned up a wrong answer in `DESIGN.md` rather than a
+  missing feature.** The entry below said a format that does not match "parses to null for every
+  row". It does not. `yyyy-MM-dd'T'HH:mm:ss'Z'` — the spelling `DESIGN.md` recommended — reads
+  January the 2nd at 03:04:05 as **April the 2nd at 03:00:05**, because Calcite's format model matches
+  its elements without regard to case and takes the `mm` for a second month. A query written that way
+  is already returning wrong rows in process; the adapter declines to push it, which leaves that
+  answer where it is rather than replacing it with a different one.
+  `CalciteTemporalParseMeasurementTests` runs every spelling the table claims against a sample of the
+  shape it claims, so a row that stops being exact fails a test.
 
 **Not built, and each for a stated reason:**
 
@@ -921,13 +939,33 @@ hand. Two tests pin both directions.
   pinned by a row in `TheSpellingsInTheWildAreRecognised`, so flipping it is a deliberate change and
   not a bug fix to slip in; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that would flip
   with it.
-- **`PARSE_TIMESTAMP`, `PARSE_DATETIME`, `TO_TIMESTAMP` are not recognised.** Adding them is not the
-  one-line extension of `TextAccessorOf` it appears to be, because the parse carries a *format* and
-  the rewrite is an equivalence only where that format denotes the path's stored shape — a format
-  that does not match parses to null for every row, and ordering by the path is then not what
-  ordering by the parse means. Recognising the format is the *form-preserving chain* this section
-  already names as the notion needed; a spelling table per form, in the manner of
-  `CosmosStoredForms.Recognise`, is the sound way to it and none of it is measured yet.
+- **`PARSE_TIMESTAMP` is recognised and pushes at neither site, and the reason is its type rather
+  than its parse** — *small, and two separate pieces of work.* It is the name a caller reaches for
+  first and it reads a format exactly as `PARSE_DATETIME` does, measured. What it answers is
+  `TIMESTAMP WITH LOCAL TIME ZONE`. For a comparison that means the other operand is a zone-less
+  literal and the question is what the session's zone is, which no declared stored form answers —
+  the internal representations happen to line up, and "happen to" is not an argument. For a sort it
+  means `CosmosJson` has no reading for the type, so the projection cannot be sent down and there is
+  nothing for the sort to stand on; adding the reading is a line, and it would change every
+  `TIMESTAMP WITH LOCAL TIME ZONE` projection rather than only this one, so it is its own decision.
+  `ParseTimestampIsRefusedForItsTypeRatherThanItsParse` is the row that would flip.
+- **`TO_DATE` and `TO_TIMESTAMP` are not recognised, and the obstacle is a name rather than a
+  format.** Each is *two* operators under one SQL name — Calcite registers `TO_DATE` beside
+  `TO_DATE_PG`, implemented by `SqlFunctions.DateFormatFunction` and `DateFormatFunctionPg` — and
+  which one a query resolves to depends on the libraries the connection enabled, which a `RexCall`'s
+  name does not say. The first was measured and agrees with the `PARSE_` family on every spelling in
+  the table; the second was not. Reference identity against `SqlLibraryOperators.TO_DATE` would tell
+  them apart, and the operand order is the other way round (`TO_DATE(<text>, <format>)`), so it is a
+  small entry rather than an empty one.
+- **A microsecond or tick fraction has no parse spelling, and there is none to find.** Every fraction
+  element the model has — `%E1S` through `%E5S`, `FF1` through `FF7`, `MS` — lowers to a Java
+  *millisecond* field, which reads whatever digits are in front of it as milliseconds: `.678901` is
+  11 minutes and 18 seconds rather than 679 milliseconds. Calcite's timestamps are milliseconds, so
+  this is a property of the target type rather than a gap in the table. The shape Azure recommends is
+  therefore the one a parse cannot reach — it reaches a `CAST` and a `RETURNING` clause as before.
+- **Neither has the separator-less basic shape**, for a second reason: the model's one-letter fields
+  are greedy, so `%H%M%S` reads `030405` as hour 0 and minute 945, and .NET's `DateTime.TryParse`
+  refuses `20240102T030405Z` outright, so the projection could not be read back either.
 
 ### Why the SDK writes an unsortable shape
 
@@ -1182,11 +1220,14 @@ terms:
   not the half this entry expected.** `JSON_VALUE(…, RETURNING TIMESTAMP)` already resolved to a path,
   so a sort over one was already pushing — *ungated*, as a lexical string sort the plan believed was
   chronological, which is a wrong answer over any path whose shape is not fixed.
-  `CosmosSort.OrderIsLexical` now gates it. What is still not built is this entry's original case: a
-  sort key that is a *chain* rather than a path — a `CAST`, or `PARSE_DATETIME`, `TO_TIMESTAMP`, or
-  the `REPLACE`/`SUBSTRING`/`CAST` a view writes — where the rewrite is to drop the order-preserving
-  chain and leave the raw path. See *Ordering by a rendered column* below, which turns out to be the
-  same mechanism at a different site and is the cheaper way in.
+  `CosmosSort.OrderIsLexical` now gates it. This entry's original case — a sort key that is a *chain*
+  rather than a path, where the rewrite is to drop the order-preserving chain and leave the raw path
+  — is now built for the `PARSE_` family and not for the rest: `PARSE_DATE(<format>, <path>)` and its
+  siblings bind the ordinal through `CosmosProject.OrderingCandidateOf`, gated on the format reading
+  the declared shape as well as on the two bits. The plain `CAST` and the `REPLACE`/`SUBSTRING`/`CAST`
+  a view writes are still outstanding, and for the reason section 4 gives rather than for want of the
+  mechanism — what the cast's column would *read back as* is its own question. See *Ordering by a
+  rendered column* below, which is the same mechanism at a different site.
 - **`MIN` and `MAX`**, which are the same argument over an aggregate — **not built**. The site is
   `CosmosAggregate` rather than the sort or the rewriter, and the condition is the statement-wide one
   for the same reason a sort's is: nothing rechecks an aggregate either.
