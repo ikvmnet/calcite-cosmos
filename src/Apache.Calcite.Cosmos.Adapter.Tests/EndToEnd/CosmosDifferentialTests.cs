@@ -644,23 +644,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // ── A second sweep: ordering, aggregation and row restriction over a path
             //    that is null in one document and absent in another ─────────────────
 
-            // Ordering by a nullable user path, both directions and both null placements. Where the
-            // service's placement and Calcite's disagree the sort must decline, and declining is
-            // invisible from the rows unless they are compared.
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\", c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" DESC, c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" NULLS FIRST, c.\"id\"", true),
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c ORDER BY c.\"$.category\" NULLS LAST, c.\"id\"", true),
+            // Ordering by a nullable user path. Ordering by the promoted $.category column is gone from
+            // the corpus: it is a VARIANT column, which the sort declines to push, and which the oracle
+            // cannot sort in process either — VariantValue is not Comparable and names no order across
+            // types. So there is no ordering behaviour to compare, and none is claimed; a caller orders
+            // by JSON_VALUE instead. See #165, and #163 for the type. Ordering by a rendered JSON_VALUE
+            // is text and sorts everywhere, so it stays.
             ("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.price'), c.\"id\"", true),
-
-            // The same ordering once the query has removed the nulls, which is what lets it push at
-            // all. The seeded categories tie — three shoes, two bikes — so the single-key form is
-            // compared as a multiset: with ties the sequence is unspecified and only the rows are
-            // the statement's to get right. The tie-broken form is deterministic and comparable as
-            // a sequence, and does not push here for want of a composite index over two paths.
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\"", false),
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" DESC", false),
-            ("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\", c.\"id\"", true),
 
             // A view's shape: the projection casts, so it cannot be pushed, and the ordering and row
             // limit go under it rather than staying above. The cast runs over the rows that come back,

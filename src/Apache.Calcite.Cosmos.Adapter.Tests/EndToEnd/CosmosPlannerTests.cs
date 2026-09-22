@@ -797,13 +797,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // none left there is nothing to place wrongly, whichever way each side would have placed
         // one. The predicate reaches the node through `RelMdPredicates`, so this is the planner
         // deciding rather than the renderer discovering.
+        //
+        // Suspended pending #165: `category` is now a VARIANT column, which CosmosSort declines to sort
+        // outright — Calcite cannot order a VARIANT in process, so the placement question no longer
+        // arises. The unlock tests below are skipped until a variant order lands upstream; the two
+        // controls stay green, since a VARIANT sort is refused either way.
 
         /// <remarks>
         /// The pair that carries the change. Both directions, both of Calcite's default placements,
         /// and both refused without the predicate — see
         /// <see cref="ANullableKeyIsStillRefusedWithoutTheGuarantee"/>.
         /// </remarks>
-        [Fact]
+        [Fact(Skip = "#165: a promoted column is now VARIANT, and CosmosSort declines a sort keyed directly on one — Calcite cannot order a VARIANT in process. This verifies the nullable promoted-scalar sort, to re-enable when upstream defines a variant order.")]
         public void AnIsNotNullPredicateMakesANullableColumnASortKey()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
@@ -817,7 +822,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The predicate and the ordering leave as one statement, which is what makes the guarantee
         /// hold at the service rather than only in the plan.
         /// </summary>
-        [Fact]
+        [Fact(Skip = "#165: a promoted column is now VARIANT, and CosmosSort declines a sort keyed directly on one — Calcite cannot order a VARIANT in process. Re-enable when upstream defines a variant order.")]
         public void ThePredicateAndTheOrderingPushAsOneStatement()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\""))
@@ -828,7 +833,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The row limit becomes pushable at the same moment the ordering does, a limit being sound
         /// only once the ordering above it is.
         /// </summary>
-        [Fact]
+        [Fact(Skip = "#165: a promoted column is now VARIANT, and CosmosSort declines a sort keyed directly on one — Calcite cannot order a VARIANT in process. Re-enable when upstream defines a variant order.")]
         public void TheRowLimitRidesAlongWithTheOrdering()
         {
             Render(PlanToCosmos("SELECT c.\"id\", c.\"$.category\" FROM products AS c WHERE c.\"$.category\" IS NOT NULL ORDER BY c.\"$.category\" FETCH NEXT 10 ROWS ONLY"))
@@ -860,13 +865,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// An unpromoted document path is not reached, and the reason is structural: it projects as
-        /// an accessor call rather than as a reference, and <c>RelMdPredicates</c> carries a predicate
-        /// through a projection only where the projection is a reference. Recorded as the boundary of
-        /// what this reaches — see <c>TODO.md</c> section 6, where the fix is a column.
+        /// The <c>IS NOT NULL</c> that unlocks a nullable sort key does not reach the key when the key
+        /// is an unpromoted document path. The reason is structural: such a path projects as an accessor
+        /// call rather than as a reference, and <c>RelMdPredicates</c> carries a predicate through a
+        /// projection only where the projection is a reference. So the sort is refused for want of the
+        /// guarantee — <em>not</em> because the path cannot be ordered: a declared-shape sort over the
+        /// same path (a parse, a cast, a <c>RETURNING</c>) still pushes, binding through the rendering
+        /// projection. Recorded as the boundary of what this reaches — see <c>TODO.md</c> section 6,
+        /// where the fix is a column.
         /// </remarks>
         [Fact]
-        public void AnUnpromotedDocumentPathIsNotReached()
+        public void AnIsNotNullOverAnUnpromotedPathDoesNotUnlockItsSort()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
 

@@ -1311,10 +1311,84 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         internal static bool IsRenderedDocumentValue(RexNode operand)
         {
-            if (operand.getType()?.getSqlTypeName() == SqlTypeName.ANY)
+            if (IsDocumentValueType(operand.getType()?.getSqlTypeName()))
                 return true;
 
             return IsTextJsonValue(operand) && ((RexCall)operand).getOperands().size() == 2;
+        }
+
+        /// <summary>
+        /// Determines whether a type is one a document value carries: the raw value at a path.
+        /// </summary>
+        /// <remarks>
+        /// Two spellings reach here for one meaning. A promoted declared-path column is typed
+        /// <c>VARIANT</c> — <see cref="CosmosTable.getRowType"/> — being a scalar whose concrete type is
+        /// learned per row. An accessor named as its raw value rather than its rendering is typed
+        /// <c>ANY</c> — <see cref="Rel.Convert.CosmosFilterSplitRule"/> re-types it there, and a field
+        /// bound to one is cast there; see <see cref="WriteCast"/>. Both say "the value the service
+        /// holds", and Calcite's cast over either is the value's own rendering, so both are read as the
+        /// document value a cast to text reinterprets rather than converts.
+        /// </remarks>
+        internal static bool IsDocumentValueType(SqlTypeName? name)
+        {
+            return name == SqlTypeName.ANY || name == SqlTypeName.VARIANT;
+        }
+
+        /// <summary>
+        /// Sees through the cast Calcite's type coercion adds to the other side of a comparison with a
+        /// <c>VARIANT</c> column, returning the value underneath.
+        /// </summary>
+        /// <remarks>
+        /// A promoted declared-path column is typed <c>VARIANT</c> — <see cref="CosmosTable.getRowType"/>
+        /// — and the validator coerces the other side of a comparison with it by wrapping it in
+        /// <c>CAST(… AS VARIANT)</c>. That box carries the value unchanged: the service compares the raw
+        /// document value against it either way, and <see cref="WriteCast"/> renders it as the value
+        /// underneath. Recognising the shape lets the point-read and fact extractors read the literal
+        /// under it, exactly as they read the bare literal an <c>ANY</c>-typed column left uncoerced.
+        /// Only the single-operand cast whose sole effect is the <c>VARIANT</c> retyping; anything else
+        /// is returned unchanged.
+        /// </remarks>
+        internal static RexNode StripVariantCoercion(RexNode node)
+        {
+            if (node is RexCall call
+                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT)
+                return Operand(call, 0);
+
+            return node;
+        }
+
+        /// <summary>
+        /// Sees through the cast Calcite's type coercion adds when a raw <c>VARIANT</c> column stands
+        /// where a string is wanted — the subject of <c>LIKE</c>, of a case fold — returning the column
+        /// underneath.
+        /// </summary>
+        /// <remarks>
+        /// An <c>ANY</c> value carried into those operators without a cast, so the subject was the bare
+        /// path and rendered as one. A <c>VARIANT</c> partition-key column —
+        /// <see cref="CosmosTable.getRowType"/> — is coerced to <c>VARCHAR</c> first, and this unwraps
+        /// that coercion so the raw path renders as it did: the service applies the string function to
+        /// the value it holds, exactly as it did over the <c>ANY</c> column, and
+        /// <see cref="IsTextRendering"/> is false of it either way, so its guard is unaffected. Only over
+        /// a <c>VARIANT</c> operand, which only the promoted column carries — a re-typed accessor is
+        /// <c>ANY</c> and is a rendering, kept as one — and only an undecorated <c>VARCHAR</c>/<c>CHAR</c>,
+        /// a width being a truncation. This is not the comparison case: there a cast to text over a
+        /// document value is a rendering an equality drops only against unambiguous text, and
+        /// <see cref="WriteCast"/> declines what survives; a string operator reads the value itself, so
+        /// the cast is nothing but the coercion.
+        /// </remarks>
+        internal static RexNode StripTextCoercion(RexNode node)
+        {
+            if (node is RexCall call
+                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && (call.getType()?.getSqlTypeName() == SqlTypeName.VARCHAR || call.getType()?.getSqlTypeName() == SqlTypeName.CHAR)
+                && call.getType()?.getPrecision() == org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED
+                && Operand(call, 0).getType()?.getSqlTypeName() == SqlTypeName.VARIANT)
+                return Operand(call, 0);
+
+            return node;
         }
 
         /// <summary>
@@ -1579,7 +1653,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// never does.
         /// </para>
         /// <para>
-        /// <b>Only a value typed <c>ANY</c>.</b> The same cast over <c>JSON_VALUE</c> drops in a
+        /// <b>Only a document value — typed <c>ANY</c> or <c>VARIANT</c>; see
+        /// <see cref="IsDocumentValueType"/>.</b> The same cast over <c>JSON_VALUE</c> drops in a
         /// comparison — see <see cref="IsRenderedDocumentValue"/> — and does not here, because a
         /// projection has no literal to exclude the cases on. Measured, <c>JSON_VALUE</c> answers null
         /// for an object or an array where the reader renders one as <c>{x=1}</c> or <c>[x, y]</c>, so
@@ -1608,7 +1683,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
+            if (IsDocumentValueType(operand.getType()?.getSqlTypeName()) == false)
                 return null;
 
             return operand;
@@ -2522,6 +2597,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // The cast Calcite's type coercion adds to the other side of a comparison with a VARIANT
+            // column -- a promoted declared-path key; see CosmosTable.getRowType. The box carries the
+            // value unchanged, and the service compares the raw document value against it either way, so
+            // it is rendered as the value underneath rather than converted: c.category = @p0 for
+            // `category = 'bikes'`, the very statement the ANY-typed column produced before the literal
+            // was coerced. StripVariantCoercion is the reading side of the same shape, where the
+            // point-read and fact extractors take the literal out of it.
+            if (call.getOperands().size() == 1 && call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT)
+            {
+                Write(builder, Operand(call, 0));
+                return;
+            }
+
             // A cast that differs from its operand only in nullability converts nothing, and refusing it
             // cost every COALESCE its pushdown (#130). The validator expands COALESCE(x, y) to
             // CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y) before a RexCall exists: the accessor, the
@@ -2767,10 +2855,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (pattern.IndexOfAny(new[] { '[', ']' }) >= 0)
                 throw new CosmosTranslationException("LIKE with a bracket in the pattern is not supported: Cosmos reads a character range where SQL reads the brackets literally.");
 
+            // The raw path under a string operator, once its coercion to VARCHAR is unwrapped -- a
+            // VARIANT partition-key column carries one where an ANY value did not; see StripTextCoercion.
             if (TryCaseFoldOperand(subject, out var upper) is RexNode value && TryCaseInsensitiveMatch(pattern, upper, out var function, out var text))
             {
                 builder.Append(function).Append('(');
-                Write(builder, value);
+                Write(builder, StripTextCoercion(value));
                 builder.Append(", ").Append(_parameters.Add(text)).Append(", true)");
                 return;
             }
@@ -2779,12 +2869,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 pattern.IndexOfAny(new[] { '%', '_' }) == pattern.Length - 1)
             {
                 builder.Append("STARTSWITH(");
-                Write(builder, Operand(call, 0));
+                Write(builder, StripTextCoercion(Operand(call, 0)));
                 builder.Append(", ").Append(_parameters.Add(pattern.Substring(0, pattern.Length - 1))).Append(')');
                 return;
             }
 
-            WriteBinary(builder, call, "LIKE");
+            WriteBinary(builder, StripTextCoercion(Operand(call, 0)), Operand(call, 1), "LIKE");
         }
 
         /// <summary>

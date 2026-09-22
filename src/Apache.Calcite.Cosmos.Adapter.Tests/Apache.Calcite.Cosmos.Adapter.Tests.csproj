@@ -34,7 +34,7 @@
                 com.jayway.jsonpath:json-path/com.fasterxml.jackson.core:jackson-core:2.22.2,optional=true
             </Dependencies>
         </MavenReference>
-        <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.28.0" />
+        <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.29.0" />
         <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.9" />
     </ItemGroup>
 

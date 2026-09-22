@@ -605,6 +605,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static bool TryPin(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, Dictionary<string, object?> pinned, bool throughText)
         {
+            // A comparison with a promoted VARIANT key coerces its literal to CAST(… AS VARIANT); the
+            // box carries the value the point read pins on. See CosmosRexTranslator.StripVariantCoercion.
+            valueNode = CosmosRexTranslator.StripVariantCoercion(valueNode);
+
             if (valueNode is not RexLiteral literal)
                 return false;
 

@@ -170,7 +170,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// Without a matching composite index the service rejects the query outright, so pushing
             /// it down would be a defect rather than a pessimisation.
             /// </remarks>
-            [Fact]
+            [Fact(Skip = "#165: key 4 is a promoted VARIANT column, which CosmosSort now declines before the composite-index check is reached. Composite-index refusal is still covered by the (1, 2) case above; re-enable when upstream defines a variant order.")]
             public void MultiKeySortWithoutACompositeIndexIsRefused()
             {
                 var sort = SortOver(Scan(), Collation(

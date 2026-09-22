@@ -224,13 +224,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                     return false;
 
+                var type = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().getSqlTypeName();
+
+                // A promoted VARIANT column (a declared path; see CosmosTable.getRowType) is declined
+                // rather than pushed. Calcite cannot order one in process -- VariantValue is not
+                // Comparable and names no order across types -- so no oracle can measure a pushed sort,
+                // and the SQL standard defines no ordering for a variant to match. Declining leaves the
+                // adapter behaving as the engine does; a caller orders by JSON_VALUE over the path
+                // instead, which is text and sorts as text everywhere. See #165, and #163 for the type.
+                if (type == org.apache.calcite.sql.type.SqlTypeName.VARIANT)
+                    return false;
+
                 // Cosmos has no temporal type, so a key the plan types as one is a string at the
                 // service and the ORDER BY compares it lexically. See OrderIsLexical.
                 //
                 // Asked only where the ordinal binds directly. A key reached through `ordered` is a
                 // chain whose licence was decided by CosmosProject.IsOrderable -- which asks the same
                 // two questions and, for a parse, asks the format instead of the engine.
-                var type = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().getSqlTypeName();
                 if (ordered is null && IsTemporal(type) && OrderIsLexical(container, path, type) == false)
                     return false;
 

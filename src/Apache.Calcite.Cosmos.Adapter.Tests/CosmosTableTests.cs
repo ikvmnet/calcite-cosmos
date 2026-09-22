@@ -458,6 +458,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <remarks>
+        /// A promoted declared-path column is typed <c>VARIANT</c>: a partition-key value is a scalar
+        /// from a small closed set — string, number or boolean — whose concrete type is learned per row,
+        /// which is the semi-structured shape <c>VARIANT</c> was added for and which <c>ANY</c>, the top
+        /// "type unknown", erases. It stays nullable — a document may omit the path, landing in the
+        /// "none" logical partition — so the planner does not rewrite <c>COUNT(x)</c> into
+        /// <c>COUNT(*)</c>. The service-owned properties keep the concrete types they are guaranteed to
+        /// carry. See ikvmnet/calcite-cosmos#163.
+        /// </remarks>
+        [Fact]
+        public void APromotedDeclaredPathColumnIsTypedVariant()
+        {
+            var table = new CosmosTable(new CosmosContainerMetadata("products", new[] { "/category" }));
+
+            var fields = table.getRowType(new org.apache.calcite.jdbc.JavaTypeFactoryImpl()).getFieldList();
+            var byName = new System.Collections.Generic.Dictionary<string, org.apache.calcite.rel.type.RelDataType>();
+            for (var i = 0; i < fields.size(); i++)
+            {
+                var field = (org.apache.calcite.rel.type.RelDataTypeField)fields.get(i);
+                byName[field.getName()] = field.getType();
+            }
+
+            byName["$.category"].getSqlTypeName().Should().Be(org.apache.calcite.sql.type.SqlTypeName.VARIANT);
+            byName["$.category"].isNullable().Should().BeTrue();
+
+            byName["id"].getSqlTypeName().Should().Be(org.apache.calcite.sql.type.SqlTypeName.VARCHAR);
+            byName["_ts"].getSqlTypeName().Should().Be(org.apache.calcite.sql.type.SqlTypeName.BIGINT);
+            byName["_etag"].getSqlTypeName().Should().Be(org.apache.calcite.sql.type.SqlTypeName.VARCHAR);
+        }
+
+        /// <remarks>
         /// A partition key of <c>/id</c> must not promote <c>id</c> a second time.
         /// </remarks>
         [Fact]

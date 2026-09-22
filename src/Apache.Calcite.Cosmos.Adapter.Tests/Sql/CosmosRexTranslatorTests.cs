@@ -748,6 +748,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CanTranslate(Translator(), EqText(Cast(Ref(0, SqlTypeName.VARCHAR), SqlTypeName.VARCHAR), "bikes")).Should().BeFalse();
         }
 
+        // ── A promoted VARIANT partition-key column (ikvmnet/calcite-cosmos#163) ───────
+
+        RexNode Variant(int index) => _rex.makeInputRef(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARIANT), true), index);
+
+        RexNode VariantCast(RexNode operand) => _rex.makeAbstractCast(_types.createSqlType(SqlTypeName.VARIANT), operand, false);
+
+        /// <remarks>
+        /// A promoted declared-path column is typed <c>VARIANT</c>, so an equality against it coerces
+        /// the literal to <c>CAST(… AS VARIANT)</c> where an <c>ANY</c> column left it bare. The box
+        /// carries the value — the service compares the raw document value against it — and the rendered
+        /// statement is the one the <c>ANY</c> column produced, <c>c.name = @p0</c>. See
+        /// <c>CosmosRexTranslator.StripVariantCoercion</c> and the <c>VARIANT</c> arm of
+        /// <c>WriteCast</c>.
+        /// </remarks>
+        [Fact]
+        public void EqualityOverAVariantColumnRendersAgainstTheRawValue()
+        {
+            Translate(Call(SqlStdOperatorTable.EQUALS, Variant(0), VariantCast(Str("bikes"))))
+                .Should().Be("(c.name = @p0)");
+            Translate(Call(SqlStdOperatorTable.EQUALS, VariantCast(Str("bikes")), Variant(0)))
+                .Should().Be("(@p0 = c.name)");
+        }
+
+        /// <remarks>
+        /// The rendered-text rule holds for a <c>VARIANT</c> column too. An <em>explicit</em>
+        /// <c>CAST(pk AS VARCHAR)</c> renders the value as text, and against text some other JSON value
+        /// renders as — <c>'30'</c> for the number 30 — dropping the cast would push an equality the
+        /// service does not make, so it is declined; unambiguous text still drops the cast. This is the
+        /// case the raw-value coercion above must not be mistaken for.
+        /// </remarks>
+        [Fact]
+        public void EqualityThroughAnExplicitTextCastOverAVariantColumnFollowsTheSameRule()
+        {
+            CanTranslate(Translator(), EqText(Cast(Variant(0), SqlTypeName.VARCHAR), "30")).Should().BeFalse();
+            Translate(EqText(Cast(Variant(0), SqlTypeName.VARCHAR), "bikes")).Should().Be("(c.name = @p0)");
+        }
+
+        /// <remarks>
+        /// <c>LIKE</c> over a <c>VARIANT</c> column is over the raw path, as it was over the bare
+        /// <c>ANY</c> column: the coercion to <c>VARCHAR</c> the operator forces is unwrapped and the
+        /// prefix pushes as <c>STARTSWITH</c>, the case-folded suffix as <c>ENDSWITH</c>, needing no
+        /// rendering guard. See <c>CosmosRexTranslator.StripTextCoercion</c>.
+        /// </remarks>
+        [Fact]
+        public void LikeOverAVariantColumnPushesOverTheRawPath()
+        {
+            Translate(Call(SqlStdOperatorTable.LIKE, Cast(Variant(0), SqlTypeName.VARCHAR), Str("bi%")))
+                .Should().Be("STARTSWITH(c.name, @p0)");
+            Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Cast(Variant(0), SqlTypeName.VARCHAR)), Str("%KES")))
+                .Should().Be("ENDSWITH(c.name, @p0, true)");
+        }
+
     }
 
 }
