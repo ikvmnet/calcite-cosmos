@@ -9,16 +9,16 @@ Rather than going through ADO.NET or JDBC, the adapter translates the relational
 1. A Cosmos database is registered with Calcite as a schema, one table per container.
 2. Calcite's planner converts as much of the plan as possible into the Cosmos calling convention (`CosmosConvention`).
 3. Nodes in that convention are rendered to Cosmos SQL and executed by the Cosmos query engine.
-4. Results leave the convention as an `IAsyncEnumerable`, into the `ClrEnumerableConvention` provided by [`Apache.Calcite.Extensions`](https://www.nuget.org/packages/Apache.Calcite.Extensions).
+4. Results leave the convention as a cursor, into the `ClrCursorConvention` provided by [`Apache.Calcite.Extensions`](https://www.nuget.org/packages/Apache.Calcite.Extensions), and into no other convention. A plan that wants its rows somewhere else gets there higher up, through that package's own converters.
 5. Anything Cosmos cannot express is executed in-process by Calcite, under that convention.
 
 ## Read a Cosmos table asynchronously
 
-A query over a Cosmos table plans either way, and **only the asynchronous route is free**. Reading one synchronously blocks a thread per row.
+A query over a Cosmos table plans once and is read either way, and **only the asynchronous route is free**. Reading one synchronously blocks a thread once per page of results.
 
-This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so there is no synchronous read for the adapter to call. Asked for its rows synchronously, the converter bridges over the asynchronous one and waits, which costs a blocked thread for a network round trip per continuation and nothing in the plan will say so.
+This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so there is no synchronous read for the adapter to call. Opened synchronously, the plan waits for the first page; advanced synchronously, it waits wherever it runs out of a page and has to fetch the next. A row already in a page costs nothing either way.
 
-Earlier versions made this a planning failure: the adapter published no converter into the synchronous convention, so a synchronous plan was simply not found. `Apache.Calcite.Extensions` now has one CLR convention rather than two, a plan carries no mode, and the choice belongs to the caller — so the guidance is a cost to know about rather than an error you cannot miss.
+Read asynchronously, each advance's cancellation token is the one the page request runs under. That is what the cursor convention is for: a `ReadAsync(token)` reaches `ReadNextAsync` with the token it was given, rather than a token fixed once when the results were first enumerated.
 
 A container has no row schema, so a table is modelled as one document column carrying the whole document as JSON text, plus promoted scalar columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred from sampling documents.
 

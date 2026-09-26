@@ -4,6 +4,8 @@ using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 using Xunit;
@@ -191,11 +193,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         }
 
-        static async IAsyncEnumerable<object?[]> OneRow()
-        {
-            await System.Threading.Tasks.Task.Yield();
-            yield return new object?[] { null, "1", null, null, "bikes" };
-        }
+        static System.Threading.Tasks.ValueTask<IClrCursor<object?[]>?> OneRow() =>
+            new(new ListCursor<object?[]>(new[] { new object?[] { null, "1", null, null, "bikes" } }));
 
         /// <remarks>
         /// The container changed, so what the cache remembers about it may be wrong. A write from
@@ -209,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             var write = new CosmosWrite(CosmosWriteOperation.Insert, ["DOC", "id", "_ts", "_etag", "category"], ["/category"]);
 
-            await foreach (var _ in CosmosSequences.WriteAsync<object?[], long>(OneRow(), new NullWriter(), write, r => r!, c => c, cache))
+            await using (await CosmosCursors.WriteAsync<object?[], long>(OneRow(), new NullWriter(), write, r => r!, c => c, cache, null, System.Threading.CancellationToken.None))
             {
             }
 

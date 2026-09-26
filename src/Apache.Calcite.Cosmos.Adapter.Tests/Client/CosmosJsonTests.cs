@@ -311,7 +311,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// everywhere but the one place it mattered: reading as the <c>java.util.UUID</c> inside the
         /// wrapper gave the right value in the wrong box, which only a single-column row ever cast
         /// (#150). See
-        /// <see cref="Rel.Convert.CosmosToClrEnumerableConverterTests.ShouldReadALoneUuidColumn"/>.
+        /// <see cref="Rel.Convert.CosmosToClrCursorConverterTests.ShouldReadALoneUuidColumn"/>.
         /// </para>
         /// </remarks>
         [Fact]

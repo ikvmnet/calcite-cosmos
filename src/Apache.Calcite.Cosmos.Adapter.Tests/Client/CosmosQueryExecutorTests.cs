@@ -228,12 +228,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static async Task<List<JsonElement>> Execute(CosmosQuery query, PartitionKey? partitionKey = null)
         {
             var executor = new CosmosQueryExecutor(Container());
-            var results = new List<JsonElement>();
 
-            await foreach (var element in executor.ExecuteAsync(query, partitionKey))
-                results.Add(element);
-
-            return results;
+            return await ListCursor.CollectAsync(await executor.OpenAsync(query, partitionKey));
         }
 
         static CosmosQueryBuilder Builder() => new("products", "c");
@@ -1241,7 +1237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             static async Task Run(bool indexMetrics)
             {
                 var executor = new CosmosQueryExecutor(Container(), indexMetrics);
-                await foreach (var _ in executor.ExecuteAsync(Query(Builder()))) { }
+                await ListCursor.CollectAsync(await executor.OpenAsync(Query(Builder())));
             }
 
             (await Trace(() => Run(indexMetrics: false)))!.GetTagItem("cosmos.index_metrics").Should().BeNull();
@@ -1302,7 +1298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 ActivitySource.AddActivityListener(listener);
 
                 var executor = new CosmosQueryExecutor(Container(), indexMetrics: true);
-                await foreach (var _ in executor.ExecuteAsync(query)) { }
+                await ListCursor.CollectAsync(await executor.OpenAsync(query));
             }
 
             if (metrics is null)

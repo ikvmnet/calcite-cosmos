@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// statement, and array traversal arrives via <c>Uncollect</c>/<c>Correlate</c> instead.
     /// <para>
     /// <see cref="Rel.Convert.CosmosLookupJoinRule"/> is not a counter-example. It converts a join
-    /// into <c>ClrEnumerableConvention</c>, not into this one: the join is still performed
+    /// into <c>ClrCursorConvention</c>, not into this one: the join is still performed
     /// outside the service, and all that reaches the statement is a restriction to the keys one side
     /// actually has.
     /// </para>
@@ -40,12 +40,13 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <b>No values rule.</b> There is no container-independent row source.
     /// </description></item>
     /// <item><description>
-    /// <b>One way out, and the caller decides how the rows are read.</b> The single converter
-    /// leaves for <c>ClrEnumerableConvention</c>, and there is none into Calcite's own
-    /// <c>EnumerableConvention</c>. The Cosmos SDK still has no synchronous data-plane API, so the
-    /// awaiting body is the only one that reads a page; asking the plan for its rows synchronously
-    /// bridges over it and blocks a thread. That used to be a plan the planner would not produce and
-    /// is now a cost a host chooses — see <see cref="Rel.Convert.CosmosToClrEnumerableConverter"/>.
+    /// <b>One way out, into <c>ClrCursorConvention</c>, and the caller decides how the rows are
+    /// read.</b> The single converter leaves for the cursor convention and for no other: there is none
+    /// into <c>ClrEnumerableConvention</c> or Calcite's own <c>EnumerableConvention</c>, and a plan
+    /// that wants one of those reaches it higher up, through converters that are not the adapter's.
+    /// The lookup join and the table modify leave into the same convention. The Cosmos SDK still has
+    /// no synchronous data-plane API, so a plan opened or advanced synchronously blocks where a page
+    /// has to be fetched — see <see cref="Rel.Convert.CosmosToClrCursorConverter"/>.
     /// </description></item>
     /// </list>
     /// </remarks>
@@ -189,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,
             // and the planner has no complete plan to choose.
-            yield return CosmosToClrEnumerableConverterRule.Create(convention);
+            yield return CosmosToClrCursorConverterRule.Create(convention);
 
             // The other way out, and the only one that reads less than the whole container: a join
             // whose other side supplies the keys. It leaves the convention for the same reason the

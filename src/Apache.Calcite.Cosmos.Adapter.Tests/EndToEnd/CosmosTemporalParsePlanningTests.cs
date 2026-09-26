@@ -117,10 +117,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // To the CLR convention, so that a comparison or a sort that does not reach the service is
             // a plannable query rather than a failure -- the case this class exists to tell apart.
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -153,7 +153,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// container's own spelling.
         /// </summary>
         /// <remarks>
-        /// The whole predicate leaves as one statement. A <c>ClrEnumerableFilter</c> above the
+        /// The whole predicate leaves as one statement. A <c>ClrCursorFilter</c> above the
         /// converter would mean the comparison was rechecked in process, which is what happened before
         /// the chain was recognised — and before it, the statement asked only <c>IS_DEFINED</c> and
         /// the container came back whole.
@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00Z",
                 "and the literal is written in the shape the container stores");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "with nothing left to recheck: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + PlanText(best));
         }
 
         /// <summary>
@@ -236,7 +236,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ",
                     "the format does not denote the stored shape, for " + format);
 
-                PlanText(best).Should().Contain("ClrEnumerableFilter",
+                PlanText(best).Should().Contain("ClrCursorFilter",
                     "so the comparison stays where it was, for " + format);
             }
         }
@@ -258,7 +258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 container);
 
             Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ", "nothing says what the stored strings look like");
-            PlanText(best).Should().Contain("ClrEnumerableFilter");
+            PlanText(best).Should().Contain("ClrCursorFilter");
         }
 
         /// <summary>
@@ -270,7 +270,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// there is no <c>CosmosProject</c> under the sort to record the binding on — and Calcite does
         /// not transpose a sort through a projection whose key is a function call, the way it does
         /// through a cast, so the sort cannot get past it either. Measured before: a
-        /// <c>ClrEnumerableSort</c> over a <c>ClrEnumerableProject</c> over the bare accessor, with
+        /// <c>ClrCursorSort</c> over a <c>ClrCursorProject</c> over the bare accessor, with
         /// the whole container read to feed it.
         /// </para>
         /// <para>
@@ -292,7 +292,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("ORDER BY c.at", "the stored order is the order the parse answers: " + query.Sql);
             query.Sql.Should().Contain("(IS_PRIMITIVE(c.at) ? c.at : null)", "and the column is the guarded path: " + query.Sql);
 
-            PlanText(best).Should().NotContain("ClrEnumerableSort", "with nothing left to sort in process: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left to sort in process: " + PlanText(best));
         }
 
         /// <summary>
@@ -317,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("ORDER BY c.at", "the sort is the service's: " + query.Sql);
             query.Sql.Should().Contain("LIMIT 20", "and so is the page: " + query.Sql);
 
-            PlanText(best).Should().NotContain("ClrEnumerableSort", "with nothing left in process: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left in process: " + PlanText(best));
         }
 
         /// <summary>
@@ -333,7 +333,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 container);
 
             Query(FindCosmos(best), container).Sql.Should().NotContain("ORDER BY", "nothing licenses ordering by the stored text");
-            PlanText(best).Should().Contain("ClrEnumerableSort");
+            PlanText(best).Should().Contain("ClrCursorSort");
         }
 
         /// <summary>
@@ -448,8 +448,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(cast), container).Sql.Should().NotContain("c.at > @",
                 "and the cast names one it raises on, so there are no rows to ask for");
 
-            PlanText(parsed).Should().NotContain("ClrEnumerableFilter");
-            PlanText(cast).Should().Contain("ClrEnumerableFilter");
+            PlanText(parsed).Should().NotContain("ClrCursorFilter");
+            PlanText(cast).Should().Contain("ClrCursorFilter");
         }
 
         /// <summary>
@@ -494,7 +494,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 container);
 
             Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ", "the format is read per row and says nothing");
-            PlanText(best).Should().Contain("ClrEnumerableFilter");
+            PlanText(best).Should().Contain("ClrCursorFilter");
         }
 
         /// <summary>

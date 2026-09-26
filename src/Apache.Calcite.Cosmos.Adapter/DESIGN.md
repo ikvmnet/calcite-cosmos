@@ -9,7 +9,7 @@ structure that follows from it.
 
 > **Status.** Under development. Statement generation, container metadata, the schema and table
 > layer, the scan/filter/project/sort/unnest/aggregate/rank nodes with their conversion rules, and
-> the converter that hands results to `ClrEnumerableConvention` are in place and tested. Items
+> the converter that hands results to `ClrCursorConvention` are in place and tested. Items
 > marked ✔ below exist; the rest are specification.
 >
 > One claim still rests on documentation rather than observation and needs a real Cosmos account
@@ -955,7 +955,7 @@ bound being exactly what the mismatch destroys.
 exists today with a `CosmosSort` inserted beneath the same in-process sort: `CosmosSort` costs
 `Sort`'s own cost times `CosmosConvention.CostMultiplier`, which is positive, and the in-process sort
 above it costs `nLogN(rowCount)` either way — Calcite's `Sort.computeSelfCost` does not discount an
-already-collated input and `ClrEnumerableSort` does not override it. So the alternative is
+already-collated input and `ClrCursorSort` does not override it. So the alternative is
 strictly dominated on every input and the planner would reject it every time it was offered. What the
 trait would buy is plan legibility — the planner seeing and costing both alternatives instead of the
 adapter refusing outright — at the price of a rule that fires constantly and never wins. Recorded as
@@ -1791,8 +1791,8 @@ cast key is refused for want of a licence rather than by kind, and a declaration
 plans are pinned side by side in `CosmosDeclaredFactPlanningTests`.
 
 ```
-ClrEnumerableProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
-  CosmosToClrEnumerableConverter
+ClrCursorProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
+  CosmosToClrCursorConverter
     CosmosSort(sort0=[$1], dir0=[ASC], fetch=[10])
       CosmosTableScan(table=[[products]])
 ```
@@ -2623,7 +2623,7 @@ src/
     CosmosColumnStrategies.cs         ✔ Which columns an INSERT may omit, and which it may not name
     Client/
       CosmosQueryExecutor.cs          ✔ Executes a rendered statement via the Cosmos SDK; writes items
-      CosmosSequences.cs              ✔ The IAsyncEnumerable a compiled plan reads rows from, and writes through
+      CosmosCursors.cs                ✔ The cursors a compiled plan reads rows from, and writes through
       CosmosJson.cs                   ✔ JSON value → the representation Calcite holds a value in
       CosmosDocument.cs               ✔ The reverse: a row → the JSON document it describes
       CosmosWrite.cs                  ✔ What a write does, decided while the plan is built
@@ -2718,29 +2718,38 @@ job installs, which are 9 and 10. The consequences for anyone changing the workf
 
 ## Leaving the Convention
 
-A subtree of Cosmos nodes is a statement, not rows. `CosmosToClrEnumerableConverter` is where
+A subtree of Cosmos nodes is a statement, not rows. `CosmosToClrCursorConverter` is where
 it becomes rows: it renders the statement, executes it, and reads the JSON value each row arrives
 as into the row the plan above expects.
 
-**The read is asynchronous, and only asynchronous — but the plan no longer is.** The v3 Cosmos SDK
-has no synchronous data-plane API: a page arrives only by awaiting `FeedIterator.ReadNextAsync`. So
-`ImplementAsync` is the converter's real body, and `Implement` is written as the delegation through
-`ClrEnumerableRelImplementor.Pulled` that `ClrEnumerableRel` prescribes for exactly this case — an
-adapter whose client is asynchronous.
+**It leads into `ClrCursorConvention`, and into nothing else.** There is no converter from the
+Cosmos convention into `ClrEnumerableConvention` or into Calcite's own `EnumerableConvention`, and
+none is to be added. A plan that wants rows in one of those gets them higher up, through the
+converters `Apache.Calcite.Extensions` has between its conventions; the adapter's concern ends at
+the cursor. The lookup join and the table modify, the two nodes that know a container without being
+inside the convention that renders one, are in the cursor convention for the same reason.
 
-**What changed, and it is the part worth recording.** While the pulled and awaiting conventions were
-two, the adapter published no converter into the pulled one, and that absence was a gate: a query
-over a Cosmos table would not plan at all unless the root was asked for asynchronously, so
-sync-over-async could not appear in a plan because the plan did not exist. Calcite-dotnet merged the
-two conventions, and a plan no longer carries a mode at all — the same plan is read either way, and
-the kind is chosen by whoever calls the root. The gate is therefore gone, and there is nothing here
-to put it back with: declining in `Implement` would move the refusal from plan time to execution
-time, which is strictly worse — the same query, failing later and with less to say about why.
+**A cursor is the shape a Cosmos statement already has.** The SDK returns results a page at a time,
+each fetched by awaiting `FeedIterator.ReadNextAsync` with a token, and a cursor advances with a
+token of its own on every `ReadAsync`. So the executor's seam, `ICosmosQueryExecutor.OpenAsync`,
+opens a cursor rather than returning a sequence: the statement is sent and the first page awaited at
+the open, under the open's token, and every later page is fetched by the advance that runs out of
+rows, under *that* advance's token. Under the sequence convention the token entered once, at
+`GetAsyncEnumerator`, and a reader's per-call token had nowhere to go.
 
-So the cost moved rather than vanished. **A host that reads a Cosmos plan through `ImplementRoot`
-rather than `ImplementRootAsync` blocks a thread per row**, at the leaf where it is worst, and
-nothing in the plan will warn it. That is a documented cost now instead of a planning failure, and
-the README says so where a host will read it.
+**The synchronous side still blocks, but per page rather than per row.** The v3 SDK has no
+synchronous data-plane API, so `Implement` opens by waiting for the first page and a synchronous
+`Read` waits wherever it has to fetch another; a row already in a page is reached without waiting.
+Every such wait is in `CosmosCursors.Wait`, with the synchronization context suppressed before the
+call starts rather than around the wait, for the reason `ClrCursors.Block` gives upstream. Under the
+sequence convention the synchronous body was a bridge over the awaiting one and blocked a thread for
+every row, because an `IEnumerable` over an `IAsyncEnumerable` waits on each `MoveNextAsync`.
+
+**Opening is acquisition, and one write depends on it.** In the cursor convention an input's leaf
+sends its statement when the input is opened, not when it is first read. A whole-partition `DELETE`
+reads no rows — it counts the partition and removes it — so `CosmosTableModify` does not visit its
+input at all for that operation. Visited and merely left unread, the input would have scanned a page
+of the partition being emptied, which is the request the fast path exists to avoid.
 
 Three things follow from the row being one JSON value:
 
@@ -2808,19 +2817,20 @@ the read path below the plan: no implementor, no statement, no `CosmosQuery`. No
 text.
 
 Which settles where the node lives. A subtree in `CosmosConvention` *is* a statement, and a write is
-not one, so `CosmosTableModify` is in `ClrEnumerableConvention` — a node whose input is rows and
+not one, so `CosmosTableModify` is in `ClrCursorConvention` — a node whose input is rows and
 whose effect is a sequence of SDK calls. That makes it the same shape as `CosmosLookupJoin`: a node
 that knows about a container without being inside the convention that renders one.
 
 Two consequences worth stating because neither is obvious.
 
-**The Clr convention has no modify node**, so this is the first. Calcite's own
+**The cursor convention has no modify node**, so this is the first. Calcite's own
 `EnumerableTableModify` is not a model to copy: it writes through
 `ModifiableTable.getModifiableCollection()`, calling `Collection.add` and `Collection.remove` on
 whatever the table hands back. For Cosmos that collection would have to block on `CreateItemAsync`
 per element — and it would block wherever the plan happened to put it, with nothing in the signature
-saying a write was waiting on a round trip. The awaiting body keeps that in one place instead, at the
-node boundary a caller asked for.
+saying a write was waiting on a round trip. The awaiting open keeps that in one place instead, and
+the writes are its acquisition: every row is written when the modify is opened, under the open's
+token, and the cursor handed back holds only the count.
 
 **`ModifiableTable` is therefore not implemented, and is not needed.** Measured:
 `SqlToRelConverter.createModify` falls back to `LogicalTableModify.create` when the target unwraps to
@@ -3182,7 +3192,7 @@ one in the system that is not a guess.
 
 ### What the wire costs is width, and the document is not one value
 
-`CosmosToClrEnumerableConverter` is the one node every pushed row crosses, so it is where what
+`CosmosToClrCursorConverter` is the one node every pushed row crosses, so it is where what
 crosses it is priced: rows times the width they carry. Width is counted in *values*, and the `DOC`
 column counts as many — it carries an entire item where every other column carries a scalar.
 

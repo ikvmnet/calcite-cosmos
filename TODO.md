@@ -430,7 +430,7 @@ where such a caller should be pointed.
 
 **What is left is the patch tier itself** — the rule matching a `JSON_SET`, `JSON_REPLACE`,
 `JSON_INSERT` or `JSON_REMOVE` call over `DOC` in a `TableModify`, a `PatchItemAsync` on the
-writer, the routing in `CosmosSequences`, and the refusal of every form that cannot be rendered. The
+writer, the routing in `CosmosCursors`, and the refusal of every form that cannot be rendered. The
 column and the reads are in; the write is not.
 
 ### Whole-partition `DELETE` — *built, and unverified on the path it exists for*
@@ -1047,7 +1047,7 @@ hand. Two tests pin both directions.
 **Not built, and each for a stated reason:**
 
 - **`ORDER BY CAST(<path> AS TIMESTAMP)` still does not push** — measured, `SELECT VALUE c FROM items
-  c` under a `ClrEnumerableSort`. This is the cast-drop the paragraph above calls *the* change, and it
+  c` under a `ClrCursorSort`. This is the cast-drop the paragraph above calls *the* change, and it
   is the one thing here that is not done. The range rewrite reaches it because a filter's predicate is
   rewritten before the split rule reads it; a sort key is not a predicate. The key is a *computed
   projection*, so `fields[index]` is null and the key is refused before its form is ever asked about.
@@ -1238,7 +1238,7 @@ Cosmos form over operands that also have none pushes nothing, as before.
 
 An earlier version of this entry said executing a residual could not be verified offline, the
 enumerable adapter's `ClrEnumerableProject` being unimplementable. **It is verifiable, and the claim
-was a missing pass read as a defect.** `ClrEnumerableProject.Implement` throws exactly as Calcite's
+was a missing pass read as a defect.** `ClrCursorProject.Implement` throws exactly as Calcite's
 own `EnumerableProject.implement` does, and the rule that rewrites one into a calc is a
 `TransformationRule` — `VolcanoPlanner.addRule` will not register one against a `PhysicalNode`, so it
 can only fire in a hep pass run over the chosen plan, which is what `Programs.standard`'s last pass is
@@ -1282,7 +1282,7 @@ old wording did not allow for.
 
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
-`CosmosToClrEnumerableConverter` is the wire, and since #125 it costs rows times the width it
+`CosmosToClrCursorConverter` is the wire, and since #125 it costs rows times the width it
 carries rather than rows alone — which is what lets a partial projection win, a pushed projection
 having no measurable benefit before it.
 
@@ -1413,9 +1413,9 @@ The obstacle is a step earlier: the projection does not push, so there is no `Co
 record the binding on. Measured:
 
 ```
-ClrEnumerableSort(sort0=[$0], dir0=[ASC])
-  ClrEnumerableProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
-    CosmosToClrEnumerableConverter
+ClrCursorSort(sort0=[$0], dir0=[ASC])
+  ClrCursorProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
+    CosmosToClrCursorConverter
       CosmosTableScan
 ```
 
@@ -1479,9 +1479,9 @@ returned**, and a conjunct no document can fail has nothing to recheck. Measured
 with and without the declaration:
 
 ```
-declared:  CosmosToClrEnumerableConverter … (the conjunct is gone)
-plain:     ClrEnumerableFilter(condition=[=(JSON_VALUE($0, '$.kind'), 'A')])
-             CosmosToClrEnumerableConverter …
+declared:  CosmosToClrCursorConverter … (the conjunct is gone)
+plain:     ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.kind'), 'A')])
+             CosmosToClrCursorConverter …
 ```
 
 A plan node and a per-row test rather than a request. Smaller than this entry claimed, and still worth

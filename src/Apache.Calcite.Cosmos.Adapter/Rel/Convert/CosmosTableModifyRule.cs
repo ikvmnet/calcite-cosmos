@@ -2,7 +2,7 @@ using System;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 
-using Apache.Calcite.Extensions.Adapter.Enumerable;
+using Apache.Calcite.Extensions.Adapter.Cursor;
 
 using java.util.function;
 
@@ -208,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosTableModifyRule Create()
         {
             return (CosmosTableModifyRule)Config.INSTANCE
-                .withConversion(typeof(TableModify), new DelegatePredicate<TableModify>(IsWritable), Convention.NONE, ClrEnumerableConvention.Instance, "CosmosTableModifyRule")
+                .withConversion(typeof(TableModify), new DelegatePredicate<TableModify>(IsWritable), Convention.NONE, ClrCursorConvention.Instance, "CosmosTableModifyRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosTableModifyRule>(c => new CosmosTableModifyRule(c)))
                 .toRule(typeof(CosmosTableModifyRule));
         }
@@ -240,7 +240,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // every ordering a single row trivially satisfies — and asking such a trait set for its one
             // collation throws. An INSERT whose source is VALUES is the common case, so without this the
             // rule fails on the first statement anyone writes.
-            var inputTraits = input.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var inputTraits = input.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
 
             // Recovered again rather than carried from the predicate check: a rule's match and its
             // conversion are separate calls, and the second is where the value has to be right.
@@ -250,7 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             return new CosmosTableModify(
                 modify.getCluster(),
-                modify.getTraitSet().replace(ClrEnumerableConvention.Instance),
+                modify.getTraitSet().replace(ClrCursorConvention.Instance),
                 modify.getTable(),
                 (Prepare.CatalogReader)modify.getCatalogReader(),
                 convert(input, inputTraits),

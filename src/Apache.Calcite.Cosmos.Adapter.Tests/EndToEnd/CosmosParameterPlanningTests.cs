@@ -71,10 +71,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var rule in CosmosRules.GetRules(table.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -176,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Query(Sql).Sql.Should().Contain("c.id = @");
 
-            PlanText(Sql).Should().NotContain("ClrEnumerableFilter",
+            PlanText(Sql).Should().NotContain("ClrCursorFilter",
                 "so nothing is left above to recheck it: " + PlanText(Sql));
         }
 
@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(Sql).Sql.Should().Contain("IS_DEFINED(c.type)",
                 "the restriction the comparison implies still reaches the service");
 
-            PlanText(Sql).Should().Contain("ClrEnumerableFilter",
+            PlanText(Sql).Should().Contain("ClrCursorFilter",
                 "and the equality itself is rechecked above: " + PlanText(Sql));
         }
 

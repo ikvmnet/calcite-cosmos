@@ -2,6 +2,7 @@ using System;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -74,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();

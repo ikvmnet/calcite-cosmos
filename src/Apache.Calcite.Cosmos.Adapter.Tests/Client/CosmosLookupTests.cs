@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 
@@ -50,15 +51,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             public List<CosmosQuery> Executed { get; } = new();
 
-            public async IAsyncEnumerable<JsonElement> ExecuteAsync(CosmosQuery query, PartitionKey? partitionKey = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
             {
                 Executed.Add(query);
 
-                foreach (var document in _documents(query))
-                {
-                    await Task.Yield();
-                    yield return JsonDocument.Parse(document).RootElement.Clone();
-                }
+                await Task.Yield();
+                return ListCursor.Documents(_documents(query));
             }
 
         }
@@ -68,18 +66,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>The keys a statement was given, in order.</summary>
         static object?[] Keys(CosmosQuery query) => query.Parameters.Where(p => p.Name.StartsWith("@k")).Select(p => p.Value).ToArray();
 
-        static async IAsyncEnumerable<T> Async<T>(params T[] items)
-        {
-            foreach (var item in items)
-            {
-                await Task.Yield();
-                yield return item;
-            }
-        }
+        static ListCursor<T> Async<T>(params T[] items) => new(items);
 
-        static Task<List<string>> Join(IAsyncEnumerable<string> build, RecordingExecutor executor, int batchSize = 3, CosmosQuery? query = null, int cacheSize = 0, CosmosLookupCache? shared = null)
+        static Task<List<string>> Join(IClrCursor<string> build, RecordingExecutor executor, int batchSize = 3, CosmosQuery? query = null, int cacheSize = 0, CosmosLookupCache? shared = null)
         {
-            return Collect(CosmosLookup.JoinAsync(
+            return Collect(CosmosLookup.Join(
                 build,
                 executor,
                 query ?? Query(),
@@ -93,14 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 shared));
         }
 
-        static async Task<List<string>> Collect(IAsyncEnumerable<string> rows)
-        {
-            var results = new List<string>();
-            await foreach (var row in rows)
-                results.Add(row);
-
-            return results;
-        }
+        static Task<List<string>> Collect(IClrCursor<string> rows) => ListCursor.CollectAsync(rows);
 
         // ── What it fetches ───────────────────────────────────────────────────────
 
@@ -167,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var executor = new RecordingExecutor("""{"category":"bikes"}""");
 
-            var rows = await Collect(CosmosLookup.JoinAsync(
+            var rows = await Collect(CosmosLookup.Join(
                 Async<string?>(null, null),
                 executor,
                 Query(),
@@ -229,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var executor = new RecordingExecutor("""{"n":7}""");
 
-            var rows = await Collect(CosmosLookup.JoinAsync<int, long, string>(
+            var rows = await Collect(CosmosLookup.Join<int, long, string>(
                 Async(7),
                 executor,
                 Query(),

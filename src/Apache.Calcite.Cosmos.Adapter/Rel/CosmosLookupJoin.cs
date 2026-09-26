@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
-using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -37,14 +37,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <c>asyncLookup(RowData)</c> receives there.
     /// </para>
     /// <para>
-    /// Its left input is in <see cref="ClrEnumerableConvention"/> and its right in
+    /// Its left input is in <see cref="ClrCursorConvention"/> and its right in
     /// <see cref="CosmosConvention"/>, which makes it a converter as much as a join — the same shape as
-    /// <see cref="Convert.CosmosToClrEnumerableConverter"/>, and for the same reason: below it is a
-    /// statement, above it are rows.
+    /// <see cref="Convert.CosmosToClrCursorConverter"/>, and for the same reason: below it is a
+    /// statement, above it are rows. Like that converter it leads into the cursor convention and no
+    /// other.
     /// </para>
     /// </remarks>
-    public class CosmosLookupJoin : Join, ClrEnumerableRel
+    public class CosmosLookupJoin : Join, ClrCursorRel
     {
+
+        static readonly System.Reflection.MethodInfo JoinMethod = typeof(CosmosLookup).GetMethod(nameof(CosmosLookup.Join))
+            ?? throw new InvalidOperationException($"'{nameof(CosmosLookup.Join)}' is missing from {nameof(CosmosLookup)}.");
 
         static readonly System.Reflection.MethodInfo JoinAsyncMethod = typeof(CosmosLookup).GetMethod(nameof(CosmosLookup.JoinAsync))
             ?? throw new InvalidOperationException($"'{nameof(CosmosLookup.JoinAsync)}' is missing from {nameof(CosmosLookup)}.");
@@ -92,8 +96,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traitSet">The trait set, which must carry the CLR convention.</param>
-        /// <param name="build">The side whose keys are pushed down, in <see cref="ClrEnumerableConvention"/>.</param>
+        /// <param name="traitSet">The trait set, which must carry the cursor convention.</param>
+        /// <param name="build">The side whose keys are pushed down, in <see cref="ClrCursorConvention"/>.</param>
         /// <param name="probe">The container subtree being restricted, in <see cref="CosmosConvention"/>.</param>
         /// <param name="condition">The join condition, which is one equality on the keys below.</param>
         /// <param name="buildKey">The ordinal of the join key in <paramref name="build"/>'s row.</param>
@@ -153,28 +157,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             return planner.getCostFactory()
                 .makeCost(rows, buildRows + requests, rows)
-                .multiplyBy(ClrEnumerableConvention.CostMultiplier);
+                .multiplyBy(ClrCursorConvention.CostMultiplier);
         }
 
         /// <inheritdoc />
         /// <remarks>
-        /// The bridge rather than a body: the join's build side is read by awaiting it, and the probe side is the container,
-        /// so there is no pulled read to write here. Delegating through
-        /// <see cref="ClrEnumerableRelImplementor.Pulled"/> blocks a thread per row, which is the
-        /// cost of asking a Cosmos plan for its rows synchronously.
+        /// The build side is visited synchronously and handed to the join as it was opened, and the join
+        /// acquires nothing more at its open. A batch is fetched by the advance that runs out of rows, and
+        /// a synchronous advance blocks for that fetch — once per batch, not once per row.
         /// </remarks>
-        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
-            return implementor.Pulled(ImplementAsync(implementor, pref));
+            var buildResult = implementor.VisitChild(this, 0, (ClrCursorRel)getLeft(), pref);
+
+            var (physType, method, arguments) = Prepare(implementor, pref, buildResult.PhysType);
+
+            return implementor.Result(physType,
+                Expression.Call(null, JoinMethod.MakeGenericMethod(method), [buildResult.Expression, .. arguments]));
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
-            var build = getLeft();
-            var probe = getRight();
+            var buildResult = implementor.VisitChildAsync(this, 0, (ClrCursorRel)getLeft(), pref);
 
-            var buildResult = implementor.VisitChildAsync(this, 0, (ClrEnumerableRel)build, pref);
+            var (physType, method, arguments) = Prepare(implementor, pref, buildResult.PhysType);
+
+            // Ends in the open's token, as every awaiting open does. The join itself uses none of it:
+            // each batch is fetched under the token of the advance that needs it.
+            return implementor.ResultAsync(physType,
+                Expression.Call(null, JoinAsyncMethod.MakeGenericMethod(method), [buildResult.Expression, .. arguments, implementor.CancellationToken]));
+        }
+
+        /// <summary>
+        /// Renders the lookup statement and builds everything the join is called with after its build
+        /// side, which both bodies do identically.
+        /// </summary>
+        (ClrPhysType PhysType, Type[] TypeArguments, Expression[] Arguments) Prepare(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref, ClrPhysType buildPhysType)
+        {
+            var probe = getRight();
 
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
@@ -183,29 +204,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             org.apache.calcite.runtime.Hook.QUERY_PLAN.run(query.Sql);
 
-            var buildType = buildResult.PhysType.RowType;
+            var buildType = buildPhysType.RowType;
             var probeType = probePhysType.RowType;
-            var rowType = physType.RowType;
 
-            return implementor.ResultAsync(physType,
-                Expression.Call(null,
-                    JoinAsyncMethod.MakeGenericMethod(buildType, probeType, rowType),
-                    buildResult.Expression,
-                    CosmosConverters.ExecutorExpression(probe, implementor.Root),
-                    Expression.Constant(query),
-                    Expression.Constant(KeyPrefix),
-                    Expression.Constant(_batchSize),
-                    KeySelector(buildResult.PhysType, buildType, _buildKey),
-                    CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings),
-                    KeySelector(probePhysType, probeType, _probeKey),
-                    ResultSelector(physType, buildResult.PhysType, buildType, probePhysType, probeType),
-                    Expression.Constant(DefaultCacheSize),
-                    CosmosConverters.LookupCacheExpression(probe, implementor.Root),
-                    // As for the converter: the default written here is what lets the reader's own
-                    // token reach this, by way of [EnumeratorCancellation] on JoinAsync, so a batch in
-                    // flight is cancellable. Read synchronously there is no token to hand down, and
-                    // not asking for the next batch is all that stops it.
-                    Expression.Constant(CancellationToken.None)));
+            return (physType, [buildType, probeType, physType.RowType],
+            [
+                CosmosConverters.ExecutorExpression(probe, implementor.Root),
+                Expression.Constant(query),
+                Expression.Constant(KeyPrefix),
+                Expression.Constant(_batchSize),
+                KeySelector(buildPhysType, buildType, _buildKey),
+                CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings),
+                KeySelector(probePhysType, probeType, _probeKey),
+                ResultSelector(physType, buildPhysType, buildType, probePhysType, probeType),
+                Expression.Constant(DefaultCacheSize),
+                CosmosConverters.LookupCacheExpression(probe, implementor.Root),
+            ]);
         }
 
         /// <summary>

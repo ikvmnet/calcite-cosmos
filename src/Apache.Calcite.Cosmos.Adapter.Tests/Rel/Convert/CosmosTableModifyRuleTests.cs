@@ -4,6 +4,7 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -111,10 +112,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_archive.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();

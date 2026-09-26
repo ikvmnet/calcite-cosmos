@@ -88,10 +88,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // To the CLR convention rather than to the Cosmos one, because the whole comparison here
             // is whether a conjunct reaches the service — and the case where one does not has to be
             // plannable rather than a failure.
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -137,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().NotContain("c.ref = @", "nothing says what the stored form is, so the comparison itself has no Cosmos form");
             query.PartitionKeyValues.Should().BeNull("and with no value pinned there is no partition to route to");
 
-            PlanText(best).Should().Contain("ClrEnumerableFilter", "the comparison is still Calcite's to make: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorFilter", "the comparison is still Calcite's to make: " + PlanText(best));
         }
 
         [Fact]
@@ -151,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("c.ref = @", "the cast lowered to the equality the service can evaluate");
             query.Parameters.Should().Contain(p => (p.Value as string) == Canonical, "written in the stored spelling");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(best));
         }
 
         /// <summary>
@@ -184,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Should().Contain(p => (p.Value as string) == Canonical, "written in the stored spelling");
             query.PartitionKeyValues.Should().BeNull("a range names no value to route to");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(best));
         }
 
         /// <summary>
@@ -229,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "the stored spelling is what the comparison is made against: " + query.Sql);
             query.PartitionKeyValues.Should().BeNull("an inequality names no value to route to");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing is left for the runtime: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(best));
         }
 
         [Fact]
@@ -326,7 +326,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("c.at >= @");
             query.Sql.Should().NotContain("IS_STRING", "the guard admitted the types the schema says are not there");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+            PlanText(best).Should().NotContain("ClrCursorFilter",
                 "and with nothing left to recheck the filter is wholly pushed: " + PlanText(best));
         }
 
@@ -341,7 +341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(FindCosmos(best), container);
 
             query.Sql.Should().Contain("NOT IS_STRING(c.at)");
-            PlanText(best).Should().Contain("ClrEnumerableFilter", "the comparison is still Calcite's to make: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorFilter", "the comparison is still Calcite's to make: " + PlanText(best));
         }
 
         /// <summary>
@@ -409,7 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().NotContain("IS_STRING", "id is a string, and the service says so");
             query.Sql.Should().NotContain("IS_DEFINED", "and is always there");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+            PlanText(best).Should().NotContain("ClrCursorFilter",
                 "so the comparison is exact and nothing is left above: " + PlanText(best));
         }
 
@@ -504,7 +504,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Should().Contain(p => (p.Value as string) == Canonical);
             query.Parameters.Should().Contain(p => (p.Value as string) == Other);
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+            PlanText(best).Should().NotContain("ClrCursorFilter",
                 "and the membership is not left to a client-side recheck: " + PlanText(best));
 
             query.PointReadIds.Should().BeEquivalentTo(new[] { Canonical, Other },
@@ -570,7 +570,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("ORDER BY c.name", "which is what the projection was blocking: " + query.Sql);
             query.MaxItemCount.Should().Be(20, "and the page rides on the sort");
 
-            PlanText(with).Should().NotContain("ClrEnumerableSort",
+            PlanText(with).Should().NotContain("ClrCursorSort",
                 "so nothing sorts the container in memory: " + PlanText(with));
         }
 
@@ -620,7 +620,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "and the document no longer travels for the cast, which is what this test used to "
                 + "record as the price of not declaring: " + sql);
 
-            PlanText(best).Should().NotContain("ClrEnumerableSort",
+            PlanText(best).Should().NotContain("ClrCursorSort",
                 "nothing sorts the container in memory: " + PlanText(best));
         }
 
@@ -705,7 +705,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), declared).Sql
                 .Should().Contain("ORDER BY c.ref", "the path underneath orders the rows the column would");
 
-            PlanText(best).Should().NotContain("ClrEnumerableSort",
+            PlanText(best).Should().NotContain("ClrCursorSort",
                 "so the container is not read whole and sorted in memory: " + PlanText(best));
         }
 
@@ -736,7 +736,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor")
                 .And.NotContain("\"Id\": c.ref", "and not as the form, which is declared only of the documents the guard admits");
 
-            PlanText(best).Should().Contain("ClrEnumerableProject(Id=[CAST($0)",
+            PlanText(best).Should().Contain("ClrCursorProject(Id=[CAST($0)",
                 "so the cast is still computed in process: " + PlanText(best));
         }
 
@@ -755,7 +755,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(FindCosmos(best), container);
 
             query.Sql.Should().Contain("c.ref = @", "the lowered conjunct is pushable even though its neighbour is not");
-            PlanText(best).Should().Contain("ClrEnumerableFilter", "and the conjunct with no form is still rechecked above: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorFilter", "and the conjunct with no form is still rechecked above: " + PlanText(best));
         }
 
         /// <summary>
@@ -869,7 +869,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// without the clause; that this row passes is what says it rebuilt the right one.
         /// </para>
         /// <para>
-        /// The whole predicate leaves as one statement: an <c>ClrEnumerableFilter</c> above the
+        /// The whole predicate leaves as one statement: an <c>ClrCursorFilter</c> above the
         /// converter would mean the comparison was rechecked in process, which is what happened before
         /// the form licensed it.
         /// </para>
@@ -892,7 +892,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 Query(FindCosmos(best), confined).Sql.Should().NotContain("c.at > @",
                     "the engine raises on the conversion, so there is no answer to serve faster, for " + read);
 
-                PlanText(best).Should().Contain("ClrEnumerableFilter",
+                PlanText(best).Should().Contain("ClrCursorFilter",
                     "and the comparison stays where the query put it, for " + read);
             }
         }
@@ -918,7 +918,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), dates).Sql.Should().Contain("c.at > @",
                 "the engine reads a date, so the lowered comparison answers what the query answers");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "with nothing left to recheck");
+            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck");
         }
 
         /// <summary>
@@ -936,7 +936,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ",
                 "nothing says the stored strings share a shape");
 
-            PlanText(best).Should().Contain("ClrEnumerableFilter",
+            PlanText(best).Should().Contain("ClrCursorFilter",
                 "so the comparison is still applied where it always was");
         }
 
@@ -987,12 +987,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plain = PlanToCosmos(OrderByRendered, container, out _);
             Query(FindCosmos(plain), container).Sql.Should().Contain("ORDER BY c.ref",
                 "the conversion preserves order, so the path orders the rows the column would");
-            PlanText(plain).Should().NotContain("ClrEnumerableSort", "and nothing is left to sort in process");
+            PlanText(plain).Should().NotContain("ClrCursorSort", "and nothing is left to sort in process");
 
             var paged = PlanToCosmos(OrderByRendered + " FETCH NEXT 5 ROWS ONLY", container, out _);
             Query(FindCosmos(paged), container).Sql.Should().Contain("LIMIT 5",
                 "which is what lets the page be taken at the service rather than after reading everything");
-            PlanText(paged).Should().NotContain("ClrEnumerableLimit", "so the container is not read whole: " + PlanText(paged));
+            PlanText(paged).Should().NotContain("ClrCursorLimit", "so the container is not read whole: " + PlanText(paged));
         }
 
         /// <summary>
@@ -1027,7 +1027,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql
                 .Should().Contain("ORDER BY c.ref", "the unsigned comparison makes the stored order the compared order");
 
-            PlanText(best).Should().NotContain("ClrEnumerableSort", "and nothing is left to sort in process");
+            PlanText(best).Should().NotContain("ClrCursorSort", "and nothing is left to sort in process");
         }
 
         /// <summary>
@@ -1063,9 +1063,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// there is no <c>CosmosProject</c> to record the binding on. Measured:
         /// </para>
         /// <code>
-        /// ClrEnumerableSort(sort0=[$0], dir0=[ASC])
-        ///   ClrEnumerableProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
-        ///     CosmosToClrEnumerableConverter
+        /// ClrCursorSort(sort0=[$0], dir0=[ASC])
+        ///   ClrCursorProject(at=[CAST(JSON_VALUE($0, '$.at')):TIMESTAMP(0)])
+        ///     CosmosToClrCursorConverter
         ///       CosmosTableScan
         /// </code>
         /// <para>
@@ -1088,7 +1088,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <b>This is what makes the pushed one a licence rather than an accident.</b> Ordering by the
         /// stored text is ordering by the timestamp only where the text has a shape whose lexical order
         /// is the temporal one, and the declaration is the only thing that says so. Undeclared, the
-        /// same query keeps a <c>ClrEnumerableSort</c> and the service is asked for no order at all.
+        /// same query keeps a <c>ClrCursorSort</c> and the service is asked for no order at all.
         /// </para>
         /// <para>
         /// Both plans push the accessor rather than the document, which is the part that does not
@@ -1104,7 +1104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plain = Container(Catalog);
             var best = PlanToCosmos(Sql, plain, out _);
 
-            PlanText(best).Should().Contain("ClrEnumerableSort",
+            PlanText(best).Should().Contain("ClrCursorSort",
                 "nothing licenses ordering by the stored text: " + PlanText(best));
 
             var sql = Query(FindCosmos(best), plain).Sql;
@@ -1123,12 +1123,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var best = PlanToCosmos(Sql, container, out _);
 
-            PlanText(best).Should().Contain("ClrEnumerableProject(at=[CAST($0)",
+            PlanText(best).Should().Contain("ClrCursorProject(at=[CAST($0)",
                 "the cast is still the engine's: " + PlanText(best));
 
             // And the sort now pushes, which is what the remarks above said would happen the moment the
             // projection did. Measured against the same query on an undeclared container, where it
-            // stays a ClrEnumerableSort -- see TheTemporalSortNeedsTheDeclaration.
+            // stays a ClrCursorSort -- see TheTemporalSortNeedsTheDeclaration.
             Query(FindCosmos(best), container).Sql.Should().Contain("ORDER BY c.at ASC",
                 "the declared shape is what licenses ordering by the stored text");
         }
@@ -1389,7 +1389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(FindCosmos(best), container);
 
             query.Sql.Should().NotContain("c.kind", "every document satisfies it, so the service need not be asked");
-            PlanText(best).Should().NotContain("ClrEnumerableFilter", "and nothing rechecks it per row: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing rechecks it per row: " + PlanText(best));
 
             query.PointReadId.Should().Be("x", "the read the split rule already reached is still reached");
         }
@@ -1543,7 +1543,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().Contain("c.t = @",
                 "the equality itself reaches the service, not the definedness it implies");
 
-            PlanText(best).Should().NotContain("ClrEnumerableFilter",
+            PlanText(best).Should().NotContain("ClrCursorFilter",
                 "so nothing is left above to recheck it: " + PlanText(best));
         }
 
@@ -1592,7 +1592,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().Contain("IS_DEFINED(c.t)",
                 "the restriction the comparison implies still reaches the service");
 
-            PlanText(best).Should().Contain("ClrEnumerableFilter",
+            PlanText(best).Should().Contain("ClrCursorFilter",
                 "and the equality itself is rechecked above: " + PlanText(best));
         }
 

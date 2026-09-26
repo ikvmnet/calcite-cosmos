@@ -6,6 +6,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.avatica.util;
@@ -236,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// <param name="planner">The planner.</param>
         public static void AddAsyncRules(RelOptPlanner planner)
         {
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
             // The window rule above matches a LogicalWindow, and the converter does not produce one:
@@ -251,7 +252,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
         /// Plans a statement for the CLR convention, with every rule a host would have.
         /// </summary>
         /// <remarks>
-        /// The stage that matters. A host asks for <c>ClrEnumerableConvention</c>, never for the
+        /// The stage that matters. A host asks for <c>ClrCursorConvention</c>, never for the
         /// Cosmos one, so the planner has to reach the pushed form and the in-process form both,
         /// cost them against each other, and choose. It also cannot fail for want of a plan: reading
         /// the container and doing everything here is always available — so a statement that fails
@@ -273,7 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             if (reorderJoins)
                 AddJoinOrderRules(planner);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
