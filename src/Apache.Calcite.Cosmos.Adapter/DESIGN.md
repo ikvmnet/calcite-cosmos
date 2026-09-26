@@ -2723,10 +2723,11 @@ it becomes rows: it renders the statement, executes it, and reads the JSON value
 as into the row the plan above expects.
 
 **It leads into `ClrCursorConvention`, and into nothing else.** There is no converter from the
-Cosmos convention into `ClrEnumerableConvention` or into Calcite's own `EnumerableConvention`, and
-none is to be added. A plan that wants rows in one of those gets them higher up, through the
-converters `Apache.Calcite.Extensions` has between its conventions; the adapter's concern ends at
-the cursor. The lookup join and the table modify, the two nodes that know a container without being
+Cosmos convention into Calcite's own `EnumerableConvention`, and none is to be added. A plan that
+wants rows there gets them higher up, through the converter `Apache.Calcite.Extensions` has between
+the two; the adapter's concern ends at the cursor. The cursor convention is also the only CLR one:
+calcite-dotnet removed the sequence convention, `ClrEnumerableConvention`, once the cursor one had
+every node it had. The lookup join and the table modify, the two nodes that know a container without being
 inside the convention that renders one, are in the cursor convention for the same reason.
 
 **A cursor is the shape a Cosmos statement already has.** The SDK returns results a page at a time,
