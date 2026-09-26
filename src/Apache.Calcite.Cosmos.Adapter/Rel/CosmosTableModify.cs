@@ -1,10 +1,11 @@
 using System;
 using System.Linq.Expressions;
-using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
+using Apache.Calcite.Extensions.Runtime;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.prepare;
@@ -25,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// oversight.</b> A subtree in that convention is a Cosmos SQL statement, and a write is not one:
     /// the query language has no DML, so the write goes through the SDK's item CRUD. Nothing below here
     /// renders text, and no implementor runs. What the node needs is rows, which is what
-    /// <c>ClrEnumerableConvention</c> supplies — the same position <see cref="CosmosLookupJoin"/>
+    /// <c>ClrCursorConvention</c> supplies — the same position <see cref="CosmosLookupJoin"/>
     /// occupies for the same reason.
     /// </para>
     /// <para>
@@ -33,21 +34,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <c>ModifiableTable.getModifiableCollection()</c>, calling <c>add</c> and <c>remove</c> on a
     /// collection the table hands back. For Cosmos that collection would have to block on
     /// <c>CreateItemAsync</c> per element, and it would do so wherever the plan put it, with nothing
-    /// in the signature to say a write was waiting on a round trip. Writing the awaiting body here
-    /// instead keeps the blocking in one place, at the node boundary a caller asked for. The CLR
-    /// convention has no modify node of its own at all, so this is the first, and it is free to be
-    /// shaped by what the service actually offers.
+    /// in the signature to say a write was waiting on a round trip. Writing the awaiting open here
+    /// instead keeps the blocking in one place, in <see cref="CosmosCursors.Write{TRow, TResult}"/>,
+    /// where a caller that opened the plan synchronously asked for it. The cursor convention has no
+    /// modify node of its own at all, so this is the first, and it is free to be shaped by what the
+    /// service actually offers.
     /// </para>
     /// <para>
     /// The row type is Calcite's DML row type — one <c>BIGINT</c> count — so the node yields exactly one
-    /// row, and yields it only once every write has completed.
+    /// row. The writes are made at the open, as a sort's drain is, so by the time there is a cursor to
+    /// read that row from every write has completed.
     /// </para>
     /// </remarks>
-    public class CosmosTableModify : TableModify, ClrEnumerableRel
+    public class CosmosTableModify : TableModify, ClrCursorRel
     {
 
-        static readonly System.Reflection.MethodInfo WriteAsyncMethod = typeof(CosmosSequences).GetMethod(nameof(CosmosSequences.WriteAsync))
-            ?? throw new InvalidOperationException($"'{nameof(CosmosSequences.WriteAsync)}' is missing from {nameof(CosmosSequences)}.");
+        static readonly System.Reflection.MethodInfo WriteMethod = typeof(CosmosCursors).GetMethod(nameof(CosmosCursors.Write))
+            ?? throw new InvalidOperationException($"'{nameof(CosmosCursors.Write)}' is missing from {nameof(CosmosCursors)}.");
+
+        static readonly System.Reflection.MethodInfo WriteAsyncMethod = typeof(CosmosCursors).GetMethod(nameof(CosmosCursors.WriteAsync))
+            ?? throw new InvalidOperationException($"'{nameof(CosmosCursors.WriteAsync)}' is missing from {nameof(CosmosCursors)}.");
+
+        static readonly System.Reflection.MethodInfo NullableMethod = typeof(CosmosTableModify).GetMethod(nameof(Nullable))
+            ?? throw new InvalidOperationException($"'{nameof(Nullable)}' is missing from {nameof(CosmosTableModify)}.");
 
         readonly CosmosTable _table;
         readonly CosmosWriteOperation _write;
@@ -56,10 +65,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traitSet">The trait set, which must carry the CLR convention.</param>
+        /// <param name="traitSet">The trait set, which must carry the cursor convention.</param>
         /// <param name="table">The container being written to.</param>
         /// <param name="catalogReader">The catalog the target was resolved through.</param>
-        /// <param name="input">The rows to write, in <see cref="ClrEnumerableConvention"/>.</param>
+        /// <param name="input">The rows to write, in <see cref="ClrCursorConvention"/>.</param>
         /// <param name="operation">Which statement this stands for.</param>
         /// <param name="updateColumnList">The columns an <c>UPDATE</c> sets, or <c>null</c>.</param>
         /// <param name="sourceExpressionList">The values an <c>UPDATE</c> sets them to, or <c>null</c>.</param>
@@ -124,30 +133,94 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             return planner.getCostFactory()
                 .makeCost(rows, rows, rows)
-                .multiplyBy(ClrEnumerableConvention.CostMultiplier);
+                .multiplyBy(ClrCursorConvention.CostMultiplier);
         }
 
         /// <inheritdoc />
         /// <remarks>
-        /// The bridge rather than a body: every write is a request the SDK only awaits,
-        /// so there is no pulled read to write here. Delegating through
-        /// <see cref="ClrEnumerableRelImplementor.Pulled"/> blocks a thread per row, which is the
-        /// cost of asking a Cosmos plan for its rows synchronously.
+        /// The input is visited synchronously, and the writes are waited for at the open: every write is
+        /// a request the SDK only awaits, so there is no synchronous write to call. A whole-partition
+        /// delete visits nothing, because it reads no rows — see <see cref="Source"/>.
         /// </remarks>
-        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
-            return implementor.Pulled(ImplementAsync(implementor, pref));
+            var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
+            var inputPhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getInput().getRowType(), pref.PreferArray());
+
+            Expression source;
+            if (Source)
+            {
+                var inputResult = implementor.VisitChild(this, 0, (ClrCursorRel)getInput(), pref);
+                inputPhysType = inputResult.PhysType;
+                source = inputResult.Expression;
+            }
+            else
+            {
+                source = Expression.Constant(null, typeof(IClrCursor<>).MakeGenericType(inputPhysType.RowType));
+            }
+
+            return implementor.Result(physType,
+                Expression.Call(null,
+                    WriteMethod.MakeGenericMethod(inputPhysType.RowType, physType.RowType),
+                    [source, .. Arguments(implementor, physType, inputPhysType)]));
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        /// <remarks>
+        /// The writes are the acquisition, under the open's token, which is why this appends it: the
+        /// cursor handed back holds only the count.
+        /// </remarks>
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
-            var input = getInput();
-            var inputResult = implementor.VisitChildAsync(this, 0, (ClrEnumerableRel)input, pref);
-
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
+            var inputPhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getInput().getRowType(), pref.PreferArray());
 
-            var inputRowType = input.getRowType();
+            // The open of the input, as a ValueTask of a nullable cursor, which is what WriteAsync takes
+            // so that the one write that reads no rows can pass a completed null.
+            Expression source;
+            if (Source)
+            {
+                var inputResult = implementor.VisitChildAsync(this, 0, (ClrCursorRel)getInput(), pref);
+                inputPhysType = inputResult.PhysType;
+                source = Expression.Call(null, NullableMethod.MakeGenericMethod(inputPhysType.RowType), inputResult.Expression);
+            }
+            else
+            {
+                var cursorType = typeof(IClrCursor<>).MakeGenericType(inputPhysType.RowType);
+                source = Expression.Default(typeof(System.Threading.Tasks.ValueTask<>).MakeGenericType(cursorType));
+            }
+
+            return implementor.ResultAsync(physType,
+                Expression.Call(null,
+                    WriteAsyncMethod.MakeGenericMethod(inputPhysType.RowType, physType.RowType),
+                    [source, .. Arguments(implementor, physType, inputPhysType), implementor.CancellationToken]));
+        }
+
+        /// <summary>
+        /// Whether the write reads its input's rows at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A whole-partition delete does not: the predicate named the partition, so the rows the input
+        /// would scan are precisely the rows the service will remove, and it counts them with a
+        /// <c>COUNT(*)</c> instead.
+        /// </para>
+        /// <para>
+        /// <b>Left unvisited rather than opened and ignored.</b> In the cursor convention opening is
+        /// acquisition — the input's leaf sends its statement and awaits its first page at the open — so an
+        /// input that was opened and never read would still have scanned a page of the partition being
+        /// deleted. Not visiting it is what keeps the one request the fast path exists to avoid from being
+        /// made.
+        /// </para>
+        /// </remarks>
+        bool Source => _write != CosmosWriteOperation.DeletePartition;
+
+        /// <summary>
+        /// Builds everything the write is called with after its input, which both bodies do identically.
+        /// </summary>
+        Expression[] Arguments(ClrCursorRelImplementor implementor, ClrPhysType physType, ClrPhysType inputPhysType)
+        {
+            var inputRowType = getInput().getRowType();
             var fields = inputRowType.getFieldList();
 
             // An update's input is the table's row plus one trailing value per SET column; the
@@ -174,22 +247,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var write = new CosmosWrite(_write, names, paths, updates, _partitionKey);
 
-            return implementor.ResultAsync(physType,
-                Expression.Call(null,
-                    WriteAsyncMethod.MakeGenericMethod(inputResult.PhysType.RowType, physType.RowType),
-                    inputResult.Expression,
-                    Rel.Convert.CosmosConverters.WriterExpression(getTable(), implementor.Root),
-                    Expression.Constant(write),
-                    FieldReader(inputResult.PhysType, inputRowType),
-                    CountBuilder(physType),
-                    Rel.Convert.CosmosConverters.LookupCacheExpression(getTable(), implementor.Root),
-                    // Counts the partition a whole-partition delete is about to empty; unused by
-                    // every other operation, whose count is the rows it wrote.
-                    Rel.Convert.CosmosConverters.PartitionCounterExpression(getTable(), implementor.Root),
-                    // As everywhere else on this path: the default written here is what lets the
-                    // reader's token reach WriteAsync, so a request in flight is cancellable -- though a
-                    // write already sent is not undone by cancelling the sequence that sent it.
-                    Expression.Constant(CancellationToken.None)));
+            return
+            [
+                Rel.Convert.CosmosConverters.WriterExpression(getTable(), implementor.Root),
+                Expression.Constant(write),
+                FieldReader(inputPhysType, inputRowType),
+                CountBuilder(physType),
+                Rel.Convert.CosmosConverters.LookupCacheExpression(getTable(), implementor.Root),
+                // Counts the partition a whole-partition delete is about to empty; unused by every
+                // other operation, whose count is the rows it wrote.
+                Rel.Convert.CosmosConverters.PartitionCounterExpression(getTable(), implementor.Root),
+            ];
+        }
+
+        /// <summary>
+        /// Reads an open of a cursor as an open of a cursor that may be absent.
+        /// </summary>
+        /// <remarks>
+        /// A <see cref="System.Threading.Tasks.ValueTask{TResult}"/> is invariant, so the input's open
+        /// cannot be handed to <see cref="CosmosCursors.WriteAsync{TRow, TResult}"/> as it stands. Costs
+        /// a state machine only when the open actually suspends.
+        /// </remarks>
+        public static System.Threading.Tasks.ValueTask<IClrCursor<T>?> Nullable<T>(System.Threading.Tasks.ValueTask<IClrCursor<T>> open)
+        {
+            if (open.IsCompletedSuccessfully)
+                return new System.Threading.Tasks.ValueTask<IClrCursor<T>?>(open.Result);
+
+            return Awaited(open);
+
+            static async System.Threading.Tasks.ValueTask<IClrCursor<T>?> Awaited(System.Threading.Tasks.ValueTask<IClrCursor<T>> open)
+            {
+                return await open.ConfigureAwait(false);
+            }
         }
 
         /// <summary>
@@ -222,15 +311,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Builds the lambda wrapping the affected count as this node's own row.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The row type is one <c>BIGINT</c>, so by the same arity rule the rest of the adapter follows,
         /// the row is that value rather than an array holding it.
+        /// </para>
+        /// <para>
+        /// <b>That value may be Java's box rather than the CLR's.</b> Where the physical type answers
+        /// <c>java.lang.Long</c> there is no conversion operator from <see cref="long"/> for
+        /// <see cref="Expression.Convert(Expression, Type)"/> to find, and the node fails to implement at all;
+        /// the box is made by <c>Long.valueOf</c>, as javac makes it.
+        /// </para>
         /// </remarks>
         static LambdaExpression CountBuilder(ClrPhysType physType)
         {
             var count = Expression.Parameter(typeof(long), "count");
 
             Expression body = count;
-            if (body.Type != physType.RowType)
+            if (physType.RowType == typeof(java.lang.Long))
+                body = Expression.Call(typeof(java.lang.Long).GetMethod(nameof(java.lang.Long.valueOf), [typeof(long)])!, body);
+            else if (body.Type != physType.RowType)
                 body = Expression.Convert(body, physType.RowType);
 
             return Expression.Lambda(typeof(Func<,>).MakeGenericType(typeof(long), physType.RowType), body, count);

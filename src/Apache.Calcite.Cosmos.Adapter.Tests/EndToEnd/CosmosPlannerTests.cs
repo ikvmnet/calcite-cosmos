@@ -628,7 +628,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             plan.Should().Contain("CosmosUnnest");
             plan.Should().Contain("INITCAP");
-            plan.Should().NotContain("ClrEnumerableUncollect");
+            plan.Should().NotContain("ClrCursorUncollect");
         }
 
         // ── Aggregation ───────────────────────────────────────────────────────────
@@ -983,7 +983,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrEnumerableSort", "the second ordering stays in process: " + plan);
+            plan.Should().Contain("ClrCursorSort", "the second ordering stays in process: " + plan);
             Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 5");
         }
 
@@ -1005,7 +1005,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             sql.Should().Contain("OFFSET 0 LIMIT 5");
             sql.Should().NotContain("ORDER BY", "the page is taken first, and ordering the container before it takes other rows: " + sql);
-            Plan(best).Should().Contain("ClrEnumerableSort");
+            Plan(best).Should().Contain("ClrCursorSort");
         }
 
         /// <remarks>
@@ -1019,7 +1019,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var sql = Render(FindCosmos(best));
 
             sql.Should().NotContain("WHERE", "the predicate reads the page, not the container: " + sql);
-            Plan(best).Should().Contain("ClrEnumerableFilter");
+            Plan(best).Should().Contain("ClrCursorFilter");
         }
 
         /// <remarks>
@@ -1092,7 +1092,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosProject", "the projection belongs at the service: " + plan);
-            plan.Should().NotContain("ClrEnumerableProject", "and nothing should be left above it: " + plan);
+            plan.Should().NotContain("ClrCursorProject", "and nothing should be left above it: " + plan);
 
             Render(FindCosmos(best)).Should().Contain("SELECT VALUE { \"n\": (IS_PRIMITIVE(c.name) ? c.name : null) }");
         }
@@ -1110,10 +1110,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public void ACastToTextWithAWidthIsNotRendered()
         {
             Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(3)) AS \"n\" FROM products AS c"))
-                .Should().Contain("ClrEnumerableProject");
+                .Should().Contain("ClrCursorProject");
 
             Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS CHAR(8)) AS \"n\" FROM products AS c"))
-                .Should().Contain("ClrEnumerableProject");
+                .Should().Contain("ClrCursorProject");
         }
 
         /// <remarks>
@@ -1125,7 +1125,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public void ACastToANumberInAProjectionIsStillDeclined()
         {
             Plan(PlanToAsync("SELECT CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c"))
-                .Should().Contain("ClrEnumerableProject");
+                .Should().Contain("ClrCursorProject");
         }
 
         /// <summary>
@@ -1259,7 +1259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'");
 
-            Plan(best).Should().Contain("ClrEnumerableFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
         }
 
         /// <remarks>
@@ -1366,7 +1366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
 
-            plan.Should().Contain("ClrEnumerableFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
+            plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
             plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0:DOUBLE))])", plan);
         }
 
@@ -1420,7 +1420,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosProject", "the projection belongs at the service: " + plan);
-            plan.Should().NotContain("ClrEnumerableProject", "and nothing should be left above it: " + plan);
+            plan.Should().NotContain("ClrCursorProject", "and nothing should be left above it: " + plan);
 
             var sql = Render(FindCosmos(best));
 
@@ -1547,7 +1547,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrEnumerableProject(x=[CAST($0)", "the cast is still the engine's: " + plan);
+            plan.Should().Contain("ClrCursorProject(x=[CAST($0)", "the cast is still the engine's: " + plan);
 
             Render(FindCosmos(best))
                 .Should().Be("SELECT VALUE { \"$f0\": (IS_PRIMITIVE(c.n) ? c.n : null) } FROM products c");
@@ -1615,7 +1615,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosProject", "the half that renders still goes down: " + plan);
-            plan.Should().Contain("ClrEnumerableProject", "and the constant is still computed above: " + plan);
+            plan.Should().Contain("ClrCursorProject", "and the constant is still computed above: " + plan);
         }
 
         /// <summary>
@@ -1641,7 +1641,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>ITEM</c> is the operator here because it has no Cosmos form over an array, which is what
         /// makes the expression residual; <c>CARDINALITY</c> would not do, rendering whole as
         /// <c>ARRAY_LENGTH</c>. What the column is read <em>as</em> is pinned end to end by
-        /// <c>CosmosToClrEnumerableConverterTests.ShouldReadAnArrayReturningJsonQueryAsTheArray</c>;
+        /// <c>CosmosToClrCursorConverterTests.ShouldReadAnArrayReturningJsonQueryAsTheArray</c>;
         /// running the residual over it is not available offline — see
         /// <see href="https://github.com/ikvmnet/calcite-dotnet/issues/155">calcite-dotnet#155</see>.
         /// </para>
@@ -1654,7 +1654,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrEnumerableProject(n=[ITEM($0, 1)])",
+            plan.Should().Contain("ClrCursorProject(n=[ITEM($0, 1)])",
                 "the operator has no Cosmos form, so it stays: " + plan);
 
             Render(FindCosmos(best))
@@ -1678,7 +1678,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosProject", "the projection pushes whole: " + plan);
-            plan.Should().NotContain("ClrEnumerableProject", "with nothing left above it: " + plan);
+            plan.Should().NotContain("ClrCursorProject", "with nothing left above it: " + plan);
         }
 
         /// <summary>
@@ -1719,7 +1719,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var plan = Plan(PlanToAsync("SELECT JSON_QUERY(c.\"DOC\", '$.o' WITH UNCONDITIONAL ARRAY WRAPPER) AS \"q\" FROM products AS c"));
 
-            plan.Should().Contain("ClrEnumerableProject", "the wrapper form stays in process: " + plan);
+            plan.Should().Contain("ClrCursorProject", "the wrapper form stays in process: " + plan);
             plan.Should().NotContain("CosmosProject", "and nothing of it is pushed: " + plan);
         }
 
@@ -1975,7 +1975,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE CLR_FT_CONTAINS(JSON_VALUE(c.\"DOC\", '$.name'), CLR_FT_PREFIX('mount'))"));
 
-            plan.Should().Contain("ClrEnumerableFilter", "the service has no prefix term: " + plan);
+            plan.Should().Contain("ClrCursorFilter", "the service has no prefix term: " + plan);
             plan.Should().NotContain("CosmosFilter(condition=[CLR_FT_CONTAINS", "and nothing of it is rendered: " + plan);
         }
 
@@ -2031,7 +2031,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync("SELECT UPPER(JSON_QUERY(c.\"DOC\", '$.o')) AS \"a\" FROM products AS c");
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrEnumerableProject(a=[UPPER(", "the text operator stays with the engine: " + plan);
+            plan.Should().Contain("ClrCursorProject(a=[UPPER(", "the text operator stays with the engine: " + plan);
 
             var sql = Render(FindCosmos(best));
 
@@ -2044,7 +2044,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var plan = Plan(PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) AS \"t\" FROM products AS c"));
 
-            plan.Should().Contain("ClrEnumerableProject", "the engine decides this one: " + plan);
+            plan.Should().Contain("ClrCursorProject", "the engine decides this one: " + plan);
             plan.Should().NotContain("CosmosProject", "and nothing of it is rendered: " + plan);
         }
 
@@ -2206,7 +2206,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var plan = Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'steel'"));
 
-            plan.Should().Contain("ClrEnumerableFilter", "the comparison is Calcite's to make: " + plan);
+            plan.Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + plan);
         }
 
         /// <summary>
@@ -2286,7 +2286,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Contain("STARTSWITH(c.name");
             sql.Should().Contain("IS_DEFINED(c.name)");
 
-            Plan(best).Should().Contain("ClrEnumerableFilter", "the pattern is Calcite's to match: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter", "the pattern is Calcite's to match: " + Plan(best));
         }
 
         /// <summary>
@@ -2310,7 +2310,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Contain("NOT IS_STRING(c.name)");
             sql.Should().Contain("STARTSWITH(c.name");
 
-            plan.Should().Contain("ClrEnumerableFilter", "the pattern is Calcite's to match: " + plan);
+            plan.Should().Contain("ClrCursorFilter", "the pattern is Calcite's to match: " + plan);
         }
 
         /// <summary>
@@ -2327,7 +2327,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 sql.Should().Contain("NOT IS_STRING(c.name)", "with host rewrites: " + hostRewrites);
                 sql.Should().Contain("c.name > @p1", "with host rewrites: " + hostRewrites);
 
-                Plan(best).Should().Contain("ClrEnumerableFilter", "the comparison is Calcite's to make: " + Plan(best));
+                Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
             }
         }
 
@@ -2341,7 +2341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = 'steel'");
 
             Render(FindCosmos(best)).Should().Contain("(c.name = @p1)").And.NotContain("IS_STRING");
-            Plan(best).Should().NotContain("ClrEnumerableFilter", "an exact equality has nothing to recheck: " + Plan(best));
+            Plan(best).Should().NotContain("ClrCursorFilter", "an exact equality has nothing to recheck: " + Plan(best));
         }
 
         /// <summary>
@@ -2355,7 +2355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var sql = Render(FindCosmos(best));
 
             sql.Should().Contain("(c.name = @p1) OR (c.name = @p2)");
-            Plan(best).Should().Contain("ClrEnumerableFilter", "the comparison is Calcite's to make: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
         }
 
         // ── A case fold under LIKE ────────────────────────────────────────────────────
@@ -2374,7 +2374,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Contain("CONTAINS(c.name, @p0, true)");
             sql.Should().Contain("NOT IS_STRING(c.name)");
 
-            Plan(best).Should().Contain("ClrEnumerableFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter", "the fold and the pattern are Calcite's to apply: " + Plan(best));
         }
 
         [Fact]
@@ -2483,8 +2483,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosSort", "the sort belongs at the service: " + plan);
-            plan.Should().NotContain("ClrEnumerableSort", "and must not also remain in process: " + plan);
-            plan.Should().Contain("ClrEnumerableProject", "the cast itself still runs in process: " + plan);
+            plan.Should().NotContain("ClrCursorSort", "and must not also remain in process: " + plan);
+            plan.Should().Contain("ClrCursorProject", "the cast itself still runs in process: " + plan);
 
             Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 10");
         }
@@ -2523,7 +2523,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "WHERE c.\"$.category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
 
             var plan = Plan(best);
-            plan.Should().NotContain("ClrEnumerableProject", "nothing is left for the plan to do: " + plan);
+            plan.Should().NotContain("ClrCursorProject", "nothing is left for the plan to do: " + plan);
 
             var sql = Render(FindCosmos(best));
 
@@ -2542,7 +2542,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             plan.Should().Contain("CosmosSort");
             plan.Should().Contain("CosmosProject");
-            plan.Should().NotContain("ClrEnumerableProject", "nothing is left for the plan to do: " + plan);
+            plan.Should().NotContain("ClrCursorProject", "nothing is left for the plan to do: " + plan);
         }
 
 
@@ -2574,7 +2574,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
             if (hostRewrites)
@@ -2584,7 +2584,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_MERGE);
             }
 
-            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();

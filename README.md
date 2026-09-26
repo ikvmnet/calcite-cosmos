@@ -106,17 +106,16 @@ Omit `containers` to expose every container in the database.
 ## Use the asynchronous methods
 
 **`ExecuteReaderAsync` and `ReadAsync`, not `ExecuteReader` and `Read`.** Both work. The synchronous
-pair blocks a thread per row, and nothing reports that it is doing so.
+pair blocks a thread for every page of results — `ExecuteReader` for the first, and `Read` wherever
+it has to fetch the next — and nothing reports that it is doing so.
 
 This follows from the service rather than from the adapter. The Cosmos SDK has no synchronous
 data-plane API — a page of results arrives only by awaiting it — so there is no synchronous read to
-call. `ExecuteReader` gets its rows by waiting on the asynchronous one, which costs a blocked thread
-for a network round trip per page.
+call, and the synchronous pair waits on the asynchronous one. A row already in a page is read without
+waiting, so the cost is a blocked thread per round trip, not per row.
 
-**This changed, and a caller who relied on the old behaviour should read this line.** Until the CLR
-conventions were merged, `ExecuteReader` over a Cosmos table failed to plan at all, which made the
-cost impossible to pay by accident. It now plans and runs. Code that was correct because it could not
-compile a synchronous read is no longer protected by that.
+The asynchronous pair is also the one that cancels properly. The adapter reads Cosmos through a
+cursor, so the token given to each `ReadAsync` is the token the page request it causes runs under.
 
 ## Set `defaultNullCollation` to `LOW`
 
@@ -193,7 +192,7 @@ Both together or neither: the bound says what the cache may hold (an absent key 
 
 ```csharp
 var program = new HepProgramBuilder();
-foreach (var rule in ClrEnumerableRules.CalcRules())
+foreach (var rule in ClrCursorRules.CalcRules())
     program.addRuleInstance(rule);
 ```
 

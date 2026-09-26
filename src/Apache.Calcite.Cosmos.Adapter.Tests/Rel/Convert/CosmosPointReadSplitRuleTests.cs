@@ -1,6 +1,7 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -116,10 +117,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -177,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             // And the residual is not lost: it is applied above, by Calcite, with Calcite's semantics.
             query.Sql.Should().NotContain("_ts", "the residual is held back rather than pushed");
-            Text(plan).Should().Contain("ClrEnumerableFilter", "and finishes outside the Cosmos convention");
+            Text(plan).Should().Contain("ClrCursorFilter", "and finishes outside the Cosmos convention");
         }
 
         /// <remarks>
@@ -248,7 +249,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND REGEXMATCH(c.\"$.category\", 'b.*')");
 
-            Text(plan).Should().NotContain("ClrEnumerableFilter",
+            Text(plan).Should().NotContain("ClrCursorFilter",
                 "a Cosmos function has no CLR implementation, so a filter carrying it cannot be implemented above the converter");
 
             var query = Query(Find<CosmosFilter>(plan)!);
@@ -274,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             query.PointReadId.Should().Be("x", "the type test can finish outside the convention, so the read is recoverable");
             query.Sql.Should().NotContain("IS_STRING", "it is held back rather than pushed");
-            Text(plan).Should().Contain("ClrEnumerableFilter", "and finishes in process");
+            Text(plan).Should().Contain("ClrCursorFilter", "and finishes in process");
         }
 
         /// <remarks>

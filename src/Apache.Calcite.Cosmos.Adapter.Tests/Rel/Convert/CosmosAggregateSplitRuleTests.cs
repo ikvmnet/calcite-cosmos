@@ -1,6 +1,7 @@
 ﻿using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -89,10 +90,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -119,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             text.Should().Contain("groups=[[{0}, {}]]", "the grouping sets are finished above");
             text.Should().Contain("$SUM0", "a partial count is summed, not recounted");
 
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         /// <remarks>
@@ -137,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             Render(pushed).Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", SUM(c._ts) AS \"s\", MAX(c._ts) AS \"m\" FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         /// <remarks>
@@ -159,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             Render(pushed!).Should().Contain("SUM(c._ts)").And.Contain("COUNT(1)").And.NotContain("AVG(");
 
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         /// <remarks>
@@ -180,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             // to COUNT(*) before any rule sees it.
             Render(pushed!).Should().Contain("SUM(c._ts)").And.Contain("COUNT(1)").And.Contain("GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
 
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         static T? Find<T>(RelNode rel) where T : class
@@ -230,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             Render(pushed).Should().Be("SELECT DISTINCT VALUE { \"$.category\": (IS_DEFINED(c.category) ? c.category : null) } FROM products c");
 
             // The finishing count lives outside the Cosmos convention.
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         /// <remarks>
@@ -246,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             Find<CosmosAggregate>(plan).Should().BeNull("grouping happens before the limit at the service");
             Find<CosmosSort>(plan).Should().NotBeNull("the limit itself is still pushed");
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
         /// <remarks>
@@ -267,7 +268,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             pushed!.getInput().Should().NotBeOfType<CosmosAggregate>();
             pushed.getAggCallList().size().Should().Be(0);
 
-            plan.getConvention().Should().Be(ClrEnumerableConvention.Instance);
+            plan.getConvention().Should().Be(ClrCursorConvention.Instance);
         }
 
     }

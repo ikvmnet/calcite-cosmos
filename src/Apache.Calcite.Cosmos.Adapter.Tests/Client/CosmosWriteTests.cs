@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 
@@ -22,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="CosmosSequences.WriteAsync"/> is the seam a compiled plan actually enters, so these
+    /// <see cref="CosmosCursors.WriteAsync"/> is the seam a compiled plan actually enters, so these
     /// drive it rather than the SDK wrapper beneath it: the document a row describes, the partition key
     /// recovered from that document, and the request are one path and are worth testing as one. What
     /// the row means in isolation is covered by <see cref="CosmosDocumentTests"/>, with no service.
@@ -124,13 +124,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             return _container!;
         }
 
-        static async IAsyncEnumerable<object?[]> Rows(params object?[][] rows)
+        static ValueTask<IClrCursor<object?[]>?> Rows(params object?[][] rows) =>
+            new(new ListCursor<object?[]>(rows));
+
+        /// <summary>
+        /// Reads the one row a write's cursor holds, which is the count.
+        /// </summary>
+        static async Task<long> Affected(ValueTask<IClrCursor<long>> open)
         {
-            foreach (var row in rows)
-            {
-                await Task.Yield();
-                yield return row;
-            }
+            await using var cursor = await open;
+
+            if (await cursor.ReadAsync(CancellationToken.None) == false)
+                throw new InvalidOperationException("The write yielded no row count.");
+
+            return cursor.Current;
         }
 
         /// <summary>
@@ -155,10 +162,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var writer = new CosmosQueryExecutor(Container());
             var write = new CosmosWrite(operation, Columns, PartitionKeyPaths, updates);
 
-            await foreach (var count in CosmosSequences.WriteAsync<object?[], long>(Rows(rows), writer, write, r => r!, c => c))
-                return count;
-
-            throw new InvalidOperationException("The write yielded no row count.");
+            return await Affected(CosmosCursors.WriteAsync<object?[], long>(Rows(rows), writer, write, r => r!, c => c, null, null, CancellationToken.None));
         }
 
         /// <summary>
@@ -215,26 +219,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             {
                 var query = new CosmosQuery("SELECT VALUE COUNT(1) FROM c", Array.Empty<Apache.Calcite.Cosmos.Adapter.Sql.CosmosParameter>());
 
-                await foreach (var element in executor.ExecuteAsync(query, key, token))
-                    return element.GetInt64();
-
-                return 0;
+                var rows = await ListCursor.CollectAsync(await executor.OpenAsync(query, key, token), token);
+                return rows.Count > 0 ? rows[0].GetInt64() : 0;
             }
 
-            // A source that would throw if it were read: the whole point is that it is not.
-            static async IAsyncEnumerable<object?[]> Untouched()
-            {
-                await Task.Yield();
-                throw new InvalidOperationException("a whole-partition delete must not read its input");
-
-#pragma warning disable CS0162
-                yield break;
-#pragma warning restore CS0162
-            }
-
-            long affected = -1;
-            await foreach (var count in CosmosSequences.WriteAsync<object?[], long>(Untouched(), writer, write, r => r!, c => c, counter: Count))
-                affected = count;
+            // No input at all, which is what the plan hands a whole-partition delete: it does not open
+            // one, because opening is acquisition and would scan a page of the partition being emptied.
+            var affected = await Affected(CosmosCursors.WriteAsync<object?[], long>(default, writer, write, r => r!, c => c, null, Count, CancellationToken.None));
 
             affected.Should().BeGreaterThanOrEqualTo(2, "the count is taken from the partition before it is emptied");
             writer.PartitionsDeleted.Should().ContainSingle().Which.Should().Be(new PartitionKey("bikes"));

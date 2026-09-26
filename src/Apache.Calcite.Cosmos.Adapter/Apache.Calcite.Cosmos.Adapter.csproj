@@ -24,9 +24,9 @@
         <PackageReference Include="IKVM" Version="8.16.1" />
         <PackageReference Include="IKVM.Java.Extensions" Version="8.16.1" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />
-        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.188" />
-        <PackageReference Include="Apache.Calcite.FullText" Version="2.0.1-pre.188" />
-        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.188" />
+        <PackageReference Include="Apache.Calcite.Extensions" Version="2.0.1-pre.230" />
+        <PackageReference Include="Apache.Calcite.FullText" Version="2.0.1-pre.230" />
+        <PackageReference Include="Apache.Calcite.Geography" Version="2.0.1-pre.230" />
         <MavenReference Include="org.apache.commons:commons-lang3" Version="3.18.0" />
         <MavenReference Include="com.fasterxml.jackson.core:jackson-annotations" Version="2.22" />
         <MavenReference Include="org.apache.calcite:calcite-core" Version="1.42.0">

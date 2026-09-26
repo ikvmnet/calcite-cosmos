@@ -9,8 +9,11 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 
@@ -47,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
     /// above the seam is the real thing: the real planner, the real statement, the real compiled
     /// expression tree.
     /// </remarks>
-    public class CosmosToClrEnumerableConverterTests
+    public class CosmosToClrCursorConverterTests
     {
 
         static readonly CosmosContainerMetadata Products = new("products", new[] { "/category" });
@@ -69,23 +72,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             public CosmosQuery? Executed { get; private set; }
 
             /// <summary>
-            /// The token the executor was called with, which is the one the plan handed down rather
-            /// than the one baked into it.
+            /// The token the executor was opened with, which is the one the plan's opener handed down
+            /// rather than one baked into the plan.
             /// </summary>
             public CancellationToken Token { get; private set; }
 
-            public async IAsyncEnumerable<JsonElement> ExecuteAsync(CosmosQuery query, PartitionKey? partitionKey = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            /// <summary>
+            /// The cursor the executor opened, which records the token of every advance it was given.
+            /// </summary>
+            public ListCursor<JsonElement>? Cursor { get; private set; }
+
+            public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
             {
                 Executed = query;
                 Token = cancellationToken;
 
-                foreach (var document in _documents)
-                {
-                    // Yields on each row, so the plan above is exercised as a genuinely asynchronous
-                    // sequence rather than one that happens to complete synchronously.
-                    await Task.Yield();
-                    yield return JsonDocument.Parse(document).RootElement.Clone();
-                }
+                // Yields at the open and on each advance, so the plan above is exercised against a
+                // genuinely asynchronous cursor rather than one that happens to complete synchronously.
+                await Task.Yield();
+
+                return Cursor = ListCursor.Documents(_documents);
             }
 
         }
@@ -120,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         CalciteSchema _rootSchema = null!;
         JavaTypeFactoryImpl _typeFactory = null!;
 
-        public CosmosToClrEnumerableConverterTests()
+        public CosmosToClrCursorConverterTests()
         {
             _typeFactory = new JavaTypeFactoryImpl();
             Given();
@@ -214,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
-        /// Plans a statement and asks for the best plan in the CLR convention, which is what a
+        /// Plans a statement and asks for the best plan in the cursor convention, which is what a
         /// caller of this adapter asks for however it then reads the rows.
         /// </summary>
         RelNode PlanToClr(string sql)
@@ -225,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return planner.findBestExp();
@@ -244,11 +250,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// </para>
         /// <para>
         /// <b>The calc pass is separate on purpose, and it is not optional.</b>
-        /// <c>ClrEnumerableProject.Implement</c> raises <c>UnsupportedOperationException</c>, exactly as
+        /// <c>ClrCursorProject.Implement</c> raises <c>UnsupportedOperationException</c>, exactly as
         /// Calcite's own <c>EnumerableProject.implement</c> does — <em>"EnumerableCalcRel is always
         /// better"</em> — and the rule that rewrites one into a calc is a <c>TransformationRule</c>.
         /// <c>VolcanoPlanner.addRule</c> does not register a transformation rule's operand against a
-        /// <c>PhysicalNode</c>, and <c>ClrEnumerableRel</c> is one, so no calc rule can fire during the
+        /// <c>PhysicalNode</c>, and <c>ClrCursorRel</c> is one, so no calc rule can fire during the
         /// Volcano pass however it is registered. It has to run afterwards, over the chosen plan, on a
         /// <see cref="HepPlanner"/>. Calcite protects itself the same way, with
         /// <c>Programs.standard</c>'s last pass.
@@ -269,17 +275,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.Rules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             var best = planner.findBestExp();
 
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
 
-            foreach (var rule in Apache.Calcite.Extensions.Adapter.Enumerable.ClrEnumerableRules.CalcRules())
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.CalcRules())
                 program.addRuleInstance(rule);
 
             var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
@@ -289,42 +295,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
-        /// Compiles a planned tree and reads every row it produces.
+        /// Implements a planned tree as the factory a caller opens.
+        /// </summary>
+        static ClrCursorFactory Implement(RelNode rel)
+        {
+            var implementor = new ClrCursorRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            return implementor.ImplementRoot((ClrCursorRel)rel, ClrEnumerablePrefer.Array);
+        }
+
+        /// <summary>
+        /// Compiles a planned tree, opens it with await, and reads every row it produces with awaited
+        /// advances.
         /// </summary>
         async Task<List<object>> Execute(RelNode rel)
         {
-            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
-
-            var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
 
             var rows = new List<object>();
-            await foreach (var row in run(context))
-                rows.Add(row);
+
+            await using (var cursor = await Implement(rel).OpenAsync(context, CancellationToken.None))
+                while (await cursor.ReadAsync(CancellationToken.None))
+                    rows.Add(cursor.Current!);
 
             return rows;
         }
 
         /// <summary>
-        /// Compiles the same planned tree the other way, and reads every row it produces.
+        /// Compiles the same planned tree, opens it synchronously, and reads every row it produces with
+        /// synchronous advances.
         /// </summary>
         /// <remarks>
-        /// <c>ImplementRoot</c> rather than <c>ImplementRootAsync</c>, which for a Cosmos plan is the
-        /// bridge over the awaiting body rather than a second implementation of it. It blocks a thread
-        /// per row; the test using it is about the rows, not about the cost.
+        /// For a Cosmos plan that blocks a thread for the first page at the open and for each later page
+        /// at the advance that needs it; the test using it is about the rows, not about the cost.
         /// </remarks>
         List<object> ExecutePulled(RelNode rel)
         {
-            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRoot((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
-
-            var run = (Func<DataContext, IEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
 
             var rows = new List<object>();
-            foreach (var row in run(context))
-                rows.Add(row);
+
+            using (var cursor = Implement(rel).Open(context))
+                while (cursor.Read())
+                    rows.Add(cursor.Current!);
 
             return rows;
         }
@@ -340,7 +352,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         {
             var plan = PlanToClr("SELECT \"id\" FROM products AS c");
 
-            plan.Should().BeOfType<CosmosToClrEnumerableConverter>();
+            plan.Should().BeOfType<CosmosToClrCursorConverter>();
             plan.getInput(0).getConvention().Should().BeSameAs(_table.Convention);
         }
 
@@ -348,7 +360,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
         /// <remarks>
         /// A one-column result is the value rather than a one-element row, which is what
-        /// <c>ImplementRootAsync</c> arranges and what every caller of a query expects.
+        /// <c>ImplementRoot</c> arranges and what every caller of a query expects.
         /// </remarks>
         [Fact]
         public async Task ShouldReadASingleColumnAsTheValueItself()
@@ -361,13 +373,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
-        /// <b>The plan carries no mode, so the same tree reads either way.</b> While there were two Clr
-        /// conventions this could not be written at all: the adapter published no converter into the
-        /// pulled one, so a synchronous root found no plan. One convention removes that gate, and what
-        /// is left is a bridge at the converter — so the thing to hold is that the bridge does not
-        /// change the answer.
+        /// <b>The plan carries no mode, so the same tree reads either way.</b> The cursor convention
+        /// builds both opens from one plan, and the converter's synchronous one waits for what the
+        /// awaiting one awaits — so the thing to hold is that waiting does not change the answer.
         /// <para>
-        /// It says nothing about what the bridge costs, which is a blocked thread per row and is
+        /// It says nothing about what the waiting costs, which is a blocked thread per page and is
         /// documented rather than asserted. A test cannot tell a blocked thread from a fast one.
         /// </para>
         /// </remarks>
@@ -382,39 +392,129 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
-        /// <b>The reader's token reaches the service call, and the plan is what makes that possible by
-        /// not carrying one.</b> The call site bakes in <c>default</c>, so
-        /// <c>[EnumeratorCancellation]</c> substitutes whatever <c>GetAsyncEnumerator</c> was given and
-        /// the operators hand it down to the leaf. A page in flight is therefore cancellable, rather
-        /// than cancellation meaning only that nobody asks for the next one.
+        /// <b>The opener's token reaches the service call that sends the statement.</b> The plan carries
+        /// no token of its own: the awaiting open ends in the implementor's token parameter, which the
+        /// factory binds to whatever its caller gave <c>OpenAsync</c>, and the converter hands it to the
+        /// executor. The first page — the one the open awaits — is therefore cancellable.
         /// <para>
-        /// The discriminator is <c>CanBeCanceled</c>: it is <c>false</c> for the
-        /// <c>CancellationToken.None</c> the expression tree holds, so this fails if the substitution
-        /// ever stops happening and the baked-in token is what arrives.
+        /// The discriminator is <c>CanBeCanceled</c>: it is <c>false</c> for <c>CancellationToken.None</c>,
+        /// so this fails if a token baked into the plan is ever what arrives instead.
         /// </para>
         /// </remarks>
         [Fact]
-        public async Task ShouldCarryTheReadersTokenIntoTheExecutor()
+        public async Task ShouldCarryTheOpenersTokenIntoTheExecutor()
         {
             Given("""{ "id": "a" }""");
 
-            var rel = PlanToClr("SELECT \"id\" FROM products AS c");
-
-            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
-
-            var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
+            var factory = Implement(PlanToClr("SELECT \"id\" FROM products AS c"));
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
 
             using var cts = new CancellationTokenSource();
 
-            await foreach (var _ in run(context).WithCancellation(cts.Token))
-                break;
+            await using (await factory.OpenAsync(context, cts.Token))
+            {
+                _executor.Token.CanBeCanceled.Should().BeTrue("the opener's token should reach the executor, not a default the plan holds");
 
-            _executor.Token.CanBeCanceled.Should().BeTrue("the reader's token should reach the executor, not the default the plan holds");
+                cts.Cancel();
+                _executor.Token.IsCancellationRequested.Should().BeTrue("the token the executor holds should be the opener's own");
+            }
+        }
 
-            cts.Cancel();
-            _executor.Token.IsCancellationRequested.Should().BeTrue("the token the executor holds should be the reader's own");
+        /// <remarks>
+        /// <b>Each advance's token reaches the executor's cursor, which is the reason the adapter reads
+        /// Cosmos through a cursor at all.</b> A sequence took its token once, at
+        /// <c>GetAsyncEnumerator</c>, and a reader's per-call token had nowhere to go; a cursor takes one
+        /// on every <c>ReadAsync</c>, and the converter's cursor hands it to the executor's, whose advance
+        /// is where a page is fetched. The open's token is deliberately a different one, so this fails if
+        /// the open's is what an advance passes on.
+        /// </remarks>
+        [Fact]
+        public async Task ShouldCarryEachAdvancesTokenIntoTheExecutorsCursor()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var factory = Implement(PlanToClr("SELECT \"id\" FROM products AS c"));
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+
+            using var open = new CancellationTokenSource();
+            using var first = new CancellationTokenSource();
+            using var second = new CancellationTokenSource();
+
+            await using var cursor = await factory.OpenAsync(context, open.Token);
+
+            (await cursor.ReadAsync(first.Token)).Should().BeTrue();
+            (await cursor.ReadAsync(second.Token)).Should().BeTrue();
+
+            _executor.Cursor!.Tokens.Should().Equal(first.Token, second.Token);
+        }
+
+        /// <remarks>
+        /// The plan's cursor owns the executor's, through every operator between them, so a reader that
+        /// stops early and lets go of the plan releases the statement — whichever way it let go.
+        /// </remarks>
+        [Fact]
+        public async Task DisposingThePlansCursorReleasesTheExecutorsWithAwait()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeTrue();
+            await cursor.DisposeAsync();
+
+            _executor.Cursor!.Disposed.Should().BeTrue();
+        }
+
+        [Fact]
+        public void DisposingThePlansCursorReleasesTheExecutorsSynchronously()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            var cursor = Implement(PlanToClr("SELECT \"id\" FROM products AS c")).Open(context);
+
+            cursor.Read().Should().BeTrue();
+            cursor.Dispose();
+
+            _executor.Cursor!.Disposed.Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// One cursor, one position: a reader may alternate the two ways of advancing on one open plan,
+        /// and reads consecutive rows either way.
+        /// </remarks>
+        [Fact]
+        public async Task ThePlanMayBeAdvancedEitherWayOnEachRead()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""", """{ "id": "c" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            await using var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            cursor.Read().Should().BeTrue();
+            cursor.Current.Should().Be("a");
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeTrue();
+            cursor.Current.Should().Be("b");
+            cursor.Read().Should().BeTrue();
+            cursor.Current.Should().Be("c");
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// The statement is sent by the open, not by the first read: a plan opened and never read has
+        /// still executed it, as a command's <c>ExecuteReader</c> has.
+        /// </remarks>
+        [Fact]
+        public async Task TheOpenSendsTheStatement()
+        {
+            Given("""{ "id": "a" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            await using var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            _executor.Executed.Should().NotBeNull();
+            _executor.Cursor!.Tokens.Should().BeEmpty("nothing has been read yet");
         }
 
         /// <remarks>
@@ -977,10 +1077,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in CosmosRules.GetRules(_table.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = trimmed.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = trimmed.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(trimmed, desired));
 
             return planner.findBestExp();
@@ -1011,7 +1111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <para>
         /// So the widths are the assertion. <c>products</c> declares no statistics — the container the
         /// rest of this class uses, and the ordinary case — so nothing here rests on a measured
-        /// document size, only on <see cref="CosmosToClrEnumerableConverter.MinimumDocumentWidth"/>.
+        /// document size, only on <see cref="CosmosToClrCursorConverter.MinimumDocumentWidth"/>.
         /// </para>
         /// </remarks>
         [Theory]
@@ -1035,7 +1135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 plan.Should().Contain($"c{i}=[JSON_VALUE($0, '$.data.{paths[i]}')]",
                     "every column the query asks for is extracted by the service");
 
-            plan.Should().NotContain("ClrEnumerableProject",
+            plan.Should().NotContain("ClrCursorProject",
                 "and nothing is left above the converter to extract here");
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 using org.apache.calcite;
 using org.apache.calcite.schema;
@@ -75,8 +76,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 var query = new CosmosQuery("SELECT VALUE COUNT(1) FROM c", System.Array.Empty<Sql.CosmosParameter>());
 
-                await foreach (var element in executor.ExecuteAsync(query, partitionKey, cancellationToken))
-                    return element.ValueKind == System.Text.Json.JsonValueKind.Number ? element.GetInt64() : 0L;
+                var cursor = await executor.OpenAsync(query, partitionKey, cancellationToken).ConfigureAwait(false);
+
+                await using (cursor.ConfigureAwait(false))
+                {
+                    if (await cursor.ReadAsync(cancellationToken).ConfigureAwait(false))
+                        return cursor.Current.ValueKind == System.Text.Json.JsonValueKind.Number ? cursor.Current.GetInt64() : 0L;
+                }
 
                 return 0L;
             };

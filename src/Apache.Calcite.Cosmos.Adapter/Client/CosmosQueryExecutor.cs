@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Extensions.Runtime;
 
 using Microsoft.Azure.Cosmos;
 
@@ -56,20 +56,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Reads one document directly, yielding it if it exists and nothing if it does not.
+        /// Reads one document directly, opening it if it exists and an empty cursor if it does not.
         /// </summary>
         /// <remarks>
         /// A missing document is an empty result rather than an error: the query this stands in for
-        /// would have returned no rows, and a read that answers "no such document" is that answer.
+        /// would have returned no rows, and a read that answers "no such document" is that answer. The
+        /// whole response is the acquisition, so it is read here, under the open's token, and the
+        /// cursor has nothing left to fetch.
         /// </remarks>
-        async IAsyncEnumerable<JsonElement> ReadItemAsync(string id, PartitionKey partitionKey, [EnumeratorCancellation] CancellationToken cancellationToken)
+        async ValueTask<IClrCursor<JsonElement>> ReadItemAsync(string id, PartitionKey partitionKey, CancellationToken cancellationToken)
         {
             using var response = await _container.ReadItemStreamAsync(id, partitionKey, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             Report(response.Headers.RequestCharge, CosmosInstrumentation.Kinds.PointRead);
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                yield break;
+                return new BufferedCursor(Array.Empty<JsonElement>());
 
             response.EnsureSuccessStatusCode();
 
@@ -77,17 +79,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             // Cloned for the same reason the query path clones: the element belongs to the document,
             // which is disposed here and returns its buffer to the pool.
-            yield return document.RootElement.Clone();
+            return new BufferedCursor(new[] { document.RootElement.Clone() });
         }
 
         /// <summary>
-        /// Reads a set of documents directly, yielding those that exist.
+        /// Reads a set of documents directly, opening those that exist.
         /// </summary>
         /// <remarks>
         /// A missing id is simply absent from the result, which is the answer the query this stands
-        /// in for would have given — the same stance the single read takes on a 404.
+        /// in for would have given — the same stance the single read takes on a 404. One response,
+        /// read whole at the open, as the single read is.
         /// </remarks>
-        async IAsyncEnumerable<JsonElement> ReadManyAsync(IReadOnlyList<string> ids, PartitionKey partitionKey, [EnumeratorCancellation] CancellationToken cancellationToken)
+        async ValueTask<IClrCursor<JsonElement>> ReadManyAsync(IReadOnlyList<string> ids, PartitionKey partitionKey, CancellationToken cancellationToken)
         {
             var items = new List<(string, PartitionKey)>(ids.Count);
             foreach (var id in ids)
@@ -103,8 +106,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             // The same envelope a query page carries, and cloned for the same reason: the elements
             // belong to the document, which returns its buffer to the pool here.
+            var elements = new List<JsonElement>();
             foreach (var element in document.RootElement.GetProperty("Documents").EnumerateArray())
-                yield return element.Clone();
+                elements.Add(element.Clone());
+
+            return new BufferedCursor(elements);
         }
 
         /// <summary>
@@ -202,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<JsonElement> ExecuteAsync(CosmosQuery query, PartitionKey? partitionKey = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
         {
             // An explicit key wins; otherwise use whatever the predicate pinned.
             var effective = partitionKey ?? CreatePartitionKey(query.PartitionKeyValues);
@@ -214,76 +220,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // The key must be complete: a prefix routes to a set of partitions and does not identify a
             // document, so ReadItem cannot use one.
             if (query.PointReadId is string id && query.PartitionKeyIsComplete && effective is PartitionKey readKey)
-            {
-                await foreach (var document in ReadItemAsync(id, readKey, cancellationToken))
-                    yield return document;
-
-                yield break;
-            }
+                return await ReadItemAsync(id, readKey, cancellationToken).ConfigureAwait(false);
 
             // The same recovery for a set of ids: ReadManyItemsAsync is charged as point reads,
             // and is gated by the same completeness the single read is.
             if (query.PointReadIds is { Count: > 0 } ids && query.PartitionKeyIsComplete && effective is PartitionKey manyKey)
-            {
-                await foreach (var document in ReadManyAsync(ids, manyKey, cancellationToken))
-                    yield return document;
-
-                yield break;
-            }
+                return await ReadManyAsync(ids, manyKey, cancellationToken).ConfigureAwait(false);
 
             var options = CreateRequestOptions(query, effective, _indexMetrics);
+
+            // Started here and stopped when the cursor is disposed, so the span covers the statement
+            // from its first request to the reader letting go of it, however many advances that took.
+            var activity = CosmosInstrumentation.ActivitySource.StartActivity("cosmos.query");
+            activity?.SetTag("db.query.text", query.Sql);
+            activity?.SetTag("cosmos.container", _container.Id);
 
             // The stream iterator is used rather than the typed one so that results are read with
             // System.Text.Json. The SDK requires Newtonsoft.Json to be present, but nothing here
             // needs to go through it.
-            using var activity = CosmosInstrumentation.ActivitySource.StartActivity("cosmos.query");
-            activity?.SetTag("db.query.text", query.Sql);
-            activity?.SetTag("cosmos.container", _container.Id);
+            var cursor = new FeedCursor(this, _container.GetItemQueryStreamIterator(CreateDefinition(query), requestOptions: options), activity);
 
-            using var iterator = _container.GetItemQueryStreamIterator(CreateDefinition(query), requestOptions: options);
-
-            // Accumulated across continuations. The per-response measurement is what a collector
-            // aggregates; this is what a reader of one trace wants, which is what the whole statement
-            // cost rather than what its third page did.
-            var charge = 0d;
-            var pages = 0;
-
-            while (iterator.HasMoreResults)
+            try
             {
-                pages++;
-
-                cancellationToken.ThrowIfCancellationRequested();
-
-                using var response = await iterator.ReadNextAsync(cancellationToken).ConfigureAwait(false);
-
-                Report(response.Headers.RequestCharge, CosmosInstrumentation.Kinds.Query);
-                charge += response.Headers.RequestCharge;
-
-                response.EnsureSuccessStatusCode();
-
-                // Reported on the span rather than as a measurement: it is a paragraph of text naming
-                // the indexes the service considered, which is a thing to read and not a thing to
-                // aggregate. Present only on the first page, and only where it was asked for.
-                if (response.IndexMetrics is string metrics && metrics.Length > 0)
-                    activity?.SetTag("cosmos.index_metrics", metrics);
-
-                using var document = await JsonDocument.ParseAsync(response.Content, cancellationToken: cancellationToken).ConfigureAwait(false);
-                if (document.RootElement.TryGetProperty("Documents", out var documents) == false)
-                    continue;
-
-                foreach (var element in documents.EnumerateArray())
-                {
-                    // Clone: the element is owned by the JsonDocument, which is disposed at the end
-                    // of this iteration and returns its buffer to the pool.
-                    yield return element.Clone();
-                }
+                // The first page is the acquisition: a statement the service refuses fails the open
+                // rather than the first advance, as a command's ExecuteReader does.
+                await cursor.FetchAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                cursor.Dispose();
+                throw;
             }
 
-            // Set at the end rather than incrementally: a span carries the totals it finished with, and
-            // an abandoned enumeration is a span that never reaches here — which is itself the signal
-            // that the caller stopped reading.
-            activity?.SetTag("cosmos.request_charge", charge);
-            activity?.SetTag("cosmos.pages", pages);
+            return cursor;
         }
 
         /// <inheritdoc />
@@ -382,6 +351,214 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 throw new CosmosExecutionException($"Replacing document '{id}' in '{_container.Id}' failed with {(int)response.StatusCode} {response.StatusCode}. {response.ErrorMessage}".TrimEnd());
 
             return true;
+        }
+
+
+        /// <summary>
+        /// A statement's results, read a page at a time under the token of the advance that needs the
+        /// page.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The page the cursor is reading stays parsed until the next one is fetched, and each value is
+        /// cloned out of it as it is reached — the element belongs to the page's document, which returns
+        /// its buffer to the pool when it is disposed, and a value handed up the plan may be held for
+        /// longer than that.
+        /// </para>
+        /// <para>
+        /// <b><see cref="Read"/> blocks only where a page has to be fetched.</b> A value already in the
+        /// page is reached without waiting, so a synchronous reader of a Cosmos plan waits once per round
+        /// trip rather than once per row, which is what the sequence convention's bridge cost.
+        /// </para>
+        /// </remarks>
+        sealed class FeedCursor : ClrCursor<JsonElement>
+        {
+
+            readonly CosmosQueryExecutor _executor;
+            readonly FeedIterator _iterator;
+            readonly System.Diagnostics.Activity? _activity;
+
+            JsonDocument? _page;
+            JsonElement.ArrayEnumerator _values;
+            bool _hasValues;
+            JsonElement _current;
+
+            // Accumulated across continuations. The per-response measurement is what a collector
+            // aggregates; this is what a reader of one trace wants, which is what the whole statement
+            // cost rather than what its third page did.
+            double _charge;
+            int _pages;
+            bool _finished;
+
+            /// <summary>
+            /// Initializes a new instance.
+            /// </summary>
+            public FeedCursor(CosmosQueryExecutor executor, FeedIterator iterator, System.Diagnostics.Activity? activity)
+            {
+                _executor = executor;
+                _iterator = iterator;
+                _activity = activity;
+            }
+
+            /// <inheritdoc />
+            public override JsonElement Current => _current;
+
+            /// <inheritdoc />
+            public override bool Read()
+            {
+                while (true)
+                {
+                    if (TryAdvance())
+                        return true;
+
+                    if (_iterator.HasMoreResults == false)
+                        return Finish();
+
+                    CosmosCursors.Wait(FetchAsync);
+                }
+            }
+
+            /// <inheritdoc />
+            public override async ValueTask<bool> ReadAsync(CancellationToken cancellationToken)
+            {
+                while (true)
+                {
+                    if (TryAdvance())
+                        return true;
+
+                    if (_iterator.HasMoreResults == false)
+                        return Finish();
+
+                    await FetchAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            /// <summary>
+            /// Moves to the next value of the page already fetched, if it has one.
+            /// </summary>
+            bool TryAdvance()
+            {
+                if (_hasValues == false || _values.MoveNext() == false)
+                    return false;
+
+                // Clone: the element is owned by the page's document, which is disposed when the next
+                // page arrives and returns its buffer to the pool.
+                _current = _values.Current.Clone();
+                return true;
+            }
+
+            /// <summary>
+            /// Fetches the next page, under the token of whoever needed it.
+            /// </summary>
+            public async ValueTask<bool> FetchAsync(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // The page before is done with: every value was cloned out of it as it was reached.
+                _page?.Dispose();
+                _page = null;
+                _hasValues = false;
+
+                if (_iterator.HasMoreResults == false)
+                    return false;
+
+                _pages++;
+
+                using var response = await _iterator.ReadNextAsync(cancellationToken).ConfigureAwait(false);
+
+                _executor.Report(response.Headers.RequestCharge, CosmosInstrumentation.Kinds.Query);
+                _charge += response.Headers.RequestCharge;
+
+                response.EnsureSuccessStatusCode();
+
+                // Reported on the span rather than as a measurement: it is a paragraph of text naming
+                // the indexes the service considered, which is a thing to read and not a thing to
+                // aggregate. Present only on the first page, and only where it was asked for.
+                if (response.IndexMetrics is string metrics && metrics.Length > 0)
+                    _activity?.SetTag("cosmos.index_metrics", metrics);
+
+                _page = await JsonDocument.ParseAsync(response.Content, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                if (_page.RootElement.TryGetProperty("Documents", out var documents))
+                {
+                    _values = documents.EnumerateArray();
+                    _hasValues = true;
+                }
+
+                return true;
+            }
+
+            /// <summary>
+            /// Records that the statement was read to its end.
+            /// </summary>
+            /// <remarks>
+            /// Set at the end rather than incrementally: a span carries the totals it finished with, and a
+            /// cursor disposed before it gets here is a span without them — which is itself the signal
+            /// that the caller stopped reading.
+            /// </remarks>
+            bool Finish()
+            {
+                if (_finished == false)
+                {
+                    _finished = true;
+                    _activity?.SetTag("cosmos.request_charge", _charge);
+                    _activity?.SetTag("cosmos.pages", _pages);
+                }
+
+                return false;
+            }
+
+            /// <inheritdoc />
+            public override void Dispose()
+            {
+                _page?.Dispose();
+                _page = null;
+                _hasValues = false;
+
+                _iterator.Dispose();
+                _activity?.Dispose();
+            }
+
+        }
+
+        /// <summary>
+        /// Values already read whole at the open, which is what a point read and a batch of them are.
+        /// </summary>
+        sealed class BufferedCursor(IReadOnlyList<JsonElement> values) : ClrCursor<JsonElement>
+        {
+
+            int _index = -1;
+
+            /// <inheritdoc />
+            public override JsonElement Current => values[_index];
+
+            /// <inheritdoc />
+            public override bool Read()
+            {
+                if (_index + 1 >= values.Count)
+                {
+                    _index = values.Count;
+                    return false;
+                }
+
+                _index++;
+                return true;
+            }
+
+            /// <inheritdoc />
+            public override ValueTask<bool> ReadAsync(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return new ValueTask<bool>(Read());
+            }
+
+            /// <inheritdoc />
+            public override void Dispose()
+            {
+
+            }
+
         }
 
     }

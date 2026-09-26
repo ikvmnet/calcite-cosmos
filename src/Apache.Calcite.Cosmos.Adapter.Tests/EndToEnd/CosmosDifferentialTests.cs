@@ -11,6 +11,7 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
@@ -305,31 +306,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             if (pushdown == false)
                 planner.setRuleDescExclusionFilter(java.util.regex.Pattern.compile(string.Join("|", pushdownRules)));
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             var best = planner.findBestExp();
 
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
-            foreach (var rule in ClrEnumerableRules.CalcRules())
+            foreach (var rule in ClrCursorRules.CalcRules())
                 program.addRuleInstance(rule);
 
             var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
             hep.setRoot(best);
             best = hep.findBestExp();
 
-            var implementor = new ClrEnumerableRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)best, ClrEnumerablePrefer.Array);
+            var implementor = new ClrCursorRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
+            var factory = implementor.ImplementRoot((ClrCursorRel)best, ClrEnumerablePrefer.Array);
 
-            var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(rootSchema.plus(), typeFactory);
 
             var rows = new List<object>();
-            await foreach (var row in run(context))
-                rows.Add(row);
+
+            await using (var cursor = await factory.OpenAsync(context, CancellationToken.None))
+                while (await cursor.ReadAsync(CancellationToken.None))
+                    rows.Add(cursor.Current!);
 
             return rows;
         }

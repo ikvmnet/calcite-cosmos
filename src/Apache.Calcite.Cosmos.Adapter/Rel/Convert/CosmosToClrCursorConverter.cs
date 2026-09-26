@@ -1,9 +1,10 @@
 using System;
 using System.Linq.Expressions;
-using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
@@ -17,7 +18,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
     /// <summary>
     /// Relational operator that converts a tree of <see cref="CosmosConvention"/> nodes into a
-    /// <see cref="ClrEnumerableConvention"/> result by executing the generated Cosmos SQL against the
+    /// <see cref="ClrCursorConvention"/> result by executing the generated Cosmos SQL against the
     /// container.
     /// </summary>
     /// <remarks>
@@ -25,45 +26,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// The only way out of the Cosmos convention, and the point at which a pushed-down subtree stops being
     /// a statement and becomes rows. Everything below it contributed to one Cosmos SQL statement; this
     /// renders that statement, executes it, and reads the JSON value each row arrives as into the row the
-    /// plan above expects.
+    /// plan above expects. It leads into <see cref="ClrCursorConvention"/> and nowhere else; any other
+    /// convention is reached higher in the plan, by converters that are not the adapter's.
     /// </para>
     /// <para>
-    /// <b>The awaiting body is the real one, and the pulled body is a bridge over it.</b> The v3 Cosmos
-    /// SDK exposes no synchronous data-plane API — a page of results arrives only by awaiting
-    /// <c>FeedIterator.ReadNextAsync</c> — so there is nothing for <see cref="Implement"/> to call that
-    /// does not wait on a page. It is written as the delegation
-    /// <see cref="ClrEnumerableRelImplementor.Pulled"/> exists for, which is the shape
-    /// <see cref="ClrEnumerableRel"/> prescribes for an adapter whose client is asynchronous.
+    /// <b>A cursor is what a Cosmos statement already is.</b> The SDK hands results back a page at a time,
+    /// each fetched by awaiting <c>FeedIterator.ReadNextAsync</c> with a token, and a cursor advances with
+    /// a token of its own on every read. So the advance that runs out of a page is the one whose token
+    /// cancels the next page's request — where a sequence took a token once, at
+    /// <c>GetAsyncEnumerator</c>, and a reader's per-call token had nowhere to go.
     /// </para>
     /// <para>
-    /// <b>What that costs is a thread per row, and it is now a caller's choice rather than a refusal.</b>
-    /// While the two conventions were separate, the absence of a converter into the pulled one was what
-    /// kept sync-over-async out of a plan: a query over a Cosmos table simply did not plan unless the root
-    /// was asked for asynchronously. One convention leaves no such gate — the plan is the same either way
-    /// and the kind is chosen by whoever calls the root — so the cost has moved from a plan that does not
-    /// exist to a thread that blocks at the leaf. A host that reads a Cosmos table through
-    /// <see cref="ClrEnumerableRelImplementor.ImplementRoot"/> rather than
-    /// <see cref="ClrEnumerableRelImplementor.ImplementRootAsync"/> pays it, and pays it per row.
+    /// <b>The synchronous body blocks, and now per page rather than per row.</b> The v3 SDK exposes no
+    /// synchronous data-plane API, so <see cref="Implement"/> opens by waiting for the first page, and a
+    /// synchronous <c>Read</c> waits where it has to fetch another. A value already in a page is reached
+    /// without waiting. Under the sequence convention the synchronous side was a bridge over the awaiting
+    /// one and blocked a thread for every row; here the blocking is where the round trips are, in
+    /// <see cref="CosmosCursors"/>, and nowhere else.
     /// </para>
     /// <para>
     /// Rendering the statement, resolving the partition key and building the row builder all happen here,
-    /// once, while the statement is prepared. Only the sequence and the row builder are on the per-row
+    /// once, while the statement is prepared. Only the cursor and the row builder are on the per-row
     /// path.
     /// </para>
     /// </remarks>
-    public class CosmosToClrEnumerableConverter : ConverterImpl, ClrEnumerableRel
+    public class CosmosToClrCursorConverter : ConverterImpl, ClrCursorRel
     {
 
-        static readonly System.Reflection.MethodInfo ReadAsyncMethod = typeof(CosmosSequences).GetMethod(nameof(CosmosSequences.ReadAsync))
-            ?? throw new InvalidOperationException($"'{nameof(CosmosSequences.ReadAsync)}' is missing from {nameof(CosmosSequences)}.");
+        static readonly System.Reflection.MethodInfo OpenMethod = typeof(CosmosCursors).GetMethod(nameof(CosmosCursors.Open))
+            ?? throw new InvalidOperationException($"'{nameof(CosmosCursors.Open)}' is missing from {nameof(CosmosCursors)}.");
+
+        static readonly System.Reflection.MethodInfo OpenAsyncMethod = typeof(CosmosCursors).GetMethod(nameof(CosmosCursors.OpenAsync))
+            ?? throw new InvalidOperationException($"'{nameof(CosmosCursors.OpenAsync)}' is missing from {nameof(CosmosCursors)}.");
 
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="cluster">The planner cluster.</param>
-        /// <param name="traits">The trait set, which must carry the CLR convention.</param>
+        /// <param name="traits">The trait set, which must carry the cursor convention.</param>
         /// <param name="input">The Cosmos subtree being converted.</param>
-        public CosmosToClrEnumerableConverter(RelOptCluster cluster, RelTraitSet traits, RelNode input) :
+        public CosmosToClrCursorConverter(RelOptCluster cluster, RelTraitSet traits, RelNode input) :
             base(cluster, ConventionTraitDef.INSTANCE, traits, input)
         {
 
@@ -72,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <inheritdoc />
         public override RelNode copy(RelTraitSet traitSet, java.util.List inputs)
         {
-            return new CosmosToClrEnumerableConverter(getCluster(), traitSet, (RelNode)sole(inputs));
+            return new CosmosToClrCursorConverter(getCluster(), traitSet, (RelNode)sole(inputs));
         }
 
         /// <inheritdoc />
@@ -111,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (cost == null)
                 return null!;
 
-            return cost.multiplyBy(ClrEnumerableConvention.CostMultiplier * Math.Max(1d, Width(getInput())));
+            return cost.multiplyBy(ClrCursorConvention.CostMultiplier * Math.Max(1d, Width(getInput())));
         }
 
         /// <summary>
@@ -179,21 +181,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <inheritdoc />
         /// <remarks>
-        /// The bridge, for the reason the type's own remarks give: there is no synchronous read to write
-        /// here, so this is the awaiting body read across, and it blocks a thread per row.
+        /// Opens by waiting for the first page, for the reason the type's own remarks give: there is no
+        /// synchronous read to write. The cursor it opens blocks again only where a later page has to be
+        /// fetched.
         /// </remarks>
-        public ClrEnumerableResult Implement(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
-            return implementor.Pulled(ImplementAsync(implementor, pref));
+            var (physType, query, rowBuilder) = Prepare(implementor, pref);
+
+            return implementor.Result(physType,
+                Expression.Call(null,
+                    OpenMethod.MakeGenericMethod(physType.RowType),
+                    CosmosConverters.ExecutorExpression(getInput(), implementor.Root),
+                    implementor.Root,
+                    Expression.Constant(query),
+                    rowBuilder));
         }
 
         /// <inheritdoc />
-        public ClrAsyncEnumerableResult ImplementAsync(ClrEnumerableRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        {
+            var (physType, query, rowBuilder) = Prepare(implementor, pref);
+
+            // The open ends in the implementor's token, as every awaiting open does. It is the open's
+            // token and the first page's; every later page is fetched under the token of the advance
+            // that needs it, which is the cursor's to carry and not the plan's.
+            return implementor.ResultAsync(physType,
+                Expression.Call(null,
+                    OpenAsyncMethod.MakeGenericMethod(physType.RowType),
+                    CosmosConverters.ExecutorExpression(getInput(), implementor.Root),
+                    implementor.Root,
+                    Expression.Constant(query),
+                    rowBuilder,
+                    implementor.CancellationToken));
+        }
+
+        /// <summary>
+        /// Renders the statement and builds the row builder, which both bodies do identically: nothing
+        /// about either is about how the cursor is opened.
+        /// </summary>
+        (ClrPhysType PhysType, CosmosQuery Query, LambdaExpression RowBuilder) Prepare(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
         {
             var input = getInput();
 
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
-            var rowType = physType.RowType;
 
             var (query, fields, readings) = CosmosConverters.GenerateQuery(input, implementor.RexBuilder);
 
@@ -212,24 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             Hook.QUERY_PLAN.run(query.Sql);
 
-            return implementor.ResultAsync(physType,
-                Expression.Call(null,
-                    ReadAsyncMethod.MakeGenericMethod(rowType),
-                    CosmosConverters.ExecutorExpression(input, implementor.Root),
-                    implementor.Root,
-                    Expression.Constant(query),
-                    rowBuilder,
-                    // Default on purpose, and load-bearing. An expression tree applies no optional
-                    // default, so the token has to be written here; writing the *default* one is what
-                    // lets [EnumeratorCancellation] substitute the token the reader gave
-                    // GetAsyncEnumerator, which the operators hand down to this leaf. So the plan
-                    // carries no token, is reusable across executions, and each enumeration supplies
-                    // its own -- reaching ReadNextAsync, where it cancels a page already in flight.
-                    // ShouldCarryTheReadersTokenIntoTheExecutor holds that.
-                    //
-                    // A plan read synchronously gets none of it: IEnumerable has no token to hand down,
-                    // so there cancellation really is only declining to ask for the next page.
-                    Expression.Constant(CancellationToken.None)));
+            return (physType, query, rowBuilder);
         }
 
     }

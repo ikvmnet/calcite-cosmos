@@ -8,8 +8,11 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
+using Apache.Calcite.Extensions.Adapter.Cursor;
 using Apache.Calcite.Extensions.Adapter.Enumerable;
+using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
 
@@ -65,15 +68,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             public List<CosmosQuery> Executed { get; } = new();
 
-            public async IAsyncEnumerable<JsonElement> ExecuteAsync(CosmosQuery query, PartitionKey? partitionKey = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
             {
                 Executed.Add(query);
 
-                foreach (var document in _documents)
-                {
-                    await Task.Yield();
-                    yield return JsonDocument.Parse(document).RootElement.Clone();
-                }
+                await Task.Yield();
+                return ListCursor.Documents(_documents);
             }
 
         }
@@ -146,11 +146,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
 
-            foreach (var rule in ClrEnumerableRules.Rules())
+            foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
 
 
-            var desired = logical.getTraitSet().replace(ClrEnumerableConvention.Instance).simplify();
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
             return ToCalc(planner.findBestExp());
@@ -163,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <para>
         /// This is Calcite's <c>Programs.CALC_PROGRAM</c>, and it is a pass <em>after</em> the planner
         /// rather than rules given to it. That distinction is the whole of it:
-        /// <c>ClrEnumerableProject</c> throws when implemented — as
+        /// <c>ClrCursorProject</c> throws when implemented — as
         /// <c>EnumerableProject.implement()</c> does upstream, saying "EnumerableCalcRel is always
         /// better" — and it is also the cheaper node, since <c>Calc</c>'s inherited cost counts one
         /// unit per expression and <c>Project</c>'s does not. Handed to Volcano, the two compete and
@@ -179,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
 
-            foreach (var rule in ClrEnumerableRules.CalcRules())
+            foreach (var rule in ClrCursorRules.CalcRules())
                 program.addRuleInstance(rule);
 
             var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
@@ -188,17 +188,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             return hep.findBestExp();
         }
 
+        static ClrCursorFactory Implement(RelNode rel)
+        {
+            var implementor = new ClrCursorRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
+            return implementor.ImplementRoot((ClrCursorRel)rel, ClrEnumerablePrefer.Array);
+        }
+
         async Task<List<object>> Execute(RelNode rel)
         {
-            var implementor = new ClrEnumerableRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            var lambda = implementor.ImplementRootAsync((ClrEnumerableRel)rel, ClrEnumerablePrefer.Array);
-
-            var run = (Func<DataContext, IAsyncEnumerable<object>>)lambda.Compile();
             var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
 
             var rows = new List<object>();
-            await foreach (var row in run(context))
-                rows.Add(row);
+
+            await using (var cursor = await Implement(rel).OpenAsync(context, CancellationToken.None))
+                while (await cursor.ReadAsync(CancellationToken.None))
+                    rows.Add(cursor.Current!);
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Opens the plan synchronously and reads it with synchronous advances, which is the join's other
+        /// body: the build side read with <c>Read</c>, and each batch's fetch waited for.
+        /// </summary>
+        List<object> ExecutePulled(RelNode rel)
+        {
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+
+            var rows = new List<object>();
+
+            using (var cursor = Implement(rel).Open(context))
+                while (cursor.Read())
+                    rows.Add(cursor.Current!);
 
             return rows;
         }
@@ -246,6 +267,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var keys = Keys(statement);
             keys.Should().HaveCount(CosmosLookupJoin.DefaultBatchSize);
             keys.Distinct().Should().BeEquivalentTo(new object?[] { "a", "b" });
+        }
+
+        /// <remarks>
+        /// The join's synchronous body is its own code rather than a wait on the awaiting one: it reads the
+        /// build side with <c>Read</c> and waits only for each batch's fetch. So it is held to the same
+        /// answer, and to the same single request carrying the same keys.
+        /// </remarks>
+        [Fact]
+        public void AJoinReadSynchronouslyFetchesTheSameKeysAndPairsTheSameRows()
+        {
+            Given(
+                orders: new[]
+                {
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":1,"_etag":"e","customer":"c2"}""",
+                },
+                products: new[]
+                {
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","category":"bikes"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":1,"_etag":"e","category":"shoes"}""",
+                });
+
+            var rows = ExecutePulled(Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN products p ON o.id = p.id"));
+
+            rows.Should().HaveCount(2);
+            _productsExecutor.Executed.Should().ContainSingle();
+            Keys(_productsExecutor.Executed[0]).Distinct().Should().BeEquivalentTo(new object?[] { "a", "b" });
         }
 
         /// <remarks>
