@@ -42,8 +42,8 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <item><description>
     /// <b>One way out, into <c>ClrCursorConvention</c>, and the caller decides how the rows are
     /// read.</b> The single converter leaves for the cursor convention and for no other: there is none
-    /// into <c>ClrEnumerableConvention</c> or Calcite's own <c>EnumerableConvention</c>, and a plan
-    /// that wants one of those reaches it higher up, through converters that are not the adapter's.
+    /// into Calcite's own <c>EnumerableConvention</c>, and a plan that wants rows there reaches it
+    /// higher up, through the converter <c>Apache.Calcite.Extensions</c> has, not one of the adapter's.
     /// The lookup join and the table modify leave into the same convention. The Cosmos SDK still has
     /// no synchronous data-plane API, so a plan opened or advanced synchronously blocks where a page
     /// has to be fetched — see <see cref="Rel.Convert.CosmosToClrCursorConverter"/>.

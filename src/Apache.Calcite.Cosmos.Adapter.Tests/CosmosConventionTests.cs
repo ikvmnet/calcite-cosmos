@@ -111,9 +111,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         /// <remarks>
         /// <b>The adapter leads into the cursor convention and into nothing else.</b> A plan that wants
-        /// rows in <c>ClrEnumerableConvention</c> or Calcite's <c>EnumerableConvention</c> gets there
-        /// higher up, through converters that are not the adapter's; a rule here that led anywhere but
-        /// the Cosmos convention itself or the cursor convention would be a second way out.
+        /// rows in Calcite's <c>EnumerableConvention</c> gets there higher up, through a converter that
+        /// is not the adapter's; a rule here that led anywhere but the Cosmos convention itself or the
+        /// cursor convention would be a second way out.
         /// </remarks>
         [Fact]
         public void EveryRuleLeadsIntoTheConventionOrTheCursorConvention()

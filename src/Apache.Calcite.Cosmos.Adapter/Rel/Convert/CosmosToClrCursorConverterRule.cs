@@ -22,10 +22,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </para>
     /// <para>
     /// <b>It is the only route out, and it leads into <see cref="ClrCursorConvention"/> alone.</b> There is
-    /// no converter from this convention into <c>ClrEnumerableConvention</c> or into Calcite's own
-    /// <c>EnumerableConvention</c>. Rows leave the statement as a cursor, and a plan that wants them in
-    /// another convention gets there higher in the plan, through the converters that convention and the
-    /// cursor convention already have between them. The adapter's concern ends at the cursor.
+    /// no converter from this convention into Calcite's own <c>EnumerableConvention</c>. Rows leave the
+    /// statement as a cursor, and a plan that wants them in another convention gets there higher in the
+    /// plan, through the converters that convention and the cursor convention already have between them.
+    /// The adapter's concern ends at the cursor.
     /// </para>
     /// <para>
     /// <b>One rule covers both ways of reading the rows.</b> A plan of the cursor convention is opened
