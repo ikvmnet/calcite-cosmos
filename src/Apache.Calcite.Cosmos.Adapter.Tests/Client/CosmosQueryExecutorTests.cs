@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
     /// one where Docker is available and nothing is already listening; these report inconclusive only
     /// where it can do neither.
     /// </remarks>
-    public class CosmosQueryExecutorTests : IClassFixture<CosmosQueryExecutorTests.Fixture>
+    public partial class CosmosQueryExecutorTests : IClassFixture<CosmosQueryExecutorTests.Fixture>
     {
 
         /// <summary>

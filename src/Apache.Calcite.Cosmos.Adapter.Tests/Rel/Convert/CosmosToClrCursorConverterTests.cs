@@ -449,6 +449,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
+        /// The plan's cursor owns the executor's, through every operator between them, so a reader that
+        /// stops early and lets go of the plan releases the statement — whichever way it let go.
+        /// </remarks>
+        [Fact]
+        public async Task DisposingThePlansCursorReleasesTheExecutorsWithAwait()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeTrue();
+            await cursor.DisposeAsync();
+
+            _executor.Cursor!.Disposed.Should().BeTrue();
+        }
+
+        [Fact]
+        public void DisposingThePlansCursorReleasesTheExecutorsSynchronously()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            var cursor = Implement(PlanToClr("SELECT \"id\" FROM products AS c")).Open(context);
+
+            cursor.Read().Should().BeTrue();
+            cursor.Dispose();
+
+            _executor.Cursor!.Disposed.Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// One cursor, one position: a reader may alternate the two ways of advancing on one open plan,
+        /// and reads consecutive rows either way.
+        /// </remarks>
+        [Fact]
+        public async Task ThePlanMayBeAdvancedEitherWayOnEachRead()
+        {
+            Given("""{ "id": "a" }""", """{ "id": "b" }""", """{ "id": "c" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            await using var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            cursor.Read().Should().BeTrue();
+            cursor.Current.Should().Be("a");
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeTrue();
+            cursor.Current.Should().Be("b");
+            cursor.Read().Should().BeTrue();
+            cursor.Current.Should().Be("c");
+            (await cursor.ReadAsync(CancellationToken.None)).Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// The statement is sent by the open, not by the first read: a plan opened and never read has
+        /// still executed it, as a command's <c>ExecuteReader</c> has.
+        /// </remarks>
+        [Fact]
+        public async Task TheOpenSendsTheStatement()
+        {
+            Given("""{ "id": "a" }""");
+
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            await using var cursor = await Implement(PlanToClr("SELECT \"id\" FROM products AS c")).OpenAsync(context, CancellationToken.None);
+
+            _executor.Executed.Should().NotBeNull();
+            _executor.Cursor!.Tokens.Should().BeEmpty("nothing has been read yet");
+        }
+
+        /// <remarks>
         /// The statement the stub is handed is the projected object constructor, not <c>SELECT VALUE c</c>.
         /// One row shape reaches the reader whatever the query did.
         /// </remarks>

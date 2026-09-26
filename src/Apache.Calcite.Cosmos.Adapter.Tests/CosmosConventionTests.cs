@@ -97,6 +97,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             rule.getOutConvention().Should().BeSameAs(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance);
         }
 
+        [Fact]
+        public void TheTableModifyConvertsIntoTheCursorConvention()
+        {
+            var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
+
+            var rule = CosmosRules.GetRules(convention)
+                .OfType<Adapter.Rel.Convert.CosmosTableModifyRule>()
+                .Should().ContainSingle().Subject;
+
+            rule.getOutConvention().Should().BeSameAs(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance);
+        }
+
+        /// <remarks>
+        /// <b>The adapter leads into the cursor convention and into nothing else.</b> A plan that wants
+        /// rows in <c>ClrEnumerableConvention</c> or Calcite's <c>EnumerableConvention</c> gets there
+        /// higher up, through converters that are not the adapter's; a rule here that led anywhere but
+        /// the Cosmos convention itself or the cursor convention would be a second way out.
+        /// </remarks>
+        [Fact]
+        public void EveryRuleLeadsIntoTheConventionOrTheCursorConvention()
+        {
+            var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
+            var cursor = Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance;
+
+            var rules = CosmosRules.GetRules(convention)
+                .OfType<org.apache.calcite.rel.convert.ConverterRule>()
+                .ToList();
+
+            rules.Where(x => ReferenceEquals(x.getOutConvention(), cursor)).Select(x => x.GetType().Name)
+                .Should().BeEquivalentTo(new[] { "CosmosToClrCursorConverterRule", "CosmosLookupJoinRule", "CosmosTableModifyRule" });
+
+            rules.Should().OnlyContain(x => ReferenceEquals(x.getOutConvention(), convention) || ReferenceEquals(x.getOutConvention(), cursor),
+                "no rule may lead into a convention other than the Cosmos one or the cursor one");
+        }
+
+        /// <remarks>
+        /// A subtree in the convention is a statement, and one converter turns it into rows. The lookup
+        /// join and the table modify also leave into the cursor convention, but they convert a logical
+        /// join or modify rather than a Cosmos subtree.
+        /// </remarks>
+        [Fact]
+        public void TheOnlyWayOutOfTheConventionIsTheCursorConverter()
+        {
+            var convention = CosmosConvention.Create(new CosmosContainerMetadata("products"));
+
+            CosmosRules.GetRules(convention)
+                .OfType<org.apache.calcite.rel.convert.ConverterRule>()
+                .Where(x => ReferenceEquals(x.getInTrait(), convention) && ReferenceEquals(x.getOutConvention(), convention) == false)
+                .Should().ContainSingle()
+                .Which.Should().BeOfType<Adapter.Rel.Convert.CosmosToClrCursorConverterRule>();
+        }
+
     }
 
 }

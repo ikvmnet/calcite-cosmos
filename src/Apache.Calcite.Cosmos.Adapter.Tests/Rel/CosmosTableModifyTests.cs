@@ -72,6 +72,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             public List<PartitionKey> PartitionsDeleted { get; } = new();
 
+            public List<string> Created { get; } = new();
+
+            public List<string> Replaced { get; } = new();
+
             public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
             {
                 Executed.Add(query);
@@ -83,8 +87,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     : ListCursor.Documents(_documents);
             }
 
-            public Task CreateItemAsync(byte[] document, PartitionKey partitionKey, CancellationToken cancellationToken = default) =>
-                Task.CompletedTask;
+            public Task CreateItemAsync(byte[] document, PartitionKey partitionKey, CancellationToken cancellationToken = default)
+            {
+                Created.Add(System.Text.Encoding.UTF8.GetString(document));
+                return Task.CompletedTask;
+            }
 
             public Task<bool> DeleteItemAsync(string id, PartitionKey partitionKey, CancellationToken cancellationToken = default)
             {
@@ -101,8 +108,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             public Task<bool> SupportsPartitionDeleteAsync(CancellationToken cancellationToken = default) =>
                 Task.FromResult(true);
 
-            public Task<bool> ReplaceItemAsync(byte[] document, string id, PartitionKey partitionKey, CancellationToken cancellationToken = default) =>
-                Task.FromResult(true);
+            public Task<bool> ReplaceItemAsync(byte[] document, string id, PartitionKey partitionKey, CancellationToken cancellationToken = default)
+            {
+                Replaced.Add(id);
+                return Task.FromResult(true);
+            }
 
         }
 
@@ -274,6 +284,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _executor.PartitionsDeleted.Should().ContainSingle().Which.Should().Be(new PartitionKey("bikes"));
             _executor.Executed.Should().ContainSingle().Which.Sql.Should().Contain("COUNT(1)");
             _executor.Deleted.Should().BeEmpty();
+        }
+
+        const string InsertTwo = """INSERT INTO products ("DOC") VALUES ('{"id":"x","category":"bikes"}'), ('{"id":"y","category":"shoes"}')""";
+
+        /// <remarks>
+        /// An insert's input is a <c>VALUES</c>, which the cursor convention implements itself: this is
+        /// the one write whose rows never came from the container.
+        /// </remarks>
+        [Fact]
+        public async Task AnInsertCreatesEveryRowItIsGivenWhenOpenedWithAwait()
+        {
+            Given(partitionDelete: false);
+
+            var count = await CountAsync(Plan(InsertTwo));
+
+            count.Should().Be(2);
+            _executor.Created.Select(d => JsonDocument.Parse(d).RootElement.GetProperty("id").GetString()).Should().Equal("x", "y");
+            _executor.Executed.Should().BeEmpty("an insert reads nothing from the container");
+        }
+
+        [Fact]
+        public void AnInsertCreatesEveryRowItIsGivenWhenOpenedSynchronously()
+        {
+            Given(partitionDelete: false);
+
+            var count = Count(Plan(InsertTwo));
+
+            count.Should().Be(2);
+            _executor.Created.Should().HaveCount(2);
+        }
+
+        [Fact]
+        public async Task AnUpdateReplacesEveryRowItReads()
+        {
+            Given(partitionDelete: false, Bikes);
+
+            var count = await CountAsync(Plan("""UPDATE products SET "DOC" = '{"id":"a","category":"bikes","price":1}' WHERE "$.category" = 'bikes'"""));
+
+            count.Should().Be(2);
+            _executor.Replaced.Should().Equal("a", "b");
         }
 
         [Fact]
