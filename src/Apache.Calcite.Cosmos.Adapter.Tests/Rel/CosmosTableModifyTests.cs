@@ -12,7 +12,6 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
-using Apache.Calcite.Extensions.Adapter.Enumerable;
 using Apache.Calcite.Extensions.Runtime;
 
 using FluentAssertions;
@@ -204,7 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         ClrCursorFactory Implement(RelNode rel)
         {
             var implementor = new ClrCursorRelImplementor(rel.getCluster().getRexBuilder(), new java.util.HashMap());
-            return implementor.ImplementRoot((ClrCursorRel)rel, ClrEnumerablePrefer.Array);
+            return implementor.ImplementRoot((ClrCursorRel)rel, ClrCursorPrefer.Array);
         }
 
         async Task<long> CountAsync(RelNode rel)

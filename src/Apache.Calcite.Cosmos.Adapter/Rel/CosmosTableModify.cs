@@ -4,7 +4,6 @@ using System.Linq.Expressions;
 using Apache.Calcite.Cosmos.Adapter.Client;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
-using Apache.Calcite.Extensions.Adapter.Enumerable;
 using Apache.Calcite.Extensions.Runtime;
 
 using org.apache.calcite.plan;
@@ -142,7 +141,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// a request the SDK only awaits, so there is no synchronous write to call. A whole-partition
         /// delete visits nothing, because it reads no rows — see <see cref="Source"/>.
         /// </remarks>
-        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
             var inputPhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getInput().getRowType(), pref.PreferArray());
@@ -170,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// The writes are the acquisition, under the open's token, which is why this appends it: the
         /// cursor handed back holds only the count.
         /// </remarks>
-        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
             var inputPhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getInput().getRowType(), pref.PreferArray());
