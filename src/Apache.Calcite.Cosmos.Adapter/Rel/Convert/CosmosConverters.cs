@@ -6,7 +6,7 @@ using System.Text.Json;
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
-using Apache.Calcite.Extensions.Adapter.Enumerable;
+using Apache.Calcite.Extensions.Adapter.Cursor;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;

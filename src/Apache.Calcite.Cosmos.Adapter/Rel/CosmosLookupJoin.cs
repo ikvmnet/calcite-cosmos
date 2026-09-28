@@ -6,7 +6,6 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
-using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -166,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// acquires nothing more at its open. A batch is fetched by the advance that runs out of rows, and
         /// a synchronous advance blocks for that fetch — once per batch, not once per row.
         /// </remarks>
-        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var buildResult = implementor.VisitChild(this, 0, (ClrCursorRel)getLeft(), pref);
 
@@ -177,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <inheritdoc />
-        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var buildResult = implementor.VisitChildAsync(this, 0, (ClrCursorRel)getLeft(), pref);
 
@@ -193,7 +192,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Renders the lookup statement and builds everything the join is called with after its build
         /// side, which both bodies do identically.
         /// </summary>
-        (ClrPhysType PhysType, Type[] TypeArguments, Expression[] Arguments) Prepare(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref, ClrPhysType buildPhysType)
+        (ClrPhysType PhysType, Type[] TypeArguments, Expression[] Arguments) Prepare(ClrCursorRelImplementor implementor, ClrCursorPrefer pref, ClrPhysType buildPhysType)
         {
             var probe = getRight();
 

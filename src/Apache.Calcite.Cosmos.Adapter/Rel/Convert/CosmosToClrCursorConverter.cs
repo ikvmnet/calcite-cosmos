@@ -5,7 +5,6 @@ using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
-using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -185,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// synchronous read to write. The cursor it opens blocks again only where a later page has to be
         /// fetched.
         /// </remarks>
-        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorResult Implement(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var (physType, query, rowBuilder) = Prepare(implementor, pref);
 
@@ -199,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <inheritdoc />
-        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        public ClrCursorAsyncResult ImplementAsync(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var (physType, query, rowBuilder) = Prepare(implementor, pref);
 
@@ -220,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Renders the statement and builds the row builder, which both bodies do identically: nothing
         /// about either is about how the cursor is opened.
         /// </summary>
-        (ClrPhysType PhysType, CosmosQuery Query, LambdaExpression RowBuilder) Prepare(ClrCursorRelImplementor implementor, ClrEnumerablePrefer pref)
+        (ClrPhysType PhysType, CosmosQuery Query, LambdaExpression RowBuilder) Prepare(ClrCursorRelImplementor implementor, ClrCursorPrefer pref)
         {
             var input = getInput();
 

@@ -12,7 +12,6 @@ using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
-using Apache.Calcite.Extensions.Adapter.Enumerable;
 
 using FluentAssertions;
 
@@ -323,7 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             best = hep.findBestExp();
 
             var implementor = new ClrCursorRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
-            var factory = implementor.ImplementRoot((ClrCursorRel)best, ClrEnumerablePrefer.Array);
+            var factory = implementor.ImplementRoot((ClrCursorRel)best, ClrCursorPrefer.Array);
 
             var context = new TestDataContext(rootSchema.plus(), typeFactory);
 
