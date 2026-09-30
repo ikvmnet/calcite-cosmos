@@ -517,6 +517,19 @@ well — the column comes back as the stored text and `CosmosJson` converts it, 
 half the shape does not carry invents one, and a time of day read back as a `TIMESTAMP` acquires
 today's date where the engine's parse gives it the epoch's.
 
+**`CAST(<text> AS TIMESTAMP(3) FORMAT '<format>')` is the same parse, and the one a model view can
+write.** Calcite plans it as a `CAST` carrying the format as a second operand and reads the format with
+the same model, so the table above answers for it unchanged — measured through both, every spelling.
+It exists for a reason the library functions cannot meet: a model view is analyzed under Calcite's
+default configuration whatever the connection enabled (`ViewTableMacro.apply` →
+`MATERIALIZATION_CONNECTION`), so `PARSE_DATETIME` does not validate inside one and the cast, being in
+the core operator table, does. What a cast adds is a precision it names itself, and the same rule as
+the type applies one field finer: a bare `TIMESTAMP` is `TIMESTAMP(0)`, so a millisecond format into
+one promises a value with no fraction and is refused, even though Calcite's runtime keeps the
+milliseconds today. That promise is what the plan widens from to compare against a `.123` literal and
+what a reader may round to — ikvmnet/calcite-cosmos#170 saw `.000` there — so the pushdown agrees
+with the declared type rather than with what the runtime happens to do.
+
 **Two functions are recognised and deliberately go no further.** `PARSE_TIMESTAMP` answers
 `TIMESTAMP WITH LOCAL TIME ZONE`, so a comparison against a zone-less literal is a question about the
 session's zone that no declared form answers, and `CosmosJson` has no reading for the type either.

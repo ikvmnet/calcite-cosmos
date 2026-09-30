@@ -64,7 +64,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         const string At = """JSON_VALUE(c."DOC", '$.at')""";
 
+        /// <summary>
+        /// The standard spelling of the seconds parse, over the same accessor.
+        /// </summary>
+        const string CastSeconds = """CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''')""";
+
         const string SecondsPattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$";
+
+        const string MillisecondsPattern = @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$";
 
         /// <summary>
         /// A container declaring <c>at</c> present, a string, and confined to one shape.
@@ -83,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     """)));
         }
 
-        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container)
+        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, bool libraries = true)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             var table = new CosmosTable(container);
@@ -97,11 +104,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var catalogReader = new CalciteCatalogReader(rootSchema, java.util.Collections.emptyList(), typeFactory, new CalciteConnectionConfigImpl(properties));
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
 
-            var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(
-                SqlStdOperatorTable.instance(),
-                Adapter.Sql.CosmosOperators.Instance,
-                SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(
-                    java.util.EnumSet.allOf(java.lang.Class.forName("org.apache.calcite.sql.fun.SqlLibrary"))));
+            // Without the libraries is what a model view is analyzed under, whatever the connection
+            // enabled -- the configuration the standard cast spelling exists for.
+            var operators = libraries
+                ? org.apache.calcite.sql.util.SqlOperatorTables.chain(
+                    SqlStdOperatorTable.instance(),
+                    Adapter.Sql.CosmosOperators.Instance,
+                    SqlLibraryOperatorTableFactory.INSTANCE.getOperatorTable(
+                        java.util.EnumSet.allOf(java.lang.Class.forName("org.apache.calcite.sql.fun.SqlLibrary"))))
+                : org.apache.calcite.sql.util.SqlOperatorTables.chain(
+                    SqlStdOperatorTable.instance(),
+                    Adapter.Sql.CosmosOperators.Instance);
 
             var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
@@ -533,6 +546,148 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Query(FindCosmos(sorted), container).Sql.Should().NotContain("ORDER BY",
                 "and the reader has no reading for the type, so the projection does not go down either");
+        }
+
+        /// <summary>
+        /// A cast carrying a format is the same parse, and a range over one reaches the statement
+        /// with no function library enabled.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is the spelling ikvmnet/calcite-cosmos#170 asked for. A model view is analyzed under
+        /// Calcite's default configuration whatever the connection's <c>fun</c> says, so
+        /// <c>PARSE_DATETIME</c> fails to validate inside one and a view had no instant that pushed.
+        /// <c>CAST … FORMAT</c> is in the core operator table, which is why the harness runs without
+        /// the libraries here.
+        /// </para>
+        /// <para>
+        /// The format is read against the declared shape by the same table the <c>PARSE_</c> family
+        /// uses — <c>CalciteTemporalParseMeasurementTests</c> measures every spelling through both.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACastWithAFormatReachesTheStatementWithoutTheLibraries()
+        {
+            var container = Container(SecondsPattern);
+
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE {CastSeconds} > TIMESTAMP '2024-02-01 00:00:00'""",
+                container,
+                libraries: false);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.at > @", "the cast is dropped and the comparison is the stored strings': " + query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00Z");
+
+            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// The millisecond shape the issue was about pushes through a cast whose type holds the
+        /// fraction, and not through one whose type does not.
+        /// </summary>
+        /// <remarks>
+        /// A bare <c>TIMESTAMP</c> is <c>TIMESTAMP(0)</c>, so a cast into one promises a value with no
+        /// fraction whatever its format read, and every stored instant within a second is promised
+        /// the same one. Calcite's runtime keeps the milliseconds anyway, measured — but the plan
+        /// widens the cast back to <c>TIMESTAMP(3)</c> to compare it, and what a pushdown has to agree
+        /// with is what the query says rather than what the runtime happens to do.
+        /// </remarks>
+        [Fact]
+        public void ACastWithAFormatReadsTheMillisecondShapeIntoATypeThatHoldsIt()
+        {
+            var container = Container(MillisecondsPattern);
+
+            const string Format = "'YYYY-MM-DD''T''HH24:MI:SS.FF3''Z'''";
+
+            var held = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(3) FORMAT {Format}) = TIMESTAMP '2024-02-01 00:00:00.123'""",
+                container,
+                libraries: false);
+
+            var query = Query(FindCosmos(held), container);
+
+            query.Sql.Should().Contain("c.at = @", "FF3 reads a three-digit fraction exactly and TIMESTAMP(3) holds it: " + query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00.123Z");
+
+            var truncated = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT {Format}) = TIMESTAMP '2024-02-01 00:00:00.123'""",
+                container,
+                libraries: false);
+
+            Query(FindCosmos(truncated), container).Sql.Should().NotContain("c.at = @",
+                "a TIMESTAMP(0) cannot hold what the format read");
+            PlanText(truncated).Should().Contain("ClrCursorFilter");
+        }
+
+        /// <summary>
+        /// And the cast carries the sort, as the parse does.
+        /// </summary>
+        [Fact]
+        public void ACastWithAFormatCarriesTheSort()
+        {
+            var container = Container(SecondsPattern);
+
+            var best = PlanToCosmos(
+                $"""SELECT {CastSeconds} AS "at" FROM items AS c ORDER BY 1""",
+                container,
+                libraries: false);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("ORDER BY c.at", "the stored order is the order the cast answers: " + query.Sql);
+            query.Sql.Should().Contain("(IS_PRIMITIVE(c.at) ? c.at : null)", "and the column is the guarded path: " + query.Sql);
+
+            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left to sort in process: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// A cast whose format does not read the shape is refused on the same terms as a parse.
+        /// </summary>
+        /// <remarks>
+        /// The millisecond format over a seconds path, and <c>FF</c> over a millisecond path — which
+        /// the model reads as no fraction at all, measured, so every instant within a second reads as
+        /// the same one and the parse is not injective.
+        /// </remarks>
+        [Fact]
+        public void ACastWhoseFormatDoesNotReadTheShapeIsNotPushed()
+        {
+            foreach (var (pattern, format) in new[]
+            {
+                (SecondsPattern, "YYYY-MM-DD''T''HH24:MI:SS.FF3''Z''"),
+                (MillisecondsPattern, "YYYY-MM-DD''T''HH24:MI:SS.FF''Z''"),
+            })
+            {
+                var container = Container(pattern);
+
+                var best = PlanToCosmos(
+                    $"""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT '{format}') > TIMESTAMP '2024-02-01 00:00:00'""",
+                    container,
+                    libraries: false);
+
+                Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ",
+                    "the format does not denote the stored shape, for " + format);
+
+                PlanText(best).Should().Contain("ClrCursorFilter", "so the comparison stays where it was, for " + format);
+            }
+        }
+
+        /// <summary>
+        /// A cast with a format into a <c>DATE</c> over an instant truncates, and is refused like
+        /// <c>PARSE_DATE</c>.
+        /// </summary>
+        [Fact]
+        public void ACastWithAFormatThatTruncatesIsRefused()
+        {
+            var container = Container(SecondsPattern);
+
+            var best = PlanToCosmos(
+                """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS DATE FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''') > DATE '2024-02-01'""",
+                container,
+                libraries: false);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ", "the DATE cannot hold what the format read");
         }
 
     }

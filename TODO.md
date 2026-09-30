@@ -1043,6 +1043,16 @@ hand. Two tests pin both directions.
   answer where it is rather than replacing it with a different one.
   `CalciteTemporalParseMeasurementTests` runs every spelling the table claims against a sample of the
   shape it claims, so a row that stops being exact fails a test.
+- **`CAST(<text> AS TIMESTAMP(p) FORMAT '<format>')` is the same chain (#170).** `CosmosTemporalParse`
+  reads it with the operands the other way round, so both sites take it with no change of their own;
+  the measurement runs every claimed spelling through the cast as well. It is the spelling a model
+  view can hold, `PARSE_DATETIME` not validating under the default configuration views are analyzed
+  with (ikvmnet/calcite-dotnet#189). A cast whose precision is below the digits its format reads is
+  refused. The issue reported `.000` for every millisecond format; measured over a column, the cast
+  keeps the fraction even into `TIMESTAMP(0)`, so the truncation it saw is downstream of the cast.
+  Where exactly has not been traced. A finer precision does not open the wider shapes, measured:
+  the default type system caps `TIMESTAMP` at 3, so `TIMESTAMP(6)` and up come back as `(3)`, and
+  `FF4` through `FF9` read the digits as milliseconds exactly as `FF3` does (`.6789` is 6.789 s).
 
 **Not built, and each for a stated reason:**
 
