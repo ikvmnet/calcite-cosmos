@@ -214,6 +214,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// Every spelling the table claims reads its shape exactly through a cast as well, which is
+        /// what lets one table answer for both.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>CAST(&lt;text&gt; AS TIMESTAMP FORMAT '&lt;format&gt;')</c> is the standard spelling of the
+        /// parse, and <see cref="CosmosTemporalParse"/> reads it as one — so every claim the table
+        /// makes about a format is a claim about the cast too, and has to be measured as one rather
+        /// than inferred from the two sharing a format model. Through SQL, there being no runtime
+        /// function to call for it directly.
+        /// </para>
+        /// <para>
+        /// <b>The fraction is the row worth watching.</b> ikvmnet/calcite-cosmos#170 reported the cast
+        /// answering <c>.000</c> for every millisecond spelling. Measured here, over a column, it reads
+        /// them exactly — into a bare <c>TIMESTAMP</c> as well, whose declared precision is zero. The
+        /// cast is measured into <c>TIMESTAMP(3)</c> because that is the one
+        /// <see cref="CosmosTemporalParse"/> accepts for a millisecond format; a regression to
+        /// truncating would fail this rather than push a non-injective parse.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EverySpellingTheTableClaimsReadsItsShapeExactlyThroughACast()
+        {
+            var claimed = 0;
+
+            foreach (var shape in Shapes)
+            {
+                var representation = Form(shape.Pattern);
+
+                foreach (var format in CosmosStoredForms.ParseFormats(representation))
+                {
+                    var read = Cast(format, shape.Samples.Select(s => s.Stored).ToArray());
+
+                    foreach (var (stored, denotes) in shape.Samples)
+                        read[stored].Should().Be(Instant(denotes),
+                            $"'{format}' is listed for {shape.Name}, so CAST ... FORMAT has to read '{stored}'");
+
+                    claimed++;
+                }
+            }
+
+            claimed.Should().Be(24, "the same spellings the parse is measured for");
+        }
+
+        /// <summary>
         /// A shape with no spelling has none because none works.
         /// </summary>
         [Fact]
@@ -229,6 +274,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var (stored, denotes) in shape.Samples)
                     Parse(format, stored).Should().NotBe(Instant(denotes),
                         $"and '{format}' is what a caller would write for {name}, which does not read it");
+
+                foreach (var (stored, denotes) in shape.Samples)
+                    Cast(format, stored)[stored].Should().NotBe(Instant(denotes),
+                        $"and a cast with the same format does not read it either, for {name}");
             }
         }
 
@@ -425,6 +474,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Jdbc($"PARSE_TIMESTAMP('{escaped}', '2024-01-02T03:04:05Z')").Should().Be("2024-01-02 03:04:05.0");
             Jdbc(@"PARSE_DATETIME('yyyy-MM-dd''T''HH:mm:ss''Z''', '2024-01-02T03:04:05Z')").Should().Be("2024-04-02 03:00:05.0",
                 "including the wrong answer, which is the engine's and not a wrapper's");
+        }
+
+        /// <summary>
+        /// Reads stored strings through <c>CAST(… AS TIMESTAMP(3) FORMAT '…')</c>, over a column and with
+        /// no function library enabled, which is the configuration a model view is analyzed under.
+        /// </summary>
+        /// <param name="format">The format.</param>
+        /// <param name="texts">The stored strings.</param>
+        /// <returns>
+        /// The instant each string reads as, or <c>null</c> for every one where the cast raised — the
+        /// statement fails as a whole, so a caller measuring a refusal passes one string at a time.
+        /// </returns>
+        static Dictionary<string, DateTime?> Cast(string format, params string[] texts)
+        {
+            java.lang.Class.forName("org.apache.calcite.jdbc.Driver");
+
+            var connection = java.sql.DriverManager.getConnection("jdbc:calcite:", new java.util.Properties());
+            var read = texts.ToDictionary(t => t, t => (DateTime?)null);
+
+            try
+            {
+                var rows = string.Join(", ", texts.Select(t => $"('{t}')"));
+                var results = connection.createStatement().executeQuery(
+                    $"SELECT x, CAST(x AS TIMESTAMP(3) FORMAT '{format.Replace("'", "''")}') AS v FROM (VALUES {rows}) AS t(x)");
+
+                // Rendered and reparsed rather than taken as epoch milliseconds: the driver builds the
+                // java.sql.Timestamp in the JVM's zone, and its text is the wall clock the plan holds.
+                while (results.next())
+                    read[results.getString(1)] = DateTime.SpecifyKind(
+                        DateTime.ParseExact(results.getObject(2).ToString()!, "yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture),
+                        DateTimeKind.Utc);
+            }
+            catch (Exception)
+            {
+                // Text the format does not fit raises, and a raise is not a value.
+            }
+            finally
+            {
+                connection.close();
+            }
+
+            return read;
         }
 
         /// <summary>

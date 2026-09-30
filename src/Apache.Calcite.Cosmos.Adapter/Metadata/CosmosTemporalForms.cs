@@ -84,6 +84,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         static readonly Dictionary<string, TemporalForm> Temporal = new(StringComparer.Ordinal);
 
         /// <summary>
+        /// How many fraction digits each parse spelling reads, keyed by the spelling; a spelling
+        /// absent here reads none. Populated by <see cref="Build"/> beside <see cref="Temporal"/>.
+        /// </summary>
+        static readonly Dictionary<string, int> ParseDigits = new(StringComparer.Ordinal);
+
+        /// <summary>
         /// The recognised spellings, keyed by their normalised form.
         /// </summary>
         static readonly Dictionary<string, CosmosRepresentation> Known = Build();
@@ -231,6 +237,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             Cross(new[] { dates[dialect] + "'T'" + clocks[dialect] }, fraction.Parses[dialect]),
                             zone.Parses));
 
+                    foreach (var spelling in spellings)
+                        ParseDigits[spelling] = n;
+
                     Register(
                         $"^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}T[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fraction.Pattern}{zone.Pattern}$",
                         InstantName(n, zone.Name),
@@ -286,9 +295,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // order and a sort over one is sound on exactly those terms; not renderable, because
             // writing an instant into it would drop the date rather than refuse.
             for (var n = 0; n < fractions.Length; n++)
+            {
+                var spellings = Cross(new[] { clocks[Bq] }, fractions[n].Parses[Bq]).Concat(Cross(new[] { clocks[Pg] }, fractions[n].Parses[Pg])).ToArray();
+
+                foreach (var spelling in spellings)
+                    ParseDigits[spelling] = n;
+
                 Register($"^[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fractions[n].Pattern}$", $"iso8601-time-f{n}", null, Never,
-                    CosmosTemporalParts.Time, readsBack: true,
-                    Cross(new[] { clocks[Bq] }, fractions[n].Parses[Bq]).Concat(Cross(new[] { clocks[Pg] }, fractions[n].Parses[Pg])).ToArray());
+                    CosmosTemporalParts.Time, readsBack: true, spellings);
+            }
 
             Register("^[0-9]{2}:[0-9]{2}$", "iso8601-time-minutes", null, Never,
                 CosmosTemporalParts.Time, readsBack: true, minutes);
@@ -446,6 +461,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The formats, empty where the form has none and for a form that is not temporal.</returns>
         public static IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>
             Temporal.TryGetValue(representation.Name, out var form) ? form.Parses : Array.Empty<string>();
+
+        /// <summary>
+        /// Returns how many fraction digits a parse spelling reads.
+        /// </summary>
+        /// <remarks>
+        /// A cast carrying a format answers the type it names, precision and all, and a
+        /// <c>TIMESTAMP(0)</c> holds no fraction whatever the format read — so a cast whose format
+        /// reads milliseconds into one is not injective over the shape, and
+        /// <see cref="CosmosTemporalParse"/> refuses it. Measured, Calcite's runtime keeps the
+        /// fraction regardless today; the type is what the plan promises, and it is what a
+        /// comparison is widened from and what a reader may round to, which is where
+        /// ikvmnet/calcite-cosmos#170 saw <c>.000</c>.
+        /// </remarks>
+        /// <param name="format">A format a parse was written with.</param>
+        /// <returns>The digits, zero for a spelling that reads none or that this does not list.</returns>
+        public static int FractionDigitsOf(string format) =>
+            ParseDigits.TryGetValue(format, out var digits) ? digits : 0;
 
         /// <summary>
         /// Determines whether the stored text can be sent down as it stands and converted by the

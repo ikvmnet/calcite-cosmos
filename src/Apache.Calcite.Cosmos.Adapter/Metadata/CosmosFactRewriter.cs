@@ -582,9 +582,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Two spellings reach here. <c>CAST(JSON_VALUE(…) AS TIMESTAMP)</c> carries the text
         /// accessor as its operand, so the operand is the answer — the same one the UUID lowering
         /// takes. And a <em>chain</em>: <c>PARSE_DATE</c> and <c>PARSE_DATETIME</c> carry the text as
-        /// their second operand and a format as their first, and the format is handed back beside the
-        /// accessor because it is half of what licenses the rewrite — see
-        /// <see cref="TryLowerInstant"/>.
+        /// their second operand and a format as their first, and
+        /// <c>CAST(… AS TIMESTAMP(3) FORMAT '…')</c> carries the same pair the other way round. The
+        /// format is handed back beside the accessor because it is half of what licenses the rewrite —
+        /// see <see cref="TryLowerInstant"/>. <see cref="CosmosTemporalParse.TryRead"/> tells the
+        /// chains apart, which is why a cast is read here only where it has no format.
         /// </para>
         /// <para>
         /// <b><c>JSON_VALUE(…, '$.p' RETURNING TIMESTAMP)</c> was a third and has been withdrawn,

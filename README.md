@@ -445,6 +445,18 @@ timestamps are milliseconds — and the separator-less `20240102T030405Z`. `PARS
 `TIMESTAMP WITH LOCAL TIME ZONE` rather than a `TIMESTAMP` and pushes at neither site; use
 `PARSE_DATETIME`.
 
+**Inside a model view, write the standard cast instead.** Calcite analyzes a view without the
+connection's function libraries, so `PARSE_DATETIME` does not validate there. `CAST … FORMAT` does,
+and the adapter reads it as the same parse, with the same formats:
+
+```
+CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''')
+CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(3) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS.FF3''Z''')
+```
+
+Give the type the precision the format reads. A bare `TIMESTAMP` holds no fraction, so a
+millisecond format cast into one is not pushed.
+
 **And the parse is the only spelling that pushes, which is a change from earlier versions.** A cast
 and a `RETURNING` clause used to lower the same way, and they should not have: Calcite cannot
 *evaluate* either of them over an ISO-8601 instant. Measured at the engine,
@@ -456,8 +468,8 @@ always would have. The three conversions Calcite does perform over a stored stri
 calendar date read as a `DATE` or a `TIMESTAMP`, and a whole-second or whole-minute time of day read
 as a `TIME`.
 
-If you have a container of ISO-8601 instants, `PARSE_DATETIME` with a format from the list above is
-the way to filter and sort it at the service.
+If you have a container of ISO-8601 instants, `PARSE_DATETIME` or `CAST … FORMAT` with a format from
+the list above is the way to filter and sort it at the service.
 
 **Why a UUID pattern gives you ordering, and what it depends on.** A canonical lowercase UUID is
 written in `0-9a-f` with the hyphens always in the same places, so sorting the stored strings sorts
