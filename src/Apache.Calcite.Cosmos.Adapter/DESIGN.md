@@ -696,12 +696,28 @@ are kept under one more condition, `NotEqualTo(null)` at the union's path. Every
 a claim about a value if there is one, and a null makes it vacuous rather than false. #172.
 
 **And one about resolution rather than a keyword.** A nested `$id` starts a new base URI, so a pointer
-written under it names a fragment of *that* document; resolution here is against the root, and the same
-pointer can reach a different node. It is the one failure that yields facts about the **wrong path**
-rather than none, so a schema that rebases follows nothing and only a root-relative JSON pointer is
-followed at all. The detector's first draft also looked for Draft 4's `id` and fired on every schema
-describing a property *called* `id` — keyword names and property names share one namespace in a walk
-like this, which is worth remembering before adding another such check.
+written under it names a fragment of *that* resource, and the same `#/$defs/x` reaches a different node
+on either side of it. A bundle is built entirely from this — every resource embedded under `$defs` with
+its own `$id`, every reference relative to the resource it sits in — which is what JsonSchema.Net's
+`SchemaRegistry.CreateBundle` writes. Resolving a reference against the wrong base is the one failure
+that yields facts about the **wrong path** rather than none, so a reference is never resolved by its
+text. The resolver records where each node sits in the document, by identity, and hands that position
+to the library, which builds the schema there under the base every enclosing `$id` gives it; the
+target is whatever that schema's own `$ref` keyword resolved to. The cycle guard is keyed by the
+target's absolute location for the same reason: in a bundle one text names different targets, and
+different texts the same one.
+
+This replaced a detector that refused to follow anything in a schema with a nested `$id`, `$anchor` or
+dynamic reference, and followed only root-relative pointers elsewhere — the library had resolved
+bundles correctly all along and was only being asked by text. The detector's first draft had also
+looked for Draft 4's `id` and fired on every schema describing a property *called* `id`: keyword names
+and property names share one namespace in a walk like this, which is why the position index reads no
+keyword at all and leaves which members are schemas to the library.
+
+**Nothing is fetched.** The library's loaders are removed, so a reference to a document that is not
+this one fails to resolve rather than becoming a network call at schema registration. And the factory
+is built per document rather than shared, because it caches what it loads by `$id`: two containers
+declaring different schemas under one `$id` would otherwise resolve against whichever registered first.
 
 **The library is `com.networknt`**, Apache-2.0, and it resolves rather than walks: its own walker
 follows the branch an *instance* selects, where the compiler wants every branch under the guard that
@@ -710,6 +726,14 @@ selects it. `Microsoft.OpenApi` was the better-looking candidate and does not re
 that being OpenAPI's `$ref` rather than JSON Schema's. The BCL's own `System.Text.Json.Schema` is an
 *exporter*: a type in, a schema out, which is why so many Microsoft APIs emit JSON Schema and none
 reads one.
+
+Bundles reopened the choice and did not change it. JsonSchema.Net writes the bundles in question and
+resolves them, but over `System.Text.Json`, while the model delivers a Jackson tree and the compiler
+walks one — resolving there would mean a second parse and a mapping back to nodes the walk can
+recognise. `com.networknt` 3.x moved to Jackson 3 (`tools.jackson`), a different tree type from the
+Jackson 2 Calcite's model is read with; 2.x stays on Jackson 2 but reworks the API, an upgrade worth
+taking on its own merits rather than for this. Because 1.5 already resolves a bundle correctly,
+offline, once asked by position rather than by text.
 
 #### A guard exists to admit what a fact would have excluded
 
