@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 
 using com.fasterxml.jackson.databind;
 using com.networknt.schema;
+using com.networknt.schema.resource;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -14,7 +16,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// A library does this and hand-rolling it does not: <c>$ref</c> against <c>$id</c>, anchors, and
     /// the dialect differences between them are a specification in themselves, and a real schema —
-    /// certainly one generated from an OpenAPI document — is mostly references.
+    /// certainly one generated from an OpenAPI document, or bundled from several files — is mostly
+    /// references.
     /// </para>
     /// <para>
     /// <b>The library resolves; the compiler walks.</b> <c>com.networknt</c> has a walker of its own,
@@ -23,17 +26,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// is a different traversal over the same tree. So only resolution is taken from here.
     /// </para>
     /// <para>
-    /// <b>References that do not resolve are not errors.</b> A remote reference is not fetched — a URL
-    /// in an operand is a network call at schema registration — and an unresolvable pointer yields no
-    /// facts rather than refusing the container. The schema is a declaration about documents; failing
-    /// to read part of one loses pushdowns and nothing else.
+    /// <b>A reference is resolved where it sits, not by its text.</b> The same <c>#/$defs/x</c> names
+    /// a different node under a nested <c>$id</c>, and a bundle — several resources embedded under
+    /// <c>$defs</c>, each with its own <c>$id</c> — is written entirely in references relative to the
+    /// resource they appear in. So a reference is looked up by the node that carries it: the node's
+    /// position in the document is handed to the library, which builds the schema there with the base
+    /// URI every enclosing <c>$id</c> gives it, and its own <c>$ref</c> keyword names the target.
+    /// </para>
+    /// <para>
+    /// <b>References that do not resolve are not errors.</b> A remote reference is not fetched — the
+    /// library's loaders are removed, since a URL in an operand would otherwise be a network call at
+    /// schema registration — and a reference that names nothing in the document yields no facts rather
+    /// than refusing the container. The schema is a declaration about documents; failing to read part
+    /// of one loses pushdowns and nothing else.
     /// </para>
     /// </remarks>
     sealed class CosmosSchemaResolver
     {
 
         readonly JsonSchema? _schema;
-        readonly bool _rebased;
+        readonly Dictionary<JsonNode, JsonNodePath> _positions = new(ReferenceEqualityComparer.Instance);
+        readonly Dictionary<JsonNode, (JsonNode Target, string Location)?> _resolved = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>
         /// Initializes a new instance.
@@ -41,11 +54,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="root">The schema document.</param>
         public CosmosSchemaResolver(JsonNode root)
         {
-            _rebased = Rebases(root, top: true);
+            Index(root, new JsonNodePath(PathType.JSON_POINTER));
 
             try
             {
-                _schema = JsonSchemaFactory.getInstance(DialectOf(root)).getSchema(root);
+                // A factory per document rather than one shared: the factory caches what it loads by
+                // `$id`, and two containers declaring different schemas under the same `$id` would
+                // otherwise each be resolved against whichever registered first.
+                var factory = JsonSchemaFactory.getInstance(DialectOf(root), new Consumer(b =>
+                    ((JsonSchemaFactory.Builder)b).schemaLoaders(new Consumer(l =>
+                        ((SchemaLoaders.Builder)l).values(new Consumer(v => ((java.util.List)v).clear()))))));
+
+                _schema = factory.getSchema(root);
             }
             catch (Exception)
             {
@@ -57,55 +77,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Determines whether anything below the root moves the base a reference resolves against.
+        /// Records where every container node sits in the document, by identity.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// A nested <c>$id</c> starts a new base URI, and a fragment written under it means a fragment
-        /// of <em>that</em> document rather than of the one it is embedded in. Resolution here is
-        /// against the root, so under a nested <c>$id</c> the same pointer can name a different node
-        /// — and a reference resolved to the wrong node is the one failure mode worth refusing
-        /// outright, since it yields facts about the wrong path rather than none.
-        /// </para>
-        /// <para>
-        /// <c>$anchor</c> and the dynamic pair go with it: both are resolved against a base this does
-        /// not track. Rare in the schemas anyone writes by hand, and cheap to detect.
-        /// </para>
+        /// By identity because the same subschema written twice is two positions, possibly under two
+        /// bases; Jackson's own equality is structural and would merge them. And purely structurally —
+        /// which members are schemas and which are data is the library's question, answered when a
+        /// position is handed to it, so nothing here reads a keyword.
         /// </remarks>
-        static bool Rebases(JsonNode? node, bool top)
+        void Index(JsonNode? node, JsonNodePath position)
         {
-            if (node is null)
-                return false;
+            if (node is null || node.isContainerNode() == false)
+                return;
+
+            _positions[node] = position;
 
             if (node.isArray())
             {
                 for (var i = 0; i < node.size(); i++)
-                    if (Rebases(node.get(i), top: false))
-                        return true;
+                    Index(node.get(i), position.append(i));
 
-                return false;
+                return;
             }
-
-            if (node.isObject() == false)
-                return false;
-
-            // Keyword names and property names share one namespace in this walk, which is the trap
-            // here: a schema describing a property called `id` is not a schema that rebases, and
-            // Draft 4 spelled the keyword exactly that. So only the `$` forms are looked for. A
-            // document with a property actually called `$id` would be read as rebasing and simply
-            // follow no references, which loses facts rather than stating wrong ones.
-            if (top == false && node.has("$id"))
-                return true;
-
-            if (node.has("$anchor") || node.has("$dynamicAnchor") || node.has("$dynamicRef") || node.has("$recursiveRef"))
-                return true;
 
             var fields = node.fields();
             while (fields.hasNext())
-                if (Rebases((JsonNode?)((java.util.Map.Entry)fields.next()).getValue(), top: false))
-                    return true;
-
-            return false;
+            {
+                var field = (java.util.Map.Entry)fields.next();
+                Index((JsonNode?)field.getValue(), position.append((string)field.getKey()));
+            }
         }
 
         /// <summary>
@@ -136,28 +136,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Resolves a reference to the node it names, or <c>null</c>.
+        /// Resolves the <c>$ref</c> a node carries to the node it names.
         /// </summary>
-        /// <param name="reference">The <c>$ref</c> value.</param>
+        /// <param name="node">A schema node with a <c>$ref</c>, as it sits in the document.</param>
+        /// <param name="location">
+        /// The target's absolute location — its resource's URI and the pointer within it — which is
+        /// what identifies it however the reference was spelled.
+        /// </param>
         /// <returns>The target, or <c>null</c> where it could not be reached.</returns>
-        public JsonNode? Resolve(string? reference)
+        public JsonNode? Resolve(JsonNode node, out string? location)
         {
-            if (_schema is null || _rebased || string.IsNullOrEmpty(reference))
+            location = null;
+
+            if (_schema is null || _positions.TryGetValue(node, out var position) == false)
                 return null;
 
-            // A root-relative JSON pointer and nothing else. That is what resolution here can answer
-            // correctly; an absolute URI, a relative document, or a bare anchor would be resolved
-            // against a base this does not track, and a reference pointed at the wrong node states
-            // facts about the wrong path.
-            if (reference!.StartsWith("#/", StringComparison.Ordinal) == false)
+            if (_resolved.TryGetValue(node, out var known) == false)
+                _resolved[node] = known = ResolveAt(position);
+
+            if (known is not var (target, at))
                 return null;
 
+            location = at;
+            return target;
+        }
+
+        (JsonNode Target, string Location)? ResolveAt(JsonNodePath position)
+        {
             try
             {
-                return _schema.getRefSchemaNode(reference);
+                var schema = position.getNameCount() == 0 ? _schema! : _schema!.getSubSchema(position);
+
+                var validators = schema.getValidators().iterator();
+                while (validators.hasNext())
+                    if (validators.next() is RefValidator reference && reference.getSchemaRef().getSchema() is JsonSchema target && target.getSchemaNode() is JsonNode resolved)
+                        return (resolved, target.getSchemaLocation().toString());
+
+                return null;
             }
             catch (Exception)
             {
+                // Unresolvable, remote, or a position the library will not build a schema at. Each
+                // loses the facts behind the reference and nothing more.
                 return null;
             }
         }
@@ -179,9 +199,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return node;
 
             if (node.get("$ref") is JsonNode reference && reference.isTextual())
-                return Resolve(reference.asText());
+                return Resolve(node, out _);
 
             return node;
+        }
+
+        /// <summary>
+        /// A Java consumer over a delegate, for the library's builder callbacks.
+        /// </summary>
+        sealed class Consumer : java.util.function.Consumer
+        {
+
+            readonly Action<object> _accept;
+
+            public Consumer(Action<object> accept) => _accept = accept;
+
+            public void accept(object value) => _accept(value);
+
+            public java.util.function.Consumer andThen(java.util.function.Consumer after) =>
+                java.util.function.Consumer.__DefaultMethods.andThen(this, after);
+
         }
 
     }

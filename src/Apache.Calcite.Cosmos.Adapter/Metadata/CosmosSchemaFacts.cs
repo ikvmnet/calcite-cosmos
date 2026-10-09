@@ -73,14 +73,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // A reference is followed rather than inlined, and a cycle stops here. A recursive schema
             // is legal and describes an unbounded document; the facts on the way round are already
-            // recorded, and going round again would not add one.
-            if (Text(node, "$ref") is string reference)
+            // recorded, and going round again would not add one. The guard is keyed by where the
+            // reference lands rather than by how it is spelled: in a bundle the same text names
+            // different targets from different resources, and different texts name the same one.
+            if (Text(node, "$ref") is not null)
             {
-                if (visiting.Add(reference) == false)
+                if (resolver.Resolve(node, out var location) is not JsonNode target || visiting.Add(location!) == false)
                     return;
 
-                Walk(resolver.Resolve(reference), path, guard, rules, resolver, visiting);
-                visiting.Remove(reference);
+                Walk(target, path, guard, rules, resolver, visiting);
+                visiting.Remove(location!);
                 return;
             }
 

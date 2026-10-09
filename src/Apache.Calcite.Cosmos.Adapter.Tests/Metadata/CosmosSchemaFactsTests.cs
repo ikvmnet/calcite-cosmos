@@ -761,22 +761,99 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A nested <c>$id</c> moves the base a reference resolves against, and resolution here is
-        /// against the root — so nothing is followed at all rather than followed to the wrong node.
+        /// A nested <c>$id</c> moves the base a reference resolves against, so the same pointer names
+        /// a different node on either side of it.
         /// </summary>
+        /// <remarks>
+        /// The case that once made the adapter follow nothing in such a schema: resolved against the
+        /// root, <c>inner</c>'s <c>#/$defs/d</c> would reach the root's <c>d</c> and state a uuid
+        /// form for a path declared as a date — facts about the wrong path rather than none.
+        /// </remarks>
         [Fact]
-        public void ASchemaThatRebasesItsReferencesIsNotFollowed()
+        public void ANestedIdRebasesTheReferencesBeneathIt()
         {
             const string Rebased = """
             {
-              "$defs": { "inner": { "$id": "https://example.test/inner",
-                                    "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } },
-              "properties": { "at": { "$ref": "#/$defs/inner" } }
+              "$defs": {
+                "d": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+                "inner": { "$id": "https://example.test/inner",
+                           "$defs": { "d": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } },
+                           "type": "object", "properties": { "x": { "$ref": "#/$defs/d" } } }
+              },
+              "properties": { "u": { "$ref": "#/$defs/d" }, "at": { "$ref": "https://example.test/inner" } }
             }
             """;
 
-            Compile(Rebased).Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("at"))
-                .Should().BeNull("a reference resolved against the wrong base states facts about the wrong path");
+            var derived = Compile(Rebased).Derive(null);
+
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("u")).Should().Be(CosmosUuidForms.CanonicalLower);
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("at").Property("x"))
+                .Should().Be(CosmosTemporalForms.Iso8601Date, "under inner's $id the pointer names inner's own $defs");
+        }
+
+        /// <summary>
+        /// A bundle — the shape JsonSchema.Net's <c>SchemaRegistry.CreateBundle</c> writes — is
+        /// followed across the resources embedded in it.
+        /// </summary>
+        /// <remarks>
+        /// Nothing in it is root-relative: the root's <c>$ref</c> is an absolute URI, and the reference
+        /// inside one resource names another by a URI relative to its own <c>$id</c>.
+        /// </remarks>
+        [Fact]
+        public void ABundledSchemaIsFollowedAcrossItsResources()
+        {
+            const string Bundle = """
+            {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://example.com/schemas/links.bundle.json",
+              "$ref": "https://example.com/schemas/links.schema.json",
+              "$defs": {
+                "https://example.com/schemas/links.schema.json": {
+                  "$id": "https://example.com/schemas/links.schema.json",
+                  "type": "object",
+                  "required": ["guid"],
+                  "properties": { "guid": { "$ref": "common.schema.json#/$defs/uuid" } }
+                },
+                "https://example.com/schemas/common.schema.json": {
+                  "$id": "https://example.com/schemas/common.schema.json",
+                  "$defs": {
+                    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+                  }
+                }
+              }
+            }
+            """;
+
+            var guid = CosmosDocumentPath.Root.Property("guid");
+            var derived = Compile(Bundle).Derive(null);
+
+            derived.RepresentationOf(guid).Should().Be(CosmosUuidForms.CanonicalLower);
+            derived.Knows(new CosmosFact(guid, new CosmosClaim.Present())).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A reference to a document that is not in this one costs only the facts behind it.
+        /// </summary>
+        /// <remarks>
+        /// That it is not <em>fetched</em> is the resolver's removing the library's loaders, and this
+        /// does not show it: an unreachable host fails the same way either way.
+        /// </remarks>
+        [Fact]
+        public void ARemoteReferenceLosesOnlyItself()
+        {
+            const string Remote = """
+            {
+              "properties": {
+                "elsewhere": { "$ref": "https://example.invalid/schemas/date.json" },
+                "here": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+              }
+            }
+            """;
+
+            var derived = Compile(Remote).Derive(null);
+
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("elsewhere")).Should().BeNull();
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("here")).Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
         [Fact]
