@@ -1273,7 +1273,6 @@ old wording did not allow for.
   element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
   t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
   cannot answer. Measure it against an account before binding it.
-- **Unique key policy** — *small.* Declared unique keys are keys `getStatistic` does not report.
 - **Tuple indexes** — *small, and unclaimed.* The one indexing-policy declaration
   `CosmosContainerMetadataReader` still does not read. Nothing consults it yet, which is why it was
   left where the full text and vector paths were not.
@@ -1289,6 +1288,24 @@ old wording did not allow for.
 - **Computed properties** — *medium.* A container can declare named, queryable, indexable computed
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
+
+### Through a connection, a filter is pushed whole or not at all — *medium, and unexplained*
+
+Measured in #177 over `links` on the emulator, through a `CalciteConnection` and `EXPLAIN PLAN FOR`. A
+`WHERE` whose every conjunct renders pushes. One that holds a conjunct that does not render — `SIMILAR TO`,
+an `OVERLAY`, an `INTEGER` cast in arithmetic, a `UUID` cast over a path with no form — pushes **nothing**:
+the plan is the whole predicate in a `ClrCursorCalc` over `CosmosProject(DOC)` over the scan, and
+`type = 'Link'` beside the unrenderable conjunct stays in process with it. The same query under a bare
+Volcano planner with the adapter's and the CLR convention's rules — what every planning test here uses —
+splits correctly: a `ClrCursorFilter` for the residual over a pushed `CosmosFilter`. Field trimming is not
+the difference; adding `RelFieldTrimmer` to the bare harness still splits.
+
+So something in the host's prepare path (`ClrPrepare` in `Apache.Calcite.Extensions`) prices or prunes the
+split plan away. The same happens when the *projection* above a renderable filter does not render: the
+`Link` view in `CosmosSelfJoinTests`, whose filter is two equalities and whose projection holds `INTEGER`
+and `BOOLEAN` casts, read `links` unfiltered before #177, and every link with its body still does after it. Start by comparing the
+two plans' costs as the connection's planner sees them; the row count it reads from the service is the
+first difference from the bare harness.
 
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
@@ -1619,6 +1636,39 @@ answer.
 - **A schema carried by reference** rather than inline. Inline is the right default and the README
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
+
+### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
+
+Built in #177: `CosmosConstraintSet`, the `UNIQUE` constraint with an optional filter, the constraints the
+service and the container definition state, a model's `constraints.unique`, and `CosmosSelfJoinRule`
+reading a join of a container to itself on one as one read. `DESIGN.md` under *A constraint says what holds
+across documents* and *A join of a container to itself* is the record.
+
+- **An expression constraint relating two paths of one document** — *large.* `data.id = linkId` under
+  `type = 'Link'`. Checkable per document, so the same trust as a schema rather than a `UNIQUE`'s. Two
+  consumers: a join equating `data.id` then equates `linkId` too, which with `UNIQUE(pk, id)` and
+  `id = 'Link$' || linkId` makes an integer key held at all three provable with no claim about pairs of
+  documents; and
+  facts carry across the paths. It wants path equality in the fact theory, whose atoms are `(path, claim)`
+  today — and path equality is also what would let a contradiction like `foo = 1 AND bar = 2` over
+  `foo == bar` be decided.
+- **A contradiction should send nothing** — *small.* A predicate the facts contradict renders as
+  `WHERE @p0` with a bound `false`: one round trip for no rows. An empty `Values` in its place is no request
+  at all. Independent of the item above, which only adds contradictions for it to catch.
+- **A partition key pinned by both sides makes `id` alone unique** — *medium.* Both sides proving
+  `pk = 'X'` puts every candidate document in one logical partition, where `id` is unique. A filter that is
+  a function of the query rather than a constant, so it does not fit `UNIQUE`'s fixed filter and wants its
+  own case in `IsUnique`.
+- **More key readings** — *small each.* `CAST(… AS INTEGER)` over a path declared integer, and a
+  concatenation such as `linkId || '/' || id` — injective because an `id` cannot hold `/` — which would give
+  a single-column key the service proves.
+- **Semi and anti joins** — *small.* The substitution answers them: `σ(F ∧ M)` and `σ(F ∧ NOT M IS TRUE)`.
+  Nothing has asked for them.
+- **How a legacy container's system partition key is reported** — *measurement.* Believed to be
+  `/_partitionKey`, which its documents do not hold, so `UNIQUE(_partitionKey, id)` is stated — true, and
+  never matched — where `UNIQUE(id)` would be. Measure against an account holding one.
+- **Whether absent and null partition key values are one partition on Azure** — *measurement.* One on the
+  emulator (409 on a second `A`). Nothing depends on the answer; DESIGN.md says what is measured.
 
 ---
 

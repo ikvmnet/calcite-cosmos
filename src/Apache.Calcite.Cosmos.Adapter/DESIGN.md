@@ -197,7 +197,7 @@ metadata rather than *type* metadata:
 | `_ts` (epoch seconds), `_etag`, `_rid`, `_self` | Service-generated on every item | Typed columns; `_ts` is a real timestamp |
 | Included / excluded index paths | Indexing policy | Whether a predicate is cheap or a scan |
 | Composite indexes (ordered, with direction) | Indexing policy | **Whether `ORDER BY` is legal at all** |
-| Unique key policy | Container definition | Unique keys |
+| Unique key policy | Container definition | `UNIQUE(pk…, paths…)` — see *A constraint says what holds across documents* |
 | Computed properties | Container definition | Named, queryable, declared paths |
 | Full text policy and full text indexes | Container definition, indexing policy | **Whether a full text function pushes at all** |
 | Vector embedding policy and vector indexes | Container definition, indexing policy | **Whether `VECTORDISTANCE` pushes at all** |
@@ -858,6 +858,56 @@ pushed `LIMIT` — nothing rechecks, and the condition becomes that the statemen
 entails the guard. `CosmosFilterSplitRule` therefore establishes facts only from the conjuncts that
 translate unaided, those being the ones certain to be pushed; taking them from the whole predicate
 would push a comparison whose guard stayed above it in the residual.
+
+#### A constraint says what holds across documents
+
+A fact is a claim about one document. Some things worth knowing are claims about every *pair* of
+documents — no two share a value at a path — and no single document can satisfy or violate one, so they
+have no place in a theory of per-document atoms. #177 needed one: whether a join of a container to
+itself pairs a document only with itself. `CosmosConstraintSet` holds them, beside the fact theory and
+assembled the same way, from several sources and asked in one place.
+
+**One kind so far, `UNIQUE`: a set of paths, and optionally a filter.** Among the documents the filter
+admits, no two hold the same values at all of the paths. A document holding no value at one of them is
+outside the claim rather than against it — a null equals nothing — which is what makes a constraint over
+an optional path still mean something.
+
+| source | constraint | stands behind it |
+| --- | --- | --- |
+| Service | `UNIQUE(pk…, id)`; `UNIQUE(id)` where there is no partition key | the service, on every write |
+| Container definition | `UNIQUE(pk…, paths…)` per unique key policy entry | the service, on every write |
+| Model | whatever `constraints.unique` declares, filtered or not | nothing |
+
+**Every constraint is stated across the whole container.** `id` and a unique key policy are unique within a
+logical partition, so the source adds the partition key paths rather than leaving every consumer to remember
+which constraints are partition-scoped. Uniqueness within a partition is not something a planner can use
+alone, and stating it as though it were invites that mistake. Every path of a hierarchical key is added: two
+documents agreeing on a prefix may be in different partitions. Where the partition key is `/id` the
+service's constraint is `UNIQUE(id)`, the two sets being one.
+
+**A partition key that is absent or null is no exception, and that was checked rather than assumed.** Both
+read as SQL null, and a null equates nothing — so a join over `pk + id` never pairs two documents through a
+null partition key, whatever partitions they sit in. Measured against the emulator, absent and null are
+*one* partition there: a document `A` with no partition key value is refused, 409, after a document `A`
+whose partition key is null. Whether Azure keeps them apart is not measured, and nothing depends on it.
+
+**A filter is a conjunction of facts, and a consumer has to prove it of every document it compares.**
+`UNIQUE(/linkId) WHERE /type = 'Link'` says nothing about a Link and a document of another kind sharing a
+`linkId`, so a join can use it only where *both* sides' predicates entail the filter — proving it of one side
+is not enough. The facts are the same `EqualTo` and `OneOf` atoms a schema's `const` and `enum` compile to,
+read by the same literal reader, so a predicate proves a filter exactly as it proves a schema's guard.
+
+**`UNIQUE` contributes no facts.** It says nothing about any one document. A constraint that relates two
+paths of one document — `data.id = linkId` — would: it is checkable per document, the same trust as a
+schema, and it would both carry facts across paths and widen what a join equates. It is not read yet; see
+`TODO.md`.
+
+**A declared constraint is a stronger claim than a schema.** A schema says what each document holds and can
+be checked one document at a time — the write path can validate against it. A `UNIQUE` constraint is about
+every pair, and checking it means reading every document. A wrong one pairs two documents as one document
+with itself, and the rows the second contributed are dropped, with no error and a plan that looks correct.
+So the model names constraints in a block of their own, refused rather than ignored where it says anything
+this does not read: a constraint silently dropped is one the caller believes is in force.
 
 ### Verified against the emulator
 
@@ -2326,6 +2376,89 @@ belongs to the rule that pushes the sort, where `CosmosContainerMetadata.IsSortS
 Calcite's own adapters agree: Cassandra keeps its clustering order on the table for its rules to read
 and does not implement `getStatistic` at all — and a Cassandra clustering order genuinely *is* the
 storage order, which a Cosmos composite index is not.
+
+### A join of a container to itself
+
+A federation presents one container as several views, each a projection of the same documents narrowed by
+a discriminator, and a table-per-type mapping joins them back together on the key they share. Every view
+reads the same document by the same key, and each read brings the document whole. Measured over the
+link views in `CosmosSelfJoinTests`, before #177: the map links on one map read `links` three times, and every link with its body
+read it five times, joined by four hash joins — and two of the reads carried no predicate the query asked.
+
+`CosmosSelfJoinRule` reads such a join as one read:
+
+```
+Join(l.k = r.k)                          Project(P, CASE WHEN M THEN Q END)
+  Project(P, Filter(F, Scan(c)))    →      Filter(F, Scan(c))
+  Project(Q, Filter(G, Scan(c)))
+```
+
+**Why it is sound.** Each input yields at most one row per document, each a function of its document.
+Where the join equates the paths of a `UNIQUE` constraint, any pair it makes is a document paired with
+itself, and the join becomes a function of one document. Call `M` the other side's filter and the join
+condition, both evaluated over that document:
+
+| join | one read |
+| --- | --- |
+| inner | `σ(F ∧ M)`, both sides' columns |
+| left | `σ(F)`, each right column `CASE WHEN M THEN q END` |
+| right | the mirror |
+| full | declined: a document with a null key is one row merged and two joined |
+| semi, anti | declined for now; the same substitution answers them |
+
+The key equality `k = k` becomes `k IS NOT NULL` by that substitution, which *is* the join's null
+semantics — a document holding no key pairs with nothing — so no case needs handling of its own. A stricter
+right filter is a stricter `M`; the left row survives it with nulls. And it closes over itself: what it
+produces is again a projection over a filter over the scan, so the join above merges too, and the five reads
+become one. A merged left join carries its key as `CASE WHEN M THEN k END`, which is `k` or null and equal to
+anything only where it is `k`, so the key is read through it.
+
+**The uniqueness is asked of the container, and of both sides.** The tempting route is Calcite's own:
+`RelMdColumnUniqueness` on each input. It is the wrong question. With park links on the left and map links
+on the right, a guid unique among the map links still lets one park link and one map link share it; the
+join pairs them, and one read of each document would not. What licenses the merge is that the key names at
+most one document among *everything either side reads* — which a `UNIQUE` constraint over the container
+says, and a filtered one says only where both sides' predicates prove its filter. See *A constraint says what
+holds across documents*.
+
+**The key expression has to read the stored key faithfully**, which uniqueness of the stored value does not
+give on its own. `JSON_VALUE` reads the number `1` and the string `"1"` as the same text, and a cast to
+`UUID` reads `ABC…` and `abc…` as the same value. So a text accessor, or a promoted column, counts where the
+facts give the path one scalar type; a `UUID` cast counts where they give it a canonical UUID form — the
+same fact that makes the cast push. The facts asked are the unconditional ones.
+
+**Why it is not Calcite's.** `ProjectJoinRemoveRule` removes a join only where none of one side's columns is
+used. `LoptMultiJoin.RemovableSelfJoin`, inside `LoptOptimizeJoinRule`, needs the key to be a column of the
+table with a unique key reported for it. Here the key is an expression over `DOC`, with no ordinal a
+`getStatistic` key could name, and both sides contribute columns. Nothing in Calcite 1.43 merges that.
+
+**What it took to push the result.** Over one document `k = k` is `k IS NOT NULL`, and an identifier key is
+a `UUID` cast, which the service cannot evaluate — so every merged join carried a conjunct that kept its
+whole predicate in process. Where the path's form is a declared canonical UUID a cast is null exactly where
+its text is, and `CosmosFactRewriter` now lowers the test onto the text. With that, the map links on a map
+plan as one `CosmosFilter` over one scan: `type = 'Link'`, `data.type = 'map'`, `mapId = '…'`,
+`guid IS NOT NULL`, the projection pushed with it.
+
+**What it does not yet reach, and why.** Every link with its body reads once, but that read is unfiltered:
+the merged projection holds `CASE` columns that do not push, and through a real connection a filter whose
+projection stays in process stays in process with it. That is not this rule's — the `Link` view alone
+showed it before #177, as the unfiltered read the plan began with — and a bare Volcano planner splits the
+same query correctly. It is recorded in `TODO.md`.
+
+**What a consumer has to state.** A join on the partition key and `id` needs nothing: the service enforces
+it. A join on anything else needs a `UNIQUE` constraint the model declares, and that is a promise nothing
+checks. For the links in `CosmosSelfJoinTests`, partitioned on `/linkId` and keyed by a guid, that is a
+choice between three:
+
+- **`UNIQUE(/data/guid)`**, declared. Keeps the views as they are. True by whatever convention the
+  application keeps, and by nothing the adapter can check across every writer and every document.
+- **Keyed on `linkId` with `id`.** Provable today with nothing declared, at the cost of a composite key
+  where the views had one column.
+- **Keyed on an integer id**, where the application writes one value into `data.id`, `linkId` and the
+  document `id` alike. Not
+  provable from uniqueness alone; provable from `UNIQUE(pk, id)` plus per-document equalities between those
+  paths, once the constraint set reads them — a promise each document can be checked against, rather than
+  one about every pair.
 
 ### Reading a value back
 

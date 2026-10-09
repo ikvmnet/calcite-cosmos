@@ -49,6 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string[] _fullTextPaths;
         readonly string[] _vectorPaths;
         readonly bool _readsGeography;
+        readonly IReadOnlyList<string>[] _uniqueKeys;
 
         /// <summary>
         /// Initializes a new instance.
@@ -62,6 +63,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="vectorPaths">The paths the container declares vector searchable.</param>
         /// <param name="readsGeography">Whether the container reads coordinates as geography rather than as a plane.</param>
         /// <param name="statistics">What the service reports about the container's size, or <c>null</c> where it was not asked.</param>
+        /// <param name="uniqueKeys">The path sets of the container's unique key policy, each in policy form.</param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is <c>null</c> or empty.</exception>
         public CosmosContainerMetadata(
             string name,
@@ -72,7 +74,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             IEnumerable<string>? fullTextPaths = null,
             IEnumerable<string>? vectorPaths = null,
             bool readsGeography = true,
-            CosmosContainerStatistics? statistics = null)
+            CosmosContainerStatistics? statistics = null,
+            IEnumerable<IReadOnlyList<string>>? uniqueKeys = null)
         {
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentException($"'{nameof(name)}' cannot be null or empty.", nameof(name));
@@ -86,6 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _fullTextPaths = fullTextPaths is null ? Array.Empty<string>() : new List<string>(fullTextPaths).ToArray();
             _vectorPaths = vectorPaths is null ? Array.Empty<string>() : new List<string>(vectorPaths).ToArray();
             _readsGeography = readsGeography;
+            _uniqueKeys = uniqueKeys is null ? Array.Empty<IReadOnlyList<string>>() : new List<IReadOnlyList<string>>(uniqueKeys).ToArray();
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -432,7 +436,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             return statistics is null
                 ? this
-                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics);
+                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics, _uniqueKeys);
         }
 
         Lazy<bool> _partitionKeyDelete = new(() => false, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -465,12 +469,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (probe is null)
                 throw new ArgumentNullException(nameof(probe));
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
             metadata._facts = _facts;
+            metadata._declared = _declared;
 
             // Not expiring, and deliberately: a capability changes when someone enables a preview
             // on the account, which is not something a running process can observe happening.
@@ -500,12 +505,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (timeToLive is TimeSpan span && span <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeToLive), "A statistics time to live must be positive.");
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
             metadata._statisticsProvider = provider;
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
             metadata._facts = _facts;
+            metadata._declared = _declared;
             return metadata;
         }
 
@@ -564,13 +570,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (combined.Count == _facts.Rules.Count)
                 return this;
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
             metadata._facts = new CosmosFactTheory(combined);
+            metadata._declared = _declared;
+            return metadata;
+        }
+
+        CosmosConstraintSet? _constraints;
+        IReadOnlyList<CosmosConstraint> _declared = Array.Empty<CosmosConstraint>();
+
+        /// <summary>
+        /// Gets what is true of this container's documents taken together — the keys a join can be read
+        /// through — from every source that knows something.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Derived where it can be, declared where it cannot.</b> The service and the container definition
+        /// state keys nobody has to vouch for — <c>id</c> with the partition key, a unique key policy with
+        /// the partition key — and <see cref="CosmosConstraintSet.FromContainer"/> derives them from what
+        /// was read. A model adds what only the application knows, through <see cref="WithConstraints"/>.
+        /// </para>
+        /// <para>
+        /// A unique key policy can only be set when a container is created, so for an existing container
+        /// a declaration is the only route to a key the service does not already state.
+        /// </para>
+        /// </remarks>
+        public CosmosConstraintSet Constraints =>
+            _constraints ??= new CosmosConstraintSet(CosmosConstraintSet.FromContainer(_partitionKeyPaths, _uniqueKeys)).With(_declared);
+
+        /// <summary>
+        /// Returns the same metadata knowing these constraints as well.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A declared constraint is trusted the way a schema is</b>, and a key is the stronger claim of
+        /// the two: a schema says what each document holds and can be checked one document at a time, while
+        /// a key says something about every pair of them. A key that is not one makes a join that pairs two
+        /// documents read as one document paired with itself, and the rows the second contributed are
+        /// dropped — with no error and a plan that looks correct. Nothing checks it, since checking would
+        /// mean reading every document.
+        /// </para>
+        /// </remarks>
+        /// <param name="constraints">The constraints, as declared.</param>
+        /// <returns>The metadata.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="constraints"/> is <c>null</c>.</exception>
+        public CosmosContainerMetadata WithConstraints(IEnumerable<CosmosConstraint> constraints)
+        {
+            if (constraints is null)
+                throw new ArgumentNullException(nameof(constraints));
+
+            var combined = new List<CosmosConstraint>(_declared);
+            foreach (var constraint in constraints)
+                if (combined.Contains(constraint) == false)
+                    combined.Add(constraint);
+
+            if (combined.Count == _declared.Count)
+                return this;
+
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
+            metadata._statistics = _statistics;
+            metadata._statisticsProvider = _statisticsProvider;
+            metadata._statisticsTimeToLive = _statisticsTimeToLive;
+            metadata._time = _time;
+            metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = _facts;
+            metadata._declared = combined;
             return metadata;
         }
 

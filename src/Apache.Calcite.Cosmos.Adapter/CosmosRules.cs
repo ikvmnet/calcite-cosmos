@@ -174,6 +174,14 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             yield return CosmosUnnestRule.Create(convention);
 
+            // Not a conversion: a logical rewrite of a join of a container to itself on one of its keys
+            // into one read of it. A federation presenting one container as several views joins them back
+            // together on the key they share, and each view was a read of the whole container (#177).
+            // Takes no convention, reading the container from the scans, so its instances are static and
+            // registering them once per convention registers them once.
+            foreach (var rule in CosmosSelfJoinRule.Create())
+                yield return rule;
+
             // Calcite's own transpose again, and the one that decides whether a predicate over a
             // traversed element is answered by the service or by the plan. A query writes that
             // predicate above the traversal, where CosmosUnnestRule cannot see it and the element

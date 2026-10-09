@@ -533,6 +533,47 @@ rather than refused, an unrecognised pattern yields no fact, and a schema it can
 the container working exactly as it did. Saying nothing about a path costs a pushdown; saying
 something untrue about it costs rows.
 
+### Saying what no two documents share
+
+A schema describes each document. What it cannot say is anything about two of them, and one such thing
+decides whether several views of one container cost one read or several: whether a value names one
+document. Where a query joins views of the same container on a value that does, each document is paired
+only with itself, and the adapter answers the join by reading the container once — the views' filters
+combined, a left join's missing side as nulls.
+
+Some of that the adapter knows without being told. `id` is unique within a logical partition, so the
+partition key with `id` names one document; so does the partition key with the paths of a unique key
+policy. A join that equates those needs nothing declared.
+
+Anything else you declare, with a `UNIQUE` constraint beside the schema:
+
+```json
+{
+  "name": "links",
+  "schema": { },
+  "constraints": {
+    "unique": [
+      { "paths": ["/data/guid"] },
+      { "paths": ["/linkId"], "filter": { "/type": "Link" } }
+    ]
+  }
+}
+```
+
+The first says no two documents in the container hold the same `data.guid`. The second says no two
+documents whose `type` is `Link` hold the same `linkId`, and is used only where both sides of a join are
+proved to be Links. A document with no value at a path is outside the claim — a null equals nothing.
+
+**This is a stronger promise than a schema, and nothing checks it.** A schema can be checked one document at
+a time; a `UNIQUE` constraint is about every pair, and checking it would mean reading the container. If two
+documents do share a value, a join that should pair them is read as one document paired with itself, and
+the second document's rows are missing from the answer — no error, and a plan that looks right. Declare one
+only where the application makes it so, for every writer. A unique key policy is the service-enforced
+alternative, but it can only be set when a container is created and is unique within a partition.
+
+Anything in `constraints` the adapter does not read is refused rather than ignored, because a constraint
+silently dropped is one you believe is in force.
+
 ## What gets pushed down
 
 | | |

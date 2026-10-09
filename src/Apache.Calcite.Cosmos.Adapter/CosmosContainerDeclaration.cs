@@ -18,6 +18,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// </remarks>
     /// <param name="Name">The container name.</param>
     /// <param name="Facts">The facts the model's schema stated; empty where it stated none.</param>
-    public readonly record struct CosmosContainerDeclaration(string Name, IReadOnlyList<CosmosFactRule> Facts);
+    /// <param name="Constraints">The constraints the model declared; <c>null</c> where it declared none.</param>
+    public readonly record struct CosmosContainerDeclaration(string Name, IReadOnlyList<CosmosFactRule> Facts, IReadOnlyList<CosmosConstraint>? Constraints = null);
 
 }
