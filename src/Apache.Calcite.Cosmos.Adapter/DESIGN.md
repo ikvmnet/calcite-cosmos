@@ -663,6 +663,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `allOf` | every branch applies | every branch, same guard |
 | `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the value |
 | `oneOf`/`anyOf`, undiscriminated | one of them applies | the meet |
+| `oneOf`/`anyOf`, `null` and one other branch | the other branch, or a null | that branch, each fact widened to admit the null |
 | `if`/`then`/`else` | a conditional | a guard, only where the whole condition is read |
 | `dependentRequired`, `dependentSchemas` | conditionals keyed on presence | the same, guarded by the trigger |
 | `not` | a negation | one property under one `const` or `enum`; otherwise nothing |
@@ -682,6 +683,17 @@ that the author declared it, which is the footing the whole schema is trusted on
 guard demands one — so `then` is applied to fewer documents than the schema allows, not more. And the
 meet holds under `oneOf` and `anyOf` alike: a fact every branch states is true whether exactly one
 validates or at least one does.
+
+**A union with `null` is a third spelling of nullable, not a union.** `anyOf: [{type: null}, X]`
+is how 2020-12 writes an optional value most often, and the meet reads nothing from it — a null and a
+string share no fact. So where every branch but one admits only `null`, that one is read instead, and
+each fact it yields is made true of the null too: a type takes its `OrNull`, a constant or a domain
+gains `null` as a member, a disequality of anything but `null` is kept, and a stored form is kept
+as it is, already being silent about whether a string is there. A fact that says something is
+**there** — a `required` child, a `not`'s property, a geography — is false of a null standing in for
+the object, and `Present` cannot tell them apart since `IS_DEFINED` is true of a null; so those rules
+are kept under one more condition, `NotEqualTo(null)` at the union's path. Everything else below is
+a claim about a value if there is one, and a null makes it vacuous rather than false. #172.
 
 **And one about resolution rather than a keyword.** A nested `$id` starts a new base URI, so a pointer
 written under it names a fragment of *that* document; resolution here is against the root, and the same
