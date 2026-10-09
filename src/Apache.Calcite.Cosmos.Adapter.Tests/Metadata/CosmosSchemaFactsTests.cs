@@ -317,6 +317,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ("{ 'type': ['null','string'] }",                         null,   false,  true),
                 ("{ 'type': 'string', 'nullable': false, 'pattern': 'P' }", lower, true,  true),
 
+                // And the third spelling, as a union with a branch admitting only null. The same
+                // statement as the two above, so the same answer; #172.
+                ("{ 'anyOf': [ { 'type': 'null' }, { 'type': 'string', 'pattern': 'P' } ] }", lower, false, true),
+                ("{ 'oneOf': [ { 'type': 'string', 'pattern': 'P' }, { 'const': null } ] }",   lower, false, true),
+                ("{ 'anyOf': [ { 'enum': [null] }, { 'type': 'string' } ] }",                   null,  false, true),
+                ("{ 'anyOf': [ { 'type': ['null'] }, { '$ref': '#/$defs/u' } ] }",              lower, false, true),
+
+                // A third branch is a real union again, and a null branch carrying anything not read
+                // is not taken for one; both fall back to the meet, which here is nothing.
+                ("{ 'anyOf': [ { 'type': 'null' }, { 'type': 'string', 'pattern': 'P' }, { 'type': 'number' } ] }", null, false, false),
+                ("{ 'anyOf': [ { 'type': 'null', 'x-other': 1 }, { 'type': 'string', 'pattern': 'P' } ] }",          null, false, false),
+
                 // Two real types agree on nothing, so neither is stated and the pattern goes with them.
                 ("{ 'type': ['string','number'], 'pattern': 'P' }",       null,   false,  false),
 
@@ -329,7 +341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             foreach (var (subschema, form, strict, orNull) in cases)
             {
-                var json = ("{ 'properties': { 'v': " + subschema + " } }")
+                var json = ("{ '$defs': { 'u': { 'type': 'string', 'pattern': 'P' } }, 'properties': { 'v': " + subschema + " } }")
                     .Replace("'P'", "\"" + Uuid + "\"")
                     .Replace("'L'", "\"" + Loose + "\"")
                     .Replace('\'', '"');
@@ -626,6 +638,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             derived.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("b"), new CosmosClaim.OfType(CosmosJsonType.Integer)))
                 .Should().BeFalse("only one branch says so, and nothing selects it");
+        }
+
+        /// <summary>
+        /// A value claim from the non-null branch of a nullable union is widened to admit the null.
+        /// </summary>
+        /// <remarks>
+        /// A constant in the branch is not a constant of the union: the null is the other value it
+        /// can hold. So it is read as a domain of the two, which still refutes everything else.
+        /// </remarks>
+        [Fact]
+        public void ANullableUnionWidensAConstantToADomainWithNull()
+        {
+            var v = CosmosDocumentPath.Root.Property("v");
+            var derived = Compile("""
+            { "properties": { "v": { "anyOf": [ { "type": "null" }, { "const": "A" } ] } } }
+            """).Derive(null);
+
+            derived.Knows(new CosmosFact(v, new CosmosClaim.EqualTo("A"))).Should().BeFalse("a null is admitted too");
+            derived.Knows(new CosmosFact(v, new CosmosClaim.OneOf(new object?[] { "A", null }))).Should().BeTrue();
+            derived.Knows(new CosmosFact(v, new CosmosClaim.NotEqualTo("B"))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A presence read from the non-null branch of a nullable union holds only where the value is
+        /// not the null.
+        /// </summary>
+        /// <remarks>
+        /// <c>required</c> inside the object branch is guarded by the object being there, and a null
+        /// is there too — <c>IS_DEFINED</c> is true of it — while nothing below it is. So the parent's
+        /// presence is not enough, and the rule waits for the value to be shown not null.
+        /// </remarks>
+        [Fact]
+        public void ANullableObjectRequiresItsChildrenOnlyWhereItIsNotNull()
+        {
+            var o = CosmosDocumentPath.Root.Property("o");
+            var k = o.Property("k");
+            var theory = Compile("""
+            { "properties": { "o": { "anyOf": [ { "type": "null" },
+                                                { "type": "object", "required": ["k"], "properties": { "k": { "type": "string" } } } ] } } }
+            """);
+
+            var present = new CosmosFact(o, new CosmosClaim.Present());
+            var notNull = new CosmosFact(o, new CosmosClaim.NotEqualTo(null));
+
+            theory.Derive(new[] { present }).Knows(new CosmosFact(k, new CosmosClaim.Present()))
+                .Should().BeFalse("a null at o is present and has no k");
+            theory.Derive(new[] { present, notNull }).Knows(new CosmosFact(k, new CosmosClaim.Present()))
+                .Should().BeTrue();
+
+            theory.Derive(null).Knows(new CosmosFact(o, new CosmosClaim.OfType(CosmosJsonType.Object, OrNull: true)))
+                .Should().BeTrue();
+            theory.Derive(null).Knows(new CosmosFact(k, new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Should().BeTrue("a claim about a value below is vacuous, not false, where there is no value");
         }
 
         [Fact]

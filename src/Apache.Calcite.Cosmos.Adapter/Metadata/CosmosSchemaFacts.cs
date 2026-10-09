@@ -295,6 +295,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// directly are intersected; a conditional nested inside an undiscriminated branch is dropped,
         /// which loses facts and stays sound.
         /// </para>
+        /// <para>
+        /// <b>Nullable.</b> Where every branch but one admits only <c>null</c>, the union is that one
+        /// branch made nullable — the commonest way 2020-12 spells an optional value, and the same
+        /// statement <c>"type": [X, "null"]</c> makes beside the branch's keywords. The meet would
+        /// read nothing, <c>{ "type": "null" }</c> sharing no fact with anything; reading the branch
+        /// instead is an equivalence rather than a weakening, provided each fact it states is widened
+        /// to admit the null — see <see cref="AdmitNull"/>.
+        /// </para>
         /// </remarks>
         static void WalkBranches(
             JsonNode? branches,
@@ -323,6 +331,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return;
             }
 
+            if (NullableBranch(branches, resolver) is JsonNode nullable)
+            {
+                var stated = new List<CosmosFactRule>();
+                Walk(nullable, path, guard, stated, resolver, visiting);
+
+                foreach (var rule in stated)
+                    if (AdmitNull(rule, path) is CosmosFactRule widened)
+                        rules.Add(widened);
+
+                return;
+            }
+
             List<CosmosFactRule>? meet = null;
 
             for (var i = 0; i < branches.size(); i++)
@@ -341,6 +361,137 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (meet is not null)
                 rules.AddRange(meet);
+        }
+
+        /// <summary>
+        /// Returns the one branch of a union that admits more than <c>null</c>, where every other
+        /// branch admits only <c>null</c>; otherwise <c>null</c>.
+        /// </summary>
+        /// <param name="branches">The branches.</param>
+        /// <param name="resolver">Resolves a branch written as a reference.</param>
+        /// <returns>The branch as written, so a reference in it is still followed by the walk.</returns>
+        static JsonNode? NullableBranch(JsonNode branches, CosmosSchemaResolver resolver)
+        {
+            JsonNode? remaining = null;
+            var nulls = 0;
+
+            for (var i = 0; i < branches.size(); i++)
+            {
+                if (branches.get(i) is not JsonNode branch)
+                    return null;
+
+                if (AdmitsOnlyNull(resolver.Follow(branch)))
+                {
+                    nulls++;
+                    continue;
+                }
+
+                if (remaining is not null)
+                    return null;
+
+                remaining = branch;
+            }
+
+            return nulls > 0 ? remaining : null;
+        }
+
+        /// <summary>
+        /// Determines whether a subschema admits <c>null</c> and nothing else.
+        /// </summary>
+        /// <remarks>
+        /// Recognised whole, the way a condition is: <c>{ "type": "null" }</c>, <c>{ "const": null }</c>
+        /// or an <c>enum</c> of nothing but <c>null</c>, with only annotations beside. A branch carrying
+        /// anything more is not taken for one, which leaves the union to the meet and loses facts rather
+        /// than inventing them.
+        /// </remarks>
+        /// <param name="node">The subschema, already followed.</param>
+        /// <returns><c>true</c> where the only value it admits is a JSON null.</returns>
+        static bool AdmitsOnlyNull(JsonNode? node)
+        {
+            if (node is null || node.isObject() == false)
+                return false;
+
+            var constrained = false;
+            var fields = node.fields();
+
+            while (fields.hasNext())
+            {
+                var field = (java.util.Map.Entry)fields.next();
+                var value = (JsonNode?)field.getValue();
+
+                switch (field.getKey()?.ToString())
+                {
+                    case "type" when ReadType(node) is (CosmosJsonType.Null, _):
+                    case "type" when value is not null && value.isArray() && value.size() == 1 && value.get(0)?.asText() == "null":
+                    case "const" when value is not null && value.isNull():
+                    case "enum" when ReadEnum(node) is IReadOnlyList<object?> domain && OnlyNulls(domain):
+                        constrained = true;
+                        break;
+
+                    case "$comment":
+                    case "title":
+                    case "description":
+                        break;
+
+                    default:
+                        return false;
+                }
+            }
+
+            return constrained;
+
+            static bool OnlyNulls(IReadOnlyList<object?> domain)
+            {
+                foreach (var member in domain)
+                    if (member is not null)
+                        return false;
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Widens a rule read from the non-null branch of a nullable union so that it holds of the
+        /// null too, or returns <c>null</c> where it cannot.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A claim about the union's own value</b> has to admit the null: a type becomes its
+        /// <c>OrNull</c>, a constant and a domain gain <c>null</c> as a member, and a disequality
+        /// already holds of a null unless it excluded one. A stored form already admits a null —
+        /// it says how the strings are written and nothing about whether one is there.
+        /// </para>
+        /// <para>
+        /// <b>A claim that something is there</b> does not survive a null at all. A <c>required</c>
+        /// child, a <c>not</c>'s property, a geography: each is true of the object the branch
+        /// describes and false of a null standing in its place, where nothing below is present. So
+        /// those rules are kept under one more condition, that the union's value is not null.
+        /// Everything else below is a claim about a value <em>if there is one</em>, which a null
+        /// makes vacuous rather than false.
+        /// </para>
+        /// </remarks>
+        static CosmosFactRule? AdmitNull(CosmosFactRule rule, CosmosDocumentPath path)
+        {
+            if (rule.Head.Claim is CosmosClaim.Present or CosmosClaim.Geography)
+                return new CosmosFactRule(Extend(rule.Body, new CosmosFact(path, new CosmosClaim.NotEqualTo(null))), rule.Head);
+
+            if (rule.Head.Path.Equals(path) == false)
+                return rule;
+
+            CosmosClaim? widened = rule.Head.Claim switch
+            {
+                CosmosClaim.OfType typed => typed with { OrNull = true },
+                CosmosClaim.EqualTo { Value: null } equal => equal,
+                CosmosClaim.EqualTo equal => new CosmosClaim.OneOf(new[] { equal.Value, null }),
+                CosmosClaim.OneOf domain when CosmosClaim.OneOf.Contains(domain.Values, null) => domain,
+                CosmosClaim.OneOf domain => new CosmosClaim.OneOf(new List<object?>(domain.Values) { null }),
+                CosmosClaim.NotEqualTo { Value: null } => null,
+                CosmosClaim.NotEqualTo unequal => unequal,
+                CosmosClaim.Represents represents => represents,
+                _ => null,
+            };
+
+            return widened is null ? null : new CosmosFactRule(rule.Body, new CosmosFact(path, widened));
         }
 
         /// <summary>

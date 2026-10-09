@@ -512,6 +512,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// An identifier declared nullable as a union with <c>null</c> lowers the way a bare one does. #172.
+        /// </summary>
+        /// <remarks>
+        /// The commonest way 2020-12 spells an optional value, and until it was read as its one
+        /// non-null branch it yielded nothing — the meet of a null and a string being empty — so only
+        /// the presence test reached the service and the equality ran over every defined row.
+        /// </remarks>
+        [Fact]
+        public void ANullableIdentifierDeclaredAsAUnionReachesTheService()
+        {
+            var container = Container("""
+            { "type": "object",
+              "properties": { "parkId": { "anyOf": [ { "type": "null" }, { "type": "string", "format": "uuid",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } ] } } }
+            """);
+
+            var best = PlanToCosmos(
+                $"""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.parkId' RETURNING VARCHAR) AS UUID) = UUID'{Canonical}'""",
+                container, out _);
+
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("c.parkId = @", "the cast lowered to the equality the service can evaluate");
+            query.Parameters.Should().Contain(p => (p.Value as string) == Canonical);
+
+            PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(best));
+            PlanText(best).Should().NotContain("ClrCursorCalc", "nor folded into a calc: " + PlanText(best));
+        }
+
+        /// <summary>
         /// The schema of a catalog row: an identifier stored as a UUID, and a name that is always
         /// there so that a sort on it is not refused for null placement.
         /// </summary>
