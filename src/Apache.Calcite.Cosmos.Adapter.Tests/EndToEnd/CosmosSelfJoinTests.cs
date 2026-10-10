@@ -599,10 +599,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The links whose body names one park, through either kind of body that carries one — the
+        /// filter that reaches into two merged views at once, written the way <see cref="MapLinksOnMap"/>
+        /// is.
+        /// </summary>
+        const string LinksOnPark = $$"""
+            SELECT "l"."Id"
+            FROM {views}."Link" AS "l"
+            LEFT JOIN (
+                SELECT "b"."Id", "p"."ParkId", "m"."ParkId" AS "ParkId0"
+                FROM {views}."LinkBody" AS "b"
+                LEFT JOIN {views}."ParkLinkBody" AS "p" ON "b"."Id" = "p"."Id"
+                LEFT JOIN {views}."MapLinkBody" AS "m" ON "b"."Id" = "m"."Id"
+            ) AS "s" ON "l"."Id" = "s"."Id"
+            WHERE "s"."ParkId0" = UUID '{{Park}}' OR "s"."ParkId" = UUID '{{Park}}'
+            """;
+
+        /// <summary>
         /// Whether a plan still holds a condition Calcite evaluates in process, where a pushed plan has
         /// none.
         /// </summary>
         static bool FiltersInProcess(string plan) => plan.Contains("ClrCursorFilter") || plan.Contains("$condition");
+
+        /// <summary>
+        /// A filter through two merged views reaches the service, each view's discriminator beside the
+        /// comparison its column makes. #183.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The reported host left <c>OR(CASE(base, CASE(type = 'park', parkId = X, false), false), …)</c>
+        /// in process, each arm comparing a <c>UUID</c> cast its simplifier would not take a <c>CASE</c>
+        /// apart over. The host this suite runs takes both apart itself, so this passed before #183 as
+        /// well — it is here for the rows and the one read, and
+        /// <c>CosmosFactRewriterTests.AFilterThroughTwoMergedViewsBecomesADisjunctionOfConjunctions</c> is
+        /// what pins the reported shape.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task AFilterThroughTwoMergedViewsReachesTheService()
+        {
+            RequireService();
+
+            var plan = await ExplainAsync("DECLARED", LinksOnPark);
+
+            Scans(plan).Should().Be(1, "the views are still one read:\n" + plan);
+            FiltersInProcess(plan).Should().BeFalse("and nothing is left to filter in process:\n" + plan);
+            plan.Should().Contain("'$.data.data.parkId'), '" + Park + "')", "the park is compared at the service:\n" + plan);
+            plan.Should().Contain("'$.data.type'), 'park')", "beside the park body's discriminator:\n" + plan);
+            plan.Should().Contain("'$.data.type'), 'map')", "and the map body's:\n" + plan);
+
+            (await RowsAsync("DECLARED", LinksOnPark)).Should().Equal(new[] { G1, G2, G3 }.OrderBy(g => g, StringComparer.Ordinal),
+                "the park link and both map links name the park");
+        }
 
         /// <summary>
         /// A boolean column is tested at the service, where the schema says the path holds a boolean.
@@ -699,6 +747,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Theory]
         [InlineData(MapLinksOnMap)]
         [InlineData(EveryLink)]
+        [InlineData(LinksOnPark)]
         public async Task TheMergedPlanAnswersWhatTheJoinsAnswered(string sql)
         {
             RequireService();

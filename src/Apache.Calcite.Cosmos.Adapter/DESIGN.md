@@ -2594,6 +2594,22 @@ reports zero documents for every container, and at zero rows every plan ties and
 that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
 
+**A filter through two merged views is a filter through two `CASE`s, and nothing walked into one
+(#183).** Through one view a host's simplifier takes `CASE WHEN M THEN q END = X` apart itself. Through
+two, a host was seen to leave `OR(CASE(base, CASE(type = 'park', parkId = X, false), false), …)`: each
+arm compares a `UUID` cast, which can raise, and Calcite's simplifier will not turn a `CASE` into a
+conjunction over an arm that can — a conjunction need not spare the arm the rows its condition
+excludes. The fact rewriter stopped at the `CASE` too, so the arm never lowered and the whole
+disjunction stayed in process. It now goes in. `CASE WHEN p THEN q ELSE FALSE END` is true on exactly
+the rows `p AND q` is, the `ELSE` never being true, and through `AND` and `OR` — the only nodes the
+rewriter is reached through — a part true on the same rows makes a whole true on the same rows; under a
+`NOT` the two would differ where `p` is null, and nothing there is under one. `q` is lowered against
+what `p` proves as well as what the query does, since it is read only where `p` holds — which is the
+merged view's discriminator doing what it is for — and once `q` compares stored strings it raises
+nowhere, and the `CASE` becomes the conjunction. A `q` still holding a conversion keeps its `CASE`, so a
+conjunction rechecked in process never evaluates a cast over a document of another kind. The service
+gets `(type = 'park' AND parkId = X) OR (type = 'map' AND parkId = X)`, beside the shared base.
+
 **What a consumer has to state.** A join on the partition key and `id` needs nothing: the service enforces
 it. A join on anything else needs a `UNIQUE` constraint the model declares, and that is a promise nothing
 checks. For the links in `CosmosSelfJoinTests`, partitioned on `/linkId` and keyed by a guid, that is a

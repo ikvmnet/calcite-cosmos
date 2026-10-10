@@ -1684,6 +1684,11 @@ across documents* and *A join of a container to itself* is the record.
   service proves.
 - **Semi and anti joins** — *small.* The substitution answers them: `σ(F ∧ M)` and `σ(F ∧ NOT M IS TRUE)`.
   Nothing has asked for them.
+- **A filter through merged views, in the shapes #183 did not take** — *small each.* `CASE WHEN p THEN q
+  ELSE FALSE` becomes `p AND q` once `q` cannot raise, which is the shape a host's simplifier leaves. Two
+  others are left as they were: a `CASE` of more than one arm, whose later arms need `NOT p IS TRUE`
+  beside them, and a comparison against a merged column that no simplifier has pushed into its `CASE` —
+  `CASE(M, v, null) = X`, which a bare planner leaves and which is `M AND v = X` by the same argument.
 - **How a legacy container's system partition key is reported** — *measurement.* Believed to be
   `/_partitionKey`, which its documents do not hold, so `UNIQUE (_partitionKey, id)` is stated — true,
   and never matched — where `UNIQUE (id)` would be. Measure against an account holding one.

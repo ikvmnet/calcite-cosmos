@@ -55,6 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             {
                 CosmosPath.Root("c").Property("ref"),    // 0
                 CosmosPath.Root("c").Property("kind"),   // 1
+                CosmosPath.Root("c").Property("body"),   // 2
             };
         }
 
@@ -403,6 +404,123 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Uuid(Canonical));
 
             Rewrite(other, Unconditional).Should().Be(other.ToString());
+        }
+
+        /// <summary><c>CASE WHEN p THEN q ELSE e END</c>, the shape a merged view's column leaves in a filter.</summary>
+        RexNode Case(RexNode condition, RexNode value, RexNode otherwise) =>
+            _rex.makeCall(SqlStdOperatorTable.CASE, condition, value, otherwise);
+
+        RexNode False() => _rex.makeLiteral(false);
+
+        /// <summary>
+        /// The filter through two merged views that #183 reported, in the shape it reported: each view's
+        /// comparison under its own discriminator, under the shared base, under a disjunction.
+        /// </summary>
+        /// <remarks>
+        /// Each arm lowers, and once it compares stored strings it cannot raise, so each <c>CASE</c>
+        /// becomes the conjunction it is true on the same rows as — the disjunction the service
+        /// evaluates.
+        /// </remarks>
+        [Fact]
+        public void AFilterThroughTwoMergedViewsBecomesADisjunctionOfConjunctions()
+        {
+            var baseCondition = KindIs("B");
+            RexNode Arm(string body) => Case(baseCondition, Case(_rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(2, SqlTypeName.VARCHAR), Str(body)), UuidEquality(), False()), False());
+
+            var condition = _rex.makeCall(SqlStdOperatorTable.OR, Arm("park"), Arm("map"));
+
+            Rewrite(condition, Unconditional).Should().Be(
+                $"OR(AND(=($1, 'B'), =($2, 'park'), =($0, '{Canonical}')), AND(=($1, 'B'), =($2, 'map'), =($0, '{Canonical}')))");
+        }
+
+        /// <summary>
+        /// Calcite's own simplifier takes the same <c>CASE</c> apart where its arm cannot raise and leaves
+        /// it where the arm casts to a <c>UUID</c> — which is why a host leaves the merged view's shape for
+        /// the rewriter to find, and the condition the rewriter applies after lowering.
+        /// </summary>
+        [Fact]
+        public void CalcitesSimplifierLeavesACaseWhoseArmCanRaise()
+        {
+            var simplify = new RexSimplify(_rex, org.apache.calcite.plan.RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
+
+            var unsafeArm = Case(KindIs("B"), UuidEquality(), False());
+            simplify.simplifyUnknownAsFalse(unsafeArm).ToString().Should().Be(unsafeArm.ToString(), "the cast to UUID can raise");
+
+            var safeArm = Case(KindIs("B"), _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("x")), False());
+            simplify.simplifyUnknownAsFalse(safeArm).ToString().Should().Be("AND(=($1, 'B'), =($0, 'x'))");
+        }
+
+        /// <summary>
+        /// The arm is read only where the condition holds, so a fact the condition proves lowers it —
+        /// which is what a merged view's discriminator is for.
+        /// </summary>
+        /// <remarks>
+        /// <c>ref</c> holds a UUID only where <c>kind</c> is <c>B</c>, and nothing outside the <c>CASE</c>
+        /// says so. Inside the arm it holds: over a row where <c>kind = 'B'</c> is not true the <c>CASE</c>
+        /// answers its <c>ELSE</c> whatever the arm says.
+        /// </remarks>
+        [Fact]
+        public void TheConditionProvesTheFactItsArmIsLoweredBy()
+        {
+            Rewrite(Case(KindIs("B"), UuidEquality(), False()), Discriminated)
+                .Should().Be($"AND(=($1, 'B'), =($0, '{Canonical}'))");
+        }
+
+        /// <summary>
+        /// An arm that still holds a conversion keeps its <c>CASE</c>: taken apart, the conjunction rechecked
+        /// in process could evaluate the cast over a document the condition excludes, and raise.
+        /// </summary>
+        [Fact]
+        public void AnArmThatCanStillRaiseKeepsItsCase()
+        {
+            var condition = Case(KindIs("A"), UuidEquality(), False());
+
+            Rewrite(condition, Discriminated).Should().Be(condition.ToString(),
+                "nothing says ref holds a UUID where kind is A, so the cast stays and so does the CASE");
+        }
+
+        /// <summary>
+        /// An <c>ELSE</c> that may be true is not this shape and is left alone; a null one is, being true
+        /// nowhere either.
+        /// </summary>
+        [Fact]
+        public void OnlyAnElseThatIsNeverTrueIsTakenApart()
+        {
+            var otherwiseTrue = Case(KindIs("B"), UuidEquality(), _rex.makeLiteral(true));
+
+            Rewrite(otherwiseTrue, Discriminated).Should().Contain("CASE", "the ELSE keeps rows the conjunction would not");
+
+            var otherwiseNull = Case(KindIs("B"), UuidEquality(), _rex.makeNullLiteral(_types.createSqlType(SqlTypeName.BOOLEAN)));
+
+            Rewrite(otherwiseNull, Discriminated).Should().Be($"AND(=($1, 'B'), =($0, '{Canonical}'))");
+        }
+
+        /// <summary>
+        /// The equivalence needs no fact, so a container that declares nothing has its <c>CASE</c> taken
+        /// apart too — where the arm cannot raise.
+        /// </summary>
+        [Fact]
+        public void ACaseNeedsNoDeclarationToBeTakenApart()
+        {
+            var safe = Case(KindIs("B"), _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("x")), False());
+
+            Rewrite(safe, null).Should().Be("AND(=($1, 'B'), =($0, 'x'))");
+
+            var unsafeArm = Case(KindIs("B"), UuidEquality(), False());
+
+            Rewrite(unsafeArm, null).Should().Be(unsafeArm.ToString(), "and only there: the cast can raise, and nothing lowers it");
+        }
+
+        /// <summary>
+        /// Where the condition contradicts what the query already proved, the arm is never read and the
+        /// <c>CASE</c> is its <c>ELSE</c>.
+        /// </summary>
+        [Fact]
+        public void AConditionTheQueryContradictsLeavesTheElse()
+        {
+            Rewrite(And(KindIs("A"), _rex.makeCall(SqlStdOperatorTable.OR, Case(KindIs("B"), UuidEquality(), False()), KindIs("A"))), Discriminated)
+                .Should().Be("=($1, 'A')",
+                    "kind cannot be both A and B, so the CASE answers its ELSE for every row the predicate keeps, and what is left is the conjunct");
         }
 
     }
