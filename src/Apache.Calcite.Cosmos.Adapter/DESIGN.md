@@ -1762,10 +1762,64 @@ the row model rather than a pending item.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
-Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has no counterpart. The
-`IS TRUE` / `IS FALSE` family and `IS DISTINCT FROM` are declined because reproducing their null
-semantics over a property that may be *undefined* needs a Cosmos behaviour that has not been
-measured, and a wrong answer is worse than a refused pushdown.
+Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has no counterpart.
+`IS DISTINCT FROM` is declined because reproducing its null semantics over a property that may be
+*undefined* needs a Cosmos behaviour that has not been measured, and a wrong answer is worse than a
+refused pushdown. The `IS TRUE` / `IS FALSE` family was declined for the same reason, and now has
+that behaviour measured over the one operand it is written for — the next section.
+
+#### A cast to a boolean is the stored boolean, where the schema says so
+
+A view types a boolean column the way it types any other, by casting the text accessor —
+`CAST(JSON_VALUE(DOC, '$.data.offline' RETURNING VARCHAR) AS BOOLEAN)` — and Entity Framework writes
+`WHERE "Offline"` as `"Offline" IS TRUE`. Nothing about it reached the service but a definedness test,
+and every document carrying the flag was read to test it in process (#181).
+
+**The cast is a parse, so without a declaration it is not the stored value.** Measured at Calcite's
+runtime (`CalciteJsonValueMeasurementTests`): the accessor renders a stored `true` as `true` and the
+cast reads it back, a JSON null and an absent path stay null — and a stored *string* is parsed,
+trimmed and case-insensitively, so `"TRUE"` is true there and a string at the service, where it equals
+no boolean; a number raises. Either is a document the two would answer differently, and the cast stays
+declined wherever one could exist.
+
+**Where the facts give the path a boolean type, neither can.** Then the cast is exactly the value at
+the path: the boolean where there is one, null where there is a null or nothing. And the service's
+logic over what is not a boolean is SQL's logic over unknown — measured against the emulator, one
+document per thing a path can hold (`CosmosBooleanLogicMeasurementTests`): a bare path as a whole
+condition keeps only `true`, `NOT` over it only `false`, and `OR true`, `NOT (… AND false)` and
+`NOT (… OR false)` treat a null, an absent path, a string and a number as unknown in every case. So
+`CosmosRexTranslator.TryStoredBoolean` writes the cast as the path, and everything over it follows
+with nothing added: `WHERE c.flag`, `NOT c.flag`, and a comparison with a boolean through the guards
+`WriteComparison` already writes.
+
+**The truth tests are the one place the service's logic differs, and it is the absent path.** SQL's
+`x IS TRUE` is never unknown; the service's `c.flag = true` is undefined where the path is absent —
+measured, while it is false over a null and over another type — so a `NOT` above it keeps nothing
+there, where SQL keeps the row. The negative tests name the absent case,
+`NOT IS_DEFINED(c.flag) OR NOT (c.flag = true)`, which is true over everything but the stored `true`;
+the positive ones need nothing in a positive position, undefined being kept no more than false is, and
+take `IS_DEFINED` beside the comparison under a `NOT`, where it would show.
+
+| written | rendered |
+| --- | --- |
+| `f`, `NOT f` | `c.flag`, `(NOT c.flag)` |
+| `f IS TRUE`, `f = TRUE` | `(c.flag = @p0)`, `@p0 = true` |
+| `f IS FALSE`, `f = FALSE` | `(c.flag = @p0)`, `@p0 = false` |
+| `f IS NOT TRUE` | `(NOT IS_DEFINED(c.flag) OR (NOT (c.flag = @p0)))`, `@p0 = true` |
+| `f IS NULL` | `(NOT IS_DEFINED(c.flag) OR IS_NULL(c.flag))` |
+
+**Which facts.** The translator's own, which in a filter is the declaration closed under the
+predicate's conjuncts — so a boolean declared only under a discriminator pushes beside the
+discriminator, by the sibling-conjunct argument the fact rewriter makes. The conjunct cannot certify
+itself: the cast resolves to no path, and the fact extractor reads nothing from a comparison over one.
+
+**Which operands.** The bare accessor and a raw value typed `ANY` or `VARIANT`, and not a field a
+projection bound to an accessor, although the comparisons take one. A behaviour clause substitutes a
+value the path does not hold — the cast of `DEFAULT 'true' ON EMPTY` is true over a document with no
+flag — and the binding records the path and that the column is text, not the clause, so the one thing
+this has to refuse would be invisible through it. Nothing is lost: `FILTER_PROJECT_TRANSPOSE` takes the
+filter below the view, where the cast is written over the accessor itself. Projected, the cast is the
+same stored value, guarded as every accessor inside an expression is and read back as a boolean.
 
 #### Splitting inside an expression, not only between them
 

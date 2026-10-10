@@ -68,14 +68,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string G2 = "22222222-2222-4222-8222-222222222222";
         const string G3 = "33333333-3333-4333-8333-333333333333";
         const string G4 = "44444444-4444-4444-8444-444444444444";
+        const string G5 = "55555555-5555-4555-8555-555555555555";
 
         const string Park = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
         const string MapA = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
         const string MapB = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
         /// <summary>
-        /// The documents: one link of each kind and a second map link, and a document of another type in
-        /// the same partition as a link, carrying no guid, which no view selects.
+        /// The documents: one link of each kind and a second map link, a link carrying no <c>offline</c>
+        /// flag, and a document of another type in the same partition as a link, carrying no guid, which no
+        /// view selects.
         /// </summary>
         static readonly string[] Documents = new[]
         {
@@ -83,6 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"Link$2","linkId":2,"type":"Link","data":{"id":2,"linkId":2,"guid":"@G2","type":"map","label":"Map two","offline":true,"data":{"parkId":"@Park","mapId":"@MapA"}}}""",
             """{"id":"Link$3","linkId":3,"type":"Link","data":{"id":3,"linkId":3,"guid":"@G3","type":"map","label":"Map three","offline":false,"data":{"parkId":"@Park","mapId":"@MapB"}}}""",
             """{"id":"Link$4","linkId":4,"type":"Link","data":{"id":4,"linkId":4,"guid":"@G4","type":"spot","label":"Spot four","offline":false,"data":{}}}""",
+            """{"id":"Link$5","linkId":5,"type":"Link","data":{"id":5,"linkId":5,"guid":"@G5","type":"spot","label":"Spot five","data":{}}}""",
             """{"id":"Scan$9","linkId":2,"type":"LinkScan","data":{"id":9,"linkId":2}}""",
         }.Select(Fill).ToArray();
 
@@ -112,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         };
 
         static string Fill(string json) => json
-            .Replace("@G1", G1).Replace("@G2", G2).Replace("@G3", G3).Replace("@G4", G4)
+            .Replace("@G1", G1).Replace("@G2", G2).Replace("@G3", G3).Replace("@G4", G4).Replace("@G5", G5)
             .Replace("@Park", Park).Replace("@MapA", MapA).Replace("@MapB", MapB);
 
         static CosmosClient? _client;
@@ -565,6 +568,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Scans(plan).Should().BeGreaterThan(1, plan);
 
             (await RowsAsync("LOOSE", sql)).Should().HaveCount(6, "two documents named A pair four ways, and B and C each with itself");
+        }
+
+        /// <summary>
+        /// Whether a plan still holds a condition Calcite evaluates in process, where a pushed plan has
+        /// none.
+        /// </summary>
+        static bool FiltersInProcess(string plan) => plan.Contains("ClrCursorFilter") || plan.Contains("$condition");
+
+        /// <summary>
+        /// A boolean column is tested at the service, where the schema says the path holds a boolean.
+        /// #181.
+        /// </summary>
+        /// <remarks>
+        /// The column is <c>CAST(JSON_VALUE(…) AS BOOLEAN)</c>, which Calcite reads by parsing the text —
+        /// so without the declaration it is not the stored value, and the test kept only a definedness
+        /// check at the service. Every truth test is asked here, and the link with no <c>offline</c> at
+        /// all is the one that tells them apart: <c>IS NOT TRUE</c> keeps it and <c>NOT</c> does not.
+        /// </remarks>
+        [Theory]
+        [InlineData("""
+            "l"."Offline"
+            """, new[] { G2 })]
+        [InlineData("""
+            "l"."Offline" IS TRUE
+            """, new[] { G2 })]
+        [InlineData("""
+            "l"."Offline" = TRUE
+            """, new[] { G2 })]
+        [InlineData("""
+            NOT "l"."Offline"
+            """, new[] { G1, G3, G4 })]
+        [InlineData("""
+            "l"."Offline" IS FALSE
+            """, new[] { G1, G3, G4 })]
+        [InlineData("""
+            "l"."Offline" IS NOT TRUE
+            """, new[] { G1, G3, G4, G5 })]
+        [InlineData("""
+            "l"."Offline" IS NOT FALSE
+            """, new[] { G2, G5 })]
+        [InlineData("""
+            "l"."Offline" IS NULL
+            """, new[] { G5 })]
+        public async Task ABooleanColumnIsTestedAtTheService(string predicate, string[] expected)
+        {
+            RequireService();
+
+            var sql = $"""SELECT "l"."Id" FROM {"{views}"}."Link" AS "l" WHERE {predicate}""";
+
+            var plan = await ExplainAsync("DECLARED", sql);
+            FiltersInProcess(plan).Should().BeFalse("the test is the service's:\n" + plan);
+
+            (await RowsAsync("DECLARED", sql)).Should().Equal(expected.OrderBy(g => g, StringComparer.Ordinal));
+        }
+
+        /// <summary>
+        /// And the column reads back as the stored boolean — null for the link that has none.
+        /// </summary>
+        [Fact]
+        public async Task ABooleanColumnReadsBackAsTheStoredBoolean()
+        {
+            RequireService();
+
+            (await RowsAsync("DECLARED", """SELECT "l"."Id", "l"."Offline" FROM {views}."Link" AS "l" """))
+                .Should().Equal($"{G1}|False", $"{G2}|True", $"{G3}|False", $"{G4}|False", $"{G5}|null");
         }
 
         /// <summary>

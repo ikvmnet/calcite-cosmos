@@ -652,9 +652,13 @@ is not offered, and one thing that cannot be fixed here at all.
   it); `LIKE` with `ESCAPE`, and a bracket-escaping rewrite that would lift the bracket-pattern
   decline (Cosmos `LIKE` reads `[…]` as a character range where SQL does not — measured, and why
   bracket and computed patterns are refused); `TRIM` of a non-space character and `TRUNCATE` to
-  decimal places, both needing Cosmos's two-argument arity **verified** first; `IS TRUE`/`IS FALSE`/
-  `IS DISTINCT FROM`, expressible with the `??` operator once the null-versus-undefined semantics are
-  measured.
+  decimal places, both needing Cosmos's two-argument arity **verified** first; `IS DISTINCT FROM`,
+  expressible with the `??` operator once the null-versus-undefined semantics are measured. `IS TRUE`
+  and its family are written over a stored boolean since #181 — `DESIGN.md` under *A cast to a boolean
+  is the stored boolean* — and remain declined over anything else, an arbitrary expression's undefined
+  arising where a test written at the path cannot see it. `JSON_VALUE(…, RETURNING BOOLEAN)` is the
+  nearest candidate to take next: it asserts a boolean rather than parsing one, so it needs no
+  declaration to be the stored value, and nothing has asked.
 
 #### The whole surface, enumerated
 
@@ -1157,6 +1161,14 @@ the distribution the gate is sized for.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
+- **A `JSON_VALUE` behaviour clause is dropped from a projection** — *small, and a wrong answer.*
+  `SELECT JSON_VALUE(c."DOC", '$.flag' DEFAULT 'none' ON EMPTY)` renders as
+  `(IS_PRIMITIVE(c.flag) ? c.flag : null)`, so a document with no `flag` reads null where Calcite
+  answers `'none'` — found beside #181, and older than it. `IsJsonAccessor` admits a `JSON_VALUE` of
+  any operand count and `TryJsonValueProjection` never reads the trailing ones, and the same leniency
+  binds such a column to the bare path as text, which is why #181's boolean cast refuses a field. The
+  sound answer is to address no path for a clause that substitutes a value; rendering `DEFAULT … ON
+  EMPTY` as an `IS_DEFINED` ternary is the cheaper one, once Calcite's own answers are measured.
 
 ---
 
