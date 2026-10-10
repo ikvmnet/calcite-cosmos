@@ -52,10 +52,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             for (var i = 0; i < parameters.Count; i++)
                 bound[i] = parameters[i].Value is CosmosDynamicValue slot
-                    ? parameters[i] with { Value = Value(root, slot) }
+                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : Value(root, slot) }
                     : parameters[i];
 
             return query with { Parameters = bound };
+        }
+
+        /// <summary>
+        /// Reads one dynamic parameter's value out of the data context and writes it in the stored
+        /// form of the path it is compared with.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The value is what Calcite's runtime holds, and that is what the in-process comparison
+        /// would have compared.</b> Measured, through Calcite's own driver and through the ADO.NET one
+        /// alike: a <c>TIMESTAMP</c> parameter reaches the data context as a <c>java.lang.Long</c> of
+        /// epoch milliseconds, whatever precision its cast declares and whatever the caller sent —
+        /// a .NET tick is dropped on the way in, and <c>CAST(? AS TIMESTAMP)</c> keeps the
+        /// milliseconds its <c>TIMESTAMP(0)</c> has no room for. A <c>DATE</c> arrives as a
+        /// <c>java.lang.Integer</c> of days. Both are read as UTC, which is the reading the literal
+        /// path gives a literal and the one these forms store.
+        /// </para>
+        /// <para>
+        /// <b>A null is bound as null</b>, which is what a parameter of any other kind binds — and
+        /// that the service compares a JSON null as a value where SQL compares nothing is the same
+        /// question for every parameter, recorded in <c>TODO.md</c> rather than answered for this one
+        /// alone.
+        /// </para>
+        /// </remarks>
+        /// <param name="root">The data context.</param>
+        /// <param name="slot">The ordinal to read, and how it is rounded.</param>
+        /// <param name="form">The stored form to write it in.</param>
+        /// <returns>The bound value.</returns>
+        /// <exception cref="CosmosExecutionException">The value is not an instant, or cannot be written in the form.</exception>
+        static object? Stored(org.apache.calcite.DataContext root, CosmosDynamicValue slot, Metadata.CosmosRepresentation form)
+        {
+            var value = root.get(slot.VariableName);
+
+            DateTime instant;
+
+            try
+            {
+                switch (value)
+                {
+                    case null:
+                        return null;
+                    case java.lang.Long millis:
+                        instant = DateTimeOffset.FromUnixTimeMilliseconds(millis.longValue()).UtcDateTime;
+                        break;
+                    case java.lang.Integer days:
+                        instant = DateTime.SpecifyKind(DateTime.UnixEpoch.AddDays(days.intValue()), DateTimeKind.Utc);
+                        break;
+                    default:
+                        throw new CosmosExecutionException($"Parameter {slot.VariableName} is compared with a path stored as '{form.Name}', and arrived as '{value.GetType().FullName}' rather than as an instant.");
+                }
+
+                return Metadata.CosmosStoredForms.RenderDateTime(form, instant, slot.Rounding)
+                    ?? throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be written in the stored form '{form.Name}'.");
+            }
+            catch (ArgumentOutOfRangeException e)
+            {
+                throw new CosmosExecutionException($"Parameter {slot.VariableName} is outside the range of the stored form '{form.Name}'.", e);
+            }
         }
 
         /// <summary>

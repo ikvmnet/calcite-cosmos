@@ -1400,6 +1400,49 @@ SQL should cast its parameters, at which point Calcite knows the type and the pl
 it; a consumer that does not gets correct rows and a weaker statement. That is a bug in the consumer
 rather than a gap here, and `TODO.md` records the one case a declaration ought to recover.
 
+**One comparison needs the value written rather than bound as it stands: an instant against a stored
+form (#182).** Against a literal, a comparison of a path read as an instant is lowered while the plan
+is made — `CosmosFactRewriter` writes the literal in the spelling the container declares, and the
+service compares stored strings. Against a parameter it declined, the parameter being no literal, so
+`WHERE "ChangeUtcTime" > CAST(? AS TIMESTAMP)` — a "changed since" refresh, sent parameterised by every
+host that prepares — pushed a definedness test and compared every document in process. Nothing in the
+decision needs the value: whether the stored strings answer for the instants is a question about the
+path and the operator, and `CosmosFactRewriter.TryStoredInstant` answers it for the literal and the
+parameter alike. So the translator writes `c.at > @p0` and binds the slot with the path's form;
+`CosmosQueries.Bind` writes the value in it when the statement runs, as the plan would have written the
+literal.
+
+**The value written is the one Calcite's runtime holds, and that was measured rather than assumed.**
+Through Calcite's own driver and through the ADO.NET one alike, a `TIMESTAMP` parameter reaches the
+data context as a `java.lang.Long` of epoch milliseconds — a .NET tick is gone on the way in — and a
+`DATE` as a `java.lang.Integer` of days (`CalciteTemporalParameterMeasurementTests`). And
+`CAST(? AS TIMESTAMP)`, which is `TIMESTAMP(0)`, keeps the milliseconds at run time: only its text is
+written to the declared precision. That sits against the section on casts with a format, which refuses
+a millisecond parse into `TIMESTAMP(0)` so that the pushdown agrees with the declared type rather than
+with the runtime. The two are not in conflict. Refusing leaves the answer where it was, which is
+always available to a plan and never to a parameter's statement once written; and between writing the
+value the runtime compares and writing a truncation of it, only the first leaves every query answering
+the rows it answered before it was pushed. If a release ever applies the precision at run time, the
+measurement fails and this has to follow it.
+
+**A value between two stored spellings cannot be refused, so it is rounded — exactly.** A literal
+finer than the form keeps its comparison in process. A parameter's statement is already written, and
+against a seconds form a millisecond value is one Calcite's runtime can hold. Every stored value lands
+on the form, though, so nothing is stored between two consecutive spellings, and the comparison
+decides which neighbour the value may stand in for without changing what it keeps: `s > v` keeps what
+`s > ⌊v⌋` keeps, `s >= v` what `s >= ⌈v⌉` keeps, and the mirrored pair the same way. An equality is
+true of no stored value and an inequality of every one, which the value written in full gives both, at
+a precision no spelling of the form has. The direction is fixed when the statement is written —
+`CosmosTemporalRounding` on the slot — and the value only decides how far. Against a form of
+millisecond precision or finer, which is the case #182 reported, every value lands and the rounding is
+never consulted.
+
+| comparison | `12:00:00.500` against a seconds form is written as |
+| --- | --- |
+| `>`, `<=` | `12:00:00Z` |
+| `>=`, `<` | `12:00:01Z` |
+| `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
+
 #### Casts over document values
 
 The row model types every document path `ANY`, so a view can only give a column a SQL type by
@@ -1763,10 +1806,64 @@ the row model rather than a pending item.
 
 `COALESCE` and `NULLIF` need no entry — the validator expands both to `CASE` before a `RexCall`
 exists. Several plausible additions are deliberately absent: `LOG(x, base)` and `SQUARE` are not in
-Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has no counterpart. The
-`IS TRUE` / `IS FALSE` family and `IS DISTINCT FROM` are declined because reproducing their null
-semantics over a property that may be *undefined* needs a Cosmos behaviour that has not been
-measured, and a wrong answer is worse than a refused pushdown.
+Calcite's standard table, so nothing can produce them; `CBRT` is, and Cosmos has no counterpart.
+`IS DISTINCT FROM` is declined because reproducing its null semantics over a property that may be
+*undefined* needs a Cosmos behaviour that has not been measured, and a wrong answer is worse than a
+refused pushdown. The `IS TRUE` / `IS FALSE` family was declined for the same reason, and now has
+that behaviour measured over the one operand it is written for — the next section.
+
+#### A cast to a boolean is the stored boolean, where the schema says so
+
+A view types a boolean column the way it types any other, by casting the text accessor —
+`CAST(JSON_VALUE(DOC, '$.data.offline' RETURNING VARCHAR) AS BOOLEAN)` — and Entity Framework writes
+`WHERE "Offline"` as `"Offline" IS TRUE`. Nothing about it reached the service but a definedness test,
+and every document carrying the flag was read to test it in process (#181).
+
+**The cast is a parse, so without a declaration it is not the stored value.** Measured at Calcite's
+runtime (`CalciteJsonValueMeasurementTests`): the accessor renders a stored `true` as `true` and the
+cast reads it back, a JSON null and an absent path stay null — and a stored *string* is parsed,
+trimmed and case-insensitively, so `"TRUE"` is true there and a string at the service, where it equals
+no boolean; a number raises. Either is a document the two would answer differently, and the cast stays
+declined wherever one could exist.
+
+**Where the facts give the path a boolean type, neither can.** Then the cast is exactly the value at
+the path: the boolean where there is one, null where there is a null or nothing. And the service's
+logic over what is not a boolean is SQL's logic over unknown — measured against the emulator, one
+document per thing a path can hold (`CosmosBooleanLogicMeasurementTests`): a bare path as a whole
+condition keeps only `true`, `NOT` over it only `false`, and `OR true`, `NOT (… AND false)` and
+`NOT (… OR false)` treat a null, an absent path, a string and a number as unknown in every case. So
+`CosmosRexTranslator.TryStoredBoolean` writes the cast as the path, and everything over it follows
+with nothing added: `WHERE c.flag`, `NOT c.flag`, and a comparison with a boolean through the guards
+`WriteComparison` already writes.
+
+**The truth tests are the one place the service's logic differs, and it is the absent path.** SQL's
+`x IS TRUE` is never unknown; the service's `c.flag = true` is undefined where the path is absent —
+measured, while it is false over a null and over another type — so a `NOT` above it keeps nothing
+there, where SQL keeps the row. The negative tests name the absent case,
+`NOT IS_DEFINED(c.flag) OR NOT (c.flag = true)`, which is true over everything but the stored `true`;
+the positive ones need nothing in a positive position, undefined being kept no more than false is, and
+take `IS_DEFINED` beside the comparison under a `NOT`, where it would show.
+
+| written | rendered |
+| --- | --- |
+| `f`, `NOT f` | `c.flag`, `(NOT c.flag)` |
+| `f IS TRUE`, `f = TRUE` | `(c.flag = @p0)`, `@p0 = true` |
+| `f IS FALSE`, `f = FALSE` | `(c.flag = @p0)`, `@p0 = false` |
+| `f IS NOT TRUE` | `(NOT IS_DEFINED(c.flag) OR (NOT (c.flag = @p0)))`, `@p0 = true` |
+| `f IS NULL` | `(NOT IS_DEFINED(c.flag) OR IS_NULL(c.flag))` |
+
+**Which facts.** The translator's own, which in a filter is the declaration closed under the
+predicate's conjuncts — so a boolean declared only under a discriminator pushes beside the
+discriminator, by the sibling-conjunct argument the fact rewriter makes. The conjunct cannot certify
+itself: the cast resolves to no path, and the fact extractor reads nothing from a comparison over one.
+
+**Which operands.** The bare accessor and a raw value typed `ANY` or `VARIANT`, and not a field a
+projection bound to an accessor, although the comparisons take one. A behaviour clause substitutes a
+value the path does not hold — the cast of `DEFAULT 'true' ON EMPTY` is true over a document with no
+flag — and the binding records the path and that the column is text, not the clause, so the one thing
+this has to refuse would be invisible through it. Nothing is lost: `FILTER_PROJECT_TRANSPOSE` takes the
+filter below the view, where the cast is written over the accessor itself. Projected, the cast is the
+same stored value, guarded as every accessor inside an expression is and read back as a boolean.
 
 #### Splitting inside an expression, not only between them
 
@@ -2497,6 +2594,22 @@ before #177, as the unfiltered read the plan began with, and the cause is the ro
 reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
 that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
+
+**A filter through two merged views is a filter through two `CASE`s, and nothing walked into one
+(#183).** Through one view a host's simplifier takes `CASE WHEN M THEN q END = X` apart itself. Through
+two, a host was seen to leave `OR(CASE(base, CASE(type = 'park', parkId = X, false), false), …)`: each
+arm compares a `UUID` cast, which can raise, and Calcite's simplifier will not turn a `CASE` into a
+conjunction over an arm that can — a conjunction need not spare the arm the rows its condition
+excludes. The fact rewriter stopped at the `CASE` too, so the arm never lowered and the whole
+disjunction stayed in process. It now goes in. `CASE WHEN p THEN q ELSE FALSE END` is true on exactly
+the rows `p AND q` is, the `ELSE` never being true, and through `AND` and `OR` — the only nodes the
+rewriter is reached through — a part true on the same rows makes a whole true on the same rows; under a
+`NOT` the two would differ where `p` is null, and nothing there is under one. `q` is lowered against
+what `p` proves as well as what the query does, since it is read only where `p` holds — which is the
+merged view's discriminator doing what it is for — and once `q` compares stored strings it raises
+nowhere, and the `CASE` becomes the conjunction. A `q` still holding a conversion keeps its `CASE`, so a
+conjunction rechecked in process never evaluates a cast over a document of another kind. The service
+gets `(type = 'park' AND parkId = X) OR (type = 'map' AND parkId = X)`, beside the shared base.
 
 **What a consumer has to state.** A join on the partition key and `id` needs nothing: the service enforces
 it. A join on anything else needs a `UNIQUE` constraint the model declares, and that is a promise nothing

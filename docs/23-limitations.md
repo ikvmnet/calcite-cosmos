@@ -31,7 +31,7 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Temporal functions** (`EXTRACT`, `TIMESTAMPADD`, …) | In process. *Not done — needs the stored shape.* |
 | **Array literals** (`ARRAY['a','b']`) | Not rendered, so functions taking one stay in process. *Not done.* |
 | **Many library functions** | In process where Cosmos has no counterpart; some have one and are not mapped yet (Appendix B). |
-| **`IS TRUE`, `IS FALSE`, `IS DISTINCT FROM`** | In process. *Not measured.* |
+| **`IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM`** | In process. *Not measured.* |
 | **Partition routing from parameters** | Only literal partition key values route a statement; a parameter does not. *Not done.* |
 | **A projection over an unnested element** | The element can be filtered at the service, but selecting it can bring the document along. *Not done.* |
 

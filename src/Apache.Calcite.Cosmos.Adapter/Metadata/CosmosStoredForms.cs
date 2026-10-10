@@ -60,9 +60,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static string? RenderUuid(CosmosRepresentation representation, Guid value) =>
             CosmosUuidForms.Render(representation, value);
 
-        /// <inheritdoc cref="CosmosTemporalForms.Render" />
+        /// <inheritdoc cref="CosmosTemporalForms.Render(CosmosRepresentation, DateTime)" />
         public static string? RenderDateTime(CosmosRepresentation representation, DateTime value) =>
             CosmosTemporalForms.Render(representation, value);
+
+        /// <inheritdoc cref="CosmosTemporalForms.Render(CosmosRepresentation, DateTime, CosmosTemporalRounding)" />
+        public static string? RenderDateTime(CosmosRepresentation representation, DateTime value, CosmosTemporalRounding rounding) =>
+            CosmosTemporalForms.Render(representation, value, rounding);
 
         /// <inheritdoc cref="CosmosNumericForms.Render" />
         public static string? RenderInteger(CosmosRepresentation representation, long value) =>

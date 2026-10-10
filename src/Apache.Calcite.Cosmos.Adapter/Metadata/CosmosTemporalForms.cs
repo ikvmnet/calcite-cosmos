@@ -56,9 +56,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// The spelling, or <c>null</c> where the form holds too little of an instant to be written
         /// one — a time of day carries no date, and rendering into it would drop one silently.
         /// </param>
-        /// <param name="Exact">
-        /// Whether a value lands on the form's own resolution. A form that cannot hold the value
-        /// exactly renders nothing rather than a truncation; see <see cref="Render"/>.
+        /// <param name="Floor">
+        /// The latest value at or before the given one that lands on the form's own resolution. A
+        /// value is exact where this is the value itself, and a form that cannot hold a literal
+        /// exactly renders nothing rather than a truncation; see <see cref="Render(CosmosRepresentation, DateTime)"/>.
+        /// </param>
+        /// <param name="Next">
+        /// The value one step of the form's resolution after a value that lands on it — which is
+        /// what a value between two stored spellings rounds up to; see
+        /// <see cref="Render(CosmosRepresentation, DateTime, CosmosTemporalRounding)"/>.
         /// </param>
         /// <param name="Carries">
         /// Which halves of an instant the shape stores. A parse into a type holding less truncates,
@@ -75,7 +81,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <see cref="ParsesExactly"/> for what membership claims and
         /// <c>CalciteTemporalParseMeasurementTests</c> for the measurement that pins every row.
         /// </param>
-        sealed record TemporalForm(string? Format, Func<DateTime, bool> Exact, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses);
+        sealed record TemporalForm(string? Format, Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses)
+        {
+
+            /// <summary>
+            /// Determines whether a value lands on the form's own resolution.
+            /// </summary>
+            public bool Exact(DateTime value) => Floor(value) == value;
+
+        }
 
         /// <summary>
         /// How each temporal form writes a value, keyed by representation name. Populated by
@@ -148,9 +162,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="add">Registers one spelling.</param>
         static void AddTemporal(Action<string, CosmosRepresentation> add)
         {
-            void Register(string pattern, string name, string? format, Func<DateTime, bool> exact, CosmosTemporalParts carries, bool readsBack, params string[] parses)
+            void Register(string pattern, string name, string? format, (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) grid, CosmosTemporalParts carries, bool readsBack, params string[] parses)
             {
-                Temporal[name] = new TemporalForm(format, exact, carries, readsBack, parses);
+                Temporal[name] = new TemporalForm(format, grid.Floor, grid.Next, carries, readsBack, parses);
                 add(pattern, new CosmosRepresentation(name, PreservesEquality: true, PreservesOrder: true));
             }
 
@@ -175,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // Zero to nine fraction digits. A tick is seven, so a wider form is written by padding and
             // still holds every value exactly; a narrower one has to land on its own resolution, which
-            // is what its predicate tests.
+            // is a whole number of its own steps.
             //
             // **Only three digits can be parsed, and that is the whole of why the recommended shape
             // gets no parse.** Every fraction element the model has -- `%E1S` through `%E5S`, `FF1`
@@ -183,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // are there as milliseconds: measured, `.678901` against any of them is 11 minutes and 18
             // seconds rather than 679 milliseconds. So a fraction of exactly three digits has
             // spellings and every other width has none, the microsecond and tick shapes included.
-            var fractions = new (string Pattern, string Format, Func<DateTime, bool> Exact, string[][] Parses)[10];
+            var fractions = new (string Pattern, string Format, (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Grid, string[][] Parses)[10];
 
             for (var n = 0; n < fractions.Length; n++)
             {
@@ -204,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 fractions[n] = (
                     n == 0 ? string.Empty : $@"\.[0-9]{{{n}}}",
                     n == 0 ? string.Empty : "." + new string('f', digits) + (padding.Length > 0 ? "'" + padding + "'" : string.Empty),
-                    value => value.Ticks % resolution == 0,
+                    Ticks(resolution),
                     parses);
             }
 
@@ -244,7 +258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         $"^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}T[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fraction.Pattern}{zone.Pattern}$",
                         InstantName(n, zone.Name),
                         "yyyy-MM-dd'T'HH:mm:ss" + fraction.Format + zone.Format,
-                        fraction.Exact,
+                        fraction.Grid,
                         CosmosTemporalParts.Instant,
                         readsBack: true,
                         spellings.ToArray());
@@ -258,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         $"^[0-9]{{8}}T[0-9]{{6}}{fraction.Pattern}{zone.Pattern}$",
                         $"iso8601-basic-f{n}-{zone.Name}",
                         "yyyyMMdd'T'HHmmss" + fraction.Format + zone.Format,
-                        fraction.Exact,
+                        fraction.Grid,
                         CosmosTemporalParts.Instant,
                         readsBack: false);
                 }
@@ -268,7 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     $"^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}T[0-9]{{2}}:[0-9]{{2}}{zone.Pattern}$",
                     $"iso8601-instant-minutes-{zone.Name}",
                     "yyyy-MM-dd'T'HH:mm" + zone.Format,
-                    value => value.Ticks % TimeSpan.TicksPerMinute == 0,
+                    Ticks(TimeSpan.TicksPerMinute),
                     CosmosTemporalParts.Instant,
                     readsBack: true,
                     Cross(new[] { dates[Bq] + "'T'" + minutes[Bq], dates[Pg] + "'T'" + minutes[Pg] }, zone.Parses));
@@ -282,13 +296,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // regard to case -- and for the same reason it reads the `mm` of
             // `yyyy-MM-dd'T'HH:mm:ss'Z'` as a second *month*, so that shape reads January the 2nd at
             // 03:04:05 as April the 2nd at 03:00:05. A date has no minute to be mistaken for a month.
-            Register("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "iso8601-date", "yyyy-MM-dd", value => value.TimeOfDay == TimeSpan.Zero,
+            Register("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "iso8601-date", "yyyy-MM-dd", Days,
                 CosmosTemporalParts.Date, readsBack: true, "%Y-%m-%d", "YYYY-MM-DD", "yyyy-MM-dd");
 
-            Register("^[0-9]{8}$", "iso8601-date-basic", "yyyyMMdd", value => value.TimeOfDay == TimeSpan.Zero,
+            Register("^[0-9]{8}$", "iso8601-date-basic", "yyyyMMdd", Days,
                 CosmosTemporalParts.Date, readsBack: false, "%Y%m%d", "YYYYMMDD");
 
-            Register("^[0-9]{4}-[0-9]{2}$", "iso8601-year-month", "yyyy-MM", value => value.Day == 1 && value.TimeOfDay == TimeSpan.Zero,
+            Register("^[0-9]{4}-[0-9]{2}$", "iso8601-year-month", "yyyy-MM", Months,
                 CosmosTemporalParts.Date, readsBack: true, "%Y-%m", "YYYY-MM");
 
             // A time of day with no date. Recognised, because its lexical order is its chronological
@@ -301,18 +315,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 foreach (var spelling in spellings)
                     ParseDigits[spelling] = n;
 
-                Register($"^[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fractions[n].Pattern}$", $"iso8601-time-f{n}", null, Never,
+                Register($"^[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}{fractions[n].Pattern}$", $"iso8601-time-f{n}", null, Unwritten,
                     CosmosTemporalParts.Time, readsBack: true, spellings);
             }
 
-            Register("^[0-9]{2}:[0-9]{2}$", "iso8601-time-minutes", null, Never,
+            Register("^[0-9]{2}:[0-9]{2}$", "iso8601-time-minutes", null, Unwritten,
                 CosmosTemporalParts.Time, readsBack: true, minutes);
         }
 
         /// <summary>
-        /// The predicate of a form no value is written into.
+        /// The resolution of a form that is a whole number of ticks — every fraction width, and the
+        /// minute.
         /// </summary>
-        static bool Never(DateTime value) => false;
+        /// <param name="resolution">The ticks in one step.</param>
+        /// <returns>The floor and the step.</returns>
+        static (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Ticks(long resolution) =>
+            (value => new DateTime(value.Ticks - value.Ticks % resolution, value.Kind), value => value.AddTicks(resolution));
+
+        /// <summary>
+        /// The resolution of a calendar date.
+        /// </summary>
+        /// <remarks>
+        /// A property rather than a field, as are the two below: <see cref="Known"/> is built by a
+        /// field initialiser declared above them, and a field here would still be unset when it ran.
+        /// </remarks>
+        static (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Days =>
+            (value => value.Date, value => value.AddDays(1));
+
+        /// <summary>
+        /// The resolution of a year and a month, whose steps are not all the same length.
+        /// </summary>
+        static (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Months =>
+            (value => new DateTime(value.Year, value.Month, 1, 0, 0, 0, value.Kind), value => value.AddMonths(1));
+
+        /// <summary>
+        /// The resolution of a form no value is written into, which nothing asks.
+        /// </summary>
+        static (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Unwritten =>
+            (value => value, value => value);
 
         /// <summary>
         /// Names one instant form, keeping the four spellings that were named before this was
@@ -553,6 +593,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return null;
 
             return form.Exact(value) ? value.ToString(form.Format, CultureInfo.InvariantCulture) : null;
+        }
+
+        /// <summary>
+        /// Writes an instant that arrived with the execution the way a path in this form stores it,
+        /// rounding it onto the form's resolution where it does not land there.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The parameter's counterpart of the overload above, and the difference is when the
+        /// question is asked.</b> A literal is in hand while the plan is made, and one that does not
+        /// land on the form keeps its comparison in process. A parameter is not, and its statement is
+        /// already written by the time it is — so it has to be right for a value between two
+        /// spellings too, and <see cref="CosmosTemporalRounding"/> is the argument that it can be.
+        /// </para>
+        /// <para>
+        /// <b>A value that lands is written exactly as the literal would be</b>, which is the ordinary
+        /// case: Calcite's runtime holds a <c>TIMESTAMP</c> in milliseconds, so against a form of
+        /// millisecond precision or finer every value lands and the rounding is never consulted.
+        /// </para>
+        /// </remarks>
+        /// <param name="representation">The path form.</param>
+        /// <param name="value">The value to write, read as UTC.</param>
+        /// <param name="rounding">Which way the comparison the value is bound into needs it rounded.</param>
+        /// <returns>The text to bind, or <c>null</c> where the form is not one a value is written into.</returns>
+        public static string? Render(CosmosRepresentation representation, DateTime value, CosmosTemporalRounding rounding)
+        {
+            if (Temporal.TryGetValue(representation.Name, out var form) == false || form.Format is null)
+                return null;
+
+            var floor = form.Floor(value);
+            if (floor == value)
+                return value.ToString(form.Format, CultureInfo.InvariantCulture);
+
+            return rounding switch
+            {
+                CosmosTemporalRounding.Down => floor.ToString(form.Format, CultureInfo.InvariantCulture),
+                CosmosTemporalRounding.Up => form.Next(floor).ToString(form.Format, CultureInfo.InvariantCulture),
+
+                // A tick is the finest a DateTime holds, and every form that writes one holds every
+                // value exactly -- so a value reaching here is finer than the form, and written to the
+                // tick it has more digits than any spelling of it.
+                _ => value.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture),
+            };
         }
 
     }

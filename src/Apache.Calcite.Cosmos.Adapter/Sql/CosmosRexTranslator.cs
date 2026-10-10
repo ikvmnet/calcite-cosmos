@@ -984,6 +984,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case SqlKind.__Enum.IS_NOT_NULL:
                     WriteIsNull(builder, call, negated: true);
                     break;
+                case SqlKind.__Enum.IS_TRUE:
+                    WriteTruthTest(builder, call, truth: true, negated: false);
+                    break;
+                case SqlKind.__Enum.IS_FALSE:
+                    WriteTruthTest(builder, call, truth: false, negated: false);
+                    break;
+                case SqlKind.__Enum.IS_NOT_TRUE:
+                    WriteTruthTest(builder, call, truth: true, negated: true);
+                    break;
+                case SqlKind.__Enum.IS_NOT_FALSE:
+                    WriteTruthTest(builder, call, truth: false, negated: true);
+                    break;
                 case SqlKind.__Enum.LIKE:
                     WriteLike(builder, call);
                     break;
@@ -2610,6 +2622,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // A cast to BOOLEAN over the rendering of a path the facts prove holds a boolean is the
+            // stored boolean, and is written as the path -- see TryStoredBoolean for why the proof is
+            // the whole of it.
+            if (TryStoredBoolean(call) is RexNode stored)
+            {
+                Write(builder, stored);
+                return;
+            }
+
             // A cast that differs from its operand only in nullability converts nothing, and refusing it
             // cost every COALESCE its pushdown (#130). The validator expands COALESCE(x, y) to
             // CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y) before a RexCall exists: the accessor, the
@@ -2673,6 +2694,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var left = Operand(call, 0);
             var right = Operand(call, 1);
 
+            // An instant read out of a path, against a parameter: written in the path's own spelling
+            // when the value arrives. See TryWriteStoredInstantParameter.
+            if (TryInstantParameter(right) is org.apache.calcite.rex.RexDynamicParam onRight && TryWriteStoredInstantParameter(builder, left, onRight, op))
+                return;
+
+            if (TryInstantParameter(left) is org.apache.calcite.rex.RexDynamicParam onLeft && TryWriteStoredInstantParameter(builder, right, onLeft, Reverse(op)))
+                return;
+
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
@@ -2712,6 +2741,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             WriteBinary(builder, left, right, op);
         }
+
+        /// <summary>
+        /// Writes a comparison between an instant read out of a path and a parameter, the parameter
+        /// bound to be written in the path's stored spelling when the statement runs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The literal's lowering, with the value arriving later.</b> Against a literal,
+        /// <see cref="Metadata.CosmosFactRewriter"/> writes the literal in the form the container
+        /// declares for the path while the plan is made, and the comparison is one of stored strings.
+        /// Against a parameter it declined, the parameter being no literal — so the comparison was
+        /// weakened to a definedness test and a "changed since" refresh read every document to
+        /// compare in process (#182). Nothing about the decision needs the value: whether the stored
+        /// strings answer for the instants is a question about the path and the operator, and
+        /// <see cref="Metadata.CosmosFactRewriter.TryStoredInstant"/> answers it for both callers.
+        /// What is left is writing the value, and <see cref="Client.CosmosQueries.Bind"/> does that
+        /// when it exists.
+        /// </para>
+        /// <para>
+        /// <b>A value between two stored spellings cannot be refused, so it is rounded, and the
+        /// operator says which way.</b> A literal that does not land on the form keeps its comparison
+        /// in process; a parameter's statement is already written. Every stored value lands on the
+        /// form, so rounding the parameter onto it in the direction the comparison is insensitive to
+        /// changes nothing it keeps — see <see cref="Metadata.CosmosTemporalRounding"/>. The path is
+        /// written on the left, the operator reversed where it was read the other way round, so that
+        /// the direction is decided once.
+        /// </para>
+        /// <para>
+        /// <b>Which facts.</b> The ones this translator was given, which is the same set the literal's
+        /// lowering is decided from in the filter rules: the conjunct cannot prove its own path's form,
+        /// a comparison against a parameter establishing nothing, so a guard proving it is a sibling
+        /// pushed beside it.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="temporal">The side that may read a path as an instant.</param>
+        /// <param name="parameter">The parameter on the other side.</param>
+        /// <param name="op">The operator, with the path on its left.</param>
+        /// <returns><c>true</c> where the comparison was written.</returns>
+        bool TryWriteStoredInstantParameter(StringBuilder builder, RexNode temporal, org.apache.calcite.rex.RexDynamicParam parameter, string op)
+        {
+            // The two sides compared as one type. Calcite casts one of them where they differ, and a
+            // cast between a DATE and a TIMESTAMP converts.
+            if (temporal.getType()?.getSqlTypeName() != parameter.getType()?.getSqlTypeName())
+                return false;
+
+            var ordering = op is not ("=" or "!=");
+
+            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, this, _facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+                return false;
+
+            var rounding = op switch
+            {
+                ">" or "<=" => Metadata.CosmosTemporalRounding.Down,
+                ">=" or "<" => Metadata.CosmosTemporalRounding.Up,
+                _ => Metadata.CosmosTemporalRounding.None,
+            };
+
+            builder.Append('(');
+            Write(builder, accessor);
+            builder.Append(' ').Append(op).Append(' ');
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding }));
+            builder.Append(')');
+            return true;
+        }
+
+        /// <summary>
+        /// Recognises a parameter of a temporal type, through any casts that keep its value, and
+        /// returns it.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST(? AS TIMESTAMP)</c> compared with a <c>TIMESTAMP(3)</c> arrives as
+        /// <c>CAST(CAST(?0):TIMESTAMP(0)):TIMESTAMP(3)</c>, and a cast between two precisions of one
+        /// type changes nothing at run time — measured, the milliseconds survive the
+        /// <c>TIMESTAMP(0)</c> — so the value compared is the value the parameter carries. A cast
+        /// between a <c>DATE</c> and a <c>TIMESTAMP</c> converts and is not looked through.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns>The parameter, or <c>null</c>.</returns>
+        static org.apache.calcite.rex.RexDynamicParam? TryInstantParameter(RexNode node)
+        {
+            var type = node.getType()?.getSqlTypeName();
+            if (type != SqlTypeName.TIMESTAMP && type != SqlTypeName.DATE)
+                return null;
+
+            while (node is RexCall call
+                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && Operand(call, 0).getType()?.getSqlTypeName() == type)
+                node = Operand(call, 0);
+
+            return node as org.apache.calcite.rex.RexDynamicParam;
+        }
+
+        /// <summary>
+        /// Returns the operator that means the same thing with its operands the other way round.
+        /// </summary>
+        static string Reverse(string op) => op switch
+        {
+            ">" => "<",
+            ">=" => "<=",
+            "<" => ">",
+            "<=" => ">=",
+            _ => op,
+        };
 
         /// <summary>
         /// Determines whether an expression is of a character type.
@@ -2791,6 +2925,148 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 CollectGuardPaths(Operand(call, i), paths);
+        }
+
+        /// <summary>
+        /// Recognises a cast to <c>BOOLEAN</c> over the rendering of a path the facts prove holds a
+        /// boolean, and returns the rendering — which is written as the path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Without the proof the cast is not the service's value, and it is declined.</b> A view
+        /// gives a boolean column its type the way it gives any column one, by casting the text
+        /// accessor — <c>CAST(JSON_VALUE(DOC, '$.offline') AS BOOLEAN)</c> — and Calcite's cast of
+        /// text to a boolean is a parse: measured, it trims the text and reads <c>true</c> and
+        /// <c>false</c> in any case, so a stored string <c>"TRUE"</c> is true there and is a string at
+        /// the service, where it equals no boolean. A number raises. Nothing about the path can be
+        /// pushed from the cast alone.
+        /// </para>
+        /// <para>
+        /// <b>With it the cast is the stored value, exactly.</b> Where the path holds a boolean the
+        /// accessor renders it as <c>true</c> or <c>false</c> and the cast reads that back as the
+        /// boolean it was; an absent path and a JSON null render as SQL null and the cast keeps them
+        /// null. At the service the path is that boolean, undefined where it is absent and null where
+        /// it is null — and the service's logic over a value that is not a boolean is SQL's logic over
+        /// null: measured against the emulator, <c>NOT</c>, <c>AND</c> and <c>OR</c> treat a null, an
+        /// absent path and any other type as unknown, and a <c>WHERE</c> keeps none of them
+        /// (<c>CosmosBooleanLogicMeasurementTests</c>). So the path stands for the cast in any boolean position,
+        /// which is what lets <c>NOT</c>, a comparison against a boolean and the truth tests in
+        /// <see cref="WriteTruthTest"/> each be written over it with nothing added. <c>OrNull</c>
+        /// because a JSON null needs nothing excluded: it is null on both sides.
+        /// </para>
+        /// <para>
+        /// <b>Which renderings.</b> A bare <c>JSON_VALUE</c>, or a raw value typed <c>ANY</c> or
+        /// <c>VARIANT</c> — <see cref="IsRenderedDocumentValue"/>. Two operands only: a behaviour clause
+        /// substitutes a value where the path has none, and the cast of <c>DEFAULT 'true' ON EMPTY</c>
+        /// is true over a document the path is absent from. Not a <c>JSON_QUERY</c>, which answers null
+        /// for every scalar and so for every boolean. And not a field a projection bound to an
+        /// accessor, although the comparisons take one: the binding records the path and that the
+        /// column is text, and not the clause, so the one thing this has to refuse could not be seen.
+        /// Nothing is lost by it — <c>FILTER_PROJECT_TRANSPOSE</c> takes the filter below the view,
+        /// and there the cast is written over the accessor itself.
+        /// </para>
+        /// <para>
+        /// <b>Which facts.</b> The ones this translator was given, which in a filter are the
+        /// declaration closed under the predicate's own conjuncts — the sibling-conjunct argument
+        /// <see cref="Metadata.CosmosFactRewriter"/> makes, a guard proving the type being applied
+        /// beside the comparison it licenses. A conjunct cannot certify itself here, because the cast
+        /// resolves to no path and <see cref="Metadata.CosmosFactExtractor"/> reads nothing from a
+        /// comparison over one. Rooted at the container only: a traversal alias addresses an element,
+        /// and the schema describes the document.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns>The rendering the cast reads, or <c>null</c> where this is not that shape.</returns>
+        internal RexNode? TryStoredBoolean(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperands().size() != 1)
+                return null;
+
+            var kind = KindOf(call);
+            if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
+                return null;
+
+            if (call.getType()?.getSqlTypeName() != SqlTypeName.BOOLEAN)
+                return null;
+
+            var operand = Operand(call, 0);
+
+            if (IsRenderedDocumentValue(operand) == false)
+                return null;
+
+            if (TryResolvePath(operand, out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document || document.IsRoot)
+                return null;
+
+            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Boolean, OrNull: true)))
+                ? operand
+                : null;
+        }
+
+        /// <summary>
+        /// Writes <c>IS TRUE</c>, <c>IS FALSE</c> and their negations over a stored boolean.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two-valued where SQL's are, and that is the only thing that needs care.</b> SQL's truth
+        /// tests never answer unknown: <c>x IS TRUE</c> is false where <c>x</c> is null. The service's
+        /// <c>c.x = true</c> is false over a JSON null and <em>undefined</em> over an absent path —
+        /// measured, <c>CosmosBooleanLogicMeasurementTests</c> — and a <c>NOT</c> above an undefined is
+        /// undefined too, so written bare, <c>NOT (x IS TRUE)</c>
+        /// would drop a document with no <c>x</c> that SQL keeps. The negative tests therefore keep the
+        /// absent case by name, <c>NOT IS_DEFINED(c.x) OR NOT (c.x = true)</c>, which is true over an
+        /// absent path, over a null, and over the other boolean, and false over the one it excludes.
+        /// The positive tests need nothing in a positive position — undefined is not kept, as false is
+        /// not — and take <c>IS_DEFINED</c> beside the comparison under a <c>NOT</c>, where the
+        /// difference would show.
+        /// </para>
+        /// <para>
+        /// <b>Over a stored boolean and nothing else.</b> Every other operand is declined, as the whole
+        /// family was before: over an arbitrary expression the service's undefined can arise in places
+        /// a test like this cannot see, and the shapes that reach here have only the one, at the path.
+        /// See <see cref="TryStoredBoolean"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="call">The test.</param>
+        /// <param name="truth">The value tested for: <c>true</c> for <c>IS TRUE</c> and <c>IS NOT TRUE</c>.</param>
+        /// <param name="negated">Whether the test is the negative one.</param>
+        void WriteTruthTest(StringBuilder builder, RexCall call, bool truth, bool negated)
+        {
+            RequireOperandCount(call, 1);
+
+            if (TryStoredBoolean(Operand(call, 0)) is not RexNode stored)
+                throw new CosmosTranslationException($"'{call.getOperator().getName()}' is written only over a path the container declares a boolean: over anything else the service's undefined does not follow SQL's unknown.");
+
+            var position = _negated;
+
+            // The operand is a value, and a value has no position.
+            _negated = false;
+
+            try
+            {
+                var operand = new StringBuilder();
+                Write(operand, stored);
+                var path = operand.ToString();
+
+                var comparison = $"({path} = {_parameters.Add(truth)})";
+
+                if (negated)
+                    builder.Append("(NOT IS_DEFINED(").Append(path).Append(") OR (NOT ").Append(comparison).Append("))");
+                else if (position)
+                    builder.Append("(IS_DEFINED(").Append(path).Append(") AND ").Append(comparison).Append(')');
+                else
+                    builder.Append(comparison);
+            }
+            finally
+            {
+                _negated = position;
+            }
         }
 
         void WriteIsNull(StringBuilder builder, RexCall call, bool negated)

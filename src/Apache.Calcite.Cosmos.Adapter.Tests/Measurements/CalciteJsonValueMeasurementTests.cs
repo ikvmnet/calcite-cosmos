@@ -294,6 +294,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     $"a scalar under an array RETURNING is a raw cast failure, over {json}");
         }
 
+        /// <summary>
+        /// A cast of the accessor to <c>BOOLEAN</c> is a parse of the text: it reads back a stored
+        /// boolean as itself, and reads a string spelling one too, which is why it is pushed only where
+        /// the container says the path holds a boolean.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosRexTranslator.TryStoredBoolean</c> rests on both halves. Over a stored boolean the
+        /// cast answers that boolean, and over a null or an absent path it answers null — so where the
+        /// path holds nothing else the cast is the stored value. Over a string it parses, trimming and
+        /// ignoring case, so <c>"TRUE"</c> is true here and is a string at the service; and a number
+        /// raises. Neither of those is the stored value, and only a declaration rules them out.
+        /// </remarks>
+        [Fact]
+        public void ACastToBooleanParsesTheRendering()
+        {
+            Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS BOOLEAN)").Value.Should().Be("True");
+            Ask($"CAST(JSON_VALUE({Document("false")}, '$.v') AS BOOLEAN)").Value.Should().Be("False");
+
+            Ask($"CAST(JSON_VALUE({Document("null")}, '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "a JSON null is null");
+            Ask("CAST(JSON_VALUE('{}', '$.v') AS BOOLEAN)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "and so is an absent path");
+
+            // What a declaration rules out.
+            Ask($"CAST(JSON_VALUE({Document("\"TRUE\"")}, '$.v') AS BOOLEAN)").Value.Should().Be("True", "a string spelling a boolean is parsed, in any case");
+            Ask($"CAST(JSON_VALUE({Document("\" false \"")}, '$.v') AS BOOLEAN)").Value.Should().Be("False", "and trimmed");
+            Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("a number raises");
+        }
+
     }
 
 }
