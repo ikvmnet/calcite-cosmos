@@ -2104,6 +2104,91 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>JSON_VALUE</c> carrying a behaviour clause is not projected as the path.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// It was: the accessor was taken whatever followed the path, and
+        /// <c>DEFAULT 'none' ON ERROR</c> became <c>(IS_PRIMITIVE(c.flag) ? c.flag : null)</c> — null
+        /// for a document with no <c>flag</c>, where the engine answers <c>'none'</c>. A wrong answer,
+        /// not a missed pushdown.
+        /// </para>
+        /// <para>
+        /// Refused rather than rendered with the default, because which documents a clause answers
+        /// for is a table over the clause, the path's mode and the JSON type found, and it is not the
+        /// standard's — <c>CalciteJsonValueMeasurementTests.JsonValueBehaviourClausesFollowThePathModeNotTheStandardsReading</c>
+        /// pins it. <c>ERROR ON ERROR</c> raises, which nothing pushed reproduces.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AJsonValueBehaviourClauseIsNotProjectedAsThePath()
+        {
+            foreach (var clause in new[] { "DEFAULT 'none' ON EMPTY", "DEFAULT 'none' ON ERROR", "ERROR ON ERROR", "NULL ON EMPTY ERROR ON ERROR", "RETURNING INTEGER DEFAULT 0 ON EMPTY" })
+            {
+                var best = PlanToAsync($"SELECT JSON_VALUE(c.\"DOC\", '$.flag' {clause}) AS \"f\" FROM products AS c");
+                var plan = Plan(best);
+
+                plan.Should().Contain("ClrCursorProject", $"the engine decides {clause}: " + plan);
+                Render(FindCosmos(best)).Should().NotContain("c.flag", $"and nothing of {clause} is rendered");
+            }
+        }
+
+        /// <summary>
+        /// The defaults written down are the plain accessor, and are rendered as it is.
+        /// </summary>
+        /// <remarks>
+        /// The validator keeps them as symbols — <c>FLAG(NULL), FLAG(ON EMPTY)</c> — so the call has
+        /// more operands than the bare one; it is what the clauses say that decides, not how many there
+        /// are.
+        /// </remarks>
+        [Fact]
+        public void TheDefaultBehaviourClausesWrittenDownAreThePlainAccessor()
+        {
+            const string Expected = "SELECT VALUE { \"f\": (IS_PRIMITIVE(c.flag) ? c.flag : null) } FROM products c";
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.flag') AS \"f\" FROM products AS c")).Should().Be(Expected);
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.flag' NULL ON EMPTY) AS \"f\" FROM products AS c")).Should().Be(Expected);
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.flag' NULL ON EMPTY NULL ON ERROR) AS \"f\" FROM products AS c")).Should().Be(Expected);
+        }
+
+        /// <summary>
+        /// A view's column carrying a behaviour clause binds to no path, so an operator over it is not
+        /// pushed against one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The other half of the projection's refusal, and the one the projection's test does not see.
+        /// The column used to bind to <c>c.flag</c> read as text, and a filter above it was then held
+        /// to the tests a plain accessor's column is: <c>= 'none'</c> is unambiguous text, so it
+        /// pushed whole as <c>c.flag = 'none'</c> — losing every document without a <c>flag</c>, which
+        /// is precisely the document the clause answers <c>'none'</c> for. The comment on
+        /// <c>IsUnambiguousTextEquality</c> had said as much: a field bound to one carried no clause
+        /// to inspect.
+        /// </para>
+        /// <para>
+        /// Under a host's rewrites too, where the filter is transposed below the projection with the
+        /// accessor inlined, and must decline there in its own spelling.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFilterOverAViewsBehaviourClauseColumnIsNotPushedAgainstThePath()
+        {
+            const string Defaulted = "(SELECT c.\"id\" AS \"Id\", JSON_VALUE(c.\"DOC\", '$.flag' DEFAULT 'none' ON ERROR) AS \"Flag\" FROM products AS c) AS p";
+
+            foreach (var hostRewrites in new[] { false, true })
+            {
+                foreach (var predicate in new[] { "p.\"Flag\" = 'none'", "p.\"Flag\" LIKE 'no%'", "p.\"Flag\" IS NULL" })
+                {
+                    var best = PlanToAsync($"SELECT p.\"Id\" FROM {Defaulted} WHERE {predicate}", hostRewrites);
+                    var plan = Plan(best);
+
+                    plan.Should().Contain("ClrCursorFilter", $"{predicate} is the engine's to decide, with host rewrites {hostRewrites}: " + plan);
+                    Render(FindCosmos(best)).Should().NotContain("c.flag", $"and {predicate} pushes nothing against the path, with host rewrites {hostRewrites}");
+                }
+            }
+        }
+
+        /// <summary>
         /// A <c>RETURNING</c> that names a scalar type is rendered as the bare path and read as that
         /// type.
         /// </summary>

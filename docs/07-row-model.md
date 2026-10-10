@@ -162,6 +162,23 @@ VARCHAR ARRAY)`**: Calcite accepts it, but `JSON_VALUE` extracts scalars only, s
 document in Calcite — and the adapter gives the same answer, null, rather than inventing a different
 meaning. Chapter 11 covers arrays.
 
+### Behaviour clauses: `ON EMPTY` and `ON ERROR`
+
+`JSON_VALUE` accepts SQL's behaviour clauses — `DEFAULT 'none' ON EMPTY`, `DEFAULT 0 ON ERROR`,
+`ERROR ON ERROR`. A column carrying one **is computed in process**, and so is any filter, sort or join
+written over it: the clause answers for documents the path holds nothing for, so the property at the
+service is not the column. `NULL ON EMPTY` and `NULL ON ERROR` are the defaults written down and push
+like the bare accessor.
+
+Know what Calcite does with them, because it is not the obvious reading. A path written without a mode
+(`'$.flag'`) is **strict**: an absent property is an *error*, not an empty result, so it is `ON ERROR`
+that answers for it, and `DEFAULT 'none' ON EMPTY` over a document with no `flag` gives null. A JSON
+null, an object and an array take the `ON ERROR` branch too. Write `'lax $.flag'` for the absence to
+count as empty.
+
+For a column with a fallback, prefer `COALESCE(JSON_VALUE(c."DOC", '$.flag'), 'none')`: it means what
+it looks like, and it pushes.
+
 ## 7.5 Null and absent
 
 Cosmos distinguishes a property that holds JSON `null` from a property that is not there at all
@@ -230,6 +247,8 @@ Prefer these spellings in views:
 - **Numbers and booleans**: `RETURNING`, where the documents hold that type. A `CAST` converts, which
   keeps the column in process — and a sort on it with it.
 - **Arrays**: `JSON_QUERY … RETURNING <type> ARRAY`.
+- **Fallbacks**: `COALESCE(JSON_VALUE(…), …)`, not a `DEFAULT … ON EMPTY` clause, which keeps the
+  column in process.
 - **UUIDs and instants stored as text**: see Chapters 14 and 15 — a declared stored form is what lets
   those push.
 
