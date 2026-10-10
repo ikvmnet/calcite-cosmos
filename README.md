@@ -533,6 +533,58 @@ rather than refused, an unrecognised pattern yields no fact, and a schema it can
 the container working exactly as it did. Saying nothing about a path costs a pushdown; saying
 something untrue about it costs rows.
 
+### Saying what no two documents share
+
+A schema describes each document. What it cannot say is anything about two of them, and one such thing
+decides whether several views of one container cost one read or several: whether a value names one
+document. Where a query joins views of the same container on a value that does, each document is paired
+only with itself, and the adapter answers the join by reading the container once — the views' filters
+combined, a left join's missing side as nulls.
+
+Some of that the adapter knows without being told. `id` is unique within a logical partition, so the
+partition key with `id` names one document; so does the partition key with the paths of a unique key
+policy. A join that equates those needs nothing declared.
+
+Anything else you declare, as SQL DDL beside the schema. The expressions are the same Calcite SQL your
+views are written in:
+
+```json
+{
+  "name": "links",
+  "schema": { },
+  "constraints": [
+    "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
+    "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'",
+    "UNIQUE (LOWER(JSON_VALUE(DOC, '$.email')))"
+  ]
+}
+```
+
+- The first says no two documents in the container hold the same `data.guid`.
+- The second says no two documents whose `type` is `Link` hold the same `linkId`. It is used only where
+  both sides of a join are proved to be Links. Proved means implied, not spelled the same:
+  `WHERE … IN ('Link', 'Other')` is implied by a view's `= 'Link'`.
+- The third says two emails differing only in case are one.
+
+**What a key means.** A plain accessor — `JSON_VALUE(DOC, '$.x')`, or a promoted column such as `"id"` —
+stands for the value *stored* at that path, which is what a unique key policy means too. Any other expression
+stands for its own value. A document whose key is null is outside the claim, because a null equals nothing.
+
+**When it is checked.** Each constraint is parsed and validated against the container's columns when the
+model is read, and one that does not compile fails there, naming the container. `CHECK` is not read yet, and
+is refused by name rather than ignored.
+
+**This is a stronger promise than a schema, and nothing checks it.** A schema can be checked one document at
+a time; a `UNIQUE` constraint is about every pair, and checking it would mean reading the container. If two
+documents do share a value, a join that should pair them is read as one document paired with itself, and
+the second document's rows are missing from the answer — no error, and a plan that looks right. Declare one
+only where the application makes it so, for every writer. A unique key policy is the service-enforced
+alternative, but it can only be set when a container is created and is unique within a partition.
+
+Anything in `constraints` the adapter does not read is refused rather than ignored, because a constraint
+silently dropped is one you believe is in force. A predicate the adapter cannot prove from a query's own
+`WHERE` is different: the constraint is simply not used for that query, which costs a read and never a row.
+
 ## What gets pushed down
 
 | | |

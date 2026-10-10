@@ -1273,7 +1273,6 @@ old wording did not allow for.
   element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
   t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
   cannot answer. Measure it against an account before binding it.
-- **Unique key policy** — *small.* Declared unique keys are keys `getStatistic` does not report.
 - **Tuple indexes** — *small, and unclaimed.* The one indexing-policy declaration
   `CosmosContainerMetadataReader` still does not read. Nothing consults it yet, which is why it was
   left where the full text and vector paths were not.
@@ -1619,6 +1618,40 @@ answer.
 - **A schema carried by reference** rather than inline. Inline is the right default and the README
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
+
+### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
+
+Built in #177: `CosmosConstraintSet`, constraints written as SQL DDL (`UNIQUE (expr, …) [WHERE p]`, compiled
+by Calcite against the container), the ones the service and the container definition state, a model's
+`constraints`, and `CosmosSelfJoinRule` reading a join of a container to itself on one as one read. `DESIGN.md` under *A constraint says what holds
+across documents* and *A join of a container to itself* is the record.
+
+- **`CHECK`, a constraint relating two paths of one document** — *large.* `CHECK (data.id = linkId)`,
+  under a `WHERE type = 'Link'` or written into the predicate. Refused by name today. Checkable per document, so the same trust as a schema rather than a `UNIQUE`'s. Two
+  consumers: a join equating `data.id` then equates `linkId` too, which with `UNIQUE (pk, id)` and
+  `id = 'Link$' || linkId` makes an integer key held at all three provable with no claim about pairs of
+  documents; and facts carry across the paths. It wants path equality in the fact theory, whose atoms are `(path, claim)`
+  today — and path equality is also what would let a contradiction like `foo = 1 AND bar = 2` over
+  `foo == bar` be decided.
+- **A contradiction should send nothing** — *small.* A predicate the facts contradict renders as
+  `WHERE @p0` with a bound `false`: one round trip for no rows. An empty `Values` in its place is no request
+  at all. Independent of the item above, which only adds contradictions for it to catch.
+- **A partition key pinned by both sides makes `id` alone unique** — *medium.* Both sides proving
+  `pk = 'X'` puts every candidate document in one logical partition, where `id` is unique. A filter that is
+  a function of the query rather than a constant, so it does not fit a `UNIQUE`'s fixed predicate and wants
+  its own case beside the constraints.
+- **More faithful readings of a stored key** — *small each.* A declared expression key covers a join it is
+  computed from, but a stored-value key — every derived one — is covered only by text or a `UUID` cast.
+  `CAST(… AS INTEGER)` over a path declared integer would count, and so would a concatenation such as
+  `linkId || '/' || id`, injective because an `id` cannot hold `/`, which would give a single-column key the
+  service proves.
+- **Semi and anti joins** — *small.* The substitution answers them: `σ(F ∧ M)` and `σ(F ∧ NOT M IS TRUE)`.
+  Nothing has asked for them.
+- **How a legacy container's system partition key is reported** — *measurement.* Believed to be
+  `/_partitionKey`, which its documents do not hold, so `UNIQUE (_partitionKey, id)` is stated — true,
+  and never matched — where `UNIQUE (id)` would be. Measure against an account holding one.
+- **Whether absent and null partition key values are one partition on Azure** — *measurement.* One on the
+  emulator (409 on a second `A`). Nothing depends on the answer; DESIGN.md says what is measured.
 
 ---
 

@@ -254,7 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <returns>The expression, or the value underneath a redundant cast.</returns>
-        static RexNode StripRedundantTextCast(RexNode node)
+        internal static RexNode StripRedundantTextCast(RexNode node)
         {
             if (node is not RexCall call || call.getOperands().size() != 1)
                 return node;

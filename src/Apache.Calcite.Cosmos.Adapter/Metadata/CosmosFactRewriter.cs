@@ -177,6 +177,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     : RexUtil.composeDisjunction(rexBuilder, operands);
             }
 
+            if (kind == nameof(SqlKind.__Enum.IS_NULL) || kind == nameof(SqlKind.__Enum.IS_NOT_NULL))
+                return TryLowerUuidNullTest(call, translator, known, rootAlias, rexBuilder);
+
             if (call.getOperands().size() != 2)
                 return null;
 
@@ -321,6 +324,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="rexBuilder">Builds the lowered comparison.</param>
         /// <returns>The lowered comparison, or <c>null</c>.</returns>
+        /// <summary>
+        /// Lowers a null test over a <c>UUID</c> cast into the same test over the text it casts, where the
+        /// path's declared form licenses it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A cast is null exactly where its operand is</b> — unless the text does not parse, where a
+        /// <c>CAST</c> raises and a <c>SAFE_CAST</c> answers null. A declared UUID form says every string at
+        /// the path parses, so neither happens, and the test over the cast and the test over the text are
+        /// one test. The text test is one the service evaluates; the cast test is not, and alone it kept a
+        /// predicate whole in process.
+        /// </para>
+        /// <para>
+        /// <b>Where it comes from.</b> A join that equates a key reads, over the one document it pairs, as
+        /// <c>k = k</c> — which is <c>k IS NOT NULL</c> — and an identifier key is a <c>UUID</c> cast. So
+        /// every merged self-join on such a key carries this conjunct. #177.
+        /// </para>
+        /// </remarks>
+        static RexNode? TryLowerUuidNullTest(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        {
+            if (call.getOperands().size() != 1 || (RexNode)call.getOperands().get(0) is not RexCall cast)
+                return null;
+
+            var kind = cast.getKind().name();
+            if (kind != nameof(SqlKind.__Enum.CAST) && kind != nameof(SqlKind.__Enum.SAFE_CAST))
+                return null;
+
+            if (cast.getType()?.getSqlTypeName() != SqlTypeName.UUID || cast.getOperands().size() != 1)
+                return null;
+
+            var operand = (RexNode)cast.getOperands().get(0);
+
+            if (translator.TryResolvePath(operand, out var path) == false || path is null)
+                return null;
+
+            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+                return null;
+
+            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+                return null;
+
+            if (known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
+                return null;
+
+            return rexBuilder.makeCall(call.getOperator(), operand);
+        }
+
         static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)

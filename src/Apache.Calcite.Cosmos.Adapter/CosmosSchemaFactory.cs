@@ -120,6 +120,42 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         public const string SchemaOperand = "schema";
 
+        /// <summary>
+        /// The key, inside a <see cref="ContainersOperand"/> entry, listing what the model declares true of the
+        /// container's documents taken together.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A list of constraints, each written as SQL DDL whose expressions are Calcite SQL over the document —
+        /// the dialect a model's views are written in:
+        /// </para>
+        /// <code>
+        /// "constraints": [
+        ///   "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
+        ///   "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'"
+        /// ]
+        /// </code>
+        /// <para>
+        /// Beside <see cref="SchemaOperand"/>, because the schema says what each document holds and this says
+        /// what holds across them, which JSON Schema has no way to state. What the service and the container
+        /// definition already guarantee — <c>id</c> with the partition key, a unique key policy with the
+        /// partition key — is derived without being written here; see
+        /// <see cref="Metadata.CosmosConstraintSet.FromContainer"/>.
+        /// </para>
+        /// <para>
+        /// <b>Compiled against the container when the model is read</b>, and a constraint that does not compile,
+        /// or is of a kind not read yet, is refused there: a constraint silently dropped is one the caller
+        /// believes is in force. See <see cref="Metadata.CosmosConstraint"/> for the grammar and
+        /// <see cref="Rel.CosmosConstraintCompiler"/> for what the expressions mean.
+        /// </para>
+        /// <para>
+        /// <b>Trusted, not checked</b>, and a wrong <c>UNIQUE</c> is worse than a wrong schema: a join that pairs
+        /// two documents is read as one document paired with itself, and the rows the second contributed are
+        /// dropped with no error. See <c>DESIGN.md</c> under <em>A join of a container to itself</em>.
+        /// </para>
+        /// </remarks>
+        public const string ConstraintsOperand = "constraints";
+
         /// <summary>The operand selecting the connection mode, <c>gateway</c> or <c>direct</c>.</summary>
         public const string ConnectionModeOperand = "connectionMode";
 
@@ -423,7 +459,21 @@ namespace Apache.Calcite.Cosmos.Adapter
                 foreach (var declaration in declared)
                     containers.Add(CosmosContainerMetadataReader
                         .ReadAsync(database.GetContainer(declaration.Name), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult()
-                        .WithFacts(declaration.Facts));
+                        .WithFacts(declaration.Facts)
+                        .WithConstraints(declaration.Constraints ?? System.Array.Empty<Metadata.CosmosConstraint>()));
+
+                // A constraint names expressions over the container's row type, which is only known now.
+                foreach (var container in containers)
+                {
+                    try
+                    {
+                        Rel.CosmosConstraintCompiler.Validate(container);
+                    }
+                    catch (ArgumentException e)
+                    {
+                        throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container.Name}': {e.Message}", e);
+                    }
+                }
 
                 return containers;
             }
@@ -512,15 +562,52 @@ namespace Apache.Calcite.Cosmos.Adapter
             if (map.get("name")?.ToString() is not string name || name.Length == 0)
                 throw new ArgumentException($"Every object in '{ContainersOperand}' must carry a 'name'.");
 
+            var constraints = ReadConstraints(name, map.get(ConstraintsOperand));
+
             if (map.get(SchemaOperand) is not object schema)
-                return new CosmosContainerDeclaration(name, System.Array.Empty<Metadata.CosmosFactRule>());
+                return new CosmosContainerDeclaration(name, System.Array.Empty<Metadata.CosmosFactRule>(), constraints);
 
             // A schema is an object. A string there would be a path or a document and this has decided
             // neither, so it is a model mistake rather than something to guess at.
             if (schema is not java.util.Map)
                 throw new ArgumentException($"Operand '{SchemaOperand}' on container '{name}' must be a JSON Schema object.");
 
-            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaFacts.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)));
+            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaFacts.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)), constraints);
+        }
+
+        /// <summary>
+        /// Reads a container entry's declared constraints.
+        /// </summary>
+        /// <remarks>
+        /// Only the shape of each is read here; whether its expressions compile against the container is asked
+        /// once the container's definition is read, by <see cref="Rel.CosmosConstraintCompiler.Validate"/>.
+        /// </remarks>
+        static IReadOnlyList<Metadata.CosmosConstraint>? ReadConstraints(string container, object? value)
+        {
+            if (value is null)
+                return null;
+
+            if (value is not java.util.List list)
+                throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}' must be a list of constraints, each a string such as \"UNIQUE (JSON_VALUE(DOC, '$.data.guid'))\".");
+
+            var constraints = new List<Metadata.CosmosConstraint>();
+
+            for (var i = 0; i < list.size(); i++)
+            {
+                if (list.get(i) is not string text)
+                    throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}' must be a list of strings.");
+
+                try
+                {
+                    constraints.Add(Metadata.CosmosConstraint.Parse(text, Metadata.CosmosConstraintSource.Declared));
+                }
+                catch (ArgumentException e)
+                {
+                    throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}': {e.Message}", e);
+                }
+            }
+
+            return constraints;
         }
 
     }

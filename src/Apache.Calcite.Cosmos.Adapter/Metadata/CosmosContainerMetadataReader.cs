@@ -168,7 +168,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadPaths(properties.IndexingPolicy?.ExcludedPaths, x => x.Path),
                 ReadFullTextPaths(properties),
                 ReadVectorPaths(properties),
-                properties.GeospatialConfig?.GeospatialType != GeospatialType.Geometry);
+                properties.GeospatialConfig?.GeospatialType != GeospatialType.Geometry,
+                uniqueKeys: ReadUniqueKeys(properties));
+        }
+
+        /// <summary>
+        /// Reads the path sets of the container's unique key policy.
+        /// </summary>
+        /// <remarks>
+        /// Each is unique within a logical partition, which the service enforces on every write, so it
+        /// is a key of the container together with the partition key. The policy can only be set when a
+        /// container is created.
+        /// </remarks>
+        static IReadOnlyList<IReadOnlyList<string>> ReadUniqueKeys(ContainerProperties properties)
+        {
+            var keys = new List<IReadOnlyList<string>>();
+
+            if (properties.UniqueKeyPolicy?.UniqueKeys is { } declared)
+            {
+                foreach (var key in declared)
+                {
+                    var paths = new List<string>();
+                    if (key?.Paths is not null)
+                        foreach (var path in key.Paths)
+                            if (string.IsNullOrEmpty(path) == false)
+                                paths.Add(NormalizePath(path));
+
+                    if (paths.Count > 0)
+                        keys.Add(paths);
+                }
+            }
+
+            return keys;
         }
 
         /// <summary>
