@@ -626,6 +626,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 };
             }
 
+            // A geography the plan already holds, which is what a connection makes of a constant one:
+            // its reduction evaluates CLR_ST_GEOG_GEOMFROMGEOJSON('…') while planning and leaves the
+            // shape as a literal, where a bare planner leaves the call for WriteGeographyLiteral. Bound
+            // as the GeoJSON object a geometry parameter is bound as (#156), so the folded constant and
+            // the bound one reach the service in one spelling.
+            if (type == SqlTypeName.GEOMETRY && literal.getValue() is org.locationtech.jts.geom.Geometry geometry)
+                return Client.CosmosJson.ToGeoJsonValue(geometry);
+
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
         }
 

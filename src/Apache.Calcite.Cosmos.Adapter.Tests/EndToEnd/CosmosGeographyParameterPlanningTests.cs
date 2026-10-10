@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Linq;
+
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
@@ -65,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                                              { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
         """;
 
-        static RelNode Plan(string sql, NullCollation collation, string? schema)
+        static RelNode Plan(string sql, NullCollation collation, string? schema, bool reduce = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
 
@@ -100,6 +103,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
+
+            // What a connection's preparation does before the cost-based pass, and what turns a
+            // constant geography into a literal: the constructor is evaluated while planning.
+            if (reduce)
+            {
+                planner.setExecutor(RexUtil.EXECUTOR);
+
+                var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder()
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.FILTER_REDUCE_EXPRESSIONS)
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.PROJECT_REDUCE_EXPRESSIONS)
+                    .build());
+
+                hep.setRoot(logical);
+                logical = hep.findBestExp();
+            }
 
             foreach (var rule in CosmosRules.GetRules(table.Convention))
                 planner.addRule(rule);
@@ -200,6 +218,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Text(Plan(sql, NullCollation.HIGH, Point)).Should().NotContain("ClrCursorSort");
             Text(Plan(sql, NullCollation.HIGH, null)).Should().Contain("ClrCursorSort",
                 "and without the declaration a stored operand may be null, so the placement still decides");
+        }
+
+        const string Here = """CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-111.5,38.3]}')""";
+
+        /// <summary>
+        /// A constant point a connection has folded into a literal is the filter's, as the unfolded
+        /// constant is.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A connection's preparation reduces constant expressions before the cost-based pass, so the
+        /// constructor is evaluated while planning and the shape arrives as <c>POINT (…):GEOMETRY</c> —
+        /// a literal the translator refused, there being no literal type it bound a geography as. A bare
+        /// planner leaves the call, which is why the constant form pushed in every planner test and not
+        /// through a connection.
+        /// </para>
+        /// <para>
+        /// Bound as the GeoJSON object a geometry parameter is bound as (#156), so the folded constant
+        /// and the parameter reach the service in the same spelling.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFoldedConstantPointIsFiltered()
+        {
+            var sql = $"""SELECT c."id" FROM products AS c WHERE CLR_ST_GEOG_DISTANCE({Location}, {Here}) < 50000.0""";
+            var best = Plan(sql, NullCollation.LOW, null, reduce: true);
+
+            Text(best).Should().Contain("POINT (-111.5 38.3):", "the constructor was evaluated while planning: " + Text(best));
+            Text(best).Should().NotContain("ClrCursorFilter", "and the comparison is still the service's: " + Text(best));
+
+            var query = Query(best);
+            query.Sql.Should().MatchRegex(@"ST_DISTANCE\(c\.location, @p\d+\) < @p\d+");
+
+            var shape = query.Parameters.Select(p => p.Value).OfType<IDictionary<string, object?>>().Should().ContainSingle().Subject;
+            shape["type"].Should().Be("Point");
+            shape.Should().NotContainKey("crs", "the bound object is the one a parameter binds, without the reference system");
+        }
+
+        /// <summary>
+        /// And an ordering by the distance to one keeps the licence a literal point gives it.
+        /// </summary>
+        [Fact]
+        public void AnOrderingByTheDistanceToAFoldedConstantPointIsSorted()
+        {
+            var sql = $"""SELECT c."id" FROM products AS c ORDER BY CLR_ST_GEOG_DISTANCE({Location}, {Here}) FETCH FIRST 5 ROWS ONLY""";
+
+            Text(Plan(sql, NullCollation.LOW, null, reduce: true)).Should().NotContain("ClrCursorSort");
+            Text(Plan(sql, NullCollation.HIGH, Point, reduce: true)).Should().NotContain("ClrCursorSort",
+                "a shape the plan holds is not null, so the declared stored operand is the whole of the licence");
         }
 
         /// <summary>
