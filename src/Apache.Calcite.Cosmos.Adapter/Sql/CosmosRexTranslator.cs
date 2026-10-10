@@ -2659,6 +2659,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // A geography bound as a parameter -- see IsGeographyParameter for why the cast converts
+            // nothing and what arrives in the slot.
+            if (IsGeographyParameter(call))
+            {
+                Write(builder, Operand(call, 0));
+                return;
+            }
+
             if (call.getOperands().size() != 1 || Operand(call, 0) is not RexLiteral literal)
                 throw new CosmosTranslationException("A cast of anything but a literal has no Cosmos equivalent.");
 
@@ -3689,6 +3697,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             throw new CosmosTranslationException(
                 "A geography translates where its GeoJSON is a literal or resolves to a document path.");
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a geography bound as a parameter: <c>?</c> typed
+        /// <c>GEOMETRY</c>, bare or under the cast that typed it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The cast converts nothing, and it is the only thing that stood in the way</b> (#187).
+        /// <c>CAST(? AS GEOMETRY)</c> is how a caller — and Entity Framework, for every spatial
+        /// argument — gives a parameter a type, and the validator types the parameter from it: the
+        /// plan carries <c>CAST(?0):GEOMETRY</c> over a <c>?0</c> already typed <c>GEOMETRY</c>.
+        /// <see cref="WriteCast"/> rendered a cast over a literal only, so a distance to a bound point
+        /// was declined whole, and every document was read and measured in process where the same
+        /// distance to a literal point pushed as the filter and as the sort.
+        /// </para>
+        /// <para>
+        /// <b>What arrives in the slot is a geometry or nothing</b>, and that is measured rather than
+        /// hoped — <c>CalciteGeometryParameterMeasurementTests</c>. The ADO.NET driver converts a
+        /// parameter to its declared type before execution: WKT text arrives as a JTS geometry, and
+        /// GeoJSON text or a number fails there, before either plan sees it. So the value is one
+        /// <see cref="Client.CosmosQueries.Bind"/> already writes as the GeoJSON object a constant
+        /// inlines (#156), and the parameter is written where the cast stood, the cast falling away
+        /// the way the constructor falls away over a literal — see <see cref="WriteGeographyLiteral"/>.
+        /// </para>
+        /// <para>
+        /// Only <c>GEOMETRY</c> to <c>GEOMETRY</c>. A cast into it from anything else is a parse
+        /// that has to happen somewhere, and nowhere here does it.
+        /// </para>
+        /// </remarks>
+        internal static bool IsGeographyParameter(RexNode node)
+        {
+            if (node is RexCall call && KindOf(call) == SqlKind.__Enum.CAST && call.getOperands().size() == 1)
+            {
+                if (call.getType()?.getSqlTypeName() != SqlTypeName.GEOMETRY)
+                    return false;
+
+                node = Operand(call, 0);
+            }
+
+            return node is org.apache.calcite.rex.RexDynamicParam parameter
+                && parameter.getType()?.getSqlTypeName() == SqlTypeName.GEOMETRY;
         }
 
         /// <summary>

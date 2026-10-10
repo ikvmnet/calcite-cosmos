@@ -2489,6 +2489,35 @@ system to be in, so it says nothing; what decides it is that the constant form �
 shape has been executed against an account — carries the caller's own text and no `crs`, and sending
 one where the working spelling sends none would be a second convention tested nowhere.
 
+**Binding it was half of it; the parameter also had to be written, and for a while it was not.** A
+caller types a parameter with `CAST(? AS GEOMETRY)` — Entity Framework does for every spatial
+argument — and the validator types `?0` from the cast and keeps it, so a plan carries
+`CAST(?0):GEOMETRY` over a parameter already typed `GEOMETRY`. `WriteCast` took a cast over a literal
+only, so `CLR_ST_GEOG_DISTANCE(location, CAST(? AS GEOMETRY)) < 50000` was declined whole: the
+comparison stayed above the statement, the sort became a `ClrCursorSort`, and every document crossed
+the wire to be measured, where the same query against a literal point pushed both (#187). The cast
+converts nothing, so `CosmosRexTranslator.IsGeographyParameter` names the shape and the parameter is
+written where the cast stood — `ST_DISTANCE(c.location, @p0)` — the way the constructor falls away
+over a literal. Only `GEOMETRY` to `GEOMETRY`: a cast into one from text is a parse, and nothing here
+performs it.
+
+**That is sound only if the slot holds a geometry, and measurement says it can hold nothing else.**
+Text in the slot would reach the service as a JSON string, `ST_DISTANCE` over a string is undefined,
+and every row would be dropped in silence. It cannot arrive: the ADO.NET driver converts a parameter
+to its declared type before execution — `CalciteGeometryParameterMeasurementTests` — so WKT text
+reaches the data context as a JTS geometry, and GeoJSON text or a number fails with *Unable to parse
+WKT* before either plan runs. The type the plan already has is therefore the whole of what the
+rendering needs, which is the position every other parameter is in.
+
+**A distance to a parameter is as orderable as a distance to a literal.** The sort's licence under
+the default placement is that no key is null or undefined, and a declared geography at the stored
+path settles that beside a literal, because a literal written into the statement is a shape.
+A parameter can be null, or a shape the service will not measure, which a literal cannot — and
+either makes the distance null or undefined in *every* row at once. No key is then placed against
+another, so the two placements have nothing to disagree about, and the stored operand is still the
+whole of what the declaration has to close. `CosmosProject.SortableOperandsOf` passes over a
+parameter as it does a literal.
+
 **What is still out is the loose bound with a recheck above.** `CosmosFilterSplitRule` pushes a
 weakened predicate and rechecks the original in process, which needs an in-process answer that agrees
 with the service. The geography package computes one over S2, and nothing has measured whether it
