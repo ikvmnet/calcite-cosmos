@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -230,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// split says so. Deriving from the whole predicate instead would push a comparison whose
         /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
         /// </remarks>
-        static Metadata.CosmosFactSet Establish(
+        static JsonFactSet Establish(
             java.util.List conjuncts,
             IReadOnlyList<CosmosPath?> fields,
             Metadata.CosmosContainerMetadata container,
@@ -238,10 +239,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             IReadOnlyList<CosmosReading>? readings)
         {
             if (container.Facts.IsEmpty)
-                return Metadata.CosmosFactSet.Empty;
+                return JsonFactSet.Empty;
 
             var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-            var established = new List<Metadata.CosmosFact>();
+            var established = new List<JsonFact>();
 
             for (var i = 0; i < conjuncts.size(); i++)
                 if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
@@ -282,18 +283,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             RexNode value,
             RexNode comparison,
             SqlOperator typeTest,
-            IReadOnlyList<Metadata.CosmosClaim> admits,
+            IReadOnlyList<JsonClaim> admits,
             CosmosRexTranslator translator,
             RexBuilder rexBuilder,
             string rootAlias)
         {
             var known = Known(value, translator, rootAlias);
 
-            var typed = known is not null && admits.Any(claim => translator.Facts.Knows(new Metadata.CosmosFact(known, claim)));
+            var typed = known is JsonDocumentPath path && admits.Any(claim => translator.Facts.Knows(new JsonFact(path, claim)));
             if (typed)
                 return comparison;
 
-            var present = known is not null && translator.Facts.Knows(new Metadata.CosmosFact(known, new Metadata.CosmosClaim.Present()));
+            var present = known is JsonDocumentPath held && translator.Facts.Knows(new JsonFact(held, new JsonClaim.Present()));
 
             var admitted = RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList
             {
@@ -319,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="translator">Resolves the path.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The path, or <c>null</c>.</returns>
-        static Metadata.CosmosDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
+        static JsonDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
         {
             if (translator.TryResolvePath(value, out var path) == false || path is null)
                 return null;
@@ -327,7 +328,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            return Metadata.CosmosDocumentPath.From(path);
+            return Metadata.CosmosDocumentPaths.From(path);
         }
 
         /// <summary>
@@ -423,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 raw,
                 comparison,
                 CosmosOperators.IsString,
-                new[] { new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true) },
+                new[] { new JsonClaim.OfType(JsonType.String, OrNull: true) },
                 translator,
                 rexBuilder,
                 rootAlias);
@@ -728,8 +729,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 CosmosOperators.IsNumber,
                 new[]
                 {
-                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Number, OrNull: true),
-                    new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Integer, OrNull: true),
+                    new JsonClaim.OfType(JsonType.Number, OrNull: true),
+                    new JsonClaim.OfType(JsonType.Integer, OrNull: true),
                 },
                 translator,
                 rexBuilder,

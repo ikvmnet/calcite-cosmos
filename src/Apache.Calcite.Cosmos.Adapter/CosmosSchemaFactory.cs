@@ -4,6 +4,7 @@ using System.Threading;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using Azure.Core;
 using Azure.Identity;
@@ -541,7 +542,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case var single:
                     foreach (var value in single.ToString()!.Split(','))
                         if (value.Trim().Length > 0)
-                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<Metadata.CosmosFactRule>()));
+                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<JsonFactRule>()));
                     break;
             }
 
@@ -557,7 +558,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 return null;
 
             if (entry is not java.util.Map map)
-                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<Metadata.CosmosFactRule>()) : null;
+                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<JsonFactRule>()) : null;
 
             if (map.get("name")?.ToString() is not string name || name.Length == 0)
                 throw new ArgumentException($"Every object in '{ContainersOperand}' must carry a 'name'.");
@@ -565,14 +566,18 @@ namespace Apache.Calcite.Cosmos.Adapter
             var constraints = ReadConstraints(name, map.get(ConstraintsOperand));
 
             if (map.get(SchemaOperand) is not object schema)
-                return new CosmosContainerDeclaration(name, System.Array.Empty<Metadata.CosmosFactRule>(), constraints);
+                return new CosmosContainerDeclaration(name, System.Array.Empty<JsonFactRule>(), constraints);
 
             // A schema is an object. A string there would be a path or a document and this has decided
             // neither, so it is a model mistake rather than something to guess at.
             if (schema is not java.util.Map)
                 throw new ArgumentException($"Operand '{SchemaOperand}' on container '{name}' must be a JSON Schema object.");
 
-            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaFacts.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)), constraints);
+            // Calcite hands the model over as Java maps, which Jackson writes and System.Text.Json reads:
+            // the fact namespace knows only the latter, and this is the one place the two meet.
+            var document = System.Text.Json.Nodes.JsonNode.Parse(Mapper.writeValueAsString(schema))!;
+
+            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaRecognition.ReadFrom(document), constraints);
         }
 
         /// <summary>

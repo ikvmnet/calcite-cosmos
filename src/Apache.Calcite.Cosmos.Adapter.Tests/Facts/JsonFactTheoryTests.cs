@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using StatementPath = Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath;
 
@@ -9,7 +10,7 @@ using FluentAssertions;
 using Xunit;
 
 
-namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 {
 
     /// <summary>
@@ -21,12 +22,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// subsumption is not a rule — a known value settles presence, type and disequality without any of
     /// them being derived, which is what keeps the rule set linear in the schema.
     /// </remarks>
-    public class CosmosFactTheoryTests
+    public class JsonFactTheoryTests
     {
 
-        static readonly CosmosDocumentPath Type = CosmosDocumentPath.Root.Property("type");
-        static readonly CosmosDocumentPath ParkId = CosmosDocumentPath.Root.Property("data").Property("parkId");
-        static readonly CosmosDocumentPath At = CosmosDocumentPath.Root.Property("data").Property("at");
+        static readonly JsonDocumentPath Type = JsonDocumentPath.Root.Property("type");
+        static readonly JsonDocumentPath ParkId = JsonDocumentPath.Root.Property("data").Property("parkId");
+        static readonly JsonDocumentPath At = JsonDocumentPath.Root.Property("data").Property("at");
 
         // Stand-ins rather than rows out of CosmosStoredForms: what a theory does with a
         // representation is carry it, so the pair is chosen to be two distinguishable values with
@@ -34,9 +35,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly CosmosRepresentation EqualityOnly = new("equality-only", PreservesEquality: true, PreservesOrder: false);
         static readonly CosmosRepresentation Ordered = new("ordered", PreservesEquality: true, PreservesOrder: true);
 
-        static CosmosFact Equals(CosmosDocumentPath path, object? value) => new(path, new CosmosClaim.EqualTo(value));
+        static JsonFact Equals(JsonDocumentPath path, object? value) => new(path, new JsonClaim.EqualTo(value));
 
-        static CosmosFact Represents(CosmosDocumentPath path, CosmosRepresentation representation) => new(path, new CosmosClaim.Represents(representation));
+        static JsonFact Represents(JsonDocumentPath path, CosmosRepresentation representation) => new(path, new JsonClaim.Represents(representation));
 
         /// <summary>
         /// A null entails every claim that admits one, and nothing that does not. #175.
@@ -44,28 +45,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ANullEntailsEveryClaimThatAdmitsOne()
         {
-            var isNull = new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.Null));
+            var isNull = new JsonFact(ParkId, new JsonClaim.OfType(JsonType.Null));
             var equalsNull = Equals(ParkId, null);
 
             foreach (var fact in new[] { isNull, equalsNull })
             {
                 fact.Entails(Represents(ParkId, EqualityOnly)).Should().BeTrue("a form says how the strings are written, not that one is there");
-                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
-                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse();
-                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse("a claim about a value says nothing about its being there");
+                fact.Entails(new JsonFact(ParkId, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeTrue();
+                fact.Entails(new JsonFact(ParkId, new JsonClaim.OfType(JsonType.String))).Should().BeFalse();
+                fact.Entails(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse("a claim about a value says nothing about its being there");
             }
 
             isNull.Entails(equalsNull).Should().BeTrue();
-            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.OneOf(new object?[] { "a", null }))).Should().BeTrue();
-            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.OneOf(new object?[] { "a" }))).Should().BeFalse();
-            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.NotEqualTo("a"))).Should().BeTrue();
-            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.NotEqualTo(null))).Should().BeFalse();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new object?[] { "a", null }))).Should().BeTrue();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new object?[] { "a" }))).Should().BeFalse();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.NotEqualTo("a"))).Should().BeTrue();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.NotEqualTo(null))).Should().BeFalse();
         }
 
         [Fact]
         public void AnUnconditionalFactHoldsWithNothingEstablished()
         {
-            var theory = new CosmosFactTheory(new[] { CosmosFactRule.Unconditional(Represents(ParkId, EqualityOnly)) });
+            var theory = new JsonFactTheory(new[] { JsonFactRule.Unconditional(Represents(ParkId, EqualityOnly)) });
 
             theory.Derive(null).RepresentationOf(ParkId).Should().Be(EqualityOnly);
         }
@@ -73,9 +74,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AGuardedFactIsUnusableUntilItsGuardIsProven()
         {
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)),
+                new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)),
             });
 
             theory.Derive(null).RepresentationOf(ParkId).Should().BeNull(
@@ -90,35 +91,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AKnownValueSettlesPresenceTypeMembershipAndDisequality()
         {
-            var set = CosmosFactTheory.Empty.Derive(new[] { Equals(Type, "ParkMap") });
+            var set = JsonFactTheory.Empty.Derive(new[] { Equals(Type, "ParkMap") });
 
-            set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
-            set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("Park"))).Should().BeTrue(
+            set.Knows(new JsonFact(Type, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
+            set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("Park"))).Should().BeTrue(
                 "an else branch's guard is discharged by an equality to a different value, with no closed world needed");
-            set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("ParkMap"))).Should().BeFalse();
-            set.Knows(new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" }))).Should().BeTrue();
-            set.Knows(new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "Trail" }))).Should().BeFalse();
-            set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.Integer))).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("ParkMap"))).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" }))).Should().BeTrue();
+            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "Trail" }))).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.OfType(JsonType.Integer))).Should().BeFalse();
         }
 
         [Fact]
         public void ADomainSettlesWhatEveryMemberAgreesOn()
         {
-            var set = CosmosFactTheory.Empty.Derive(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) });
+            var set = JsonFactTheory.Empty.Derive(new[] { new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" })) });
 
-            set.Knows(new CosmosFact(Type, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue(
+            set.Knows(new JsonFact(Type, new JsonClaim.OfType(JsonType.String))).Should().BeTrue(
                 "every member is a string, so the type is settled even though the value is not");
-            set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("Trail"))).Should().BeTrue();
-            set.Knows(new CosmosFact(Type, new CosmosClaim.NotEqualTo("Park"))).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("Trail"))).Should().BeTrue();
+            set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("Park"))).Should().BeFalse();
             set.Knows(Equals(Type, "Park")).Should().BeFalse("a domain is not a value");
         }
 
         [Fact]
         public void AGuardIsSatisfiedThroughSubsumptionRatherThanLiterally()
         {
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                new CosmosFactRule(new[] { new CosmosFact(Type, new CosmosClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, EqualityOnly)),
+                new JsonFactRule(new[] { new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, EqualityOnly)),
             });
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly,
@@ -137,31 +138,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void NoClaimAboutAValueImpliesThePathHasOne()
         {
-            var set = CosmosFactTheory.Empty.Derive(new[]
+            var set = JsonFactTheory.Empty.Derive(new[]
             {
                 Equals(Type, "ParkMap"),
                 Represents(ParkId, EqualityOnly),
-                new CosmosFact(At, new CosmosClaim.OfType(CosmosJsonType.String)),
+                new JsonFact(At, new JsonClaim.OfType(JsonType.String)),
             });
 
-            set.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeFalse();
-            set.Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();
-            set.Knows(new CosmosFact(At, new CosmosClaim.Present())).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.Present())).Should().BeFalse();
+            set.Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse();
+            set.Knows(new JsonFact(At, new JsonClaim.Present())).Should().BeFalse();
 
-            CosmosFactTheory.Empty.Derive(new[] { new CosmosFact(ParkId, new CosmosClaim.Present()) })
-                .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue("which required states outright");
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(ParkId, new JsonClaim.Present()) })
+                .Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeTrue("which required states outright");
         }
 
         [Fact]
         public void ChainingReachesAFactWhoseGuardIsItselfDerived()
         {
             // if type = 'ParkMap' then the kind is 'v2'; if the kind is 'v2' then the instant is fixed shape.
-            var kind = CosmosDocumentPath.Root.Property("kind");
+            var kind = JsonDocumentPath.Root.Property("kind");
 
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(Type, "ParkMap") }, Equals(kind, "v2")),
-                new CosmosFactRule(new[] { Equals(kind, "v2") }, Represents(At, Ordered)),
+                new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Equals(kind, "v2")),
+                new JsonFactRule(new[] { Equals(kind, "v2") }, Represents(At, Ordered)),
             });
 
             theory.Derive(null).RepresentationOf(At).Should().BeNull();
@@ -172,11 +173,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void EveryAtomOfAConjunctiveBodyHasToHold()
         {
-            var version = CosmosDocumentPath.Root.Property("v");
+            var version = JsonDocumentPath.Root.Property("v");
 
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }, Represents(At, Ordered)),
+                new JsonFactRule(new[] { Equals(Type, "ParkMap"), Equals(version, 2) }, Represents(At, Ordered)),
             });
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(At).Should().BeNull();
@@ -187,10 +188,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void TheStrongestRepresentationWins()
         {
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                CosmosFactRule.Unconditional(Represents(At, new CosmosRepresentation("iso8601-loose", PreservesEquality: true, PreservesOrder: false))),
-                CosmosFactRule.Unconditional(Represents(At, Ordered)),
+                JsonFactRule.Unconditional(Represents(At, new CosmosRepresentation("iso8601-loose", PreservesEquality: true, PreservesOrder: false))),
+                JsonFactRule.Unconditional(Represents(At, Ordered)),
             });
 
             theory.Derive(null).RepresentationOf(At).Should().Be(Ordered,
@@ -200,13 +201,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void MutuallyDependentRulesTerminate()
         {
-            var a = CosmosDocumentPath.Root.Property("a");
-            var b = CosmosDocumentPath.Root.Property("b");
+            var a = JsonDocumentPath.Root.Property("a");
+            var b = JsonDocumentPath.Root.Property("b");
 
-            var theory = new CosmosFactTheory(new[]
+            var theory = new JsonFactTheory(new[]
             {
-                new CosmosFactRule(new[] { Equals(a, 1) }, Equals(b, 2)),
-                new CosmosFactRule(new[] { Equals(b, 2) }, Equals(a, 1)),
+                new JsonFactRule(new[] { Equals(a, 1) }, Equals(b, 2)),
+                new JsonFactRule(new[] { Equals(b, 2) }, Equals(a, 1)),
             });
 
             var set = theory.Derive(new[] { Equals(a, 1) });
@@ -220,11 +221,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var path = StatementPath.Root("c").Property("data").Property("parkId");
 
-            CosmosDocumentPath.From(path).Should().Be(ParkId);
-            CosmosDocumentPath.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
+            CosmosDocumentPaths.From(path).Should().Be(ParkId);
+            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
                 "the alias is the statement's business and no part of what a schema declares");
 
-            CosmosDocumentPath.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
                 "an element is not its array, and conflating them would apply one's facts to the other");
         }
 

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -319,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
             var facts = container.Facts.Derive(null);
             var equated = new List<RexNode>();
-            var paths = new List<CosmosDocumentPath>();
+            var paths = new List<JsonDocumentPath>();
 
             var conjuncts = RelOptUtil.conjunctions(condition);
             for (var i = 0; i < conjuncts.size(); i++)
@@ -343,8 +344,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (equated.Contains(lk) == false)
                     equated.Add(lk);
 
-                if (TryKeyPath(lk, translator, facts, out var path) && path is not null && paths.Contains(path) == false)
-                    paths.Add(path);
+                if (TryKeyPath(lk, translator, facts, out var path) && path is JsonDocumentPath key && paths.Contains(key) == false)
+                    paths.Add(key);
             }
 
             if (equated.Count == 0)
@@ -399,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// put the pair outside the constraint's claim, a null equalling nothing.
         /// </para>
         /// </remarks>
-        static bool Covers(CosmosConstraintCompiler.Compiled compiled, List<RexNode> equated, List<CosmosDocumentPath> paths, CosmosRexTranslator translator)
+        static bool Covers(CosmosConstraintCompiler.Compiled compiled, List<RexNode> equated, List<JsonDocumentPath> paths, CosmosRexTranslator translator)
         {
             foreach (var key in compiled.Keys)
             {
@@ -407,7 +408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 if ((value is RexInputRef || CosmosRexTranslator.IsTextJsonValue(value)) && translator.TryResolvePath(value, out var resolved))
                 {
-                    if (CosmosDocumentPath.From(resolved) is not CosmosDocumentPath path || paths.Contains(path) == false)
+                    if (CosmosDocumentPaths.From(resolved) is not JsonDocumentPath path || paths.Contains(path) == false)
                         return false;
 
                     continue;
@@ -520,7 +521,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// documents one side proves it for and not necessarily of the documents the other side reads.
         /// </para>
         /// </remarks>
-        static bool TryKeyPath(RexNode node, CosmosRexTranslator translator, CosmosFactSet facts, out CosmosDocumentPath? path)
+        static bool TryKeyPath(RexNode node, CosmosRexTranslator translator, JsonFactSet facts, out JsonDocumentPath? path)
         {
             path = null;
 
@@ -533,8 +534,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (CosmosRexTranslator.IsTextJsonValue(text) == false || translator.TryResolvePath(text, out var resolved) == false)
                     return false;
 
-                path = CosmosDocumentPath.From(resolved);
-                return path is not null && facts.RepresentationOf(path) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
+                path = CosmosDocumentPaths.From(resolved);
+                return path is JsonDocumentPath uuid && facts.RepresentationOf(uuid) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
             }
 
             var value = CosmosRexTranslator.StripRedundantTextCast(node);
@@ -544,18 +545,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(value, out var accessed) == false)
                 return false;
 
-            path = CosmosDocumentPath.From(accessed);
-            return path is not null && IsOneScalarType(facts, path);
+            path = CosmosDocumentPaths.From(accessed);
+            return path is JsonDocumentPath scalar && IsOneScalarType(facts, scalar);
         }
 
         /// <summary>
         /// Determines whether the facts give a path one scalar type, which is what makes its text a
         /// faithful reading of its value.
         /// </summary>
-        static bool IsOneScalarType(CosmosFactSet facts, CosmosDocumentPath path)
+        static bool IsOneScalarType(JsonFactSet facts, JsonDocumentPath path)
         {
             foreach (var claim in facts.ClaimsFor(path))
-                if (claim is CosmosClaim.OfType { Type: CosmosJsonType.String or CosmosJsonType.Number or CosmosJsonType.Integer or CosmosJsonType.Boolean })
+                if (claim is JsonClaim.OfType { Type: JsonType.String or JsonType.Number or JsonType.Integer or JsonType.Boolean })
                     return true;
 
             return false;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using com.google.common.collect;
 
@@ -352,7 +353,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// the list this replaced could never have reached.
         /// </para>
         /// </remarks>
-        static string GroupingKey(CosmosPath path, Metadata.CosmosFactSet facts, string? rendered = null)
+        static string GroupingKey(CosmosPath path, JsonFactSet facts, string? rendered = null)
         {
             // What the projection beneath rendered, where that is not the path. A guarded accessor
             // already answers null where the property is absent, so it needs no second guard.
@@ -367,9 +368,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <summary>
         /// Determines whether a path is known to be present on every document.
         /// </summary>
-        static bool IsAlwaysPresent(CosmosPath path, Metadata.CosmosFactSet facts) =>
-            Metadata.CosmosDocumentPath.From(path) is Metadata.CosmosDocumentPath document &&
-            facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.Present()));
+        static bool IsAlwaysPresent(CosmosPath path, JsonFactSet facts) =>
+            Metadata.CosmosDocumentPaths.From(path) is JsonDocumentPath document &&
+            facts.Knows(new JsonFact(document, new JsonClaim.Present()));
 
         string Render(AggregateCall call, IReadOnlyList<CosmosPath?> fields)
         {

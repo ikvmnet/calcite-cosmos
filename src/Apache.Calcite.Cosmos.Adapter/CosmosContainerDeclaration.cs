@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter
 {
@@ -19,6 +20,6 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <param name="Name">The container name.</param>
     /// <param name="Facts">The facts the model's schema stated; empty where it stated none.</param>
     /// <param name="Constraints">The constraints the model declared; <c>null</c> where it declared none.</param>
-    public readonly record struct CosmosContainerDeclaration(string Name, IReadOnlyList<CosmosFactRule> Facts, IReadOnlyList<CosmosConstraint>? Constraints = null);
+    public readonly record struct CosmosContainerDeclaration(string Name, IReadOnlyList<JsonFactRule> Facts, IReadOnlyList<CosmosConstraint>? Constraints = null);
 
 }

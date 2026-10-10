@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -290,7 +291,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (container is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return false;
 
             if (container.Facts.Derive(null).RepresentationOf(document) is not Metadata.CosmosRepresentation representation

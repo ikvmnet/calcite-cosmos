@@ -1,6 +1,7 @@
 ﻿using System;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;
@@ -102,13 +103,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             public void ADeclaredSchemaCompilesToTheFactsAPushdownWouldAsk()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(Operand(List(Entry("parks", ParksSchema))));
-                var parkId = CosmosDocumentPath.Root.Property("data").Property("parkId");
-                var type = CosmosDocumentPath.Root.Property("type");
+                var parkId = JsonDocumentPath.Root.Property("data").Property("parkId");
+                var type = JsonDocumentPath.Root.Property("type");
 
-                var facts = new CosmosFactTheory(declared[0].Facts);
+                var facts = new JsonFactTheory(declared[0].Facts);
 
                 facts.Derive(null).RepresentationOf(parkId).Should().BeNull();
-                facts.Derive(new[] { new CosmosFact(type, new CosmosClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
+                facts.Derive(new[] { new JsonFact(type, new JsonClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
                     .Should().Be(CosmosUuidForms.CanonicalLower);
             }
 
@@ -170,10 +171,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 // A container that declares nothing still knows what the service guarantees, so a
                 // schema adds to that rather than being the whole of it.
                 var bare = new CosmosContainerMetadata("parks");
-                var id = CosmosDocumentPath.Root.Property("id");
+                var id = JsonDocumentPath.Root.Property("id");
 
                 bare.Facts.IsUnconditional.Should().BeTrue();
-                bare.Facts.Derive(null).Knows(new CosmosFact(id, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
+                bare.Facts.Derive(null).Knows(new JsonFact(id, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
 
                 metadata.Facts.Rules.Count.Should().BeGreaterThan(bare.Facts.Rules.Count,
                     "the schema's facts are added to the service's rather than replacing them");

@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var declared = pattern is null ? "" : $""", "pattern": "{pattern.Replace("\\", "\\\\")}" """;
 
             return new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                     $$"""
                     { "type": "object", "required": ["at"],
                       "properties": { "at": { "type": "string"{{declared}} } } }

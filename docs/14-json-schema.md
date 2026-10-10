@@ -203,7 +203,7 @@ property above the `oneOf`.
 | `dependentRequired`, `dependentSchemas` | guarded by the triggering property's presence |
 | `not` | a single property's `const` or `enum`; otherwise nothing |
 | OpenAPI `discriminator` with `mapping` | which branch each discriminator value selects |
-| `$ref`, `$defs`, `definitions` | followed, including inside bundles with nested `$id`s; sibling keywords beside a `$ref` are ignored |
+| `$ref`, `$defs`, `definitions` | followed by JSON Pointer or by anchor (`$anchor`, or `"$id": "#name"` before 2019-09), including inside bundles with nested `$id`s; sibling keywords beside a `$ref` are ignored |
 | `additionalProperties`, `patternProperties`, `propertyNames`, `items`, `prefixItems`, `contains`, `minimum`, `maxLength`, … | nothing |
 
 **References are resolved within the schema and nowhere else.** A `$ref` to another document is not

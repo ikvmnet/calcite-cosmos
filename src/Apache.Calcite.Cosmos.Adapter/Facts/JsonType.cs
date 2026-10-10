@@ -1,14 +1,14 @@
 using System;
 using System.Collections.Generic;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
     /// The JSON types a claim can name, which are the seven the service's own type predicates
     /// distinguish.
     /// </summary>
-    public enum CosmosJsonType
+    public enum JsonType
     {
 
         /// <summary>

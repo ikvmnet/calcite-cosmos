@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -209,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The expressions the whole-projection rule would push, so that the two agree on what renders.
             var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
 
-            var facts = _convention.Container?.Facts.Derive(null) ?? Metadata.CosmosFactSet.Empty;
+            var facts = _convention.Container?.Facts.Derive(null) ?? JsonFactSet.Empty;
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
 
             for (var i = 0; i < projects.size(); i++)

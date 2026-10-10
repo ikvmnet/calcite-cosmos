@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -23,18 +23,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// than only by its literal self, and bodies are one or two atoms long.
     /// </para>
     /// </remarks>
-    public sealed class CosmosFactTheory
+    public sealed class JsonFactTheory
     {
 
         /// <summary>
         /// The theory of a container that declares nothing, which proves nothing and costs nothing.
         /// </summary>
-        public static readonly CosmosFactTheory Empty = new(Array.Empty<CosmosFactRule>());
+        public static readonly JsonFactTheory Empty = new(Array.Empty<JsonFactRule>());
 
-        readonly CosmosFactRule[] _rules;
-        readonly Dictionary<CosmosDocumentPath, List<int>> _mentioning;
+        readonly JsonFactRule[] _rules;
+        readonly Dictionary<JsonDocumentPath, List<int>> _mentioning;
         readonly int[] _unconditional;
-        readonly Lazy<CosmosFactSet> _stated;
+        readonly Lazy<JsonFactSet> _stated;
         readonly bool _conditional;
         readonly bool _representations;
 
@@ -43,13 +43,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="rules">The compiled rules.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <c>null</c>.</exception>
-        public CosmosFactTheory(IEnumerable<CosmosFactRule> rules)
+        public JsonFactTheory(IEnumerable<JsonFactRule> rules)
         {
             if (rules is null)
                 throw new ArgumentNullException(nameof(rules));
 
-            _rules = new List<CosmosFactRule>(rules).ToArray();
-            _mentioning = new Dictionary<CosmosDocumentPath, List<int>>();
+            _rules = new List<JsonFactRule>(rules).ToArray();
+            _mentioning = new Dictionary<JsonDocumentPath, List<int>>();
 
             var unconditional = new List<int>();
 
@@ -75,12 +75,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _conditional = _unconditional.Length != _rules.Length;
 
             foreach (var rule in _rules)
-                if (rule.Head.Claim is CosmosClaim.Represents)
+                if (rule.Head.Claim is JsonClaim.Represents)
                     _representations = true;
 
             // What holds before a query proves anything is the same answer every time, and every
             // container has one now that the service's own guarantees are in here. Computed once.
-            _stated = new Lazy<CosmosFactSet>(() => Close(null), LazyThreadSafetyMode.ExecutionAndPublication);
+            _stated = new Lazy<JsonFactSet>(() => Close(null), LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         /// <summary>
@@ -105,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Gets the compiled rules.
         /// </summary>
-        public IReadOnlyList<CosmosFactRule> Rules => _rules;
+        public IReadOnlyList<JsonFactRule> Rules => _rules;
 
         /// <summary>
         /// Gets whether the container declares nothing.
@@ -122,27 +122,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="established">What the query proved, which may be empty.</param>
         /// <returns>The closure.</returns>
-        public CosmosFactSet Derive(IEnumerable<CosmosFact>? established)
+        public JsonFactSet Derive(IEnumerable<JsonFact>? established)
         {
-            if (established is null || established is ICollection<CosmosFact> { Count: 0 })
+            if (established is null || established is ICollection<JsonFact> { Count: 0 })
                 return _stated.Value;
 
             return Close(established);
         }
 
-        CosmosFactSet Close(IEnumerable<CosmosFact>? established)
+        JsonFactSet Close(IEnumerable<JsonFact>? established)
         {
             if (_rules.Length == 0 && established is null)
-                return CosmosFactSet.Empty;
+                return JsonFactSet.Empty;
 
-            var byPath = new Dictionary<CosmosDocumentPath, List<CosmosFact>>();
-            var pending = new Queue<CosmosDocumentPath>();
+            var byPath = new Dictionary<JsonDocumentPath, List<JsonFact>>();
+            var pending = new Queue<JsonDocumentPath>();
             var fired = new bool[_rules.Length];
 
-            void Add(CosmosFact fact)
+            void Add(JsonFact fact)
             {
                 if (byPath.TryGetValue(fact.Path, out var known) == false)
-                    byPath[fact.Path] = known = new List<CosmosFact>();
+                    byPath[fact.Path] = known = new List<JsonFact>();
 
                 foreach (var candidate in known)
                     if (candidate.Entails(fact))
@@ -164,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 Add(_rules[i].Head);
             }
 
-            var set = new CosmosFactSet(byPath);
+            var set = new JsonFactSet(byPath);
 
             while (pending.Count > 0)
             {

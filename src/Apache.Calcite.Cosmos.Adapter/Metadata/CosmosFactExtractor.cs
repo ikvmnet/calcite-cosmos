@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -18,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <em>when</em> a discriminator property has a particular value, a container commonly holding more
     /// than one kind of document. So a rewrite can only use such a fact once the query has proven the
     /// condition. This is where that proof is read off, and
-    /// <see cref="CosmosFactTheory.Derive"/> is what turns it into everything that follows.
+    /// <see cref="JsonFactTheory.Derive"/> is what turns it into everything that follows.
     /// </para>
     /// <para>
     /// <b>Only conjunctions.</b> A fact is established when it holds of every row the predicate keeps,
@@ -43,9 +44,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The facts, which may be empty.</returns>
-        public static IReadOnlyList<CosmosFact> Extract(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, string rootAlias)
+        public static IReadOnlyList<JsonFact> Extract(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, string rootAlias)
         {
-            var facts = new List<CosmosFact>();
+            var facts = new List<JsonFact>();
 
             if (condition is null || fields is null || string.IsNullOrEmpty(rootAlias))
                 return facts;
@@ -99,7 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="facts">Collects what the conjunct proves.</param>
-        static void Read(RexNode node, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<CosmosFact> facts)
+        static void Read(RexNode node, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
         {
             if (node is not RexCall call)
                 return;
@@ -112,32 +113,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 case nameof(SqlKind.__Enum.EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var path, out var value))
-                        facts.Add(new CosmosFact(path!, new CosmosClaim.EqualTo(value)));
+                        facts.Add(new JsonFact(path!.Value, new JsonClaim.EqualTo(value)));
                     break;
 
                 case nameof(SqlKind.__Enum.NOT_EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var excludedPath, out var excluded))
-                        facts.Add(new CosmosFact(excludedPath!, new CosmosClaim.NotEqualTo(excluded)));
+                        facts.Add(new JsonFact(excludedPath!.Value, new JsonClaim.NotEqualTo(excluded)));
                     break;
 
                 // A value that is not null is a value the path has. The converse does not hold — a
                 // stored JSON null is defined — so this proves presence and nothing more.
                 case nameof(SqlKind.__Enum.IS_NOT_NULL) when call.getOperands().size() == 1:
-                    if (TryPath((RexNode)call.getOperands().get(0), fields, rootAlias) is CosmosDocumentPath defined)
-                        facts.Add(new CosmosFact(defined, new CosmosClaim.Present()));
+                    if (TryPath((RexNode)call.getOperands().get(0), fields, rootAlias) is JsonDocumentPath defined)
+                        facts.Add(new JsonFact(defined, new JsonClaim.Present()));
                     break;
 
                 // An expanded IN is a disjunction of equalities, and it bounds the value's domain
                 // exactly when every branch is an equality on one path.
                 case nameof(SqlKind.__Enum.OR):
                     if (TryDomain(call, fields, rootAlias, out var domainPath, out var domain))
-                        facts.Add(new CosmosFact(domainPath!, new CosmosClaim.OneOf(domain!)));
+                        facts.Add(new JsonFact(domainPath!.Value, new JsonClaim.OneOf(domain!)));
                     break;
 
                 default:
                     if (ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) && call.getOperands().size() == 1)
-                        if (TryPath((RexNode)call.getOperands().get(0), fields, rootAlias) is CosmosDocumentPath present)
-                            facts.Add(new CosmosFact(present, new CosmosClaim.Present()));
+                        if (TryPath((RexNode)call.getOperands().get(0), fields, rootAlias) is JsonDocumentPath present)
+                            facts.Add(new JsonFact(present, new JsonClaim.Present()));
 
                     break;
             }
@@ -146,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Reads a comparison between a container-rooted path and a constant, either way round.
         /// </summary>
-        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out object? value)
+        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out object? value)
         {
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);
@@ -165,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="path">On success, the document path.</param>
         /// <param name="value">On success, the value the literal carries.</param>
         /// <returns><c>true</c> where the two sides were as expected.</returns>
-        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out object? value)
+        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out object? value)
         {
             path = null;
             value = null;
@@ -184,7 +185,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosRexTranslator.TryTextCastOperand(pathNode, valueNode) is RexNode unwrapped)
                 pathNode = unwrapped;
 
-            if (TryPath(pathNode, fields, rootAlias) is not CosmosDocumentPath resolved)
+            if (TryPath(pathNode, fields, rootAlias) is not JsonDocumentPath resolved)
                 return false;
 
             try
@@ -208,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// leaves a row free to satisfy either. Duplicates collapse, <c>IN ('a', 'a')</c> naming one
         /// value.
         /// </remarks>
-        static bool TryDomain(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out CosmosDocumentPath? path, out IReadOnlyList<object?>? domain)
+        static bool TryDomain(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out IReadOnlyList<object?>? domain)
         {
             path = null;
             domain = null;
@@ -230,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 else if (path.Equals(branchPath) == false)
                     return false;
 
-                if (CosmosClaim.OneOf.Contains(values, value) == false)
+                if (JsonClaim.OneOf.Contains(values, value) == false)
                     values.Add(value);
             }
 
@@ -241,7 +242,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Resolves a node to the document path it addresses, or <c>null</c>.
         /// </summary>
-        static CosmosDocumentPath? TryPath(RexNode node, IReadOnlyList<CosmosPath?> fields, string rootAlias)
+        static JsonDocumentPath? TryPath(RexNode node, IReadOnlyList<CosmosPath?> fields, string rootAlias)
         {
             // Resolution reuses the translator so the accepted path forms are the ones a statement
             // would address. Parameters are discarded; only the shape matters.
@@ -255,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            return CosmosDocumentPath.From(path);
+            return CosmosDocumentPaths.From(path);
         }
 
         /// <summary>

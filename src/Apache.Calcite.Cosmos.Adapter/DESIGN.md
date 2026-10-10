@@ -624,7 +624,7 @@ what the schema claimed of none.
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,
 `_etag` a string, each always present — is not delivered through any schema and is true of every
-container. `CosmosServiceFacts` states it, `CosmosSchemaFacts` reads a model's, and
+container. `CosmosServiceFacts` states it, `JsonSchemaFacts` reads a model's, and
 `CosmosContainerMetadata.Facts` is the assembly.
 
 **They have to share one theory rather than sit in two**, and that is correctness rather than tidiness:
@@ -702,7 +702,7 @@ stored form, which says how the strings are written and nothing about whether on
 now offers candidates — each branch's claims, each type widened to admit a null, and at each path the
 domain joining every constant and domain the branches name — and keeps every candidate each branch has a
 claim entailing. All of them, not only the strongest: a consumer that asks for a type by its shape
-rather than through entailment finds it beside the stored form that entails it. `CosmosFact.Entails`
+rather than through entailment finds it beside the stored form that entails it. `JsonFact.Entails`
 needed the rows saying so — a null entails a stored form, a type admitting a null, a domain holding one,
 and every disequality but its own.
 
@@ -727,39 +727,42 @@ on either side of it. A bundle is built entirely from this — every resource em
 its own `$id`, every reference relative to the resource it sits in — which is what JsonSchema.Net's
 `SchemaRegistry.CreateBundle` writes. Resolving a reference against the wrong base is the one failure
 that yields facts about the **wrong path** rather than none, so a reference is never resolved by its
-text. The resolver records where each node sits in the document, by identity, and hands that position
-to the library, which builds the schema there under the base every enclosing `$id` gives it; the
-target is whatever that schema's own `$ref` keyword resolved to. The cycle guard is keyed by the
-target's absolute location for the same reason: in a bundle one text names different targets, and
-different texts the same one.
+text. Every object is indexed with the base URI in effect where it sits — the document's own, or the
+one the nearest enclosing `$id` sets — and a reference resolves against that: its resource is found by
+URI, and its fragment followed as a JSON Pointer or looked up as an anchor. The cycle guard is keyed by
+the target's position in the document for the same reason: in a bundle one text names different
+targets, and different texts the same one.
 
-This replaced a detector that refused to follow anything in a schema with a nested `$id`, `$anchor` or
-dynamic reference, and followed only root-relative pointers elsewhere — the library had resolved
-bundles correctly all along and was only being asked by text. The detector's first draft had also
-looked for Draft 4's `id` and fired on every schema describing a property *called* `id`: keyword names
-and property names share one namespace in a walk like this, which is why the position index reads no
-keyword at all and leaves which members are schemas to the library.
+**Resolution is written here, over `System.Text.Json`, and asks nothing of a library.** In-document
+resolution is all the reader needs — `$id` base URIs, `$anchor` and draft 6/7's `"$id": "#name"`, JSON
+Pointer, bundles — and it is a few hundred lines with `System.Uri` doing the URI half. What was weighed:
 
-**Nothing is fetched.** The library's loaders are removed, so a reference to a document that is not
-this one fails to resolve rather than becoming a network call at schema registration. And the factory
-is built per document rather than shared, because it caches what it loads by `$id`: two containers
-declaring different schemas under one `$id` would otherwise resolve against whichever registered first.
+- **`com.networknt`**, through IKVM, resolved correctly once asked by position rather than by text, and
+  did for a long time. It tied the fact theory to Jackson and to Java, which a theory meant to stand on
+  its own one day should not be.
+- **JsonSchema.Net** resolves bundles over `System.Text.Json`, and its NuGet binaries ship under an Open
+  Source Maintenance Fee agreement — a monthly fee for revenue-generating users above a threshold, the
+  source itself being MIT. A package depending on it passes those terms to everyone downstream.
+- **`Microsoft.OpenApi`** does not resolve a JSON Schema `$ref` at all — given `#/$defs/x` it rebases the
+  pointer onto the current node — that being OpenAPI's `$ref` rather than JSON Schema's. The BCL's own
+  `System.Text.Json.Schema` is an *exporter*: a type in, a schema out.
+- **`Corvus.Json.JsonReference`** (Apache-2.0) handles pointers and references and would take the URI and
+  pointer half; the half specific to JSON Schema — which objects are resources, which anchors exist — is
+  most of the resolver either way.
 
-**The library is `com.networknt`**, Apache-2.0, and it resolves rather than walks: its own walker
-follows the branch an *instance* selects, where the compiler wants every branch under the guard that
-selects it. `Microsoft.OpenApi` was the better-looking candidate and does not resolve a JSON Schema
-`$ref` at all — given `#/$defs/x` it rebases the pointer onto the current node and resolves nothing,
-that being OpenAPI's `$ref` rather than JSON Schema's. The BCL's own `System.Text.Json.Schema` is an
-*exporter*: a type in, a schema out, which is why so many Microsoft APIs emit JSON Schema and none
-reads one.
+**Keyword names and property names share one namespace.** The previous resolver's first draft looked for
+Draft 4's `id` and fired on every schema describing a property *called* `id`. Here an identifier counts
+only where it is a string on an object, and the members that hold data — `const`, `enum`, `examples`,
+`default`, and OpenAPI's `discriminator`, whose `mapping` is keyed by data values — are not walked. A
+`properties.id` holds a schema, which is no string, so it is never read as one.
 
-Bundles reopened the choice and did not change it. JsonSchema.Net writes the bundles in question and
-resolves them, but over `System.Text.Json`, while the model delivers a Jackson tree and the compiler
-walks one — resolving there would mean a second parse and a mapping back to nodes the walk can
-recognise. `com.networknt` 3.x moved to Jackson 3 (`tools.jackson`), a different tree type from the
-Jackson 2 Calcite's model is read with; 2.x stays on Jackson 2 but reworks the API, an upgrade worth
-taking on its own merits rather than for this. Because 1.5 already resolves a bundle correctly,
-offline, once asked by position rather than by text.
+**Nothing is fetched.** A reference to a document that is not this one names no resource the index
+holds, and resolves to nothing: no network call at schema registration, and only the facts behind that
+reference are lost.
+
+**The model arrives as Java maps and leaves as `System.Text.Json`.** Calcite reads a model file with
+Jackson and hands the factory a `java.util.Map`; `CosmosSchemaFactory` writes the schema operand out as
+text and parses it once, and from there nothing in the fact namespace knows Jackson was involved.
 
 #### A guard exists to admit what a fact would have excluded
 
@@ -3142,6 +3145,15 @@ src/
       CosmosSchemas.cs                ✔ Resolves the table's executor from the DataContext
       CosmosExecutionException.cs     ✔ The plan cannot reach what would execute it
       CosmosMaterializationException.cs ✔ A document does not hold what the query assumed
+    Facts/                            ✔ Namespace Apache.Calcite.Cosmos.Facts: a fact theory over JSON
+                                        documents, knowing nothing of Calcite, Cosmos or the adapter
+      JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
+      JsonFactRule.cs               ✔ A guarded claim
+      JsonFactTheory.cs, JsonFactSet.cs ✔ The Horn theory, and what it derives for one query
+      JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
+      IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
+      JsonSchemaFacts.cs            ✔ JSON Schema → rules, asking JsonSchemaRecognisers for forms
+      JsonSchemaResolver.cs         ✔ $ref / $id resolution for the reader
     Metadata/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
@@ -3180,6 +3192,29 @@ src/
 ✔ marks what exists today. The `Sql/` layer is deliberately free of any dependency on the
 convention or on the CLR conventions in `calcite-dotnet`, which is what let it be completed and
 tested ahead of them, and is why it remains testable without one.
+
+**`Facts/` is a project in waiting, kept as a namespace for now.** The theory is about JSON documents
+with known types, and nothing in it needs a query engine or a service: a schema is one source of rules,
+the service's guarantees another, a query's own conjuncts a third, and the theory derives what holds.
+So the namespace references only itself and the base library, `System.Text.Json` included — the
+schema reader walks its tree and resolves references itself. Two things a JSON fact store does not know were kept on the adapter's side:
+
+- **What a stored form is.** The theory carries `Represents(form)` as an opaque `IJsonStoredForm`
+  and assumes only what every form shares — a string, or a null. Which pattern recognises a canonical
+  UUID, how to write a value in it, and which comparisons it preserves under Calcite's ordering are the
+  adapter's: `CosmosRepresentation` implements the token, the form tables stay in `Metadata/`, and
+  `RepresentationOf` — which ranks forms by what they license — is an extension method in the adapter
+  over the neutral `FormsOf`. The schema reader asks `JsonSchemaRecognisers` for a pattern's form;
+  `CosmosSchemaRecognition.Cosmos` is the adapter's answer.
+- **What the service will measure.** A geography is a claim JSON cannot state, so it is an
+  `Extension` claim the adapter defines, `CosmosGeography`, which tells the theory only what it is in
+  JSON's terms — an object, and one that is there.
+
+Where the adapter meets it: `CosmosDocumentPaths.From` turns a statement's path into a document path,
+and everything that turns a predicate into facts or facts into a rewrite — `CosmosFactExtractor`,
+`CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in `Metadata/`, being about `RexNode`.
+Constraints stay too: a `UNIQUE` is SQL compiled by Calcite and says what holds across documents,
+which is not what the theory is about.
 
 The mirror is the rule, and the three folders that break it say so by their names. A test asserts
 something about one class or it does not; where it does, it is named for that class and sits where

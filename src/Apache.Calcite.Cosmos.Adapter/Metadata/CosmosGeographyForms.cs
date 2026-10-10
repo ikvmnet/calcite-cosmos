@@ -1,6 +1,9 @@
 ﻿using System;
 
-using com.fasterxml.jackson.databind;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -63,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where the declaration proves it.</returns>
         public static bool Recognise(JsonNode? node)
         {
-            if (node is null || node.isObject() == false)
+            if (node is not JsonObject)
                 return false;
 
             // An object, and one whose two GeoJSON members are both required. Without `required` the
@@ -103,12 +106,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (Integer(node, "maxItems") is not int most || most > 3)
                 return false;
 
-            var positions = node.get("prefixItems") ?? node.get("items");
-            if (positions is null || positions.isArray() == false || positions.size() < 2)
+            var positions = node.Get("prefixItems") ?? node.Get("items");
+            if (positions is not JsonArray || positions.Size() < 2)
                 return false;
 
-            return IsBounded(positions.get(0), LongitudeLimit)
-                && IsBounded(positions.get(1), LatitudeLimit);
+            return IsBounded(positions.At(0), LongitudeLimit)
+                && IsBounded(positions.At(1), LatitudeLimit);
         }
 
         /// <summary>
@@ -127,9 +130,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // The uniform form only. `prefixItems` here would constrain the first positions and leave
             // the rest, which proves nothing about a line of any length.
-            var items = node.get("items");
-
-            return items is not null && items.isObject() && IsPosition(items);
+            return node.Get("items") is JsonObject items && IsPosition(items);
         }
 
         /// <summary>
@@ -137,26 +138,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static bool IsBounded(JsonNode? node, double limit)
         {
-            if (node is null || node.isObject() == false || IsType(node, "number") == false && IsType(node, "integer") == false)
+            if (node is not JsonObject || IsType(node, "number") == false && IsType(node, "integer") == false)
                 return false;
 
             return Number(node, "minimum") is double least && least >= -limit
                 && Number(node, "maximum") is double most && most <= limit;
         }
 
-        static JsonNode? Property(JsonNode node, string name) =>
-            node.get("properties") is JsonNode properties && properties.isObject() ? properties.get(name) : null;
+        static JsonNode? Property(JsonNode node, string name) => node.Get("properties").Get(name);
 
         static bool Declares(JsonNode node, string name) =>
             Property(node, name) is not null;
 
         static bool Requires(JsonNode node, string name)
         {
-            if (node.get("required") is not JsonNode required || required.isArray() == false)
-                return false;
+            var required = node.Get("required");
 
-            for (var i = 0; i < required.size(); i++)
-                if (required.get(i) is JsonNode entry && entry.isTextual() && string.Equals(entry.asText(), name, StringComparison.Ordinal))
+            for (var i = 0; i < required.Size(); i++)
+                if (string.Equals(required.At(i).Text(), name, StringComparison.Ordinal))
                     return true;
 
             return false;
@@ -171,27 +170,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         static string? Constant(JsonNode? node)
         {
-            if (node is null || node.isObject() == false)
+            if (node is not JsonObject)
                 return null;
 
-            if (node.get("const") is JsonNode constant && constant.isTextual())
-                return constant.asText();
+            if (node.Get("const").Text() is string constant)
+                return constant;
 
-            if (node.get("enum") is JsonNode domain && domain.isArray() && domain.size() == 1
-                && domain.get(0) is JsonNode only && only.isTextual())
-                return only.asText();
+            if (node.Get("enum") is JsonArray domain && domain.Count == 1)
+                return domain.At(0).Text();
 
             return null;
         }
 
         static bool IsType(JsonNode node, string name) =>
-            node.get("type") is JsonNode type && type.isTextual() && string.Equals(type.asText(), name, StringComparison.Ordinal);
+            string.Equals(node.Get("type").Text(), name, StringComparison.Ordinal);
 
         static int? Integer(JsonNode node, string keyword) =>
-            node.get(keyword) is JsonNode value && value.isNumber() ? value.asInt() : null;
+            node.Get(keyword) is JsonValue value && value.GetValueKind() == JsonValueKind.Number && value.TryGetValue<int>(out var integer) ? integer : null;
 
         static double? Number(JsonNode node, string keyword) =>
-            node.get(keyword) is JsonNode value && value.isNumber() ? value.asDouble() : null;
+            node.Get(keyword) is JsonValue value && value.GetValueKind() == JsonValueKind.Number ? value.GetValue<double>() : null;
 
     }
 

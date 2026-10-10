@@ -37,7 +37,6 @@
             </Dependencies>
         </MavenReference>
         <MavenReference Include="org.apache.calcite.avatica:avatica-core" Version="1.29.0" />
-        <MavenReference Include="com.networknt:json-schema-validator" Version="1.5.9" />
     </ItemGroup>
 
     <ItemGroup>

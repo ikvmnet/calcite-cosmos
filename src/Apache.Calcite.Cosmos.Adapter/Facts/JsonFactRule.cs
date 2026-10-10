@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </remarks>
     /// <param name="Body">The facts that must hold, all of them.</param>
     /// <param name="Head">The fact that follows.</param>
-    public sealed record CosmosFactRule(IReadOnlyList<CosmosFact> Body, CosmosFact Head)
+    public sealed record JsonFactRule(IReadOnlyList<JsonFact> Body, JsonFact Head)
     {
 
         /// <summary>
@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="head">The fact the schema states outright.</param>
         /// <returns>The rule.</returns>
-        public static CosmosFactRule Unconditional(CosmosFact head) => new(Array.Empty<CosmosFact>(), head);
+        public static JsonFactRule Unconditional(JsonFact head) => new(Array.Empty<JsonFact>(), head);
 
     }
 

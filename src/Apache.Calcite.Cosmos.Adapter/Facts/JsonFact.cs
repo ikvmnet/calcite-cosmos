@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -9,7 +9,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <param name="Path">The path the claim is about.</param>
     /// <param name="Claim">What is claimed.</param>
-    public readonly record struct CosmosFact(CosmosDocumentPath Path, CosmosClaim Claim)
+    public readonly record struct JsonFact(JsonDocumentPath Path, JsonClaim Claim)
     {
 
         /// <summary>
@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="other">The fact to establish.</param>
         /// <returns><c>true</c> if knowing this fact means <paramref name="other"/> holds.</returns>
-        public bool Entails(CosmosFact other)
+        public bool Entails(JsonFact other)
         {
             if (Path.Equals(other.Path) == false)
                 return false;
@@ -43,48 +43,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // "this is there" would claim of every document what the schema claimed of none, which is
             // exactly the mistake a container holding more than one kind of document punishes.
             //
-            // Geography is the exception, and it is one because it is declared rather than read off a
-            // subschema: `format` sits beside the value's own keywords, and a container saying a path
-            // holds a shape is saying a shape is there. It is still conditional on its guard like
-            // every other rule, so a path under a discriminator says nothing until the discriminator
-            // is proven.
+            // An extension claim may be the exception, and says so itself: a consumer's claim about a
+            // value can be one that no absent value satisfies, the way a geography the service will
+            // measure is. It is still conditional on its guard like every other rule, so a path under
+            // a discriminator says nothing until the discriminator is proven.
             return (Claim, other.Claim) switch
             {
                 // A known value settles membership, type and every disequality but its own.
-                (CosmosClaim.EqualTo a, CosmosClaim.OneOf b) => CosmosClaim.OneOf.Contains(b.Values, a.Value),
-                (CosmosClaim.EqualTo a, CosmosClaim.OfType b) => TypeOf(a.Value) == b.Type || b.OrNull && TypeOf(a.Value) == CosmosJsonType.Null,
-                (CosmosClaim.EqualTo a, CosmosClaim.NotEqualTo b) => Equals(a.Value, b.Value) == false,
+                (JsonClaim.EqualTo a, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, a.Value),
+                (JsonClaim.EqualTo a, JsonClaim.OfType b) => TypeOf(a.Value) == b.Type || b.OrNull && TypeOf(a.Value) == JsonType.Null,
+                (JsonClaim.EqualTo a, JsonClaim.NotEqualTo b) => Equals(a.Value, b.Value) == false,
 
                 // A domain settles a type where every member shares one, and refutes anything
                 // outside it.
-                (CosmosClaim.OneOf a, CosmosClaim.OfType b) => AllOfType(a.Values, b.Type, b.OrNull),
-                (CosmosClaim.OneOf a, CosmosClaim.NotEqualTo b) => CosmosClaim.OneOf.Contains(a.Values, b.Value) == false,
+                (JsonClaim.OneOf a, JsonClaim.OfType b) => AllOfType(a.Values, b.Type, b.OrNull),
+                (JsonClaim.OneOf a, JsonClaim.NotEqualTo b) => JsonClaim.OneOf.Contains(a.Values, b.Value) == false,
 
                 // A stored form is a string.
                 // A stored form says what the strings at a path look like, and says nothing about
                 // whether a null is there beside them -- so it entails only the claim that admits one.
-                (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String && b.OrNull,
+                (JsonClaim.Represents, JsonClaim.OfType b) => b.Type == JsonType.String && b.OrNull,
 
-                // A geography is an object, and one that is there: the declaration is about a value
-                // the service can measure, and there is no such value that is absent or null. So it
-                // settles the object claim either way round, unlike a stored form, which says what
-                // the strings look like without saying one is there.
-                (CosmosClaim.Geography, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Object,
-                (CosmosClaim.Geography, CosmosClaim.Present) => true,
+                // A consumer's claim answers for itself. See JsonClaim.Extension.
+                (JsonClaim.Extension a, var b) => a.Entails(b),
 
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how
                 // the strings are written and nothing about whether one is there (#175). Without
                 // these, a union whose branches say "a string" and "null" had no meet at all.
-                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Null || b.OrNull,
-                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.EqualTo b) => b.Value is null,
-                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.OneOf b) => CosmosClaim.OneOf.Contains(b.Values, null),
-                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.NotEqualTo b) => b.Value is not null,
-                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.Represents) => true,
-                (CosmosClaim.EqualTo { Value: null }, CosmosClaim.Represents) => true,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.OfType b) => b.Type == JsonType.Null || b.OrNull,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.EqualTo b) => b.Value is null,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, null),
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.NotEqualTo b) => b.Value is not null,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.Represents) => true,
+                (JsonClaim.EqualTo { Value: null }, JsonClaim.Represents) => true,
 
                 // Admitting a null is weaker than not admitting one.
-                (CosmosClaim.OfType a, CosmosClaim.OfType b) => a.Type == b.Type && b.OrNull,
+                (JsonClaim.OfType a, JsonClaim.OfType b) => a.Type == b.Type && b.OrNull,
 
                 _ => false,
             };
@@ -115,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="other">The fact to test against.</param>
         /// <returns><c>true</c> where no document satisfies both.</returns>
-        public bool Excludes(CosmosFact other)
+        public bool Excludes(JsonFact other)
         {
             if (Path.Equals(other.Path) == false)
                 return false;
@@ -129,20 +124,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="a">One claim.</param>
         /// <param name="b">The other.</param>
         /// <returns><c>true</c> where no document satisfies both.</returns>
-        static bool Exclusive(CosmosClaim a, CosmosClaim b) => (a, b) switch
+        static bool Exclusive(JsonClaim a, JsonClaim b) => (a, b) switch
         {
             // A value settles everything about itself, so it excludes any other value, its own
             // disequality, a domain it is not in, and a type it is not of.
-            (CosmosClaim.EqualTo x, CosmosClaim.EqualTo y) => Equals(x.Value, y.Value) == false,
-            (CosmosClaim.EqualTo x, CosmosClaim.NotEqualTo y) => Equals(x.Value, y.Value),
-            (CosmosClaim.EqualTo x, CosmosClaim.OneOf y) => y.Values.Count > 0 && CosmosClaim.OneOf.Contains(y.Values, x.Value) == false,
-            (CosmosClaim.EqualTo x, CosmosClaim.OfType y) => TypeOf(x.Value) != y.Type && (y.OrNull == false || TypeOf(x.Value) != CosmosJsonType.Null),
+            (JsonClaim.EqualTo x, JsonClaim.EqualTo y) => Equals(x.Value, y.Value) == false,
+            (JsonClaim.EqualTo x, JsonClaim.NotEqualTo y) => Equals(x.Value, y.Value),
+            (JsonClaim.EqualTo x, JsonClaim.OneOf y) => y.Values.Count > 0 && JsonClaim.OneOf.Contains(y.Values, x.Value) == false,
+            (JsonClaim.EqualTo x, JsonClaim.OfType y) => TypeOf(x.Value) != y.Type && (y.OrNull == false || TypeOf(x.Value) != JsonType.Null),
 
             // Two domains exclude where they share no member; a domain and a disequality where the
             // disequality rules out every member there is.
-            (CosmosClaim.OneOf x, CosmosClaim.OneOf y) => Disjoint(x.Values, y.Values),
-            (CosmosClaim.OneOf x, CosmosClaim.NotEqualTo y) => OnlyValue(x.Values, y.Value),
-            (CosmosClaim.OneOf x, CosmosClaim.OfType y) => NoneOfType(x.Values, y.Type, y.OrNull),
+            (JsonClaim.OneOf x, JsonClaim.OneOf y) => Disjoint(x.Values, y.Values),
+            (JsonClaim.OneOf x, JsonClaim.NotEqualTo y) => OnlyValue(x.Values, y.Value),
+            (JsonClaim.OneOf x, JsonClaim.OfType y) => NoneOfType(x.Values, y.Type, y.OrNull),
 
             _ => false,
         };
@@ -159,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return false;
 
             foreach (var value in left)
-                if (CosmosClaim.OneOf.Contains(right, value))
+                if (JsonClaim.OneOf.Contains(right, value))
                     return false;
 
             return true;
@@ -190,13 +185,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="type">The type to test for.</param>
         /// <param name="orNull">Whether a JSON null counts as a member.</param>
         /// <returns><c>true</c> where no member is of that type and the domain states something.</returns>
-        static bool NoneOfType(IReadOnlyList<object?> values, CosmosJsonType type, bool orNull)
+        static bool NoneOfType(IReadOnlyList<object?> values, JsonType type, bool orNull)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var value in values)
-                if (TypeOf(value) == type || orNull && TypeOf(value) == CosmosJsonType.Null)
+                if (TypeOf(value) == type || orNull && TypeOf(value) == JsonType.Null)
                     return false;
 
             return true;
@@ -213,13 +208,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="type">The type to test for.</param>
         /// <param name="orNull">Whether a JSON null counts as a member.</param>
         /// <returns><c>true</c> where every member is of that type.</returns>
-        static bool AllOfType(IReadOnlyList<object?> values, CosmosJsonType type, bool orNull)
+        static bool AllOfType(IReadOnlyList<object?> values, JsonType type, bool orNull)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var value in values)
-                if (TypeOf(value) != type && (orNull == false || TypeOf(value) != CosmosJsonType.Null))
+                if (TypeOf(value) != type && (orNull == false || TypeOf(value) != JsonType.Null))
                     return false;
 
             return true;
@@ -229,20 +224,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// The JSON type a literal read out of a schema has.
         /// </summary>
         /// <remarks>
-        /// <see cref="CosmosJsonType.Integer"/> is reported for a whole number, matching the service's
+        /// <see cref="JsonType.Integer"/> is reported for a whole number, matching the service's
         /// <c>IS_INTEGER</c> and JSON Schema's own <c>integer</c>, which is a number with no fractional
         /// part rather than a distinct JSON type.
         /// </remarks>
-        internal static CosmosJsonType TypeOf(object? value) => value switch
+        internal static JsonType TypeOf(object? value) => value switch
         {
-            null => CosmosJsonType.Null,
-            string => CosmosJsonType.String,
-            bool => CosmosJsonType.Boolean,
-            sbyte or byte or short or ushort or int or uint or long or ulong => CosmosJsonType.Integer,
-            decimal d => decimal.Truncate(d) == d ? CosmosJsonType.Integer : CosmosJsonType.Number,
-            double d => Math.Floor(d) == d && double.IsInfinity(d) == false ? CosmosJsonType.Integer : CosmosJsonType.Number,
-            float f => Math.Floor(f) == f && float.IsInfinity(f) == false ? CosmosJsonType.Integer : CosmosJsonType.Number,
-            _ => CosmosJsonType.Object,
+            null => JsonType.Null,
+            string => JsonType.String,
+            bool => JsonType.Boolean,
+            sbyte or byte or short or ushort or int or uint or long or ulong => JsonType.Integer,
+            decimal d => decimal.Truncate(d) == d ? JsonType.Integer : JsonType.Number,
+            double d => Math.Floor(d) == d && double.IsInfinity(d) == false ? JsonType.Integer : JsonType.Number,
+            float f => Math.Floor(f) == f && float.IsInfinity(f) == false ? JsonType.Integer : JsonType.Number,
+            _ => JsonType.Object,
         };
 
     }

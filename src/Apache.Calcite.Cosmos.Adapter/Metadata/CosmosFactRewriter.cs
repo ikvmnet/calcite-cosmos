@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -87,12 +88,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (declares == false && ContainsCase(condition) == false)
                 return condition;
 
-            IReadOnlyList<CosmosFact> established = declares ? CosmosFactExtractor.Extract(condition, fields, rootAlias) : Array.Empty<CosmosFact>();
-            var known = declares ? container!.Facts.Derive(established) : CosmosFactSet.Empty;
+            IReadOnlyList<JsonFact> established = declares ? CosmosFactExtractor.Extract(condition, fields, rootAlias) : Array.Empty<JsonFact>();
+            var known = declares ? container!.Facts.Derive(established) : JsonFactSet.Empty;
 
             // Where the query's own conjuncts and the container's declaration cannot both hold, no
             // document satisfies the predicate -- so the equivalent predicate is the constant, and
-            // every rule that reduces one takes it from there. See CosmosFactSet.IsContradictory.
+            // every rule that reduces one takes it from there. See JsonFactSet.IsContradictory.
             if (known.IsContradictory)
                 return rexBuilder.makeLiteral(false);
 
@@ -114,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // What holds of every document in the container, whatever this query proved. A
             // conjunct is redundant only against that, never against a fact the query's own
             // conjuncts unlocked -- see IsAlwaysTrue.
-            var outright = declares ? container!.Facts.Derive(null) : CosmosFactSet.Empty;
+            var outright = declares ? container!.Facts.Derive(null) : JsonFactSet.Empty;
 
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
             var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder, fields, outright, declares ? container : null, established);
@@ -226,7 +227,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// batch point read becomes reachable through a typed column.
         /// </para>
         /// </remarks>
-        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
+        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
         {
             if (node is not RexCall call)
                 return null;
@@ -346,7 +347,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// ternary it already rendered as.
         /// </para>
         /// </remarks>
-        static RexNode? TryFlattenCase(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
+        static RexNode? TryFlattenCase(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
         {
             if (call.getOperands().size() != 3 || (RexNode)call.getOperands().get(2) is not RexLiteral otherwise || (otherwise.isNull() || otherwise.isAlwaysFalse()) == false)
                 return null;
@@ -363,7 +364,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (container is not null)
             {
-                var proved = new List<CosmosFact>(established);
+                var proved = new List<JsonFact>(established);
                 proved.AddRange(CosmosFactExtractor.Extract(loweredCondition, fields, rootAlias));
 
                 guarded = container.Facts.Derive(proved);
@@ -427,7 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the same rows.
         /// </para>
         /// </remarks>
-        static RexNode? TryLiftStrictCase(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
+        static RexNode? TryLiftStrictCase(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
         {
             if (ComparisonOf(call.getKind().name()) is null)
                 return null;
@@ -595,8 +596,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>Two claims, and the second is what makes it an equivalence rather than a weakening.</b>
         /// A declared value says what a path holds <em>if it holds anything</em> — the same reading
-        /// <see cref="CosmosFact.Entails"/> is careful about, where nothing entails
-        /// <see cref="CosmosClaim.Present"/>. So a container declaring <c>kind</c> is <c>"A"</c> and
+        /// <see cref="JsonFact.Entails"/> is careful about, where nothing entails
+        /// <see cref="JsonClaim.Present"/>. So a container declaring <c>kind</c> is <c>"A"</c> and
         /// nothing more still admits a document with no <c>kind</c> at all, over which
         /// <c>kind = 'A'</c> is unknown and the row is dropped. Removing the conjunct would keep that
         /// row. Only a path declared <em>present</em> as well has no such document, and only then is
@@ -621,7 +622,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="outright">What holds of every document, whatever the query proved.</param>
         /// <returns><c>true</c> where every document satisfies it.</returns>
-        static bool IsAlwaysTrue(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, CosmosFactSet outright)
+        static bool IsAlwaysTrue(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, JsonFactSet outright)
         {
             if (call.getKind().name() != nameof(SqlKind.__Enum.EQUALS) || call.getOperands().size() != 2)
                 return false;
@@ -629,8 +630,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosFactExtractor.TryComparison(call, fields, rootAlias, out var path, out var value) == false || path is null)
                 return false;
 
-            return outright.Knows(new CosmosFact(path, new CosmosClaim.Present()))
-                && outright.Knows(new CosmosFact(path, new CosmosClaim.EqualTo(value)));
+            return outright.Knows(new JsonFact(path.Value, new JsonClaim.Present()))
+                && outright.Knows(new JsonFact(path.Value, new JsonClaim.EqualTo(value)));
         }
 
         /// <summary>
@@ -728,7 +729,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// every merged self-join on such a key carries this conjunct. #177.
         /// </para>
         /// </remarks>
-        static RexNode? TryLowerUuidNullTest(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerUuidNullTest(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (call.getOperands().size() != 1 || (RexNode)call.getOperands().get(0) is not RexCall cast)
                 return null;
@@ -748,7 +749,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
@@ -757,7 +758,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return rexBuilder.makeCall(call.getOperator(), operand);
         }
 
-        static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)
                 return null;
@@ -780,7 +781,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation)
@@ -827,7 +828,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// where that is decided and where the measurements behind it are recorded.
         /// </para>
         /// </remarks>
-        static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || InstantOf(literal) is not DateTime value)
                 return null;
@@ -870,7 +871,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -883,7 +884,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation declared)
@@ -941,7 +942,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="rexBuilder">Builds the lowered comparison.</param>
         /// <returns>The lowered comparison, or <c>null</c>.</returns>
-        static RexNode? TryLowerNumber(RexNode numericNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerNumber(RexNode numericNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
         {
             if (literalNode is not RexLiteral literal || IntegerOf(literal) is not long value)
                 return null;
@@ -955,7 +956,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation)

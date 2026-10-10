@@ -2,6 +2,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 
@@ -71,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // conjuncts reached the service.
             var facts = convention.Container is CosmosContainerMetadata container
                 ? container.Facts.Derive(CosmosFactExtractor.Extract(condition, fields, CosmosImplementor.DefaultRootAlias))
-                : CosmosFactSet.Empty;
+                : JsonFactSet.Empty;
 
             var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings, facts);
             return translator.TryTranslate(condition, out _);

@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static CosmosContainerMetadata Declared(bool declares) =>
             declares
                 ? new CosmosContainerMetadata("items", new[] { "/ref" })
-                    .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Schema)))
+                    .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Schema)))
                 : new CosmosContainerMetadata("items", new[] { "/ref" });
 
         const string Ref = """CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)""";
@@ -318,7 +318,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """;
 
             var container = new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Typed)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Typed)));
 
             var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.at') >= '2024-01-01T00:00:00Z'""", container, out _);
             var query = Query(FindCosmos(best), container);
@@ -358,7 +358,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Numeric = """{ "properties": { "n": { "type": "integer" } } }""";
 
             var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Numeric)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Numeric)));
 
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
 
@@ -382,7 +382,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Present = """{ "required": ["n"] }""";
 
             var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Present)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Present)));
 
             const string Sql = """SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 3""";
 
@@ -432,7 +432,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """;
 
             var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Always)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Always)));
 
             const string Sql = """SELECT JSON_VALUE(c."DOC", '$.at') AS "at" FROM items AS c ORDER BY 1""";
 
@@ -464,7 +464,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             })
             {
                 var container = new CosmosContainerMetadata("items", new[] { "/ref" })
-                    .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                    .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
                 Query(FindCosmos(PlanToCosmos(Sql, container, out _)), container).Sql
                     .Should().NotContain("ORDER BY", "for " + schema);
@@ -490,7 +490,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """;
 
             var container = new CosmosContainerMetadata("items", new[] { "/k" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Ids)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Ids)));
 
             const string Other = "123e4567-e89b-12d3-a456-426614174001";
 
@@ -571,7 +571,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <returns>The container metadata.</returns>
         static CosmosContainerMetadata Container(string schema) =>
             new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         /// <summary>
         /// Selecting a declared UUID renders, so the sort and the page beneath it reach the service. #100.
@@ -799,7 +799,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var declared = pattern is null ? "" : $""", "pattern": "{pattern.Replace("\\", "\\\\")}" """;
 
             return new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                     $$"""
                     { "type": "object", "required": ["at"],
                       "properties": { "at": { "type": "string"{{declared}} } } }
@@ -986,7 +986,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 + pattern.Replace("\\", "\\\\") + "\" } } }";
 
             return new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(json)));
         }
 
         const string SortableUuid = "^[0-7][0-9a-f]{7}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
@@ -1302,7 +1302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <returns>The container.</returns>
         static CosmosContainerMetadata Declaring(string schema) =>
             new CosmosContainerMetadata("items", new[] { "/ref" })
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
 
