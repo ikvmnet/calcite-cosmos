@@ -1,4 +1,5 @@
-﻿using Apache.Calcite.Cosmos.Adapter.Sql;
+﻿using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
 
@@ -8,6 +9,8 @@ using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.convert;
 using org.apache.calcite.rel.core;
+using org.apache.calcite.rex;
+using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
@@ -30,9 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <b>Inner joins only.</b> An outer join has to preserve rows with no match, and a semi or anti
-    /// join is a different operator; each is expressible, none is written yet, and a wrong one is a
-    /// wrong answer. They fall through to being joined in process, which is what happens today.
+    /// <b>Inner and left joins only.</b> A left join keeps a build row nothing matched, with nulls for
+    /// the container's columns, which a batch can answer as well as an inner join's drop (#193). A right
+    /// or full join has to preserve the container's rows with no match, which a fetch by the build
+    /// side's keys never reads; and a semi or anti join is a different operator. They fall through to
+    /// being joined in process.
     /// </description></item>
     /// <item><description>
     /// <b>One equality, and nothing else in the condition.</b> A residual predicate would have to be
@@ -46,7 +51,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </description></item>
     /// <item><description>
     /// <b>A key that resolves to a document path and can be a parameter.</b> A computed projection has
-    /// no path for a <c>WHERE</c> to name, and a type Cosmos has no counterpart for cannot be bound.
+    /// no path for a <c>WHERE</c> to name, and a type Cosmos has no counterpart for cannot be bound —
+    /// with one exception, the <c>UUID</c> cast of a path the container's facts give a canonical UUID
+    /// form: that path holds one spelling per value, so a key written in it names exactly the documents
+    /// whose cast equals the key. See <see cref="TryProbeKey"/>.
     /// </description></item>
     /// </list>
     /// </remarks>
@@ -79,6 +87,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 _ => false,
             };
         }
+
+        /// <summary>
+        /// How the probe side's key is restricted: the path a <c>WHERE</c> names, and where the key is a
+        /// <c>UUID</c>, the form the container stores it in.
+        /// </summary>
+        /// <param name="Path">The path the restriction names, or <c>null</c> where the key is a column the subtree already binds to one.</param>
+        /// <param name="Uuid">The stored form of a <c>UUID</c> key, or <c>null</c> where the key is bound as it is.</param>
+        internal readonly record struct ProbeKey(CosmosPath? Path, CosmosRepresentation? Uuid);
+
+        /// <summary>
+        /// Resolves how a probe subtree's key column can be restricted, or answers <c>false</c> where it
+        /// cannot.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A column bound to a path, of a type Cosmos has,</b> is restricted on that path with the key
+        /// bound as it is — what this join always did.
+        /// </para>
+        /// <para>
+        /// <b>A <c>UUID</c> cast of a text accessor</b> binds to no path: the column carries a
+        /// conversion. It is restricted on the accessor's path where the container's unconditional facts
+        /// give that path a UUID form, which pins one spelling per value — so the key written in that
+        /// spelling (<see cref="CosmosUuidForms.Render"/>) matches exactly the documents whose cast equals
+        /// it, and no document whose cast would not. The same fact makes a comparison against a literal
+        /// lower (<c>CosmosFactRewriter</c>) and a self-join's key count; this asks it of a key that is
+        /// data rather than a literal. Asked of the unconditional facts, for the reason the self-join
+        /// gives: a guarded fact holds of the documents its guard admits, and nothing here proves the
+        /// guard for every document the restriction reaches.
+        /// </para>
+        /// <para>
+        /// Asked of the logical subtree by the rule and of the converted one by the join, which are the
+        /// same shape: a projection over filters over the scan.
+        /// </para>
+        /// </remarks>
+        /// <param name="probe">The probe subtree.</param>
+        /// <param name="ordinal">The key's ordinal in the subtree's row.</param>
+        /// <param name="key">On success, how the key is restricted.</param>
+        /// <returns><c>true</c> where the key can be restricted.</returns>
+        internal static bool TryProbeKey(RelNode probe, int ordinal, out ProbeKey key)
+        {
+            key = default;
+
+            if (CosmosImplementor.TryBindOutput(probe, out var fields, out _) == false)
+                return false;
+
+            if (ordinal < 0 || ordinal >= fields.Count)
+                return false;
+
+            var type = ((org.apache.calcite.rel.type.RelDataTypeField)probe.getRowType().getFieldList().get(ordinal)).getType();
+
+            if (fields[ordinal] is not null)
+            {
+                if (IsBindableKey(type) == false)
+                    return false;
+
+                key = new ProbeKey(null, null);
+                return true;
+            }
+
+            if (IsUuid(type) == false || FindTable(probe) is not CosmosTable table)
+                return false;
+
+            if (TryUuidPath(probe, ordinal, table, probe.getCluster().getRexBuilder(), CosmosPlanMembers.NewSeen()) is not (CosmosPath path, CosmosRepresentation representation))
+                return false;
+
+            key = new ProbeKey(path, representation);
+            return true;
+        }
+
+        /// <summary>
+        /// Finds the stored path and form of a <c>UUID</c> key column, reading through filters and
+        /// references down to the projection that casts it.
+        /// </summary>
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(RelNode node, int ordinal, CosmosTable table, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            foreach (var member in CosmosPlanMembers.Of(node))
+            {
+                if (seen.Add(member) == false)
+                    continue;
+
+                var found = member switch
+                {
+                    Filter filter => TryUuidPath(filter.getInput(), ordinal, table, rexBuilder, seen),
+                    Project project => TryUuidPath(project, ordinal, table, rexBuilder, seen),
+                    _ => null,
+                };
+
+                if (found is not null)
+                    return found;
+            }
+
+            return null;
+        }
+
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(Project project, int ordinal, CosmosTable table, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        {
+            if (ordinal >= project.getProjects().size())
+                return null;
+
+            var expression = (RexNode)project.getProjects().get(ordinal);
+
+            if (expression is RexInputRef reference)
+                return TryUuidPath(project.getInput(), reference.getIndex(), table, rexBuilder, seen);
+
+            if (expression is not RexCall cast || cast.getKind() != SqlKind.CAST || cast.getOperands().size() != 1 || IsUuid(cast.getType()) == false)
+                return null;
+
+            var text = CosmosRexTranslator.StripRedundantTextCast((RexNode)cast.getOperands().get(0));
+            if (CosmosRexTranslator.IsTextJsonValue(text) == false)
+                return null;
+
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _) == false)
+                return null;
+
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, table.Container);
+            if (translator.TryResolvePath(text, out var path) == false || path is null)
+                return null;
+
+            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath stored)
+                return null;
+
+            if (table.Container.Facts.Derive(null).RepresentationOf(stored) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
+                return null;
+
+            return (path, representation);
+        }
+
+        static bool IsUuid(org.apache.calcite.rel.type.RelDataType? type) =>
+            type?.getSqlTypeName()?.getName() == nameof(SqlTypeName.UUID);
 
         /// <summary>
         /// Determines whether restricting a subtree to a batch's keys leaves it meaning what it meant.
@@ -212,7 +349,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             static bool IsTranslatable(Join join)
             {
-                if (join.getJoinType() != JoinRelType.INNER)
+                if (join.getJoinType() != JoinRelType.INNER && join.getJoinType() != JoinRelType.LEFT)
                     return false;
 
                 if (GetKeys(join) is not (int build, int probe))
@@ -229,19 +366,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (IsRestrictable(right) == false)
                     return false;
 
-                if (CosmosImplementor.TryBindOutput(right, out var fields, out _) == false)
+                if (TryProbeKey(right, probe, out var key) == false)
                     return false;
 
-                if (probe < 0 || probe >= fields.Count || fields[probe] is null)
-                    return false;
-
-                var field = (org.apache.calcite.rel.type.RelDataTypeField)right.getRowType().getFieldList().get(probe);
-                if (IsBindableKey(field.getType()) == false)
-                    return false;
-
+                // The build side's key is compared with the container's once fetched, and bound as a
+                // parameter before that: a plain key has to be a type Cosmos has, and a UUID key a UUID,
+                // which is what is spelled.
                 var buildField = (org.apache.calcite.rel.type.RelDataTypeField)join.getLeft().getRowType().getFieldList().get(build);
 
-                return IsBindableKey(buildField.getType());
+                return key.Uuid is null ? IsBindableKey(buildField.getType()) : IsUuid(buildField.getType());
             }
 
             return (CosmosLookupJoinRule)Config.INSTANCE
@@ -281,7 +414,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 convert(right, right.getTraitSet().replace(table.Convention)),
                 join.getCondition(),
                 build,
-                probe);
+                probe,
+                join.getJoinType());
         }
 
     }

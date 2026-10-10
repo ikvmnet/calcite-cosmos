@@ -42,15 +42,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         static readonly CosmosContainerMetadata Orders = new("orders", new[] { "/customer" });
         static readonly CosmosContainerMetadata Archive = new("archive", new[] { "/category" });
 
+        /// <summary>
+        /// A container whose schema gives <c>data.id</c> a canonical lowercase UUID form.
+        /// </summary>
+        static readonly CosmosContainerMetadata Parks = new CosmosContainerMetadata("parks", new[] { "/id" })
+            .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+                { "type": "object",
+                  "properties": {
+                    "data": { "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } } } } }
+                """)));
+
         CosmosTable _products = null!;
         CosmosTable _orders = null!;
         CosmosTable _archive = null!;
+        CosmosTable _parks = null!;
 
         public CosmosLookupJoinRuleTests()
         {
             _products = new CosmosTable(Products);
             _orders = new CosmosTable(Orders);
             _archive = new CosmosTable(Archive);
+            _parks = new CosmosTable(Parks);
         }
 
         RelNode PlanLogical(string sql)
@@ -61,6 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             rootSchema.add("products", _products);
             rootSchema.add("orders", _orders);
             rootSchema.add("archive", _archive);
+            rootSchema.add("parks", _parks);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -113,6 +128,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 planner.addRule(rule);
 
             foreach (var rule in CosmosRules.GetRules(_archive.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in CosmosRules.GetRules(_parks.Convention))
                 planner.addRule(rule);
 
             foreach (var rule in ClrCursorRules.Rules())
@@ -228,6 +246,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             lookups.Should().Contain(j => ReferenceEquals(j.getRight().getConvention(), _archive.Convention));
         }
 
+        /// <summary>
+        /// A left join keeps a build row nothing matched, with nulls for the container's columns — which a
+        /// batch answers as well as it answers an inner join's drop. #193.
+        /// </summary>
+        [Fact]
+        public void ALeftJoinIsALookup()
+        {
+            var plan = Plan("SELECT * FROM orders o LEFT JOIN products p ON o.id = p.id");
+
+            var lookup = Find<CosmosLookupJoin>(plan);
+            lookup.Should().NotBeNull("the products are fetched by the orders' keys:\n" + Text(plan));
+            lookup!.getJoinType().Should().Be(org.apache.calcite.rel.core.JoinRelType.LEFT);
+            lookup.getRight().getConvention().Should().BeSameAs(_products.Convention);
+        }
+
+        const string ParkIds = """
+            SELECT o."id", p."Id"
+            FROM (SELECT CAST(JSON_VALUE(o."DOC", '$.parkId') AS UUID) AS "ParkId", o."id" FROM orders AS o) AS o
+            LEFT JOIN (SELECT CAST(JSON_VALUE(c."DOC", '$.data.id') AS UUID) AS "Id" FROM {0} AS c) AS p
+              ON o."ParkId" = p."Id"
+            """;
+
+        /// <summary>
+        /// A <c>UUID</c> key binds to no path — the column carries a cast — but where the container holds
+        /// one spelling per value at the path it casts, the key is restricted there, in that spelling. #193.
+        /// </summary>
+        [Fact]
+        public void AUuidKeyOverACanonicalFormIsALookup()
+        {
+            var plan = Plan(string.Format(ParkIds, "parks"));
+
+            var lookup = Find<CosmosLookupJoin>(plan);
+            lookup.Should().NotBeNull("the parks are fetched by the orders' keys:\n" + Text(plan));
+            lookup!.getRight().getConvention().Should().BeSameAs(_parks.Convention);
+        }
+
+        /// <summary>
+        /// Without the form, <c>ABC…</c> and <c>abc…</c> cast to one key, and no spelling of the key names
+        /// both.
+        /// </summary>
+        [Fact]
+        public void AUuidKeyWithoutACanonicalFormIsNotALookup()
+        {
+            var plan = Plan(string.Format(ParkIds, "archive"));
+
+            FindAll<CosmosLookupJoin>(plan).Should().NotContain(j => ReferenceEquals(j.getRight().getConvention(), _archive.Convention),
+                "a key with more than one spelling cannot be written as one:\n" + Text(plan));
+        }
+
         // ── Not chosen, and each for a reason ─────────────────────────────────────
 
         /// <remarks>
@@ -243,15 +310,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
-        /// An outer join has to preserve build rows with no match. That is expressible and not written,
-        /// so it declines rather than quietly dropping them.
+        /// A right or full join has to preserve the container's rows with no match, and a fetch by the
+        /// other side's keys never reads them.
         /// </remarks>
-        [Fact]
-        public void ALeftJoinIsNotALookup()
+        [Theory]
+        [InlineData("RIGHT")]
+        [InlineData("FULL")]
+        public void AJoinPreservingTheContainerIsNotALookup(string join)
         {
-            var plan = Plan("SELECT * FROM orders o LEFT JOIN products p ON o.id = p.id");
+            var plan = Plan($"SELECT * FROM orders o {join} JOIN products p ON o.id = p.id");
 
-            Contains<CosmosLookupJoin>(plan).Should().BeFalse("only inner joins are implemented:\n" + Text(plan));
+            FindAll<CosmosLookupJoin>(plan).Should().NotContain(j => ReferenceEquals(j.getRight().getConvention(), _products.Convention),
+                "the products nothing matched would never be read:\n" + Text(plan));
         }
 
         /// <remarks>

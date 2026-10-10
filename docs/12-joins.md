@@ -37,7 +37,11 @@ In a plan it appears as `CosmosLookupJoin`.
 The lookup join is chosen by the planner where it is cheaper and **only** where it gives exactly the
 answer a full join would:
 
-- **An inner join.** Outer, semi and anti joins are joined the ordinary way.
+- **An inner or a left join**, with the container on the right. A left join keeps a row whose key
+  matched nothing — a null key, or a key the container has no document for — with nulls for the
+  container's columns, exactly as a full join would. A right or full join has to keep the container's
+  unmatched documents, which a fetch by key never reads, so those, and semi and anti joins, are joined
+  the ordinary way.
 - **On one equality, and nothing else in the condition.** A second condition would have to be applied
   after the fetch, and is not.
 - **The container's side of the key is a document path** — `p."id"`, or `JSON_VALUE(p."DOC", '$.x')` —
@@ -45,6 +49,11 @@ answer a full join would:
 - **Both keys are of a type a parameter can carry**: a string, a number or a boolean. The promoted
   partition key column is `VARIANT` and does not qualify — join on `JSON_VALUE(p."DOC", '$.category')`
   instead (Chapter 7).
+- **Or both keys are `UUID`s, and the container's side is `CAST(JSON_VALUE(p."DOC", '$.x') AS UUID)`
+  over a path the container's schema gives a UUID format** (Chapter 14). The path then holds one
+  spelling per value, so each key is sent in that spelling — `c.x IN ('3f2a…', …)` — and matches exactly
+  the documents whose cast equals it. Without the format, `ABC…` and `abc…` cast to the same key and no
+  one spelling finds both, so the join is the ordinary one.
 - **Nothing above the container's scan that a restriction would change the meaning of.** A filter,
   projection or traversal is fine; a `LIMIT`, sort or grouping on the container side is not, because
   "the first five products" is not "the first five products of each batch".

@@ -262,6 +262,133 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(null).Should().BeNull();
         }
 
+        /// <summary>
+        /// A <c>UUID</c> is one value however it was boxed: Calcite's <c>UuidValue</c>, Java's own, or a
+        /// <see cref="Guid"/>.
+        /// </summary>
+        [Fact]
+        public void NormalizeReducesEveryUuidToAGuid()
+        {
+            const string text = "0123456f-89ab-7cde-8f01-23456789abcd";
+
+            CosmosLookup.Normalize(org.apache.calcite.util.UuidValue.fromString(text)).Should().Be(Guid.Parse(text));
+            CosmosLookup.Normalize(java.util.UUID.fromString(text)).Should().Be(Guid.Parse(text));
+            CosmosLookup.Normalize(Guid.Parse(text)).Should().Be(Guid.Parse(text));
+            CosmosLookup.Normalize(text).Should().NotBe(Guid.Parse(text), "text is not a UUID until something says it is one");
+        }
+
+        // ── A left join ───────────────────────────────────────────────────────────
+
+        static Task<List<string>> LeftJoin(IClrCursor<string?> build, RecordingExecutor executor, int batchSize = 3, int cacheSize = 0) =>
+            ListCursor.CollectAsync(CosmosLookup.Join<string?, string, string>(
+                build,
+                executor,
+                Query(),
+                "@k",
+                batchSize,
+                b => b,
+                element => element.GetProperty("category").GetString()!,
+                p => p,
+                (b, p) => b + "/" + p,
+                cacheSize,
+                unmatched: b => (b ?? "null") + "/null"));
+
+        /// <summary>
+        /// A left join keeps a build row nothing matched, a null key and a key the container has nothing
+        /// for alike, in the build side's order.
+        /// </summary>
+        [Fact]
+        public async Task ALeftJoinKeepsTheRowsNothingMatched()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+
+            var rows = await LeftJoin(new ListCursor<string?>(["hats", "bikes", null, "bikes"]), executor, batchSize: 2);
+
+            rows.Should().Equal("hats/null", "bikes/bikes", "null/null", "bikes/bikes");
+        }
+
+        /// <summary>
+        /// And a batch of only null keys still asks the container nothing: its rows are unmatched without
+        /// asking.
+        /// </summary>
+        [Fact]
+        public async Task ALeftJoinOfOnlyNullKeysFetchesNothing()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+
+            var rows = await LeftJoin(new ListCursor<string?>([null, null]), executor);
+
+            rows.Should().Equal("null/null", "null/null");
+            executor.Executed.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// A key remembered as absent is unmatched in a later batch too, and is not asked for again.
+        /// </summary>
+        [Fact]
+        public async Task ALeftJoinKeepsARowWhoseKeyIsRememberedAbsent()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+
+            var rows = await LeftJoin(new ListCursor<string?>(["hats", "hats"]), executor, batchSize: 1, cacheSize: 10);
+
+            rows.Should().Equal("hats/null", "hats/null");
+            executor.Executed.Should().ContainSingle();
+        }
+
+        // ── A UUID key ────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// A <c>UUID</c> key is bound in the container's spelling, and the document it fetches pairs with
+        /// the build row it was fetched for.
+        /// </summary>
+        [Fact]
+        public async Task AUuidKeyIsBoundInTheStoredSpelling()
+        {
+            const string text = "0123456f-89ab-7cde-8f01-23456789abcd";
+            var executor = new RecordingExecutor("""{"id":"0123456F-89AB-7CDE-8F01-23456789ABCD"}""");
+
+            var rows = await ListCursor.CollectAsync(CosmosLookup.Join<org.apache.calcite.util.UuidValue, org.apache.calcite.util.UuidValue, string>(
+                new ListCursor<org.apache.calcite.util.UuidValue>([org.apache.calcite.util.UuidValue.fromString(text)]),
+                executor,
+                Query(),
+                "@k",
+                3,
+                b => b,
+                element => org.apache.calcite.util.UuidValue.fromString(element.GetProperty("id").GetString()),
+                p => p,
+                (b, p) => "paired",
+                spell: CosmosLookup.SpellUuid(Adapter.Metadata.CosmosUuidForms.CanonicalUpper)));
+
+            rows.Should().Equal("paired");
+            Keys(executor.Executed.Single()).Should().AllBeEquivalentTo("0123456F-89AB-7CDE-8F01-23456789ABCD");
+        }
+
+        /// <summary>
+        /// A key the form has no spelling for names no document, and is not asked for.
+        /// </summary>
+        [Fact]
+        public async Task AKeyWithNoSpellingIsNotFetched()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+
+            var rows = await ListCursor.CollectAsync(CosmosLookup.Join<string, string, string>(
+                new ListCursor<string>(["hats"]),
+                executor,
+                Query(),
+                "@k",
+                3,
+                b => b,
+                element => element.GetProperty("category").GetString()!,
+                p => p,
+                (b, p) => b + "/" + p,
+                unmatched: b => b + "/null",
+                spell: _ => null));
+
+            rows.Should().Equal("hats/null");
+            executor.Executed.Should().BeEmpty();
+        }
+
         // ── Remembering ───────────────────────────────────────────────────────────
 
         /// <remarks>
@@ -519,6 +646,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 p => p,
                 (b, p) => b + "/" + p,
                 0,
+                null,
+                null,
                 null,
                 CancellationToken.None));
 

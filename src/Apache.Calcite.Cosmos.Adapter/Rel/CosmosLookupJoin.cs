@@ -102,6 +102,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="buildKey">The ordinal of the join key in <paramref name="build"/>'s row.</param>
         /// <param name="probeKey">The ordinal of the join key in <paramref name="probe"/>'s row.</param>
         /// <param name="batchSize">How many build rows one fetch serves.</param>
+        /// <param name="joinType">
+        /// <see cref="JoinRelType.INNER"/>, or <see cref="JoinRelType.LEFT"/> to keep a build row nothing
+        /// matched with nulls for the container's columns.
+        /// </param>
         /// <remarks>
         /// A <see cref="Join"/> rather than a plain two-input node, and not only for the row type.
         /// Calcite's metadata dispatches on a node's class, and the operators above this one ask it
@@ -109,9 +113,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// two inputs that is not a join has no handler for those, and the failure is not a wrong answer
         /// but a plan that cannot be implemented at all.
         /// </remarks>
-        public CosmosLookupJoin(RelOptCluster cluster, RelTraitSet traitSet, RelNode build, RelNode probe, RexNode condition, int buildKey, int probeKey, int batchSize = DefaultBatchSize) :
-            base(cluster, traitSet, com.google.common.collect.ImmutableList.of(), build, probe, condition, java.util.Collections.emptySet(), JoinRelType.INNER)
+        public CosmosLookupJoin(RelOptCluster cluster, RelTraitSet traitSet, RelNode build, RelNode probe, RexNode condition, int buildKey, int probeKey, JoinRelType? joinType = null, int batchSize = DefaultBatchSize) :
+            base(cluster, traitSet, com.google.common.collect.ImmutableList.of(), build, probe, condition, java.util.Collections.emptySet(), joinType ?? JoinRelType.INNER)
         {
+            if (getJoinType() != JoinRelType.INNER && getJoinType() != JoinRelType.LEFT)
+                throw new ArgumentException("A lookup join is an inner or a left join.", nameof(joinType));
+
             _buildKey = buildKey;
             _probeKey = probeKey;
             _batchSize = batchSize > 0 ? batchSize : throw new ArgumentOutOfRangeException(nameof(batchSize));
@@ -129,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <inheritdoc />
         public override Join copy(RelTraitSet traitSet, RexNode conditionExpr, RelNode left, RelNode right, JoinRelType joinType, bool semiJoinDone)
         {
-            return new CosmosLookupJoin(getCluster(), traitSet, left, right, conditionExpr, _buildKey, _probeKey, _batchSize);
+            return new CosmosLookupJoin(getCluster(), traitSet, left, right, conditionExpr, _buildKey, _probeKey, joinType, _batchSize);
         }
 
         /// <inheritdoc />
@@ -199,7 +206,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
 
-            var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize);
+            if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, out var key) == false)
+                throw new Sql.CosmosTranslationException("The lookup key can no longer be restricted.");
+
+            var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
 
             org.apache.calcite.runtime.Hook.QUERY_PLAN.run(query.Sql);
 
@@ -218,6 +228,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 ResultSelector(physType, buildPhysType, buildType, probePhysType, probeType),
                 Expression.Constant(DefaultCacheSize),
                 CosmosConverters.LookupCacheExpression(probe, implementor.Root),
+                getJoinType() == JoinRelType.LEFT
+                    ? UnmatchedSelector(physType, buildPhysType, buildType)
+                    : Expression.Constant(null, typeof(Func<,>).MakeGenericType(buildType, physType.RowType)),
+                Expression.Constant(key.Uuid is { } uuid ? CosmosLookup.SpellUuid(uuid) : null, typeof(Func<object, object?>)),
             ]);
         }
 
@@ -257,6 +271,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 fields.Add(probePhysType.FieldReference(p, i));
 
             return Expression.Lambda(Expression.NewArrayInit(typeof(object), fields.ConvertAll(f => f.Type == typeof(object) ? f : Expression.Convert(f, typeof(object)))), b, p);
+        }
+
+        /// <summary>
+        /// Builds the lambda giving a left join's row for a build row nothing matched: the build's fields,
+        /// then a null for each of the container's.
+        /// </summary>
+        /// <remarks>
+        /// A lambda of its own rather than the result selector over a null container row, because a
+        /// container row of one column is the column's own type, which may be a value and has no null.
+        /// </remarks>
+        LambdaExpression UnmatchedSelector(ClrPhysType physType, ClrPhysType buildPhysType, Type buildType)
+        {
+            var b = Expression.Parameter(buildType, "b");
+
+            var fields = new List<Expression>();
+
+            for (var i = 0; i < getLeft().getRowType().getFieldCount(); i++)
+            {
+                var field = buildPhysType.FieldReference(b, i);
+                fields.Add(field.Type == typeof(object) ? field : Expression.Convert(field, typeof(object)));
+            }
+
+            for (var i = 0; i < getRight().getRowType().getFieldCount(); i++)
+                fields.Add(Expression.Constant(null, typeof(object)));
+
+            return Expression.Lambda(Expression.NewArrayInit(typeof(object), fields), b);
         }
 
     }

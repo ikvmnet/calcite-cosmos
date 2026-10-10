@@ -3518,6 +3518,37 @@ Two decisions the patch tier inherits when it lands:
 
 ---
 
+## What the lookup join reaches
+
+A page joined to another container on that container's key was read the slow way twice over (#193): a
+page of 25 links, each naming a park by a `UUID`, read every park and hash-joined them, and the join was
+a left join besides. Each of those declined the lookup on its own.
+
+**A left join is a batch's to answer.** The fetch reads every document the batch's keys could match, so
+for each build row it knows whether anything matched; a left join emits the row with nulls where nothing
+did, which is what it would have been joined to in process. A null key matches nothing either way, so it
+is unmatched without being asked for. A right or full join is different in kind rather than degree: it
+keeps the *container's* unmatched documents, and a fetch by the other side's keys is exactly the read
+that never sees them. Those, and semi and anti joins, stay joins.
+
+**A `UUID` key is restricted where the container stores one spelling per value.** The key column is a
+cast, which binds to no path and has no parameter type, and that used to be the end of it. But the cast
+is of a text accessor, and where the container's unconditional facts give that path a UUID form, the
+stored text is one spelling of each value: `CosmosUuidForms.Render` writes a key in it, and
+`path IN (@k0, …)` matches exactly the documents whose cast equals the key. The same fact lowers a
+comparison against a literal and makes a self-join's key count; here the key is data rather than a
+literal, so it is spelled per batch rather than once. Without the form, `ABC…` and `abc…` cast to one key
+and no single spelling names both, so the join is the ordinary one. A key the form has no spelling for —
+one a confined form's sign class excludes — names no document, and is answered as absent without a
+request. Both sides compare as a `Guid` once fetched, whichever of `UuidValue`, `java.util.UUID` or
+`Guid` carried them.
+
+**"When the near side is small" is the cost model's to say, and stays so.** The issue asked for the lookup
+where the near side is bounded; the join is chosen where it is cheaper, which for a page of 25 against a
+container is always, and for an unbounded near side against a small container is not. A hard gate on a
+fetch would decline the unbounded cases the cost model already prices correctly, and it would not see a
+bound that arrives as a key equality.
+
 ## The lookup join's caches
 
 Two caches with two jobs, after Flink's `LookupOptions`, whose names these deliberately echo.
