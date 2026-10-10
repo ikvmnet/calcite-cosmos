@@ -178,6 +178,13 @@ A fact declared inside a branch is used **only when the query has proved the bra
 the branch takes a conjunct the service will evaluate; it composes with point reads, so a guarded
 lookup by id still becomes one.
 
+What **every** branch implies holds without any conjunct, because every document is in some branch.
+That includes a fact branches state differently but compatibly: if `trackingId` is a canonical UUID in
+the shipment branch and `{ "type": "null" }` in the order branch, every document holds either a canonical
+UUID or null there, and a query over both kinds gets the stored form. So state an identifier's form in
+the branches that carry it and `null` in the ones that do not, rather than repeating it as a nullable
+property above the `oneOf`.
+
 ## 14.5 How each keyword is read
 
 | keyword | read as |
@@ -189,8 +196,8 @@ lookup by id still becomes one.
 | `pattern` | a stored form, for the recognised spellings (14.3) |
 | `format` | nothing |
 | `allOf` | every branch |
-| `oneOf`, `anyOf` with a discriminating `const` | each branch, guarded by its discriminator value |
-| `oneOf`, `anyOf` without one | only what every branch states |
+| `oneOf`, `anyOf` with a discriminating `const` | each branch, guarded by its discriminator value; and what every branch implies, for every document |
+| `oneOf`, `anyOf` without one | only what every branch implies |
 | `anyOf`/`oneOf` of `{"type":"null"}` and one other schema | that schema, with each fact widened to admit null |
 | `if` / `then` / `else` | a guard, where the whole `if` can be read |
 | `dependentRequired`, `dependentSchemas` | guarded by the triggering property's presence |
