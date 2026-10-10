@@ -14,7 +14,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>One source among others.</b> What a model file declares is not the only thing knowable about
     /// a container — what the service guarantees about the properties it maintains itself is knowable
     /// too — so this yields <em>rules</em> rather than a theory, and
-    /// <see cref="CosmosFactTheory"/> is what a container assembles out of every source it has. They
+    /// <see cref="JsonFactTheory"/> is what a container assembles out of every source it has. They
     /// have to end up in one theory rather than several: a rule's body may be satisfied by a fact
     /// another source stated, and forward chaining only fires such a rule when it sees both at once.
     /// </para>
@@ -34,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// See <c>DESIGN.md</c> under <em>Reading a schema: recognition, not inference</em> for the keyword table and the reasoning behind each entry.
     /// </para>
     /// </remarks>
-    public static class CosmosSchemaFacts
+    public static class JsonSchemaFacts
     {
 
         /// <summary>
@@ -47,17 +47,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <c>null</c>.</exception>
-        public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema, CosmosSchemaRecognisers? recognisers = null)
+        public static IReadOnlyList<JsonFactRule> ReadFrom(JsonNode schema, JsonSchemaRecognisers? recognisers = null)
         {
             if (schema is null)
                 throw new ArgumentNullException(nameof(schema));
 
-            recognisers ??= CosmosSchemaRecognisers.None;
+            recognisers ??= JsonSchemaRecognisers.None;
 
-            var rules = new List<CosmosFactRule>();
-            var resolver = new CosmosSchemaResolver(schema);
+            var rules = new List<JsonFactRule>();
+            var resolver = new JsonSchemaResolver(schema);
 
-            Walk(schema, CosmosDocumentPath.Root, Array.Empty<CosmosFact>(), rules, resolver, recognisers, new HashSet<string>(StringComparer.Ordinal));
+            Walk(schema, JsonDocumentPath.Root, Array.Empty<JsonFact>(), rules, resolver, recognisers, new HashSet<string>(StringComparer.Ordinal));
 
             return rules;
         }
@@ -68,10 +68,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         static void Walk(
             JsonNode? node,
-            CosmosDocumentPath path,
-            IReadOnlyList<CosmosFact> guard,
-            List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
+            JsonDocumentPath path,
+            IReadOnlyList<JsonFact> guard,
+            List<JsonFactRule> rules,
+            JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node is null || node.isObject() == false)
@@ -92,18 +92,18 @@ namespace Apache.Calcite.Cosmos.Facts
                 return;
             }
 
-            void State(CosmosClaim claim) => rules.Add(new CosmosFactRule(guard, new CosmosFact(path, claim)));
+            void State(JsonClaim claim) => rules.Add(new JsonFactRule(guard, new JsonFact(path, claim)));
 
             var declared = ReadType(node);
 
             if (declared is var (type, orNull))
-                State(new CosmosClaim.OfType(type, orNull));
+                State(new JsonClaim.OfType(type, orNull));
 
             if (node.get("const") is JsonNode constant && TryLiteral(constant, out var constantValue))
-                State(new CosmosClaim.EqualTo(constantValue));
+                State(new JsonClaim.EqualTo(constantValue));
 
             if (ReadEnum(node) is IReadOnlyList<object?> domain)
-                State(new CosmosClaim.OneOf(domain));
+                State(new JsonClaim.OneOf(domain));
 
             // A pattern constrains a string and is vacuous for anything else, so one written beside no
             // declared type says nothing: a document storing the number 30 at that path conforms to it.
@@ -111,13 +111,13 @@ namespace Apache.Calcite.Cosmos.Facts
             // as much -- and the guard that admits a non-string would then be dropped from a comparison
             // that still has to decide one. The same shape as properties being vacuous for an absent
             // path, one level over.
-            if (declared?.Type == CosmosJsonType.String && recognisers.StringPattern?.Invoke(Text(node, "pattern")) is ICosmosStoredForm form)
-                State(new CosmosClaim.Represents(form));
+            if (declared?.Type == JsonType.String && recognisers.StringPattern?.Invoke(Text(node, "pattern")) is IJsonStoredForm form)
+                State(new JsonClaim.Represents(form));
 
             // A claim the caller reads off a subschema whole, which JSON Schema's own keywords cannot
             // state: the adapter's geography, proven from a pinned GeoJSON shape. See
-            // CosmosSchemaRecognisers.
-            if (recognisers.Subschema?.Invoke(node) is CosmosClaim recognised)
+            // JsonSchemaRecognisers.
+            if (recognisers.Subschema?.Invoke(node) is JsonClaim recognised)
                 State(recognised);
 
             // required names the children that are there whenever this object is. The claim is about
@@ -129,11 +129,11 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 var carrier = path.IsRoot
                     ? guard
-                    : Extend(guard, new CosmosFact(path, new CosmosClaim.Present()));
+                    : Extend(guard, new JsonFact(path, new JsonClaim.Present()));
 
                 for (var i = 0; i < required.size(); i++)
                     if (required.get(i)?.isTextual() == true)
-                        rules.Add(new CosmosFactRule(carrier, new CosmosFact(path.Property(required.get(i).asText()), new CosmosClaim.Present())));
+                        rules.Add(new JsonFactRule(carrier, new JsonFact(path.Property(required.get(i).asText()), new JsonClaim.Present())));
             }
 
             if (node.get("properties") is JsonNode properties && properties.isObject())
@@ -177,10 +177,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         static void WalkDependencies(
             JsonNode node,
-            CosmosDocumentPath path,
-            IReadOnlyList<CosmosFact> guard,
-            List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
+            JsonDocumentPath path,
+            IReadOnlyList<JsonFact> guard,
+            List<JsonFactRule> rules,
+            JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node.get("dependentRequired") is JsonNode dependent && dependent.isObject())
@@ -192,11 +192,11 @@ namespace Apache.Calcite.Cosmos.Facts
                     if (entry.getKey()?.ToString() is not string trigger || (JsonNode?)entry.getValue() is not JsonNode names || names.isArray() == false)
                         continue;
 
-                    var when = Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present()));
+                    var when = Extend(guard, new JsonFact(path.Property(trigger), new JsonClaim.Present()));
 
                     for (var i = 0; i < names.size(); i++)
                         if (names.get(i)?.isTextual() == true)
-                            rules.Add(new CosmosFactRule(when, new CosmosFact(path.Property(names.get(i).asText()), new CosmosClaim.Present())));
+                            rules.Add(new JsonFactRule(when, new JsonFact(path.Property(names.get(i).asText()), new JsonClaim.Present())));
                 }
             }
 
@@ -209,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     if (entry.getKey()?.ToString() is not string trigger)
                         continue;
 
-                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present())), rules, resolver, recognisers, visiting);
+                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new JsonFact(path.Property(trigger), new JsonClaim.Present())), rules, resolver, recognisers, visiting);
                 }
             }
         }
@@ -235,10 +235,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         static void WalkNegation(
             JsonNode node,
-            CosmosDocumentPath path,
-            IReadOnlyList<CosmosFact> guard,
-            List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
+            JsonDocumentPath path,
+            IReadOnlyList<JsonFact> guard,
+            List<JsonFactRule> rules,
+            JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             if (resolver.Follow(node.get("not")) is not JsonNode negated || negated.isObject() == false)
                 return;
@@ -264,18 +264,18 @@ namespace Apache.Calcite.Cosmos.Facts
                 return;
 
             // Failing the inner schema means the property is there and is none of what it named.
-            rules.Add(new CosmosFactRule(guard, new CosmosFact(child, new CosmosClaim.Present())));
+            rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.Present())));
 
             foreach (var member in excluded)
-                rules.Add(new CosmosFactRule(guard, new CosmosFact(child, new CosmosClaim.NotEqualTo(member))));
+                rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.NotEqualTo(member))));
         }
 
         /// <summary>
         /// Returns a guard with one more fact in it.
         /// </summary>
-        static IReadOnlyList<CosmosFact> Extend(IReadOnlyList<CosmosFact> guard, CosmosFact fact)
+        static IReadOnlyList<JsonFact> Extend(IReadOnlyList<JsonFact> guard, JsonFact fact)
         {
-            var extended = new List<CosmosFact>(guard.Count + 1);
+            var extended = new List<JsonFact>(guard.Count + 1);
             extended.AddRange(guard);
             extended.Add(fact);
 
@@ -313,10 +313,10 @@ namespace Apache.Calcite.Cosmos.Facts
         static void WalkBranches(
             JsonNode? branches,
             JsonNode parent,
-            CosmosDocumentPath path,
-            IReadOnlyList<CosmosFact> guard,
-            List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
+            JsonDocumentPath path,
+            IReadOnlyList<JsonFact> guard,
+            List<JsonFactRule> rules,
+            JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (branches is null || branches.isArray() == false || branches.size() == 0)
@@ -333,8 +333,8 @@ namespace Apache.Calcite.Cosmos.Facts
                     if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
                         continue;
 
-                    var selected = Extend(guard, new CosmosFact(path.Property(discriminator), new CosmosClaim.EqualTo(value)));
-                    var stated = new List<CosmosFactRule>();
+                    var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
+                    var stated = new List<JsonFactRule>();
                     Walk(branches.get(i), path, selected, stated, resolver, recognisers, visiting);
 
                     rules.AddRange(stated);
@@ -353,11 +353,11 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (NullableBranch(branches, resolver, recognisers) is JsonNode nullable)
             {
-                var stated = new List<CosmosFactRule>();
+                var stated = new List<JsonFactRule>();
                 Walk(nullable, path, guard, stated, resolver, recognisers, visiting);
 
                 foreach (var rule in stated)
-                    if (AdmitNull(rule, path) is CosmosFactRule widened)
+                    if (AdmitNull(rule, path) is JsonFactRule widened)
                         rules.Add(widened);
 
                 return;
@@ -367,7 +367,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
             for (var i = 0; i < branches.size(); i++)
             {
-                var stated = new List<CosmosFactRule>();
+                var stated = new List<JsonFactRule>();
                 Walk(branches.get(i), path, guard, stated, resolver, recognisers, visiting);
                 each.Add(new Branch(guard.Count, stated));
             }
@@ -384,7 +384,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// and every rule the walk wrote begins with it, <see cref="Extend"/> only ever appending. What
         /// follows it is what the branch made the fact conditional on.
         /// </remarks>
-        readonly record struct Branch(int Guard, List<CosmosFactRule> Stated);
+        readonly record struct Branch(int Guard, List<JsonFactRule> Stated);
 
         /// <summary>
         /// Returns the facts every branch of a union entails, under the parent's guard.
@@ -411,23 +411,23 @@ namespace Apache.Calcite.Cosmos.Facts
         /// meets a condition only one branch states.
         /// </para>
         /// </remarks>
-        static List<CosmosFactRule> Meet(List<Branch> branches, IReadOnlyList<CosmosFact> guard)
+        static List<JsonFactRule> Meet(List<Branch> branches, IReadOnlyList<JsonFact> guard)
         {
-            var meet = new List<CosmosFactRule>();
+            var meet = new List<JsonFactRule>();
 
             if (branches.Count == 0)
                 return meet;
 
-            static IReadOnlyList<CosmosFact> Relative(CosmosFactRule rule, int guard)
+            static IReadOnlyList<JsonFact> Relative(JsonFactRule rule, int guard)
             {
-                var relative = new List<CosmosFact>();
+                var relative = new List<JsonFact>();
                 for (var i = guard; i < rule.Body.Count; i++)
                     relative.Add(rule.Body[i]);
 
                 return relative;
             }
 
-            static bool Same(IReadOnlyList<CosmosFact> left, IReadOnlyList<CosmosFact> right)
+            static bool Same(IReadOnlyList<JsonFact> left, IReadOnlyList<JsonFact> right)
             {
                 if (left.Count != right.Count)
                     return false;
@@ -439,7 +439,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 return true;
             }
 
-            static bool Contains(IReadOnlyList<CosmosFact> facts, CosmosFact fact)
+            static bool Contains(IReadOnlyList<JsonFact> facts, JsonFact fact)
             {
                 foreach (var candidate in facts)
                     if (candidate.Equals(fact))
@@ -448,10 +448,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
             }
 
-            var stated = new List<List<(IReadOnlyList<CosmosFact> Condition, CosmosFact Head)>>();
+            var stated = new List<List<(IReadOnlyList<JsonFact> Condition, JsonFact Head)>>();
             foreach (var branch in branches)
             {
-                var list = new List<(IReadOnlyList<CosmosFact>, CosmosFact)>();
+                var list = new List<(IReadOnlyList<JsonFact>, JsonFact)>();
                 foreach (var rule in branch.Stated)
                     list.Add((Relative(rule, branch.Guard), rule.Head));
 
@@ -459,9 +459,9 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             // The candidates, in the order the branches state them so the result is stable.
-            var candidates = new List<(IReadOnlyList<CosmosFact> Condition, CosmosFact Head)>();
+            var candidates = new List<(IReadOnlyList<JsonFact> Condition, JsonFact Head)>();
 
-            void Offer(IReadOnlyList<CosmosFact> condition, CosmosFact head)
+            void Offer(IReadOnlyList<JsonFact> condition, JsonFact head)
             {
                 foreach (var (c, h) in candidates)
                     if (h.Equals(head) && Same(c, condition))
@@ -476,8 +476,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 {
                     Offer(condition, head);
 
-                    if (head.Claim is CosmosClaim.OfType { OrNull: false } typed)
-                        Offer(condition, new CosmosFact(head.Path, typed with { OrNull = true }));
+                    if (head.Claim is JsonClaim.OfType { OrNull: false } typed)
+                        Offer(condition, new JsonFact(head.Path, typed with { OrNull = true }));
 
                     // The domain joining every value the branches pin this path to, under this
                     // condition: a branch saying "park" and one saying "map" both entail it.
@@ -489,17 +489,17 @@ namespace Apache.Calcite.Cosmos.Facts
                             if (h.Path.Equals(head.Path) == false || Same(c, condition) == false)
                                 continue;
 
-                            if (h.Claim is CosmosClaim.EqualTo equal && CosmosClaim.OneOf.Contains(values, equal.Value) == false)
+                            if (h.Claim is JsonClaim.EqualTo equal && JsonClaim.OneOf.Contains(values, equal.Value) == false)
                                 values.Add(equal.Value);
-                            else if (h.Claim is CosmosClaim.OneOf domain)
+                            else if (h.Claim is JsonClaim.OneOf domain)
                                 foreach (var value in domain.Values)
-                                    if (CosmosClaim.OneOf.Contains(values, value) == false)
+                                    if (JsonClaim.OneOf.Contains(values, value) == false)
                                         values.Add(value);
                         }
                     }
 
                     if (values.Count > 0)
-                        Offer(condition, new CosmosFact(head.Path, new CosmosClaim.OneOf(values)));
+                        Offer(condition, new JsonFact(head.Path, new JsonClaim.OneOf(values)));
                 }
             }
 
@@ -528,9 +528,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 if (everywhere)
                 {
-                    var body = new List<CosmosFact>(guard);
+                    var body = new List<JsonFact>(guard);
                     body.AddRange(condition);
-                    meet.Add(new CosmosFactRule(body, head));
+                    meet.Add(new JsonFactRule(body, head));
                 }
             }
 
@@ -544,7 +544,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="branches">The branches.</param>
         /// <param name="resolver">Resolves a branch written as a reference.</param>
         /// <returns>The branch as written, so a reference in it is still followed by the walk.</returns>
-        static JsonNode? NullableBranch(JsonNode branches, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
+        static JsonNode? NullableBranch(JsonNode branches, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             JsonNode? remaining = null;
             var nulls = 0;
@@ -595,7 +595,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 switch (field.getKey()?.ToString())
                 {
-                    case "type" when ReadType(node) is (CosmosJsonType.Null, _):
+                    case "type" when ReadType(node) is (JsonType.Null, _):
                     case "type" when value is not null && value.isArray() && value.size() == 1 && value.get(0)?.asText() == "null":
                     case "const" when value is not null && value.isNull():
                     case "enum" when ReadEnum(node) is IReadOnlyList<object?> domain && OnlyNulls(domain):
@@ -644,28 +644,28 @@ namespace Apache.Calcite.Cosmos.Facts
         /// makes vacuous rather than false.
         /// </para>
         /// </remarks>
-        static CosmosFactRule? AdmitNull(CosmosFactRule rule, CosmosDocumentPath path)
+        static JsonFactRule? AdmitNull(JsonFactRule rule, JsonDocumentPath path)
         {
-            if (rule.Head.Entails(new CosmosFact(rule.Head.Path, new CosmosClaim.Present())))
-                return new CosmosFactRule(Extend(rule.Body, new CosmosFact(path, new CosmosClaim.NotEqualTo(null))), rule.Head);
+            if (rule.Head.Entails(new JsonFact(rule.Head.Path, new JsonClaim.Present())))
+                return new JsonFactRule(Extend(rule.Body, new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
 
             if (rule.Head.Path.Equals(path) == false)
                 return rule;
 
-            CosmosClaim? widened = rule.Head.Claim switch
+            JsonClaim? widened = rule.Head.Claim switch
             {
-                CosmosClaim.OfType typed => typed with { OrNull = true },
-                CosmosClaim.EqualTo { Value: null } equal => equal,
-                CosmosClaim.EqualTo equal => new CosmosClaim.OneOf(new[] { equal.Value, null }),
-                CosmosClaim.OneOf domain when CosmosClaim.OneOf.Contains(domain.Values, null) => domain,
-                CosmosClaim.OneOf domain => new CosmosClaim.OneOf(new List<object?>(domain.Values) { null }),
-                CosmosClaim.NotEqualTo { Value: null } => null,
-                CosmosClaim.NotEqualTo unequal => unequal,
-                CosmosClaim.Represents represents => represents,
+                JsonClaim.OfType typed => typed with { OrNull = true },
+                JsonClaim.EqualTo { Value: null } equal => equal,
+                JsonClaim.EqualTo equal => new JsonClaim.OneOf(new[] { equal.Value, null }),
+                JsonClaim.OneOf domain when JsonClaim.OneOf.Contains(domain.Values, null) => domain,
+                JsonClaim.OneOf domain => new JsonClaim.OneOf(new List<object?>(domain.Values) { null }),
+                JsonClaim.NotEqualTo { Value: null } => null,
+                JsonClaim.NotEqualTo unequal => unequal,
+                JsonClaim.Represents represents => represents,
                 _ => null,
             };
 
-            return widened is null ? null : new CosmosFactRule(rule.Body, new CosmosFact(path, widened));
+            return widened is null ? null : new JsonFactRule(rule.Body, new JsonFact(path, widened));
         }
 
         /// <summary>
@@ -688,10 +688,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         static void WalkConditional(
             JsonNode node,
-            CosmosDocumentPath path,
-            IReadOnlyList<CosmosFact> guard,
-            List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
+            JsonDocumentPath path,
+            IReadOnlyList<JsonFact> guard,
+            List<JsonFactRule> rules,
+            JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node.get("if") is not JsonNode condition)
@@ -702,14 +702,14 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (node.get("then") is JsonNode then)
             {
-                var extended = new List<CosmosFact>(guard);
+                var extended = new List<JsonFact>(guard);
                 extended.AddRange(atoms);
                 Walk(then, path, extended, rules, resolver, recognisers, visiting);
             }
 
-            if (node.get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is CosmosClaim.EqualTo equality)
+            if (node.get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is JsonClaim.EqualTo equality)
             {
-                var extended = new List<CosmosFact>(guard) { new(atoms[0].Path, new CosmosClaim.NotEqualTo(equality.Value)) };
+                var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
                 Walk(otherwise, path, extended, rules, resolver, recognisers, visiting);
             }
         }
@@ -723,9 +723,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// nested conditional — fails the whole condition, for the reason
         /// <see cref="WalkConditional"/> gives.
         /// </remarks>
-        static bool TryConditionAtoms(JsonNode condition, CosmosDocumentPath path, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers, out IReadOnlyList<CosmosFact> atoms)
+        static bool TryConditionAtoms(JsonNode condition, JsonDocumentPath path, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers, out IReadOnlyList<JsonFact> atoms)
         {
-            var found = new List<CosmosFact>();
+            var found = new List<JsonFact>();
             atoms = found;
 
             condition = resolver.Follow(condition) ?? condition;
@@ -759,7 +759,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     case "required" when value is not null && value.isArray():
                         for (var i = 0; i < value.size(); i++)
                             if (value.get(i)?.isTextual() == true)
-                                found.Add(new CosmosFact(path.Property(value.get(i).asText()), new CosmosClaim.Present()));
+                                found.Add(new JsonFact(path.Property(value.get(i).asText()), new JsonClaim.Present()));
                             else
                                 return false;
 
@@ -787,7 +787,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="resolver">Resolves a reference standing in the way.</param>
         /// <param name="found">Collects the atoms read.</param>
         /// <returns><c>true</c> where every keyword was understood and at least one atom came of it.</returns>
-        static bool TryPropertyCondition(JsonNode subschema, CosmosDocumentPath path, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers, List<CosmosFact> found)
+        static bool TryPropertyCondition(JsonNode subschema, JsonDocumentPath path, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers, List<JsonFact> found)
         {
             subschema = resolver.Follow(subschema) ?? subschema;
 
@@ -806,15 +806,15 @@ namespace Apache.Calcite.Cosmos.Facts
                 switch (keyword)
                 {
                     case "const" when value is not null && TryLiteral(value, out var constant):
-                        found.Add(new CosmosFact(path, new CosmosClaim.EqualTo(constant)));
+                        found.Add(new JsonFact(path, new JsonClaim.EqualTo(constant)));
                         break;
 
                     case "enum" when value is not null && ReadEnum(subschema) is IReadOnlyList<object?> domain:
-                        found.Add(new CosmosFact(path, new CosmosClaim.OneOf(domain)));
+                        found.Add(new JsonFact(path, new JsonClaim.OneOf(domain)));
                         break;
 
                     case "type" when ReadType(subschema) is var (type, orNull):
-                        found.Add(new CosmosFact(path, new CosmosClaim.OfType(type, orNull)));
+                        found.Add(new JsonFact(path, new JsonClaim.OfType(type, orNull)));
                         break;
 
                     case "$comment":
@@ -853,7 +853,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// cannot tell apart are not discriminated.
         /// </para>
         /// </remarks>
-        static string? FindDiscriminator(JsonNode branches, JsonNode parent, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
+        static string? FindDiscriminator(JsonNode branches, JsonNode parent, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             if (parent.get("discriminator")?.get("propertyName") is JsonNode named && named.isTextual())
                 return Pins(branches, parent, named.asText(), resolver, recognisers) ? named.asText() : null;
@@ -878,7 +878,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="name">The candidate property.</param>
         /// <param name="resolver">Resolves a branch written as a reference.</param>
         /// <returns><c>true</c> where every branch is selected, and no two by the same value.</returns>
-        static bool Pins(JsonNode branches, JsonNode parent, string name, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
+        static bool Pins(JsonNode branches, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             var seen = new List<object?>();
 
@@ -887,7 +887,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (branches.get(i) is not JsonNode branch)
                     return false;
 
-                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || CosmosClaim.OneOf.Contains(seen, value))
+                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || JsonClaim.OneOf.Contains(seen, value))
                     return false;
 
                 seen.Add(value);
@@ -905,7 +905,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// where no entry names this branch, OpenAPI's implicit rule applies and the value is the
         /// schema's own name — the last segment of the reference.
         /// </remarks>
-        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
+        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             if (resolver.Follow(branch)?.get("properties")?.get(name) is JsonNode declared &&
                 resolver.Follow(declared)?.get("const") is JsonNode constant &&
@@ -949,7 +949,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <param name="node">The schema node.</param>
         /// <returns>The type and whether a null is admitted, or <c>null</c> where none is stated or two types are.</returns>
-        static (CosmosJsonType Type, bool OrNull)? ReadType(JsonNode node)
+        static (JsonType Type, bool OrNull)? ReadType(JsonNode node)
         {
             // OpenAPI 3.0 writes nullability beside the type; 2020-12 writes it inside, as a union with
             // "null". Both are the same statement and neither is an absence of type -- a nullable
@@ -979,24 +979,24 @@ namespace Apache.Calcite.Cosmos.Facts
                     single = name;
                 }
 
-                return single is null ? null : Parse(single) is CosmosJsonType parsed ? (parsed, orNull) : null;
+                return single is null ? null : Parse(single) is JsonType parsed ? (parsed, orNull) : null;
             }
 
             if (type is null || type.isTextual() == false)
                 return null;
 
-            return Parse(type.asText()) is CosmosJsonType only ? (only, orNull) : null;
+            return Parse(type.asText()) is JsonType only ? (only, orNull) : null;
         }
 
-        static CosmosJsonType? Parse(string name) => name switch
+        static JsonType? Parse(string name) => name switch
         {
-            "string" => CosmosJsonType.String,
-            "integer" => CosmosJsonType.Integer,
-            "number" => CosmosJsonType.Number,
-            "boolean" => CosmosJsonType.Boolean,
-            "object" => CosmosJsonType.Object,
-            "array" => CosmosJsonType.Array,
-            "null" => CosmosJsonType.Null,
+            "string" => JsonType.String,
+            "integer" => JsonType.Integer,
+            "number" => JsonType.Number,
+            "boolean" => JsonType.Boolean,
+            "object" => JsonType.Object,
+            "array" => JsonType.Array,
+            "null" => JsonType.Null,
             _ => null,
         };
 

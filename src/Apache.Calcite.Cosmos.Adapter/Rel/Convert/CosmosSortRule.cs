@@ -198,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false)
                     continue;
 
-                if (Metadata.CosmosDocumentPaths.From(path) is CosmosDocumentPath document && NeverNull(facts, document))
+                if (Metadata.CosmosDocumentPaths.From(path) is JsonDocumentPath document && NeverNull(facts, document))
                     all.Add(i);
             }
 
@@ -232,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// removing the nulls itself makes, settled by the container instead of by the predicate.
         /// </para>
         /// </remarks>
-        static bool NeverNull(CosmosFactSet facts, CosmosDocumentPath path) =>
+        static bool NeverNull(JsonFactSet facts, JsonDocumentPath path) =>
             facts.IsAlwaysScalar(path);
 
         /// <summary>
@@ -248,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>{"kind":"somewhere"}</c> and <c>{"type":"Point","coordinates":[999,999]}</c> are both
         /// objects and both answer undefined. A claim about the <em>type</em> at the path closes the
         /// first and leaves the second, which is a key that still arrives undefined and still sorts at
-        /// the wrong end of the placement. <see cref="CosmosFactSet.IsAlwaysGeography"/> is
+        /// the wrong end of the placement. <see cref="JsonFactSet.IsAlwaysGeography"/> is
         /// the claim that closes both, and it is the only one that does.
         /// </para>
         /// <para>
@@ -270,13 +270,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// model has always said it cannot check in advance.
         /// </para>
         /// </remarks>
-        static bool AlwaysDefined(CosmosFactSet facts, CosmosOrdering candidate)
+        static bool AlwaysDefined(JsonFactSet facts, CosmosOrdering candidate)
         {
             if (candidate.Expression == false || candidate.Operands is not { } operands)
                 return false;
 
             foreach (var operand in operands)
-                if (Metadata.CosmosDocumentPaths.From(operand) is not CosmosDocumentPath document
+                if (Metadata.CosmosDocumentPaths.From(operand) is not JsonDocumentPath document
                     || facts.IsAlwaysGeography(document) == false)
                     return false;
 

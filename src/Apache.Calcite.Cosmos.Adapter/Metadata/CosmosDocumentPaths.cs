@@ -9,7 +9,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// The bridge between the two path types, kept on the statement's side because a document path
-    /// knows nothing of statements. See <see cref="CosmosDocumentPath"/>.
+    /// knows nothing of statements. See <see cref="JsonDocumentPath"/>.
     /// </remarks>
     public static class CosmosDocumentPaths
     {
@@ -25,12 +25,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         /// <param name="path">The statement's path.</param>
         /// <returns>The document path, or <c>null</c>.</returns>
-        public static CosmosDocumentPath? From(CosmosPath? path)
+        public static JsonDocumentPath? From(CosmosPath? path)
         {
             if (path is null)
                 return null;
 
-            var document = CosmosDocumentPath.Root;
+            var document = JsonDocumentPath.Root;
 
             for (var i = 0; i < path.Segments.Count; i++)
             {

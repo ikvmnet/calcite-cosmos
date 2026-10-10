@@ -7,7 +7,7 @@ using Apache.Calcite.Cosmos.Facts;
 using FluentAssertions;
 using Xunit;
 
-namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 {
 
     /// <summary>
@@ -18,25 +18,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// discriminated by a property, where only one kind carries the path a fact is declared for. A
     /// fact about that path is unusable until the query has proven which kind it is filtering.
     /// </remarks>
-    public class CosmosSchemaFactsTests
+    public class JsonSchemaFactsTests
     {
 
-        static readonly CosmosDocumentPath Type = CosmosDocumentPath.Root.Property("type");
-        static readonly CosmosDocumentPath Data = CosmosDocumentPath.Root.Property("data");
-        static readonly CosmosDocumentPath ParkId = Data.Property("parkId");
-        static readonly CosmosDocumentPath At = Data.Property("at");
+        static readonly JsonDocumentPath Type = JsonDocumentPath.Root.Property("type");
+        static readonly JsonDocumentPath Data = JsonDocumentPath.Root.Property("data");
+        static readonly JsonDocumentPath ParkId = Data.Property("parkId");
+        static readonly JsonDocumentPath At = Data.Property("at");
 
-        static IReadOnlyList<CosmosFactRule> Read(string json) =>
+        static IReadOnlyList<JsonFactRule> Read(string json) =>
             CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
 
         /// <summary>The facts a schema states, assembled into the theory a container would ask.</summary>
-        static CosmosFactTheory Compile(string json) => new(Read(json));
+        static JsonFactTheory Compile(string json) => new(Read(json));
 
         // -- A declared geography ---------------------------------------------------------------
 
-        static readonly CosmosDocumentPath Location = CosmosDocumentPath.Root.Property("location");
+        static readonly JsonDocumentPath Location = JsonDocumentPath.Root.Property("location");
 
-        static CosmosFactSet Facts(string json) => Compile(json).Derive(null);
+        static JsonFactSet Facts(string json) => Compile(json).Derive(null);
 
         /// <summary>
         /// <c>Point</c> schema with bounded ordinates beside an object type declares that the path holds a geography.
@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Every other claim about a value is silent about whether the value is there — a schema's
         /// <c>properties</c> constrains what a path holds <em>if</em> it holds anything. This one is
         /// the exception, because there is no geography that is absent: declaring the format is
-        /// declaring a shape is there. <c>CosmosFact.Entails</c> carries it.
+        /// declaring a shape is there. <c>JsonFact.Entails</c> carries it.
         /// </remarks>
         [Fact]
         public void ADeclaredGeographyIsPresentAndAnObject()
@@ -123,12 +123,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                                      { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
             """);
 
-            facts.Knows(new CosmosFact(Location, new CosmosClaim.Present())).Should().BeTrue();
-            facts.Knows(new CosmosFact(Location, new CosmosClaim.OfType(CosmosJsonType.Object))).Should().BeTrue();
+            facts.Knows(new JsonFact(Location, new JsonClaim.Present())).Should().BeTrue();
+            facts.Knows(new JsonFact(Location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
             facts.IsAlwaysScalar(Location).Should().BeFalse("a shape is not a scalar");
         }
 
-        static CosmosFact Equals(CosmosDocumentPath path, object? value) => new(path, new CosmosClaim.EqualTo(value));
+        static JsonFact Equals(JsonDocumentPath path, object? value) => new(path, new JsonClaim.EqualTo(value));
 
         const string Parks = """
         {
@@ -194,18 +194,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
 
-            derived.Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse(
+            derived.Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse(
                 "required constrains an object and says nothing where there is no object, so a nested one waits on its parent");
 
             Compile(Parks)
-                .Derive(new[] { Equals(Type, "ParkMap"), new CosmosFact(Data, new CosmosClaim.Present()) })
-                .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeTrue("and holds once the parent is known to be there");
-            derived.Knows(new CosmosFact(Type, new CosmosClaim.Present())).Should().BeTrue();
-            derived.Knows(new CosmosFact(At, new CosmosClaim.Present())).Should().BeFalse(
+                .Derive(new[] { Equals(Type, "ParkMap"), new JsonFact(Data, new JsonClaim.Present()) })
+                .Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeTrue("and holds once the parent is known to be there");
+            derived.Knows(new JsonFact(Type, new JsonClaim.Present())).Should().BeTrue();
+            derived.Knows(new JsonFact(At, new JsonClaim.Present())).Should().BeFalse(
                 "properties says what a value is, not that there is one; only required says that");
 
             Compile(Parks).Derive(new[] { Equals(Type, "Park") })
-                .Knows(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse();
+                .Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse();
         }
 
         /// <summary>
@@ -260,13 +260,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var derived = Compile(Sortable).Derive(null);
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v7")).Should().Be(CosmosUuidForms.CanonicalLowerSortable);
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v4")).Should().Be(CosmosUuidForms.CanonicalLower);
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("v7")).Should().Be(CosmosUuidForms.CanonicalLowerSortable);
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("v4")).Should().Be(CosmosUuidForms.CanonicalLower);
 
             CosmosUuidForms.CanonicalLowerSortable.PreservesOrder.Should().BeTrue("the confinement licenses the order under either comparison");
             CosmosUuidForms.CanonicalLower.PreservesOrder.Should().BeTrue("and the unsigned comparison licenses it without one");
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("loose")).Should().BeNull(
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("loose")).Should().BeNull(
                 "a case-insensitive class is a different language and gets no entry, which is the whole point of recognising rather than probing");
         }
 
@@ -340,7 +340,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ("{ 'type': 'string', 'pattern': 'L' }",                  null,   true,   true),
             };
 
-            var v = CosmosDocumentPath.Root.Property("v");
+            var v = JsonDocumentPath.Root.Property("v");
 
             foreach (var (subschema, form, strict, orNull) in cases)
             {
@@ -352,9 +352,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 var derived = Compile(json).Derive(null);
 
                 derived.RepresentationOf(v).Should().Be(form, "form for " + subschema);
-                derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String)))
+                derived.Knows(new JsonFact(v, new JsonClaim.OfType(JsonType.String)))
                     .Should().Be(strict, "strict string for " + subschema);
-                derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true)))
+                derived.Knows(new JsonFact(v, new JsonClaim.OfType(JsonType.String, OrNull: true)))
                     .Should().Be(orNull, "string-or-null for " + subschema);
             }
         }
@@ -372,7 +372,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void APatternStatesNothingWithoutADeclaredStringType()
         {
-            var reference = CosmosDocumentPath.Root.Property("ref");
+            var reference = JsonDocumentPath.Root.Property("ref");
             const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 
             Compile("""{ "properties": { "ref": { "pattern": "PATTERN" } } }""".Replace("PATTERN", Uuid))
@@ -604,7 +604,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 "pattern": "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" } } }
             """;
 
-            var reference = CosmosDocumentPath.Root.Property("ref");
+            var reference = JsonDocumentPath.Root.Property("ref");
             var derived = Compile(Upper).Derive(null);
 
             derived.RepresentationOf(reference).Should().Be(CosmosUuidForms.CanonicalUpper);
@@ -636,10 +636,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var derived = Compile(Vague).Derive(null);
 
-            derived.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+            derived.Knows(new JsonFact(JsonDocumentPath.Root.Property("a"), new JsonClaim.OfType(JsonType.String)))
                 .Should().BeTrue("both branches say so");
 
-            derived.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("b"), new CosmosClaim.OfType(CosmosJsonType.Integer)))
+            derived.Knows(new JsonFact(JsonDocumentPath.Root.Property("b"), new JsonClaim.OfType(JsonType.Integer)))
                 .Should().BeFalse("only one branch says so, and nothing selects it");
         }
 
@@ -666,9 +666,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
         """;
 
-        static readonly CosmosDocumentPath LinkType = CosmosDocumentPath.Root.Property("data").Property("type");
-        static readonly CosmosDocumentPath LinkParkId = CosmosDocumentPath.Root.Property("data").Property("data").Property("parkId");
-        static readonly CosmosDocumentPath LinkMapId = CosmosDocumentPath.Root.Property("data").Property("data").Property("mapId");
+        static readonly JsonDocumentPath LinkType = JsonDocumentPath.Root.Property("data").Property("type");
+        static readonly JsonDocumentPath LinkParkId = JsonDocumentPath.Root.Property("data").Property("data").Property("parkId");
+        static readonly JsonDocumentPath LinkMapId = JsonDocumentPath.Root.Property("data").Property("data").Property("mapId");
 
         /// <summary>
         /// What every branch of a discriminated union entails holds of every document, whichever kind
@@ -686,10 +686,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             derived.RepresentationOf(LinkParkId).Should().Be(CosmosUuidForms.CanonicalLower, "every kind writes parkId so, or holds null");
             derived.RepresentationOf(LinkMapId).Should().Be(CosmosUuidForms.CanonicalLower);
-            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
-            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse("a spot holds null");
+            derived.Knows(new JsonFact(LinkParkId, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeTrue();
+            derived.Knows(new JsonFact(LinkParkId, new JsonClaim.OfType(JsonType.String))).Should().BeFalse("a spot holds null");
 
-            derived.Knows(new CosmosFact(LinkType, new CosmosClaim.OneOf(new object?[] { "park", "map", "spot" }))).Should().BeTrue(
+            derived.Knows(new JsonFact(LinkType, new JsonClaim.OneOf(new object?[] { "park", "map", "spot" }))).Should().BeTrue(
                 "the discriminator's own values join into a domain every kind is in");
         }
 
@@ -700,10 +700,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void ADiscriminatedUnionKeepsItsPerBranchFacts()
         {
             var map = Compile(Links).Derive(new[] { Equals(LinkType, "map") });
-            map.Knows(new CosmosFact(LinkMapId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
+            map.Knows(new JsonFact(LinkMapId, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
 
             var spot = Compile(Links).Derive(new[] { Equals(LinkType, "spot") });
-            spot.Knows(new CosmosFact(LinkMapId, new CosmosClaim.EqualTo(null))).Should().BeTrue();
+            spot.Knows(new JsonFact(LinkMapId, new JsonClaim.EqualTo(null))).Should().BeTrue();
         }
 
         /// <summary>
@@ -715,11 +715,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var derived = Compile(Links).Derive(new[]
             {
-                new CosmosFact(CosmosDocumentPath.Root.Property("data"), new CosmosClaim.Present()),
-                new CosmosFact(CosmosDocumentPath.Root.Property("data").Property("data"), new CosmosClaim.Present()),
+                new JsonFact(JsonDocumentPath.Root.Property("data"), new JsonClaim.Present()),
+                new JsonFact(JsonDocumentPath.Root.Property("data").Property("data"), new JsonClaim.Present()),
             });
 
-            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.Present())).Should().BeFalse("a spot need not carry one");
+            derived.Knows(new JsonFact(LinkParkId, new JsonClaim.Present())).Should().BeFalse("a spot need not carry one");
         }
 
         /// <summary>
@@ -737,7 +737,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ] }
             """).Derive(null);
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v")).Should().BeNull("the third branch admits a v of any kind");
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("v")).Should().BeNull("the third branch admits a v of any kind");
         }
 
         /// <summary>
@@ -747,13 +747,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AnUndiscriminatedUnionMeetsByEntailment()
         {
-            var v = CosmosDocumentPath.Root.Property("v");
+            var v = JsonDocumentPath.Root.Property("v");
             var derived = Compile("""
             { "properties": { "v": { "anyOf": [ { "type": "string" }, { "type": "null" }, { "const": "A" } ] } } }
             """).Derive(null);
 
-            derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
-            derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse();
+            derived.Knows(new JsonFact(v, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeTrue();
+            derived.Knows(new JsonFact(v, new JsonClaim.OfType(JsonType.String))).Should().BeFalse();
         }
 
         /// <summary>
@@ -766,14 +766,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ANullableUnionWidensAConstantToADomainWithNull()
         {
-            var v = CosmosDocumentPath.Root.Property("v");
+            var v = JsonDocumentPath.Root.Property("v");
             var derived = Compile("""
             { "properties": { "v": { "anyOf": [ { "type": "null" }, { "const": "A" } ] } } }
             """).Derive(null);
 
-            derived.Knows(new CosmosFact(v, new CosmosClaim.EqualTo("A"))).Should().BeFalse("a null is admitted too");
-            derived.Knows(new CosmosFact(v, new CosmosClaim.OneOf(new object?[] { "A", null }))).Should().BeTrue();
-            derived.Knows(new CosmosFact(v, new CosmosClaim.NotEqualTo("B"))).Should().BeTrue();
+            derived.Knows(new JsonFact(v, new JsonClaim.EqualTo("A"))).Should().BeFalse("a null is admitted too");
+            derived.Knows(new JsonFact(v, new JsonClaim.OneOf(new object?[] { "A", null }))).Should().BeTrue();
+            derived.Knows(new JsonFact(v, new JsonClaim.NotEqualTo("B"))).Should().BeTrue();
         }
 
         /// <summary>
@@ -788,24 +788,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ANullableObjectRequiresItsChildrenOnlyWhereItIsNotNull()
         {
-            var o = CosmosDocumentPath.Root.Property("o");
+            var o = JsonDocumentPath.Root.Property("o");
             var k = o.Property("k");
             var theory = Compile("""
             { "properties": { "o": { "anyOf": [ { "type": "null" },
                                                 { "type": "object", "required": ["k"], "properties": { "k": { "type": "string" } } } ] } } }
             """);
 
-            var present = new CosmosFact(o, new CosmosClaim.Present());
-            var notNull = new CosmosFact(o, new CosmosClaim.NotEqualTo(null));
+            var present = new JsonFact(o, new JsonClaim.Present());
+            var notNull = new JsonFact(o, new JsonClaim.NotEqualTo(null));
 
-            theory.Derive(new[] { present }).Knows(new CosmosFact(k, new CosmosClaim.Present()))
+            theory.Derive(new[] { present }).Knows(new JsonFact(k, new JsonClaim.Present()))
                 .Should().BeFalse("a null at o is present and has no k");
-            theory.Derive(new[] { present, notNull }).Knows(new CosmosFact(k, new CosmosClaim.Present()))
+            theory.Derive(new[] { present, notNull }).Knows(new JsonFact(k, new JsonClaim.Present()))
                 .Should().BeTrue();
 
-            theory.Derive(null).Knows(new CosmosFact(o, new CosmosClaim.OfType(CosmosJsonType.Object, OrNull: true)))
+            theory.Derive(null).Knows(new JsonFact(o, new JsonClaim.OfType(JsonType.Object, OrNull: true)))
                 .Should().BeTrue();
-            theory.Derive(null).Knows(new CosmosFact(k, new CosmosClaim.OfType(CosmosJsonType.String)))
+            theory.Derive(null).Knows(new JsonFact(k, new JsonClaim.OfType(JsonType.String)))
                 .Should().BeTrue("a claim about a value below is vacuous, not false, where there is no value");
         }
 
@@ -820,10 +820,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             """;
 
             var theory = Compile(Conditional);
-            var at = CosmosDocumentPath.Root.Property("at");
+            var at = JsonDocumentPath.Root.Property("at");
 
             theory.Derive(null).RepresentationOf(at).Should().BeNull();
-            theory.Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "map") }).RepresentationOf(at)
+            theory.Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "map") }).RepresentationOf(at)
                 .Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
@@ -840,9 +840,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
             """;
 
-            var at = CosmosDocumentPath.Root.Property("at");
+            var at = JsonDocumentPath.Root.Property("at");
 
-            Compile(PartlyUnderstood).Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "map") })
+            Compile(PartlyUnderstood).Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "map") })
                 .RepresentationOf(at).Should().BeNull(
                     "the whole condition has to be understood, or the guard is weaker than the schema's");
         }
@@ -858,14 +858,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
             """;
 
-            var at = CosmosDocumentPath.Root.Property("at");
-            var kind = CosmosDocumentPath.Root.Property("kind");
+            var at = JsonDocumentPath.Root.Property("at");
+            var kind = JsonDocumentPath.Root.Property("kind");
             var theory = Compile(Conditional);
 
-            theory.Derive(new[] { Equals(kind, "trail") }).Knows(new CosmosFact(at, new CosmosClaim.OfType(CosmosJsonType.Integer)))
+            theory.Derive(new[] { Equals(kind, "trail") }).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
                 .Should().BeTrue("an equality to a different value discharges the negative premise");
 
-            theory.Derive(new[] { Equals(kind, "map") }).Knows(new CosmosFact(at, new CosmosClaim.OfType(CosmosJsonType.Integer)))
+            theory.Derive(new[] { Equals(kind, "map") }).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
                 .Should().BeFalse();
         }
 
@@ -876,13 +876,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             { "type": "object", "properties": { "status": { "enum": ["open", "closed"] } } }
             """;
 
-            var status = CosmosDocumentPath.Root.Property("status");
+            var status = JsonDocumentPath.Root.Property("status");
             var derived = Compile(Enumerated).Derive(null);
 
-            derived.Knows(new CosmosFact(status, new CosmosClaim.OneOf(new object?[] { "open", "closed" }))).Should().BeTrue();
-            derived.Knows(new CosmosFact(status, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue(
+            derived.Knows(new JsonFact(status, new JsonClaim.OneOf(new object?[] { "open", "closed" }))).Should().BeTrue();
+            derived.Knows(new JsonFact(status, new JsonClaim.OfType(JsonType.String))).Should().BeTrue(
                 "every member is a string, so the type follows from the domain");
-            derived.Knows(new CosmosFact(status, new CosmosClaim.NotEqualTo("archived"))).Should().BeTrue();
+            derived.Knows(new JsonFact(status, new JsonClaim.NotEqualTo("archived"))).Should().BeTrue();
         }
 
         /// <summary>
@@ -909,8 +909,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             """;
 
             var theory = Compile(Mapped);
-            var reference = CosmosDocumentPath.Root.Property("ref");
-            var kind = CosmosDocumentPath.Root.Property("kind");
+            var reference = JsonDocumentPath.Root.Property("ref");
+            var kind = JsonDocumentPath.Root.Property("kind");
 
             theory.Derive(null).RepresentationOf(reference).Should().BeNull();
             theory.Derive(new[] { Equals(kind, "order") }).RepresentationOf(reference).Should().BeNull();
@@ -936,8 +936,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
             """;
 
-            Compile(Implicit).Derive(new[] { Equals(CosmosDocumentPath.Root.Property("kind"), "Shipment") })
-                .RepresentationOf(CosmosDocumentPath.Root.Property("ref"))
+            Compile(Implicit).Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "Shipment") })
+                .RepresentationOf(JsonDocumentPath.Root.Property("ref"))
                 .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
@@ -967,8 +967,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var derived = Compile(Rebased).Derive(null);
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("u")).Should().Be(CosmosUuidForms.CanonicalLower);
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("at").Property("x"))
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("u")).Should().Be(CosmosUuidForms.CanonicalLower);
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("at").Property("x"))
                 .Should().Be(CosmosTemporalForms.Iso8601Date, "under inner's $id the pointer names inner's own $defs");
         }
 
@@ -1005,11 +1005,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
             """;
 
-            var guid = CosmosDocumentPath.Root.Property("guid");
+            var guid = JsonDocumentPath.Root.Property("guid");
             var derived = Compile(Bundle).Derive(null);
 
             derived.RepresentationOf(guid).Should().Be(CosmosUuidForms.CanonicalLower);
-            derived.Knows(new CosmosFact(guid, new CosmosClaim.Present())).Should().BeTrue();
+            derived.Knows(new JsonFact(guid, new JsonClaim.Present())).Should().BeTrue();
         }
 
         /// <summary>
@@ -1033,8 +1033,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var derived = Compile(Remote).Derive(null);
 
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("elsewhere")).Should().BeNull();
-            derived.RepresentationOf(CosmosDocumentPath.Root.Property("here")).Should().Be(CosmosTemporalForms.Iso8601Date);
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("elsewhere")).Should().BeNull();
+            derived.RepresentationOf(JsonDocumentPath.Root.Property("here")).Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
         [Fact]
@@ -1051,7 +1051,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var theory = Compile(Recursive);
 
             theory.Rules.Should().NotBeEmpty();
-            theory.Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("id"))
+            theory.Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("id"))
                 .Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
@@ -1062,16 +1062,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void PresenceKeyedConditionalsAndANegationAreRead()
         {
-            var a = CosmosDocumentPath.Root.Property("a");
-            var b = CosmosDocumentPath.Root.Property("b");
-            var k = CosmosDocumentPath.Root.Property("k");
+            var a = JsonDocumentPath.Root.Property("a");
+            var b = JsonDocumentPath.Root.Property("b");
+            var k = JsonDocumentPath.Root.Property("k");
 
             // dependentRequired: b is there whenever a is, and not before.
             var dependent = Compile("""{ "dependentRequired": { "a": ["b"] } }""");
 
-            dependent.Derive(null).Knows(new CosmosFact(b, new CosmosClaim.Present())).Should().BeFalse();
-            dependent.Derive(new[] { new CosmosFact(a, new CosmosClaim.Present()) })
-                .Knows(new CosmosFact(b, new CosmosClaim.Present())).Should().BeTrue();
+            dependent.Derive(null).Knows(new JsonFact(b, new JsonClaim.Present())).Should().BeFalse();
+            dependent.Derive(new[] { new JsonFact(a, new JsonClaim.Present()) })
+                .Knows(new JsonFact(b, new JsonClaim.Present())).Should().BeTrue();
 
             // dependentSchemas: the same trigger, carrying a whole subschema.
             var schemas = Compile("""
@@ -1080,20 +1080,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             """);
 
             schemas.Derive(null).RepresentationOf(b).Should().BeNull();
-            schemas.Derive(new[] { new CosmosFact(a, new CosmosClaim.Present()) }).RepresentationOf(b)
+            schemas.Derive(new[] { new JsonFact(a, new JsonClaim.Present()) }).RepresentationOf(b)
                 .Should().Be(CosmosTemporalForms.Iso8601Date);
 
             // not: failing {properties: {k: {const: "A"}}} means k is there and is not "A" -- the
             // negation of the schema, which is vacuous on an absent k, rather than of the atom.
             var negated = Compile("""{ "not": { "properties": { "k": { "const": "A" } } } }""").Derive(null);
 
-            negated.Knows(new CosmosFact(k, new CosmosClaim.Present())).Should().BeTrue();
-            negated.Knows(new CosmosFact(k, new CosmosClaim.NotEqualTo("A"))).Should().BeTrue();
-            negated.Knows(new CosmosFact(k, new CosmosClaim.NotEqualTo("B"))).Should().BeFalse();
+            negated.Knows(new JsonFact(k, new JsonClaim.Present())).Should().BeTrue();
+            negated.Knows(new JsonFact(k, new JsonClaim.NotEqualTo("A"))).Should().BeTrue();
+            negated.Knows(new JsonFact(k, new JsonClaim.NotEqualTo("B"))).Should().BeFalse();
 
             // Two constraints under a not is a disjunction over which of them failed, and yields none.
             Compile("""{ "not": { "properties": { "k": { "const": "A" }, "j": { "const": "B" } } } }""")
-                .Derive(null).Knows(new CosmosFact(k, new CosmosClaim.Present())).Should().BeFalse();
+                .Derive(null).Knows(new JsonFact(k, new JsonClaim.Present())).Should().BeFalse();
         }
 
         /// <summary>
@@ -1104,18 +1104,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             // OpenAPI 3.0 puts nullability beside the type rather than inside it.
             Compile("""{ "properties": { "a": { "type": "string", "nullable": true } } }""")
-                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Derive(null).Knows(new JsonFact(JsonDocumentPath.Root.Property("a"), new JsonClaim.OfType(JsonType.String)))
                 .Should().BeFalse("a stored null conforms to it, so the type is not what the schema claimed");
 
             // 2020-12 spells the same thing as a union, and a union states only what its members agree on.
             Compile("""{ "properties": { "a": { "type": ["string", "null"] } } }""")
-                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Derive(null).Knows(new JsonFact(JsonDocumentPath.Root.Property("a"), new JsonClaim.OfType(JsonType.String)))
                 .Should().BeFalse();
 
             // $defs is a place to put schemas, not a constraint on the document, so nothing under it
             // becomes a fact about a path of the same name.
             Compile("""{ "$defs": { "a": { "type": "string" } } }""")
-                .Derive(null).Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String)))
+                .Derive(null).Knows(new JsonFact(JsonDocumentPath.Root.Property("a"), new JsonClaim.OfType(JsonType.String)))
                 .Should().BeFalse();
 
             // Constraints with no claim in the model, and applicators not interpreted, are ignored
@@ -1131,9 +1131,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
             """).Derive(null);
 
-            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("a"), new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
-            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("b"), new CosmosClaim.OfType(CosmosJsonType.Integer))).Should().BeTrue();
-            mixed.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("c"), new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse(
+            mixed.Knows(new JsonFact(JsonDocumentPath.Root.Property("a"), new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
+            mixed.Knows(new JsonFact(JsonDocumentPath.Root.Property("b"), new JsonClaim.OfType(JsonType.Integer))).Should().BeTrue();
+            mixed.Knows(new JsonFact(JsonDocumentPath.Root.Property("c"), new JsonClaim.OfType(JsonType.String))).Should().BeFalse(
                 "a negated schema states nothing, and reading it as though it did would invert the claim");
         }
 
@@ -1144,7 +1144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 .Should().BeEmpty("a declaration meant to add pushdowns must never be a reason a query stops working");
 
             Compile("""{ "type": "object", "properties": { "a": { "minimum": 3, "maxLength": 9 } } }""")
-                .Derive(null).RepresentationOf(CosmosDocumentPath.Root.Property("a")).Should().BeNull();
+                .Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("a")).Should().BeNull();
         }
 
     }

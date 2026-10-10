@@ -542,7 +542,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case var single:
                     foreach (var value in single.ToString()!.Split(','))
                         if (value.Trim().Length > 0)
-                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<CosmosFactRule>()));
+                            declarations.Add(new CosmosContainerDeclaration(value.Trim(), System.Array.Empty<JsonFactRule>()));
                     break;
             }
 
@@ -558,7 +558,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 return null;
 
             if (entry is not java.util.Map map)
-                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<CosmosFactRule>()) : null;
+                return entry.ToString() is string plain && plain.Length > 0 ? new CosmosContainerDeclaration(plain, System.Array.Empty<JsonFactRule>()) : null;
 
             if (map.get("name")?.ToString() is not string name || name.Length == 0)
                 throw new ArgumentException($"Every object in '{ContainersOperand}' must carry a 'name'.");
@@ -566,7 +566,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             var constraints = ReadConstraints(name, map.get(ConstraintsOperand));
 
             if (map.get(SchemaOperand) is not object schema)
-                return new CosmosContainerDeclaration(name, System.Array.Empty<CosmosFactRule>(), constraints);
+                return new CosmosContainerDeclaration(name, System.Array.Empty<JsonFactRule>(), constraints);
 
             // A schema is an object. A string there would be a path or a document and this has decided
             // neither, so it is a model mistake rather than something to guess at.

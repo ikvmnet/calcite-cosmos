@@ -35,39 +35,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// The rules themselves, built once.
         /// </summary>
-        static readonly CosmosFactRule[] Stated = Build();
+        static readonly JsonFactRule[] Stated = Build();
 
         /// <summary>
         /// Builds the rules for the properties the service maintains.
         /// </summary>
         /// <returns>The rules.</returns>
-        static CosmosFactRule[] Build()
+        static JsonFactRule[] Build()
         {
-            CosmosFactRule[] About(string property, CosmosJsonType type)
+            JsonFactRule[] About(string property, JsonType type)
             {
-                var path = CosmosDocumentPath.Root.Property(property);
+                var path = JsonDocumentPath.Root.Property(property);
 
                 return new[]
                 {
-                    CosmosFactRule.Unconditional(new CosmosFact(path, new CosmosClaim.OfType(type))),
-                    CosmosFactRule.Unconditional(new CosmosFact(path, new CosmosClaim.Present())),
+                    JsonFactRule.Unconditional(new JsonFact(path, new JsonClaim.OfType(type))),
+                    JsonFactRule.Unconditional(new JsonFact(path, new JsonClaim.Present())),
                 };
             }
 
-            var rules = new List<CosmosFactRule>();
+            var rules = new List<JsonFactRule>();
 
             // Required of every item, and a string: the service rejects a document whose id is a
             // number, and generates one where none is given.
-            rules.AddRange(About(CosmosContainerMetadata.IdPropertyName, CosmosJsonType.String));
+            rules.AddRange(About(CosmosContainerMetadata.IdPropertyName, JsonType.String));
 
             // Service-generated on every write, in epoch seconds. The only temporal value in a
             // container whose encoding is defined rather than a matter of application convention,
             // which is why it is the one a query can reason about without being told anything.
-            rules.AddRange(About(CosmosContainerMetadata.TimestampPropertyName, CosmosJsonType.Integer));
+            rules.AddRange(About(CosmosContainerMetadata.TimestampPropertyName, JsonType.Integer));
 
             // Service-generated, and a string. Excluded from the index by default, which bears on what
             // a predicate over it costs and not on what it is.
-            rules.AddRange(About(CosmosContainerMetadata.ETagPropertyName, CosmosJsonType.String));
+            rules.AddRange(About(CosmosContainerMetadata.ETagPropertyName, JsonType.String));
 
             return rules.ToArray();
         }
@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Gets the facts every container's documents satisfy.
         /// </summary>
-        public static IReadOnlyList<CosmosFactRule> Rules => Stated;
+        public static IReadOnlyList<JsonFactRule> Rules => Stated;
 
     }
 

@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// path, wherever each was built, and a path is a dictionary key far more often than it is anything
     /// else. Its <c>default</c> is <see cref="Root"/>, so a path nothing initialised is the document
     /// rather than a value that cannot be asked anything. Where a caller has no path to give, it says so
-    /// with <c>CosmosDocumentPath?</c>.
+    /// with <c>JsonDocumentPath?</c>.
     /// </para>
     /// <para>
     /// <b>A list that shares its prefixes.</b> Every path is built from a shorter one by
@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// first node they share.
     /// </para>
     /// </remarks>
-    public readonly struct CosmosDocumentPath : IEquatable<CosmosDocumentPath>
+    public readonly struct JsonDocumentPath : IEquatable<JsonDocumentPath>
     {
 
         /// <summary>
@@ -68,12 +68,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// The document itself, which is the path every walk starts from. The same as <c>default</c>.
         /// </summary>
-        public static readonly CosmosDocumentPath Root = default;
+        public static readonly JsonDocumentPath Root = default;
 
         // Null for the root, which is what the default value holds.
         readonly Node? _last;
 
-        CosmosDocumentPath(Node last)
+        JsonDocumentPath(Node last)
         {
             _last = last;
         }
@@ -112,16 +112,16 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="name">The property name.</param>
         /// <returns>The extended path.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="name"/> is <c>null</c>.</exception>
-        public CosmosDocumentPath Property(string name)
+        public JsonDocumentPath Property(string name)
         {
             if (name is null)
                 throw new ArgumentNullException(nameof(name));
 
-            return new CosmosDocumentPath(new Node(_last, name));
+            return new JsonDocumentPath(new Node(_last, name));
         }
 
         /// <inheritdoc />
-        public bool Equals(CosmosDocumentPath other)
+        public bool Equals(JsonDocumentPath other)
         {
             var left = _last;
             var right = other._last;
@@ -142,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <inheritdoc />
-        public override bool Equals(object? obj) => obj is CosmosDocumentPath other && Equals(other);
+        public override bool Equals(object? obj) => obj is JsonDocumentPath other && Equals(other);
 
         /// <inheritdoc />
         public override int GetHashCode() => _last?.Hash ?? 0;
@@ -150,12 +150,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Determines whether two paths name the same properties.
         /// </summary>
-        public static bool operator ==(CosmosDocumentPath left, CosmosDocumentPath right) => left.Equals(right);
+        public static bool operator ==(JsonDocumentPath left, JsonDocumentPath right) => left.Equals(right);
 
         /// <summary>
         /// Determines whether two paths name different properties.
         /// </summary>
-        public static bool operator !=(CosmosDocumentPath left, CosmosDocumentPath right) => left.Equals(right) == false;
+        public static bool operator !=(JsonDocumentPath left, JsonDocumentPath right) => left.Equals(right) == false;
 
         /// <summary>
         /// Renders the path the way a JSON pointer expression reads, for diagnostics.

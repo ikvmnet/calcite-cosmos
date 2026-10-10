@@ -231,7 +231,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// split says so. Deriving from the whole predicate instead would push a comparison whose
         /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
         /// </remarks>
-        static CosmosFactSet Establish(
+        static JsonFactSet Establish(
             java.util.List conjuncts,
             IReadOnlyList<CosmosPath?> fields,
             Metadata.CosmosContainerMetadata container,
@@ -239,10 +239,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             IReadOnlyList<CosmosReading>? readings)
         {
             if (container.Facts.IsEmpty)
-                return CosmosFactSet.Empty;
+                return JsonFactSet.Empty;
 
             var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-            var established = new List<CosmosFact>();
+            var established = new List<JsonFact>();
 
             for (var i = 0; i < conjuncts.size(); i++)
                 if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
@@ -283,18 +283,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             RexNode value,
             RexNode comparison,
             SqlOperator typeTest,
-            IReadOnlyList<CosmosClaim> admits,
+            IReadOnlyList<JsonClaim> admits,
             CosmosRexTranslator translator,
             RexBuilder rexBuilder,
             string rootAlias)
         {
             var known = Known(value, translator, rootAlias);
 
-            var typed = known is CosmosDocumentPath path && admits.Any(claim => translator.Facts.Knows(new CosmosFact(path, claim)));
+            var typed = known is JsonDocumentPath path && admits.Any(claim => translator.Facts.Knows(new JsonFact(path, claim)));
             if (typed)
                 return comparison;
 
-            var present = known is CosmosDocumentPath held && translator.Facts.Knows(new CosmosFact(held, new CosmosClaim.Present()));
+            var present = known is JsonDocumentPath held && translator.Facts.Knows(new JsonFact(held, new JsonClaim.Present()));
 
             var admitted = RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList
             {
@@ -320,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="translator">Resolves the path.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The path, or <c>null</c>.</returns>
-        static CosmosDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
+        static JsonDocumentPath? Known(RexNode value, CosmosRexTranslator translator, string rootAlias)
         {
             if (translator.TryResolvePath(value, out var path) == false || path is null)
                 return null;
@@ -424,7 +424,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 raw,
                 comparison,
                 CosmosOperators.IsString,
-                new[] { new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true) },
+                new[] { new JsonClaim.OfType(JsonType.String, OrNull: true) },
                 translator,
                 rexBuilder,
                 rootAlias);
@@ -729,8 +729,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 CosmosOperators.IsNumber,
                 new[]
                 {
-                    new CosmosClaim.OfType(CosmosJsonType.Number, OrNull: true),
-                    new CosmosClaim.OfType(CosmosJsonType.Integer, OrNull: true),
+                    new JsonClaim.OfType(JsonType.Number, OrNull: true),
+                    new JsonClaim.OfType(JsonType.Integer, OrNull: true),
                 },
                 translator,
                 rexBuilder,

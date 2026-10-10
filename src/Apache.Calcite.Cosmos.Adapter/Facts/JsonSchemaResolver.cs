@@ -41,7 +41,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// of one loses pushdowns and nothing else.
     /// </para>
     /// </remarks>
-    sealed class CosmosSchemaResolver
+    sealed class JsonSchemaResolver
     {
 
         readonly JsonSchema? _schema;
@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Initializes a new instance.
         /// </summary>
         /// <param name="root">The schema document.</param>
-        public CosmosSchemaResolver(JsonNode root)
+        public JsonSchemaResolver(JsonNode root)
         {
             Index(root, new JsonNodePath(PathType.JSON_POINTER));
 

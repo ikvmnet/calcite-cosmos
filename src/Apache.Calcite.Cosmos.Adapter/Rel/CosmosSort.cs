@@ -291,7 +291,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (container is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return false;
 
             if (container.Facts.Derive(null).RepresentationOf(document) is not Metadata.CosmosRepresentation representation

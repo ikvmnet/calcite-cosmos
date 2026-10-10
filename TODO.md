@@ -1393,7 +1393,7 @@ preserve order, which is the two-bit question above. And the guard the projectio
 an object at the path the column is null while the path is the object — and Cosmos sorts an object
 above every scalar while null sorts below them. A path declared present and a scalar admits no such
 document, which is the same claim the null-placement rule already makes of any sort key;
-`CosmosFactSet.IsAlwaysScalar` is now where both ask it.
+`JsonFactSet.IsAlwaysScalar` is now where both ask it.
 
 **The temporal spelling is _not_ closed by this, and the obvious reading that it is was wrong.**
 `ORDER BY CAST(<path> AS TIMESTAMP)` looks like the UUID case with a different type, and the sort
@@ -1421,9 +1421,9 @@ carried through `Entails`, and used as **premises** — what a query proves, to 
 Nothing read one as a **conclusion**, as a statement about the data that changes a plan. The same
 shape `PreservesOrder` was in before #106, and not recorded here either until now.
 
-**Built: a contradicted predicate keeps nothing.** `CosmosFact.Excludes` is the exclusion table beside
+**Built: a contradicted predicate keeps nothing.** `JsonFact.Excludes` is the exclusion table beside
 `Entails` — a separate table because exclusion is not entailment's negation, most pairs being neither,
-and `CosmosFactSet.IsContradictory` asks it of every path. Where the container's declaration and the
+and `JsonFactSet.IsContradictory` asks it of every path. Where the container's declaration and the
 query's own conjuncts cannot both hold, `CosmosFactRewriter` answers the constant. Declare
 `status` as `enum: ["active","archived"]`, ask for `'deleted'`, and the plan carries
 `CosmosFilter(condition=[false])` rather than a comparison. A guarded declaration reaches the same
@@ -1522,7 +1522,7 @@ check deletes the alternative.
 
 **And it is worth recording what it cost to get right, because the first attempt was unsound.**
 `IsDeclaredString` reads the translator's fact set, which is the declaration *closed under what the
-query's own conjuncts proved* — and `CosmosFact.Entails` reads `EqualTo v` as `OfType` of `v`'s type.
+query's own conjuncts proved* — and `JsonFact.Entails` reads `EqualTo v` as `OfType` of `v`'s type.
 So over `JSON_VALUE(…, '$.label') = '30'` the extractor records `EqualTo "30"`, that entails
 `OfType String`, and the comparison certifies **itself** exact: precisely the conflation the guard
 exists to prevent. Four tests in `CosmosPlannerTests` caught it.
@@ -1573,7 +1573,7 @@ the literal rather than the fact set.
 
 ### Facts about array elements — *small, and waiting for a consumer*
 
-`CosmosDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
+`JsonDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
 path model has room for an element segment and `ARRAY_CONTAINS` and the traversal are the rules that
 would read one. Not built because nothing asks yet, and a path model that admits an index has to
 answer what `$.tags[0]` means against a fact declared for `items`.
@@ -1635,7 +1635,7 @@ schema reader, with stored forms and the geography claim kept on the adapter's s
 - **The schema reader on `System.Text.Json`** — *medium to large.* It walks Jackson's tree and resolves
   through `com.networknt`, both through IKVM, which a package meant for .NET should not carry. The walk
   is mechanical; the resolver — bundles with nested `$id`s, anchors, JSON Pointer — is the part
-  `com.networknt` does today and would have to be written. `CosmosSchemaFactsTests` is its spec.
+  `com.networknt` does today and would have to be written. `JsonSchemaFactsTests` is its spec.
 - **A name without `Cosmos`** — *small, and a decision.* The types keep the prefix while they live here,
   which also keeps a type named `Fact` from colliding with xUnit's `[Fact]` in every test file.
 - **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own

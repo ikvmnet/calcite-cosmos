@@ -8,7 +8,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// The JSON types a claim can name, which are the seven the service's own type predicates
     /// distinguish.
     /// </summary>
-    public enum CosmosJsonType
+    public enum JsonType
     {
 
         /// <summary>

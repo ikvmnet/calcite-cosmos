@@ -44,6 +44,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// stored — <c>42</c> is <c>00042</c> at width five — so a rewrite rendering a literal into the
     /// stored shape has to read it, and a form without one renders the value as it stands.
     /// </param>
-    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder, int? Width = null) : ICosmosStoredForm;
+    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder, int? Width = null) : IJsonStoredForm;
 
 }

@@ -13,7 +13,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// The fact theory reads a schema and knows nothing of either; it asks
-    /// <see cref="CosmosSchemaRecognisers"/>, and these are the adapter's answers. Every schema the
+    /// <see cref="JsonSchemaRecognisers"/>, and these are the adapter's answers. Every schema the
     /// adapter reads is read through <see cref="ReadFrom"/>, so a form is recognised wherever the model
     /// declares one.
     /// </remarks>
@@ -24,7 +24,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// The adapter's recognisers: <see cref="CosmosStoredForms.Recognise"/> for a pattern, and
         /// <see cref="CosmosGeographyForms.Recognise"/> for a subschema.
         /// </summary>
-        public static readonly CosmosSchemaRecognisers Cosmos = new(
+        public static readonly JsonSchemaRecognisers Cosmos = new(
             StringPattern: pattern => CosmosStoredForms.Recognise(pattern) is CosmosRepresentation representation ? representation : null,
             Subschema: node => CosmosGeographyForms.Recognise(node) ? new CosmosGeography() : null);
 
@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="schema">The schema document, as the tree the model delivered.</param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
-        public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema) => CosmosSchemaFacts.ReadFrom(schema, Cosmos);
+        public static IReadOnlyList<JsonFactRule> ReadFrom(JsonNode schema) => JsonSchemaFacts.ReadFrom(schema, Cosmos);
 
     }
 

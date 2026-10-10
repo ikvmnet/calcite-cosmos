@@ -519,9 +519,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         // Seeded rather than empty: what the service guarantees about id, _ts and _etag is true of
         // every container and is not delivered through any schema. A model's schema adds to these.
-        CosmosFactTheory _facts = ServiceFacts;
+        JsonFactTheory _facts = ServiceFacts;
 
-        static readonly CosmosFactTheory ServiceFacts = new(CosmosServiceFacts.Rules);
+        static readonly JsonFactTheory ServiceFacts = new(CosmosServiceFacts.Rules);
 
         /// <summary>
         /// Gets what is known about the documents this container holds, compiled to rules.
@@ -547,7 +547,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// nothing and costs nothing to ask.
         /// </para>
         /// </remarks>
-        public CosmosFactTheory Facts => _facts;
+        public JsonFactTheory Facts => _facts;
 
         /// <summary>
         /// Returns the same metadata knowing these facts as well as the ones it already knew.
@@ -561,12 +561,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="facts">The rules to add.</param>
         /// <returns>The metadata.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="facts"/> is <c>null</c>.</exception>
-        public CosmosContainerMetadata WithFacts(IEnumerable<CosmosFactRule> facts)
+        public CosmosContainerMetadata WithFacts(IEnumerable<JsonFactRule> facts)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
 
-            var combined = new List<CosmosFactRule>(_facts.Rules);
+            var combined = new List<JsonFactRule>(_facts.Rules);
             combined.AddRange(facts);
 
             if (combined.Count == _facts.Rules.Count)
@@ -578,7 +578,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
             metadata._time = _time;
             metadata._partitionKeyDelete = _partitionKeyDelete;
-            metadata._facts = new CosmosFactTheory(combined);
+            metadata._facts = new JsonFactTheory(combined);
             metadata._declared = _declared;
             return metadata;
         }

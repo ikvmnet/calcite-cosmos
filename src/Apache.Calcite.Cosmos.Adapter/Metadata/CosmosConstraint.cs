@@ -17,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// the container's row type by <see cref="Rel.CosmosConstraintCompiler"/>.
     /// </para>
     /// <para>
-    /// <b>Why it is not a fact.</b> A <see cref="CosmosFact"/> is a claim about one document, and a theory of
+    /// <b>Why it is not a fact.</b> A <see cref="JsonFact"/> is a claim about one document, and a theory of
     /// them is asked one document at a time. A uniqueness constraint is a claim about every <em>pair</em> of
     /// documents, which no single document can satisfy or violate.
     /// </para>

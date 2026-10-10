@@ -14,10 +14,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// lets a schema express facts that are conditional on other facts without a second mechanism. See
     /// <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
     /// </remarks>
-    public abstract record CosmosClaim
+    public abstract record JsonClaim
     {
 
-        CosmosClaim()
+        JsonClaim()
         {
         }
 
@@ -32,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// A claim that admits null is weaker than one that does not, and is the one most consumers
         /// want — a JSON null and an absent path are dropped by every comparison on both sides.
         /// </param>
-        public sealed record OfType(CosmosJsonType Type, bool OrNull = false) : CosmosClaim;
+        public sealed record OfType(JsonType Type, bool OrNull = false) : JsonClaim;
 
         /// <summary>
         /// The path is present in the document.
@@ -41,7 +41,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Present, not non-null: a JSON null is a value the path has, and <c>IS_DEFINED</c> is true
         /// of it. This is what <c>required</c> declares.
         /// </remarks>
-        public sealed record Present : CosmosClaim;
+        public sealed record Present : JsonClaim;
 
         /// <summary>
         /// A claim this theory carries for a consumer, which says for itself what it entails.
@@ -57,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <para>
         /// <b>It answers its own entailments, toward JSON's claims or toward its own kind.</b> What it
         /// says about the value in JSON's terms — that a geography is an object, and one that is there —
-        /// is what lets the rest of the theory use it; <see cref="CosmosFact.Entails"/> asks it. An
+        /// is what lets the rest of the theory use it; <see cref="JsonFact.Entails"/> asks it. An
         /// extension entails nothing it does not say it does, and is excluded by nothing, which loses
         /// facts rather than inventing them.
         /// </para>
@@ -65,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// A record, so its equality is value equality, which two declarations of one claim need.
         /// </para>
         /// </remarks>
-        public abstract record Extension : CosmosClaim
+        public abstract record Extension : JsonClaim
         {
 
             /// <summary>
@@ -81,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Facts
             /// </summary>
             /// <param name="other">The claim to establish, of the same path.</param>
             /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
-            public virtual bool Entails(CosmosClaim other) => Equals(other);
+            public virtual bool Entails(JsonClaim other) => Equals(other);
 
         }
 
@@ -89,7 +89,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// The value at the path is exactly this literal.
         /// </summary>
         /// <param name="Value">The literal, as a CLR value — a string, a boxed number, a boolean, or <c>null</c> for a JSON null.</param>
-        public sealed record EqualTo(object? Value) : CosmosClaim;
+        public sealed record EqualTo(object? Value) : JsonClaim;
 
         /// <summary>
         /// The value at the path is not this literal.
@@ -100,13 +100,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// from a <c>&lt;&gt;</c>.
         /// </remarks>
         /// <param name="Value">The excluded literal.</param>
-        public sealed record NotEqualTo(object? Value) : CosmosClaim;
+        public sealed record NotEqualTo(object? Value) : JsonClaim;
 
         /// <summary>
         /// The value at the path is one of a finite set.
         /// </summary>
         /// <param name="Values">The domain. Order is not significant; membership is.</param>
-        public sealed record OneOf(IReadOnlyList<object?> Values) : CosmosClaim
+        public sealed record OneOf(IReadOnlyList<object?> Values) : JsonClaim
         {
 
             /// <inheritdoc />
@@ -153,10 +153,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// Silent about whether a string is there: a null at the path is no counterexample to how the
         /// strings are written. What the form is, the theory does not know; see
-        /// <see cref="ICosmosStoredForm"/>.
+        /// <see cref="IJsonStoredForm"/>.
         /// </remarks>
         /// <param name="Form">The form, as the consumer that recognised it identifies it.</param>
-        public sealed record Represents(ICosmosStoredForm Form) : CosmosClaim;
+        public sealed record Represents(IJsonStoredForm Form) : JsonClaim;
 
     }
 

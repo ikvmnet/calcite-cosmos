@@ -525,7 +525,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// value has to be one <em>every</em> document holds, and that is two claims rather than one.
         /// </para>
         /// <para>
-        /// <b>Both claims, for the reason <see cref="CosmosFact.Entails"/> is careful about.</b> A
+        /// <b>Both claims, for the reason <see cref="JsonFact.Entails"/> is careful about.</b> A
         /// declared <c>const</c> says what a path holds <em>if it holds anything</em>; a container
         /// whose partition key is declared constant but not <c>required</c> may still hold a document
         /// with no such property, which Cosmos places in its own partition. Routing past that document
@@ -551,24 +551,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (container.Facts.IsEmpty)
                 return;
 
-            CosmosFactSet? outright = null;
+            JsonFactSet? outright = null;
 
             foreach (var policy in container.PartitionKeyPaths)
             {
                 if (pinned.ContainsKey(policy))
                     continue;
 
-                if (DocumentPathOf(policy) is not CosmosDocumentPath path)
+                if (DocumentPathOf(policy) is not JsonDocumentPath path)
                     continue;
 
                 outright ??= container.Facts.Derive(null);
 
-                if (outright.Knows(new CosmosFact(path, new CosmosClaim.Present())) == false)
+                if (outright.Knows(new JsonFact(path, new JsonClaim.Present())) == false)
                     continue;
 
                 foreach (var claim in outright.ClaimsFor(path))
                 {
-                    if (claim is not CosmosClaim.EqualTo equality)
+                    if (claim is not JsonClaim.EqualTo equality)
                         continue;
 
                     pinned[policy] = equality.Value;
@@ -582,12 +582,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="policy">The declared path.</param>
         /// <returns>The path, or <c>null</c> where it names nothing this model can address.</returns>
-        static CosmosDocumentPath? DocumentPathOf(string policy)
+        static JsonDocumentPath? DocumentPathOf(string policy)
         {
             if (string.IsNullOrEmpty(policy) || policy[0] != '/')
                 return null;
 
-            var path = CosmosDocumentPath.Root;
+            var path = JsonDocumentPath.Root;
 
             foreach (var segment in policy.Split('/'))
             {
@@ -597,7 +597,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 path = path.Property(segment);
             }
 
-            return ReferenceEquals(path, CosmosDocumentPath.Root) ? null : path;
+            return ReferenceEquals(path, JsonDocumentPath.Root) ? null : path;
         }
 
         /// <summary>

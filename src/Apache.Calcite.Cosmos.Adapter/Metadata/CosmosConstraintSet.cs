@@ -12,7 +12,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Several sources, one set</b>, for the reason <see cref="CosmosFactTheory"/> gives for facts: a
+    /// <b>Several sources, one set</b>, for the reason <see cref="JsonFactTheory"/> gives for facts: a
     /// consumer asks one question and should not have to know which source could answer it. What the
     /// service guarantees and what the container definition says are derived when the container is read —
     /// see <see cref="FromContainer"/> — and what a model declares is added to them. Every one is written in

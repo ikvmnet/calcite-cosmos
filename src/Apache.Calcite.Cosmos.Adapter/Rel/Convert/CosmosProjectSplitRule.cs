@@ -210,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The expressions the whole-projection rule would push, so that the two agree on what renders.
             var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
 
-            var facts = _convention.Container?.Facts.Derive(null) ?? CosmosFactSet.Empty;
+            var facts = _convention.Container?.Facts.Derive(null) ?? JsonFactSet.Empty;
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
 
             for (var i = 0; i < projects.size(); i++)

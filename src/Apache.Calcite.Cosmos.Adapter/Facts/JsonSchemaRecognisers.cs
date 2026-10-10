@@ -13,7 +13,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>JSON Schema says what type a value has; it does not say how a typed value is spelled.</b> A
     /// <c>pattern</c> beside <c>"type": "string"</c> can pin a spelling, and only a consumer knows which
     /// spellings it can use and what each licenses — so <see cref="StringPattern"/> is asked, and the
-    /// reader states <see cref="CosmosClaim.Represents"/> with whatever form it answers. Without one, a
+    /// reader states <see cref="JsonClaim.Represents"/> with whatever form it answers. Without one, a
     /// pattern reads as nothing, which loses facts rather than inventing them.
     /// </para>
     /// <para>
@@ -28,15 +28,15 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <param name="Subschema">
     /// Recognises a whole subschema as a claim about the value at its path, or answers <c>null</c>.
     /// </param>
-    public sealed record CosmosSchemaRecognisers(
-        Func<string?, ICosmosStoredForm?>? StringPattern = null,
-        Func<JsonNode, CosmosClaim?>? Subschema = null)
+    public sealed record JsonSchemaRecognisers(
+        Func<string?, IJsonStoredForm?>? StringPattern = null,
+        Func<JsonNode, JsonClaim?>? Subschema = null)
     {
 
         /// <summary>
         /// Recognises nothing beyond JSON Schema: types, presence, constants and domains.
         /// </summary>
-        public static readonly CosmosSchemaRecognisers None = new();
+        public static readonly JsonSchemaRecognisers None = new();
 
     }
 

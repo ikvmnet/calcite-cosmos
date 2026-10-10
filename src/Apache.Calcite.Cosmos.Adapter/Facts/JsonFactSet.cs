@@ -12,17 +12,17 @@ namespace Apache.Calcite.Cosmos.Facts
     /// The closure of what the query established under the container's rules. Asking it a question is
     /// a dictionary hit plus a short scan, because a path carries few claims.
     /// </remarks>
-    public sealed class CosmosFactSet
+    public sealed class JsonFactSet
     {
 
         /// <summary>
         /// What is known when nothing is declared and nothing was established.
         /// </summary>
-        public static readonly CosmosFactSet Empty = new(new Dictionary<CosmosDocumentPath, List<CosmosFact>>());
+        public static readonly JsonFactSet Empty = new(new Dictionary<JsonDocumentPath, List<JsonFact>>());
 
-        readonly Dictionary<CosmosDocumentPath, List<CosmosFact>> _byPath;
+        readonly Dictionary<JsonDocumentPath, List<JsonFact>> _byPath;
 
-        internal CosmosFactSet(Dictionary<CosmosDocumentPath, List<CosmosFact>> byPath)
+        internal JsonFactSet(Dictionary<JsonDocumentPath, List<JsonFact>> byPath)
         {
             _byPath = byPath;
         }
@@ -33,11 +33,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// Through subsumption, so a known equality answers yes to the definedness of the same path,
         /// and to every disequality but its own, without either having been derived.
-        /// <see cref="CosmosFact.Entails"/> carries the table.
+        /// <see cref="JsonFact.Entails"/> carries the table.
         /// </remarks>
         /// <param name="fact">The fact to test.</param>
         /// <returns><c>true</c> if it holds.</returns>
-        public bool Knows(CosmosFact fact)
+        public bool Knows(JsonFact fact)
         {
             if (_byPath.TryGetValue(fact.Path, out var known) == false)
                 return false;
@@ -55,18 +55,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// All of them, in no order that means anything. Which a caller can use, and which it prefers
         /// where a path somehow carries two, depends on what the form licenses for that caller — which
-        /// the form's owner knows and this does not. See <see cref="ICosmosStoredForm"/>.
+        /// the form's owner knows and this does not. See <see cref="IJsonStoredForm"/>.
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns>The forms, which may be empty.</returns>
-        public IReadOnlyList<ICosmosStoredForm> FormsOf(CosmosDocumentPath path)
+        public IReadOnlyList<IJsonStoredForm> FormsOf(JsonDocumentPath path)
         {
             if (_byPath.TryGetValue(path, out var known) == false)
-                return Array.Empty<ICosmosStoredForm>();
+                return Array.Empty<IJsonStoredForm>();
 
-            var forms = new List<ICosmosStoredForm>();
+            var forms = new List<IJsonStoredForm>();
             foreach (var fact in known)
-                if (fact.Claim is CosmosClaim.Represents represents && forms.Contains(represents.Form) == false)
+                if (fact.Claim is JsonClaim.Represents represents && forms.Contains(represents.Form) == false)
                     forms.Add(represents.Form);
 
             return forms;
@@ -113,12 +113,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <param name="path">The path.</param>
         /// <returns>The claims, which may be empty.</returns>
-        public IReadOnlyList<CosmosClaim> ClaimsFor(CosmosDocumentPath path)
+        public IReadOnlyList<JsonClaim> ClaimsFor(JsonDocumentPath path)
         {
             if (_byPath.TryGetValue(path, out var known) == false)
-                return Array.Empty<CosmosClaim>();
+                return Array.Empty<JsonClaim>();
 
-            var claims = new CosmosClaim[known.Count];
+            var claims = new JsonClaim[known.Count];
             for (var i = 0; i < known.Count; i++)
                 claims[i] = known[i].Claim;
 
@@ -147,13 +147,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns><c>true</c> where every document holds a scalar of a known type there.</returns>
-        public bool IsAlwaysScalar(CosmosDocumentPath path)
+        public bool IsAlwaysScalar(JsonDocumentPath path)
         {
-            if (Knows(new CosmosFact(path, new CosmosClaim.Present())) == false)
+            if (Knows(new JsonFact(path, new JsonClaim.Present())) == false)
                 return false;
 
             foreach (var claim in ClaimsFor(path))
-                if (claim is CosmosClaim.OfType { OrNull: false } typed && IsScalar(typed.Type))
+                if (claim is JsonClaim.OfType { OrNull: false } typed && IsScalar(typed.Type))
                     return true;
 
             return false;
@@ -164,9 +164,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <param name="type">The type.</param>
         /// <returns><c>true</c> for a scalar.</returns>
-        static bool IsScalar(CosmosJsonType type) =>
-            type is CosmosJsonType.String or CosmosJsonType.Number
-                 or CosmosJsonType.Integer or CosmosJsonType.Boolean;
+        static bool IsScalar(JsonType type) =>
+            type is JsonType.String or JsonType.Number
+                 or JsonType.Integer or JsonType.Boolean;
 
     }
 

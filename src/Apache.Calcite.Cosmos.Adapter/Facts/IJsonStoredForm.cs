@@ -17,14 +17,14 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <para>
     /// So the one thing the theory assumes is the one thing every form shares: a value in a stored form
     /// is a string, or a null, the form saying how strings are written and nothing about whether one is
-    /// there. See <see cref="CosmosFact.Entails"/>.
+    /// there. See <see cref="JsonFact.Entails"/>.
     /// </para>
     /// <para>
     /// <b>Equality is the implementer's, and has to be value equality.</b> Two declarations of one form
     /// are one claim, and a union's meet keeps a form only where every branch states the same one.
     /// </para>
     /// </remarks>
-    public interface ICosmosStoredForm
+    public interface IJsonStoredForm
     {
 
         /// <summary>

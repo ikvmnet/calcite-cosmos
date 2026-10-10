@@ -875,7 +875,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
         /// </remarks>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null, CosmosFactSet? facts = null) =>
+        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null, JsonFactSet? facts = null) =>
             new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings, facts);
 
         /// <summary>
@@ -912,7 +912,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// another in a <c>WHERE</c> — so the only facts open to it are the ones a declaration states
         /// outright, with no guard left to discharge.
         /// </remarks>
-        public CosmosFactSet UnconditionalFacts => _container?.Facts.Derive(null) ?? CosmosFactSet.Empty;
+        public JsonFactSet UnconditionalFacts => _container?.Facts.Derive(null) ?? JsonFactSet.Empty;
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
@@ -959,7 +959,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string TranslateCondition(RexNode condition)
         {
             var facts = _container is null
-                ? CosmosFactSet.Empty
+                ? JsonFactSet.Empty
                 : _container.Facts.Derive(Metadata.CosmosFactExtractor.Extract(condition, _fields, RootAlias));
 
             return CreateTranslator(null, facts).Translate(condition);

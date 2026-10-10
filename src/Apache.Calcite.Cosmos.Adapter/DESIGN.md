@@ -624,7 +624,7 @@ what the schema claimed of none.
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,
 `_etag` a string, each always present — is not delivered through any schema and is true of every
-container. `CosmosServiceFacts` states it, `CosmosSchemaFacts` reads a model's, and
+container. `CosmosServiceFacts` states it, `JsonSchemaFacts` reads a model's, and
 `CosmosContainerMetadata.Facts` is the assembly.
 
 **They have to share one theory rather than sit in two**, and that is correctness rather than tidiness:
@@ -702,7 +702,7 @@ stored form, which says how the strings are written and nothing about whether on
 now offers candidates — each branch's claims, each type widened to admit a null, and at each path the
 domain joining every constant and domain the branches name — and keeps every candidate each branch has a
 claim entailing. All of them, not only the strongest: a consumer that asks for a type by its shape
-rather than through entailment finds it beside the stored form that entails it. `CosmosFact.Entails`
+rather than through entailment finds it beside the stored form that entails it. `JsonFact.Entails`
 needed the rows saying so — a null entails a stored form, a type admitting a null, a domain holding one,
 and every disequality but its own.
 
@@ -3144,13 +3144,13 @@ src/
       CosmosMaterializationException.cs ✔ A document does not hold what the query assumed
     Facts/                            ✔ Namespace Apache.Calcite.Cosmos.Facts: a fact theory over JSON
                                         documents, knowing nothing of Calcite, Cosmos or the adapter
-      CosmosClaim.cs, CosmosFact.cs   ✔ Claims about one path, and entailment between them
-      CosmosFactRule.cs               ✔ A guarded claim
-      CosmosFactTheory.cs, CosmosFactSet.cs ✔ The Horn theory, and what it derives for one query
-      CosmosDocumentPath.cs, CosmosJsonType.cs ✔ What a claim is about, and the types it can name
-      ICosmosStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
-      CosmosSchemaFacts.cs            ✔ JSON Schema → rules, asking CosmosSchemaRecognisers for forms
-      CosmosSchemaResolver.cs         ✔ $ref / $id resolution for the reader
+      JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
+      JsonFactRule.cs               ✔ A guarded claim
+      JsonFactTheory.cs, JsonFactSet.cs ✔ The Horn theory, and what it derives for one query
+      JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
+      IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
+      JsonSchemaFacts.cs            ✔ JSON Schema → rules, asking JsonSchemaRecognisers for forms
+      JsonSchemaResolver.cs         ✔ $ref / $id resolution for the reader
     Metadata/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
@@ -3197,12 +3197,12 @@ So the namespace references only itself, the base library, and the JSON librarie
 walks — Jackson and `com.networknt`, through IKVM, which a package of its own would trade for
 `System.Text.Json`. Two things a JSON fact store does not know were kept on the adapter's side:
 
-- **What a stored form is.** The theory carries `Represents(form)` as an opaque `ICosmosStoredForm`
+- **What a stored form is.** The theory carries `Represents(form)` as an opaque `IJsonStoredForm`
   and assumes only what every form shares — a string, or a null. Which pattern recognises a canonical
   UUID, how to write a value in it, and which comparisons it preserves under Calcite's ordering are the
   adapter's: `CosmosRepresentation` implements the token, the form tables stay in `Metadata/`, and
   `RepresentationOf` — which ranks forms by what they license — is an extension method in the adapter
-  over the neutral `FormsOf`. The schema reader asks `CosmosSchemaRecognisers` for a pattern's form;
+  over the neutral `FormsOf`. The schema reader asks `JsonSchemaRecognisers` for a pattern's form;
   `CosmosSchemaRecognition.Cosmos` is the adapter's answer.
 - **What the service will measure.** A geography is a claim JSON cannot state, so it is an
   `Extension` claim the adapter defines, `CosmosGeography`, which tells the theory only what it is in

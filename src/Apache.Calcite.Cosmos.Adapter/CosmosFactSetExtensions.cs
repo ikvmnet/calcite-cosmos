@@ -28,7 +28,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="facts">The fact set.</param>
         /// <param name="path">The path.</param>
         /// <returns>The representation, or <c>null</c>.</returns>
-        public static CosmosRepresentation? RepresentationOf(this CosmosFactSet facts, CosmosDocumentPath path)
+        public static CosmosRepresentation? RepresentationOf(this JsonFactSet facts, JsonDocumentPath path)
         {
             CosmosRepresentation? best = null;
 
@@ -62,7 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </para>
         /// <para>
         /// Two claims, as everywhere else here: the path has to be there, and what is there has to be the
-        /// declared thing. <see cref="CosmosGeography"/> entails <see cref="CosmosClaim.Present"/>, the one
+        /// declared thing. <see cref="CosmosGeography"/> entails <see cref="JsonClaim.Present"/>, the one
         /// claim that does, so a container that declares the shape without marking the property required
         /// has still said a shape is there.
         /// </para>
@@ -70,9 +70,9 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="facts">The fact set.</param>
         /// <param name="path">The path.</param>
         /// <returns><c>true</c> where every document holds a geography there.</returns>
-        public static bool IsAlwaysGeography(this CosmosFactSet facts, CosmosDocumentPath path)
+        public static bool IsAlwaysGeography(this JsonFactSet facts, JsonDocumentPath path)
         {
-            return facts.Knows(new CosmosFact(path, new CosmosGeography()));
+            return facts.Knows(new JsonFact(path, new CosmosGeography()));
         }
 
     }
