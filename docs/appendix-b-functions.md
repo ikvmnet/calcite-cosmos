@@ -26,7 +26,8 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `CAST(x AS UUID)`, parse to `TIMESTAMP`/`DATE` | the path, where the container declares the stored form | Chapters 14, 15 |
 | `arr[n]` | `arr[n-1]` | SQL is one-based |
 | `x MEMBER OF arr` | `ARRAY_CONTAINS(arr, x)` | |
-| `IS TRUE`, `IS FALSE`, `IS DISTINCT FROM` | — | in process |
+| `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise |
+| `IS DISTINCT FROM` | — | in process |
 | `SIMILAR TO`, `REGEXP_LIKE` | — | in process; use `REGEXMATCH` for Cosmos regular expressions |
 
 ## B.2 String functions

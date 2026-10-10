@@ -55,6 +55,12 @@ FROM "events" AS c ORDER BY 1 FETCH NEXT 20 ROWS ONLY
 The literal is written in the container's own spelling, the comparison and the sort are made on the
 stored strings, and the projected value is converted back to a `TIMESTAMP` as it is read.
 
+A parameter in place of the literal — `> CAST(? AS TIMESTAMP)`, as a prepared statement sends it —
+pushes the same way: the statement carries `c.at > @p0`, and the value is written in the stored
+spelling when it runs. A value finer than the stored shape (milliseconds against a seconds path) is
+rounded onto it in the direction the comparison cannot see, so the rows are the ones Calcite would
+have kept.
+
 `PARSE_DATETIME` is in Calcite's BigQuery function library, so the connection needs `Fun =
 "bigquery"` (or `"all"`) — Chapter 6.
 
