@@ -1,7 +1,8 @@
 # Apache Calcite adapter for Azure Cosmos DB
 
 `DESIGN.md` is where the reasoning lives and `TODO.md` is what is left; both are written to be read
-before changing the thing they describe.
+before changing the thing they describe. `docs/` is the user manual — when a change alters what a user
+sees, writes or configures, update the chapter that describes it.
 
 ## Pull requests
 

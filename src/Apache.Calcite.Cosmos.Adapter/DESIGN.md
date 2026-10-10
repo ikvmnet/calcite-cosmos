@@ -1042,7 +1042,8 @@ That default is a connection setting rather than a fact, and the other value wor
 connection set that way asks for what the service already does, so the placement never conflicts and
 no predicate is needed. It is a property of the connection and not of the schema, so it changes what
 `ORDER BY` means for every schema on it, which is why it is guidance rather than a default the
-adapter could set — see the README, which carries the measurements and the trade.
+adapter could set — see the user manual, `docs/09-sorting-and-paging.md`, which carries the
+measurements and the trade.
 
 Two things make it sound rather than merely plausible. **Both senses of absent go.** Cosmos
 distinguishes a property holding JSON `null` from a property that is not there, and sorts
@@ -2074,7 +2075,7 @@ for one unqualified name, so nothing resolves twice.
 
 **Chaining as well is not a duplicate.** Overload resolution takes the first candidate whose arity
 fits, and the chained table comes before the catalog reader — so the operator answers and the schema's
-declaration is never reached. The README says the chaining is optional rather than required.
+declaration is never reached. The user manual says the chaining is optional rather than required.
 
 **Every one of these names is Cosmos's alone, and that is measured rather than assumed.** None of the
 twenty-one appears in `SqlStdOperatorTable` or in the union of all fourteen `SqlLibrary` tables, at

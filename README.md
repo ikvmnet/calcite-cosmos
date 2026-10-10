@@ -1,70 +1,26 @@
-﻿# Apache Calcite Cosmos Adapter
+# Apache Calcite Cosmos Adapter
 
 Query [Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/) with SQL, through
 [Apache Calcite](https://calcite.apache.org/), from .NET.
 
 Containers become relational tables. As much of each query as Cosmos can evaluate is translated to
-**Cosmos SQL** and executed by the service; whatever it cannot — joins, set operations, `HAVING` —
-Calcite evaluates in-process over the rows that come back. Calcite itself runs in-process via
-[IKVM](https://github.com/ikvmnet/ikvm): no JDBC, no Avatica, no second process.
+**Cosmos SQL** and executed by the service; whatever it cannot — relational joins, set operations,
+functions it has no counterpart for — Calcite evaluates in-process over the rows that come back.
+Calcite runs in-process via [IKVM](https://github.com/ikvmnet/ikvm): no JVM, no JDBC, no second
+process.
+
+**[Read the user manual →](docs/README.md)**
+
+## Install
 
 ```sh
 dotnet add package Apache.Calcite.Cosmos.Adapter
 dotnet add package Apache.Calcite.Data
 ```
 
-**The factory must be named assembly-qualified.** `Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory` on its own does not resolve — the name is looked up through IKVM, where a bare namespace-qualified .NET name finds nothing, and the failure reads `ClassNotFoundException` on a type your project plainly references. The assembly must also be loaded by the time the model is read; if nothing in your program mentions the adapter except that string, touch it first:
+## A first query
 
 ```csharp
-_ = new Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory();
-```
-
-## Signing in
-
-Give an `endpoint` and a `key` for key authentication, or **give the endpoint alone to authenticate with Microsoft Entra ID**:
-
-```json
-"operand": {
-  "endpoint": "https://account.documents.azure.com:443/",
-  "database": "inventory"
-}
-```
-
-The absence of a key is the request. The adapter then reaches the account as whoever the process is — a managed identity in a cluster, your signed-in tooling on a laptop — so one model file serves both. Add `tenantId` or `clientId` where that identity is ambiguous.
-
-The identity needs a Cosmos DB **data plane** role assignment. A control-plane role that shows the account in the portal does not let it read a document, and the built-in Data Reader role includes the container metadata read this adapter performs on startup.
-
-For anything else — a certificate, a bespoke token cache, a client your application already owns — supply `clientFactory` naming an `ICosmosClientFactory`.
-
-## Reuse the schema to keep what it learnt
-
-A schema reads each container's definition when it is built, and works out the rest — a row count, whether the account permits a whole-partition delete — the first time something asks. Those answers live on the schema, so within one they are computed once.
-
-**A model builds a new schema per connection.** `CosmosSchemaFactory` runs per model read, and in the ADO.NET path that is once per `DbConnection`, so a short-lived-connection application pays those reads again every time. Nothing is shared across them, though the `CosmosClient` can be.
-
-Build the schema yourself and register it, and the reads happen once:
-
-```csharp
-// Once, for the life of the application.
-var schema = CosmosSchemaFactory.Create(...);
-
-// Per connection.
-await using var connection = new CalciteConnection("...");
-await connection.OpenAsync();
-connection.RootSchema.add("COSMOS", schema);
-```
-
-`RootSchema` is the supported way in, and what is registered there outlives a `Close`/`Open` cycle — the engine session is torn down only when the connection is disposed. A new `CalciteConnection` gets a new session, so register the same instance again; it is the *schema object* that carries what was learnt, not the connection.
-
-**What this deliberately is not** is a process-wide cache keyed by account endpoint. Such a thing outlives every decision anyone made about it and leaks between accounts. The lifetime here is the caller's to choose, which is the same reason the lookup cache hangs off the schema too.
-
-## Querying a container
-
-`Apache.Calcite.Data` is the ADO.NET provider. Point its `Model` at a JSON model that registers the
-container as a schema, and query it with `DbCommand`.
-
-```csharp
-using System.Data.Common;
 using Apache.Calcite.Data;
 
 const string model = """
@@ -76,8 +32,7 @@ const string model = """
     "type": "custom",
     "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
     "operand": {
-      "endpoint": "https://account.documents.azure.com:443/",
-      "key": "…",
+      "endpoint": "https://myaccount.documents.azure.com:443/",
       "database": "inventory",
       "containers": [ "products" ]
     }
@@ -85,662 +40,71 @@ const string model = """
 }
 """;
 
-await using var connection = new CalciteConnection(new CalciteConnectionStringBuilder
-{
-    Model = "inline:" + model,
-    CaseSensitive = true,
-}.ConnectionString);
+_ = new Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory();   // load the assembly the model names
 
-await connection.OpenAsync();
-
-await using var command = connection.CreateCommand();
-command.CommandText = """SELECT c."id", c."category" FROM "products" AS c WHERE c."category" = 'bikes'""";
-
-await using var reader = await command.ExecuteReaderAsync();
-while (await reader.ReadAsync())
-    Console.WriteLine($"{reader.GetString(0)} {reader.GetString(1)}");
-```
-
-Omit `containers` to expose every container in the database.
-
-## Use the asynchronous methods
-
-**`ExecuteReaderAsync` and `ReadAsync`, not `ExecuteReader` and `Read`.** Both work. The synchronous
-pair blocks a thread for every page of results — `ExecuteReader` for the first, and `Read` wherever
-it has to fetch the next — and nothing reports that it is doing so.
-
-This follows from the service rather than from the adapter. The Cosmos SDK has no synchronous
-data-plane API — a page of results arrives only by awaiting it — so there is no synchronous read to
-call, and the synchronous pair waits on the asynchronous one. A row already in a page is read without
-waiting, so the cost is a blocked thread per round trip, not per row.
-
-The asynchronous pair is also the one that cancels properly. The adapter reads Cosmos through a
-cursor, so the token given to each `ReadAsync` is the token the page request it causes runs under.
-
-## Set `defaultNullCollation` to `LOW`
-
-**Calcite's default null placement is the opposite of the service's, in both directions.** A bare
-`ORDER BY` means *nulls last ascending, first descending* — Oracle's convention, and Calcite's
-default. Cosmos sorts a null or absent property first ascending and last descending, and offers no
-control over it. So a sort on a nullable key is declined for disagreeing with a placement the caller
-never wrote, and the refusal is silent: the ordering runs in-process over a full container read
-rather than failing. Everything reachable through the document column is nullable, so out of the box
-that is every document path.
-
-`defaultNullCollation=LOW` asks for the placement Cosmos already implements — nulls low, first
-ascending and last descending — and the sort pushes:
-
-```csharp
 await using var connection = new CalciteConnection(new CalciteConnectionStringBuilder
 {
     Model = "inline:" + model,
     CaseSensitive = true,
     DefaultNullCollation = "LOW",
 }.ConnectionString);
+
+await connection.OpenAsync();
+
+await using var command = connection.CreateCommand();
+command.CommandText = """
+    SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name"
+    FROM "products" AS c
+    WHERE c."$.category" = 'bikes'
+    ORDER BY c."id" FETCH NEXT 10 ROWS ONLY
+    """;
+
+await using var reader = await command.ExecuteReaderAsync();
+while (await reader.ReadAsync())
+    Console.WriteLine($"{reader.GetString(0)} {reader.GetString(1)}");
 ```
 
-| statement | default (`HIGH`) | `LOW` |
-|---|---|---|
-| `ORDER BY JSON_VALUE(c."DOC", '$.name')` | in-process | `ORDER BY c.name ASC` |
-| `ORDER BY JSON_VALUE(c."DOC", '$.name') DESC` | in-process | `ORDER BY c.name DESC` |
-| `ORDER BY JSON_VALUE(c."DOC", '$.name') FETCH NEXT 10 ROWS ONLY` | in-process | `ORDER BY c.name ASC OFFSET 0 LIMIT 10` |
-| `ORDER BY JSON_VALUE(c."DOC", '$.metadata.sku')` | in-process | `ORDER BY c.metadata.sku ASC` |
-| `ORDER BY JSON_VALUE(c."DOC", '$.name') NULLS LAST` | in-process | in-process |
-
-The row limit rides along, which is the shape that matters: a bounded page stops being a full
-container read. The last row is what says this is not a fudge — `LOW` does not weaken the rule, it
-changes what the query asks for, and an explicit `NULLS LAST` is still declined because Cosmos
-genuinely cannot do it.
-
-**`LOW`, not `FIRST`.** `FIRST` places nulls first in *both* directions; Cosmos reverses exactly. So
-`FIRST` pushes an ascending sort and declines a descending one, which looks like nothing at all.
-
-**It is a property of the connection, not of the schema.** A connection that also carries a JDBC or
-CSV schema gets this placement over those too. For a Cosmos-primary application that is a reasonable
-trade; for a mixed one it is a decision, and there is no per-schema lever to make it with.
-
-Leaving the connection alone, two things reach the same pushdown from inside a query: state the
-placement — `ORDER BY … NULLS FIRST` ascending, `ORDER BY … DESC NULLS LAST` — or remove the nulls,
-since `WHERE c."category" IS NOT NULL ORDER BY c."category"` has no placement left to disagree
-about. The second reaches promoted columns only; an unpromoted document path projects as an
-expression rather than a reference, and the guarantee does not survive that.
-
-> **A view whose columns are `CAST(…)` does not benefit yet.** A sort written directly on a
-> container pushes; the same sort through such a view still runs in-process, because the cast keeps
-> the whole `Calc` above the converter. That is [#37](https://github.com/ikvmnet/calcite-cosmos/issues/37),
-> and it gates this for anything consuming the adapter through a view.
-
-## Joining a container to something else
-
-Cosmos has no relational join — its `JOIN` cross-products a document with its own nested arrays — so a join between a container and anything else is performed outside the service. The adapter does not read the whole container to do it: the other side's join keys are collected, deduplicated, and sent with the statement, so only documents that could match come back. This is the shape Flink calls a lookup join.
-
-It applies to an inner join on a single equality where the container's side of the key is a document path. Anything else is joined the ordinary way, by reading both sides.
-
-Within one execution the join remembers what each key answered, absence included. To remember across executions — reference data is looked up repeatedly by definition, and a remembered answer costs no request units at all — declare a policy in the operand:
-
-```json
-"operand": {
-  "…": "…",
-  "lookupCacheMaxRows": 10000,
-  "lookupCacheExpireSeconds": 300
-}
-```
-
-Both together or neither: the bound says what the cache may hold (an absent key counts as one row), the expiry says how long an answer may be believed, and a cache missing either is not something the adapter will guess into existence. A write through the adapter clears its container's cache; a write from outside the process is what the expiry is for.
-
-**One thing a host has to do for this to plan.** After the cost-based planner runs, apply the calc rules as a pass over the result:
-
-```csharp
-var program = new HepProgramBuilder();
-foreach (var rule in ClrCursorRules.CalcRules())
-    program.addRuleInstance(rule);
-```
-
-This is Calcite's own `Programs.CALC_PROGRAM` and it is a pass, not a set of rules for the planner. Without it a projection that sits above a join has nothing to implement it, and the failure says only that the plan cannot be implemented. It does not arise without a join, because every other projection is pushed into the container.
-
-## The row model
-
-A container has no row schema: two items may share nothing but `id`. So a table is **one column
-holding the whole document as JSON**, named `DOC`, and everything inside a document is reached from
-it with SQL/JSON:
-
-```sql
-SELECT JSON_VALUE(c."DOC", '$.metadata.sku') AS "sku"
-FROM "products" AS c
-WHERE JSON_VALUE(c."DOC", '$.tags[0]') = 'steel'
-```
-
-Those collapse to the Cosmos paths `c.metadata.sku` and `c.tags[0]` and are evaluated by the service.
-The path must be a constant — a Cosmos path names a property statically.
-
-Beside `DOC` are promoted scalar columns for the paths the service guarantees or the container
-declares. **They are not another way to address the document; `DOC` already addresses all of it.**
-They exist because Calcite's planner metadata is expressed over *field ordinals* — a key is an
-`ImmutableBitSet`, and nullability and predicate flow follow a plain column reference rather than a
-function call — so a path the container declares or guarantees gets an ordinal to hang that on. The
-service's own keep the names it gives them, `id`, `_ts` and `_etag`; a declared path is named for the
-JSON path it addresses:
-
-| container | column |
-| --- | --- |
-| `"paths": ["/category"]` | `"$.category"` |
-| `"paths": ["/inventory/sku"]` | `"$.inventory.sku"` |
-
-```sql
-SELECT c."id" FROM "products" AS c ORDER BY c."id" FETCH NEXT 10 ROWS ONLY
-```
-
-`id`, `_ts` and `_etag` are declared `NOT NULL`, which is what lets a sort on one push under
-Calcite's default null placement. Nothing is inferred by sampling documents, because a wrong guess
-yields an incorrect plan rather than a slow one.
-
-**`DOC` is the only column a statement writes.** Every other one is a projection of it, so an insert
-supplies a document and an update replaces one:
-
-```sql
-INSERT INTO "products" ("DOC") VALUES ('{"id":"1","category":"bikes","name":"Trail Blazer"}')
-```
-
-Naming any other column in an `INSERT` or a `SET` is a validation error rather than something the
-adapter drops later without comment.
-
-### Giving a column a type
-
-`JSON_VALUE` is typed `VARCHAR`, so a view over a container needs no cast to give a column a type
-that an ORM or a BI tool can consume, and `RETURNING` gives it another:
-
-```sql
-CREATE VIEW "catalogue" AS
-SELECT JSON_VALUE(c."DOC", '$.name') AS "name",
-       JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) AS "price"
-FROM "products" AS c
-```
-
-Both project at the service rather than over whole documents. A cast written over one anyway
-converts nothing and is dropped.
-
-What `JSON_VALUE` means is reproduced at the service rather than approximated: it answers a scalar's
-text and null for an object or an array, so the statement carries
-`(IS_PRIMITIVE(c.name) ? c.name : null)`. Reading the raw path instead would return a number where
-the plan declared text, which the reader refuses rather than coerces.
-
-Two limits are worth knowing. A cast to a **number** converts rather than renders — `CAST(x AS
-INTEGER)` reads the stored string `"30"` as 30 — and nothing at the service reproduces that, so it
-stays in process, as does any cast carrying a width. And a rendered column is **not itself an `ORDER
-BY` key at the service**: the rendering is not the path underneath, and the service will not order by
-an expression in any case, answering one with *"ORDER BY item expression could not be mapped to a
-document path"*. What the adapter can do instead is order by the path the column was rendered from,
-where a declared schema says the stored spelling sorts the way the values do — see *Describing what a
-container holds*. Without that it reads every matching document. Ordering by the path itself always
-reads a page — subject to the null placement above, which `id`, `_ts` and `_etag` are exempt from,
-being non-nullable.
-
-### Describing what a container holds
-
-A Cosmos container has no row schema, so the adapter cannot know what a document path holds — and
-that is what keeps some comparisons in process. Cosmos stores a UUID as a *string*; SQL has a `UUID`
-type; and without knowing how the string is written, the adapter cannot turn one comparison into the
-other. The same is true of an instant, which Cosmos stores as text.
-
-You can tell it, by giving a listed container a **JSON Schema**. The `containers` operand has always
-named the containers to expose as tables; an entry may now be an object carrying that name and a
-schema beside it, instead of the name on its own:
-
-```json
-"containers": [
-  "orders",
-  { "name": "shipments", "schema": { } }
-]
-```
-
-Both entries name a container to expose, and there are two containers there: `orders`, only listed,
-and `shipments`, listed and described. The rest of this section describes one container and shows only
-that one. In full, in place:
-
-```json
-{
-  "name": "COSMOS",
-  "type": "custom",
-  "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
-  "operand": {
-    "endpoint": "https://account.documents.azure.com:443/",
-    "database": "inventory",
-    "containers": [
-      {
-        "name": "shipments",
-        "schema": {
-          "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "type": "object",
-          "properties": {
-            "carrier": { "type": "string" },
-            "trackingId": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-            }
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-Two different `name` keys are in play there and they are unrelated: the outer one is the Calcite
-schema's name, which is what a query qualifies a table with, and the inner one is the Cosmos
-container's. A container you only name declares nothing, which is what every container does today and
-costs nothing.
-
-One thing to know before you add the first schema: **naming any container turns off discovery.**
-`containers` has always been all-or-nothing, so the model above exposes `shipments` and nothing else.
-A model that relied on the database listing its own containers has to enumerate every container it
-wants exposed once it describes one of them — which is why the two forms mix in one list.
-
-**What it buys.** With the schema above, a comparison against a UUID reaches the service — and
-because the value is now pinned, the query runs against one partition instead of every one:
-
-```
-WHERE CAST(JSON_VALUE(c."DOC", '$.trackingId') AS UUID) = UUID'123e4567-e89b-12d3-a456-426614174000'
-
-without a schema   the container is read whole and the comparison is made in process
-with one          WHERE c.trackingId = @p0, routed to the partition holding it
-```
-
-`<`, `<=`, `>` and `>=` lower the same way — a keyset cursor, `WHERE id > @last ORDER BY id FETCH
-NEXT 50 ROWS ONLY`, becomes a page the service serves rather than a container read whole for every
-page. A range names no single value, so it is not routed to one partition the way the equality is.
-
-A declared `type` earns its keep on its own. A comparison over a document path is normally pushed
-*weakened* — `IS_DEFINED(c.carrier) AND (NOT IS_STRING(c.carrier) OR c.carrier >= @p0)` — and
-rechecked in process, because the service orders values across JSON types where SQL orders their
-renderings. Where the schema says the path holds a string there is no second type to disagree over,
-so the comparison is pushed exactly, nothing is rechecked, and a `FETCH` can be pushed with it.
-
-**And selecting the column pushes too, which is usually the larger half.** A UUID is normally in the
-select list rather than only in the `WHERE`, and until the spelling was pinned there was nothing to
-send for it — so the whole projection stayed in process, and a sort could not be pushed through a
-projection the service never ran. That made a plain catalog page read the container whole:
-
-```
-SELECT CAST(JSON_VALUE(c."DOC", '$.trackingId') AS UUID) AS "Id",
-       JSON_VALUE(c."DOC", '$.carrier') AS "Carrier"
-  FROM "shipments" AS c ORDER BY 2 FETCH NEXT 20 ROWS ONLY
-
-without a schema   the container is read whole, then sorted and paged in memory
-with one           ORDER BY c.carrier at the service, 20 documents returned
-```
-
-The service sends the stored text and the adapter parses it back to a UUID on the way out, which is
-exact for the same reason the comparison was: the schema said which spelling is stored. Sorting *by*
-such a column — `ORDER BY 1` above — is a further claim, that the stored strings sort the way the
-values do; the schema settles that too, and the ordering question below is where it is settled.
-
-**The pattern is what does the work, not `format`.** JSON Schema calls `format` an annotation rather
-than an assertion, and RFC 9562 dropped the lowercase-output rule, so `"format": "uuid"` does not say
-how the value is written. A `pattern` does, and the adapter recognises a fixed set of spellings
-rather than interpreting arbitrary regular expressions — a pattern it does not recognise simply
-yields no fact:
-
-| declared `pattern` | what it proves |
-|---|---|
-| `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` | equality, `IN`, `DISTINCT`, routing, point reads, **and** ordering |
-| the same with the variant nibble `[89ab]` or a version digit pinned | the same |
-| the same in uppercase throughout | the same |
-| `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` | equality and ordering |
-| the same with `.[0-9]{3}` or `.[0-9]{6}` before the `Z` | equality and ordering |
-| `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` | equality and ordering |
-| `^[0-9]{5}$` — a fixed width | equality **and** ordering |
-| `^(0\|[1-9][0-9]*)$` — no leading zero | equality |
-| `^[0-9]+$` — any run of digits | nothing: `42` and `042` are both admitted |
-| anything else | nothing |
-
-`\d` and `[0-9]` are the same thing here, and whitespace is ignored; everything else must match.
-
-**A number stored as a string is worth declaring, and the padding decides how much.** Cosmos has
-numbers, so this is about the path that holds `"00042"` rather than `42` — a code, an account number,
-a padded sequence. `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 42` has no Cosmos form and reads the
-container whole; with a pattern it becomes a comparison the service can make, and the literal goes out
-in the container's own spelling:
-
-```
-with ^[0-9]{5}$              c.n = '00042', and c.n > '00100' for a range — both equality and ordering
-with ^(0|[1-9][0-9]*)$       c.n = '42' — equality only, because '9' sorts after '42'
-with ^[0-9]+$                nothing, because '42' and '042' would both be forty-two
-```
-
-The last line is the one to watch. Writing `^[0-9]+$` is the natural way to say "digits", and it gives
-one value two spellings — so the adapter reads it as saying nothing rather than pushing a comparison
-that would miss half your documents. Say `^[0-9]{5}$` if the values are padded, or
-`^(0|[1-9][0-9]*)$` if they are not.
-
-**A timestamp reached through `PARSE_DATE` or `PARSE_DATETIME` pushes too — but write the format
-BigQuery's way, not Java's.** Cosmos has no date type, so a stored instant is a string and a query
-usually reads it with a cast, a `RETURNING TIMESTAMP` clause, or one of the parse functions. The
-parse names a format, and the adapter pushes it only where that format is one it has measured to read
-the declared shape exactly:
-
-```
-WHERE PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at')) > TIMESTAMP '2024-02-01 00:00:00'
-                                                --> WHERE c.at > '2024-02-01T00:00:00Z'
-
-SELECT PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at')) AS "At"
-  FROM "events" AS c ORDER BY 1 FETCH NEXT 20 ROWS ONLY
-                                                --> ORDER BY c.at at the service, 20 documents returned
-```
-
-Write the format with BigQuery's `%Y-%m-%d` elements or Postgres's `YYYY-MM-DD` ones, and quote a
-literal `T` or `Z` as `'T'` and `'Z'` (doubled again for SQL, as above). A zero offset is `'+00:00'`
-or bare `+00:00`, and three fraction digits are `.%E3S`, `.MS` or `.FF3`.
-
-**Do not write `yyyy-MM-dd'T'HH:mm:ss'Z'`.** It looks like the Java pattern it resembles and Calcite
-accepts it without complaint, but it does not mean that: measured, a document storing
-`2024-01-02T03:04:05Z` comes back as **2024-04-02 03:00:05** — the format model reads the `mm` as a
-second *month* and never sets the minute. That is Calcite's answer with or without this adapter, and
-the adapter declines to push it rather than turning one wrong answer into a different one. (Over a
-plain `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` date the same spelling is correct and does push, a date having no
-minute to be mistaken for a month.)
-
-Two shapes get nothing from a parse, however they are written: a fraction that is not exactly three
-digits — including the seven-digit shape Azure's own documentation recommends, because Calcite's
-timestamps are milliseconds — and the separator-less `20240102T030405Z`. `PARSE_TIMESTAMP` is a
-`TIMESTAMP WITH LOCAL TIME ZONE` rather than a `TIMESTAMP` and pushes at neither site; use
-`PARSE_DATETIME`.
-
-**Inside a model view, write the standard cast instead.** Calcite analyzes a view without the
-connection's function libraries, so `PARSE_DATETIME` does not validate there. `CAST … FORMAT` does,
-and the adapter reads it as the same parse, with the same formats:
-
-```
-CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''')
-CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(3) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS.FF3''Z''')
-```
-
-Give the type the precision the format reads. A bare `TIMESTAMP` holds no fraction, so a
-millisecond format cast into one is not pushed.
-
-**And the parse is the only spelling that pushes, which is a change from earlier versions.** A cast
-and a `RETURNING` clause used to lower the same way, and they should not have: Calcite cannot
-*evaluate* either of them over an ISO-8601 instant. Measured at the engine,
-`CAST('2024-01-15T12:30:00Z' AS TIMESTAMP)` raises `Invalid DATE value`, and
-`JSON_VALUE(…, RETURNING TIMESTAMP)` raises for any string at all — that clause asserts the extracted
-type rather than converting to it, and wants a JSON *number* of epoch milliseconds. Pushing them
-handed back rows for queries that have none, so both now stay in process, where they raise as they
-always would have. The three conversions Calcite does perform over a stored string still push: a
-calendar date read as a `DATE` or a `TIMESTAMP`, and a whole-second or whole-minute time of day read
-as a `TIME`.
-
-If you have a container of ISO-8601 instants, `PARSE_DATETIME` or `CAST … FORMAT` with a format from
-the list above is the way to filter and sort it at the service.
-
-**Why a UUID pattern gives you ordering, and what it depends on.** A canonical lowercase UUID is
-written in `0-9a-f` with the hyphens always in the same places, so sorting the stored strings sorts
-the values — provided the engine compares UUIDs as unsigned 128-bit numbers, which Calcite does from
-1.43 ([CALCITE-7716](https://issues.apache.org/jira/browse/CALCITE-7716)). An uppercase container is
-the same story in `0-9A-F`.
-
-Before 1.43, `java.util.UUID.compareTo` compared the two 64-bit halves as *signed* longs — a JDK
-quirk — and `UUID'80000000-…' > UUID'00000000-…'` was **false**, so only a pattern confining the
-first hex digit could be sorted and a plain v4 pattern could not. Calcite keeps the old behaviour
-available behind `calcite.uuid.unsigned.comparison`, which defaults to on; the adapter reads that
-property and withdraws the ordering claim from the unconfined patterns if you turn it off, so a
-confined pattern like `^[0-7][0-9a-f]{7}-…-[89ab][0-9a-f]{3}-…$` still sorts either way. The adapter
-will not push a sort it cannot vouch for.
-
-**A container that holds more than one kind of document** describes them with `oneOf` and a
-discriminating `const`, or with `if`/`then`/`else`:
-
-```json
-{
-  "oneOf": [
-    { "properties": { "kind": { "const": "order" } } },
-    { "properties": { "kind": { "const": "shipment" },
-                      "trackingId": { "type": "string", "pattern": "^[0-9a-f]{8}-…$" } } }
-  ]
-}
-```
-
-A fact declared inside a branch is used **only when the query has proven the branch applies** —
-`WHERE JSON_VALUE(c."DOC", '$.kind') = 'shipment' AND …` — because an order may not carry
-`trackingId` at all. Without that conjunct the adapter uses only what it can prove unconditionally,
-which is the safe answer rather than a missing feature.
-
-**A schema is a promise, and the adapter believes it.** This is the one thing in the model file that
-can change which rows a query returns. Everything else the adapter knows about a container comes from
-the container's own definition or is guaranteed by the service; a schema does not, and it is trusted
-the way the partition key is trusted. A document that contradicts it is a data-integrity problem, not
-something checked per row — so a schema that is wrong by one character drops rows, with no error and
-a plan that looks correct.
-
-**It has to describe every document in the container, not the ones you query.** This is the part that
-catches people, and it is a stronger obligation than "describe it accurately". A fact stated outside a
-branch is a claim about *all* of them, so a schema saying
-
-```json
-{ "properties": { "trackingId": { "type": "string", "pattern": "^[0-9a-f]{8}-…$" } } }
-```
-
-says that every document in the container stores a canonical lowercase UUID at `$.trackingId`. If the
-container also holds documents that put something else there, a query filtering on it will silently
-miss them — the adapter believed you and pushed an exact comparison.
-
-So putting a schema on an existing container means describing the **whole** mix, not the part you care
-about. Use `oneOf` with a discriminating `const`, or `if`/`then`/`else`, and a fact declared inside a
-branch is used only once a query has proven the branch applies. If you are not sure what a container
-holds, describe less: a path you say nothing about is a path the adapter reasons about exactly as it
-did before.
-
-Incompleteness of the *other* kind is free. Keywords the adapter does not understand are ignored
-rather than refused, an unrecognised pattern yields no fact, and a schema it cannot read at all leaves
-the container working exactly as it did. Saying nothing about a path costs a pushdown; saying
-something untrue about it costs rows.
-
-### Saying what no two documents share
-
-A schema describes each document. What it cannot say is anything about two of them, and one such thing
-decides whether several views of one container cost one read or several: whether a value names one
-document. Where a query joins views of the same container on a value that does, each document is paired
-only with itself, and the adapter answers the join by reading the container once — the views' filters
-combined, a left join's missing side as nulls.
-
-Some of that the adapter knows without being told. `id` is unique within a logical partition, so the
-partition key with `id` names one document; so does the partition key with the paths of a unique key
-policy. A join that equates those needs nothing declared.
-
-Anything else you declare, as SQL DDL beside the schema. The expressions are the same Calcite SQL your
-views are written in:
-
-```json
-{
-  "name": "links",
-  "schema": { },
-  "constraints": [
-    "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
-    "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'",
-    "UNIQUE (LOWER(JSON_VALUE(DOC, '$.email')))"
-  ]
-}
-```
-
-- The first says no two documents in the container hold the same `data.guid`.
-- The second says no two documents whose `type` is `Link` hold the same `linkId`. It is used only where
-  both sides of a join are proved to be Links. Proved means implied, not spelled the same:
-  `WHERE … IN ('Link', 'Other')` is implied by a view's `= 'Link'`.
-- The third says two emails differing only in case are one.
-
-**What a key means.** A plain accessor — `JSON_VALUE(DOC, '$.x')`, or a promoted column such as `"id"` —
-stands for the value *stored* at that path, which is what a unique key policy means too. Any other expression
-stands for its own value. A document whose key is null is outside the claim, because a null equals nothing.
-
-**When it is checked.** Each constraint is parsed and validated against the container's columns when the
-model is read, and one that does not compile fails there, naming the container. `CHECK` is not read yet, and
-is refused by name rather than ignored.
-
-**This is a stronger promise than a schema, and nothing checks it.** A schema can be checked one document at
-a time; a `UNIQUE` constraint is about every pair, and checking it would mean reading the container. If two
-documents do share a value, a join that should pair them is read as one document paired with itself, and
-the second document's rows are missing from the answer — no error, and a plan that looks right. Declare one
-only where the application makes it so, for every writer. A unique key policy is the service-enforced
-alternative, but it can only be set when a container is created and is unique within a partition.
-
-Anything in `constraints` the adapter does not read is refused rather than ignored, because a constraint
-silently dropped is one you believe is in force. A predicate the adapter cannot prove from a query's own
-`WHERE` is different: the constraint is simply not used for that query, which costs a read and never a row.
-
-## What gets pushed down
-
-| | |
-|---|---|
-| Filters | `WHERE`, including partial predicates — the renderable conjuncts push and the rest are rechecked in-process |
-| Projections | `SELECT VALUE { … }` |
-| Sorts, limits | `ORDER BY`, `OFFSET`/`LIMIT`; a multi-key sort only where a matching composite index is declared |
-| Aggregation | `GROUP BY` with `COUNT`, `SUM`, `MIN`, `MAX`, `AVG` |
-| Array traversal | `JOIN alias IN path` |
-| Scalar functions | string, numeric and trigonometric functions where SQL and Cosmos agree on meaning |
-| Partition key | recovered from the predicate, so execution stays on one physical partition |
-| Declared facts | a container's JSON Schema, where one is given — see *Describing what a container holds* |
-| Row limits | a `FETCH` becomes the page size, so a bounded query stops paying for a full page |
-
-Relational joins, `UNION`/`INTERSECT`/`EXCEPT` and `HAVING` have no Cosmos equivalent and run
-in-process. Anything the adapter cannot render faithfully it declines rather than approximating.
-
-## Full text search
-
-Cosmos has full text search and SQL does not, so the functions — `FULLTEXTCONTAINS`,
-`FULLTEXTSCORE`, `RRF` and the `IS_DEFINED` family — come from this package. A Cosmos schema declares
-them, so a connection resolves them the way it resolves a table:
-
-```sql
-SELECT c."id" FROM "products" AS c WHERE FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.name'), 'steel')
-```
-
-Ordering by a score becomes `ORDER BY RANK`, and `RRF` fuses two scores for hybrid search. The score
-ranks the rows and never appears in the result, the service not permitting it to be projected.
-
-**The container decides what these cost.** A full text function pushes down over any property path,
-and what the container declares about the path — in its full text policy, in a full text index, or
-both — decides the price: an index seek over a declared path, a scan over an undeclared one. Measured
-against three accounts, the service answers a full text call over an undeclared path, over a container
-with no policy at all, and on an account without the full text capability; refusing such a plan would
-turn a slow query into a failed one. `VECTORDISTANCE` is different and pushes only where one of its
-two vectors is a declared vector path, the reference requiring a vector policy to search at all; that
-gate was not measured and stands. Multi-property `ORDER BY` is the other gate that stands, pushing
-only where a matching composite index is declared, because there the service does refuse.
-
-**Where the name is looked for.** An unqualified function name is resolved against the connection's
-default schema and the root, and nowhere else — so name the Cosmos schema as `defaultSchema` in the
-model, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)` from a query rooted elsewhere. A view
-declared in a model resolves against its own `path`, so a view over a Cosmos container either
-qualifies the call or declares `"path": [ "COSMOS" ]`.
-
-**Chaining the operator table is optional.** `CosmosOperators.Instance` is still there, and a host
-that assembles its own planner rather than opening a connection still needs it:
-
-```csharp
-SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
-```
-
-Chaining it alongside a Cosmos schema is not a duplicate definition: overload resolution takes the
-first candidate whose arity fits, so the chained operator answers and the schema's declaration is
-never reached. It is also the way past one limit of the schema route — Calcite builds a schema
-function's operand count from its parameter list, so the variadic functions are declared there up to
-sixteen operands, while the operator table's checker has no bound at all.
-
-> **`ORDER BY RANK` does not yet survive a connection.** The names resolve and the statement is built,
-> but the projection that discards the score is applied by `Prepare` after planning rather than being
-> a node the rank rule can match, so the clause is not recovered and the plan fails to implement. The
-> predicates — `FULLTEXTCONTAINS` and the rest — are unaffected. See
-> [#46](https://github.com/ikvmnet/calcite-cosmos/issues/46).
-
-## Geography
-
-Cosmos reads coordinates as WGS84 and answers in metres. Calcite's own `ST_*` are planar JTS over an
-unprojected coordinate system and answer in the units of that system, so the two are different
-questions with the same spelling — and not off by a factor, the ratio varying with latitude and with
-bearing. The geodesic reading comes from
-[`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography), which this
-package requires.
-
-**There is no `GEOGRAPHY` type.** A geography and a geometry are the same type carried by the same
-class, and the name of the operator applied to a value is the whole of what says which reading is
-meant — `CLR_ST_GEOG_DISTANCE` rather than `ST_DISTANCE`. Calcite's `SqlTypeName` is a closed enum and a
-type of one's own cannot be registered on a schema, which is how an adapter brings its functions with
-it, so the type gave way to the registration. The cost is that a mixed expression is not refused:
-`CLR_ST_GEOG_DISTANCE(ST_BUFFER(g, 0.1), h)` buffers in degrees and measures in metres, and both halves
-run.
-
-**Reaching the names.** Either register them on the root schema, or chain the table if you assemble
-your own planner:
-
-```csharp
-GeographySchema.AddTo(rootSchema);
-SqlOperatorTables.chain(SqlStdOperatorTable.instance(), GeographyOperatorTable.Instance())
-```
-
-**Reading a stored shape.** No column is typed as a geometry — nothing in Calcite converts the `ANY` a
-map lookup yields into one — so a shape in a document reaches an operator by being parsed out of text:
-
-```sql
-SELECT c."id"
-FROM "products" AS c
-WHERE CLR_ST_GEOG_DWITHIN(
-        CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", '$.location')),
-        CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-122.3,47.6]}'),
-        1000)
-```
-
-That pushes. `JSON_QUERY` over `DOC` resolves to a document path, so the constructor collapses onto
-it and the statement names the property — `ST_DISTANCE(c.location, {…}) <= 1000`. The service reads
-the property as the shape, so the text and the parsing are a round trip it never needed.
-
-**What pushes.** `CLR_ST_GEOG_DISTANCE`, `CLR_ST_GEOG_WITHIN`, `CLR_ST_GEOG_INTERSECTS` and `CLR_ST_GEOG_ISVALID` are
-the service's own functions under another name. Two more push without being spatial calls at
-all: `CLR_ST_GEOG_GEOMETRYTYPE`, since GeoJSON records the type as a member, so over a stored shape it is
-`c.location.type`; and `CLR_ST_GEOG_ASGEOJSON` in a projection, since the document already holds the
-GeoJSON and re-serialising a shape just parsed is a round trip. `CLR_ST_GEOG_DWITHIN` becomes the distance comparison the
-reference documents a spatial index as answering. A geography constant is written out as the GeoJSON
-object. A constructor over a *computed* string is declined and stays in process, because rendering one
-would mean evaluating it.
-
-**A geodesic call over a planar container is refused while planning.** The Cosmos spelling is the
-unprefixed one, so what a rendered `ST_DISTANCE` means at the service is decided by the container's
-`geospatialConfig` rather than by the name in the query. Over a container reading `Geometry` the
-service would answer the planar question, in the units of the coordinate system, and say nothing about
-having done so.
-
-> **A pushed predicate is not rechecked in process.** These push exactly or they do not push. Whether
-> the package's S2 evaluator agrees with the service at a polygon edge, across the antimeridian, at
-> the poles, or on a distance sitting exactly on a threshold has not been measured, and a recheck that
-> disagrees discards rows the service returned.
-
-## What a query cost
-
-Cosmos charges in request units and reports the charge on every response. The adapter records it on a `Meter` and an `ActivitySource`, both named `Apache.Calcite.Cosmos.Adapter`, so it collects the way anything else in a .NET application does:
-
-```csharp
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(m => m.AddMeter("Apache.Calcite.Cosmos.Adapter"))
-    .WithTracing(t => t.AddSource("Apache.Calcite.Cosmos.Adapter"));
-```
-
-`cosmos.request_charge` is measured per response and tagged with the container and with whether the request was a `query` or a `point_read`; the `cosmos.query` span carries the total across continuations. Set `"indexMetrics": true` in the operand and the service also reports which indexes each statement used.
-
-## Telling the planner the data changed
-
-A row count comes from the service and is remembered for five minutes; `"statisticsExpireSeconds"` in the operand says otherwise. A clock is the wrong instrument after a bulk load, though — the moment worth re-reading at is the one the loader knows about. A host holding the schema it registered can say so:
-
-```csharp
-schema.RefreshStatistics();
-```
-
-That discards what was read; it does not read anything. The next plan against a container pays for the round trip, and a container nothing plans against pays nothing. This matters more than it sounds, because the service's count lags its own writes — fetching at the instant a load finishes captures the number least likely to be right.
-
+With no `key`, the adapter signs in with Microsoft Entra ID as whoever the process runs as. The whole
+query is answered by Cosmos, routed to one partition, as one statement.
+
+Three things to get right from the start, each explained in the manual:
+
+- **Name the factory assembly-qualified**, and make sure its assembly is loaded —
+  [Installation](docs/02-installation.md).
+- **Set `DefaultNullCollation = "LOW"`**, or most sorts run in process —
+  [Sorting and paging](docs/09-sorting-and-paging.md).
+- **Use `ExecuteReaderAsync` and `ReadAsync`** — the Cosmos SDK has no synchronous reads —
+  [Connections](docs/06-connections.md).
+
+## What it does
+
+- **Pushdown** of filters, projections, sorts, row limits, aggregation and array traversal, partially
+  where a whole operator cannot go — [Filtering](docs/08-filtering-and-projection.md),
+  [Sorting](docs/09-sorting-and-paging.md), [Aggregation](docs/10-aggregation.md),
+  [Arrays](docs/11-arrays.md).
+- **Partition routing and point reads**, recovered from the predicate.
+- **Joins** that fetch only the documents another source's keys can match, and joins of a container
+  to itself answered with one read — [Joins](docs/12-joins.md).
+- **Writes** — `INSERT`, `UPDATE` and `DELETE` as item operations — [Writing data](docs/13-writing.md).
+- **Declared facts**: a JSON Schema and `UNIQUE` constraints that let UUIDs, timestamps and numbers
+  stored as text be compared, sorted and routed at the service —
+  [JSON Schema](docs/14-json-schema.md), [Dates and times](docs/15-dates-and-times.md),
+  [Uniqueness](docs/16-constraints.md).
+- **Full text, vector and geodesic search** —
+  [Full text and vector](docs/17-full-text-and-vector-search.md), [Geography](docs/18-geography.md).
+- **Request-unit telemetry** through `System.Diagnostics` — [Monitoring](docs/20-monitoring.md).
+
+It never infers a document's shape by sampling, and declines to push down anything Cosmos would answer
+differently from SQL — the query still runs, in process.
 
 ## Documentation
 
-- [Adapter README](src/Apache.Calcite.Cosmos.Adapter/README.md) — the package's own overview
-- [DESIGN.md](src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) — why Cosmos SQL is generated by hand, what
-  the service was measured to do, and which assumptions are still unsettled
-- [Cosmos DB SQL query reference](https://learn.microsoft.com/azure/cosmos-db/nosql/query/getting-started)
-- [Apache Calcite for .NET](https://github.com/ikvmnet/calcite-dotnet) — the provider and calling conventions
+- [User manual](docs/README.md) — installation, configuration, querying, writing, performance,
+  troubleshooting and reference
+- [DESIGN.md](src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) — why it works the way it does, and what the
+  service was measured to do
+- [TODO.md](TODO.md) — what is left
+- [Apache Calcite for .NET](https://github.com/ikvmnet/calcite-dotnet) — the ADO.NET provider
 
 ## Building
 
@@ -748,24 +112,9 @@ That discards what was read; it does not read anything. The next plan against a 
 dotnet build Apache.Calcite.Cosmos.slnx
 ```
 
-Some of the suite runs against a Cosmos DB account, and **starts an emulator for itself** where
-Docker is available and nothing is already listening on 8081. Nothing is started unless a test asks
-for an account, so a run of the planner tests never waits on it.
-
-To use one you started, which is what CI does, start it before the run and the suite will find it:
-
-```sh
-docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
-```
-
-Without Docker and without an emulator those tests report inconclusive, so the suite stays runnable
-— though be aware of what a skipped run does not check: a pushdown that plans correctly and returns
-the *wrong rows* is invisible without a service.
-
-The emulator is not a substitute for the service either — it has been found both to accept statements
-Azure rejects and to reject features Azure implements, full text search among them. Set
-`COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` to run the same suite against a real account, which
-takes precedence over any emulator.
+Part of the test suite runs against Cosmos DB, starting an emulator in Docker where none is running,
+or against a real account named by `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` —
+[Appendix E](docs/appendix-e-development.md).
 
 ## License
 
