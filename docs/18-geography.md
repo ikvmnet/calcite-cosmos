@@ -106,7 +106,16 @@ A geometry itself is not an orderable value; ordering by a shape runs in process
 
 A parameter whose value is a geometry is bound as the GeoJSON object it represents, exactly as a
 literal shape is written into the statement — so a parameterised proximity query behaves like a
-literal one. (A *string* parameter passed to `CLR_ST_GEOG_GEOMFROMGEOJSON` is a computed constructor
+literal one, and pushes like one:
+
+```sql
+WHERE CLR_ST_GEOG_DISTANCE(p."Location", CAST(? AS GEOMETRY)) < 50000.0      -- the filter
+ORDER BY CLR_ST_GEOG_DISTANCE(p."Location", CAST(? AS GEOMETRY))            -- the sort
+```
+
+become `ST_DISTANCE(c.location, @p0) < @p1` and `ORDER BY ST_DISTANCE(c.location, @p0)`. Bind a
+geometry (a NetTopologySuite `Point`, say) or WKT text, which the driver parses into one; GeoJSON
+*text* is not accepted for a `GEOMETRY` parameter and fails before the query runs. (A *string* parameter passed to `CLR_ST_GEOG_GEOMFROMGEOJSON` is a computed constructor
 and is evaluated in process; pass the geometry, or write the GeoJSON as a literal.)
 
 ## 18.7 Containers that read coordinates as a plane

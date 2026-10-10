@@ -110,6 +110,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
+            /// A geography bound as a parameter is written where its cast stood, the value left to the
+            /// execution (#187).
+            /// </summary>
+            /// <remarks>
+            /// The validator keeps <c>CAST(? AS GEOMETRY)</c> over a parameter it has already typed
+            /// <c>GEOMETRY</c>, so the cast converts nothing; the bind writes the geometry as GeoJSON
+            /// (#156), which is the object a constant would have been written as.
+            /// </remarks>
+            [Fact]
+            public void AGeographyParameterIsWrittenWhereItsCastStood()
+            {
+                var geometry = _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.GEOMETRY), true);
+                var parameter = _rex.makeDynamicParam(geometry, 0);
+
+                var parameters = new CosmosParameterList();
+                var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+
+                translator.Translate(_rex.makeCall(GeographyOperatorTable.ClrStGeogDistance, Geo(), _rex.makeAbstractCast(geometry, parameter)))
+                    .Should().Be("ST_DISTANCE(c.location, @p0)");
+
+                parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be(new CosmosDynamicValue(0));
+
+                Translate(GeographyOperatorTable.ClrStGeogDistance, Geo(), parameter).Should().Be("ST_DISTANCE(c.location, @p0)",
+                    "and bare, the same parameter");
+            }
+
+            /// <summary>
+            /// A cast into a geography from text is a parse, which nothing here performs.
+            /// </summary>
+            [Fact]
+            public void ACastIntoAGeographyFromTextIsDeclined()
+            {
+                var geometry = _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.GEOMETRY), true);
+                var text = _rex.makeDynamicParam(_types.createSqlType(SqlTypeName.VARCHAR), 0);
+
+                Translator().TryTranslate(_rex.makeCall(GeographyOperatorTable.ClrStGeogDistance, Geo(), _rex.makeAbstractCast(geometry, text)), out _)
+                    .Should().BeFalse();
+            }
+
+            /// <summary>
             /// A constructor over a computed string is declined rather than guessed at.
             /// </summary>
             /// <remarks>

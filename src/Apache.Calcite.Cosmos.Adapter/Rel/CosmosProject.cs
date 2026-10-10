@@ -348,7 +348,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="node">The projected expression.</param>
         /// <param name="translator">Resolves an expression to the path it addresses.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
-        /// <returns>The paths, empty where every operand is a literal, or <c>null</c>.</returns>
+        /// <returns>The paths, empty where every operand is a literal or a parameter, or <c>null</c>.</returns>
         public static IReadOnlyList<CosmosPath>? SortableOperandsOf(RexNode node, CosmosRexTranslator translator, string rootAlias)
         {
             if (IsSortableAtTheService(node) == false || node is not RexCall call || translator is null)
@@ -364,6 +364,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // A geography written out of the statement itself. It is the object the constructor
                 // stood for, and an object is not null.
                 if (IsGeographyLiteral(operand))
+                    continue;
+
+                // A geography bound as a parameter, which is the literal's argument with one more
+                // case: the value may be null, or a shape the service will not measure. Either makes
+                // the distance null or undefined in *every* row, so no key is placed against another
+                // and there is nothing for the two placements to disagree about -- the claim the
+                // stored operands carry is still the whole of it. See IsGeographyParameter.
+                if (Sql.CosmosRexTranslator.IsGeographyParameter(operand))
                     continue;
 
                 // A stored shape, reached through the constructor the same way every other geography
