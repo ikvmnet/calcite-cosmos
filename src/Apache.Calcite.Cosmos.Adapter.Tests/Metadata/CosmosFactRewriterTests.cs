@@ -610,6 +610,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(tested, null).Should().Be(tested.ToString());
         }
 
+        /// <summary>
+        /// A number the schema declares and a query compares against is one value, however each side
+        /// happened to box it.
+        /// </summary>
+        /// <remarks>
+        /// The schema reads <c>1.5</c> as a <see cref="double"/>; a query's <c>1.5</c> is an exact
+        /// <c>DECIMAL</c> literal. Compared as boxes they differ, and a fact set holding both reads as a
+        /// contradiction — which the rewrite answers with <c>FALSE</c>, a query that keeps nothing when
+        /// every matching document should come back.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "properties": { "body": { "enum": [0.5, 1.5] } } }""")]
+        [InlineData("""{ "properties": { "body": { "const": 1.5 } } }""")]
+        [InlineData("""{ "properties": { "body": { "enum": [1, 2] } } }""")]
+        public void ANumberTheSchemaDeclaresIsTheNumberAQueryComparesAgainst(string schema)
+        {
+            var value = schema.Contains("1.5") ? "1.5" : "1.0";
+            var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
+                Ref(2, SqlTypeName.DECIMAL),
+                _rex.makeExactLiteral(new java.math.BigDecimal(value)));
+
+            Rewrite(equality, schema).Should().NotBe("false", "the declared domain holds the value compared against");
+        }
+
     }
 
 }

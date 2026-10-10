@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node.get("const") is JsonNode constant && TryLiteral(constant, out var constantValue))
                 State(new JsonClaim.EqualTo(constantValue));
 
-            if (ReadEnum(node) is IReadOnlyList<object?> domain)
+            if (ReadEnum(node) is IReadOnlyList<JsonScalar> domain)
                 State(new JsonClaim.OneOf(domain));
 
             // A pattern constrains a string and is vacuous for anything else, so one written beside no
@@ -254,11 +254,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 return;
 
             var child = path.Property(name);
-            var excluded = new List<object?>();
+            var excluded = new List<JsonScalar>();
 
             if (subschema.get("const") is JsonNode constant && TryLiteral(constant, out var value))
                 excluded.Add(value);
-            else if (ReadEnum(subschema) is IReadOnlyList<object?> domain)
+            else if (ReadEnum(subschema) is IReadOnlyList<JsonScalar> domain)
                 excluded.AddRange(domain);
             else
                 return;
@@ -330,7 +330,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 {
                     // The branch as written, not as resolved: a mapping names its target by the
                     // reference, which following it would have thrown away.
-                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
+                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not JsonScalar value)
                         continue;
 
                     var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
@@ -481,7 +481,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
                     // The domain joining every value the branches pin this path to, under this
                     // condition: a branch saying "park" and one saying "map" both entail it.
-                    var values = new List<object?>();
+                    var values = new List<JsonScalar>();
                     foreach (var other in stated)
                     {
                         foreach (var (c, h) in other)
@@ -598,7 +598,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     case "type" when ReadType(node) is (JsonType.Null, _):
                     case "type" when value is not null && value.isArray() && value.size() == 1 && value.get(0)?.asText() == "null":
                     case "const" when value is not null && value.isNull():
-                    case "enum" when ReadEnum(node) is IReadOnlyList<object?> domain && OnlyNulls(domain):
+                    case "enum" when ReadEnum(node) is IReadOnlyList<JsonScalar> domain && OnlyNulls(domain):
                         constrained = true;
                         break;
 
@@ -614,10 +614,10 @@ namespace Apache.Calcite.Cosmos.Facts
 
             return constrained;
 
-            static bool OnlyNulls(IReadOnlyList<object?> domain)
+            static bool OnlyNulls(IReadOnlyList<JsonScalar> domain)
             {
                 foreach (var member in domain)
-                    if (member is not null)
+                    if (member.IsNull == false)
                         return false;
 
                 return true;
@@ -655,11 +655,11 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonClaim? widened = rule.Head.Claim switch
             {
                 JsonClaim.OfType typed => typed with { OrNull = true },
-                JsonClaim.EqualTo { Value: null } equal => equal,
-                JsonClaim.EqualTo equal => new JsonClaim.OneOf(new[] { equal.Value, null }),
-                JsonClaim.OneOf domain when JsonClaim.OneOf.Contains(domain.Values, null) => domain,
-                JsonClaim.OneOf domain => new JsonClaim.OneOf(new List<object?>(domain.Values) { null }),
-                JsonClaim.NotEqualTo { Value: null } => null,
+                JsonClaim.EqualTo { Value.IsNull: true } equal => equal,
+                JsonClaim.EqualTo equal => new JsonClaim.OneOf(new[] { equal.Value, JsonScalar.Null }),
+                JsonClaim.OneOf domain when JsonClaim.OneOf.Contains(domain.Values, JsonScalar.Null) => domain,
+                JsonClaim.OneOf domain => new JsonClaim.OneOf(new List<JsonScalar>(domain.Values) { JsonScalar.Null }),
+                JsonClaim.NotEqualTo { Value.IsNull: true } => null,
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
                 _ => null,
@@ -809,7 +809,7 @@ namespace Apache.Calcite.Cosmos.Facts
                         found.Add(new JsonFact(path, new JsonClaim.EqualTo(constant)));
                         break;
 
-                    case "enum" when value is not null && ReadEnum(subschema) is IReadOnlyList<object?> domain:
+                    case "enum" when value is not null && ReadEnum(subschema) is IReadOnlyList<JsonScalar> domain:
                         found.Add(new JsonFact(path, new JsonClaim.OneOf(domain)));
                         break;
 
@@ -880,14 +880,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns><c>true</c> where every branch is selected, and no two by the same value.</returns>
         static bool Pins(JsonNode branches, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
-            var seen = new List<object?>();
+            var seen = new List<JsonScalar>();
 
             for (var i = 0; i < branches.size(); i++)
             {
                 if (branches.get(i) is not JsonNode branch)
                     return false;
 
-                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || JsonClaim.OneOf.Contains(seen, value))
+                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not JsonScalar value || JsonClaim.OneOf.Contains(seen, value))
                     return false;
 
                 seen.Add(value);
@@ -905,11 +905,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// where no entry names this branch, OpenAPI's implicit rule applies and the value is the
         /// schema's own name — the last segment of the reference.
         /// </remarks>
-        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
+        static JsonScalar? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             if (resolver.Follow(branch)?.get("properties")?.get(name) is JsonNode declared &&
                 resolver.Follow(declared)?.get("const") is JsonNode constant &&
-                TryLiteral(constant, out var value) && value is not null)
+                TryLiteral(constant, out var value) && value.IsNull == false)
                 return value;
 
             if (parent.get("discriminator") is not JsonNode discriminator ||
@@ -925,8 +925,8 @@ namespace Apache.Calcite.Cosmos.Facts
                     var entry = (java.util.Map.Entry)entries.next();
                     var target = ((JsonNode?)entry.getValue())?.asText();
 
-                    if (target == reference || target == LastSegment(reference))
-                        return entry.getKey()?.ToString();
+                    if ((target == reference || target == LastSegment(reference)) && entry.getKey()?.ToString() is string key)
+                        return key;
                 }
             }
 
@@ -1009,12 +1009,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="node">The schema node.</param>
         /// <returns>The domain, or <c>null</c>.</returns>
-        static IReadOnlyList<object?>? ReadEnum(JsonNode node)
+        static IReadOnlyList<JsonScalar>? ReadEnum(JsonNode node)
         {
             if (node.get("enum") is not JsonNode domain || domain.isArray() == false || domain.size() == 0)
                 return null;
 
-            var values = new List<object?>(domain.size());
+            var values = new List<JsonScalar>(domain.size());
 
             for (var i = 0; i < domain.size(); i++)
             {
@@ -1037,33 +1037,37 @@ namespace Apache.Calcite.Cosmos.Facts
             node.get(keyword) is JsonNode value && value.isTextual() ? value.asText() : null;
 
         /// <summary>
-        /// Reads a JSON literal as the CLR value a predicate would compare against.
+        /// Reads a JSON literal as the scalar a claim holds.
         /// </summary>
-        static bool TryLiteral(JsonNode? node, out object? value)
+        /// <remarks>
+        /// An integer too large for a <see cref="long"/> is read from its text, exactly where a decimal
+        /// can hold it; reading it through <c>asLong</c> would wrap it into another number, and a claim
+        /// about that one.
+        /// </remarks>
+        static bool TryLiteral(JsonNode? node, out JsonScalar value)
         {
-            value = null;
+            value = JsonScalar.Null;
 
             if (node is null)
                 return false;
 
             if (node.isNull())
                 return true;
+
             if (node.isTextual())
-                return Assign(node.asText(), out value);
-            if (node.isBoolean())
-                return Assign(node.asBoolean(), out value);
-            if (node.isIntegralNumber())
-                return Assign(node.asLong(), out value);
-            if (node.isNumber())
-                return Assign(node.asDouble(), out value);
+                value = node.asText();
+            else if (node.isBoolean())
+                value = node.asBoolean();
+            else if (node.isIntegralNumber() && node.canConvertToLong())
+                value = node.asLong();
+            else if (node.isIntegralNumber() && decimal.TryParse(node.asText(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var large))
+                value = large;
+            else if (node.isNumber())
+                value = node.asDouble();
+            else
+                return false;
 
-            return false;
-
-            static bool Assign(object assigned, out object? value)
-            {
-                value = assigned;
-                return true;
-            }
+            return true;
         }
 
     }

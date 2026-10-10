@@ -128,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             facts.IsAlwaysScalar(Location).Should().BeFalse("a shape is not a scalar");
         }
 
-        static JsonFact Equals(JsonDocumentPath path, object? value) => new(path, new JsonClaim.EqualTo(value));
+        static JsonFact Equals(JsonDocumentPath path, JsonScalar value) => new(path, new JsonClaim.EqualTo(value));
 
         const string Parks = """
         {
@@ -689,7 +689,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             derived.Knows(new JsonFact(LinkParkId, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeTrue();
             derived.Knows(new JsonFact(LinkParkId, new JsonClaim.OfType(JsonType.String))).Should().BeFalse("a spot holds null");
 
-            derived.Knows(new JsonFact(LinkType, new JsonClaim.OneOf(new object?[] { "park", "map", "spot" }))).Should().BeTrue(
+            derived.Knows(new JsonFact(LinkType, new JsonClaim.OneOf(new JsonScalar[] { "park", "map", "spot" }))).Should().BeTrue(
                 "the discriminator's own values join into a domain every kind is in");
         }
 
@@ -772,7 +772,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             """).Derive(null);
 
             derived.Knows(new JsonFact(v, new JsonClaim.EqualTo("A"))).Should().BeFalse("a null is admitted too");
-            derived.Knows(new JsonFact(v, new JsonClaim.OneOf(new object?[] { "A", null }))).Should().BeTrue();
+            derived.Knows(new JsonFact(v, new JsonClaim.OneOf(new JsonScalar[] { "A", null }))).Should().BeTrue();
             derived.Knows(new JsonFact(v, new JsonClaim.NotEqualTo("B"))).Should().BeTrue();
         }
 
@@ -879,7 +879,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var status = JsonDocumentPath.Root.Property("status");
             var derived = Compile(Enumerated).Derive(null);
 
-            derived.Knows(new JsonFact(status, new JsonClaim.OneOf(new object?[] { "open", "closed" }))).Should().BeTrue();
+            derived.Knows(new JsonFact(status, new JsonClaim.OneOf(new JsonScalar[] { "open", "closed" }))).Should().BeTrue();
             derived.Knows(new JsonFact(status, new JsonClaim.OfType(JsonType.String))).Should().BeTrue(
                 "every member is a string, so the type follows from the domain");
             derived.Knows(new JsonFact(status, new JsonClaim.NotEqualTo("archived"))).Should().BeTrue();

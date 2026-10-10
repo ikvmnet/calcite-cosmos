@@ -620,6 +620,18 @@ every branch entails — which is a sound under-approximation and free.
 one*; only `required` says it holds one. Reading the first as the second would claim of every document
 what the schema claimed of none.
 
+**A value is a JSON scalar, compared as JSON compares it (#198).** A claim's value comes from a schema
+and from a query, and each side used to hand over a CLR box: the schema reader a `long` or a `double`, a
+query an exact `decimal` for `1.5` or `1.0`. Two boxes of one number are unequal, so the exclusion table
+read `EqualTo 1.5` as excluding a domain holding `1.5`, the fact set as contradictory, and the rewrite
+answered `FALSE` — no rows, where every matching document should have come back. So a value is a
+`JsonScalar`: null, a boolean, a string or a number, with a number compared by its value and held as an
+exact `decimal` wherever one can hold it. A `double` would make two large integers one key, and a fact
+about one a fact about the other; a number no decimal can hold stays a `double`, equal only to itself.
+Each side converts once, at its boundary — the reader from JSON, the extractor from a literal — and a
+literal that is no JSON scalar, a `UUID` or an instant, proves nothing rather than being carried as a box
+the theory cannot compare.
+
 #### A schema is one source of facts, and not the only one
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,
@@ -3148,6 +3160,7 @@ src/
       JsonFactRule.cs               ✔ A guarded claim
       JsonFactTheory.cs, JsonFactSet.cs ✔ The Horn theory, and what it derives for one query
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
+      JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
       JsonSchemaFacts.cs            ✔ JSON Schema → rules, asking JsonSchemaRecognisers for forms
       JsonSchemaResolver.cs         ✔ $ref / $id resolution for the reader

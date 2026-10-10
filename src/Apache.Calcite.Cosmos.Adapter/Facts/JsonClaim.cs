@@ -88,8 +88,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// The value at the path is exactly this literal.
         /// </summary>
-        /// <param name="Value">The literal, as a CLR value — a string, a boxed number, a boolean, or <c>null</c> for a JSON null.</param>
-        public sealed record EqualTo(object? Value) : JsonClaim;
+        /// <param name="Value">The literal.</param>
+        public sealed record EqualTo(JsonScalar Value) : JsonClaim;
 
         /// <summary>
         /// The value at the path is not this literal.
@@ -100,13 +100,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// from a <c>&lt;&gt;</c>.
         /// </remarks>
         /// <param name="Value">The excluded literal.</param>
-        public sealed record NotEqualTo(object? Value) : JsonClaim;
+        public sealed record NotEqualTo(JsonScalar Value) : JsonClaim;
 
         /// <summary>
         /// The value at the path is one of a finite set.
         /// </summary>
         /// <param name="Values">The domain. Order is not significant; membership is.</param>
-        public sealed record OneOf(IReadOnlyList<object?> Values) : JsonClaim
+        public sealed record OneOf(IReadOnlyList<JsonScalar> Values) : JsonClaim
         {
 
             /// <inheritdoc />
@@ -119,12 +119,12 @@ namespace Apache.Calcite.Cosmos.Facts
                 // one claim.
                 var hash = 0;
                 foreach (var value in Values)
-                    hash ^= value?.GetHashCode() ?? 0;
+                    hash ^= value.GetHashCode();
 
                 return hash;
             }
 
-            static bool SetEquals(IReadOnlyList<object?> left, IReadOnlyList<object?> right)
+            static bool SetEquals(IReadOnlyList<JsonScalar> left, IReadOnlyList<JsonScalar> right)
             {
                 if (left.Count != right.Count)
                     return false;
@@ -136,10 +136,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 return true;
             }
 
-            internal static bool Contains(IReadOnlyList<object?> values, object? value)
+            internal static bool Contains(IReadOnlyList<JsonScalar> values, JsonScalar value)
             {
                 foreach (var candidate in values)
-                    if (Equals(candidate, value))
+                    if (candidate == value)
                         return true;
 
                 return false;
