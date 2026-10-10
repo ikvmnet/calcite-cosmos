@@ -826,21 +826,98 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A page of links with their bodies, as Entity Framework writes it: the root paged first, and the
+        /// rest of the hierarchy joined onto the page.
+        /// </summary>
+        const string PageOfLinks = """
+            SELECT "l1"."Id", "l1"."Label", "s0"."ParkId", "s0"."MapId"
+            FROM (
+                SELECT "l"."Id", "l"."Label"
+                FROM {views}."Link" AS "l"
+                ORDER BY "l"."Label" NULLS FIRST
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            ) AS "l1"
+            LEFT JOIN (
+                SELECT "l0"."Id", "p"."ParkId", "m"."MapId"
+                FROM {views}."LinkBody" AS "l0"
+                LEFT JOIN {views}."ParkLinkBody" AS "p" ON "l0"."Id" = "p"."Id"
+                LEFT JOIN {views}."MapLinkBody" AS "m" ON "l0"."Id" = "m"."Id"
+            ) AS "s0" ON "l1"."Id" = "s0"."Id"
+            ORDER BY "l1"."Label" NULLS FIRST
+            """;
+
+        /// <summary>
+        /// A page joined to the rest of its hierarchy is still one read, the sort and the page at the
+        /// service. #192.
+        /// </summary>
+        /// <remarks>
+        /// The page sits between the join and the scan, so the merge did not see a self-join: the page was
+        /// read with its sort and limit, and the bodies by a second read of the whole container, joined in
+        /// process. A left join on a key unique on the other side keeps every row of the page and adds none,
+        /// so the page can be taken after the join as well as before it.
+        /// </remarks>
+        [Fact]
+        public async Task APageJoinedToItsHierarchyReadsTheContainerOnce()
+        {
+            RequireService();
+
+            var plan = await ExplainAsync("DECLARED", PageOfLinks, 1, 3);
+
+            Scans(plan).Should().Be(1, "the page and its bodies are one read:\n" + plan);
+            plan.Should().NotContain("Join", "and there is nothing left to join:\n" + plan);
+            plan.Should().MatchRegex(@"CosmosSort\([^\n]*fetch=", "the page is taken at the service:\n" + plan);
+
+            (await RowsAsync("DECLARED", PageOfLinks, 1, 3)).Should().Equal(new[]
+            {
+                $"{G1}|Park one|{Park}|null",
+                $"{G2}|Map two|null|{MapA}",
+                $"{G5}|Spot five|null|null",
+            }.OrderBy(r => r, StringComparer.Ordinal), "the second to fourth links by label");
+        }
+
+        /// <summary>
+        /// An inner join onto a page is not taken apart: the join can drop rows from the page, and a page
+        /// taken after it would reach past them for others.
+        /// </summary>
+        [Fact]
+        public async Task AnInnerJoinOntoAPageKeepsThePageBelowIt()
+        {
+            RequireService();
+
+            const string sql = """
+                SELECT "l1"."Id", "m"."MapId"
+                FROM (
+                    SELECT "l"."Id", "l"."Label"
+                    FROM {views}."Link" AS "l"
+                    ORDER BY "l"."Label" NULLS FIRST
+                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                ) AS "l1"
+                INNER JOIN {views}."MapLinkBody" AS "m" ON "l1"."Id" = "m"."Id"
+                """;
+
+            (await RowsAsync("DECLARED", sql, 1, 3)).Should().Equal(new[] { $"{G2}|{MapA}" },
+                "of the second to fourth links by label only map two is a map link");
+            (await RowsAsync("DECLARED", sql, 1, 3)).Should().Equal(await RowsAsync("UNDECLARED", sql, 1, 3));
+        }
+
+        /// <summary>
         /// The merged plan answers what the joins answered.
         /// </summary>
         [Theory]
         [InlineData(MapLinksOnMap)]
         [InlineData(EveryLink)]
         [InlineData(LinksOnPark)]
-        public async Task TheMergedPlanAnswersWhatTheJoinsAnswered(string sql)
+        [InlineData(PageOfLinks, 1, 3)]
+        [InlineData(PageOfLinks, 0, 5)]
+        public async Task TheMergedPlanAnswersWhatTheJoinsAnswered(string sql, params object[] parameters)
         {
             RequireService();
 
-            var merged = await RowsAsync("DECLARED", sql);
-            var joined = await RowsAsync("UNDECLARED", sql);
+            var merged = await RowsAsync("DECLARED", sql, parameters);
+            var joined = await RowsAsync("UNDECLARED", sql, parameters);
 
             // The comparison means something only if the two plans differ.
-            Scans(await ExplainAsync("UNDECLARED", sql)).Should().BeGreaterThan(1);
+            Scans(await ExplainAsync("UNDECLARED", sql, parameters)).Should().BeGreaterThan(1);
 
             merged.Should().NotBeEmpty();
             merged.Should().Equal(joined);

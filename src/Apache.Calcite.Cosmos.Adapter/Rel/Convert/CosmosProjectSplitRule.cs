@@ -128,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return;
 
             var rexBuilder = project.getCluster().getRexBuilder();
-            var projects = project.getProjects();
+            var projects = split.Projects;
             var input = project.getInput();
 
             // The inner projection, in three parts: every whole expression that renders, every maximal
@@ -195,8 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             split = new ProjectionSplit();
 
-            var projects = project.getProjects();
-            if (projects.size() == 0)
+            if (project.getProjects().size() == 0)
                 return false;
 
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var written) == false)
@@ -206,6 +205,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // subtree that already wrote one cannot take a projection at all, split or whole.
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
+
+            // The expressions the whole-projection rule would push, so that the two agree on what renders.
+            var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
 
             var facts = _convention.Container?.Facts.Derive(null) ?? Metadata.CosmosFactSet.Empty;
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
@@ -306,6 +308,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         sealed class ProjectionSplit
         {
+
+            /// <summary>The projection's expressions, with their <c>CASE</c> conditions lowered.</summary>
+            public java.util.List Projects { get; set; } = java.util.Collections.emptyList();
 
             /// <summary>The projection ordinals that render whole.</summary>
             public List<int> Pushable { get; } = new();

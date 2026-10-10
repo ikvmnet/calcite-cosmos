@@ -2636,6 +2636,26 @@ produces is again a projection over a filter over the scan, so the join above me
 become one. A merged left join carries its key as `CASE WHEN M THEN k END`, which is `k` or null and equal to
 anything only where it is `k`, so the key is read through it.
 
+**A page on the preserved side is taken after the join (#192).** A paged query over a table-per-type
+hierarchy pages the root first and joins the rest onto the page, so a sort with an offset and a fetch sits
+between the join and the projection, and the merge does not see a self-join: the page was read with its
+sort and limit, and the bodies by a second read of the whole container, hash-joined in process. But a left
+join keeps every row of its left side, and where the key join holds the right side adds at most one row to
+each — the right side yields one row per document and pairs a document only with itself — so the join maps
+the page's rows one to one onto its own:
+
+```
+Join(LEFT, Sort(c, o, f, A), B)   =   Sort(c, o, f, Join(LEFT, A, B))
+```
+
+the sort's keys being the left side's columns, which sit where they did. That is the merge's own proof, so
+the rule takes a sort above either side as a fourth operand rather than a rule of its own: the left side
+under a left join, the right side under a right join with its keys moved past the left side's columns, and
+nothing else. An inner join can drop a row of the page — a link that is not a map link — and a page taken
+after it would reach past that row for another; a page on the side an outer join does not keep is what may
+not pair, and taking it afterwards would page the other side. Ties in the sort are no new freedom: which
+of the tied rows a page keeps was the plan's choice before, and still is.
+
 **The uniqueness is asked of the container, and of both sides.** The tempting route is Calcite's own:
 `RelMdColumnUniqueness` on each input. It is the wrong question. With park links on the left and map links
 on the right, a guid unique among the map links still lets one park link and one map link share it; the
@@ -2679,6 +2699,14 @@ before #177, as the unfiltered read the plan began with, and the cause is the ro
 reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
 that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
+
+**And the `CASE` columns now push too (#192).** Each is `CASE WHEN M THEN q END`, and `M` carries the
+key's null test over a `UUID` cast — the conjunct the paragraph above lowers in a filter, and nothing
+lowered in a projection. A `CASE` takes an arm where its condition is true and passes over it where the
+condition is false or unknown, which is the distinction a filter draws and the only one the rewriter
+preserves; so `CosmosFactRewriter.RewriteConditions` rewrites each condition as a predicate, and the
+projection rules push what it gives them. It mattered most for a page: a sort above a projection that
+stays in process stays in process with it.
 
 **A filter through two merged views is a filter through two `CASE`s, and nothing walked into one
 (#183).** Through one view a host's simplifier takes `CASE WHEN M THEN q END = X` apart itself. Through

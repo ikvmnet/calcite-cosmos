@@ -71,9 +71,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// so equating it equates <c>k</c> wherever it pairs anything, and the key is read through it.
     /// </para>
     /// <para>
+    /// <b>A side may be sorted, and paged, where the join keeps it (#192).</b> A left join keeps every row
+    /// of its left side, and the key join gives each at most one partner, so the page maps one to one onto
+    /// the join's rows and can be taken after it: <c>Join(LEFT, Sort(A), B)</c> is
+    /// <c>Sort(Join(LEFT, A, B))</c>, and the join beneath merges. The mirror holds for a right join with
+    /// the sort on its right.
+    /// </para>
+    /// <para>
     /// <b>What it declines.</b> A full join: a document holding no key would be one row merged and two
     /// joined. A semi or anti join, which the same substitution answers and nothing has asked for yet. A
-    /// join carrying correlation variables, and any side whose expressions are not deterministic.
+    /// sorted side under an inner join, which can drop rows of the page, or on the side an outer join
+    /// does not keep. A join carrying correlation variables, and any side whose expressions are not
+    /// deterministic.
     /// </para>
     /// </remarks>
     public class CosmosSelfJoinRule : RelOptRule
@@ -86,13 +95,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Static, because the rule takes no convention — it reads the container from the scans — and so
         /// registering it once per convention must register it once.
         /// </remarks>
-        static readonly RelOptRule[] Instances =
+        static readonly RelOptRule[] Instances = CreateInstances();
+
+        static RelOptRule[] CreateInstances()
         {
-            new CosmosSelfJoinRule(true, true),
-            new CosmosSelfJoinRule(true, false),
-            new CosmosSelfJoinRule(false, true),
-            new CosmosSelfJoinRule(false, false),
-        };
+            var instances = new List<RelOptRule>();
+            foreach (var sorted in new[] { Paged.None, Paged.Left, Paged.Right })
+                foreach (var leftFiltered in new[] { true, false })
+                    foreach (var rightFiltered in new[] { true, false })
+                        instances.Add(new CosmosSelfJoinRule(leftFiltered, rightFiltered, sorted));
+
+            return instances.ToArray();
+        }
+
+        /// <summary>
+        /// Which side of the join, if either, is sorted — and usually paged — between the join and its
+        /// projection.
+        /// </summary>
+        public enum Paged
+        {
+
+            /// <summary>Neither side.</summary>
+            None,
+
+            /// <summary>The left side, which a left join preserves.</summary>
+            Left,
+
+            /// <summary>The right side, which a right join preserves.</summary>
+            Right,
+
+        }
 
         /// <summary>
         /// Returns the rule's instances.
@@ -102,42 +134,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         readonly bool _leftFiltered;
         readonly bool _rightFiltered;
+        readonly Paged _sorted;
 
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="leftFiltered">Whether the left side has a filter between its projection and the scan.</param>
         /// <param name="rightFiltered">Whether the right side does.</param>
+        /// <param name="sorted">Which side, if either, has a sort above its projection.</param>
         // As CosmosPointReadSplitRule: RelOptRule's operand builders are deprecated in favour of
         // RelRule.Config, whose operand supplier costs more ceremony from C# than it buys.
 #pragma warning disable CS0612
-        public CosmosSelfJoinRule(bool leftFiltered, bool rightFiltered) :
+        public CosmosSelfJoinRule(bool leftFiltered, bool rightFiltered, Paged sorted = Paged.None) :
             base(
-                operand((java.lang.Class)typeof(LogicalJoin), Side(leftFiltered), Side(rightFiltered)),
-                $"CosmosSelfJoinRule({(leftFiltered ? "Filter" : "Scan")},{(rightFiltered ? "Filter" : "Scan")})")
+                operand((java.lang.Class)typeof(LogicalJoin), Side(leftFiltered, sorted == Paged.Left), Side(rightFiltered, sorted == Paged.Right)),
+                $"CosmosSelfJoinRule({Describe(leftFiltered, sorted == Paged.Left)},{Describe(rightFiltered, sorted == Paged.Right)})")
         {
             _leftFiltered = leftFiltered;
             _rightFiltered = rightFiltered;
+            _sorted = sorted;
         }
 
-        static RelOptRuleOperand Side(bool filtered) =>
-            filtered
+        static RelOptRuleOperand Side(bool filtered, bool sorted)
+        {
+            var side = filtered
                 ? operand((java.lang.Class)typeof(LogicalProject), operand((java.lang.Class)typeof(LogicalFilter), operand((java.lang.Class)typeof(TableScan), none())))
                 : operand((java.lang.Class)typeof(LogicalProject), operand((java.lang.Class)typeof(TableScan), none()));
+
+            return sorted ? operand((java.lang.Class)typeof(LogicalSort), side) : side;
+        }
 #pragma warning restore CS0612
 
+        static string Describe(bool filtered, bool sorted) =>
+            (sorted ? "Sort:" : "") + (filtered ? "Filter" : "Scan");
+
         /// <summary>
-        /// One input of the join: a projection over an optional filter over a scan.
+        /// One input of the join: a projection over an optional filter over a scan, under an optional sort.
         /// </summary>
-        readonly record struct Input(Project Project, Filter? Filter, TableScan Scan);
+        readonly record struct Input(Sort? Sort, Project Project, Filter? Filter, TableScan Scan);
 
         /// <inheritdoc />
         public override void onMatch(RelOptRuleCall call)
         {
             var join = (Join)call.rel(0);
-            var left = new Input((Project)call.rel(1), _leftFiltered ? (Filter)call.rel(2) : null, (TableScan)call.rel(_leftFiltered ? 3 : 2));
-            var offset = _leftFiltered ? 4 : 3;
-            var right = new Input((Project)call.rel(offset), _rightFiltered ? (Filter)call.rel(offset + 1) : null, (TableScan)call.rel(_rightFiltered ? offset + 2 : offset + 1));
+            var at = 1;
+
+            Input Next(bool filtered, bool sorted)
+            {
+                var sort = sorted ? (Sort)call.rel(at++) : null;
+                var project = (Project)call.rel(at++);
+                var filter = filtered ? (Filter)call.rel(at++) : null;
+                return new Input(sort, project, filter, (TableScan)call.rel(at++));
+            }
+
+            var left = Next(_leftFiltered, _sorted == Paged.Left);
+            var right = Next(_rightFiltered, _sorted == Paged.Right);
 
             if (TryMerge(join, left, right) is RelNode merged)
                 call.transformTo(merged);
@@ -150,6 +201,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var type = join.getJoinType();
             if (type != JoinRelType.INNER && type != JoinRelType.LEFT && type != JoinRelType.RIGHT)
+                return null;
+
+            // A sorted side is taken after the join rather than before it, which holds only where the join
+            // keeps each of its rows exactly once: it has to be the side an outer join preserves, and the key
+            // join below is what says the other side adds at most one row to each. An inner join can drop a
+            // row of the page, and the page taken after it would reach past the row for another.
+            if (left.Sort is not null && (type != JoinRelType.LEFT || right.Sort is not null))
+                return null;
+            if (right.Sort is not null && type != JoinRelType.RIGHT)
                 return null;
 
             if (join.getVariablesSet().isEmpty() == false)
@@ -228,7 +288,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     input = LogicalFilter.create(input, simplified);
             }
 
-            return LogicalProject.create(input, java.util.Collections.emptyList(), ToJava(projects), join.getRowType(), java.util.Collections.emptySet());
+            RelNode merged = LogicalProject.create(input, java.util.Collections.emptyList(), ToJava(projects), join.getRowType(), java.util.Collections.emptySet());
+
+            // The sort over the merged read, its keys where the sorted side's columns now sit: in place for
+            // the left side, after the left side's columns for the right.
+            if (left.Sort is Sort leftSort)
+                merged = LogicalSort.create(merged, leftSort.getCollation(), leftSort.offset, leftSort.fetch);
+            else if (right.Sort is Sort rightSort)
+                merged = LogicalSort.create(merged, RelCollations.shift(rightSort.getCollation(), p.Count), rightSort.offset, rightSort.fetch);
+
+            return merged;
         }
 
         /// <summary>
