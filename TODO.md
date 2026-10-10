@@ -1632,10 +1632,14 @@ schema reader, with stored forms and the geography claim kept on the adapter's s
 
 - **Its own project in this solution** — *small.* Move `Facts/` out, reference it from the adapter. The
   namespace already references nothing of the adapter's, so this is a move and a project file.
-- **The schema reader on `System.Text.Json`** — *medium to large.* It walks Jackson's tree and resolves
-  through `com.networknt`, both through IKVM, which a package meant for .NET should not carry. The walk
-  is mechanical; the resolver — bundles with nested `$id`s, anchors, JSON Pointer — is the part
-  `com.networknt` does today and would have to be written. `JsonSchemaFactsTests` is its spec.
+- **The schema reader on `System.Text.Json`** — *medium to large, and deferred.* It walks Jackson's tree
+  and resolves through `com.networknt`, both through IKVM. The walk would port mechanically; the resolver
+  is the question. JsonSchema.Net is the obvious .NET library, but its NuGet binaries ship under an Open
+  Source Maintenance Fee agreement — a monthly fee for revenue-generating users above a threshold, the
+  source itself being MIT — which a package depending on it would pass on to everyone downstream. The
+  resolution actually used is in-document only (`\` base URIs, anchors, JSON Pointer, bundles; remote
+  loading is already off), small enough to write here if the dependency is ever worth shedding.
+  `JsonSchemaFactsTests` is the spec either way.
 - **A namespace without `Cosmos`** — *small, and a decision.* The types are already named for JSON —
   `JsonFact`, `JsonFactTheory` and the rest — and only the namespace still says `Cosmos`.
 - **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own
