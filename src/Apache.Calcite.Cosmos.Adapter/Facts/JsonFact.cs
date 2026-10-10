@@ -51,8 +51,8 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 // A known value settles membership, type and every disequality but its own.
                 (JsonClaim.EqualTo a, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, a.Value),
-                (JsonClaim.EqualTo a, JsonClaim.OfType b) => TypeOf(a.Value) == b.Type || b.OrNull && TypeOf(a.Value) == JsonType.Null,
-                (JsonClaim.EqualTo a, JsonClaim.NotEqualTo b) => Equals(a.Value, b.Value) == false,
+                (JsonClaim.EqualTo a, JsonClaim.OfType b) => a.Value.Type == b.Type || b.OrNull && a.Value.Type == JsonType.Null,
+                (JsonClaim.EqualTo a, JsonClaim.NotEqualTo b) => a.Value == b.Value == false,
 
                 // A domain settles a type where every member shares one, and refutes anything
                 // outside it.
@@ -72,11 +72,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 // the strings are written and nothing about whether one is there (#175). Without
                 // these, a union whose branches say "a string" and "null" had no meet at all.
                 (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.OfType b) => b.Type == JsonType.Null || b.OrNull,
-                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.EqualTo b) => b.Value is null,
-                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, null),
-                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.NotEqualTo b) => b.Value is not null,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.EqualTo b) => b.Value.IsNull,
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, JsonScalar.Null),
+                (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.NotEqualTo b) => b.Value.IsNull == false,
                 (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.Represents) => true,
-                (JsonClaim.EqualTo { Value: null }, JsonClaim.Represents) => true,
+                (JsonClaim.EqualTo { Value.IsNull: true }, JsonClaim.Represents) => true,
 
                 // Admitting a null is weaker than not admitting one.
                 (JsonClaim.OfType a, JsonClaim.OfType b) => a.Type == b.Type && b.OrNull,
@@ -128,10 +128,10 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             // A value settles everything about itself, so it excludes any other value, its own
             // disequality, a domain it is not in, and a type it is not of.
-            (JsonClaim.EqualTo x, JsonClaim.EqualTo y) => Equals(x.Value, y.Value) == false,
-            (JsonClaim.EqualTo x, JsonClaim.NotEqualTo y) => Equals(x.Value, y.Value),
+            (JsonClaim.EqualTo x, JsonClaim.EqualTo y) => x.Value == y.Value == false,
+            (JsonClaim.EqualTo x, JsonClaim.NotEqualTo y) => x.Value == y.Value,
             (JsonClaim.EqualTo x, JsonClaim.OneOf y) => y.Values.Count > 0 && JsonClaim.OneOf.Contains(y.Values, x.Value) == false,
-            (JsonClaim.EqualTo x, JsonClaim.OfType y) => TypeOf(x.Value) != y.Type && (y.OrNull == false || TypeOf(x.Value) != JsonType.Null),
+            (JsonClaim.EqualTo x, JsonClaim.OfType y) => x.Value.Type != y.Type && (y.OrNull == false || x.Value.Type != JsonType.Null),
 
             // Two domains exclude where they share no member; a domain and a disequality where the
             // disequality rules out every member there is.
@@ -148,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="left">One domain.</param>
         /// <param name="right">The other.</param>
         /// <returns><c>true</c> where they share none and both state something.</returns>
-        static bool Disjoint(IReadOnlyList<object?> left, IReadOnlyList<object?> right)
+        static bool Disjoint(IReadOnlyList<JsonScalar> left, IReadOnlyList<JsonScalar> right)
         {
             if (left.Count == 0 || right.Count == 0)
                 return false;
@@ -166,13 +166,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="values">The domain.</param>
         /// <param name="value">The value.</param>
         /// <returns><c>true</c> where every member is that value.</returns>
-        static bool OnlyValue(IReadOnlyList<object?> values, object? value)
+        static bool OnlyValue(IReadOnlyList<JsonScalar> values, JsonScalar value)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var member in values)
-                if (Equals(member, value) == false)
+                if (member != value)
                     return false;
 
             return true;
@@ -185,13 +185,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="type">The type to test for.</param>
         /// <param name="orNull">Whether a JSON null counts as a member.</param>
         /// <returns><c>true</c> where no member is of that type and the domain states something.</returns>
-        static bool NoneOfType(IReadOnlyList<object?> values, JsonType type, bool orNull)
+        static bool NoneOfType(IReadOnlyList<JsonScalar> values, JsonType type, bool orNull)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var value in values)
-                if (TypeOf(value) == type || orNull && TypeOf(value) == JsonType.Null)
+                if (value.Type == type || orNull && value.Type == JsonType.Null)
                     return false;
 
             return true;
@@ -208,37 +208,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="type">The type to test for.</param>
         /// <param name="orNull">Whether a JSON null counts as a member.</param>
         /// <returns><c>true</c> where every member is of that type.</returns>
-        static bool AllOfType(IReadOnlyList<object?> values, JsonType type, bool orNull)
+        static bool AllOfType(IReadOnlyList<JsonScalar> values, JsonType type, bool orNull)
         {
             if (values.Count == 0)
                 return false;
 
             foreach (var value in values)
-                if (TypeOf(value) != type && (orNull == false || TypeOf(value) != JsonType.Null))
+                if (value.Type != type && (orNull == false || value.Type != JsonType.Null))
                     return false;
 
             return true;
         }
-
-        /// <summary>
-        /// The JSON type a literal read out of a schema has.
-        /// </summary>
-        /// <remarks>
-        /// <see cref="JsonType.Integer"/> is reported for a whole number, matching the service's
-        /// <c>IS_INTEGER</c> and JSON Schema's own <c>integer</c>, which is a number with no fractional
-        /// part rather than a distinct JSON type.
-        /// </remarks>
-        internal static JsonType TypeOf(object? value) => value switch
-        {
-            null => JsonType.Null,
-            string => JsonType.String,
-            bool => JsonType.Boolean,
-            sbyte or byte or short or ushort or int or uint or long or ulong => JsonType.Integer,
-            decimal d => decimal.Truncate(d) == d ? JsonType.Integer : JsonType.Number,
-            double d => Math.Floor(d) == d && double.IsInfinity(d) == false ? JsonType.Integer : JsonType.Number,
-            float f => Math.Floor(f) == f && float.IsInfinity(f) == false ? JsonType.Integer : JsonType.Number,
-            _ => JsonType.Object,
-        };
 
     }
 

@@ -571,7 +571,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     if (claim is not JsonClaim.EqualTo equality)
                         continue;
 
-                    pinned[policy] = equality.Value;
+                    pinned[policy] = equality.Value.ToClrValue();
                     break;
                 }
             }
