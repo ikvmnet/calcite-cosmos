@@ -1289,24 +1289,6 @@ old wording did not allow for.
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
-### Through a connection, a filter is pushed whole or not at all — *medium, and unexplained*
-
-Measured in #177 over `links` on the emulator, through a `CalciteConnection` and `EXPLAIN PLAN FOR`. A
-`WHERE` whose every conjunct renders pushes. One that holds a conjunct that does not render — `SIMILAR TO`,
-an `OVERLAY`, an `INTEGER` cast in arithmetic, a `UUID` cast over a path with no form — pushes **nothing**:
-the plan is the whole predicate in a `ClrCursorCalc` over `CosmosProject(DOC)` over the scan, and
-`type = 'Link'` beside the unrenderable conjunct stays in process with it. The same query under a bare
-Volcano planner with the adapter's and the CLR convention's rules — what every planning test here uses —
-splits correctly: a `ClrCursorFilter` for the residual over a pushed `CosmosFilter`. Field trimming is not
-the difference; adding `RelFieldTrimmer` to the bare harness still splits.
-
-So something in the host's prepare path (`ClrPrepare` in `Apache.Calcite.Extensions`) prices or prunes the
-split plan away. The same happens when the *projection* above a renderable filter does not render: the
-`Link` view in `CosmosSelfJoinTests`, whose filter is two equalities and whose projection holds `INTEGER`
-and `BOOLEAN` casts, read `links` unfiltered before #177, and every link with its body still does after it. Start by comparing the
-two plans' costs as the connection's planner sees them; the row count it reads from the service is the
-first difference from the bare harness.
-
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
 `CosmosToClrCursorConverter` is the wire, and since #125 it costs rows times the width it

@@ -2472,11 +2472,13 @@ its text is, and `CosmosFactRewriter` now lowers the test onto the text. With th
 plan as one `CosmosFilter` over one scan: `type = 'Link'`, `data.type = 'map'`, `mapId = '…'`,
 `guid IS NOT NULL`, the projection pushed with it.
 
-**What it does not yet reach, and why.** Every link with its body reads once, but that read is unfiltered:
-the merged projection holds `CASE` columns that do not push, and through a real connection a filter whose
-projection stays in process stays in process with it. That is not this rule's — the `Link` view alone
-showed it before #177, as the unfiltered read the plan began with — and a bare Volcano planner splits the
-same query correctly. It is recorded in `TODO.md`.
+**What it does not reach alone, and why.** Every link with its body reads once, but measured on the
+emulator that read is unfiltered: the merged projection holds `CASE` columns that do not push, and the
+filter beneath them stayed in process with them. That is not this rule's. The `Link` view alone showed it
+before #177, as the unfiltered read the plan began with, and the cause is the row count — the emulator
+reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
+that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
+over one scan, with only the `CASE` columns computed in process.
 
 **What a consumer has to state.** A join on the partition key and `id` needs nothing: the service enforces
 it. A join on anything else needs a `UNIQUE` constraint the model declares, and that is a promise nothing
