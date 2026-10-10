@@ -1636,8 +1636,8 @@ schema reader, with stored forms and the geography claim kept on the adapter's s
   through `com.networknt`, both through IKVM, which a package meant for .NET should not carry. The walk
   is mechanical; the resolver — bundles with nested `$id`s, anchors, JSON Pointer — is the part
   `com.networknt` does today and would have to be written. `JsonSchemaFactsTests` is its spec.
-- **A name without `Cosmos`** — *small, and a decision.* The types keep the prefix while they live here,
-  which also keeps a type named `Fact` from colliding with xUnit's `[Fact]` in every test file.
+- **A namespace without `Cosmos`** — *small, and a decision.* The types are already named for JSON —
+  `JsonFact`, `JsonFactTheory` and the rest — and only the namespace still says `Cosmos`.
 - **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own
   each such change is two pull requests and a version.
 
