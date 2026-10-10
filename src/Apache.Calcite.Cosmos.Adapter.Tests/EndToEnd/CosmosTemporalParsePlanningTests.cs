@@ -690,6 +690,170 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().NotContain("c.at > ", "the DATE cannot hold what the format read");
         }
 
+        /// <summary>
+        /// The format for the milliseconds shape, in the standard cast's spelling.
+        /// </summary>
+        const string CastMilliseconds = """CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(3) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS.FF3''Z''')""";
+
+        /// <summary>
+        /// Plans a comparison against a parameter without the libraries, as a model view is analyzed,
+        /// and renders it.
+        /// </summary>
+        static (CosmosQuery Query, string Plan) PlanParameter(string predicate, string? pattern)
+        {
+            var container = Container(pattern);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {predicate}""", container, libraries: false);
+
+            return (Query(FindCosmos(best), container), PlanText(best));
+        }
+
+        /// <summary>
+        /// The slot a statement leaves for a parameter written in a stored form.
+        /// </summary>
+        static Adapter.Sql.CosmosDynamicValue Slot(CosmosQuery query) =>
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single();
+
+        /// <summary>
+        /// The statement as it runs with <c>?0</c> holding the given value.
+        /// </summary>
+        static object? Bound(CosmosQuery query, object value) =>
+            Adapter.Client.CosmosQueries.Bind(query, new Context(value)).Parameters.Single(p => p.Value is string).Value;
+
+        /// <summary>
+        /// The epoch milliseconds Calcite's runtime holds a <c>TIMESTAMP</c> parameter in.
+        /// </summary>
+        static java.lang.Long Millis(string utc) =>
+            java.lang.Long.valueOf(System.DateTimeOffset.Parse(utc, System.Globalization.CultureInfo.InvariantCulture).ToUnixTimeMilliseconds());
+
+        /// <summary>
+        /// The comparison #182 reported: a stored instant read through the cast the issue names, against
+        /// <c>CAST(? AS TIMESTAMP)</c>, pushes — and the value is written in the stored spelling when it
+        /// arrives.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST(? AS TIMESTAMP)</c> compared with a <c>TIMESTAMP(3)</c> is
+        /// <c>CAST(CAST(?0):TIMESTAMP(0)):TIMESTAMP(3)</c> by the time it is planned, and the casts change
+        /// nothing at run time — <c>CalciteTemporalParameterMeasurementTests</c> measures that the
+        /// milliseconds survive the <c>TIMESTAMP(0)</c> — so the value written is the one the parameter
+        /// carries.
+        /// </remarks>
+        [Fact]
+        public void AComparisonAgainstAParameterReachesTheStatement()
+        {
+            var (query, plan) = PlanParameter($"{CastMilliseconds} > CAST(? AS TIMESTAMP)", MillisecondsPattern);
+
+            query.Sql.Should().Contain("(c.at > @p0)", "the comparison is the stored strings': " + query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + plan);
+
+            var slot = Slot(query);
+            slot.Ordinal.Should().Be(0);
+            slot.Form.Should().Be(CosmosTemporalForms.Iso8601UtcMilliseconds, "the slot carries the spelling to write the value in");
+
+            Bound(query, Millis("2026-08-02T12:00:00.123Z")).Should().Be("2026-08-02T12:00:00.123Z",
+                "and the value is written in it when the statement runs");
+        }
+
+        /// <summary>
+        /// Every comparison lowers on its own bit, and reading the parameter on the left reverses the
+        /// operator — the case that would select the complement rather than merely not push.
+        /// </summary>
+        [Theory]
+        [InlineData("{0} = ?", "(c.at = @p0)")]
+        [InlineData("{0} <> ?", "(c.at != @p0)")]
+        [InlineData("{0} >= ?", "(c.at >= @p0)")]
+        [InlineData("{0} < CAST(? AS TIMESTAMP(3))", "(c.at < @p0)")]
+        [InlineData("? < {0}", "(c.at > @p0)")]
+        [InlineData("? >= {0}", "(c.at <= @p0)")]
+        public void EveryComparisonAgainstAParameterLowers(string shape, string rendered)
+        {
+            var (query, plan) = PlanParameter(string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, CastMilliseconds), MillisecondsPattern);
+
+            query.Sql.Should().Contain(rendered, query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+        }
+
+        /// <summary>
+        /// A value between two stored spellings is rounded onto the form in the direction the comparison
+        /// does not see, so the statement answers what the comparison against the value answers.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Against a seconds shape, half a second past noon. Nothing is stored between <c>12:00:00Z</c>
+        /// and <c>12:00:01Z</c>, so <c>&gt;</c> keeps what <c>&gt; 12:00:00Z</c> keeps and <c>&gt;=</c>
+        /// what <c>&gt;= 12:00:01Z</c> does; an equality is true of no stored value and an inequality of
+        /// every one, which the value written in full — at a precision no spelling has — gives both.
+        /// </para>
+        /// <para>
+        /// A literal that does not land is refused instead, and its comparison stays in process; a
+        /// parameter's statement is already written by the time its value is known.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(">", "2026-08-02T12:00:00Z")]
+        [InlineData("<=", "2026-08-02T12:00:00Z")]
+        [InlineData(">=", "2026-08-02T12:00:01Z")]
+        [InlineData("<", "2026-08-02T12:00:01Z")]
+        [InlineData("=", "2026-08-02T12:00:00.5000000Z")]
+        [InlineData("<>", "2026-08-02T12:00:00.5000000Z")]
+        public void AParameterBetweenTwoSpellingsIsRoundedTheWayTheComparisonNeeds(string op, string written)
+        {
+            var (query, _) = PlanParameter($"{CastSeconds} {op} CAST(? AS TIMESTAMP)", SecondsPattern);
+
+            Bound(query, Millis("2026-08-02T12:00:00.500Z")).Should().Be(written);
+            Bound(query, Millis("2026-08-02T12:00:00.000Z")).Should().Be("2026-08-02T12:00:00Z", "and a value that lands is written as it is");
+        }
+
+        /// <summary>
+        /// A parameter against a path whose form the cast does not read, or that declares none, stays in
+        /// process as it did.
+        /// </summary>
+        [Theory]
+        [InlineData(null)]
+        [InlineData(SecondsPattern)]
+        public void AParameterTheFormDoesNotLicenseIsNotPushed(string? pattern)
+        {
+            var (query, plan) = PlanParameter($"{CastMilliseconds} > CAST(? AS TIMESTAMP)", pattern);
+
+            query.Sql.Should().NotContain("c.at > @", query.Sql);
+            plan.Should().Contain("ClrCursorFilter", plan);
+        }
+
+        /// <summary>
+        /// A <c>DATE</c> parameter against a calendar date lowers too, the days Calcite holds it in
+        /// written as the date.
+        /// </summary>
+        [Fact]
+        public void ADateParameterIsWrittenAsTheStoredDate()
+        {
+            var (query, plan) = PlanParameter("""CAST(JSON_VALUE(c."DOC", '$.at') AS DATE FORMAT 'YYYY-MM-DD') = CAST(? AS DATE)""", "^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+
+            query.Sql.Should().Contain("(c.at = @p0)", query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+
+            Bound(query, java.lang.Integer.valueOf((int)(new System.DateTime(2026, 8, 2) - System.DateTime.UnixEpoch).TotalDays))
+                .Should().Be("2026-08-02");
+        }
+
+        /// <summary>
+        /// A data context holding the one value a run supplies.
+        /// </summary>
+        sealed class Context : org.apache.calcite.DataContext
+        {
+
+            readonly object _value;
+
+            public Context(object value) => _value = value;
+
+            public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;
+
+            public org.apache.calcite.adapter.java.JavaTypeFactory getTypeFactory() => null!;
+
+            public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
+
+            public object get(string name) => name == "?0" ? _value : null!;
+
+        }
+
     }
 
 }

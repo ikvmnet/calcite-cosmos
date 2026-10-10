@@ -160,9 +160,15 @@ the statement means what SQL means, in either polarity. `NOT (x = 1 AND y = 2)` 
 is null and `y` is not 2, exactly as SQL does. You do not need to write anything for this; it is
 mentioned so that the guards in a generated statement are not a surprise.
 
-`IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` and `IS DISTINCT FROM` are evaluated in process:
-reproducing their null semantics over a property that may be *absent* needs Cosmos behaviour that has
-not been measured, and a wrong answer is worse than a declined one.
+`IS TRUE`, `IS FALSE`, `IS NOT TRUE` and `IS NOT FALSE` reach the service over a boolean column —
+`CAST(JSON_VALUE(…) AS BOOLEAN)` — where the container's schema says the path holds a boolean
+(Chapter 14). The cast is then the stored value: `WHERE "Offline"` becomes `WHERE c.offline`,
+`"Offline" IS TRUE` becomes `c.offline = true`, and `IS NOT TRUE` keeps a document with no `offline`
+at all, as SQL does. Without the declaration the cast parses text — `"TRUE"` is true to Calcite and a
+string to Cosmos — and the test stays in process. Over anything else the truth tests, and
+`IS DISTINCT FROM`, are evaluated in process: reproducing their null semantics over a property that
+may be *absent* needs Cosmos behaviour that has not been measured, and a wrong answer is worse than a
+declined one.
 
 ## 8.5 Partition routing and point reads
 
@@ -267,7 +273,8 @@ can be exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — 
 is not known when the statement is planned. So the comparison is sent as `NOT IS_STRING(…) OR …` and
 rechecked; the rows are correct, the statement slightly wider. Declaring that the path holds a string
 (Chapter 14) makes it exact. Comparisons with parameters over `id`, `_ts`, `_etag` and `RETURNING`
-accessors are exact already.
+accessors are exact already, and so is a comparison of a declared instant with a parameter — the
+value is written in the stored spelling when the statement runs (Chapter 15).
 
 **Give a parameter a type where Calcite cannot infer one** — `CAST(? AS VARCHAR)` — so the plan can
 reason from it. A parameter's value also does not route the statement to a partition the way a
@@ -286,7 +293,7 @@ documents it has to read.
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection | it converts, and the service would not |
-| `IS TRUE`, `IS FALSE`, `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
+| `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |
 | an array literal, `ARRAY['x', 'y']` | not rendered yet — so functions taking one stay in process too |
 | a relational join, `UNION`, `INTERSECT`, `EXCEPT` | no Cosmos equivalent (Chapter 12) |

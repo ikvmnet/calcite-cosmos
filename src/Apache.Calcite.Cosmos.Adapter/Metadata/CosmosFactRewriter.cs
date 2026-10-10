@@ -81,12 +81,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return condition!;
 
             // The ordinary case, and the one that has to cost nothing: a container that declares
-            // nothing proves nothing, and asking is a field read.
-            if (container is null || container.Facts.IsEmpty)
+            // nothing proves nothing, and asking is a field read. A CASE is the one shape rewritten
+            // without a fact -- see TryFlattenCase -- and looking for one is a walk of the tree.
+            var declares = container is not null && container.Facts.IsEmpty == false;
+            if (declares == false && ContainsCase(condition) == false)
                 return condition;
 
-            var established = CosmosFactExtractor.Extract(condition, fields, rootAlias);
-            var known = container.Facts.Derive(established);
+            IReadOnlyList<CosmosFact> established = declares ? CosmosFactExtractor.Extract(condition, fields, rootAlias) : Array.Empty<CosmosFact>();
+            var known = declares ? container!.Facts.Derive(established) : CosmosFactSet.Empty;
 
             // Where the query's own conjuncts and the container's declaration cannot both hold, no
             // document satisfies the predicate -- so the equivalent predicate is the constant, and
@@ -112,10 +114,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // What holds of every document in the container, whatever this query proved. A
             // conjunct is redundant only against that, never against a fact the query's own
             // conjuncts unlocked -- see IsAlwaysTrue.
-            var outright = container.Facts.Derive(null);
+            var outright = declares ? container!.Facts.Derive(null) : CosmosFactSet.Empty;
 
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
-            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder, fields, outright);
+            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder, fields, outright, declares ? container : null, established);
 
             return rewritten ?? condition;
         }
@@ -140,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// batch point read becomes reachable through a typed column.
         /// </para>
         /// </remarks>
-        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright)
+        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
         {
             if (node is not RexCall call)
                 return null;
@@ -163,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 for (var i = 0; i < call.getOperands().size(); i++)
                 {
                     var operand = (RexNode)call.getOperands().get(i);
-                    var rewritten = Apply(operand, translator, known, rootAlias, rexBuilder, fields, outright);
+                    var rewritten = Apply(operand, translator, known, rootAlias, rexBuilder, fields, outright, container, established);
 
                     operands.add(rewritten ?? operand);
                     changed |= rewritten is not null;
@@ -179,6 +181,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (kind == nameof(SqlKind.__Enum.IS_NULL) || kind == nameof(SqlKind.__Enum.IS_NOT_NULL))
                 return TryLowerUuidNullTest(call, translator, known, rootAlias, rexBuilder);
+
+            if (kind == nameof(SqlKind.__Enum.CASE))
+                return TryFlattenCase(call, translator, known, rootAlias, rexBuilder, fields, outright, container, established);
 
             if (call.getOperands().size() != 2)
                 return null;
@@ -199,6 +204,166 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(left, right, comparison, translator, known, rootAlias, rexBuilder)
                 ?? TryLowerNumber(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
+        }
+
+        /// <summary>
+        /// Rewrites <c>CASE WHEN p THEN q ELSE FALSE END</c> in a filter as <c>p AND q</c>, lowering
+        /// both halves first, or returns <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Where it comes from.</b> A self-join merged into one read gives each view's columns as
+        /// <c>CASE WHEN &lt;that view's filter&gt; THEN … END</c> — see <c>CosmosSelfJoinRule</c> — and
+        /// a comparison through such a column simplifies to a <c>CASE</c> whose arms are a comparison
+        /// and <c>FALSE</c>. Through one view a host's simplifier takes that apart itself; through two,
+        /// <c>OR(CASE(base, CASE(type = 'park', parkId = X, false), false), …)</c> reached the filter
+        /// rules whole (#183). The translator writes a <c>CASE</c> as a ternary, and it declined this
+        /// one only because <c>parkId = X</c> compares a <c>UUID</c> the service has no form for —
+        /// which nothing here lowered, a <c>CASE</c> not having been walked into.
+        /// </para>
+        /// <para>
+        /// <b>Why the two select the same documents.</b> A filter keeps a row where its condition is
+        /// true, and through <c>AND</c> and <c>OR</c> — the only nodes this is reached through — that
+        /// depends only on where each part is true: replace a part by one true on the same rows and
+        /// the whole is true on the same rows, whatever the two answer elsewhere. The <c>CASE</c> is
+        /// true exactly where <c>p</c> is true and <c>q</c> is, its <c>ELSE</c> being false — or null,
+        /// which is true nowhere either — and <c>p AND q</c> is true exactly there too. Where <c>p</c>
+        /// is null the two differ, the <c>CASE</c> answering false and the conjunction null, and under
+        /// a <c>NOT</c> that would matter; nothing here is under one.
+        /// </para>
+        /// <para>
+        /// <b><c>q</c> is read only where <c>p</c> holds, so what <c>p</c> proves is in force there.</b>
+        /// A merged view's filter is exactly the discriminator that makes its columns mean what they
+        /// do, so <c>q</c> is lowered against the facts <c>p</c> establishes beside the ones the query's
+        /// own conjuncts do — the sibling-conjunct argument, one level down: over a row where <c>p</c>
+        /// is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. And where those
+        /// facts cannot hold together <c>p</c> is never true, so the <c>CASE</c> is the constant.
+        /// </para>
+        /// <para>
+        /// <b>Only where <c>q</c> cannot raise, which is the condition Calcite's own simplifier keeps
+        /// and the reason it left this alone.</b> A <c>CASE</c> evaluates <c>q</c> only where <c>p</c>
+        /// holds; a conjunction need not. Over a document of another kind the cast to <c>UUID</c> in
+        /// <c>parkId = X</c> may raise, and a conjunction rechecked in process could evaluate it there.
+        /// So the rewrite waits for the lowering: once <c>q</c> compares stored strings it raises
+        /// nowhere, and only then is the <c>CASE</c> taken apart. A <c>q</c> still holding a conversion
+        /// keeps its <c>CASE</c>, lowered inside where it could be.
+        /// </para>
+        /// <para>
+        /// <b>And it needs no fact.</b> The equivalence holds of any <c>CASE</c> of this shape, so a
+        /// container that declares nothing has one taken apart too — the one thing
+        /// <see cref="Rewrite"/> walks a predicate for when nothing is declared. A <c>CASE</c> with
+        /// more than one arm, or an <c>ELSE</c> that may be true, is not this shape and is left as the
+        /// ternary it already rendered as.
+        /// </para>
+        /// </remarks>
+        static RexNode? TryFlattenCase(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
+        {
+            if (call.getOperands().size() != 3 || (RexNode)call.getOperands().get(2) is not RexLiteral otherwise || (otherwise.isNull() || otherwise.isAlwaysFalse()) == false)
+                return null;
+
+            var condition = (RexNode)call.getOperands().get(0);
+            var value = (RexNode)call.getOperands().get(1);
+
+            var loweredCondition = Apply(condition, translator, known, rootAlias, rexBuilder, fields, outright, container, established) ?? condition;
+
+            // What the arm may lean on: everything the query proved, and what the condition proves of
+            // the rows the arm is read for.
+            var guarded = known;
+            var within = established;
+
+            if (container is not null)
+            {
+                var proved = new List<CosmosFact>(established);
+                proved.AddRange(CosmosFactExtractor.Extract(loweredCondition, fields, rootAlias));
+
+                guarded = container.Facts.Derive(proved);
+                within = proved;
+
+                if (guarded.IsContradictory)
+                    return rexBuilder.makeLiteral(false);
+            }
+
+            var loweredValue = Apply(value, translator, guarded, rootAlias, rexBuilder, fields, outright, container, within) ?? value;
+
+            if (IsSafe(loweredValue))
+                return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList { loweredCondition, loweredValue });
+
+            if (ReferenceEquals(loweredCondition, condition) && ReferenceEquals(loweredValue, value))
+                return null;
+
+            return rexBuilder.makeCall(call.getType(), call.getOperator(), new java.util.ArrayList { loweredCondition, loweredValue, otherwise });
+        }
+
+        /// <summary>
+        /// Determines whether evaluating an expression can raise.
+        /// </summary>
+        /// <remarks>
+        /// Conservative, and built from the inside: what is admitted is a short list of operators that
+        /// answer for every input — the connectives, the comparisons, the null and truth tests, a
+        /// <c>CASE</c>, the text accessor, which answers null where it has nothing to render, and the
+        /// service's type tests, whose in-process bodies answer false for what they cannot read. A
+        /// cast, an arithmetic operator and any function not named here are refused, which can only
+        /// leave a <c>CASE</c> in place. It is the test Calcite's simplifier applies before taking a
+        /// <c>CASE</c> apart, asked of the expression after the lowering rather than before it.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns><c>true</c> where no input makes it raise.</returns>
+        static bool IsSafe(RexNode node)
+        {
+            switch (node)
+            {
+                case RexInputRef:
+                case RexLiteral:
+                case RexDynamicParam:
+                    return true;
+
+                case RexCall call:
+                    var safe = call.getKind().name() switch
+                    {
+                        nameof(SqlKind.__Enum.AND) or nameof(SqlKind.__Enum.OR) or nameof(SqlKind.__Enum.NOT)
+                            or nameof(SqlKind.__Enum.EQUALS) or nameof(SqlKind.__Enum.NOT_EQUALS)
+                            or nameof(SqlKind.__Enum.LESS_THAN) or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL)
+                            or nameof(SqlKind.__Enum.GREATER_THAN) or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL)
+                            or nameof(SqlKind.__Enum.IS_NULL) or nameof(SqlKind.__Enum.IS_NOT_NULL)
+                            or nameof(SqlKind.__Enum.IS_TRUE) or nameof(SqlKind.__Enum.IS_NOT_TRUE)
+                            or nameof(SqlKind.__Enum.IS_FALSE) or nameof(SqlKind.__Enum.IS_NOT_FALSE)
+                            or nameof(SqlKind.__Enum.CASE) or nameof(SqlKind.__Enum.SEARCH) => true,
+                        _ => CosmosRexTranslator.IsTextJsonValue(call) && call.getOperands().size() == 2
+                            || CosmosOperators.IsAbsenceObserving(call.getOperator()),
+                    };
+
+                    if (safe == false)
+                        return false;
+
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        if (IsSafe((RexNode)call.getOperands().get(i)) == false)
+                            return false;
+
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a predicate holds a <c>CASE</c> anywhere.
+        /// </summary>
+        /// <param name="node">The predicate.</param>
+        /// <returns><c>true</c> where one is found.</returns>
+        static bool ContainsCase(RexNode node)
+        {
+            if (node is not RexCall call)
+                return false;
+
+            if (call.getKind().name() == nameof(SqlKind.__Enum.CASE))
+                return true;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                if (ContainsCase((RexNode)call.getOperands().get(i)))
+                    return true;
+
+            return false;
         }
 
         /// <summary>
@@ -428,7 +593,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// <para>
         /// <b>The literal is rendered into the path's own shape, and refused where it will not fit.</b>
-        /// <see cref="CosmosStoredForms.RenderDateTime"/> is what decides that, and why truncating
+        /// <see cref="CosmosStoredForms.RenderDateTime(CosmosRepresentation, DateTime)"/> is what decides that, and why truncating
         /// would not be sound is recorded there.
         /// </para>
         /// <para>
@@ -446,7 +611,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (literalNode is not RexLiteral literal || InstantOf(literal) is not DateTime value)
                 return null;
 
-            if (TextAccessorOf(temporalNode, rexBuilder, out var format, out var held) is not RexNode accessor)
+            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
+
+            if (TryStoredInstant(temporalNode, ordering, translator, known, rootAlias, out var representation) is not RexNode accessor)
+                return null;
+
+            if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
+                return null;
+
+            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+        }
+
+        /// <summary>
+        /// Returns the text accessor underneath an expression that reads a path as an instant, where
+        /// the path's declared form makes comparing the stored strings answer what comparing the
+        /// instants would — or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The license, asked apart from what the comparison is against, because two things ask it.
+        /// <see cref="TryLowerInstant"/> writes a literal in the form while the plan is made, and
+        /// <see cref="CosmosRexTranslator"/> binds a parameter to be written in it when the statement
+        /// runs. Whether the stored strings answer for the instants is a question about the path and
+        /// the comparison and not about the value, so it is one question asked in one place, and the
+        /// two cannot come to disagree about which paths they act on.
+        /// </para>
+        /// <para>
+        /// What the value then has to satisfy differs between them, and is theirs to ask: a literal
+        /// that does not land on the form is refused, and a parameter is rounded onto it — see
+        /// <see cref="CosmosTemporalRounding"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="temporalNode">The expression that may read a path as an instant.</param>
+        /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
+        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="rootAlias">The alias a path must be rooted at.</param>
+        /// <param name="representation">On success, the path's declared form.</param>
+        /// <returns>The text accessor, or <c>null</c>.</returns>
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, out CosmosRepresentation representation)
+        {
+            representation = default;
+
+            if (TextAccessorOf(temporalNode, out var format, out var held) is not RexNode accessor)
                 return null;
 
             if (translator.TryResolvePath(accessor, out var path) == false || path is null)
@@ -458,12 +665,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation representation)
+            if (known.RepresentationOf(document) is not CosmosRepresentation declared)
                 return null;
 
-            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
-
-            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+            if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
                 return null;
 
             // A parse names how the text is read and is licensed by the format reading the shape; a
@@ -471,14 +676,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // is optional: dropping a conversion the engine would have failed at answers rows where
             // the query answers an error, which is a different query rather than a faster one.
             if (format is not null
-                ? CosmosStoredForms.ParsesExactly(representation, format, held) == false
-                : CosmosStoredForms.EngineReads(representation, held) == false)
+                ? CosmosStoredForms.ParsesExactly(declared, format, held) == false
+                : CosmosStoredForms.EngineReads(declared, held) == false)
                 return null;
 
-            if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
-                return null;
-
-            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+            representation = declared;
+            return accessor;
         }
 
         /// <summary>
@@ -663,14 +866,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
-        /// <param name="rexBuilder">Builds the rebuilt accessor.</param>
         /// <param name="format">
         /// On success, the format a parse reads the text with, or <c>null</c> where the expression
         /// names no format and the conversion is Calcite's own.
         /// </param>
         /// <param name="held">On success, the halves of an instant the expression's value holds.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        static RexNode? TextAccessorOf(RexNode node, RexBuilder rexBuilder, out string? format, out CosmosTemporalParts held)
+        static RexNode? TextAccessorOf(RexNode node, out string? format, out CosmosTemporalParts held)
         {
             format = null;
             held = CosmosTemporalParts.None;
@@ -706,7 +908,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// The value rather than a spelling, for the reason <see cref="UuidOf"/> gives: which spelling
         /// a conforming document stores is the path form to say, and
-        /// <see cref="CosmosStoredForms.RenderDateTime"/> is what says it.
+        /// <see cref="CosmosStoredForms.RenderDateTime(CosmosRepresentation, DateTime)"/> is what says it.
         /// </para>
         /// <para>
         /// <b>Read from the calendar rather than from its text.</b> Measured: <c>getValue</c> answers a

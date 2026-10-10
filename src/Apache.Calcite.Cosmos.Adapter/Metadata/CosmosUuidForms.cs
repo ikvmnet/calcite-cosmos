@@ -120,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// Read by <see cref="Render"/> the way <see cref="CosmosTemporalForms.Temporal"/> is read by
-        /// <see cref="CosmosTemporalForms.Render"/>: recognition hands back a name, and writing a
+        /// <see cref="CosmosTemporalForms.Render(CosmosRepresentation, DateTime)"/>: recognition hands back a name, and writing a
         /// literal needs the shape the name stands for.
         /// </remarks>
         static readonly Dictionary<string, UuidSpelling> Uuids = BuildUuids();

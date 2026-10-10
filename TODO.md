@@ -620,9 +620,13 @@ is not offered, and one thing that cannot be fixed here at all.
   it); `LIKE` with `ESCAPE`, and a bracket-escaping rewrite that would lift the bracket-pattern
   decline (Cosmos `LIKE` reads `[…]` as a character range where SQL does not — measured, and why
   bracket and computed patterns are refused); `TRIM` of a non-space character and `TRUNCATE` to
-  decimal places, both needing Cosmos's two-argument arity **verified** first; `IS TRUE`/`IS FALSE`/
-  `IS DISTINCT FROM`, expressible with the `??` operator once the null-versus-undefined semantics are
-  measured.
+  decimal places, both needing Cosmos's two-argument arity **verified** first; `IS DISTINCT FROM`,
+  expressible with the `??` operator once the null-versus-undefined semantics are measured. `IS TRUE`
+  and its family are written over a stored boolean since #181 — `DESIGN.md` under *A cast to a boolean
+  is the stored boolean* — and remain declined over anything else, an arbitrary expression's undefined
+  arising where a test written at the path cannot see it. `JSON_VALUE(…, RETURNING BOOLEAN)` is the
+  nearest candidate to take next: it asserts a boolean rather than parsing one, so it needs no
+  declaration to be the stored value, and nothing has asked.
 
 #### The whole surface, enumerated
 
@@ -1125,6 +1129,14 @@ the distribution the gate is sized for.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
+- **A `JSON_VALUE` behaviour clause is dropped from a projection** — *small, and a wrong answer.*
+  `SELECT JSON_VALUE(c."DOC", '$.flag' DEFAULT 'none' ON EMPTY)` renders as
+  `(IS_PRIMITIVE(c.flag) ? c.flag : null)`, so a document with no `flag` reads null where Calcite
+  answers `'none'` — found beside #181, and older than it. `IsJsonAccessor` admits a `JSON_VALUE` of
+  any operand count and `TryJsonValueProjection` never reads the trailing ones, and the same leniency
+  binds such a column to the bare path as text, which is why #181's boolean cast refuses a field. The
+  sound answer is to address no path for a clause that substitutes a value; rendering `DEFAULT … ON
+  EMPTY` as an `IS_DEFINED` ternary is the cheaper one, once Calcite's own answers are measured.
 
 ---
 
@@ -1521,6 +1533,31 @@ reaches the service too, so the rows the ordering sees are rows the equality alr
 string. The circularity is only where the fact comes from the conjunct being translated, which cannot
 confine anything it is itself the test of.
 
+**A declared instant took the parameter too (#182).** A comparison of a stored instant against `?` is
+written in the path's own spelling when the statement runs, the slot carrying the form and the way a
+value between two spellings rounds — `DESIGN.md` under *A prepared statement's value belongs to the
+execution*. The UUID and the numeric forms still lower against a literal only: the same move would
+take them, with a UUID written into its form and an integer into its width, and nothing has asked.
+
+### A null parameter is not SQL's null at the service — *small, found beside #182, and older than it*
+
+A parameter is bound as it arrives, and a SQL `NULL` arrives as a JSON `null`, which the service compares
+as a value. Measured against the emulator, over one path holding `true`, `false`, `null`, a string, a
+number and nothing:
+
+| | keeps | SQL keeps |
+| --- | --- | --- |
+| `c.flag = @n` | the document storing `null` | nothing |
+| `c.flag != @n`, `NOT (c.flag = @n)` | every document holding something other than `null` | nothing |
+| `c.flag > @n` | nothing | nothing |
+
+So every parameterised equality, inequality and negated equality answers rows a null parameter should
+not, and the guards `WriteComparison` writes are about a null at the *path*. The repair is a guard on
+the parameter in those positions — `NOT IS_NULL(@p0)` beside the comparison — which costs nothing where
+the value is not null. A host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity
+Framework does, never sends one, which is likely why nothing has reported it. Not measured against an
+account.
+
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
 A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical
@@ -1615,6 +1652,11 @@ across documents* and *A join of a container to itself* is the record.
   service proves.
 - **Semi and anti joins** — *small.* The substitution answers them: `σ(F ∧ M)` and `σ(F ∧ NOT M IS TRUE)`.
   Nothing has asked for them.
+- **A filter through merged views, in the shapes #183 did not take** — *small each.* `CASE WHEN p THEN q
+  ELSE FALSE` becomes `p AND q` once `q` cannot raise, which is the shape a host's simplifier leaves. Two
+  others are left as they were: a `CASE` of more than one arm, whose later arms need `NOT p IS TRUE`
+  beside them, and a comparison against a merged column that no simplifier has pushed into its `CASE` —
+  `CASE(M, v, null) = X`, which a bare planner leaves and which is `M AND v = X` by the same argument.
 - **How a legacy container's system partition key is reported** — *measurement.* Believed to be
   `/_partitionKey`, which its documents do not hold, so `UNIQUE (_partitionKey, id)` is stated — true,
   and never matched — where `UNIQUE (id)` would be. Measure against an account holding one.
