@@ -290,11 +290,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var known = Known(value, translator, rootAlias);
 
-            var typed = known is not null && admits.Any(claim => translator.Facts.Knows(new CosmosFact(known, claim)));
+            var typed = known is CosmosDocumentPath path && admits.Any(claim => translator.Facts.Knows(new CosmosFact(path, claim)));
             if (typed)
                 return comparison;
 
-            var present = known is not null && translator.Facts.Knows(new CosmosFact(known, new CosmosClaim.Present()));
+            var present = known is CosmosDocumentPath held && translator.Facts.Knows(new CosmosFact(held, new CosmosClaim.Present()));
 
             var admitted = RexUtil.composeDisjunction(rexBuilder, new java.util.ArrayList
             {

@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns>The forms, which may be empty.</returns>
         public IReadOnlyList<ICosmosStoredForm> FormsOf(CosmosDocumentPath path)
         {
-            if (path is null || _byPath.TryGetValue(path, out var known) == false)
+            if (_byPath.TryGetValue(path, out var known) == false)
                 return Array.Empty<ICosmosStoredForm>();
 
             var forms = new List<ICosmosStoredForm>();
@@ -115,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns>The claims, which may be empty.</returns>
         public IReadOnlyList<CosmosClaim> ClaimsFor(CosmosDocumentPath path)
         {
-            if (path is null || _byPath.TryGetValue(path, out var known) == false)
+            if (_byPath.TryGetValue(path, out var known) == false)
                 return Array.Empty<CosmosClaim>();
 
             var claims = new CosmosClaim[known.Count];
@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns><c>true</c> where every document holds a scalar of a known type there.</returns>
         public bool IsAlwaysScalar(CosmosDocumentPath path)
         {
-            if (path is null || Knows(new CosmosFact(path, new CosmosClaim.Present())) == false)
+            if (Knows(new CosmosFact(path, new CosmosClaim.Present())) == false)
                 return false;
 
             foreach (var claim in ClaimsFor(path))

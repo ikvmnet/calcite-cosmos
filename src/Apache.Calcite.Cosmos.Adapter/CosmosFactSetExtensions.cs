@@ -72,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <returns><c>true</c> where every document holds a geography there.</returns>
         public static bool IsAlwaysGeography(this CosmosFactSet facts, CosmosDocumentPath path)
         {
-            return path is not null && facts.Knows(new CosmosFact(path, new CosmosGeography()));
+            return facts.Knows(new CosmosFact(path, new CosmosGeography()));
         }
 
     }

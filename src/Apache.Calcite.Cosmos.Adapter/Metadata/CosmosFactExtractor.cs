@@ -113,12 +113,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 case nameof(SqlKind.__Enum.EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var path, out var value))
-                        facts.Add(new CosmosFact(path!, new CosmosClaim.EqualTo(value)));
+                        facts.Add(new CosmosFact(path!.Value, new CosmosClaim.EqualTo(value)));
                     break;
 
                 case nameof(SqlKind.__Enum.NOT_EQUALS) when call.getOperands().size() == 2:
                     if (TryComparison(call, fields, rootAlias, out var excludedPath, out var excluded))
-                        facts.Add(new CosmosFact(excludedPath!, new CosmosClaim.NotEqualTo(excluded)));
+                        facts.Add(new CosmosFact(excludedPath!.Value, new CosmosClaim.NotEqualTo(excluded)));
                     break;
 
                 // A value that is not null is a value the path has. The converse does not hold — a
@@ -132,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // exactly when every branch is an equality on one path.
                 case nameof(SqlKind.__Enum.OR):
                     if (TryDomain(call, fields, rootAlias, out var domainPath, out var domain))
-                        facts.Add(new CosmosFact(domainPath!, new CosmosClaim.OneOf(domain!)));
+                        facts.Add(new CosmosFact(domainPath!.Value, new CosmosClaim.OneOf(domain!)));
                     break;
 
                 default:

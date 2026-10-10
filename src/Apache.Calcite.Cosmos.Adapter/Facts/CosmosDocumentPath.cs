@@ -22,38 +22,89 @@ namespace Apache.Calcite.Cosmos.Facts
     /// to answer what <c>$.tags[0]</c> means against a fact declared for <c>items</c>. See
     /// <c>TODO.md</c> under <em>Facts about array elements</em>.
     /// </para>
+    /// <para>
+    /// <b>A value, and a struct for that reason.</b> Two paths naming the same properties are the same
+    /// path, wherever each was built, and a path is a dictionary key far more often than it is anything
+    /// else. Its <c>default</c> is <see cref="Root"/>, so a path nothing initialised is the document
+    /// rather than a value that cannot be asked anything. Where a caller has no path to give, it says so
+    /// with <c>CosmosDocumentPath?</c>.
+    /// </para>
+    /// <para>
+    /// <b>A list that shares its prefixes.</b> Every path is built from a shorter one by
+    /// <see cref="Property"/>, so a path is its last name and a reference to the path before it: one
+    /// small node per step, and the paths a schema walk builds under one object share that object's
+    /// nodes rather than each copying its names. The hash is built the same way, from the parent's, so
+    /// nothing is ever recomputed; and two paths built from the same prefix answer equality at the
+    /// first node they share.
+    /// </para>
     /// </remarks>
-    public sealed class CosmosDocumentPath : IEquatable<CosmosDocumentPath>
+    public readonly struct CosmosDocumentPath : IEquatable<CosmosDocumentPath>
     {
 
         /// <summary>
-        /// The document itself, which is the path every walk starts from.
+        /// One step of a path: its last name, and the path it extends.
         /// </summary>
-        public static readonly CosmosDocumentPath Root = new(Array.Empty<string>());
-
-        readonly string[] _names;
-        readonly int _hash;
-
-        CosmosDocumentPath(string[] names)
+        sealed class Node
         {
-            _names = names;
 
-            var hash = new HashCode();
-            foreach (var name in names)
-                hash.Add(name, StringComparer.Ordinal);
+            public Node(Node? parent, string name)
+            {
+                Parent = parent;
+                Name = name;
+                Depth = (parent?.Depth ?? 0) + 1;
+                Hash = HashCode.Combine(parent?.Hash ?? 0, StringComparer.Ordinal.GetHashCode(name));
+            }
 
-            _hash = hash.ToHashCode();
+            public Node? Parent { get; }
+
+            public string Name { get; }
+
+            public int Depth { get; }
+
+            public int Hash { get; }
+
+        }
+
+        /// <summary>
+        /// The document itself, which is the path every walk starts from. The same as <c>default</c>.
+        /// </summary>
+        public static readonly CosmosDocumentPath Root = default;
+
+        // Null for the root, which is what the default value holds.
+        readonly Node? _last;
+
+        CosmosDocumentPath(Node last)
+        {
+            _last = last;
         }
 
         /// <summary>
         /// Gets the property names, outermost first.
         /// </summary>
-        public IReadOnlyList<string> Names => _names;
+        /// <remarks>
+        /// Built when asked, the list being stored innermost first.
+        /// </remarks>
+        public IReadOnlyList<string> Names
+        {
+            get
+            {
+                var names = new string[Depth];
+                for (var node = _last; node is not null; node = node.Parent)
+                    names[node.Depth - 1] = node.Name;
+
+                return names;
+            }
+        }
+
+        /// <summary>
+        /// Gets how many property names the path has; the root has none.
+        /// </summary>
+        public int Depth => _last?.Depth ?? 0;
 
         /// <summary>
         /// Gets whether this is the document itself.
         /// </summary>
-        public bool IsRoot => _names.Length == 0;
+        public bool IsRoot => _last is null;
 
         /// <summary>
         /// Returns this path with a property access appended.
@@ -66,35 +117,45 @@ namespace Apache.Calcite.Cosmos.Facts
             if (name is null)
                 throw new ArgumentNullException(nameof(name));
 
-            var names = new string[_names.Length + 1];
-            Array.Copy(_names, names, _names.Length);
-            names[_names.Length] = name;
-
-            return new CosmosDocumentPath(names);
+            return new CosmosDocumentPath(new Node(_last, name));
         }
 
         /// <inheritdoc />
-        public bool Equals(CosmosDocumentPath? other)
+        public bool Equals(CosmosDocumentPath other)
         {
-            if (other is null)
-                return false;
-            if (ReferenceEquals(this, other))
-                return true;
-            if (_hash != other._hash || _names.Length != other._names.Length)
-                return false;
+            var left = _last;
+            var right = other._last;
 
-            for (var i = 0; i < _names.Length; i++)
-                if (string.Equals(_names[i], other._names[i], StringComparison.Ordinal) == false)
+            while (true)
+            {
+                // A shared node shares everything before it too.
+                if (ReferenceEquals(left, right))
+                    return true;
+                if (left is null || right is null)
+                    return false;
+                if (left.Hash != right.Hash || left.Depth != right.Depth || string.Equals(left.Name, right.Name, StringComparison.Ordinal) == false)
                     return false;
 
-            return true;
+                left = left.Parent;
+                right = right.Parent;
+            }
         }
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is CosmosDocumentPath other && Equals(other);
 
         /// <inheritdoc />
-        public override int GetHashCode() => _hash;
+        public override int GetHashCode() => _last?.Hash ?? 0;
+
+        /// <summary>
+        /// Determines whether two paths name the same properties.
+        /// </summary>
+        public static bool operator ==(CosmosDocumentPath left, CosmosDocumentPath right) => left.Equals(right);
+
+        /// <summary>
+        /// Determines whether two paths name different properties.
+        /// </summary>
+        public static bool operator !=(CosmosDocumentPath left, CosmosDocumentPath right) => left.Equals(right) == false;
 
         /// <summary>
         /// Renders the path the way a JSON pointer expression reads, for diagnostics.
@@ -104,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             var builder = new StringBuilder("$");
 
-            foreach (var name in _names)
+            foreach (var name in Names)
                 builder.Append('.').Append(name);
 
             return builder.ToString();

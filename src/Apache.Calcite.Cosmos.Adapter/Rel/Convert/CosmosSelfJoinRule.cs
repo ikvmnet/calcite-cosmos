@@ -344,8 +344,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (equated.Contains(lk) == false)
                     equated.Add(lk);
 
-                if (TryKeyPath(lk, translator, facts, out var path) && path is not null && paths.Contains(path) == false)
-                    paths.Add(path);
+                if (TryKeyPath(lk, translator, facts, out var path) && path is CosmosDocumentPath key && paths.Contains(key) == false)
+                    paths.Add(key);
             }
 
             if (equated.Count == 0)
@@ -535,7 +535,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 path = CosmosDocumentPaths.From(resolved);
-                return path is not null && facts.RepresentationOf(path) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
+                return path is CosmosDocumentPath uuid && facts.RepresentationOf(uuid) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
             }
 
             var value = CosmosRexTranslator.StripRedundantTextCast(node);
@@ -546,7 +546,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
 
             path = CosmosDocumentPaths.From(accessed);
-            return path is not null && IsOneScalarType(facts, path);
+            return path is CosmosDocumentPath scalar && IsOneScalarType(facts, scalar);
         }
 
         /// <summary>

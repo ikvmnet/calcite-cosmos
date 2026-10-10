@@ -630,8 +630,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosFactExtractor.TryComparison(call, fields, rootAlias, out var path, out var value) == false || path is null)
                 return false;
 
-            return outright.Knows(new CosmosFact(path, new CosmosClaim.Present()))
-                && outright.Knows(new CosmosFact(path, new CosmosClaim.EqualTo(value)));
+            return outright.Knows(new CosmosFact(path.Value, new CosmosClaim.Present()))
+                && outright.Knows(new CosmosFact(path.Value, new CosmosClaim.EqualTo(value)));
         }
 
         /// <summary>
