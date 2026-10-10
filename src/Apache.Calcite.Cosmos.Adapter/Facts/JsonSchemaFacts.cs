@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-using com.fasterxml.jackson.databind;
+using System.Text.Json.Nodes;
 
 namespace Apache.Calcite.Cosmos.Facts
 {
@@ -74,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
-            if (node is null || node.isObject() == false)
+            if (node is null || node is not JsonObject)
                 return;
 
             // A reference is followed rather than inlined, and a cycle stops here. A recursive schema
@@ -99,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (declared is var (type, orNull))
                 State(new JsonClaim.OfType(type, orNull));
 
-            if (node.get("const") is JsonNode constant && TryLiteral(constant, out var constantValue))
+            if (node.TryMember("const", out var constant) && TryLiteral(constant, out var constantValue))
                 State(new JsonClaim.EqualTo(constantValue));
 
             if (ReadEnum(node) is IReadOnlyList<object?> domain)
@@ -125,36 +125,29 @@ namespace Apache.Calcite.Cosmos.Facts
             // says nothing at all where there is no object to constrain. So a nested one carries the
             // parent's own presence in its guard, which chains the whole way up; the document itself
             // needs no such guard, being what every path is read out of.
-            if (node.get("required") is JsonNode required && required.isArray())
+            if (node.Get("required") is JsonNode required && required is JsonArray)
             {
                 var carrier = path.IsRoot
                     ? guard
                     : Extend(guard, new JsonFact(path, new JsonClaim.Present()));
 
-                for (var i = 0; i < required.size(); i++)
-                    if (required.get(i)?.isTextual() == true)
-                        rules.Add(new JsonFactRule(carrier, new JsonFact(path.Property(required.get(i).asText()), new JsonClaim.Present())));
+                for (var i = 0; i < required.Size(); i++)
+                    if (required.At(i).Text() is string name)
+                        rules.Add(new JsonFactRule(carrier, new JsonFact(path.Property(name), new JsonClaim.Present())));
             }
 
-            if (node.get("properties") is JsonNode properties && properties.isObject())
-            {
-                var fields = properties.fields();
-                while (fields.hasNext())
-                {
-                    var field = (java.util.Map.Entry)fields.next();
-                    if (field.getKey()?.ToString() is string name)
-                        Walk((JsonNode?)field.getValue(), path.Property(name), guard, rules, resolver, recognisers, visiting);
-                }
-            }
+            if (node.Get("properties") is JsonObject properties)
+                foreach (var (name, subschema) in properties)
+                    Walk(subschema, path.Property(name), guard, rules, resolver, recognisers, visiting);
 
             // allOf is a conjunction: every branch applies, so every branch's facts hold under the
             // same guard.
-            if (node.get("allOf") is JsonNode all && all.isArray())
-                for (var i = 0; i < all.size(); i++)
-                    Walk(all.get(i), path, guard, rules, resolver, recognisers, visiting);
+            if (node.Get("allOf") is JsonNode all && all is JsonArray)
+                for (var i = 0; i < all.Size(); i++)
+                    Walk(all.At(i), path, guard, rules, resolver, recognisers, visiting);
 
-            WalkBranches(node.get("oneOf"), node, path, guard, rules, resolver, recognisers, visiting);
-            WalkBranches(node.get("anyOf"), node, path, guard, rules, resolver, recognisers, visiting);
+            WalkBranches(node.Get("oneOf"), node, path, guard, rules, resolver, recognisers, visiting);
+            WalkBranches(node.Get("anyOf"), node, path, guard, rules, resolver, recognisers, visiting);
             WalkConditional(node, path, guard, rules, resolver, recognisers, visiting);
             WalkDependencies(node, path, guard, rules, resolver, recognisers, visiting);
             WalkNegation(node, path, guard, rules, resolver, recognisers);
@@ -183,35 +176,24 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
-            if (node.get("dependentRequired") is JsonNode dependent && dependent.isObject())
+            if (node.Get("dependentRequired") is JsonObject dependent)
             {
-                var entries = dependent.fields();
-                while (entries.hasNext())
+                foreach (var (trigger, names) in dependent)
                 {
-                    var entry = (java.util.Map.Entry)entries.next();
-                    if (entry.getKey()?.ToString() is not string trigger || (JsonNode?)entry.getValue() is not JsonNode names || names.isArray() == false)
+                    if (names is not JsonArray)
                         continue;
 
                     var when = Extend(guard, new JsonFact(path.Property(trigger), new JsonClaim.Present()));
 
-                    for (var i = 0; i < names.size(); i++)
-                        if (names.get(i)?.isTextual() == true)
-                            rules.Add(new JsonFactRule(when, new JsonFact(path.Property(names.get(i).asText()), new JsonClaim.Present())));
+                    for (var i = 0; i < names.Size(); i++)
+                        if (names.At(i).Text() is string name)
+                            rules.Add(new JsonFactRule(when, new JsonFact(path.Property(name), new JsonClaim.Present())));
                 }
             }
 
-            if (node.get("dependentSchemas") is JsonNode schemas && schemas.isObject())
-            {
-                var entries = schemas.fields();
-                while (entries.hasNext())
-                {
-                    var entry = (java.util.Map.Entry)entries.next();
-                    if (entry.getKey()?.ToString() is not string trigger)
-                        continue;
-
-                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new JsonFact(path.Property(trigger), new JsonClaim.Present())), rules, resolver, recognisers, visiting);
-                }
-            }
+            if (node.Get("dependentSchemas") is JsonObject schemas)
+                foreach (var (trigger, subschema) in schemas)
+                    Walk(subschema, path, Extend(guard, new JsonFact(path.Property(trigger), new JsonClaim.Present())), rules, resolver, recognisers, visiting);
         }
 
         /// <summary>
@@ -240,23 +222,23 @@ namespace Apache.Calcite.Cosmos.Facts
             List<JsonFactRule> rules,
             JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
-            if (resolver.Follow(node.get("not")) is not JsonNode negated || negated.isObject() == false)
+            if (resolver.Follow(node.Get("not")) is not JsonNode negated || negated is not JsonObject)
                 return;
 
-            if (negated.size() != 1 || negated.get("properties") is not JsonNode properties || properties.isObject() == false || properties.size() != 1)
+            if (negated.Size() != 1 || negated.Get("properties") is not JsonObject properties || properties.Count != 1)
                 return;
 
-            var field = (java.util.Map.Entry)properties.fields().next();
-            if (field.getKey()?.ToString() is not string name || resolver.Follow((JsonNode?)field.getValue()) is not JsonNode subschema)
+            var (name, property) = System.Linq.Enumerable.First(properties);
+            if (resolver.Follow(property) is not JsonNode subschema)
                 return;
 
-            if (subschema.size() != 1)
+            if (subschema.Size() != 1)
                 return;
 
             var child = path.Property(name);
             var excluded = new List<object?>();
 
-            if (subschema.get("const") is JsonNode constant && TryLiteral(constant, out var value))
+            if (subschema.TryMember("const", out var constant) && TryLiteral(constant, out var value))
                 excluded.Add(value);
             else if (ReadEnum(subschema) is IReadOnlyList<object?> domain)
                 excluded.AddRange(domain);
@@ -319,23 +301,23 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
-            if (branches is null || branches.isArray() == false || branches.size() == 0)
+            if (branches is null || branches is not JsonArray || branches.Size() == 0)
                 return;
 
             if (FindDiscriminator(branches, parent, resolver, recognisers) is string discriminator)
             {
                 var walked = new List<Branch>();
 
-                for (var i = 0; i < branches.size(); i++)
+                for (var i = 0; i < branches.Size(); i++)
                 {
                     // The branch as written, not as resolved: a mapping names its target by the
                     // reference, which following it would have thrown away.
-                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
+                    if (branches.At(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
                         continue;
 
                     var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
                     var stated = new List<JsonFactRule>();
-                    Walk(branches.get(i), path, selected, stated, resolver, recognisers, visiting);
+                    Walk(branches.At(i), path, selected, stated, resolver, recognisers, visiting);
 
                     rules.AddRange(stated);
                     walked.Add(new Branch(selected.Count, stated));
@@ -345,7 +327,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 // the per-branch facts pay only where a query proves the discriminator, and a query
                 // over every kind proves none (#175). Only where every branch was read -- a branch
                 // left out is one the meet would be claiming for without having asked.
-                if (walked.Count == branches.size())
+                if (walked.Count == branches.Size())
                     rules.AddRange(Meet(walked, guard));
 
                 return;
@@ -365,10 +347,10 @@ namespace Apache.Calcite.Cosmos.Facts
 
             var each = new List<Branch>();
 
-            for (var i = 0; i < branches.size(); i++)
+            for (var i = 0; i < branches.Size(); i++)
             {
                 var stated = new List<JsonFactRule>();
-                Walk(branches.get(i), path, guard, stated, resolver, recognisers, visiting);
+                Walk(branches.At(i), path, guard, stated, resolver, recognisers, visiting);
                 each.Add(new Branch(guard.Count, stated));
             }
 
@@ -549,9 +531,9 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonNode? remaining = null;
             var nulls = 0;
 
-            for (var i = 0; i < branches.size(); i++)
+            for (var i = 0; i < branches.Size(); i++)
             {
-                if (branches.get(i) is not JsonNode branch)
+                if (branches.At(i) is not JsonNode branch)
                     return null;
 
                 if (AdmitsOnlyNull(resolver.Follow(branch)))
@@ -582,22 +564,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns><c>true</c> where the only value it admits is a JSON null.</returns>
         static bool AdmitsOnlyNull(JsonNode? node)
         {
-            if (node is null || node.isObject() == false)
+            if (node is not JsonObject obj)
                 return false;
 
             var constrained = false;
-            var fields = node.fields();
 
-            while (fields.hasNext())
+            foreach (var (keyword, value) in obj)
             {
-                var field = (java.util.Map.Entry)fields.next();
-                var value = (JsonNode?)field.getValue();
-
-                switch (field.getKey()?.ToString())
+                switch (keyword)
                 {
                     case "type" when ReadType(node) is (JsonType.Null, _):
-                    case "type" when value is not null && value.isArray() && value.size() == 1 && value.get(0)?.asText() == "null":
-                    case "const" when value is not null && value.isNull():
+                    case "type" when value is JsonArray && value.Size() == 1 && value.At(0).Text() == "null":
+                    case "const" when value is null:
                     case "enum" when ReadEnum(node) is IReadOnlyList<object?> domain && OnlyNulls(domain):
                         constrained = true;
                         break;
@@ -694,20 +672,20 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
-            if (node.get("if") is not JsonNode condition)
+            if (node.Get("if") is not JsonNode condition)
                 return;
 
             if (TryConditionAtoms(condition, path, resolver, recognisers, out var atoms) == false)
                 return;
 
-            if (node.get("then") is JsonNode then)
+            if (node.Get("then") is JsonNode then)
             {
                 var extended = new List<JsonFact>(guard);
                 extended.AddRange(atoms);
                 Walk(then, path, extended, rules, resolver, recognisers, visiting);
             }
 
-            if (node.get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is JsonClaim.EqualTo equality)
+            if (node.Get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is JsonClaim.EqualTo equality)
             {
                 var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
                 Walk(otherwise, path, extended, rules, resolver, recognisers, visiting);
@@ -730,24 +708,17 @@ namespace Apache.Calcite.Cosmos.Facts
 
             condition = resolver.Follow(condition) ?? condition;
 
-            if (condition.isObject() == false)
+            if (condition is not JsonObject obj)
                 return false;
 
-            var fields = condition.fields();
-            while (fields.hasNext())
+            foreach (var (keyword, value) in obj)
             {
-                var field = (java.util.Map.Entry)fields.next();
-                var keyword = field.getKey()?.ToString();
-                var value = (JsonNode?)field.getValue();
-
                 switch (keyword)
                 {
-                    case "properties" when value is not null && value.isObject():
-                        var properties = value.fields();
-                        while (properties.hasNext())
+                    case "properties" when value is JsonObject properties:
+                        foreach (var (name, subschema) in properties)
                         {
-                            var property = (java.util.Map.Entry)properties.next();
-                            if (property.getKey()?.ToString() is not string name || (JsonNode?)property.getValue() is not JsonNode subschema)
+                            if (subschema is null)
                                 return false;
 
                             if (TryPropertyCondition(subschema, path.Property(name), resolver, recognisers, found) == false)
@@ -756,10 +727,10 @@ namespace Apache.Calcite.Cosmos.Facts
 
                         break;
 
-                    case "required" when value is not null && value.isArray():
-                        for (var i = 0; i < value.size(); i++)
-                            if (value.get(i)?.isTextual() == true)
-                                found.Add(new JsonFact(path.Property(value.get(i).asText()), new JsonClaim.Present()));
+                    case "required" when value is JsonArray:
+                        for (var i = 0; i < value.Size(); i++)
+                            if (value.At(i).Text() is string name)
+                                found.Add(new JsonFact(path.Property(name), new JsonClaim.Present()));
                             else
                                 return false;
 
@@ -791,25 +762,21 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             subschema = resolver.Follow(subschema) ?? subschema;
 
-            if (subschema.isObject() == false)
+            if (subschema is not JsonObject obj)
                 return false;
 
             var before = found.Count;
-            var fields = subschema.fields();
 
-            while (fields.hasNext())
+            foreach (var (keyword, value) in obj)
             {
-                var field = (java.util.Map.Entry)fields.next();
-                var keyword = field.getKey()?.ToString();
-                var value = (JsonNode?)field.getValue();
-
                 switch (keyword)
                 {
-                    case "const" when value is not null && TryLiteral(value, out var constant):
+                    // A null here is the JSON null the const names, the member being there.
+                    case "const" when TryLiteral(value, out var constant):
                         found.Add(new JsonFact(path, new JsonClaim.EqualTo(constant)));
                         break;
 
-                    case "enum" when value is not null && ReadEnum(subschema) is IReadOnlyList<object?> domain:
+                    case "enum" when ReadEnum(subschema) is IReadOnlyList<object?> domain:
                         found.Add(new JsonFact(path, new JsonClaim.OneOf(domain)));
                         break;
 
@@ -855,16 +822,15 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         static string? FindDiscriminator(JsonNode branches, JsonNode parent, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
-            if (parent.get("discriminator")?.get("propertyName") is JsonNode named && named.isTextual())
-                return Pins(branches, parent, named.asText(), resolver, recognisers) ? named.asText() : null;
+            if (parent.Get("discriminator")?.Get("propertyName") is JsonNode named && named.Text() is not null)
+                return Pins(branches, parent, named.Text(), resolver, recognisers) ? named.Text() : null;
 
-            var first = resolver.Follow(branches.get(0));
-            if (first?.get("properties") is not JsonNode properties || properties.isObject() == false)
+            var first = resolver.Follow(branches.At(0));
+            if (first?.Get("properties") is not JsonNode properties || properties is not JsonObject)
                 return null;
 
-            var candidates = properties.fieldNames();
-            while (candidates.hasNext())
-                if (candidates.next()?.ToString() is string name && Pins(branches, parent, name, resolver, recognisers))
+            foreach (var (name, _) in (JsonObject)properties)
+                if (Pins(branches, parent, name, resolver, recognisers))
                     return name;
 
             return null;
@@ -882,9 +848,9 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             var seen = new List<object?>();
 
-            for (var i = 0; i < branches.size(); i++)
+            for (var i = 0; i < branches.Size(); i++)
             {
-                if (branches.get(i) is not JsonNode branch)
+                if (branches.At(i) is not JsonNode branch)
                     return false;
 
                 if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || JsonClaim.OneOf.Contains(seen, value))
@@ -907,26 +873,24 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
-            if (resolver.Follow(branch)?.get("properties")?.get(name) is JsonNode declared &&
-                resolver.Follow(declared)?.get("const") is JsonNode constant &&
+            if (resolver.Follow(branch)?.Get("properties")?.Get(name) is JsonNode declared &&
+                resolver.Follow(declared)?.Get("const") is JsonNode constant &&
                 TryLiteral(constant, out var value) && value is not null)
                 return value;
 
-            if (parent.get("discriminator") is not JsonNode discriminator ||
-                discriminator.get("propertyName")?.asText() != name ||
+            if (parent.Get("discriminator") is not JsonNode discriminator ||
+                discriminator.Get("propertyName")?.Text() != name ||
                 Text(branch, "$ref") is not string reference)
                 return null;
 
-            if (discriminator.get("mapping") is JsonNode mapping && mapping.isObject())
+            if (discriminator.Get("mapping") is JsonObject mapping)
             {
-                var entries = mapping.fields();
-                while (entries.hasNext())
+                foreach (var (selector, named) in mapping)
                 {
-                    var entry = (java.util.Map.Entry)entries.next();
-                    var target = ((JsonNode?)entry.getValue())?.asText();
+                    var target = named.Text();
 
                     if (target == reference || target == LastSegment(reference))
-                        return entry.getKey()?.ToString();
+                        return selector;
                 }
             }
 
@@ -955,16 +919,16 @@ namespace Apache.Calcite.Cosmos.Facts
             // "null". Both are the same statement and neither is an absence of type -- a nullable
             // string is still a string wherever it is not null, which is what a stored form is about
             // and what every comparison here decides on.
-            var orNull = node.get("nullable") is JsonNode nullable && nullable.isBoolean() && nullable.asBoolean();
-            var type = node.get("type");
+            var orNull = node.Get("nullable").Boolean() == true;
+            var type = node.Get("type");
 
-            if (type is not null && type.isArray())
+            if (type is not null && type is JsonArray)
             {
                 string? single = null;
 
-                for (var i = 0; i < type.size(); i++)
+                for (var i = 0; i < type.Size(); i++)
                 {
-                    var name = type.get(i)?.asText();
+                    var name = type.At(i)?.Text();
 
                     if (name == "null")
                     {
@@ -982,10 +946,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 return single is null ? null : Parse(single) is JsonType parsed ? (parsed, orNull) : null;
             }
 
-            if (type is null || type.isTextual() == false)
+            if (type is null || type.Text() is null)
                 return null;
 
-            return Parse(type.asText()) is JsonType only ? (only, orNull) : null;
+            return Parse(type.Text()!) is JsonType only ? (only, orNull) : null;
         }
 
         static JsonType? Parse(string name) => name switch
@@ -1011,14 +975,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns>The domain, or <c>null</c>.</returns>
         static IReadOnlyList<object?>? ReadEnum(JsonNode node)
         {
-            if (node.get("enum") is not JsonNode domain || domain.isArray() == false || domain.size() == 0)
+            if (node.Get("enum") is not JsonNode domain || domain is not JsonArray || domain.Size() == 0)
                 return null;
 
-            var values = new List<object?>(domain.size());
+            var values = new List<object?>(domain.Size());
 
-            for (var i = 0; i < domain.size(); i++)
+            for (var i = 0; i < domain.Size(); i++)
             {
-                if (TryLiteral(domain.get(i), out var value) == false)
+                if (TryLiteral(domain.At(i), out var value) == false)
                     return null;
 
                 values.Add(value);
@@ -1033,36 +997,42 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="node">The schema node.</param>
         /// <param name="keyword">The keyword.</param>
         /// <returns>The text, or <c>null</c> where the keyword is absent or is not a string.</returns>
-        static string? Text(JsonNode node, string keyword) =>
-            node.get(keyword) is JsonNode value && value.isTextual() ? value.asText() : null;
+        static string? Text(JsonNode node, string keyword) => node.Get(keyword).Text();
 
         /// <summary>
         /// Reads a JSON literal as the CLR value a predicate would compare against.
         /// </summary>
+        /// <remarks>
+        /// <c>null</c> is the JSON null: a caller asks only of a member it knows is there, which is
+        /// how a JSON null and a missing member are told apart. A number reads as a <see cref="long"/>
+        /// where it is an integer that fits one, and as a <see cref="double"/> otherwise.
+        /// </remarks>
         static bool TryLiteral(JsonNode? node, out object? value)
         {
             value = null;
 
             if (node is null)
+                return true;
+
+            if (node is not JsonValue literal)
                 return false;
 
-            if (node.isNull())
-                return true;
-            if (node.isTextual())
-                return Assign(node.asText(), out value);
-            if (node.isBoolean())
-                return Assign(node.asBoolean(), out value);
-            if (node.isIntegralNumber())
-                return Assign(node.asLong(), out value);
-            if (node.isNumber())
-                return Assign(node.asDouble(), out value);
-
-            return false;
-
-            static bool Assign(object assigned, out object? value)
+            switch (literal.GetValueKind())
             {
-                value = assigned;
-                return true;
+                case System.Text.Json.JsonValueKind.String:
+                    value = literal.GetValue<string>();
+                    return true;
+                case System.Text.Json.JsonValueKind.True:
+                    value = true;
+                    return true;
+                case System.Text.Json.JsonValueKind.False:
+                    value = false;
+                    return true;
+                case System.Text.Json.JsonValueKind.Number:
+                    value = literal.TryGetValue<long>(out var integer) ? (object)integer : literal.GetValue<double>();
+                    return true;
+                default:
+                    return false;
             }
         }
 

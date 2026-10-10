@@ -573,7 +573,11 @@ namespace Apache.Calcite.Cosmos.Adapter
             if (schema is not java.util.Map)
                 throw new ArgumentException($"Operand '{SchemaOperand}' on container '{name}' must be a JSON Schema object.");
 
-            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaRecognition.ReadFrom((com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(schema)), constraints);
+            // Calcite hands the model over as Java maps, which Jackson writes and System.Text.Json reads:
+            // the fact namespace knows only the latter, and this is the one place the two meet.
+            var document = System.Text.Json.Nodes.JsonNode.Parse(Mapper.writeValueAsString(schema))!;
+
+            return new CosmosContainerDeclaration(name, Metadata.CosmosSchemaRecognition.ReadFrom(document), constraints);
         }
 
         /// <summary>

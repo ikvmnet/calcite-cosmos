@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Facts;
 
-using com.fasterxml.jackson.databind;
+using System.Text.Json.Nodes;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {

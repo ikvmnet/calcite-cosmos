@@ -29,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     {
 
         static bool Recognise(string json) =>
-            CosmosGeographyForms.Recognise(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+            CosmosGeographyForms.Recognise(System.Text.Json.Nodes.JsonNode.Parse(json));
 
         const string Ordinates = """
         "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,

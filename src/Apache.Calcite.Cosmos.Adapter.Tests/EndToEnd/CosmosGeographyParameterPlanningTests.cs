@@ -74,7 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var metadata = schema is null
                 ? Products
-                : Products.WithFacts(CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                : Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
             var table = new CosmosTable(metadata);
             var rootSchema = CalciteSchema.createRootSchema(false);

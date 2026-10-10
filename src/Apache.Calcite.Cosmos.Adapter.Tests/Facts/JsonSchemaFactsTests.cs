@@ -27,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath At = Data.Property("at");
 
         static IReadOnlyList<JsonFactRule> Read(string json) =>
-            CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+            CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(json));
 
         /// <summary>The facts a schema states, assembled into the theory a container would ask.</summary>
         static JsonFactTheory Compile(string json) => new(Read(json));
@@ -1037,6 +1037,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             derived.RepresentationOf(JsonDocumentPath.Root.Property("here")).Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
+        const string DatePattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
+
+        /// <summary>
+        /// A reference may name a node by an anchor rather than a pointer: <c>$anchor</c> from 2019-09,
+        /// and before it an <c>$id</c> of the form <c>#name</c>.
+        /// </summary>
+        [Theory]
+        [InlineData("https://json-schema.org/draft/2020-12/schema", "\"$anchor\": \"day\"")]
+        [InlineData("http://json-schema.org/draft-07/schema#", "\"$id\": \"#day\"")]
+        public void AnAnchorNamesTheNodeItSitsOn(string dialect, string anchor)
+        {
+            var schema = $$"""
+            {
+              "$schema": "{{dialect}}",
+              "definitions": { "d": { {{anchor}}, "type": "string", "pattern": "{{DatePattern}}" } },
+              "properties": { "at": { "$ref": "#day" } }
+            }
+            """;
+
+            Compile(schema).Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("at"))
+                .Should().Be(CosmosTemporalForms.Iso8601Date);
+        }
+
+        /// <summary>
+        /// A pointer token carrying a <c>/</c> or a <c>~</c> is escaped, and is unescaped before it names
+        /// a member.
+        /// </summary>
+        [Fact]
+        public void APointerUnescapesItsTokens()
+        {
+            var schema = $$"""
+            {
+              "$defs": { "a/b~c": { "type": "string", "pattern": "{{DatePattern}}" } },
+              "properties": { "at": { "$ref": "#/$defs/a~1b~0c" } }
+            }
+            """;
+
+            Compile(schema).Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("at"))
+                .Should().Be(CosmosTemporalForms.Iso8601Date);
+        }
+
+        /// <summary>
+        /// An <c>$id</c> inside a <c>const</c> is a string in a value, not a resource a reference can
+        /// name.
+        /// </summary>
+        [Fact]
+        public void AnIdInsideDataIsNotAResource()
+        {
+            var schema = $$"""
+            {
+              "properties": {
+                "sample": { "const": { "$id": "https://example.test/fake", "type": "string", "pattern": "{{DatePattern}}" } },
+                "at": { "$ref": "https://example.test/fake" }
+              }
+            }
+            """;
+
+            Compile(schema).Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("at"))
+                .Should().BeNull("a const holds data, and nothing in data is a schema");
+        }
+
         [Fact]
         public void ARecursiveReferenceTerminates()
         {
@@ -1140,7 +1201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void AnUnreadableSchemaIsNoFactsRatherThanAFailure()
         {
-            CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))
+            CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("[]"))
                 .Should().BeEmpty("a declaration meant to add pushdowns must never be a reason a query stops working");
 
             Compile("""{ "type": "object", "properties": { "a": { "minimum": 3, "maxLength": 9 } } }""")

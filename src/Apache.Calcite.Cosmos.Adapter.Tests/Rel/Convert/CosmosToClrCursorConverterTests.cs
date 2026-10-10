@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             _executor = new StubExecutor(documents);
 
             Register(new CosmosTable(
-                Products.WithFacts(CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(Catalog))),
+                Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Catalog))),
                 _executor));
         }
 
