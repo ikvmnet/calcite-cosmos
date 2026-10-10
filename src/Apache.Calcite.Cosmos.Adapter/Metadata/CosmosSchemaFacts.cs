@@ -320,6 +320,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (FindDiscriminator(branches, parent, resolver) is string discriminator)
             {
+                var walked = new List<Branch>();
+
                 for (var i = 0; i < branches.size(); i++)
                 {
                     // The branch as written, not as resolved: a mapping names its target by the
@@ -327,8 +329,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver) is not object value)
                         continue;
 
-                    Walk(branches.get(i), path, Extend(guard, new CosmosFact(path.Property(discriminator), new CosmosClaim.EqualTo(value))), rules, resolver, visiting);
+                    var selected = Extend(guard, new CosmosFact(path.Property(discriminator), new CosmosClaim.EqualTo(value)));
+                    var stated = new List<CosmosFactRule>();
+                    Walk(branches.get(i), path, selected, stated, resolver, visiting);
+
+                    rules.AddRange(stated);
+                    walked.Add(new Branch(selected.Count, stated));
                 }
+
+                // And what every branch states holds of every document, whichever branch it is in:
+                // the per-branch facts pay only where a query proves the discriminator, and a query
+                // over every kind proves none (#175). Only where every branch was read -- a branch
+                // left out is one the meet would be claiming for without having asked.
+                if (walked.Count == branches.size())
+                    rules.AddRange(Meet(walked, guard));
 
                 return;
             }
@@ -345,24 +359,178 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return;
             }
 
-            List<CosmosFactRule>? meet = null;
+            var each = new List<Branch>();
 
             for (var i = 0; i < branches.size(); i++)
             {
                 var stated = new List<CosmosFactRule>();
                 Walk(branches.get(i), path, guard, stated, resolver, visiting);
-
-                if (meet is null)
-                {
-                    meet = stated;
-                    continue;
-                }
-
-                meet.RemoveAll(rule => stated.Exists(other => other.Head.Equals(rule.Head)) == false);
+                each.Add(new Branch(guard.Count, stated));
             }
 
-            if (meet is not null)
-                rules.AddRange(meet);
+            rules.AddRange(Meet(each, guard));
+        }
+
+        /// <summary>
+        /// One branch of a union as walked: how long the guard it was walked under is, and what it
+        /// stated.
+        /// </summary>
+        /// <remarks>
+        /// A branch's guard is its parent's extended — by the discriminator's value where there is one —
+        /// and every rule the walk wrote begins with it, <see cref="Extend"/> only ever appending. What
+        /// follows it is what the branch made the fact conditional on.
+        /// </remarks>
+        readonly record struct Branch(int Guard, List<CosmosFactRule> Stated);
+
+        /// <summary>
+        /// Returns the facts every branch of a union entails, under the parent's guard.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why it holds unguarded.</b> Under <c>oneOf</c> or <c>anyOf</c> some branch applies to every
+        /// valid document, so a claim every branch entails holds whichever applies. A discriminator does
+        /// not weaken that; it only adds a way to know which.
+        /// </para>
+        /// <para>
+        /// <b>By entailment, not equality (#175).</b> <c>"a string"</c> in one branch and <c>null</c> in
+        /// another share no claim, and both entail <c>"a string or null"</c>, which is one claim and not a
+        /// disjunction. So the candidates are each branch's claims, each type widened to admit a null, and
+        /// at each path the domain joining every constant and domain the branches name; a candidate is
+        /// kept where every branch has a claim entailing it. Every candidate kept is kept, not only the
+        /// strongest: a consumer asking for a type by shape rather than through entailment should find
+        /// it beside the stored form that entails it.
+        /// </para>
+        /// <para>
+        /// <b>A conditional counts only against the same condition.</b> A branch's rule is compared by
+        /// what it adds to the branch's own guard, so a <c>required</c> inside every branch — conditional
+        /// on its parent object being there — meets the same <c>required</c> in the others, and nothing
+        /// meets a condition only one branch states.
+        /// </para>
+        /// </remarks>
+        static List<CosmosFactRule> Meet(List<Branch> branches, IReadOnlyList<CosmosFact> guard)
+        {
+            var meet = new List<CosmosFactRule>();
+
+            if (branches.Count == 0)
+                return meet;
+
+            static IReadOnlyList<CosmosFact> Relative(CosmosFactRule rule, int guard)
+            {
+                var relative = new List<CosmosFact>();
+                for (var i = guard; i < rule.Body.Count; i++)
+                    relative.Add(rule.Body[i]);
+
+                return relative;
+            }
+
+            static bool Same(IReadOnlyList<CosmosFact> left, IReadOnlyList<CosmosFact> right)
+            {
+                if (left.Count != right.Count)
+                    return false;
+
+                foreach (var fact in left)
+                    if (Contains(right, fact) == false)
+                        return false;
+
+                return true;
+            }
+
+            static bool Contains(IReadOnlyList<CosmosFact> facts, CosmosFact fact)
+            {
+                foreach (var candidate in facts)
+                    if (candidate.Equals(fact))
+                        return true;
+
+                return false;
+            }
+
+            var stated = new List<List<(IReadOnlyList<CosmosFact> Condition, CosmosFact Head)>>();
+            foreach (var branch in branches)
+            {
+                var list = new List<(IReadOnlyList<CosmosFact>, CosmosFact)>();
+                foreach (var rule in branch.Stated)
+                    list.Add((Relative(rule, branch.Guard), rule.Head));
+
+                stated.Add(list);
+            }
+
+            // The candidates, in the order the branches state them so the result is stable.
+            var candidates = new List<(IReadOnlyList<CosmosFact> Condition, CosmosFact Head)>();
+
+            void Offer(IReadOnlyList<CosmosFact> condition, CosmosFact head)
+            {
+                foreach (var (c, h) in candidates)
+                    if (h.Equals(head) && Same(c, condition))
+                        return;
+
+                candidates.Add((condition, head));
+            }
+
+            foreach (var list in stated)
+            {
+                foreach (var (condition, head) in list)
+                {
+                    Offer(condition, head);
+
+                    if (head.Claim is CosmosClaim.OfType { OrNull: false } typed)
+                        Offer(condition, new CosmosFact(head.Path, typed with { OrNull = true }));
+
+                    // The domain joining every value the branches pin this path to, under this
+                    // condition: a branch saying "park" and one saying "map" both entail it.
+                    var values = new List<object?>();
+                    foreach (var other in stated)
+                    {
+                        foreach (var (c, h) in other)
+                        {
+                            if (h.Path.Equals(head.Path) == false || Same(c, condition) == false)
+                                continue;
+
+                            if (h.Claim is CosmosClaim.EqualTo equal && CosmosClaim.OneOf.Contains(values, equal.Value) == false)
+                                values.Add(equal.Value);
+                            else if (h.Claim is CosmosClaim.OneOf domain)
+                                foreach (var value in domain.Values)
+                                    if (CosmosClaim.OneOf.Contains(values, value) == false)
+                                        values.Add(value);
+                        }
+                    }
+
+                    if (values.Count > 0)
+                        Offer(condition, new CosmosFact(head.Path, new CosmosClaim.OneOf(values)));
+                }
+            }
+
+            foreach (var (condition, head) in candidates)
+            {
+                var everywhere = true;
+
+                foreach (var list in stated)
+                {
+                    var entailed = false;
+                    foreach (var (c, h) in list)
+                    {
+                        if (Same(c, condition) && h.Entails(head))
+                        {
+                            entailed = true;
+                            break;
+                        }
+                    }
+
+                    if (entailed == false)
+                    {
+                        everywhere = false;
+                        break;
+                    }
+                }
+
+                if (everywhere)
+                {
+                    var body = new List<CosmosFact>(guard);
+                    body.AddRange(condition);
+                    meet.Add(new CosmosFactRule(body, head));
+                }
+            }
+
+            return meet;
         }
 
         /// <summary>

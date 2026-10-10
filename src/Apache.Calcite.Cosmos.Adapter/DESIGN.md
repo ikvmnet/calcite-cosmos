@@ -614,7 +614,7 @@ are one or two atoms long.
 
 **The rule that keeps it there: never a disjunctive head.** A branch yielding "A or B" leaves Horn and
 entailment becomes intractable, so an undiscriminated `anyOf` contributes the **meet** — the facts
-every branch states — which is a sound under-approximation and free.
+every branch entails — which is a sound under-approximation and free.
 
 **Nothing entails presence.** A schema's `properties` constrains the value a path holds *if it holds
 one*; only `required` says it holds one. Reading the first as the second would claim of every document
@@ -661,7 +661,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `pattern` | a regular expression | a stored form, for recognised spellings only |
 | `format` | an annotation | nothing |
 | `allOf` | every branch applies | every branch, same guard |
-| `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the value |
+| `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the value; and the meet, unguarded |
 | `oneOf`/`anyOf`, undiscriminated | one of them applies | the meet |
 | `oneOf`/`anyOf`, `null` and one other branch | the other branch, or a null | that branch, each fact widened to admit the null |
 | `if`/`then`/`else` | a conditional | a guard, only where the whole condition is read |
@@ -694,6 +694,32 @@ as it is, already being silent about whether a string is there. A fact that says
 the object, and `Present` cannot tell them apart since `IS_DEFINED` is true of a null; so those rules
 are kept under one more condition, `NotEqualTo(null)` at the union's path. Everything else below is
 a claim about a value if there is one, and a null makes it vacuous rather than false. #172.
+
+**The meet is taken by entailment, and a discriminated union has one too (#175).** It used to be the
+claims every branch stated *equally*, so `"a string"` in one branch and `null` in another cancelled —
+though both entail `"a string or null"`, which is one claim and not a disjunction, and both entail a
+stored form, which says how the strings are written and nothing about whether one is there. So the meet
+now offers candidates — each branch's claims, each type widened to admit a null, and at each path the
+domain joining every constant and domain the branches name — and keeps every candidate each branch has a
+claim entailing. All of them, not only the strongest: a consumer that asks for a type by its shape
+rather than through entailment finds it beside the stored form that entails it. `CosmosFact.Entails`
+needed the rows saying so — a null entails a stored form, a type admitting a null, a domain holding one,
+and every disequality but its own.
+
+A discriminated union took only its branches, each guarded by the discriminator's value, which pays
+only where a query proves one. A query over every kind proves none and got nothing — even where every
+kind says the same thing, the canonical spelling of an identifier in the kinds that carry one and `null`
+in the kinds that do not. The meet holds there for the reason it holds anywhere, some branch applying to
+every valid document, so it is added unguarded beside the per-branch facts, the discriminator's own
+values joining into the domain every kind is in. A schema can then state a form where it is true,
+branch by branch, rather than on a nullable envelope above the union.
+
+**A condition meets only the same condition.** Each branch's rules are compared by what they add to that
+branch's own guard, so a `required` in every branch — conditional on its parent object being there —
+meets the same `required` in the others, and a condition only some branches state meets nothing. Under
+the discriminated union the guard includes the discriminator, which is what makes "what it adds"
+comparable across branches whose guards differ. A union of which some branch was not read — one a
+discriminator could not place — has no meet: it would be claiming for a branch it never asked.
 
 **And one about resolution rather than a keyword.** A nested `$id` starts a new base URI, so a pointer
 written under it names a fragment of *that* resource, and the same `#/$defs/x` reaches a different node

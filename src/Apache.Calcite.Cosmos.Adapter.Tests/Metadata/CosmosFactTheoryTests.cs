@@ -38,6 +38,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static CosmosFact Represents(CosmosDocumentPath path, CosmosRepresentation representation) => new(path, new CosmosClaim.Represents(representation));
 
+        /// <summary>
+        /// A null entails every claim that admits one, and nothing that does not. #175.
+        /// </summary>
+        [Fact]
+        public void ANullEntailsEveryClaimThatAdmitsOne()
+        {
+            var isNull = new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.Null));
+            var equalsNull = Equals(ParkId, null);
+
+            foreach (var fact in new[] { isNull, equalsNull })
+            {
+                fact.Entails(Represents(ParkId, EqualityOnly)).Should().BeTrue("a form says how the strings are written, not that one is there");
+                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
+                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse();
+                fact.Entails(new CosmosFact(ParkId, new CosmosClaim.Present())).Should().BeFalse("a claim about a value says nothing about its being there");
+            }
+
+            isNull.Entails(equalsNull).Should().BeTrue();
+            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.OneOf(new object?[] { "a", null }))).Should().BeTrue();
+            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.OneOf(new object?[] { "a" }))).Should().BeFalse();
+            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.NotEqualTo("a"))).Should().BeTrue();
+            isNull.Entails(new CosmosFact(ParkId, new CosmosClaim.NotEqualTo(null))).Should().BeFalse();
+        }
+
         [Fact]
         public void AnUnconditionalFactHoldsWithNothingEstablished()
         {

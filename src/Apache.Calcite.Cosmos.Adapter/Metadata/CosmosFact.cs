@@ -72,6 +72,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 (CosmosClaim.Geography, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Object,
                 (CosmosClaim.Geography, CosmosClaim.Present) => true,
 
+                // A null is a value every nullable claim admits: a type that admits one, a domain
+                // holding one, a disequality with anything else, and a stored form, which says how
+                // the strings are written and nothing about whether one is there (#175). Without
+                // these, a union whose branches say "a string" and "null" had no meet at all.
+                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Null || b.OrNull,
+                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.EqualTo b) => b.Value is null,
+                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.OneOf b) => CosmosClaim.OneOf.Contains(b.Values, null),
+                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.NotEqualTo b) => b.Value is not null,
+                (CosmosClaim.OfType { Type: CosmosJsonType.Null }, CosmosClaim.Represents) => true,
+                (CosmosClaim.EqualTo { Value: null }, CosmosClaim.Represents) => true,
+
                 // Admitting a null is weaker than not admitting one.
                 (CosmosClaim.OfType a, CosmosClaim.OfType b) => a.Type == b.Type && b.OrNull,
 

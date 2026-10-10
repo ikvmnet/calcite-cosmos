@@ -325,9 +325,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ("{ 'anyOf': [ { 'type': ['null'] }, { '$ref': '#/$defs/u' } ] }",              lower, false, true),
 
                 // A third branch is a real union again, and a null branch carrying anything not read
-                // is not taken for one; both fall back to the meet, which here is nothing.
+                // is not taken for one; both fall back to the meet. Over a number it is nothing. Over the
+                // unread keyword it is the nullable answer after all, found by entailment (#175): a
+                // keyword not read can only narrow the branch, which still admits nothing but null.
                 ("{ 'anyOf': [ { 'type': 'null' }, { 'type': 'string', 'pattern': 'P' }, { 'type': 'number' } ] }", null, false, false),
-                ("{ 'anyOf': [ { 'type': 'null', 'x-other': 1 }, { 'type': 'string', 'pattern': 'P' } ] }",          null, false, false),
+                ("{ 'anyOf': [ { 'type': 'null', 'x-other': 1 }, { 'type': 'string', 'pattern': 'P' } ] }",          lower, false, true),
 
                 // Two real types agree on nothing, so neither is stated and the pattern goes with them.
                 ("{ 'type': ['string','number'], 'pattern': 'P' }",       null,   false,  false),
@@ -638,6 +640,119 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             derived.Knows(new CosmosFact(CosmosDocumentPath.Root.Property("b"), new CosmosClaim.OfType(CosmosJsonType.Integer)))
                 .Should().BeFalse("only one branch says so, and nothing selects it");
+        }
+
+        /// <summary>
+        /// Links of three kinds, discriminated by <c>data.type</c>: two identifiers that are canonical
+        /// UUIDs in the kinds that carry them and null in the kinds that do not.
+        /// </summary>
+        const string Links = """
+        {
+          "$defs": {
+            "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+          },
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": ["type"],
+              "oneOf": [
+                { "properties": { "type": { "const": "park" }, "data": { "required": ["parkId"],          "properties": { "parkId": { "$ref": "#/$defs/uuid" }, "mapId": { "type": "null" } } } } },
+                { "properties": { "type": { "const": "map"  }, "data": { "required": ["parkId", "mapId"], "properties": { "parkId": { "$ref": "#/$defs/uuid" }, "mapId": { "$ref": "#/$defs/uuid" } } } } },
+                { "properties": { "type": { "const": "spot" }, "data": { "required": ["location"],        "properties": { "parkId": { "type": "null" },   "mapId": { "type": "null" } } } } }
+              ]
+            }
+          }
+        }
+        """;
+
+        static readonly CosmosDocumentPath LinkType = CosmosDocumentPath.Root.Property("data").Property("type");
+        static readonly CosmosDocumentPath LinkParkId = CosmosDocumentPath.Root.Property("data").Property("data").Property("parkId");
+        static readonly CosmosDocumentPath LinkMapId = CosmosDocumentPath.Root.Property("data").Property("data").Property("mapId");
+
+        /// <summary>
+        /// What every branch of a discriminated union entails holds of every document, whichever kind
+        /// it is: a query over every kind proves no discriminator and still gets it. #175.
+        /// </summary>
+        /// <remarks>
+        /// <c>"a canonical UUID"</c> and <c>null</c> are not one claim, and both entail
+        /// <c>"a string or null"</c> and the stored form, which says how the strings are written and
+        /// nothing about whether one is there.
+        /// </remarks>
+        [Fact]
+        public void ADiscriminatedUnionStatesItsMeetUnguarded()
+        {
+            var derived = Compile(Links).Derive(null);
+
+            derived.RepresentationOf(LinkParkId).Should().Be(CosmosUuidForms.CanonicalLower, "every kind writes parkId so, or holds null");
+            derived.RepresentationOf(LinkMapId).Should().Be(CosmosUuidForms.CanonicalLower);
+            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
+            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse("a spot holds null");
+
+            derived.Knows(new CosmosFact(LinkType, new CosmosClaim.OneOf(new object?[] { "park", "map", "spot" }))).Should().BeTrue(
+                "the discriminator's own values join into a domain every kind is in");
+        }
+
+        /// <summary>
+        /// And the per-kind facts stay as they were: proving the kind still proves what that kind says.
+        /// </summary>
+        [Fact]
+        public void ADiscriminatedUnionKeepsItsPerBranchFacts()
+        {
+            var map = Compile(Links).Derive(new[] { Equals(LinkType, "map") });
+            map.Knows(new CosmosFact(LinkMapId, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeTrue();
+
+            var spot = Compile(Links).Derive(new[] { Equals(LinkType, "spot") });
+            spot.Knows(new CosmosFact(LinkMapId, new CosmosClaim.EqualTo(null))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A condition meets only the same condition: <c>parkId</c> is required in two kinds and not in
+        /// the third, so nothing says it is there for every link.
+        /// </summary>
+        [Fact]
+        public void AConditionStatedInOnlySomeBranchesIsNotInTheMeet()
+        {
+            var derived = Compile(Links).Derive(new[]
+            {
+                new CosmosFact(CosmosDocumentPath.Root.Property("data"), new CosmosClaim.Present()),
+                new CosmosFact(CosmosDocumentPath.Root.Property("data").Property("data"), new CosmosClaim.Present()),
+            });
+
+            derived.Knows(new CosmosFact(LinkParkId, new CosmosClaim.Present())).Should().BeFalse("a spot need not carry one");
+        }
+
+        /// <summary>
+        /// A branch silent about a path leaves the union saying nothing about it, however much the others
+        /// agree.
+        /// </summary>
+        [Fact]
+        public void ABranchSilentAboutAPathTakesItOutOfTheMeet()
+        {
+            var derived = Compile("""
+            { "anyOf": [
+                { "properties": { "v": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" } } },
+                { "properties": { "v": { "type": "null" } } },
+                { "properties": { "w": { "type": "null" } } }
+            ] }
+            """).Derive(null);
+
+            derived.RepresentationOf(CosmosDocumentPath.Root.Property("v")).Should().BeNull("the third branch admits a v of any kind");
+        }
+
+        /// <summary>
+        /// An undiscriminated union meets by entailment too: a string, a null and a constant string
+        /// share no claim, and all three are a string or null.
+        /// </summary>
+        [Fact]
+        public void AnUndiscriminatedUnionMeetsByEntailment()
+        {
+            var v = CosmosDocumentPath.Root.Property("v");
+            var derived = Compile("""
+            { "properties": { "v": { "anyOf": [ { "type": "string" }, { "type": "null" }, { "const": "A" } ] } } }
+            """).Derive(null);
+
+            derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true))).Should().BeTrue();
+            derived.Knows(new CosmosFact(v, new CosmosClaim.OfType(CosmosJsonType.String))).Should().BeFalse();
         }
 
         /// <summary>
