@@ -398,6 +398,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </remarks>
         static bool IsGeographyLiteral(RexNode node)
         {
+            // The same constant after a connection's reduction has evaluated the constructor: a shape
+            // the plan holds, written as the GeoJSON object it is. See CosmosRexTranslator.GetLiteralValue.
+            if (node is RexLiteral folded && folded.getTypeName() == org.apache.calcite.sql.type.SqlTypeName.GEOMETRY)
+                return folded.isNull() == false;
+
             return node is RexCall call
                 && string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogGeomFromGeoJson.getName(), StringComparison.Ordinal)
                 && call.getOperands().size() == 1

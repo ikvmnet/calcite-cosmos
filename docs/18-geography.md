@@ -91,7 +91,9 @@ FETCH FIRST 10 ROWS ONLY
 ```
 
 The distance is written into the statement twice, once selected and once ordered, because Cosmos
-cannot order by a projection alias. (This sort is covered by the adapter's own planning tests; the
+cannot order by a projection alias. Through a connection the constant point is evaluated while the query
+is planned and arrives bound as a parameter, `ST_DISTANCE(c.location, @p0)`, rather than written inline;
+it is the same GeoJSON object either way, and a filter on the distance pushes the same way. (This sort is covered by the adapter's own planning tests; the
 exact plan shape a `CalciteConnection` presents for it has not yet been separately verified — check
 `EXPLAIN PLAN FOR` if a distance-ordered page is slow.)
 

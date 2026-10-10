@@ -142,13 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// thing, and the service would be the one to notice.
         /// </para>
         /// <para>
-        /// <b>A geography is the one type whose constant form is not a bound value at all</b>, so the
-        /// agreement has to be reached rather than inherited. <c>GetLiteralValue</c> refuses a
-        /// <c>GEOMETRY</c> literal — a geography in a Cosmos statement <em>is</em> a GeoJSON object, and
-        /// <c>CosmosRexTranslator.WriteGeographyLiteral</c> writes one into the SQL where the call
-        /// stood. A parameter's value arrives with the execution and cannot be written into the SQL,
-        /// so it is bound; <see cref="CosmosJson.ToGeoJsonValue"/> makes what is bound the same object
-        /// the constant form inlines.
+        /// <b>A geography is the one type whose constant form need not be a bound value</b>, so the
+        /// agreement has to be reached rather than inherited. The constructor over a literal is
+        /// written into the SQL where the call stood — a geography in a Cosmos statement <em>is</em> a
+        /// GeoJSON object, see <c>CosmosRexTranslator.WriteGeographyLiteral</c> — while a parameter's
+        /// value arrives with the execution and is bound, <see cref="CosmosJson.ToGeoJsonValue"/>
+        /// making what is bound the same object the constant form inlines. A constant a connection
+        /// has already folded into a <c>GEOMETRY</c> literal is bound the same way, by
+        /// <c>GetLiteralValue</c>.
         /// </para>
         /// <para>
         /// <b>Left alone it was the geometry itself</b>, and the SDK's serializer wrote the IKVM

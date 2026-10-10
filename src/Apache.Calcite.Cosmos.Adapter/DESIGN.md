@@ -2516,9 +2516,20 @@ both sides, so the guard admits exactly what agrees.
 **A geography a caller passes in is bound as the same object.** A constant is inlined into the SQL,
 which is only possible because the plan holds it; a parameter's value arrives with the execution, so
 it is bound like every other and `CosmosJson.ToGeoJsonValue` shapes it on the way. That has to be
-said out loud because a geography is the one type whose constant form is *not* a bound value:
-`GetLiteralValue` refuses a `GEOMETRY` literal outright, so the agreement between a literal and a
+said out loud because a geography is the one type whose constant form need not be a bound value: the
+constructor over a literal is written into the statement, so the agreement between a literal and a
 parameter is reached here rather than inherited.
+
+**A connection folds the constant before the adapter sees it, and the folded form was refused.** A
+bare planner leaves `CLR_ST_GEOG_GEOMFROMGEOJSON('{…}')` as the call `WriteGeographyLiteral` writes
+out; a connection's preparation reduces constant expressions first, evaluates the constructor, and
+hands over `POINT (-111.5 38.3):GEOMETRY` — a literal `GetLiteralValue` had no case for. So a distance
+to a literal point pushed in every planner test and stayed in process through every connection, the
+sort with it. The folded shape is a value the plan holds, so it is bound like any other literal, and
+as the object a geometry parameter is bound as: `ToGeoJsonValue`, without `crs`. The two constant
+forms then differ in where the object is written — inline or behind a name — and not in what it is.
+`CosmosProject.IsGeographyLiteral` takes the folded form too, a shape the plan holds being no more
+null than the call that made it.
 
 Left alone the bound value was the JTS geometry itself, and the SDK's serializer wrote the IKVM
 object graph — `$0`-keyed, assembly-qualified, three kilobytes for a point — which the service
