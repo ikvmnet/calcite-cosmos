@@ -95,9 +95,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="keyOrdinal">Which output field of the subtree the join matches on.</param>
         /// <param name="prefix">The key parameters' name prefix.</param>
         /// <param name="batchSize">How many key parameters to render.</param>
+        /// <param name="keyPath">
+        /// The path the restriction names where the key column binds to none — a <c>UUID</c> cast of a
+        /// path holding one spelling per value, whose keys are bound in that spelling. See
+        /// <c>CosmosLookupJoinRule.TryProbeKey</c>.
+        /// </param>
         /// <returns>The statement, the bindings of its output fields, and how each is to be read back.</returns>
         /// <exception cref="CosmosTranslationException">The subtree or its key has no Cosmos equivalent.</exception>
-        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize)
+        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize, CosmosPath? keyPath = null)
         {
             if (input.getConvention() is not CosmosConvention convention)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
@@ -108,8 +113,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var fields = implementor.Fields;
             var readings = implementor.Readings;
 
-            if (keyOrdinal < 0 || keyOrdinal >= fields.Count || fields[keyOrdinal] is not CosmosPath keyPath)
-                throw new CosmosTranslationException("The lookup key is not bound to a document path.");
+            if (keyOrdinal < 0 || keyOrdinal >= fields.Count)
+                throw new CosmosTranslationException("The lookup key is not a column of the subtree.");
+
+            keyPath ??= fields[keyOrdinal] ?? throw new CosmosTranslationException("The lookup key is not bound to a document path.");
 
             var names = new string[batchSize];
             for (var i = 0; i < batchSize; i++)

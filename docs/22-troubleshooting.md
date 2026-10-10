@@ -62,8 +62,10 @@ parameter) — at the cost of a plan per value. Chapter 8.
 Value aggregates push only over non-nullable inputs, and a document property is nullable. Chapter 10.
 
 **A join reads both containers whole.**
-The lookup join did not apply: check it is an inner join on one equality, the keys are of a bindable
-type (not the `VARIANT` partition key column), and there is no limit or grouping on the container side.
+The lookup join did not apply: check it is an inner or left join on one equality with the container on
+the right, the keys are of a bindable type (not the `VARIANT` partition key column; a `UUID` only where
+the container's schema gives the path a UUID format), and there is no limit or grouping on the container
+side.
 Chapter 12.
 
 **Plans on the emulator are worse than on Azure.**

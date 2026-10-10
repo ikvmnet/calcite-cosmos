@@ -1812,6 +1812,16 @@ project references.
 | `FullCachingLookupProvider` | **worth considering** for small containers: load the whole thing once and never call the service on a miss, with a reload strategy. A lookup table of a few thousand documents is exactly this. The partial cache — per execution and, by declared policy, across them — is done; see `DESIGN.md` under *The lookup join's caches*. |
 | Lookup retry (FLIP-234) | **probably not.** Flink retries a lookup that comes back empty, for late-arriving reference data. The SDK already retries throttling, which is the failure that actually happens here. |
 
+What the lookup join still declines, after #193 took left joins and `UUID` keys:
+
+- **A `UUID` key whose form is guarded** — *small.* The form is asked of the container's unconditional
+  facts. One stated under a discriminator holds of the documents the probe side's own filter admits, and
+  that filter is in the same statement as the restriction, so the probe's conjuncts could prove the guard
+  the way `CosmosFactRewriter` proves one for a sibling conjunct.
+- **Other converted keys** — *small each.* A `CAST(… AS INTEGER)` over a path declared integer, or an
+  instant over a declared ISO shape, is restricted the same way: spell the key in the stored form. Only
+  the `UUID` was asked for.
+
 ### Sink abilities
 
 | Flink | Here |

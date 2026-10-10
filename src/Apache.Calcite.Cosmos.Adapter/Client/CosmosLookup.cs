@@ -46,9 +46,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </para>
         /// <para>
         /// Every number is therefore compared as a <see cref="double"/>. That is what Cosmos stores —
-        /// JSON has one numeric type — so it loses nothing the service was preserving. Types outside
-        /// this set never arrive, because the rule declines a key that is not a string, a boolean, or a
-        /// number.
+        /// JSON has one numeric type — so it loses nothing the service was preserving.
+        /// </para>
+        /// <para>
+        /// A <c>UUID</c> is compared as a <see cref="Guid"/>. Calcite boxes one as
+        /// <c>UuidValue</c>, and a host may hand one over as a <c>java.util.UUID</c>; either is the same
+        /// value, and a <see cref="Guid"/> is what <see cref="Metadata.CosmosUuidForms.Render"/> spells in
+        /// the container's own form. Types outside these never arrive, because the rule declines any other
+        /// key.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as either side produced it.</param>
@@ -58,11 +63,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             return key switch
             {
                 null => null,
-                string or bool => key,
+                string or bool or Guid => key,
                 sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
                     => Convert.ToDouble(key, CultureInfo.InvariantCulture),
+                org.apache.calcite.util.UuidValue uuid => Guid.Parse(uuid.toString()),
+                java.util.UUID uuid => Guid.Parse(uuid.toString()),
                 _ => key,
             };
+        }
+
+        /// <summary>
+        /// Returns the function writing a <c>UUID</c> key in the spelling a container stores it in.
+        /// </summary>
+        /// <remarks>
+        /// A key that has no spelling in the form — one a confined form excludes — names no document, and
+        /// answers <c>null</c>, which the join fetches nothing for.
+        /// </remarks>
+        /// <param name="representation">The form the container's facts give the key's path.</param>
+        /// <returns>The spelling function.</returns>
+        public static Func<object, object?> SpellUuid(Metadata.CosmosRepresentation representation)
+        {
+            return key => key is Guid value ? Metadata.CosmosUuidForms.Render(representation, value) : null;
         }
 
         /// <summary>
@@ -98,8 +119,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         /// <remarks>
         /// <para>
-        /// An inner join, and only an inner join. Anything else declines at the rule and is joined in
-        /// process as before, which is what every other adapter does with every join.
+        /// An inner join, or a left join where <paramref name="unmatched"/> is given. Anything else
+        /// declines at the rule and is joined in process as before, which is what every other adapter
+        /// does with every join.
         /// </para>
         /// <para>
         /// Rows are emitted in build order within a batch. The join is unordered, so this is not a
@@ -137,6 +159,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// beneath the per-join cache and populated by every fetch; see <c>DESIGN.md</c> under
         /// <em>The lookup join's caches</em>.
         /// </param>
+        /// <param name="unmatched">
+        /// Builds the joined row for a build row nothing matched, or <c>null</c> for an inner join, which
+        /// drops it. A left join's: the build row's fields and a null for each of the container's.
+        /// </param>
+        /// <param name="spell">
+        /// Writes a normalised key as the value its parameter is bound to, or <c>null</c> where the key is
+        /// bound as it is. A key spelled as <c>null</c> names no document and is not fetched.
+        /// </param>
         /// <returns>The joined rows.</returns>
         /// <exception cref="ArgumentNullException">Any required argument is <c>null</c>.</exception>
         public static IClrCursor<TResult> Join<TBuild, TProbe, TResult>(
@@ -150,7 +180,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Func<TProbe, object?> probeKey,
             Func<TBuild, TProbe, TResult> resultSelector,
             int cacheSize = 0,
-            CosmosLookupCache? shared = null)
+            CosmosLookupCache? shared = null,
+            Func<TBuild, TResult>? unmatched = null,
+            Func<object, object?>? spell = null)
         {
             if (build is null)
                 throw new ArgumentNullException(nameof(build));
@@ -167,7 +199,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (batchSize < 1)
                 throw new ArgumentOutOfRangeException(nameof(batchSize));
 
-            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared);
+            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
         }
 
         /// <summary>
@@ -189,9 +221,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Func<TBuild, TProbe, TResult> resultSelector,
             int cacheSize,
             CosmosLookupCache? shared,
+            Func<TBuild, TResult>? unmatched,
+            Func<object, object?>? spell,
             CancellationToken cancellationToken)
         {
-            return Join(await build.ConfigureAwait(false), executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared);
+            return Join(await build.ConfigureAwait(false), executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
         }
 
         /// <summary>
@@ -212,6 +246,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             readonly Func<TBuild, TProbe, TResult> _resultSelector;
             readonly int _cacheSize;
             readonly CosmosLookupCache? _shared;
+            readonly Func<TBuild, TResult>? _unmatched;
+            readonly Func<object, object?>? _spell;
 
             // Held for the length of this join and no longer. A cache that outlived one execution
             // would have to answer for staleness, and this one cannot be stale in a way the join was
@@ -251,7 +287,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 Func<TProbe, object?> probeKey,
                 Func<TBuild, TProbe, TResult> resultSelector,
                 int cacheSize,
-                CosmosLookupCache? shared)
+                CosmosLookupCache? shared,
+                Func<TBuild, TResult>? unmatched,
+                Func<object, object?>? spell)
             {
                 _build = build;
                 _executor = executor;
@@ -264,6 +302,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 _resultSelector = resultSelector;
                 _cacheSize = cacheSize;
                 _shared = shared;
+                _unmatched = unmatched;
+                _spell = spell;
                 _cache = cacheSize > 0 ? new Dictionary<object, List<TProbe>>() : null;
                 _statement = shared is null ? null : CosmosLookupCache.Statement(query);
                 _batch = new List<TBuild>(batchSize);
@@ -350,10 +390,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     if (_row >= _batch.Count)
                         return false;
 
-                    if (Normalize(_buildKey(_batch[_row])) is object key && _lookup.TryGetValue(key, out var matches))
+                    if (Normalize(_buildKey(_batch[_row])) is object key && _lookup.TryGetValue(key, out var matches) && matches.Count > 0)
                     {
                         _matches = matches;
                         _match = 0;
+                    }
+                    else if (_unmatched is not null)
+                    {
+                        // A left join keeps the row, a null key and a key the container has nothing
+                        // for alike: null = x is never true, so neither pairs with anything.
+                        _current = _unmatched(_batch[_row++]);
+                        return true;
                     }
                     else
                     {
@@ -366,9 +413,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             /// Resolves the current batch's keys, fetching those nothing remembers.
             /// </summary>
             /// <remarks>
-            /// A build row whose key is null matches nothing under an inner join — <c>null = x</c> is never
-            /// true — so such rows contribute no key and take no part. A batch of only those fetches
-            /// nothing at all, which is the whole point of doing this.
+            /// A build row whose key is null matches nothing — <c>null = x</c> is never true — so such rows
+            /// contribute no key: an inner join drops them and a left join keeps them unmatched. A batch of
+            /// only those fetches nothing at all, which is the whole point of doing this.
             /// </remarks>
             async ValueTask<bool> FetchAsync(CancellationToken cancellationToken)
             {
@@ -380,6 +427,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 // Distinct, because the keys are data here rather than a predicate: a hundred build rows
                 // over ten keys fetch ten. This is what the statement could not have done for itself.
                 var keys = new List<object?>();
+                var spelled = new List<object?>();
                 var seen = new HashSet<object>();
 
                 foreach (var row in _batch)
@@ -409,7 +457,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                         continue;
                     }
 
+                    // A key with no spelling in the container's form names no document there: it is
+                    // answered as absent without asking.
+                    var value = _spell is null ? key : _spell(key);
+                    if (value is null)
+                    {
+                        _lookup[key] = new List<TProbe>();
+                        continue;
+                    }
+
                     keys.Add(key);
+                    spelled.Add(value);
                 }
 
                 if (keys.Count == 0)
@@ -421,7 +479,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 // it. The elements are already standalone: the executor clones what it yields.
                 var elements = _shared is null ? null : new Dictionary<object, List<JsonElement>>();
 
-                var cursor = await _executor.OpenAsync(Bind(_query, _prefix, _batchSize, keys), cancellationToken: cancellationToken).ConfigureAwait(false);
+                var cursor = await _executor.OpenAsync(Bind(_query, _prefix, _batchSize, spelled), cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 await using (cursor.ConfigureAwait(false))
                 {
