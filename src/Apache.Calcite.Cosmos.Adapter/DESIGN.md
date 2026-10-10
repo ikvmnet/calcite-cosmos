@@ -2697,6 +2697,37 @@ after it would reach past that row for another; a page on the side an outer join
 not pair, and taking it afterwards would page the other side. Ties in the sort are no new freedom: which
 of the tied rows a page keeps was the plan's choice before, and still is.
 
+**It fires first, and the join it replaces is explored no further (#201).** As an ordinary rule the merge
+waited in Volcano's queue behind every match the joins had made — filters pushed into a join and out again,
+joins commuted, each condition reduced — and every one of those was a new expression in a set of its own,
+which the merge then fired on again, each time producing another spelling of the same read. Planned offline
+through a host's own prepare, the five-view hierarchy filtered on its discriminator registered 8,250
+expressions and took three minutes; paged and ordered by a joined container's name, four and a half. The
+merge is the one rewrite that makes everything after it small, so it is now a `SubstitutionRule`: Volcano
+queues its matches ahead of all others and, with `autoPruneOld`, prunes the join it matched, so no other
+rule fires on that join again. Pruning is sound because what replaces the join is always at least as good —
+one read in place of several, implementable wherever a scan is — so no plan the join could have led to is
+lost. The same two queries now register about 1,200 expressions each and plan in a few seconds, from the
+same plans.
+
+Two things had to change for it to fire at all. A substitution rule is a transformation rule, and Volcano
+matches a transformation rule's operands within one convention: a child in another is skipped. The scan is
+in the container's convention and the filter above it is not, so the operand naming the scan never matched,
+and the rule silently never ran. So each side is matched as a projection — or a projection over a
+projection — and read down to its scan through the equivalence sets beneath it, composing every projection
+and carrying every filter's condition down beside it. That second half is the other change: a subquery
+projects a view's columns again, and the join above a merged one sees the query's projection standing over
+the merged read, so the side was a projection over a projection, and the merge used to wait for Calcite's
+`PROJECT_MERGE` to remove it — by which time the joins had been explored. Read through, the whole hierarchy
+collapses before any other rule runs. A projection holding a window or a non-deterministic expression is
+not read through, because substituting it moves a condition beneath it.
+
+What is left is Calcite's own exploration of the projections and filters above the one read, and constant
+reduction: `ReduceExpressionsRule` compiles each set of constants it folds, through Janino, which under IKVM
+is a quarter of a second each time, and the discriminator's comparison is folded once per filter spelling
+that carries it — fourteen compilations of one expression in the first query. That is the host's executor
+to cache; see `TODO.md`.
+
 **The uniqueness is asked of the container, and of both sides.** The tempting route is Calcite's own:
 `RelMdColumnUniqueness` on each input. It is the wrong question. With park links on the left and map links
 on the right, a guid unique among the map links still lets one park link and one map link share it; the
