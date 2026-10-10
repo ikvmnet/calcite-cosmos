@@ -190,6 +190,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "and a behaviour clause substitutes one on the error the scalar causes");
         }
 
+        /// <summary>
+        /// <c>JSON_VALUE</c>'s behaviour clauses substitute a value too, and which documents they
+        /// substitute for depends on the path's mode — a path written without one is strict.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The standard's reading of <c>DEFAULT x ON EMPTY</c> is "where the path finds nothing", and
+        /// that is the rendering a service could plausibly write — <c>IS_DEFINED(p) ? … : @x</c>. It
+        /// is not what the engine does with <c>'$.v'</c>. With no mode written the path behaves as
+        /// <c>strict</c>, an absent property is an <em>error</em> rather than an empty result, and the
+        /// <c>ON ERROR</c> clause is the one that answers: <c>DEFAULT 'none' ON EMPTY</c> over
+        /// <c>{}</c> is null and <c>DEFAULT 'none' ON ERROR</c> is <c>'none'</c>. A JSON null, an
+        /// object and an array take the error branch too. Written <c>'lax $.v'</c>, the same
+        /// <c>ON EMPTY</c> answers the default.
+        /// </para>
+        /// <para>
+        /// So the clause's meaning is a table over the clause, the mode and the JSON type found, and
+        /// <c>ERROR ON ERROR</c> raises, which no pushed column reproduces. That is why the adapter
+        /// renders no behaviour clause but the defaults written down —
+        /// <c>CosmosRexTranslator.IsPlainJsonValue</c> — and leaves the rest to the engine, which this
+        /// pins. The guarded path rendered for the plain accessor answers null wherever a default
+        /// answers here, so pushing it was a wrong answer and not a missed pushdown.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void JsonValueBehaviourClausesFollowThePathModeNotTheStandardsReading()
+        {
+            Ask("JSON_VALUE('{}', '$.v' DEFAULT 'none' ON EMPTY)").Value.Should().BeNull(
+                "an absent property under a path with no mode is an error, so ON EMPTY never runs");
+            Ask("JSON_VALUE('{}', '$.v' DEFAULT 'none' ON ERROR)").Value.Should().Be("none",
+                "and ON ERROR is the clause that answers it");
+            Ask("JSON_VALUE('{}', 'strict $.v' DEFAULT 'none' ON ERROR)").Value.Should().Be("none",
+                "which is what strict says");
+            Ask("JSON_VALUE('{}', 'lax $.v' DEFAULT 'none' ON EMPTY)").Value.Should().Be("none",
+                "while under lax the absence is empty, and ON EMPTY answers");
+
+            foreach (var json in new[] { "null", "{\"a\":1}", "[1]" })
+            {
+                Ask($"JSON_VALUE({Document(json)}, '$.v' DEFAULT 'a' ON EMPTY DEFAULT 'b' ON ERROR)").Value.Should().Be("b",
+                    $"a JSON null, an object and an array take the error branch, over {json}");
+            }
+
+            Ask("JSON_VALUE('{}', '$.v' ERROR ON ERROR)").Threw.Should().NotBeNull(
+                "ERROR ON ERROR raises over an absent property");
+            Ask("JSON_VALUE('{}', '$.v' ERROR ON EMPTY)").Threw.Should().BeNull(
+                "and ERROR ON EMPTY does not, the absence not being empty");
+
+            Ask($"JSON_VALUE({Document("30")}, '$.v' NULL ON EMPTY NULL ON ERROR)").Value.Should().Be("30",
+                "the defaults written down are the plain accessor");
+            Ask("JSON_VALUE('{}', '$.v' NULL ON EMPTY NULL ON ERROR)").Value.Should().BeNull(
+                "in every case");
+        }
+
         [Fact]
         public void ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt()
         {

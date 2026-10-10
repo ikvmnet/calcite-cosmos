@@ -296,7 +296,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             if (call.getOperator().getName() == "JSON_VALUE")
             {
-                if (call.getOperands().size() < 2)
+                // A behaviour clause substitutes something the path does not hold, and which documents
+                // it substitutes for is Calcite's to say -- measured, not the ones the standard names.
+                // See IsPlainJsonValue.
+                if (IsPlainJsonValue(call) == false)
                     return false;
 
                 // An array RETURNING on JSON_VALUE is not a construct SQL defines, so it addresses no
@@ -1143,7 +1146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return operand;
             }
 
-            if (IsTextJsonValue(node) && ((RexCall)node).getOperands().size() == 2)
+            if (IsTextJsonValue(node) && IsPlainJsonValue(node))
             {
                 scalarOnly = true;
                 return node;
@@ -1316,9 +1319,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// A <c>RETURNING</c> that converts — a number, a boolean, a date — is refused: the cast then
         /// renders a converted value, and a string in the document is not it. <c>JSON_QUERY</c> is
         /// refused with it, being the JSON text of an object or an array and null for anything else,
-        /// which is not what the path holds. Only the two-operand form: an <c>ON EMPTY</c> or
-        /// <c>ON ERROR</c> clause substitutes a value where the path has none, which is a document the
-        /// path itself does not match.
+        /// which is not what the path holds. Only the plain form — see <see cref="IsPlainJsonValue"/>:
+        /// an <c>ON EMPTY</c> or <c>ON ERROR</c> clause substitutes a value where the path has none,
+        /// which is a document the path itself does not match.
         /// </para>
         /// </remarks>
         internal static bool IsRenderedDocumentValue(RexNode operand)
@@ -1326,7 +1329,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsDocumentValueType(operand.getType()?.getSqlTypeName()))
                 return true;
 
-            return IsTextJsonValue(operand) && ((RexCall)operand).getOperands().size() == 2;
+            return IsTextJsonValue(operand) && IsPlainJsonValue(operand);
         }
 
         /// <summary>
@@ -1472,6 +1475,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var name = call.getType()?.getSqlTypeName();
             return name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a plain <c>JSON_VALUE</c> — one whose behaviour clauses,
+        /// if it carries any, say what saying nothing says.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A behaviour clause is not a path.</b> <c>DEFAULT x ON EMPTY</c>, <c>DEFAULT x ON ERROR</c>
+        /// and <c>ERROR ON …</c> each answer something for a document the path answers nothing for — a
+        /// value it does not hold, or a failure — so a projection rendered as the guarded path read null
+        /// where the engine reads the default, and a field bound to one carried the path up to every
+        /// operator above it with nothing to say the column was not that path. The accessor was taken
+        /// whatever followed its second operand, and this is the test it was missing.
+        /// </para>
+        /// <para>
+        /// <b>Refused rather than rendered, and measurement is why.</b> <c>IS_DEFINED(p) ? … : @d</c>
+        /// looks like <c>DEFAULT … ON EMPTY</c> at the service, and it is not what Calcite does with
+        /// it. Measured — <c>CalciteJsonValueMeasurementTests</c> — a path written without a mode is
+        /// strict there, so an absent property is an <em>error</em> and not an empty result:
+        /// <c>DEFAULT 'none' ON EMPTY</c> over <c>{}</c> answers null and <c>DEFAULT 'none' ON
+        /// ERROR</c> answers <c>'none'</c>; the same <c>ON EMPTY</c> over <c>'lax $.v'</c> answers
+        /// <c>'none'</c>; and a JSON null, an object and an array all take the error branch, never the
+        /// empty one. A rendering would have to reproduce that table and the mode the path is spelled
+        /// in, and <c>ERROR ON ERROR</c> raises, which no rendering reproduces at all. Left in process,
+        /// the engine answers what it answers and there is nothing to keep in step.
+        /// </para>
+        /// <para>
+        /// <b><c>NULL ON EMPTY</c> and <c>NULL ON ERROR</c> are plain</b>, being the defaults written
+        /// down — the validator keeps them as symbols, <c>JSON_VALUE($0, '$.v', FLAG(NULL),
+        /// FLAG(ON EMPTY))</c>, where the call with nothing said has two operands. Each clause is its
+        /// behaviour, a default value where the behaviour is <c>DEFAULT</c>, and the condition it
+        /// governs; so a call is plain when what follows the path is a run of <c>NULL</c> and a
+        /// condition, read by name for the reason <see cref="IsPlainJsonQuery"/> gives.
+        /// </para>
+        /// </remarks>
+        internal static bool IsPlainJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            var count = call.getOperands().size();
+            if (count < 2 || count % 2 != 0)
+                return false;
+
+            for (var i = 2; i < count; i += 2)
+                if (IsFlag(call, i, "NULL") == false || (IsFlag(call, i + 1, "EMPTY") || IsFlag(call, i + 1, "ERROR")) == false)
+                    return false;
+
+            return true;
         }
 
         /// <summary>
@@ -2888,9 +2941,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         bool IsUnambiguousTextEquality(RexNode accessor, RexNode other)
         {
             // A behaviour clause substitutes a value where the path has none, which is a document
-            // the path itself does not match. Visible on the accessor; a field bound to one was
-            // bound by the path, and carries no clause to inspect.
-            if (accessor is RexCall call && call.getOperands().size() != 2)
+            // the path itself does not match. Visible on the accessor; a field is never bound to
+            // one, because such an accessor addresses no path to bind -- see IsPlainJsonValue.
+            if (accessor is RexCall call && (IsTextJsonValue(call) ? IsPlainJsonValue(call) : call.getOperands().size() == 2) == false)
                 return false;
 
             if (other is not RexLiteral literal)

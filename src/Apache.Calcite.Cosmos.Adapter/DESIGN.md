@@ -1473,7 +1473,9 @@ returning `'bikes'` whole. So the argument above holds for it unchanged, and
 `CosmosRexTranslator.IsRenderedDocumentValue` admits the two-operand `JSON_VALUE` of a character type
 beside a value typed `ANY` (#71). A `RETURNING` that converts is refused, since the cast then renders
 a converted value; `JSON_QUERY` is refused, being the JSON text of an object and null for a scalar;
-and a behaviour clause is refused, substituting a value where the path has none.
+and a behaviour clause is refused, substituting a value where the path has none — a refusal that,
+until `IsPlainJsonValue`, held in this test and in no other; see *`JSON_VALUE`'s behaviour clauses*
+below.
 
 **The bare accessor is that cast with nothing written, and it had been pushed as the path.** SQL:2016
 casts the scalar `JSON_VALUE` finds to the returning type, and Calcite does: measured,
@@ -1676,6 +1678,48 @@ is the test, read by enum *name* rather than ordinal, and `IsJsonAccessor` now a
 wrapper form addresses no path in any clause and is left in process, where the engine computes what it
 means.
 
+**`JSON_VALUE`'s behaviour clauses are refused the same way, and for a while they were not.** The
+argument above was written for `JSON_QUERY` and applied to it; `IsJsonAccessor` took any
+`JSON_VALUE` with a path, whatever followed it. So `JSON_VALUE(doc, '$.flag' DEFAULT 'none' ON
+ERROR)` was projected as `(IS_PRIMITIVE(c.flag) ? c.flag : null)` and read as text — null for a
+document with no `flag`, where the engine answers `'none'` — and a view's column spelled that way bound
+to `c.flag`, so `p."Flag" = 'none'`, being unambiguous text, pushed whole as `c.flag = 'none'` and
+dropped exactly the documents the clause exists for. Wrong answers, not missed pushdowns. Three tests
+had refused the clause by counting operands — `IsRenderedDocumentValue`, `TryRenderedTextValue` and
+the accessor half of `IsUnambiguousTextEquality` — and the last had written the gap down: a field bound
+to one "carries no clause to inspect". It cannot carry one; what it can do is not be bound.
+
+**Rendering `DEFAULT x ON EMPTY` was the alternative, and measurement closed it.** It looks like
+`IS_DEFINED(p) ? … : @x`, which is the standard's reading — *empty* is "the path found nothing". It is
+not Calcite's. Measured (`CalciteJsonValueMeasurementTests`), a path written without a mode behaves as
+`strict`: an absent property is an *error*, so the `ON ERROR` clause answers it and `ON EMPTY` never
+runs —
+
+| expression, over `{}` unless shown | Calcite answers |
+| --- | --- |
+| `'$.v' DEFAULT 'none' ON EMPTY` | null |
+| `'$.v' DEFAULT 'none' ON ERROR` | `'none'` |
+| `'lax $.v' DEFAULT 'none' ON EMPTY` | `'none'` |
+| `'$.v' DEFAULT 'a' ON EMPTY DEFAULT 'b' ON ERROR`, over a JSON null, an object, an array | `'b'` |
+| `'$.v' ERROR ON ERROR` | raises |
+| `'$.v' ERROR ON EMPTY` | null |
+
+A rendering would have to reproduce that table, keyed on the clause, the mode the path is spelled in
+and the JSON type found, and keep reproducing it across releases; and `ERROR ON ERROR` raises, which —
+as with the array `RETURNING` — no pushed column reproduces at all. Declining is right for every row,
+because it is not an answer. So `CosmosRexTranslator.IsPlainJsonValue` is the test and `IsJsonAccessor`
+applies it: a clause-carrying accessor addresses no path in any clause, its column binds to nothing,
+and operators above it decline as they do over any computed column. The operand-count tests now ask
+the same question instead of a proxy for it.
+
+**`NULL ON EMPTY` and `NULL ON ERROR` are plain.** They are the defaults written down, but the
+validator keeps them — `JSON_VALUE($0, '$.v', FLAG(NULL), FLAG(ON EMPTY))` — so counting operands
+refused them too. Each clause is a behaviour, a value where the behaviour is `DEFAULT`, and the
+condition it governs; a call is plain when everything after the path is a run of `NULL` and a
+condition, read by name as `IsPlainJsonQuery` reads its flags. The cost of the refusal is the column
+and whatever is written over it; a caller wanting a fallback writes `COALESCE`, which means what it
+looks like and pushes.
+
 **What the guard is depends on what the accessor is typed, and for a while it did not.** Every
 `JSON_VALUE` was rendered `IIF(IS_PRIMITIVE(p), p, null)` and read as text, whatever its `RETURNING`
 clause said. That is right for the bare accessor and wrong for every other spelling of it, in two
@@ -1692,6 +1736,7 @@ all. The declared type is what tells them apart, and it is the same test
 | `JSON_VALUE`, `VARCHAR` or `CHAR` — the bare accessor | `IIF(IS_PRIMITIVE(p), p, null)` | `Text`, the rendering |
 | `JSON_VALUE`, anything else — `RETURNING INTEGER`, … | `p` | `Typed`, the declared type |
 | `JSON_VALUE`, `ARRAY` or `MULTISET` | *refused* — the column is left in process | — |
+| `JSON_VALUE` with a behaviour clause other than `NULL` | *refused* — the column is left in process | — |
 | `JSON_QUERY`, `VARCHAR` — the plain accessor | `IIF(IS_OBJECT(p) OR IS_ARRAY(p), p, null)` | `JsonText`, re-serialised compactly |
 | `JSON_QUERY`, `ARRAY` or `MULTISET` — `RETURNING … ARRAY` | `IIF(IS_ARRAY(p), p, null)` | `Typed`, a `java.util.List` |
 

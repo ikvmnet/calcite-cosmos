@@ -328,7 +328,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             or nameof(SqlKind.__Enum.IS_TRUE) or nameof(SqlKind.__Enum.IS_NOT_TRUE)
                             or nameof(SqlKind.__Enum.IS_FALSE) or nameof(SqlKind.__Enum.IS_NOT_FALSE)
                             or nameof(SqlKind.__Enum.CASE) or nameof(SqlKind.__Enum.SEARCH) => true,
-                        _ => CosmosRexTranslator.IsTextJsonValue(call) && call.getOperands().size() == 2
+                        _ => CosmosRexTranslator.IsTextJsonValue(call) && CosmosRexTranslator.IsPlainJsonValue(call)
                             || CosmosOperators.IsAbsenceObserving(call.getOperator()),
                     };
 
