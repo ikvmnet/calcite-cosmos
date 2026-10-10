@@ -365,6 +365,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             Text(plan).Should().NotContain("ClrCursorFilter", Text(plan));
         }
 
+        /// <summary>
+        /// And so does a merged left join's projection: each of the right side's columns is
+        /// <c>CASE WHEN M THEN q END</c>, and the same null test in <c>M</c> is lowered there too. #192.
+        /// </summary>
+        [Fact]
+        public void AMergedLeftJoinsColumnsArePushed()
+        {
+            var plan = Plan(Views("LEFT", right: "'B'"), Container().WithConstraints(new[] { Unique("/guid") }));
+
+            Text(plan).Should().NotContain("ClrCursorCalc", "every column is the service's:\n" + Text(plan));
+            Text(plan).Should().Contain("CosmosProject(", Text(plan));
+        }
+
+        /// <summary>
+        /// Two views, the left of them sorted and paged before the join, the way a paged query over a
+        /// table-per-type hierarchy is written.
+        /// </summary>
+        static string Paged(string join, bool rightPaged = false)
+        {
+            var page = """
+                SELECT CAST(JSON_VALUE(c."DOC", '$.guid') AS UUID) AS "K", JSON_VALUE(c."DOC", '$.ref') AS "R" FROM items AS c
+                WHERE JSON_VALUE(c."DOC", '$.type') = 'A'
+                ORDER BY JSON_VALUE(c."DOC", '$.ref') NULLS FIRST OFFSET 2 ROWS FETCH NEXT 5 ROWS ONLY
+                """;
+            var plain = """
+                SELECT CAST(JSON_VALUE(c."DOC", '$.guid') AS UUID) AS "K", JSON_VALUE(c."DOC", '$.code') AS "C" FROM items AS c
+                WHERE JSON_VALUE(c."DOC", '$.type') = 'B'
+                """;
+
+            return rightPaged
+                ? $"""SELECT b."K", b."C", a."R" FROM ({plain}) AS b {join} JOIN ({page}) AS a ON b."K" = a."K" """
+                : $"""SELECT a."K", a."R", b."C" FROM ({page}) AS a {join} JOIN ({plain}) AS b ON a."K" = b."K" """;
+        }
+
+        /// <summary>
+        /// A left join onto a page keeps every row of the page and adds none, so the page is taken after
+        /// the join — and the join is then one read, sorted and paged at the service. #192.
+        /// </summary>
+        [Fact]
+        public void ALeftJoinOntoAPageIsOneReadWithThePageAtTheService()
+        {
+            var plan = Plan(Paged("LEFT"), Container().WithConstraints(new[] { Unique("/guid") }));
+
+            Scans(plan).Should().Be(1, Text(plan));
+            Text(plan).Should().NotContain("Join", Text(plan));
+            Text(plan).Should().MatchRegex(@"CosmosSort\([^\n]*dir0=\[ASC-nulls-first\], offset=\[2\], fetch=\[5\]", "the page is the service's:\n" + Text(plan));
+            Text(plan).Should().NotContainAny(new[] { "ClrCursorSort", "ClrCursorLimit", "ClrCursorCalc" }, "and nothing is sorted or computed in process:\n" + Text(plan));
+        }
+
+        /// <summary>
+        /// The mirror: a right join onto a page on its right, the sort's keys moved past the left side's
+        /// columns.
+        /// </summary>
+        [Fact]
+        public void ARightJoinOntoAPageIsOneRead()
+        {
+            var plan = Plan(Paged("RIGHT", rightPaged: true), Container().WithConstraints(new[] { Unique("/guid") }));
+
+            Scans(plan).Should().Be(1, Text(plan));
+            Text(plan).Should().MatchRegex(@"CosmosSort\([^\n]*offset=\[2\], fetch=\[5\]", "the page is the service's:\n" + Text(plan));
+            Text(plan).Should().NotContainAny(new[] { "ClrCursorSort", "ClrCursorLimit" }, Text(plan));
+        }
+
+        /// <summary>
+        /// An inner join may drop a row of the page, and a page taken after it would reach past that row
+        /// for another, so the page stays below the join.
+        /// </summary>
+        [Fact]
+        public void AnInnerJoinOntoAPageStaysAJoin()
+        {
+            var plan = Plan(Paged("INNER"), Container().WithConstraints(new[] { Unique("/guid") }));
+
+            Scans(plan).Should().Be(2, Text(plan));
+        }
+
+        /// <summary>
+        /// Nor does a left join with the page on its right: the page there is what may not pair, and
+        /// taking it after the join would page the left side instead.
+        /// </summary>
+        [Fact]
+        public void APageOnTheSideAJoinDoesNotPreserveStaysAJoin()
+        {
+            var plan = Plan(Paged("LEFT", rightPaged: true), Container().WithConstraints(new[] { Unique("/guid") }));
+
+            Scans(plan).Should().Be(2, Text(plan));
+        }
+
+        /// <summary>
+        /// And the page needs the key as much as the merge does: without it a page row could pair with
+        /// two rows, and the page taken after the join would be a different page.
+        /// </summary>
+        [Fact]
+        public void APageOnAnUndeclaredKeyStaysAJoin()
+        {
+            var plan = Plan(Paged("LEFT"), Container());
+
+            Scans(plan).Should().Be(2, Text(plan));
+        }
+
     }
 
 }

@@ -1652,6 +1652,10 @@ across documents* and *A join of a container to itself* is the record.
   service proves.
 - **Semi and anti joins** — *small.* The substitution answers them: `σ(F ∧ M)` and `σ(F ∧ NOT M IS TRUE)`.
   Nothing has asked for them.
+- **A page under an inner join** — *small.* #192 takes a page after a left join, which keeps every row of
+  it. An inner join keeps every row too where the page's own filter implies `M` — a link view joined to a
+  body view whose filter it already proves — and `CosmosConstraintCompiler.Implies` can say so; until then
+  it stays a join.
 - **A filter through merged views, in the shapes #183 did not take** — *small each.* `CASE WHEN p THEN q
   ELSE FALSE` becomes `p AND q` once `q` cannot raise, which is the shape a host's simplifier leaves; a
   comparison over a merged column, directly or through a strict expression, is brought to that shape

@@ -118,6 +118,14 @@ identify a single document, this becomes one statement over `docs`: the order fi
 `paidAt` null wherever the invoice side's filter does not hold for that document. The merge closes
 over itself, so a chain of such joins becomes one read too.
 
+A side that is sorted and paged before the join — the shape an ORM writes for a page of a hierarchy,
+paging the root and joining the rest onto the page — merges as well, as long as the join is the outer
+join that keeps that side: a left join with the page on the left, or a right join with it on the right.
+Such a join keeps every row of the page and, the key naming one document, adds none, so the page can be
+taken after the join as well as before it; the result is one statement with the `ORDER BY` and
+`OFFSET … LIMIT` at the service. An inner join onto a page stays a join, because it can drop rows of the
+page and a page taken afterwards would reach past them for others.
+
 A filter on a merged view's column reaches the service with that view's filter beside it — whether the
 column is compared directly (`i."paidAt" = …`) or used inside an expression that is null when it is,
 such as a distance from a merged view's location (Chapter 18). Wrapped in something that answers for a
@@ -138,7 +146,8 @@ join are proved to satisfy that predicate.
 ### What it declines
 
 Full outer joins (a document without a key would be one row merged and two joined); semi and anti
-joins (not built yet); joins whose sides are not deterministic; and joins whose key is read in a way
+joins (not built yet); an inner join onto a sorted or paged side, or an outer join whose paged side is
+the one it does not keep; joins whose sides are not deterministic; and joins whose key is read in a way
 that could make two different stored values look equal — `JSON_VALUE` reads the number `1` and the
 string `"1"` alike, so a text key qualifies only where the container's declared facts give the path
 one scalar type (Chapter 14).

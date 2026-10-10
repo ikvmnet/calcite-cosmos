@@ -123,6 +123,90 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Returns a projected expression with the condition of every <c>CASE</c> in it rewritten as
+        /// <see cref="Rewrite"/> rewrites a predicate, or the expression unchanged.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A condition is a predicate wherever it is written.</b> A <c>CASE</c> takes an arm where
+        /// its condition is true and passes over it where the condition is false or unknown — the
+        /// distinction a filter draws, and the only one <see cref="Rewrite"/> preserves. So a rewrite
+        /// that keeps the rows a filter keeps keeps the arm a <c>CASE</c> takes.
+        /// </para>
+        /// <para>
+        /// <b>What needs it is a merged join's column.</b> A left join read as one read gives each
+        /// column of the other side as <c>CASE WHEN M THEN q END</c>, and <c>M</c> carries the key test
+        /// <c>CAST(k AS UUID) IS NOT NULL</c>, which the service cannot evaluate until it is lowered onto
+        /// the text. Unlowered, the whole projection stayed in process — and with it a sort or a page
+        /// above it (#192).
+        /// </para>
+        /// </remarks>
+        /// <param name="expression">The projected expression, over <paramref name="fields"/>.</param>
+        /// <param name="fields">The ordinal-to-path binding of the projected input.</param>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="rexBuilder">Builds the replacement nodes.</param>
+        /// <returns>The rewritten expression, or <paramref name="expression"/> where nothing applied.</returns>
+        public static RexNode RewriteConditions(RexNode expression, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder)
+        {
+            if (expression is null || fields is null || rexBuilder is null || ContainsCase(expression) == false)
+                return expression!;
+
+            return (RexNode)expression.accept(new Conditions(fields, container, rootAlias, rexBuilder));
+        }
+
+        /// <summary>
+        /// Rewrites the conditions of every <c>CASE</c> beneath a node, innermost first.
+        /// </summary>
+        sealed class Conditions : RexShuttle
+        {
+
+            readonly IReadOnlyList<CosmosPath?> _fields;
+            readonly CosmosContainerMetadata? _container;
+            readonly string _rootAlias;
+            readonly RexBuilder _rexBuilder;
+
+            public Conditions(IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder)
+            {
+                _fields = fields;
+                _container = container;
+                _rootAlias = rootAlias;
+                _rexBuilder = rexBuilder;
+            }
+
+            public override RexNode visitCall(RexCall call)
+            {
+                var visited = base.visitCall(call);
+                if (visited is not RexCall @case || @case.getKind() != SqlKind.CASE)
+                    return visited;
+
+                var operands = new java.util.ArrayList();
+                var changed = false;
+
+                // Conditions sit at the even positions, every one but the last operand, which is the
+                // ELSE.
+                for (var i = 0; i < @case.getOperands().size(); i++)
+                {
+                    var operand = (RexNode)@case.getOperands().get(i);
+
+                    if (i % 2 == 0 && i < @case.getOperands().size() - 1)
+                    {
+                        var rewritten = Rewrite(operand, _fields, _container, _rootAlias, _rexBuilder);
+                        changed |= ReferenceEquals(rewritten, operand) == false;
+                        operand = rewritten;
+                    }
+
+                    operands.add(operand);
+                }
+
+                // Typed as the CASE was: a rewritten condition decides the same arms, and the value is
+                // still one of them.
+                return changed ? _rexBuilder.makeCall(@case.getType(), SqlStdOperatorTable.CASE, operands) : @case;
+            }
+
+        }
+
+        /// <summary>
         /// Rewrites what it can, returning <c>null</c> where nothing below changed.
         /// </summary>
         /// <remarks>

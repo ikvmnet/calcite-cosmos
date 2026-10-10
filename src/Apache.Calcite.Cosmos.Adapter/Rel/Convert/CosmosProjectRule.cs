@@ -1,4 +1,7 @@
-﻿using Apache.Calcite.Cosmos.Adapter.Sql;
+﻿using System.Collections.Generic;
+
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using java.util.function;
 
@@ -15,6 +18,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </summary>
     public class CosmosProjectRule : CosmosConverterRule
     {
+
+        /// <summary>
+        /// Returns the expressions this rule would push: the projection's own, with the condition of
+        /// every <c>CASE</c> lowered as a filter's condition is.
+        /// </summary>
+        /// <remarks>
+        /// The legality test and the conversion both see the lowered form, as
+        /// <see cref="CosmosFilterRule"/>'s do, and so does <see cref="CosmosProjectSplitRule"/>. See
+        /// <see cref="CosmosFactRewriter.RewriteConditions"/>.
+        /// </remarks>
+        internal static java.util.List Pushed(CosmosConvention convention, Project project, IReadOnlyList<CosmosPath?> fields)
+        {
+            var rexBuilder = project.getCluster().getRexBuilder();
+            var projects = project.getProjects();
+            var pushed = new java.util.ArrayList(projects.size());
+
+            for (var i = 0; i < projects.size(); i++)
+                pushed.add(CosmosFactRewriter.RewriteConditions((RexNode)projects.get(i), fields, convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder));
+
+            return pushed;
+        }
 
         /// <summary>
         /// Determines whether every projected expression can be rendered as Cosmos SQL.
@@ -37,8 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsTranslatable(CosmosConvention convention, Project project)
         {
-            var projects = project.getProjects();
-            if (projects.size() == 0)
+            if (project.getProjects().size() == 0)
                 return false;
 
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var written) == false)
@@ -46,6 +69,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
+
+            var projects = Pushed(convention, project, fields);
 
             // The same facts CosmosProject.Implement will translate against, for the same reason the
             // bindings are the ones it will use: a rule admitting a projection the node then refuses
@@ -101,11 +126,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var project = (Project)rel;
 
+            var projects = @out is CosmosConvention convention && CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _)
+                ? Pushed(convention, project, fields)
+                : project.getProjects();
+
             return new CosmosProject(
                 project.getCluster(),
                 project.getTraitSet().replace(@out),
                 convert(project.getInput(), project.getInput().getTraitSet().replace(@out)),
-                project.getProjects(),
+                projects,
                 project.getRowType());
         }
 
