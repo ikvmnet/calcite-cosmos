@@ -44,10 +44,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </para>
     /// <para>
     /// <b>Where uniqueness comes from, and why it is asked of the container rather than of each input.</b>
-    /// <see cref="CosmosConstraintSet.IsUnique"/> answers it, over <see cref="CosmosContainerMetadata.Constraints"/>:
-    /// <c>UNIQUE(pk…, id)</c> from the service, <c>UNIQUE(pk…, paths…)</c> from a unique key policy, or a
-    /// constraint the model declared — one scoped by a filter only where <em>both</em> sides' filters prove
-    /// it. Asking Calcite whether the key is unique <em>on each input</em> is the wrong question: with a park
+    /// <see cref="CosmosContainerMetadata.Constraints"/> answers it, each compiled by
+    /// <see cref="CosmosConstraintCompiler"/>: <c>UNIQUE (pk…, id)</c> from the service,
+    /// <c>UNIQUE (pk…, paths…)</c> from a unique key policy, or a constraint the model declared — one scoped by
+    /// a predicate only where <em>both</em> sides' filters imply it. Asking Calcite whether the key is unique <em>on each input</em> is the wrong question: with a park
     /// link on the left and a map link on the right, a guid unique among the map links still lets one of each
     /// share it, the join pairs them, and one read of each document would not.
     /// </para>
@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (IsDeterministic(p, f) == false || IsDeterministic(q, g) == false)
                 return null;
 
-            if (IsKeyJoin(join.getCondition(), p, q, f, g, left.Scan, table.Container, rexBuilder) == false)
+            if (IsKeyJoin(join.getCondition(), p, q, f, g, left.Scan, table, rexBuilder) == false)
                 return null;
 
             // The join condition over the one document both sides now read.
@@ -241,20 +241,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// evaluated over the one document like everything else, and simply proves nothing about which
         /// documents pair.
         /// </remarks>
-        static bool IsKeyJoin(RexNode condition, IReadOnlyList<RexNode> p, IReadOnlyList<RexNode> q, RexNode? f, RexNode? g, TableScan scan, CosmosContainerMetadata container, RexBuilder rexBuilder)
+        static bool IsKeyJoin(RexNode condition, IReadOnlyList<RexNode> p, IReadOnlyList<RexNode> q, RexNode? f, RexNode? g, TableScan scan, CosmosTable table, RexBuilder rexBuilder)
         {
             if (CosmosImplementor.TryBindOutput(scan, out var fields, out _) == false)
                 return false;
 
+            var container = table.Container;
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
             var facts = container.Facts.Derive(null);
-            var equated = new List<CosmosDocumentPath>();
-
-            // What each side's documents are proved to satisfy, for a constraint scoped by a filter. Every
-            // conjunct counts, pushed or not: the merged plan applies both filters whole, so a document the
-            // filter admits satisfies it wherever it is evaluated.
-            var left = container.Facts.Derive(CosmosFactExtractor.Extract(f, fields, CosmosImplementor.DefaultRootAlias));
-            var right = container.Facts.Derive(CosmosFactExtractor.Extract(g, fields, CosmosImplementor.DefaultRootAlias));
+            var equated = new List<RexNode>();
+            var paths = new List<CosmosDocumentPath>();
 
             var conjuncts = RelOptUtil.conjunctions(condition);
             for (var i = 0; i < conjuncts.size(); i++)
@@ -275,11 +271,142 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (lk.equals(KeyOf(q[r])) == false)
                     continue;
 
-                if (TryKeyPath(lk, translator, facts, out var path) && path is not null && equated.Contains(path) == false)
-                    equated.Add(path);
+                if (equated.Contains(lk) == false)
+                    equated.Add(lk);
+
+                if (TryKeyPath(lk, translator, facts, out var path) && path is not null && paths.Contains(path) == false)
+                    paths.Add(path);
             }
 
-            return container.Constraints.IsUnique(equated, left, right);
+            if (equated.Count == 0)
+                return false;
+
+            foreach (var constraint in container.Constraints.Constraints)
+            {
+                if (constraint is not CosmosConstraint.Unique unique)
+                    continue;
+
+                CosmosConstraintCompiler.Compiled compiled;
+                try
+                {
+                    compiled = CosmosConstraintCompiler.Compile(unique, table, rexBuilder);
+                }
+                catch (System.ArgumentException)
+                {
+                    // A declared constraint was compiled when the model was read, so this is one built some
+                    // other way that does not compile against this container: it licenses nothing.
+                    continue;
+                }
+
+                if (Covers(compiled, equated, paths, translator) == false)
+                    continue;
+
+                // Scoped by a predicate, the constraint holds among the documents it admits, and a join pairs
+                // a document of one side with one of the other — so both sides have to be proved inside it.
+                if (compiled.Filter is RexNode filter
+                    && (CosmosConstraintCompiler.Implies(rexBuilder, f, filter) == false || CosmosConstraintCompiler.Implies(rexBuilder, g, filter) == false))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether two documents agreeing on every equated expression agree on every one of a
+        /// constraint's keys, which are then the same document.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A key that is a plain accessor stands for the stored value</b> at its path, so it is agreed on
+        /// where the join equates a faithful reading of that path — text where the path holds one type, a
+        /// <c>UUID</c> cast where it holds a canonical form. See <see cref="TryKeyPath"/>.
+        /// </para>
+        /// <para>
+        /// <b>Any other key is agreed on where it is computed from equated expressions alone</b>: equal inputs
+        /// make equal outputs. Only through operators that are null exactly where an operand is — Calcite's
+        /// <see cref="Strong.Policy.ANY"/> — because a key that could be null where the join key is not would
+        /// put the pair outside the constraint's claim, a null equalling nothing.
+        /// </para>
+        /// </remarks>
+        static bool Covers(CosmosConstraintCompiler.Compiled compiled, List<RexNode> equated, List<CosmosDocumentPath> paths, CosmosRexTranslator translator)
+        {
+            foreach (var key in compiled.Keys)
+            {
+                var value = CosmosRexTranslator.StripRedundantTextCast(key);
+
+                if ((value is RexInputRef || CosmosRexTranslator.IsTextJsonValue(value)) && translator.TryResolvePath(value, out var resolved))
+                {
+                    if (CosmosDocumentPath.From(resolved) is not CosmosDocumentPath path || paths.Contains(path) == false)
+                        return false;
+
+                    continue;
+                }
+
+                if (IsComputedFrom(key, equated, out var used) == false || used == false)
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Determines whether a call is null exactly where one of its operands is.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's own answer where it has one — <see cref="Strong.Policy.ANY"/>, which the comparison and
+        /// arithmetic operators and the cast carry — and otherwise a short list of string functions that are
+        /// null only for a null argument and Calcite types as such but does not classify: an ordinary function
+        /// reports <see cref="Strong.Policy.AS_IS"/>, which says nothing either way. Short and named rather than
+        /// inferred from a return type, because a nullable result type says a null is possible, not when.
+        /// </remarks>
+        static bool IsNullExactlyWhereAnOperandIs(RexCall call)
+        {
+            if (Strong.policy(call) == Strong.Policy.ANY)
+                return true;
+
+            return call.getOperator().getName() switch
+            {
+                "LOWER" or "UPPER" or "TRIM" or "INITCAP" or "SUBSTRING" or "CHAR_LENGTH" or "CHARACTER_LENGTH" => true,
+                _ => false,
+            };
+        }
+
+        /// <summary>
+        /// Determines whether an expression is computed from the equated expressions and literals alone,
+        /// through operators null exactly where an operand is.
+        /// </summary>
+        static bool IsComputedFrom(RexNode node, List<RexNode> equated, out bool used)
+        {
+            used = false;
+
+            foreach (var expression in equated)
+            {
+                if (node.equals(expression))
+                {
+                    used = true;
+                    return true;
+                }
+            }
+
+            switch (node)
+            {
+                case RexLiteral:
+                    return true;
+                case RexCall call when IsNullExactlyWhereAnOperandIs(call):
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                    {
+                        if (IsComputedFrom((RexNode)call.getOperands().get(i), equated, out var operandUsed) == false)
+                            return false;
+
+                        used |= operandUsed;
+                    }
+
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>

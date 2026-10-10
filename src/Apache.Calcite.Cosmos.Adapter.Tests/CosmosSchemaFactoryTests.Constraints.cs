@@ -12,20 +12,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
     {
 
         /// <summary>
-        /// The <c>constraints</c> object on a container entry: what reads, and what is refused rather than
-        /// silently dropped.
+        /// The <c>constraints</c> list on a container entry: what reads, and what is refused rather than
+        /// silently dropped. Whether a constraint compiles against its container is asked once the container
+        /// is read, and is tested in <c>CosmosConstraintSetTests</c>.
         /// </summary>
         public class Constraints
         {
 
-            static java.util.Map AsMap(string json) =>
-                (java.util.Map)new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, (java.lang.Class)typeof(java.util.Map));
-
-            static CosmosContainerDeclaration Read(string constraints)
+            static CosmosContainerDeclaration Read(object constraints)
             {
                 var entry = new java.util.HashMap();
                 entry.put("name", "links");
-                entry.put(CosmosSchemaFactory.ConstraintsOperand, AsMap(constraints));
+                entry.put(CosmosSchemaFactory.ConstraintsOperand, constraints);
 
                 var list = new java.util.ArrayList();
                 list.add(entry);
@@ -36,26 +34,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 return CosmosSchemaFactory.ReadContainerDeclarations(operand)[0];
             }
 
-            [Fact]
-            public void AUniqueConstraintReads()
+            static java.util.ArrayList List(params object[] items)
             {
-                var declared = Read("""{ "unique": [ { "paths": ["/data/guid"] } ] }""");
-
-                var unique = declared.Constraints.Should().ContainSingle().Which.Should().BeOfType<CosmosConstraint.Unique>().Subject;
-                unique.Paths.Should().Equal(CosmosConstraint.PathOf("/data/guid"));
-                unique.Filter.Should().BeEmpty();
-                unique.Source.Should().Be(CosmosConstraintSource.Declared);
+                var list = new java.util.ArrayList();
+                foreach (var item in items)
+                    list.add(item);
+                return list;
             }
 
             [Fact]
-            public void AFilterReadsAsTheFactsItNames()
+            public void EachStringIsAConstraint()
             {
-                var declared = Read("""{ "unique": [ { "paths": ["/linkId"], "filter": { "/type": "Link", "/data/type": ["park", "map"] } } ] }""");
+                var declared = Read(List(
+                    "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
+                    "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'"));
 
-                var unique = (CosmosConstraint.Unique)declared.Constraints![0];
-                unique.Filter.Should().HaveCount(2);
-                unique.Filter.Should().Contain(new CosmosFact(CosmosConstraint.PathOf("/type")!, new CosmosClaim.EqualTo("Link")));
-                unique.Filter.Should().Contain(new CosmosFact(CosmosConstraint.PathOf("/data/type")!, new CosmosClaim.OneOf(new object?[] { "park", "map" })));
+                declared.Constraints.Should().HaveCount(2);
+                declared.Constraints![1].Text.Should().Be("UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'");
+                declared.Constraints[1].Source.Should().Be(CosmosConstraintSource.Declared);
             }
 
             [Fact]
@@ -64,30 +60,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 var entry = new java.util.HashMap();
                 entry.put("name", "links");
 
-                var list = new java.util.ArrayList();
-                list.add(entry);
-
                 var operand = new java.util.HashMap();
-                operand.put(CosmosSchemaFactory.ContainersOperand, list);
+                operand.put(CosmosSchemaFactory.ContainersOperand, List(entry));
 
                 CosmosSchemaFactory.ReadContainerDeclarations(operand)[0].Constraints.Should().BeNull();
             }
 
-            /// <summary>
-            /// A constraint this does not read is one the caller believes is in force, so it is refused
-            /// rather than ignored the way an unknown schema keyword is.
-            /// </summary>
-            [Theory]
-            [InlineData("""{ "check": [] }""")]
-            [InlineData("""{ "unique": [ { "paths": ["/a"], "where": { "/type": "Link" } } ] }""")]
-            [InlineData("""{ "unique": [ ["/a"] ] }""")]
-            [InlineData("""{ "unique": [ { "paths": ["/tags/[]"] } ] }""")]
-            [InlineData("""{ "unique": [ { "paths": ["/a"], "filter": { "/type": { "x": 1 } } } ] }""")]
-            [InlineData("""{ "unique": [ { "paths": [] } ] }""")]
-            public void WhatIsNotReadIsRefused(string constraints)
+            [Fact]
+            public void AnObjectIsNotAList()
             {
-                var read = () => Read(constraints);
+                var read = () => Read(new java.util.HashMap());
                 read.Should().Throw<ArgumentException>();
+            }
+
+            [Fact]
+            public void ANonStringIsRefused()
+            {
+                var read = () => Read(List(java.lang.Integer.valueOf(1)));
+                read.Should().Throw<ArgumentException>();
+            }
+
+            [Fact]
+            public void AKindNotReadYetIsRefusedByName()
+            {
+                var read = () => Read(List("CHECK (JSON_VALUE(DOC, '$.data.id') = JSON_VALUE(DOC, '$.linkId'))"));
+                read.Should().Throw<ArgumentException>().WithMessage("*CHECK*not read yet*");
             }
 
         }

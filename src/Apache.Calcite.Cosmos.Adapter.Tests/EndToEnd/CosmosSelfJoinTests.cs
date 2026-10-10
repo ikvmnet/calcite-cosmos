@@ -323,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                                 {
                                     ["name"] = "links",
                                     ["schema"] = Schema(),
-                                    ["constraints"] = new JsonObject { ["unique"] = new JsonArray(new JsonObject { ["paths"] = new JsonArray("/data/guid") }) },
+                                    ["constraints"] = new JsonArray("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))"),
                                 },
                                 new JsonObject
                                 {

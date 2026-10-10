@@ -57,11 +57,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             new CosmosContainerMetadata(name, new[] { partitionKey }, uniqueKeys: uniqueKeys)
                 .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema ?? Schema)));
 
-        static CosmosConstraint Unique(string path, string? filterPath = null, object? filterValue = null) =>
-            CosmosConstraint.Unique.Of(
-                new[] { path },
-                filterPath is null ? null : new[] { new CosmosFact(CosmosConstraint.PathOf(filterPath)!, new CosmosClaim.EqualTo(filterValue)) },
-                CosmosConstraintSource.Declared)!;
+        /// <summary>
+        /// <c>UNIQUE</c> over the accessor of one path, optionally where another path equals a string.
+        /// </summary>
+        static CosmosConstraint Unique(string path, string? filterPath = null, string? filterValue = null) =>
+            Declared($"UNIQUE ({CosmosConstraint.AccessorOf(path)})"
+                + (filterPath is null ? "" : $" WHERE {CosmosConstraint.AccessorOf(filterPath)} = '{filterValue}'"));
+
+        static CosmosConstraint Declared(string text) => CosmosConstraint.Parse(text, CosmosConstraintSource.Declared);
 
         static RelNode Plan(string sql, params CosmosContainerMetadata[] containers)
         {
@@ -227,6 +230,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             // Unique among the A documents says nothing about an A and a B sharing a guid.
             var one = Plan(Views("LEFT", right: "'B'"), container);
             Scans(one).Should().Be(2, Text(one));
+        }
+
+        /// <summary>
+        /// A predicate is proved by implication, not by being written the same way: <c>type = 'A'</c>
+        /// proves <c>type IN ('A', 'B')</c>, and <c>type = 'C'</c> does not.
+        /// </summary>
+        [Fact]
+        public void APredicateIsProvedByImplication()
+        {
+            var container = Container().WithConstraints(new[] { Declared("UNIQUE (JSON_VALUE(DOC, '$.guid')) WHERE JSON_VALUE(DOC, '$.type') IN ('A', 'B')") });
+
+            var proved = Plan(Views("LEFT", right: "'B'"), container);
+            Scans(proved).Should().Be(1, Text(proved));
+
+            var outside = Plan(Views("INNER", left: "'C'", right: "'C'"), container);
+            Scans(outside).Should().Be(2, Text(outside));
+        }
+
+        /// <summary>
+        /// A key may be an expression: two codes differing in case are one under
+        /// <c>UNIQUE (LOWER(code))</c>, so a join on the code itself — whose equal values have equal
+        /// lowercase — pairs a document only with itself.
+        /// </summary>
+        [Fact]
+        public void AnExpressionKeyCoversAJoinItIsComputedFrom()
+        {
+            var container = Container().WithConstraints(new[] { Declared("UNIQUE (LOWER(JSON_VALUE(DOC, '$.code')))") });
+
+            var plan = Plan(Views("INNER", key: """JSON_VALUE(c."DOC", '$.code')"""), container);
+            Scans(plan).Should().Be(1, Text(plan));
+        }
+
+        /// <summary>
+        /// And not the other way round: two codes with one lowercase can both exist under
+        /// <c>UNIQUE (code)</c>, so a join on <c>LOWER(code)</c> pairs them.
+        /// </summary>
+        [Fact]
+        public void AStoredKeyDoesNotCoverAJoinOnSomethingComputedFromIt()
+        {
+            var container = Container().WithConstraints(new[] { Unique("/code") });
+
+            var plan = Plan(Views("INNER", key: """LOWER(JSON_VALUE(c."DOC", '$.code'))"""), container);
+            Scans(plan).Should().Be(2, Text(plan));
         }
 
         /// <summary>

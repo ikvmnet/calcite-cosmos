@@ -545,24 +545,34 @@ Some of that the adapter knows without being told. `id` is unique within a logic
 partition key with `id` names one document; so does the partition key with the paths of a unique key
 policy. A join that equates those needs nothing declared.
 
-Anything else you declare, with a `UNIQUE` constraint beside the schema:
+Anything else you declare, as SQL DDL beside the schema. The expressions are the same Calcite SQL your
+views are written in:
 
 ```json
 {
   "name": "links",
   "schema": { },
-  "constraints": {
-    "unique": [
-      { "paths": ["/data/guid"] },
-      { "paths": ["/linkId"], "filter": { "/type": "Link" } }
-    ]
-  }
+  "constraints": [
+    "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
+    "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'",
+    "UNIQUE (LOWER(JSON_VALUE(DOC, '$.email')))"
+  ]
 }
 ```
 
-The first says no two documents in the container hold the same `data.guid`. The second says no two
-documents whose `type` is `Link` hold the same `linkId`, and is used only where both sides of a join are
-proved to be Links. A document with no value at a path is outside the claim — a null equals nothing.
+- The first says no two documents in the container hold the same `data.guid`.
+- The second says no two documents whose `type` is `Link` hold the same `linkId`. It is used only where
+  both sides of a join are proved to be Links. Proved means implied, not spelled the same:
+  `WHERE … IN ('Link', 'Other')` is implied by a view's `= 'Link'`.
+- The third says two emails differing only in case are one.
+
+**What a key means.** A plain accessor — `JSON_VALUE(DOC, '$.x')`, or a promoted column such as `"id"` —
+stands for the value *stored* at that path, which is what a unique key policy means too. Any other expression
+stands for its own value. A document whose key is null is outside the claim, because a null equals nothing.
+
+**When it is checked.** Each constraint is parsed and validated against the container's columns when the
+model is read, and one that does not compile fails there, naming the container. `CHECK` is not read yet, and
+is refused by name rather than ignored.
 
 **This is a stronger promise than a schema, and nothing checks it.** A schema can be checked one document at
 a time; a `UNIQUE` constraint is about every pair, and checking it would mean reading the container. If two
@@ -572,7 +582,8 @@ only where the application makes it so, for every writer. A unique key policy is
 alternative, but it can only be set when a container is created and is unique within a partition.
 
 Anything in `constraints` the adapter does not read is refused rather than ignored, because a constraint
-silently dropped is one you believe is in force.
+silently dropped is one you believe is in force. A predicate the adapter cannot prove from a query's own
+`WHERE` is different: the constraint is simply not used for that query, which costs a read and never a row.
 
 ## What gets pushed down
 

@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Text;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -9,135 +9,221 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why it is not a fact.</b> A <see cref="CosmosFact"/> is a claim about one document — a path holds
-    /// a string, a discriminator holds a value — and a theory of them is asked one document at a time. A
-    /// uniqueness constraint is a claim about every <em>pair</em> of documents, which no single document can
-    /// satisfy or violate, and which therefore has no place in a theory of per-document atoms.
+    /// <b>Written as SQL DDL</b>, because SQL already has the vocabulary and the expressions are the ones a
+    /// model's views are written in: <c>UNIQUE (expr, …) [WHERE predicate]</c>. The grammar here is only the
+    /// part around the expressions; the expressions themselves are Calcite's, parsed and validated against
+    /// the container's row type by <see cref="Rel.CosmosConstraintCompiler"/>.
     /// </para>
     /// <para>
-    /// <b>One kind so far.</b> A relation between two paths of one document — <c>data.id = linkId</c> —
-    /// is the next, and is a different kind of trust: it can be checked one document at a time.
+    /// <b>Why it is not a fact.</b> A <see cref="CosmosFact"/> is a claim about one document, and a theory of
+    /// them is asked one document at a time. A uniqueness constraint is a claim about every <em>pair</em> of
+    /// documents, which no single document can satisfy or violate.
+    /// </para>
+    /// <para>
+    /// <b>One kind so far.</b> <c>CHECK (predicate)</c> — a claim about each document that can relate two of
+    /// its paths, <c>data.id = linkId</c> — is the next, and is refused by name until it is read.
     /// </para>
     /// </remarks>
     public abstract record CosmosConstraint
     {
 
         /// <summary>
-        /// Where the constraint was learned, which is also what stands behind it.
+        /// Gets the constraint as DDL.
+        /// </summary>
+        public abstract string Text { get; }
+
+        /// <summary>
+        /// Gets where the constraint was learned, which is also what stands behind it.
         /// </summary>
         public abstract CosmosConstraintSource Source { get; }
 
+        /// <inheritdoc />
+        public sealed override string ToString() => Text;
+
         /// <summary>
-        /// A <c>UNIQUE</c> constraint: among the documents a filter admits, no two share the values at a set
-        /// of paths.
+        /// Reads a constraint written as DDL.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// <b>Always across the whole container.</b> The service makes <c>id</c> unique within a logical
-        /// partition and a unique key policy does the same for its paths, so each source states the
-        /// constraint it implies across the container — with the partition key paths added — rather than
-        /// leaving every consumer to remember which are partition-scoped. Uniqueness within a partition is not
-        /// something a planner can use on its own, and stating it as though it were invites that mistake.
-        /// </para>
-        /// <para>
-        /// <b>The filter scopes the claim, and a consumer has to prove it.</b> A conjunction of facts — a
-        /// discriminator holding a value, or one of several — naming the documents among which the paths are
-        /// unique. Empty means every document. A constraint holding among the documents of one kind says
-        /// nothing about a pair of which one is of another kind, so a consumer comparing two sets of documents
-        /// uses it only where <em>both</em> sets are proved to satisfy the filter.
-        /// </para>
-        /// <para>
-        /// A document holding no value at one of the paths shares nothing with anything: a null equals
-        /// nothing, so the constraint says nothing about it and it says nothing against the constraint. That
-        /// is also why a document with no partition key value is no exception to <c>pk + id</c>.
-        /// </para>
+        /// Only the shape is read here. Whether the expressions mean anything against the container is
+        /// <see cref="Rel.CosmosConstraintCompiler"/>'s question, and is asked once the container is known.
         /// </remarks>
-        /// <param name="Paths">The paths, which must all be equated for the constraint to identify a document.</param>
-        /// <param name="Filter">The facts a document must satisfy to be among those the paths are unique over; empty for all.</param>
-        /// <param name="Source">Where the constraint was learned.</param>
-        public sealed record Unique(IReadOnlyList<CosmosDocumentPath> Paths, IReadOnlyList<CosmosFact> Filter, CosmosConstraintSource Source) : CosmosConstraint
+        /// <param name="text">The DDL, such as <c>UNIQUE (JSON_VALUE(DOC, '$.data.guid'))</c>.</param>
+        /// <param name="source">Where it was learned.</param>
+        /// <returns>The constraint.</returns>
+        /// <exception cref="ArgumentException">The text is not a constraint this reads.</exception>
+        public static CosmosConstraint Parse(string text, CosmosConstraintSource source)
         {
+            if (string.IsNullOrWhiteSpace(text))
+                throw new ArgumentException("A constraint cannot be empty.", nameof(text));
 
-            /// <inheritdoc />
-            public override CosmosConstraintSource Source { get; } = Source;
+            var trimmed = text.Trim();
 
-            /// <summary>
-            /// Builds a constraint from paths in policy form, or returns <c>null</c> where one of them names
-            /// nothing a constraint can be made of.
-            /// </summary>
-            /// <param name="policyPaths">The paths.</param>
-            /// <param name="filter">The facts scoping it, or <c>null</c> for every document.</param>
-            /// <param name="source">Where the constraint was learned.</param>
-            /// <returns>The constraint, or <c>null</c>.</returns>
-            public static Unique? Of(IEnumerable<string> policyPaths, IEnumerable<CosmosFact>? filter, CosmosConstraintSource source)
+            if (StartsWithKeyword(trimmed, "CHECK"))
+                throw new ArgumentException($"'{trimmed}': CHECK constraints are not read yet. A constraint that is not read is not in force, so it is refused rather than ignored.", nameof(text));
+
+            if (StartsWithKeyword(trimmed, "UNIQUE") == false)
+                throw new ArgumentException($"'{trimmed}' is not a constraint this reads; write UNIQUE (expression, …) [WHERE predicate].", nameof(text));
+
+            var rest = trimmed.Substring("UNIQUE".Length).TrimStart();
+            if (rest.Length == 0 || rest[0] != '(')
+                throw new ArgumentException($"'{trimmed}': UNIQUE is followed by a parenthesised list of expressions.", nameof(text));
+
+            var close = MatchingParenthesis(rest, 0)
+                ?? throw new ArgumentException($"'{trimmed}': the list of expressions is not closed.", nameof(text));
+
+            var keys = rest.Substring(1, close - 1).Trim();
+            if (keys.Length == 0)
+                throw new ArgumentException($"'{trimmed}': UNIQUE needs at least one expression.", nameof(text));
+
+            var tail = rest.Substring(close + 1).Trim();
+            string? filter = null;
+
+            if (tail.Length > 0)
             {
-                if (policyPaths is null)
-                    throw new ArgumentNullException(nameof(policyPaths));
+                if (StartsWithKeyword(tail, "WHERE") == false)
+                    throw new ArgumentException($"'{trimmed}': after the expressions only WHERE predicate may follow.", nameof(text));
 
-                var paths = new List<CosmosDocumentPath>();
-
-                foreach (var policyPath in policyPaths)
-                {
-                    if (PathOf(policyPath) is not CosmosDocumentPath path)
-                        return null;
-
-                    if (paths.Contains(path) == false)
-                        paths.Add(path);
-                }
-
-                return paths.Count == 0 ? null : new Unique(paths, filter is null ? Array.Empty<CosmosFact>() : new List<CosmosFact>(filter), source);
+                filter = tail.Substring("WHERE".Length).Trim();
+                if (filter.Length == 0)
+                    throw new ArgumentException($"'{trimmed}': WHERE needs a predicate.", nameof(text));
             }
 
-            /// <inheritdoc />
-            public bool Equals(Unique? other) =>
-                other is not null
-                && Source == other.Source
-                && Paths.Count == other.Paths.Count && new HashSet<CosmosDocumentPath>(Paths).SetEquals(other.Paths)
-                && Filter.Count == other.Filter.Count && new HashSet<CosmosFact>(Filter).SetEquals(other.Filter);
-
-            /// <inheritdoc />
-            public override int GetHashCode()
-            {
-                var hash = Source.GetHashCode();
-
-                foreach (var path in Paths)
-                    hash ^= path.GetHashCode();
-
-                foreach (var fact in Filter)
-                    hash ^= fact.GetHashCode() * 31;
-
-                return hash;
-            }
-
-            /// <inheritdoc />
-            public override string ToString() =>
-                $"UNIQUE ({string.Join(", ", Paths)})" + (Filter.Count == 0 ? "" : $" WHERE {string.Join(" AND ", Filter)}") + $" from {Source}";
-
+            return new Unique(keys, filter, source);
         }
 
         /// <summary>
-        /// Reads a path in policy form, such as <c>/data/guid</c>.
+        /// Determines whether text begins with a keyword followed by something that cannot continue a word.
+        /// </summary>
+        static bool StartsWithKeyword(string text, string keyword) =>
+            text.StartsWith(keyword, StringComparison.OrdinalIgnoreCase)
+            && (text.Length == keyword.Length || char.IsLetterOrDigit(text[keyword.Length]) == false && text[keyword.Length] != '_');
+
+        /// <summary>
+        /// Finds the parenthesis closing the one at <paramref name="open"/>, stepping over SQL string literals
+        /// and quoted identifiers, in which a parenthesis is text.
+        /// </summary>
+        static int? MatchingParenthesis(string text, int open)
+        {
+            var depth = 0;
+
+            for (var i = open; i < text.Length; i++)
+            {
+                switch (text[i])
+                {
+                    case '\'':
+                    case '"':
+                        var quote = text[i];
+                        for (i++; i < text.Length; i++)
+                        {
+                            if (text[i] != quote)
+                                continue;
+
+                            // A doubled quote is the quote itself, inside the literal.
+                            if (i + 1 < text.Length && text[i + 1] == quote)
+                            {
+                                i++;
+                                continue;
+                            }
+
+                            break;
+                        }
+                        break;
+                    case '(':
+                        depth++;
+                        break;
+                    case ')':
+                        depth--;
+                        if (depth == 0)
+                            return i;
+                        break;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Renders a path in policy form, such as <c>/data/guid</c>, as the accessor a constraint names it by.
         /// </summary>
         /// <param name="policyPath">The path.</param>
-        /// <returns>The path, or <c>null</c> where it names nothing below the root, or many values.</returns>
-        public static CosmosDocumentPath? PathOf(string? policyPath)
+        /// <returns>The accessor, or <c>null</c> where the path names nothing below the root or many values.</returns>
+        public static string? AccessorOf(string? policyPath)
         {
             if (string.IsNullOrWhiteSpace(policyPath))
                 return null;
 
-            var path = CosmosDocumentPath.Root;
+            var path = new StringBuilder("$");
+            var any = false;
 
             foreach (var name in policyPath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                // A wildcard or an array step names many values rather than one, so a constraint over it is
-                // not one over a value a join can equate.
+                // A wildcard or an array step names many values rather than one.
                 if (name is "*" or "?" or "[]")
                     return null;
 
-                path = path.Property(name.Length > 1 && name[0] == '"' && name[^1] == '"' ? name[1..^1] : name);
+                var bare = name.Length > 1 && name[0] == '"' && name[^1] == '"' ? name[1..^1] : name;
+
+                // A quote would need escaping at two levels, the JSON path's and the SQL literal's; no
+                // container this has met names a property so, and refusing is better than guessing.
+                if (bare.Contains('\''))
+                    return null;
+
+                if (IsIdentifier(bare))
+                    path.Append('.').Append(bare);
+                else
+                    path.Append("[''").Append(bare).Append("'']");
+
+                any = true;
             }
 
-            return path.IsRoot ? null : path;
+            return any ? $"JSON_VALUE(DOC, '{path}')" : null;
+
+            static bool IsIdentifier(string name)
+            {
+                if (name.Length == 0 || (char.IsLetter(name[0]) == false && name[0] != '_'))
+                    return false;
+
+                foreach (var c in name)
+                    if (char.IsLetterOrDigit(c) == false && c != '_')
+                        return false;
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// A <c>UNIQUE</c> constraint: among the documents the predicate admits, no two share the values of
+        /// the expressions.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What a key expression stands for.</b> A plain document accessor — <c>JSON_VALUE(DOC, '$.x')</c>,
+        /// or a promoted column — stands for the <em>stored</em> value at its path, which is what the service
+        /// enforces and what an application usually means. Any other expression stands for its own value:
+        /// <c>LOWER(JSON_VALUE(DOC, '$.email'))</c> says two emails differing in case are one.
+        /// </para>
+        /// <para>
+        /// <b>Always across the whole container.</b> The service makes <c>id</c> unique within a logical
+        /// partition, and a unique key policy does the same for its paths, so each is stated with the partition
+        /// key paths added. Uniqueness within a partition is not something a planner can use alone.
+        /// </para>
+        /// <para>
+        /// <b>A predicate scopes the claim, and a consumer has to prove it</b> of every document it compares.
+        /// A document for which a key is null is outside the claim: a null equals nothing.
+        /// </para>
+        /// </remarks>
+        /// <param name="Keys">The key expressions, as Calcite SQL over the document, separated by commas.</param>
+        /// <param name="Filter">The predicate scoping the claim, as Calcite SQL, or <c>null</c> for every document.</param>
+        /// <param name="SourceOf">Where the constraint was learned.</param>
+        public sealed record Unique(string Keys, string? Filter, CosmosConstraintSource SourceOf) : CosmosConstraint
+        {
+
+            /// <inheritdoc />
+            public override string Text => $"UNIQUE ({Keys})" + (Filter is null ? "" : $" WHERE {Filter}");
+
+            /// <inheritdoc />
+            public override CosmosConstraintSource Source => SourceOf;
+
         }
 
     }

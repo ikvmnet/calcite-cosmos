@@ -121,66 +121,40 @@ namespace Apache.Calcite.Cosmos.Adapter
         public const string SchemaOperand = "schema";
 
         /// <summary>
-        /// The key, inside a <see cref="ContainersOperand"/> entry, carrying what the model declares true of
-        /// the container's documents taken together.
+        /// The key, inside a <see cref="ContainersOperand"/> entry, listing what the model declares true of the
+        /// container's documents taken together.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// An object, beside <see cref="SchemaOperand"/>: the schema says what each document holds, and this
-        /// says what holds across them, which JSON Schema has no way to state. What the service and the
-        /// container definition already guarantee — <c>id</c> with the partition key, a unique key policy
-        /// with the partition key — is derived without being written here; see
-        /// <see cref="Metadata.CosmosConstraintSet.FromContainer"/>.
-        /// </para>
-        /// <para>
-        /// <b>Trusted, not checked</b>, and refused rather than ignored where it names something this
-        /// adapter does not read: a constraint silently dropped is one the caller believes is in force.
-        /// </para>
-        /// </remarks>
-        public const string ConstraintsOperand = "constraints";
-
-        /// <summary>
-        /// The key, inside a <see cref="ConstraintsOperand"/> object, listing <c>UNIQUE</c> constraints.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Each is an object: <see cref="PathsOperand"/>, the paths in policy form whose values no two
-        /// documents share, and optionally <see cref="FilterOperand"/>, the documents among which they do not.
+        /// A list of constraints, each written as SQL DDL whose expressions are Calcite SQL over the document —
+        /// the dialect a model's views are written in:
         /// </para>
         /// <code>
-        /// "unique": [
-        ///   { "paths": ["/data/guid"] },
-        ///   { "paths": ["/linkId"], "filter": { "/type": "Link" } }
+        /// "constraints": [
+        ///   "UNIQUE (JSON_VALUE(DOC, '$.data.guid'))",
+        ///   "UNIQUE (JSON_VALUE(DOC, '$.linkId')) WHERE JSON_VALUE(DOC, '$.type') = 'Link'"
         /// ]
         /// </code>
         /// <para>
-        /// Across the whole container, which is the difference from a unique key policy — that is unique
-        /// within a logical partition, and is derived without being declared. A join that equates a
-        /// constraint's paths pairs a document only with itself, and is answered by reading it once.
+        /// Beside <see cref="SchemaOperand"/>, because the schema says what each document holds and this says
+        /// what holds across them, which JSON Schema has no way to state. What the service and the container
+        /// definition already guarantee — <c>id</c> with the partition key, a unique key policy with the
+        /// partition key — is derived without being written here; see
+        /// <see cref="Metadata.CosmosConstraintSet.FromContainer"/>.
         /// </para>
         /// <para>
-        /// <b>A wrong one is worse than a wrong schema</b>: a join that pairs two documents is read as one
-        /// document paired with itself, and the rows the second contributed are dropped with no error. See
-        /// <c>DESIGN.md</c> under <em>A join of a container to itself</em>.
+        /// <b>Compiled against the container when the model is read</b>, and a constraint that does not compile,
+        /// or is of a kind not read yet, is refused there: a constraint silently dropped is one the caller
+        /// believes is in force. See <see cref="Metadata.CosmosConstraint"/> for the grammar and
+        /// <see cref="Rel.CosmosConstraintCompiler"/> for what the expressions mean.
+        /// </para>
+        /// <para>
+        /// <b>Trusted, not checked</b>, and a wrong <c>UNIQUE</c> is worse than a wrong schema: a join that pairs
+        /// two documents is read as one document paired with itself, and the rows the second contributed are
+        /// dropped with no error. See <c>DESIGN.md</c> under <em>A join of a container to itself</em>.
         /// </para>
         /// </remarks>
-        public const string UniqueOperand = "unique";
-
-        /// <summary>
-        /// The key, inside a <see cref="UniqueOperand"/> entry, listing its paths.
-        /// </summary>
-        public const string PathsOperand = "paths";
-
-        /// <summary>
-        /// The key, inside a <see cref="UniqueOperand"/> entry, scoping it to the documents that hold the given
-        /// values.
-        /// </summary>
-        /// <remarks>
-        /// An object from path to value — a scalar the path must equal, or a list of scalars it must be one
-        /// of — every member of which must hold. The constraint is used only where both sides of a join are
-        /// proved to satisfy all of it.
-        /// </remarks>
-        public const string FilterOperand = "filter";
+        public const string ConstraintsOperand = "constraints";
 
         /// <summary>The operand selecting the connection mode, <c>gateway</c> or <c>direct</c>.</summary>
         public const string ConnectionModeOperand = "connectionMode";
@@ -488,6 +462,19 @@ namespace Apache.Calcite.Cosmos.Adapter
                         .WithFacts(declaration.Facts)
                         .WithConstraints(declaration.Constraints ?? System.Array.Empty<Metadata.CosmosConstraint>()));
 
+                // A constraint names expressions over the container's row type, which is only known now.
+                foreach (var container in containers)
+                {
+                    try
+                    {
+                        Rel.CosmosConstraintCompiler.Validate(container);
+                    }
+                    catch (ArgumentException e)
+                    {
+                        throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container.Name}': {e.Message}", e);
+                    }
+                }
+
                 return containers;
             }
 
@@ -592,122 +579,35 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Reads a container entry's declared constraints.
         /// </summary>
         /// <remarks>
-        /// Refused rather than skipped where anything is malformed or unknown. Unlike a schema keyword the
-        /// compiler does not understand, a constraint silently dropped is a declaration the caller believes
-        /// is in force and is not.
+        /// Only the shape of each is read here; whether its expressions compile against the container is asked
+        /// once the container's definition is read, by <see cref="Rel.CosmosConstraintCompiler.Validate"/>.
         /// </remarks>
         static IReadOnlyList<Metadata.CosmosConstraint>? ReadConstraints(string container, object? value)
         {
             if (value is null)
                 return null;
 
-            if (value is not java.util.Map map)
-                throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}' must be an object.");
-
-            RequireOnly(map, $"Operand '{ConstraintsOperand}' on container '{container}'", UniqueOperand);
-
-            return ReadUnique(container, map.get(UniqueOperand));
-        }
-
-        /// <summary>
-        /// Refuses a member this adapter does not read, naming the ones it does.
-        /// </summary>
-        static void RequireOnly(java.util.Map map, string where, params string[] known)
-        {
-            var names = map.keySet().iterator();
-            while (names.hasNext())
-                if (names.next()?.ToString() is var member && System.Array.IndexOf(known, member) < 0)
-                    throw new ArgumentException($"{where} declares '{member}', which this adapter does not read; it reads {string.Join(", ", System.Linq.Enumerable.Select(known, k => $"'{k}'"))}.");
-        }
-
-        /// <summary>
-        /// Reads a constraint object's <c>UNIQUE</c> constraints.
-        /// </summary>
-        /// <remarks>
-        /// A path naming a wildcard or an array step names no single value to equate, and a filter value that
-        /// is not a scalar names no value a predicate could prove; both are refused.
-        /// </remarks>
-        static IReadOnlyList<Metadata.CosmosConstraint> ReadUnique(string container, object? value)
-        {
-            if (value is null)
-                return System.Array.Empty<Metadata.CosmosConstraint>();
-
-            var shape = $"Operand '{UniqueOperand}' on container '{container}' must be a list of objects, each with '{PathsOperand}' and optionally '{FilterOperand}'.";
-
             if (value is not java.util.List list)
-                throw new ArgumentException(shape);
+                throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}' must be a list of constraints, each a string such as \"UNIQUE (JSON_VALUE(DOC, '$.data.guid'))\".");
 
             var constraints = new List<Metadata.CosmosConstraint>();
 
             for (var i = 0; i < list.size(); i++)
             {
-                if (list.get(i) is not java.util.Map entry || entry.get(PathsOperand) is not java.util.List members)
-                    throw new ArgumentException(shape);
+                if (list.get(i) is not string text)
+                    throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}' must be a list of strings.");
 
-                RequireOnly(entry, $"A '{UniqueOperand}' entry on container '{container}'", PathsOperand, FilterOperand);
-
-                var paths = new List<string>();
-                for (var j = 0; j < members.size(); j++)
-                    paths.Add(members.get(j)?.ToString() ?? "");
-
-                var filter = ReadFilter(container, entry.get(FilterOperand));
-
-                constraints.Add(Metadata.CosmosConstraint.Unique.Of(paths, filter, Metadata.CosmosConstraintSource.Declared)
-                    ?? throw new ArgumentException($"UNIQUE [{string.Join(", ", paths)}] on container '{container}' must name one or more document paths, such as '/data/guid', with no wildcard or array step."));
+                try
+                {
+                    constraints.Add(Metadata.CosmosConstraint.Parse(text, Metadata.CosmosConstraintSource.Declared));
+                }
+                catch (ArgumentException e)
+                {
+                    throw new ArgumentException($"Operand '{ConstraintsOperand}' on container '{container}': {e.Message}", e);
+                }
             }
 
             return constraints;
-        }
-
-        /// <summary>
-        /// Reads a <c>UNIQUE</c> constraint's filter into the facts a document must satisfy.
-        /// </summary>
-        /// <remarks>
-        /// Values are read the way a schema's <c>const</c> and <c>enum</c> are, so a filter and a schema state
-        /// the same claim the same way and a predicate proves either alike.
-        /// </remarks>
-        static IReadOnlyList<Metadata.CosmosFact>? ReadFilter(string container, object? value)
-        {
-            if (value is null)
-                return null;
-
-            if (value is not java.util.Map map)
-                throw new ArgumentException($"Operand '{FilterOperand}' on container '{container}' must be an object from path to value.");
-
-            var facts = new List<Metadata.CosmosFact>();
-            var entries = map.entrySet().iterator();
-
-            while (entries.hasNext())
-            {
-                var entry = (java.util.Map.Entry)entries.next();
-                var name = entry.getKey()?.ToString();
-
-                if (Metadata.CosmosConstraint.PathOf(name) is not Metadata.CosmosDocumentPath path)
-                    throw new ArgumentException($"Filter path '{name}' on container '{container}' must name a document path, such as '/type', with no wildcard or array step.");
-
-                var node = (com.fasterxml.jackson.databind.JsonNode)Mapper.valueToTree(entry.getValue());
-
-                if (node.isArray())
-                {
-                    var domain = new List<object?>();
-                    for (var i = 0; i < node.size(); i++)
-                        domain.Add(Metadata.CosmosSchemaFacts.TryLiteral(node.get(i), out var member)
-                            ? member
-                            : throw new ArgumentException($"Filter '{name}' on container '{container}' must list scalars."));
-
-                    facts.Add(new Metadata.CosmosFact(path, new Metadata.CosmosClaim.OneOf(domain)));
-                }
-                else if (Metadata.CosmosSchemaFacts.TryLiteral(node, out var scalar))
-                {
-                    facts.Add(new Metadata.CosmosFact(path, new Metadata.CosmosClaim.EqualTo(scalar)));
-                }
-                else
-                {
-                    throw new ArgumentException($"Filter '{name}' on container '{container}' must be a scalar or a list of scalars.");
-                }
-            }
-
-            return facts;
         }
 
     }

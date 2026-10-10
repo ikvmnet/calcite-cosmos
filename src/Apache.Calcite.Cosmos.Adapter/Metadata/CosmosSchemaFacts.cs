@@ -867,7 +867,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Reads a JSON literal as the CLR value a predicate would compare against.
         /// </summary>
-        internal static bool TryLiteral(JsonNode? node, out object? value)
+        static bool TryLiteral(JsonNode? node, out object? value)
         {
             value = null;
 
