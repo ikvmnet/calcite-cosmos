@@ -83,14 +83,14 @@ seeds both sources and is safe to re-run. What it demonstrates is the lookup joi
 the CSV side's three product ids are pushed into Cosmos, so the container is filtered at the service
 rather than read whole.
 
-### Integration requirements, recorded in the README
+### Integration requirements, recorded in the user manual
 
 Three things trip a host and fail with messages that name nothing useful: the calc rules must run as
 a *pass* after the planner (`Programs.CALC_PROGRAM`'s shape — given to Volcano they do nothing), a
 model must name `CosmosSchemaFactory` assembly-qualified with the assembly already loaded, and
 `defaultNullCollation` defaults to the opposite of the service's null placement, so every sort on a
-document path silently declines until the connection says `LOW`. The README carries all three with
-the reasoning.
+document path silently declines until the connection says `LOW`. The manual in `docs/` carries all
+three with the reasoning — chapters 2, 9 and 21.
 
 ### Where to start
 
@@ -130,50 +130,22 @@ way for a caller to end it; what they still lack is a writer other than the serv
 Per-partition storage is an Azure Monitor metric, not data plane. The count is reachable and the
 distribution is not, so a hot-partition estimate would have to come from outside the adapter.
 
-### Nothing is remembered between connections — *medium, and it now costs more than it did*
+### A rebuilt root leaks its client — *small*
 
-`CosmosSchemaFactory.create` runs per model read, which in the ADO.NET path is per *connection*, so
-every connection builds fresh `CosmosContainerMetadata` and with it fresh lazy cells. Within a
-connection each fact is computed once; across connections nothing is shared, though the client can
-be. That was two round trips per container for statistics; the whole-partition delete capability
-adds a third for any connection that plans one, and a short-lived-connection application pays them
-all again each time.
+The provider answered the question this entry used to ask. Since `Apache.Calcite.Data`
+2.0.1-pre.267 a connection draws on a `CalciteDataSource` shared by every connection with an
+equivalent connection string, so the model is read and `CosmosSchemaFactory.create` runs once per
+data source rather than per connection; a host wanting the schema object itself registers it with
+`CalciteDataSourceBuilder.AddSchema`. `CalciteConnection.RootSchema` is now read-only. The manual
+(chapter 6) documents both; what a schema learns still hangs off the schema, and nothing here should
+grow a process-wide cache.
 
-**The cache hangs off the schema**, which is where the lookup cache already hangs and for the same
-reason: no global static, no leak between accounts, and the lifetime is the caller's to choose. It
-does not help a host that rebuilds its schema per connection — but that is the honest shape, because
-the alternative is a process-wide cache keyed by `CosmosClient.Endpoint` that outlives every
-decision anyone made about it. ADO.NET pushes callers to recreate connections freely and pool them
-underneath; reusing the *schema* across those connections is the documented way to keep what it
-learnt, and the README should say so beside the client-factory guidance.
-
-Three facts, three lifetimes, and they are not the same:
-
-- **The container definition** — partition key paths, indexing policy. Changes only by a control
-  plane operation; cache for the life of the schema.
-- **The whole-partition delete capability** — a property of the account, changed only by a support
-  request. Same treatment.
-- **Statistics** — genuinely mutable, which is why they carry a time to live and a
-  `RefreshStatistics()`: without both, one connection's stale row count would outlive the connection
-  that fetched it.
-
-**Deferred: the shape this wants belongs to the provider, not here.**
-
-What was asked first — whether a host can reuse a schema through `Apache.Calcite.Data` — has an
-answer. `CalciteConnection.RootSchema` is public and writable, so a host builds one schema and
-registers the same instance on each connection; what is registered there survives a `Close`/`Open`
-cycle, the engine session being torn down only on dispose. A *new* connection gets a new session and
-a new root schema, so the registration is per connection while the object, and everything it learnt,
-is not. The README carries that as the way to keep the reads down today.
-
-It is a workaround rather than the design. A model-built schema is still constructed per connection,
-and making that path share anything means changing how `CalciteConnection` builds schemas — which is
-`Apache.Calcite.Data`'s to decide, in a different repository, and not something to design around from
-here.
-
-So this waits on that, and the note about *where* the cache belongs stands: on the schema, for the
-reasons above. Whatever the provider ends up offering, the schema is where the logic hangs, and
-nothing here should grow a process-wide cache in the meantime.
+What is left is disposal. A pooled data source is released after `ConnectionIdleLifetime` with no
+open connection, and the next connection builds a new root — and with it, through `endpoint`, a new
+`CosmosClient` — while the old client is never disposed. The provider disposes every `IDisposable`
+schema on a released root, so `CosmosSchema` and `CosmosAccountSchema` can now release the client they
+created. Only one they created: a client from `clientFactory` may be shared and is the factory's to
+dispose.
 
 ### Statistics after pushdown — *large*
 
@@ -621,10 +593,6 @@ is not offered, and one thing that cannot be fixed here at all.
 
 - **Temporal is what is left**, and its blocker is a declared representation rather than a
   translation — see below.
-- **A host must chain a library operator table** to name `LEFT`, `RIGHT`, `REVERSE` or `REPEAT` at
-  all: Calcite's standard table carries none of them, and the adapter translates whatever arrives
-  rather than deciding which library a caller uses. Worth a line in the README beside the
-  `CosmosOperators` chaining it already documents — *small*.
 - **A cast of a numeric literal renders**, which is what lets a comparison against a function
   returning a double push: `VECTORDISTANCE(…) < 0.5` coerces the literal and arrives as
   `CAST(0.5):DOUBLE`, and declining the cast declined the predicate. A cast over a *document
@@ -1178,7 +1146,7 @@ as SQL's null does, and that `* 1` does not disturb a large integer.
 ### A sort whose null placement disagrees is declined, and need not be — *medium*
 
 Today the service's null placement is a constraint on the caller: `defaultNullCollation` must say
-`LOW` or every sort over a nullable path silently declines, which the README carries as an
+`LOW` or every sort over a nullable path silently declines, which the manual carries as an
 integration requirement. That is the adapter asking the query to match the store rather than
 implementing what Calcite asked for.
 
@@ -1615,7 +1583,7 @@ answer.
 
 ### One smaller one
 
-- **A schema carried by reference** rather than inline. Inline is the right default and the README
+- **A schema carried by reference** rather than inline. Inline is the right default and the manual
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
@@ -1722,8 +1690,7 @@ across documents* and *A join of a container to itself* is the record.
 - **Lazy subschemas** — *small.* Container *definitions* are read eagerly when an account-level schema
   is built, so an account with many databases pays a read per container to reach one. Statistics are
   already lazy; the definitions want a lazy `Map`.
-- **Client disposal** — *small.* The schema owns a client for the life of the process because Calcite
-  offers no disposal hook. Worth revisiting against `SchemaPlus` rather than left as a comment.
+- **Client disposal** — *small.* See *A rebuilt root leaks its client* in section 1.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
 

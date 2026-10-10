@@ -1,108 +1,99 @@
-﻿# Apache.Calcite.Cosmos.Adapter
+# Apache.Calcite.Cosmos.Adapter
 
-**Apache.Calcite.Cosmos.Adapter** lets [Apache Calcite](https://calcite.apache.org/) treat [Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/) containers as first-class relational schemas.
+An [Apache Calcite](https://calcite.apache.org/) adapter for [Azure Cosmos DB for NoSQL](https://learn.microsoft.com/azure/cosmos-db/).
+Query Cosmos containers with ordinary SQL from .NET: as much of each query as Cosmos can evaluate is
+translated to **Cosmos SQL** and run by the service, and the rest — relational joins, set operations,
+functions Cosmos lacks — is evaluated in process by Calcite, which runs inside your application through
+IKVM.
 
-Rather than going through ADO.NET or JDBC, the adapter translates the relational plan into **Cosmos SQL** — the query dialect the Cosmos DB engine natively accepts — and executes it against the container.
-
-## How it works
-
-1. A Cosmos database is registered with Calcite as a schema, one table per container.
-2. Calcite's planner converts as much of the plan as possible into the Cosmos calling convention (`CosmosConvention`).
-3. Nodes in that convention are rendered to Cosmos SQL and executed by the Cosmos query engine.
-4. Results leave the convention as a cursor, into the `ClrCursorConvention` provided by [`Apache.Calcite.Extensions`](https://www.nuget.org/packages/Apache.Calcite.Extensions), and into no other convention. A plan that wants its rows somewhere else gets there higher up, through that package's own converters.
-5. Anything Cosmos cannot express is executed in-process by Calcite, under that convention.
-
-## Read a Cosmos table asynchronously
-
-A query over a Cosmos table plans once and is read either way, and **only the asynchronous route is free**. Reading one synchronously blocks a thread once per page of results.
-
-This is a property of the service, not a limitation of the adapter. The Cosmos v3 SDK has no synchronous data-plane API — a page of results arrives only by awaiting `FeedIterator.ReadNextAsync` — so there is no synchronous read for the adapter to call. Opened synchronously, the plan waits for the first page; advanced synchronously, it waits wherever it runs out of a page and has to fetch the next. A row already in a page costs nothing either way.
-
-Read asynchronously, each advance's cancellation token is the one the page request runs under. That is what the cursor convention is for: a `ReadAsync(token)` reaches `ReadNextAsync` with the token it was given, rather than a token fixed once when the results were first enumerated.
-
-A container has no row schema, so a table is modelled as one document column carrying the whole document as JSON text, plus promoted scalar columns for paths the service guarantees or the container declares — `id`, `_ts`, `_etag`, and the partition key. Nothing is inferred from sampling documents.
-
-Geography is geodesic and Calcite's own `ST_*` are planar, so the geodesic reading comes from the `CLR_ST_GEOG_*` operators in [`Apache.Calcite.Geography`](https://www.nuget.org/packages/Apache.Calcite.Geography). There is no `GEOGRAPHY` type: the operator's name is the whole of what says which reading is meant.
+**[User manual](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/README.md)** ·
+[Source](https://github.com/ikvmnet/calcite-cosmos)
 
 ## Install
 
 ```sh
 dotnet add package Apache.Calcite.Cosmos.Adapter
+dotnet add package Apache.Calcite.Data
 ```
+
+`Apache.Calcite.Data` is the ADO.NET provider your code talks to; this package plugs Cosmos into it.
 
 ## Register a database
 
 ```json
 {
-  "name": "COSMOS",
-  "type": "custom",
-  "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
-  "operand": {
-    "endpoint": "https://account.documents.azure.com:443/",
-    "key": "…",
-    "database": "inventory",
-    "containers": [ "products", "orders" ]
-  }
+  "version": "1.0",
+  "defaultSchema": "COSMOS",
+  "schemas": [{
+    "name": "COSMOS",
+    "type": "custom",
+    "factory": "Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory, Apache.Calcite.Cosmos.Adapter",
+    "operand": {
+      "endpoint": "https://myaccount.documents.azure.com:443/",
+      "database": "inventory",
+      "containers": [ "products", "orders" ]
+    }
+  }]
 }
 ```
 
-Omit `containers` to expose every container in the database.
+Give a `key` to use an account key, or none to sign in with Microsoft Entra ID. Omit `containers` to
+expose every container, or `database` to expose the whole account.
 
-## Pushdown
+**The factory must be named assembly-qualified**, as above, and its assembly loaded before the model is
+read — `_ = new Apache.Calcite.Cosmos.Adapter.CosmosSchemaFactory();` at start-up does it.
 
-| Operator | Rendered as |
-|---|---|
-| Filter | `WHERE` |
-| Project | `SELECT VALUE { … }` |
-| Sort | `ORDER BY`, `OFFSET`/`LIMIT` |
-| Array traversal | `JOIN alias IN path` |
-
-Relational joins, `UNION`/`INTERSECT`/`EXCEPT`, and `HAVING` have no Cosmos equivalent and are evaluated in-process by Calcite. Multi-property `ORDER BY` is pushed down only when the container declares a matching composite index, since the service rejects it otherwise.
-
-## Full text search
-
-Cosmos has full text search and SQL does not, so the functions come from this adapter. A Cosmos schema declares them, so a connection resolves them the way it resolves a table — name the schema as the model's `defaultSchema`, or qualify the call as `"COSMOS"."FULLTEXTCONTAINS"(…)`.
-
-`FULLTEXTCONTAINS`, `FULLTEXTCONTAINSALL` and `FULLTEXTCONTAINSANY` are usable in a `WHERE` clause and push down to the service. The first argument must be a property path. Whether the container declares that path full text searchable — in its full text policy, in a full text index, or both — decides what the predicate costs rather than whether it pushes: measured, the service answers a full text call over an undeclared path, and over a container with no policy, by scanning, so the planner prices it as a scan and keeps the plan. `VECTORDISTANCE` is still gated on one of its two vectors being a declared vector path; that gate was not measured.
-
-A host that assembles its own planner rather than opening a connection chains the operator table instead, and may chain it alongside a schema without a duplicate definition:
+## Query
 
 ```csharp
-SqlOperatorTables.chain(SqlStdOperatorTable.instance(), CosmosOperators.Instance)
+await using var connection = new CalciteConnection(new CalciteConnectionStringBuilder
+{
+    Model = "inline:" + model,
+    CaseSensitive = true,
+    DefaultNullCollation = "LOW",
+}.ConnectionString);
+
+await connection.OpenAsync();
+
+await using var command = connection.CreateCommand();
+command.CommandText = """
+    SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name"
+    FROM "products" AS c
+    WHERE c."$.category" = 'bikes'
+    """;
+
+await using var reader = await command.ExecuteReaderAsync();
+while (await reader.ReadAsync())
+    Console.WriteLine(reader.GetString(1));
 ```
 
-Ranking works when the planner is one you built. `ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY` becomes `ORDER BY RANK`, and `RRF(...)` fuses two scores for hybrid search. The score is never projected — the service forbids it — so it ranks the rows and does not appear in the result. Through a connection the clause is not recovered, because the projection that discards the score is applied after planning; see [DESIGN.md](DESIGN.md).
+Each container is a table with one column holding the whole document, `DOC`, reached with `JSON_VALUE`
+and `JSON_QUERY`, plus `id`, `_ts`, `_etag` and the partition key. Set `DefaultNullCollation = "LOW"` so
+sorts can run at the service, and read with the asynchronous methods — the Cosmos SDK has no
+synchronous reads.
 
-## What a query cost
+## Features
 
-Cosmos charges in request units and reports the charge on every response. The adapter records it, on a `Meter` and an `ActivitySource` both named `Apache.Calcite.Cosmos.Adapter`:
+- Filters, projections, sorts, paging, aggregation and array traversal pushed down — partially where a
+  whole operator cannot be
+- Partition routing and point reads recovered from the predicate
+- Lookup joins that fetch only the documents another source's keys match
+- `INSERT`, `UPDATE` and `DELETE`
+- JSON Schema and `UNIQUE` declarations that let UUIDs, timestamps and numbers stored as text push down
+- Full text search, vector search and geodesic geography
+- Request-unit metrics and traces through `System.Diagnostics`
 
-| | |
-|---|---|
-| `cosmos.request_charge` | Request units, one measurement per response |
-| `cosmos.responses` | Responses received |
-| `cosmos.query` (span) | One statement, first request to last page |
+## Documentation
 
-Both instruments are tagged with `cosmos.container` and with `cosmos.request_kind`, which is `query` or `point_read` — so a point read can be told from the query it replaced. Collect them however you already collect .NET telemetry:
+The [user manual](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/README.md) covers
+configuration, the row model, what pushes down and why, writing, declarations, performance, monitoring
+and troubleshooting.
 
-```csharp
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(m => m.AddMeter("Apache.Calcite.Cosmos.Adapter"))
-    .WithTracing(t => t.AddSource("Apache.Calcite.Cosmos.Adapter"));
-```
-
-Add `"indexMetrics": true` to the operand to have the service report which indexes each statement used; it lands on the span as `cosmos.index_metrics`. Off by default, because the service computes it per query.
-
-## Status
-
-Under development. Statement generation, container metadata, the schema and table layer, the scan/filter/project/sort/unnest/aggregate/rank nodes, and execution inside a Calcite plan are in place and tested. `INSERT` and `DELETE` are supported — Cosmos SQL has no DML, so a write is item CRUD over the rows a `TableModify` supplies rather than generated text; `UPDATE` is declined until it can be a patch rather than a read-modify-write. The geography operators the service evaluates — distance, within, intersects, validity and a distance bound — are translated, and a geodesic call over a container that reads its coordinates as a plane is refused while planning. A shape stored in a document is reached through `CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(c."DOC", …))`, which pushes as the path it names. Nothing pushed is rechecked in process; the root README explains both under *Geography*. What an insert writes is recorded in [DESIGN.md](DESIGN.md) under *What an insert writes*. Every emitted statement form is executed against a live service, and the suite runs against a real account when `COSMOS_TEST_ENDPOINT` and `COSMOS_TEST_KEY` name one — which the emulator is not a substitute for, it having been found to accept statements the service rejects and reject features the service implements. See [DESIGN.md](DESIGN.md), including its record of assumptions still to be settled.
-
-## Further reading
-
-- [Apache Calcite documentation](https://calcite.apache.org/docs/)
-- [Calcite adapters overview](https://calcite.apache.org/docs/adapter.html)
-- [Cosmos DB SQL query reference](https://learn.microsoft.com/azure/cosmos-db/nosql/query/getting-started)
-- [Source repository](https://github.com/ikvmnet/calcite-cosmos)
+- [Quick start](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/03-quick-start.md)
+- [Connecting and authenticating](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/05-authentication.md)
+- [Tables, columns and documents](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/07-row-model.md)
+- [Troubleshooting](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/22-troubleshooting.md)
+- [Limitations](https://github.com/ikvmnet/calcite-cosmos/blob/main/docs/23-limitations.md)
 
 ## License
 
