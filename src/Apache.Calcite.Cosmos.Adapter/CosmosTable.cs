@@ -264,6 +264,10 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// documents is about the <em>shape</em> of the data, where a wrong guess costs correctness. A
         /// wrong row count costs speed.
         /// </para>
+        /// <para>
+        /// A count of zero is reported as unknown: it ties every plan, and the tie goes to the one that
+        /// pushes nothing. See the comment in the body.
+        /// </para>
         /// </remarks>
         public override Statistic getStatistic()
         {
@@ -310,7 +314,15 @@ namespace Apache.Calcite.Cosmos.Adapter
             // A row count where the service gave one. It is approximate and lags, which is what a
             // planner row count is allowed to be; what it must not be is invented, and this is read
             // rather than sampled. Without it the planner compares plans with no sense of scale.
-            var rowCount = _container.Statistics is CosmosContainerStatistics statistics
+            //
+            // EXCEPT ZERO, which is reported as unknown. Volcano compares row counts and nothing else, so
+            // at zero rows every plan costs the same and the tie goes to whichever registered first --
+            // measured, the plan that pushes no part of a split predicate and reads the container whole.
+            // A zero is also the count least likely to be true: the service reports it for a while after
+            // documents are written, and the emulator reports it always, for a container holding 200. A
+            // container that really is empty costs nothing to read whichever plan wins, so treating its
+            // zero as unmeasured loses nothing, and lets the planner fall back on its own default.
+            var rowCount = _container.Statistics is CosmosContainerStatistics statistics && statistics.DocumentCount > 0
                 ? java.lang.Double.valueOf(statistics.DocumentCount)
                 : null;
 
