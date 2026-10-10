@@ -300,6 +300,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A predicate with one conjunct the service cannot evaluate still pushes the rest, through a
+        /// connection as through a bare planner.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// It did not. Through a connection the whole predicate stayed in process and the container was read
+        /// whole, while the same query under the planner the other tests use split correctly. The split was
+        /// produced either way; it lost on cost, because the connection reads its row count from the service
+        /// and the count it read was zero — every plan tying at zero rows, and the tie going to the one
+        /// registered first. The emulator reports zero for every container whatever it holds, which is why
+        /// this asserts wherever the suite runs; the service reports zero for a while after a write.
+        /// </para>
+        /// <para>
+        /// <c>SIMILAR TO</c> because the service has no counterpart, so it has to stay in process and is the
+        /// conjunct the split exists for.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task APartlyRenderablePredicatePushesWhatRendersThroughAConnection()
+        {
+            RequireService();
+
+            const string sql = """SELECT c."id" FROM "products" AS c WHERE JSON_VALUE(c."DOC", '$.category') = 'bikes' AND JSON_VALUE(c."DOC", '$.name') SIMILAR TO 'Trail%'""";
+
+            await using (var connection = await OpenAsync())
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = "EXPLAIN PLAN FOR " + sql;
+                var plan = (string?)await command.ExecuteScalarAsync() ?? "";
+
+                plan.Should().Contain("CosmosFilter", "the category comparison renders and should reach the service:\n" + plan);
+                plan.Should().Contain("'$.category'), 'bikes')", plan);
+            }
+
+            (await QueryAsync(sql)).Should().Equal("1");
+        }
+
+        /// <summary>
         /// The issue, put the way an application would put it.
         /// </summary>
         /// <remarks>

@@ -252,6 +252,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             new CosmosTable(container).getStatistic().getRowCount().doubleValue().Should().Be(4200d);
         }
 
+        /// <summary>
+        /// A count of zero is not reported: at zero rows every plan ties, and the tie went to the plan that
+        /// pushes none of a split predicate. The emulator reports zero for every container.
+        /// </summary>
+        [Fact]
+        public void AZeroCountIsNotAReportedRowCount()
+        {
+            var container = new CosmosContainerMetadata("products").WithStatistics(new CosmosContainerStatistics(0, 0, 1));
+
+            new CosmosTable(container).getStatistic().getRowCount().Should().BeNull();
+        }
+
         /// <remarks>
         /// What a row costs to move, which for a row model carrying whole documents dominates.
         /// </remarks>

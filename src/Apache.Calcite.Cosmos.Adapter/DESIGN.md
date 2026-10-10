@@ -916,6 +916,23 @@ incorrect plan, a wrong row count yields a slow one.
 The partition count is answered immediately, being a fact about the container rather than its
 contents.
 
+**And the emulator never reports one.** `documentsCount` is zero for every container it holds — zero for
+`links` holding 200 documents that had been there for days. So every plan the emulator measures is planned
+at zero rows, unless something stops it.
+
+**Zero is the one count that is worse than none, so it is reported as unknown.** Volcano compares row counts
+and nothing else. At zero rows every plan costs the same, and the tie goes to whichever registered first. Measured
+through a connection, that was the plan that pushes no part of a split predicate:
+`type = 'Link' AND label SIMILAR TO 'M%'` read the container whole. `CosmosFilterSplitRule` produced the split
+and `CosmosFilterRule` converted its pushed half, and the planner chose neither. Under the planner the other
+tests use, with no count, the same query split, and it split at 5 rows and at 1000 — it lost only at zero and
+one. A container that is really empty costs nothing to read whichever plan wins, so `getStatistic` reports a
+zero count as unmeasured and lets the planner fall back on its own default. A count of one still ties; a
+container of one document is not one where a plan matters.
+
+It looked like a defect of partial pushdown through a connection, and was not: every measurement of it
+was taken on the emulator.
+
 **Out-of-domain arithmetic fails the whole query.** `ASIN(2)`, `ACOS(2)`, `SQRT(-1)` and `LOG(0)`
 each return a 400 rather than yielding undefined for the offending row. Calcite evaluates all four
 as NaN, so pushing any of them down trades a row of NaN for a failed statement — over data no schema
