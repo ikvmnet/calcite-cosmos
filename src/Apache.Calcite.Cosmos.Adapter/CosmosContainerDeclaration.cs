@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 namespace Apache.Calcite.Cosmos.Adapter
 {

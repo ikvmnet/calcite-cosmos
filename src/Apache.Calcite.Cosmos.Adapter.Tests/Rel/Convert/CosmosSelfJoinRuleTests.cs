@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
         static CosmosContainerMetadata Container(string name = "items", string partitionKey = "/linkId", string? schema = null, IReadOnlyList<IReadOnlyList<string>>? uniqueKeys = null) =>
             new CosmosContainerMetadata(name, new[] { partitionKey }, uniqueKeys: uniqueKeys)
-                .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema ?? Schema)));
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema ?? Schema)));
 
         /// <summary>
         /// <c>UNIQUE</c> over the accessor of one path, optionally where another path equals a string.

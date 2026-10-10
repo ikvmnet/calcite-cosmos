@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -748,7 +749,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
@@ -780,7 +781,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation)
@@ -883,7 +884,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation declared)
@@ -955,7 +956,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
+            if (CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return null;
 
             if (known.RepresentationOf(document) is not CosmosRepresentation representation)

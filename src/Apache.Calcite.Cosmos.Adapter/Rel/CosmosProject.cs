@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using com.google.common.collect;
 
@@ -285,12 +286,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </param>
         /// <param name="held">The halves of an instant the conversion's value holds.</param>
         /// <returns><c>true</c> where a sort may order by the path.</returns>
-        public static bool IsOrderable(Metadata.CosmosFactSet? facts, CosmosPath? path, string? format = null, Metadata.CosmosTemporalParts held = Metadata.CosmosTemporalParts.None)
+        public static bool IsOrderable(CosmosFactSet? facts, CosmosPath? path, string? format = null, Metadata.CosmosTemporalParts held = Metadata.CosmosTemporalParts.None)
         {
             if (facts is null || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return false;
 
             if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)

@@ -75,7 +75,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var rootSchema = CalciteSchema.createRootSchema(false);
             var metadata = schema is null
                 ? Products
-                : Products.WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
+                : Products.WithFacts(CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(schema)));
 
             var table = new CosmosTable(metadata);
             rootSchema.add("products", table);

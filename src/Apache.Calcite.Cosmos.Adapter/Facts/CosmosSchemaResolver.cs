@@ -5,7 +5,7 @@ using com.fasterxml.jackson.databind;
 using com.networknt.schema;
 using com.networknt.schema.resource;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>

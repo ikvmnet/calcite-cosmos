@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;

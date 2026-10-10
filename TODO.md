@@ -1624,6 +1624,23 @@ answer.
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
+### The fact theory as a package of its own
+
+`Apache.Calcite.Cosmos.Facts` is a namespace inside the adapter, holding the theory, its claims and the
+schema reader, with stored forms and the geography claim kept on the adapter's side; `DESIGN.md` under
+*Planned Project Layout* says what is in it and why. What would make it a package:
+
+- **Its own project in this solution** — *small.* Move `Facts/` out, reference it from the adapter. The
+  namespace already references nothing of the adapter's, so this is a move and a project file.
+- **The schema reader on `System.Text.Json`** — *medium to large.* It walks Jackson's tree and resolves
+  through `com.networknt`, both through IKVM, which a package meant for .NET should not carry. The walk
+  is mechanical; the resolver — bundles with nested `$id`s, anchors, JSON Pointer — is the part
+  `com.networknt` does today and would have to be written. `CosmosSchemaFactsTests` is its spec.
+- **A name without `Cosmos`** — *small, and a decision.* The types keep the prefix while they live here,
+  which also keeps a type named `Fact` from colliding with xUnit's `[Fact]` in every test file.
+- **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own
+  each such change is two pull requests and a version.
+
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 
 Built in #177: `CosmosConstraintSet`, constraints written as SQL DDL (`UNIQUE (expr, …) [WHERE p]`, compiled

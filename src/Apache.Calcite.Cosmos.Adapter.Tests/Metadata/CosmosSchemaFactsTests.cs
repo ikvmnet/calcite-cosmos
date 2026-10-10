@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;
@@ -26,7 +27,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly CosmosDocumentPath At = Data.Property("at");
 
         static IReadOnlyList<CosmosFactRule> Read(string json) =>
-            CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
+            CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json));
 
         /// <summary>The facts a schema states, assembled into the theory a container would ask.</summary>
         static CosmosFactTheory Compile(string json) => new(Read(json));
@@ -1139,7 +1140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void AnUnreadableSchemaIsNoFactsRatherThanAFailure()
         {
-            CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))
+            CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("[]"))
                 .Should().BeEmpty("a declaration meant to add pushdowns must never be a reason a query stops working");
 
             Compile("""{ "type": "object", "properties": { "a": { "minimum": 3, "maxLength": 9 } } }""")

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Internal;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -66,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// against.
         /// </summary>
         readonly Metadata.CosmosContainerMetadata? _container;
-        readonly Metadata.CosmosFactSet _facts = Metadata.CosmosFactSet.Empty;
+        readonly CosmosFactSet _facts = CosmosFactSet.Empty;
 
         /// <summary>
         /// Gets what is known about the container's documents, closed under what the predicate proved.
@@ -76,7 +77,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// where a fact has not already ruled out what it exists to admit. Empty where a caller
         /// supplied nothing, which is every site but the filter rules.
         /// </remarks>
-        internal Metadata.CosmosFactSet Facts => _facts;
+        internal CosmosFactSet Facts => _facts;
 
         /// <summary>
         /// Initializes a new instance.
@@ -114,7 +115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// resting on one declines.
         /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, Metadata.CosmosFactSet? facts = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, CosmosFactSet? facts = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
@@ -122,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             _ownRow = ownRow;
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
-            _facts = facts ?? Metadata.CosmosFactSet.Empty;
+            _facts = facts ?? CosmosFactSet.Empty;
         }
 
         /// <summary>
@@ -1240,7 +1241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>The difference from <see cref="IsDeclaredString"/> is not caution, it is soundness, and
         /// it was measured.</b> The fact set a translator carries is the declaration closed under what
-        /// the query's own conjuncts proved, and <see cref="Metadata.CosmosFact.Entails"/> reads
+        /// the query's own conjuncts proved, and <see cref="CosmosFact.Entails"/> reads
         /// <c>EqualTo v</c> as <c>OfType</c> of <c>v</c>'s type. So over
         /// <c>JSON_VALUE(…, '$.label') = '30'</c> the extractor records <c>EqualTo "30"</c>, that
         /// entails <c>OfType String</c>, and the comparison certifies <em>itself</em> exact — which
@@ -1275,18 +1276,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(node, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return false;
 
             _declared ??= _container.Facts.Derive(null);
 
-            return _declared.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true)));
+            return _declared.Knows(new CosmosFact(document, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true)));
         }
 
         /// <summary>
         /// What the container declares outright, derived once per translator and only where asked.
         /// </summary>
-        Metadata.CosmosFactSet? _declared;
+        CosmosFactSet? _declared;
 
         bool IsDeclaredString(RexNode node)
         {
@@ -1296,14 +1297,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(node, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return false;
 
             // OrNull, because a null need not be excluded for the two orders to agree: a JSON null at
             // the path is dropped by the service, which orders it before every string, and dropped by
             // Calcite, whose accessor answers SQL null for it. What the guard existed to admit is a
             // value of some *other* type, and that is what the claim rules out.
-            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.String, OrNull: true)));
+            return _facts.Knows(new CosmosFact(document, new CosmosClaim.OfType(CosmosJsonType.String, OrNull: true)));
         }
 
         /// <summary>
@@ -1976,7 +1977,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(operand, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return false;
 
             if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
@@ -2029,7 +2030,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (held == Metadata.CosmosTemporalParts.None)
                 return;
 
-            if (Metadata.CosmosDocumentPath.From(path) is Metadata.CosmosDocumentPath document
+            if (Metadata.CosmosDocumentPaths.From(path) is CosmosDocumentPath document
                 && _facts.RepresentationOf(document) is Metadata.CosmosRepresentation representation
                 && Metadata.CosmosStoredForms.EngineReads(representation, held))
                 return;
@@ -2091,7 +2092,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(operand, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document)
                 return false;
 
             if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
@@ -3069,10 +3070,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            if (Metadata.CosmosDocumentPath.From(path) is not Metadata.CosmosDocumentPath document || document.IsRoot)
+            if (Metadata.CosmosDocumentPaths.From(path) is not CosmosDocumentPath document || document.IsRoot)
                 return null;
 
-            return _facts.Knows(new Metadata.CosmosFact(document, new Metadata.CosmosClaim.OfType(Metadata.CosmosJsonType.Boolean, OrNull: true)))
+            return _facts.Knows(new CosmosFact(document, new CosmosClaim.OfType(CosmosJsonType.Boolean, OrNull: true)))
                 ? operand
                 : null;
         }

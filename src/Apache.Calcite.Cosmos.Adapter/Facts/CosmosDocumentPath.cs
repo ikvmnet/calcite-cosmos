@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-using Apache.Calcite.Cosmos.Adapter.Sql;
-
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -12,8 +10,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Deliberately not a <see cref="CosmosPath"/>. That type is rooted at a <c>FROM</c> alias because
-    /// it is what a statement writes; a fact read out of a container's schema is a claim about the
+    /// Deliberately not a statement's path. That is rooted at a <c>FROM</c> alias because it is what a
+    /// statement writes; a fact read out of a container's schema is a claim about the
     /// document's shape and knows nothing about the alias a query happens to bind. Keeping them apart
     /// means a fact never has to be rebuilt when the same path is reached through a different alias,
     /// and a lookup is a plain dictionary hit.
@@ -71,35 +69,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var names = new string[_names.Length + 1];
             Array.Copy(_names, names, _names.Length);
             names[_names.Length] = name;
-
-            return new CosmosDocumentPath(names);
-        }
-
-        /// <summary>
-        /// Recovers the document path a statement's path addresses, or <c>null</c> where it addresses
-        /// something a fact cannot be about.
-        /// </summary>
-        /// <remarks>
-        /// The alias is dropped, being the statement's business. An array subscript answers <c>null</c>
-        /// rather than being skipped: <c>$.tags[0]</c> is not <c>$.tags</c>, and silently conflating
-        /// them would apply an element's fact to the array or the reverse.
-        /// </remarks>
-        /// <param name="path">The statement's path.</param>
-        /// <returns>The document path, or <c>null</c>.</returns>
-        public static CosmosDocumentPath? From(CosmosPath? path)
-        {
-            if (path is null)
-                return null;
-
-            var names = new string[path.Segments.Count];
-
-            for (var i = 0; i < path.Segments.Count; i++)
-            {
-                if (path.Segments[i].Name is not string name)
-                    return null;
-
-                names[i] = name;
-            }
 
             return new CosmosDocumentPath(names);
         }

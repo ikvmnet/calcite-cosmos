@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using StatementPath = Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath;
 
@@ -220,11 +221,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var path = StatementPath.Root("c").Property("data").Property("parkId");
 
-            CosmosDocumentPath.From(path).Should().Be(ParkId);
-            CosmosDocumentPath.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
+            CosmosDocumentPaths.From(path).Should().Be(ParkId);
+            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
                 "the alias is the statement's business and no part of what a schema declares");
 
-            CosmosDocumentPath.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
                 "an element is not its array, and conflating them would apply one's facts to the other");
         }
 

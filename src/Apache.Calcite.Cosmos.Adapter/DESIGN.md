@@ -3142,6 +3142,15 @@ src/
       CosmosSchemas.cs                ✔ Resolves the table's executor from the DataContext
       CosmosExecutionException.cs     ✔ The plan cannot reach what would execute it
       CosmosMaterializationException.cs ✔ A document does not hold what the query assumed
+    Facts/                            ✔ Namespace Apache.Calcite.Cosmos.Facts: a fact theory over JSON
+                                        documents, knowing nothing of Calcite, Cosmos or the adapter
+      CosmosClaim.cs, CosmosFact.cs   ✔ Claims about one path, and entailment between them
+      CosmosFactRule.cs               ✔ A guarded claim
+      CosmosFactTheory.cs, CosmosFactSet.cs ✔ The Horn theory, and what it derives for one query
+      CosmosDocumentPath.cs, CosmosJsonType.cs ✔ What a claim is about, and the types it can name
+      ICosmosStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
+      CosmosSchemaFacts.cs            ✔ JSON Schema → rules, asking CosmosSchemaRecognisers for forms
+      CosmosSchemaResolver.cs         ✔ $ref / $id resolution for the reader
     Metadata/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
@@ -3180,6 +3189,30 @@ src/
 ✔ marks what exists today. The `Sql/` layer is deliberately free of any dependency on the
 convention or on the CLR conventions in `calcite-dotnet`, which is what let it be completed and
 tested ahead of them, and is why it remains testable without one.
+
+**`Facts/` is a project in waiting, kept as a namespace for now.** The theory is about JSON documents
+with known types, and nothing in it needs a query engine or a service: a schema is one source of rules,
+the service's guarantees another, a query's own conjuncts a third, and the theory derives what holds.
+So the namespace references only itself, the base library, and the JSON libraries its schema reader
+walks — Jackson and `com.networknt`, through IKVM, which a package of its own would trade for
+`System.Text.Json`. Two things a JSON fact store does not know were kept on the adapter's side:
+
+- **What a stored form is.** The theory carries `Represents(form)` as an opaque `ICosmosStoredForm`
+  and assumes only what every form shares — a string, or a null. Which pattern recognises a canonical
+  UUID, how to write a value in it, and which comparisons it preserves under Calcite's ordering are the
+  adapter's: `CosmosRepresentation` implements the token, the form tables stay in `Metadata/`, and
+  `RepresentationOf` — which ranks forms by what they license — is an extension method in the adapter
+  over the neutral `FormsOf`. The schema reader asks `CosmosSchemaRecognisers` for a pattern's form;
+  `CosmosSchemaRecognition.Cosmos` is the adapter's answer.
+- **What the service will measure.** A geography is a claim JSON cannot state, so it is an
+  `Extension` claim the adapter defines, `CosmosGeography`, which tells the theory only what it is in
+  JSON's terms — an object, and one that is there.
+
+Where the adapter meets it: `CosmosDocumentPaths.From` turns a statement's path into a document path,
+and everything that turns a predicate into facts or facts into a rewrite — `CosmosFactExtractor`,
+`CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in `Metadata/`, being about `RexNode`.
+Constraints stay too: a `UNIQUE` is SQL compiled by Calcite and says what holds across documents,
+which is not what the theory is about.
 
 The mirror is the rule, and the three folders that break it say so by their names. A test asserts
 something about one class or it does not; where it does, it is named for that class and sits where

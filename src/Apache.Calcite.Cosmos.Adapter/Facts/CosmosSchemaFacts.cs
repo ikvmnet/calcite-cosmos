@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 using com.fasterxml.jackson.databind;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -41,17 +41,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Reads the facts a declared schema states.
         /// </summary>
         /// <param name="schema">The schema document, as the tree the model delivered.</param>
+        /// <param name="recognisers">
+        /// What to recognise beyond JSON Schema's own vocabulary — a stored form from a pattern, a claim
+        /// of the caller's own from a subschema — or <c>null</c> for nothing.
+        /// </param>
         /// <returns>The rules, which may be empty where nothing could be read.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="schema"/> is <c>null</c>.</exception>
-        public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema)
+        public static IReadOnlyList<CosmosFactRule> ReadFrom(JsonNode schema, CosmosSchemaRecognisers? recognisers = null)
         {
             if (schema is null)
                 throw new ArgumentNullException(nameof(schema));
 
+            recognisers ??= CosmosSchemaRecognisers.None;
+
             var rules = new List<CosmosFactRule>();
             var resolver = new CosmosSchemaResolver(schema);
 
-            Walk(schema, CosmosDocumentPath.Root, Array.Empty<CosmosFact>(), rules, resolver, new HashSet<string>(StringComparer.Ordinal));
+            Walk(schema, CosmosDocumentPath.Root, Array.Empty<CosmosFact>(), rules, resolver, recognisers, new HashSet<string>(StringComparer.Ordinal));
 
             return rules;
         }
@@ -65,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CosmosDocumentPath path,
             IReadOnlyList<CosmosFact> guard,
             List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver,
+            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node is null || node.isObject() == false)
@@ -81,7 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (resolver.Resolve(node, out var location) is not JsonNode target || visiting.Add(location!) == false)
                     return;
 
-                Walk(target, path, guard, rules, resolver, visiting);
+                Walk(target, path, guard, rules, resolver, recognisers, visiting);
                 visiting.Remove(location!);
                 return;
             }
@@ -105,16 +111,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // as much -- and the guard that admits a non-string would then be dropped from a comparison
             // that still has to decide one. The same shape as properties being vacuous for an absent
             // path, one level over.
-            if (declared?.Type == CosmosJsonType.String && CosmosStoredForms.Recognise(Text(node, "pattern")) is CosmosRepresentation representation)
-                State(new CosmosClaim.Represents(representation));
+            if (declared?.Type == CosmosJsonType.String && recognisers.StringPattern?.Invoke(Text(node, "pattern")) is ICosmosStoredForm form)
+                State(new CosmosClaim.Represents(form));
 
-            // A geography is proven from the subschema rather than taken from a token, for the reason
-            // CosmosGeographyForms gives: GeoJSON validity is not Cosmos measurability, so neither a
-            // format of our own nor a $ref to the published schema says what has to be said. What
-            // does is the declaration pinning the type name, both members, and each ordinate's range
-            // -- which a schema can do for a point and a line and cannot do for a ring.
-            if (CosmosGeographyForms.Recognise(node))
-                State(new CosmosClaim.Geography());
+            // A claim the caller reads off a subschema whole, which JSON Schema's own keywords cannot
+            // state: the adapter's geography, proven from a pinned GeoJSON shape. See
+            // CosmosSchemaRecognisers.
+            if (recognisers.Subschema?.Invoke(node) is CosmosClaim recognised)
+                State(recognised);
 
             // required names the children that are there whenever this object is. The claim is about
             // the child, and it is conditional on the parent: `required` constrains an object, and
@@ -139,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 {
                     var field = (java.util.Map.Entry)fields.next();
                     if (field.getKey()?.ToString() is string name)
-                        Walk((JsonNode?)field.getValue(), path.Property(name), guard, rules, resolver, visiting);
+                        Walk((JsonNode?)field.getValue(), path.Property(name), guard, rules, resolver, recognisers, visiting);
                 }
             }
 
@@ -147,13 +151,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // same guard.
             if (node.get("allOf") is JsonNode all && all.isArray())
                 for (var i = 0; i < all.size(); i++)
-                    Walk(all.get(i), path, guard, rules, resolver, visiting);
+                    Walk(all.get(i), path, guard, rules, resolver, recognisers, visiting);
 
-            WalkBranches(node.get("oneOf"), node, path, guard, rules, resolver, visiting);
-            WalkBranches(node.get("anyOf"), node, path, guard, rules, resolver, visiting);
-            WalkConditional(node, path, guard, rules, resolver, visiting);
-            WalkDependencies(node, path, guard, rules, resolver, visiting);
-            WalkNegation(node, path, guard, rules, resolver);
+            WalkBranches(node.get("oneOf"), node, path, guard, rules, resolver, recognisers, visiting);
+            WalkBranches(node.get("anyOf"), node, path, guard, rules, resolver, recognisers, visiting);
+            WalkConditional(node, path, guard, rules, resolver, recognisers, visiting);
+            WalkDependencies(node, path, guard, rules, resolver, recognisers, visiting);
+            WalkNegation(node, path, guard, rules, resolver, recognisers);
         }
 
         /// <summary>
@@ -176,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CosmosDocumentPath path,
             IReadOnlyList<CosmosFact> guard,
             List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver,
+            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node.get("dependentRequired") is JsonNode dependent && dependent.isObject())
@@ -205,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     if (entry.getKey()?.ToString() is not string trigger)
                         continue;
 
-                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present())), rules, resolver, visiting);
+                    Walk((JsonNode?)entry.getValue(), path, Extend(guard, new CosmosFact(path.Property(trigger), new CosmosClaim.Present())), rules, resolver, recognisers, visiting);
                 }
             }
         }
@@ -234,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CosmosDocumentPath path,
             IReadOnlyList<CosmosFact> guard,
             List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver)
+            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
         {
             if (resolver.Follow(node.get("not")) is not JsonNode negated || negated.isObject() == false)
                 return;
@@ -312,13 +316,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CosmosDocumentPath path,
             IReadOnlyList<CosmosFact> guard,
             List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver,
+            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (branches is null || branches.isArray() == false || branches.size() == 0)
                 return;
 
-            if (FindDiscriminator(branches, parent, resolver) is string discriminator)
+            if (FindDiscriminator(branches, parent, resolver, recognisers) is string discriminator)
             {
                 var walked = new List<Branch>();
 
@@ -326,12 +330,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 {
                     // The branch as written, not as resolved: a mapping names its target by the
                     // reference, which following it would have thrown away.
-                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver) is not object value)
+                    if (branches.get(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
                         continue;
 
                     var selected = Extend(guard, new CosmosFact(path.Property(discriminator), new CosmosClaim.EqualTo(value)));
                     var stated = new List<CosmosFactRule>();
-                    Walk(branches.get(i), path, selected, stated, resolver, visiting);
+                    Walk(branches.get(i), path, selected, stated, resolver, recognisers, visiting);
 
                     rules.AddRange(stated);
                     walked.Add(new Branch(selected.Count, stated));
@@ -347,10 +351,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return;
             }
 
-            if (NullableBranch(branches, resolver) is JsonNode nullable)
+            if (NullableBranch(branches, resolver, recognisers) is JsonNode nullable)
             {
                 var stated = new List<CosmosFactRule>();
-                Walk(nullable, path, guard, stated, resolver, visiting);
+                Walk(nullable, path, guard, stated, resolver, recognisers, visiting);
 
                 foreach (var rule in stated)
                     if (AdmitNull(rule, path) is CosmosFactRule widened)
@@ -364,7 +368,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             for (var i = 0; i < branches.size(); i++)
             {
                 var stated = new List<CosmosFactRule>();
-                Walk(branches.get(i), path, guard, stated, resolver, visiting);
+                Walk(branches.get(i), path, guard, stated, resolver, recognisers, visiting);
                 each.Add(new Branch(guard.Count, stated));
             }
 
@@ -540,7 +544,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="branches">The branches.</param>
         /// <param name="resolver">Resolves a branch written as a reference.</param>
         /// <returns>The branch as written, so a reference in it is still followed by the walk.</returns>
-        static JsonNode? NullableBranch(JsonNode branches, CosmosSchemaResolver resolver)
+        static JsonNode? NullableBranch(JsonNode branches, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
         {
             JsonNode? remaining = null;
             var nulls = 0;
@@ -642,7 +646,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         static CosmosFactRule? AdmitNull(CosmosFactRule rule, CosmosDocumentPath path)
         {
-            if (rule.Head.Claim is CosmosClaim.Present or CosmosClaim.Geography)
+            if (rule.Head.Entails(new CosmosFact(rule.Head.Path, new CosmosClaim.Present())))
                 return new CosmosFactRule(Extend(rule.Body, new CosmosFact(path, new CosmosClaim.NotEqualTo(null))), rule.Head);
 
             if (rule.Head.Path.Equals(path) == false)
@@ -687,26 +691,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             CosmosDocumentPath path,
             IReadOnlyList<CosmosFact> guard,
             List<CosmosFactRule> rules,
-            CosmosSchemaResolver resolver,
+            CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers,
             HashSet<string> visiting)
         {
             if (node.get("if") is not JsonNode condition)
                 return;
 
-            if (TryConditionAtoms(condition, path, resolver, out var atoms) == false)
+            if (TryConditionAtoms(condition, path, resolver, recognisers, out var atoms) == false)
                 return;
 
             if (node.get("then") is JsonNode then)
             {
                 var extended = new List<CosmosFact>(guard);
                 extended.AddRange(atoms);
-                Walk(then, path, extended, rules, resolver, visiting);
+                Walk(then, path, extended, rules, resolver, recognisers, visiting);
             }
 
             if (node.get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is CosmosClaim.EqualTo equality)
             {
                 var extended = new List<CosmosFact>(guard) { new(atoms[0].Path, new CosmosClaim.NotEqualTo(equality.Value)) };
-                Walk(otherwise, path, extended, rules, resolver, visiting);
+                Walk(otherwise, path, extended, rules, resolver, recognisers, visiting);
             }
         }
 
@@ -719,7 +723,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// nested conditional — fails the whole condition, for the reason
         /// <see cref="WalkConditional"/> gives.
         /// </remarks>
-        static bool TryConditionAtoms(JsonNode condition, CosmosDocumentPath path, CosmosSchemaResolver resolver, out IReadOnlyList<CosmosFact> atoms)
+        static bool TryConditionAtoms(JsonNode condition, CosmosDocumentPath path, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers, out IReadOnlyList<CosmosFact> atoms)
         {
             var found = new List<CosmosFact>();
             atoms = found;
@@ -746,7 +750,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             if (property.getKey()?.ToString() is not string name || (JsonNode?)property.getValue() is not JsonNode subschema)
                                 return false;
 
-                            if (TryPropertyCondition(subschema, path.Property(name), resolver, found) == false)
+                            if (TryPropertyCondition(subschema, path.Property(name), resolver, recognisers, found) == false)
                                 return false;
                         }
 
@@ -783,7 +787,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="resolver">Resolves a reference standing in the way.</param>
         /// <param name="found">Collects the atoms read.</param>
         /// <returns><c>true</c> where every keyword was understood and at least one atom came of it.</returns>
-        static bool TryPropertyCondition(JsonNode subschema, CosmosDocumentPath path, CosmosSchemaResolver resolver, List<CosmosFact> found)
+        static bool TryPropertyCondition(JsonNode subschema, CosmosDocumentPath path, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers, List<CosmosFact> found)
         {
             subschema = resolver.Follow(subschema) ?? subschema;
 
@@ -849,10 +853,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// cannot tell apart are not discriminated.
         /// </para>
         /// </remarks>
-        static string? FindDiscriminator(JsonNode branches, JsonNode parent, CosmosSchemaResolver resolver)
+        static string? FindDiscriminator(JsonNode branches, JsonNode parent, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
         {
             if (parent.get("discriminator")?.get("propertyName") is JsonNode named && named.isTextual())
-                return Pins(branches, parent, named.asText(), resolver) ? named.asText() : null;
+                return Pins(branches, parent, named.asText(), resolver, recognisers) ? named.asText() : null;
 
             var first = resolver.Follow(branches.get(0));
             if (first?.get("properties") is not JsonNode properties || properties.isObject() == false)
@@ -860,7 +864,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var candidates = properties.fieldNames();
             while (candidates.hasNext())
-                if (candidates.next()?.ToString() is string name && Pins(branches, parent, name, resolver))
+                if (candidates.next()?.ToString() is string name && Pins(branches, parent, name, resolver, recognisers))
                     return name;
 
             return null;
@@ -874,7 +878,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="name">The candidate property.</param>
         /// <param name="resolver">Resolves a branch written as a reference.</param>
         /// <returns><c>true</c> where every branch is selected, and no two by the same value.</returns>
-        static bool Pins(JsonNode branches, JsonNode parent, string name, CosmosSchemaResolver resolver)
+        static bool Pins(JsonNode branches, JsonNode parent, string name, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
         {
             var seen = new List<object?>();
 
@@ -883,7 +887,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (branches.get(i) is not JsonNode branch)
                     return false;
 
-                if (DiscriminatorValue(branch, parent, name, resolver) is not object value || CosmosClaim.OneOf.Contains(seen, value))
+                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || CosmosClaim.OneOf.Contains(seen, value))
                     return false;
 
                 seen.Add(value);
@@ -901,7 +905,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// where no entry names this branch, OpenAPI's implicit rule applies and the value is the
         /// schema's own name — the last segment of the reference.
         /// </remarks>
-        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, CosmosSchemaResolver resolver)
+        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, CosmosSchemaResolver resolver, CosmosSchemaRecognisers recognisers)
         {
             if (resolver.Follow(branch)?.get("properties")?.get(name) is JsonNode declared &&
                 resolver.Follow(declared)?.get("const") is JsonNode constant &&

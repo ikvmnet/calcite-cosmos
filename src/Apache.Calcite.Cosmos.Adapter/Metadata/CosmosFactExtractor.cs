@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
@@ -255,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                 return null;
 
-            return CosmosDocumentPath.From(path);
+            return CosmosDocumentPaths.From(path);
         }
 
         /// <summary>

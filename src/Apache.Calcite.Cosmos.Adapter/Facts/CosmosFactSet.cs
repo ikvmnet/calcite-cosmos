@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -50,37 +50,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the stored form known for a path, or <c>null</c> where none is.
+        /// Returns every stored form known for a path, which may be none.
         /// </summary>
         /// <remarks>
-        /// The question every rewrite asks first. Where a path somehow carries two representations the
-        /// strongest is returned — one that preserves order beats one that only preserves equality —
-        /// since both were proven and the caller wants the most it can use.
+        /// All of them, in no order that means anything. Which a caller can use, and which it prefers
+        /// where a path somehow carries two, depends on what the form licenses for that caller — which
+        /// the form's owner knows and this does not. See <see cref="ICosmosStoredForm"/>.
         /// </remarks>
         /// <param name="path">The path.</param>
-        /// <returns>The representation, or <c>null</c>.</returns>
-        public CosmosRepresentation? RepresentationOf(CosmosDocumentPath path)
+        /// <returns>The forms, which may be empty.</returns>
+        public IReadOnlyList<ICosmosStoredForm> FormsOf(CosmosDocumentPath path)
         {
             if (path is null || _byPath.TryGetValue(path, out var known) == false)
-                return null;
+                return Array.Empty<ICosmosStoredForm>();
 
-            CosmosRepresentation? best = null;
-
+            var forms = new List<ICosmosStoredForm>();
             foreach (var fact in known)
-                if (fact.Claim is CosmosClaim.Represents represents)
-                    if (best is not CosmosRepresentation current || Rank(represents.Representation) > Rank(current))
-                        best = represents.Representation;
+                if (fact.Claim is CosmosClaim.Represents represents && forms.Contains(represents.Form) == false)
+                    forms.Add(represents.Form);
 
-            return best;
+            return forms;
         }
-
-        /// <summary>
-        /// Orders two stored forms by how much each one licenses.
-        /// </summary>
-        /// <param name="representation">The form.</param>
-        /// <returns>A rank, higher being the one a caller can do more with.</returns>
-        static int Rank(CosmosRepresentation representation) =>
-            (representation.PreservesOrder ? 2 : 0) + (representation.PreservesEquality ? 1 : 0);
 
         /// <summary>
         /// Gets whether what is known cannot all hold of one document.
@@ -167,34 +157,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return true;
 
             return false;
-        }
-
-        /// <summary>
-        /// Determines whether a path is guaranteed to hold a geography in every document.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>The claim a distance sort rests on, and the reason it rests on this and not on a
-        /// type.</b> A geodesic distance is null where its operand is and undefined where the service
-        /// cannot measure the operand, and those are different sets: an object that is not a shape is
-        /// a perfectly good object. Declaring the <em>type</em> at the path closes the first and
-        /// leaves the second open, which is a key that still arrives undefined and still sorts at the
-        /// wrong end. This closes both, because there is no geography that is absent, null, or one the
-        /// service will not measure.
-        /// </para>
-        /// <para>
-        /// Two claims, as everywhere else here: the path has to be there, and what is there has to be
-        /// the declared thing. <see cref="CosmosClaim.Geography"/> entails
-        /// <see cref="CosmosClaim.Present"/> — see <see cref="CosmosFact.Entails"/> for why it is the
-        /// one claim that does — so a container that declares the format without marking the property
-        /// required has still said a shape is there.
-        /// </para>
-        /// </remarks>
-        /// <param name="path">The path.</param>
-        /// <returns><c>true</c> where every document holds a geography there.</returns>
-        public bool IsAlwaysGeography(CosmosDocumentPath path)
-        {
-            return path is not null && Knows(new CosmosFact(path, new CosmosClaim.Geography()));
         }
 
         /// <summary>

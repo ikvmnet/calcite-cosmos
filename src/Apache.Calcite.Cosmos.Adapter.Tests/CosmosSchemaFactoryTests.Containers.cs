@@ -1,6 +1,7 @@
 ﻿using System;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;

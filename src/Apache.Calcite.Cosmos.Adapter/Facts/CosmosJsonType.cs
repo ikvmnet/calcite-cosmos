@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>

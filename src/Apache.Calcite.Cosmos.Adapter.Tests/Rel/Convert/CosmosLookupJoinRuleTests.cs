@@ -46,7 +46,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// A container whose schema gives <c>data.id</c> a canonical lowercase UUID form.
         /// </summary>
         static readonly CosmosContainerMetadata Parks = new CosmosContainerMetadata("parks", new[] { "/id" })
-            .WithFacts(CosmosSchemaFacts.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
                 { "type": "object",
                   "properties": {
                     "data": { "type": "object",

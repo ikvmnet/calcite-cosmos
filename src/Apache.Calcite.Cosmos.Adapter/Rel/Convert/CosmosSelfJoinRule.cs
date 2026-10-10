@@ -2,6 +2,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -407,7 +408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 if ((value is RexInputRef || CosmosRexTranslator.IsTextJsonValue(value)) && translator.TryResolvePath(value, out var resolved))
                 {
-                    if (CosmosDocumentPath.From(resolved) is not CosmosDocumentPath path || paths.Contains(path) == false)
+                    if (CosmosDocumentPaths.From(resolved) is not CosmosDocumentPath path || paths.Contains(path) == false)
                         return false;
 
                     continue;
@@ -533,7 +534,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (CosmosRexTranslator.IsTextJsonValue(text) == false || translator.TryResolvePath(text, out var resolved) == false)
                     return false;
 
-                path = CosmosDocumentPath.From(resolved);
+                path = CosmosDocumentPaths.From(resolved);
                 return path is not null && facts.RepresentationOf(path) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
             }
 
@@ -544,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(value, out var accessed) == false)
                 return false;
 
-            path = CosmosDocumentPath.From(accessed);
+            path = CosmosDocumentPaths.From(accessed);
             return path is not null && IsOneScalarType(facts, path);
         }
 

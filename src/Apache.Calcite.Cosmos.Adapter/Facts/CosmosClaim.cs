@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -44,43 +44,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public sealed record Present : CosmosClaim;
 
         /// <summary>
-        /// The value at the path is a geography the service will measure.
+        /// A claim this theory carries for a consumer, which says for itself what it entails.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Declared, not derived, and it is the one claim here that could not be either.</b> The
-        /// others restate something a schema says in its own vocabulary — a type, a domain, a
-        /// presence. This one cannot be: measured against an account,
-        /// <c>{"type":"Point","coordinates":[999,999]}</c> validates against every GeoJSON subschema
-        /// anyone could write and <c>ST_DISTANCE</c> over it still answers <em>undefined</em>, because
-        /// the service range-checks coordinates. Expressing that in a schema would take numeric bounds
-        /// on array elements, which this model does not carry. See
-        /// <c>CosmosGeographyValidityMeasurementTests</c>.
+        /// <b>The claims above are JSON's: a type, a presence, a value, a domain, a spelling.</b> A
+        /// consumer may know more about a value than JSON can say — the adapter knows when the service
+        /// will measure a shape as a geography, which no subschema can state because the service
+        /// range-checks coordinates — and needs that claim derived, guarded and combined like any other.
+        /// This is where it goes, without the theory learning what it means.
         /// </para>
         /// <para>
-        /// <b>So it is the container's word, on the same footing as every other.</b> Nothing verifies
-        /// that a <c>pattern</c> naming a UUID is honoured by the documents either; a declaration is
-        /// believed, and a document that contradicts it is the one thing the model has always said it
-        /// cannot check in advance.
+        /// <b>It answers its own entailments, toward JSON's claims or toward its own kind.</b> What it
+        /// says about the value in JSON's terms — that a geography is an object, and one that is there —
+        /// is what lets the rest of the theory use it; <see cref="CosmosFact.Entails"/> asks it. An
+        /// extension entails nothing it does not say it does, and is excluded by nothing, which loses
+        /// facts rather than inventing them.
         /// </para>
         /// <para>
-        /// <b>It is said in GeoJSON's own vocabulary and not in one invented here.</b> A container
-        /// declares it by referencing a published geometry schema —
-        /// <c>https://geojson.org/schema/Geometry.json</c>, or one of the six concrete shapes beside
-        /// it — whose <c>$id</c> already means exactly this. An earlier draft read a <c>format</c>
-        /// token of this repository's own; JSON Schema permits such a thing, but no peer
-        /// implementation is expected to understand one, and a schema declaring the Format-Assertion
-        /// vocabulary must <em>reject</em> an unknown format outright. A <c>$ref</c> asks nothing of
-        /// anyone and is already what a schema author writes to say a property is a geometry.
-        /// </para>
-        /// <para>
-        /// <b>What it buys is a sort.</b> A geodesic distance over a path this holds for can be
-        /// neither null nor undefined, so the placement Calcite asks for has nothing to disagree with
-        /// and the <c>ORDER BY</c> reaches the service under either collation — see
-        /// <c>CosmosSortRule.AlwaysDefined</c>.
+        /// A record, so its equality is value equality, which two declarations of one claim need.
         /// </para>
         /// </remarks>
-        public sealed record Geography : CosmosClaim;
+        public abstract record Extension : CosmosClaim
+        {
+
+            /// <summary>
+            /// Initializes a new instance.
+            /// </summary>
+            protected Extension()
+            {
+            }
+
+            /// <summary>
+            /// Determines whether this claim, holding of a value, establishes <paramref name="other"/>
+            /// of the same value.
+            /// </summary>
+            /// <param name="other">The claim to establish, of the same path.</param>
+            /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
+            public virtual bool Entails(CosmosClaim other) => Equals(other);
+
+        }
 
         /// <summary>
         /// The value at the path is exactly this literal.
@@ -145,10 +148,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// The value at the path is a string in the named stored form.
+        /// The value at the path, where it is a string, is spelled in the named form.
         /// </summary>
-        /// <param name="Representation">The form, and which relations it preserves.</param>
-        public sealed record Represents(CosmosRepresentation Representation) : CosmosClaim;
+        /// <remarks>
+        /// Silent about whether a string is there: a null at the path is no counterexample to how the
+        /// strings are written. What the form is, the theory does not know; see
+        /// <see cref="ICosmosStoredForm"/>.
+        /// </remarks>
+        /// <param name="Form">The form, as the consumer that recognised it identifies it.</param>
+        public sealed record Represents(ICosmosStoredForm Form) : CosmosClaim;
 
     }
 

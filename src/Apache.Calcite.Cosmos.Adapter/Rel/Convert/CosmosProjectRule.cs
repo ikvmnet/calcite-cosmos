@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 
@@ -75,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The same facts CosmosProject.Implement will translate against, for the same reason the
             // bindings are the ones it will use: a rule admitting a projection the node then refuses
             // is a plan that fails at implementation rather than a plan that was never chosen.
-            var facts = convention.Container?.Facts.Derive(null) ?? Metadata.CosmosFactSet.Empty;
+            var facts = convention.Container?.Facts.Derive(null) ?? CosmosFactSet.Empty;
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, null, facts);
 
             // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the

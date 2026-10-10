@@ -1,6 +1,8 @@
 using System;
 using System.Text;
 
+using Apache.Calcite.Cosmos.Facts;
+
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 

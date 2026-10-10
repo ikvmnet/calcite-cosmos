@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Apache.Calcite.Cosmos.Adapter.Metadata
+namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
@@ -43,11 +43,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // "this is there" would claim of every document what the schema claimed of none, which is
             // exactly the mistake a container holding more than one kind of document punishes.
             //
-            // Geography is the exception, and it is one because it is declared rather than read off a
-            // subschema: `format` sits beside the value's own keywords, and a container saying a path
-            // holds a shape is saying a shape is there. It is still conditional on its guard like
-            // every other rule, so a path under a discriminator says nothing until the discriminator
-            // is proven.
+            // An extension claim may be the exception, and says so itself: a consumer's claim about a
+            // value can be one that no absent value satisfies, the way a geography the service will
+            // measure is. It is still conditional on its guard like every other rule, so a path under
+            // a discriminator says nothing until the discriminator is proven.
             return (Claim, other.Claim) switch
             {
                 // A known value settles membership, type and every disequality but its own.
@@ -65,12 +64,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // whether a null is there beside them -- so it entails only the claim that admits one.
                 (CosmosClaim.Represents, CosmosClaim.OfType b) => b.Type == CosmosJsonType.String && b.OrNull,
 
-                // A geography is an object, and one that is there: the declaration is about a value
-                // the service can measure, and there is no such value that is absent or null. So it
-                // settles the object claim either way round, unlike a stored form, which says what
-                // the strings look like without saying one is there.
-                (CosmosClaim.Geography, CosmosClaim.OfType b) => b.Type == CosmosJsonType.Object,
-                (CosmosClaim.Geography, CosmosClaim.Present) => true,
+                // A consumer's claim answers for itself. See CosmosClaim.Extension.
+                (CosmosClaim.Extension a, var b) => a.Entails(b),
 
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how
