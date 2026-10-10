@@ -185,6 +185,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (kind == nameof(SqlKind.__Enum.CASE))
                 return TryFlattenCase(call, translator, known, rootAlias, rexBuilder, fields, outright, container, established);
 
+            // A merged view's column inside a comparison, rather than the comparison itself -- see
+            // TryLiftStrictCase. Before the lowering below, which reads a comparison's operands as
+            // written and would find a CASE where it looks for a path.
+            if (TryLiftStrictCase(call, translator, known, rootAlias, rexBuilder, fields, outright, container, established) is RexNode lifted)
+                return lifted;
+
             if (call.getOperands().size() != 2)
                 return null;
 
@@ -292,6 +298,137 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return null;
 
             return rexBuilder.makeCall(call.getType(), call.getOperator(), new java.util.ArrayList { loweredCondition, loweredValue, otherwise });
+        }
+
+        /// <summary>
+        /// Rewrites a comparison over <c>CASE WHEN p THEN x END</c>, reached through operators that are
+        /// null wherever an operand is, as <c>p AND CASE WHEN p THEN &lt;the comparison over x&gt;
+        /// ELSE FALSE END</c>, or returns <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Where it comes from.</b> A merged view's column is <c>CASE WHEN &lt;that view's
+        /// filter&gt; THEN … END</c>, and <see cref="TryFlattenCase"/> takes one apart where it is the
+        /// condition. Where the column is a <em>value</em> inside one — a distance from it, then a
+        /// comparison — nothing reached it (#189): the filter rules saw
+        /// <c>&lt;(CLR_ST_GEOG_DISTANCE(CASE(p, location, null), ?), 50000)</c>, whose <c>p</c> carries
+        /// the join's match test, <c>IS NOT NULL</c> over a <c>UUID</c> cast. That cast has no form at
+        /// the service and is lowered only by being reached, so the whole filter stayed in process and
+        /// every document was read to be measured.
+        /// </para>
+        /// <para>
+        /// <b>Why the two select the same documents.</b> The <c>CASE</c> is null wherever <c>p</c> is
+        /// not true, and every operator between it and the comparison is null when that operand is —
+        /// measured for the distance, <c>CLR_ST_GEOG_DISTANCE(NULL, point)</c> answering null in
+        /// process — so there the comparison is unknown, and a filter keeps nothing. Where <c>p</c> is
+        /// true the <c>CASE</c> is <c>x</c>. So the comparison is true exactly where <c>p</c> is and
+        /// the comparison over <c>x</c> is, which is the <c>CASE … ELSE FALSE</c> this builds, and
+        /// <see cref="TryFlattenCase"/> takes that from there: lowers <c>p</c>, lowers the arm against
+        /// what <c>p</c> proves, and takes it apart where the arm cannot raise. Through <c>AND</c> and
+        /// <c>OR</c> only, as there, and for the reason given there.
+        /// </para>
+        /// <para>
+        /// <b>Strict operators only, named rather than assumed.</b> A comparison, a cast, arithmetic,
+        /// and the geodesic distance. An operator that answers something for a null — <c>COALESCE</c>,
+        /// <c>IS NULL</c>, a <c>CASE</c> — would keep rows where <c>p</c> is false, and is not walked
+        /// through.
+        /// </para>
+        /// <para>
+        /// <b>Where the arm can still raise, <c>p</c> is put beside the <c>CASE</c> as well as kept
+        /// inside it.</b> The arm here builds a geography from the document, and that raises over an
+        /// object that is not GeoJSON — measured — so a bare <c>p AND …</c> rechecked in process could
+        /// evaluate it over a document <c>p</c> excludes. Inside the <c>CASE</c> it is evaluated only
+        /// where <c>p</c> holds; beside it, <c>p</c> is a conjunct the service can apply as it is,
+        /// narrowing the read through its index where the ternary alone could not. The two are true on
+        /// the same rows.
+        /// </para>
+        /// </remarks>
+        static RexNode? TryLiftStrictCase(RexCall call, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<CosmosFact> established)
+        {
+            if (ComparisonOf(call.getKind().name()) is null)
+                return null;
+
+            if (FindStrictCase(call) is not RexCall found)
+                return null;
+
+            var condition = (RexNode)found.getOperands().get(0);
+            var value = (RexNode)found.getOperands().get(1);
+
+            var replaced = Replace(call, found, value);
+            var guarded = (RexCall)rexBuilder.makeCall(SqlStdOperatorTable.CASE, condition, replaced, rexBuilder.makeLiteral(false));
+
+            var flattened = TryFlattenCase(guarded, translator, known, rootAlias, rexBuilder, fields, outright, container, established) ?? guarded;
+
+            if (flattened is RexCall still && still.getKind().name() == nameof(SqlKind.__Enum.CASE))
+                return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList { (RexNode)still.getOperands().get(0), still });
+
+            return flattened;
+        }
+
+        /// <summary>
+        /// Finds a <c>CASE WHEN p THEN x END</c> — one arm, an <c>ELSE</c> of null — reached from a
+        /// comparison through strict operators only, or returns <c>null</c>.
+        /// </summary>
+        static RexCall? FindStrictCase(RexCall call)
+        {
+            for (var i = 0; i < call.getOperands().size(); i++)
+            {
+                if ((RexNode)call.getOperands().get(i) is not RexCall operand)
+                    continue;
+
+                if (operand.getKind().name() == nameof(SqlKind.__Enum.CASE))
+                {
+                    if (operand.getOperands().size() == 3 && (RexNode)operand.getOperands().get(2) is RexLiteral otherwise && otherwise.isNull())
+                        return operand;
+
+                    continue;
+                }
+
+                if (IsStrict(operand) && FindStrictCase(operand) is RexCall found)
+                    return found;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Determines whether an operator is null wherever any of its operands is.
+        /// </summary>
+        /// <remarks>
+        /// A short list rather than a general test, because a function's null behaviour is its
+        /// implementation's and not its signature's. The distance is here by measurement —
+        /// <c>CLR_ST_GEOG_DISTANCE</c> answers null in process for a null on either side.
+        /// </remarks>
+        static bool IsStrict(RexCall call) =>
+            call.getKind().name() is nameof(SqlKind.__Enum.CAST)
+                or nameof(SqlKind.__Enum.PLUS) or nameof(SqlKind.__Enum.MINUS)
+                or nameof(SqlKind.__Enum.TIMES) or nameof(SqlKind.__Enum.DIVIDE)
+            || string.Equals(call.getOperator().getName(), Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogDistance.getName(), StringComparison.Ordinal);
+
+        /// <summary>
+        /// Returns an expression with one node replaced, rebuilding only the calls above it.
+        /// </summary>
+        static RexNode Replace(RexNode node, RexNode target, RexNode replacement)
+        {
+            if (ReferenceEquals(node, target))
+                return replacement;
+
+            if (node is not RexCall call)
+                return node;
+
+            var operands = new java.util.ArrayList();
+            var changed = false;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+            {
+                var operand = (RexNode)call.getOperands().get(i);
+                var rewritten = Replace(operand, target, replacement);
+
+                operands.add(rewritten);
+                changed |= ReferenceEquals(rewritten, operand) == false;
+            }
+
+            return changed ? call.clone(call.getType(), operands) : call;
         }
 
         /// <summary>

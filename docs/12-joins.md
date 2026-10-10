@@ -118,6 +118,11 @@ identify a single document, this becomes one statement over `docs`: the order fi
 `paidAt` null wherever the invoice side's filter does not hold for that document. The merge closes
 over itself, so a chain of such joins becomes one read too.
 
+A filter on a merged view's column reaches the service with that view's filter beside it — whether the
+column is compared directly (`i."paidAt" = …`) or used inside an expression that is null when it is,
+such as a distance from a merged view's location (Chapter 18). Wrapped in something that answers for a
+null — `COALESCE`, `IS NULL` — it is not the same filter and stays in process.
+
 ### What makes a key unique
 
 - **The partition key with `id`** always identifies one document — the service enforces it. A join

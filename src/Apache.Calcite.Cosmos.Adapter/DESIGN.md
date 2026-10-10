@@ -2685,6 +2685,30 @@ nowhere, and the `CASE` becomes the conjunction. A `q` still holding a conversio
 conjunction rechecked in process never evaluates a cast over a document of another kind. The service
 gets `(type = 'park' AND parkId = X) OR (type = 'map' AND parkId = X)`, beside the shared base.
 
+**A merged column used inside an expression is the same `CASE` one step further out (#189).** A distance
+from a merged view's location, with nothing else narrowing the query to that view, reached the filter
+rules as `CLR_ST_GEOG_DISTANCE(CASE(p, location, null), ?) < 50000` — and `p` carries the left join's
+match test, `IS NOT NULL` over a `UUID` cast, which the rewriter lowers only where it reaches it. It did
+not reach inside an expression, so the filter stayed in process and every link was read to be measured.
+The argument is the one above with one more step. Every operator between the `CASE` and the comparison
+is null where its operand is — named, not assumed: a cast, arithmetic, and the distance, measured to
+answer null in process for a null on either side — so where `p` is not true the comparison is unknown
+and a filter keeps nothing, and where it is the `CASE` is `location`. The comparison is therefore true
+exactly where `CASE WHEN p THEN <the comparison over location> ELSE FALSE END` is, and
+`CosmosFactRewriter.TryLiftStrictCase` builds that and hands it to the rewrite above. An operator that
+answers for a null — `COALESCE`, `IS NULL`, a `CASE` — keeps rows `p` excludes and is not walked
+through.
+
+**The distance's arm can raise, so its `CASE` stays, and `p` goes beside it as well.** The arm builds a
+geography from the document, and measured, that raises over an object that is not GeoJSON — which a
+document of another kind may hold at the same path; the end-to-end suite's park link does. Taken apart,
+a recheck in process could build it there. So the service gets
+`p AND (p ? ST_DISTANCE(location, @p0) < @p1 : false)`: the `CASE` keeps the arm to the rows `p`
+holds for, and `p` beside it is a conjunct the service applies through its index. What it does not get
+is the spatial index, which does not serve a distance inside a ternary; the bare
+`p AND ST_DISTANCE(…) < d` is the same rows at the service, and writing it is the translator's to
+license — `TODO.md` says what would.
+
 **What a consumer has to state.** A join on the partition key and `id` needs nothing: the service enforces
 it. A join on anything else needs a `UNIQUE` constraint the model declares, and that is a promise nothing
 checks. For the links in `CosmosSelfJoinTests`, partitioned on `/linkId` and keyed by a guid, that is a

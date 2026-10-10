@@ -523,6 +523,93 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     "kind cannot be both A and B, so the CASE answers its ELSE for every row the predicate keeps, and what is left is the conjunct");
         }
 
+        /// <summary><c>CASE WHEN p THEN x END</c>, a merged view's column, with the <c>ELSE</c> null.</summary>
+        RexNode Column(RexNode condition, RexNode value) =>
+            Case(condition, value, _rex.makeNullLiteral(value.getType()));
+
+        /// <summary>
+        /// A merged view's column inside a comparison rather than compared itself is reached, and its
+        /// arm is lowered against what its condition proves. #189.
+        /// </summary>
+        /// <remarks>
+        /// The comparison is null wherever the <c>CASE</c> is, so it is true exactly where the
+        /// condition is and the comparison over the arm is — the <c>CASE … ELSE FALSE</c> #183 already
+        /// takes apart, and this one comes apart too once the cast is lowered.
+        /// </remarks>
+        [Fact]
+        public void AColumnInsideAComparisonIsReachedAndLowered()
+        {
+            var compared = _rex.makeCall(SqlStdOperatorTable.EQUALS,
+                _rex.makeCast(_types.createSqlType(SqlTypeName.UUID), Column(KindIs("B"), Ref(0, SqlTypeName.VARCHAR))),
+                Uuid(Canonical));
+
+            Rewrite(compared, Discriminated).Should().Be($"AND(=($1, 'B'), =($0, '{Canonical}'))",
+                "the cast is strict, so the CASE comes out from under it, and ref holds a UUID where kind is B");
+        }
+
+        /// <summary>
+        /// An arm that can still raise keeps its <c>CASE</c>, with the condition beside it as well.
+        /// </summary>
+        /// <remarks>
+        /// Taken apart, a recheck in process could evaluate the arm over a row the condition excludes.
+        /// Kept, it is evaluated only where the condition holds; beside it, the condition is a conjunct
+        /// the service applies as it is. The issue's own arm is a distance from a geography built out of
+        /// the document, which raises over an object that is not GeoJSON.
+        /// </remarks>
+        [Fact]
+        public void AnArmThatCanRaiseKeepsItsCaseWithTheConditionBesideIt()
+        {
+            var geography = Apache.Calcite.Geography.Rel.Type.GeographyTypes.Of(_types);
+            var distance = _rex.makeCall(Apache.Calcite.Geography.Sql.GeographyOperatorTable.ClrStGeogDistance,
+                Column(KindIs("B"), _rex.makeInputRef(geography, 2)),
+                _rex.makeInputRef(geography, 2));
+
+            var near = _rex.makeCall(SqlStdOperatorTable.LESS_THAN, distance, _rex.makeExactLiteral(new java.math.BigDecimal(50000)));
+
+            var rewritten = Rewrite(near, null);
+
+            rewritten.Should().StartWith("AND(=($1, 'B'), CASE(=($1, 'B'), <(CLR_ST_GEOG_DISTANCE($2, $2), 50000), false))");
+        }
+
+        /// <summary>
+        /// Arithmetic is strict too, and an arm holding it is one Calcite's own simplifier leaves alone
+        /// — so it keeps its <c>CASE</c>, the condition beside it.
+        /// </summary>
+        [Fact]
+        public void ArithmeticOverAColumnIsWalkedThrough()
+        {
+            var sum = _rex.makeCall(SqlStdOperatorTable.PLUS, Column(KindIs("B"), Ref(2, SqlTypeName.INTEGER)), _rex.makeExactLiteral(java.math.BigDecimal.ONE));
+            var compared = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, sum, _rex.makeExactLiteral(new java.math.BigDecimal(5)));
+
+            Rewrite(compared, null).Should().Be("AND(=($1, 'B'), CASE(=($1, 'B'), >(+($2, 1), 5), false))");
+        }
+
+        /// <summary>
+        /// An operator that answers something for a null is not walked through: it would keep rows the
+        /// condition excludes.
+        /// </summary>
+        /// <remarks>
+        /// <c>COALESCE(column, 'y') = 'y'</c> is true of every row the condition excludes, so it is not
+        /// the column's condition and anything — and the validator writes <c>COALESCE</c> as a
+        /// <c>CASE</c> whose <c>ELSE</c> is not null, which is not this shape. A null test over the
+        /// column is not a comparison at all.
+        /// </remarks>
+        [Fact]
+        public void ANonStrictOperatorOverAColumnIsLeftAlone()
+        {
+            var column = Column(KindIs("B"), Ref(0, SqlTypeName.VARCHAR));
+
+            var coalesced = _rex.makeCall(SqlStdOperatorTable.EQUALS,
+                Case(_rex.makeCall(SqlStdOperatorTable.IS_NOT_NULL, column), column, Str("y")),
+                Str("y"));
+
+            Rewrite(coalesced, null).Should().Be(coalesced.ToString());
+
+            var tested = _rex.makeCall(SqlStdOperatorTable.IS_NULL, column);
+
+            Rewrite(tested, null).Should().Be(tested.ToString());
+        }
+
     }
 
 }

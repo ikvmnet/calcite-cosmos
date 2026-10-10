@@ -86,11 +86,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         static readonly string[] Documents = new[]
         {
-            """{"id":"Link$1","linkId":1,"type":"Link","data":{"id":1,"linkId":1,"guid":"@G1","type":"park","label":"Park one","offline":false,"metadata":{"changeUtcTime":"2026-08-01T10:00:00.000Z"},"data":{"parkId":"@Park"}}}""",
+            """{"id":"Link$1","linkId":1,"type":"Link","data":{"id":1,"linkId":1,"guid":"@G1","type":"park","label":"Park one","offline":false,"metadata":{"changeUtcTime":"2026-08-01T10:00:00.000Z"},"data":{"parkId":"@Park","location":{"kind":"not a shape"}}}}""",
             """{"id":"Link$2","linkId":2,"type":"Link","data":{"id":2,"linkId":2,"guid":"@G2","type":"map","label":"Map two","offline":true,"metadata":{"changeUtcTime":"2026-08-02T12:00:00.000Z"},"data":{"parkId":"@Park","mapId":"@MapA"}}}""",
             """{"id":"Link$3","linkId":3,"type":"Link","data":{"id":3,"linkId":3,"guid":"@G3","type":"map","label":"Map three","offline":false,"metadata":{"changeUtcTime":"2026-08-02T12:00:00.123Z"},"data":{"parkId":"@Park","mapId":"@MapB"}}}""",
-            """{"id":"Link$4","linkId":4,"type":"Link","data":{"id":4,"linkId":4,"guid":"@G4","type":"spot","label":"Spot four","offline":false,"metadata":{"changeUtcTime":"2026-08-03T00:00:00.500Z"},"data":{}}}""",
-            """{"id":"Link$5","linkId":5,"type":"Link","data":{"id":5,"linkId":5,"guid":"@G5","type":"spot","label":"Spot five","data":{}}}""",
+            """{"id":"Link$4","linkId":4,"type":"Link","data":{"id":4,"linkId":4,"guid":"@G4","type":"spot","label":"Spot four","offline":false,"metadata":{"changeUtcTime":"2026-08-03T00:00:00.500Z"},"data":{"location":{"type":"Point","coordinates":[-111.5,38.3]}}}}""",
+            """{"id":"Link$5","linkId":5,"type":"Link","data":{"id":5,"linkId":5,"guid":"@G5","type":"spot","label":"Spot five","data":{"location":{"type":"Point","coordinates":[-68.2,44.4]}}}}""",
             """{"id":"Scan$9","linkId":2,"type":"LinkScan","data":{"id":9,"linkId":2}}""",
         }.Select(Fill).ToArray();
 
@@ -297,7 +297,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 """);
 
             yield return ("SpotLinkBody", $"""
-                SELECT {Identifier("$.data.guid")} AS "Id"
+                SELECT {Identifier("$.data.guid")} AS "Id",
+                       CLR_ST_GEOG_GEOMFROMGEOJSON(JSON_QUERY(l."DOC", '$.data.data.location')) AS "Location"
                 FROM "COSMOS"."{container}" AS l
                 WHERE {IsLink}
                   AND {Text("$.data.type")} = 'spot'
@@ -391,13 +392,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             return model.ToJsonString();
         }
 
+        /// <summary>
+        /// Opens a connection over the model, configured as a spatial host configures one.
+        /// </summary>
+        /// <remarks>
+        /// The geography functions are registered on the root because <c>SpotLinkBody</c> reads its
+        /// location through one, and <c>LENIENT</c> is what admits <c>CAST(? AS GEOMETRY)</c> — the
+        /// spelling Entity Framework gives a spatial parameter, which the parser refuses otherwise.
+        /// </remarks>
         static async Task<DbConnection> OpenAsync()
         {
-            var connection = new CalciteConnection(new CalciteConnectionStringBuilder
+            var connectionString = new CalciteConnectionStringBuilder
             {
                 Model = "inline:" + Model(),
                 CaseSensitive = true,
-            }.ConnectionString);
+            }.ConnectionString + ";conformance=LENIENT";
+
+            var connection = new CalciteDataSourceBuilder(connectionString)
+                .ConfigureRootSchema(root => Apache.Calcite.Geography.Schema.GeographySchema.AddTo(root))
+                .Build()
+                .CreateConnection();
 
             await connection.OpenAsync();
             return connection;
@@ -650,6 +664,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             (await RowsAsync("DECLARED", LinksOnPark)).Should().Equal(new[] { G1, G2, G3 }.OrderBy(g => g, StringComparer.Ordinal),
                 "the park link and both map links name the park");
+        }
+
+        /// <summary>
+        /// The links whose spot body lies within 50 km of a point bound as a parameter — a merged view's
+        /// column used inside an expression rather than compared, with nothing else in the query
+        /// narrowing it to that view.
+        /// </summary>
+        const string SpotsNear = """
+            SELECT "l"."Id"
+            FROM {views}."Link" AS "l"
+            INNER JOIN {views}."LinkBody" AS "b" ON "l"."Id" = "b"."Id"
+            LEFT JOIN {views}."SpotLinkBody" AS "s" ON "b"."Id" = "s"."Id"
+            WHERE CLR_ST_GEOG_DISTANCE("s"."Location", CAST(? AS GEOMETRY)) < 50000.0
+            """;
+
+        static org.locationtech.jts.geom.Geometry Near() =>
+            new org.locationtech.jts.geom.GeometryFactory().createPoint(new org.locationtech.jts.geom.Coordinate(-111.5, 38.3));
+
+        /// <summary>
+        /// A filter on a merged view's column used inside an expression reaches the service. #189.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The column arrives as <c>CASE WHEN p THEN location END</c>, inside the distance, inside the
+        /// comparison; <c>p</c> carries the join's match test over a <c>UUID</c> cast, which is lowered
+        /// only where the rewriter reaches it, and it did not reach inside an expression. So the
+        /// filter stayed in process and every link was read and measured.
+        /// </para>
+        /// <para>
+        /// <b>The distance stays guarded at the service, and the discriminator sits beside it.</b> The
+        /// arm builds a geography from the document, which raises over an object that is not GeoJSON —
+        /// and the park link holds exactly that at the same path. Inside the <c>CASE</c> the arm is
+        /// built only for the spot links, so a recheck in process could never raise over the park link;
+        /// beside it, the discriminator narrows the read. See <c>CosmosFactRewriter.TryLiftStrictCase</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ADistanceFromAMergedViewsColumnReachesTheService()
+        {
+            RequireService();
+
+            var plan = await ExplainAsync("DECLARED", SpotsNear, Near());
+
+            Scans(plan).Should().Be(1, "the views are still one read:\n" + plan);
+            FiltersInProcess(plan).Should().BeFalse("and nothing is left to filter in process:\n" + plan);
+            plan.Should().Contain("CLR_ST_GEOG_DISTANCE", "the distance is measured at the service:\n" + plan);
+            plan.Should().Contain("=(JSON_VALUE($0, '$.data.type'), 'spot'), IS NOT NULL", "beside the spot body's discriminator, a conjunct of its own:\n" + plan);
+        }
+
+        /// <summary>
+        /// And it answers what the joins answer: the near spot, and not the far one or the park link
+        /// whose location is not a shape.
+        /// </summary>
+        /// <remarks>
+        /// Against an account only. The emulator does not implement <c>ST_DISTANCE</c> — measured, a
+        /// statement carrying one answers a malformed response — so there it would measure the emulator.
+        /// </remarks>
+        [Fact]
+        public async Task ADistanceFromAMergedViewsColumnAnswersWhatTheJoinsAnswer()
+        {
+            RequireService();
+
+            if (IsEmulator)
+                Assert.Skip("The emulator does not implement ST_DISTANCE; set COSMOS_TEST_ENDPOINT and COSMOS_TEST_KEY to run this against an account.");
+
+            var merged = await RowsAsync("DECLARED", SpotsNear, Near());
+            var joined = await RowsAsync("UNDECLARED", SpotsNear, Near());
+
+            merged.Should().Equal(new[] { G4 }, "only spot four lies within 50 km");
+            merged.Should().Equal(joined);
         }
 
         /// <summary>
