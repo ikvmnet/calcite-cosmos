@@ -147,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Reads a comparison between a container-rooted path and a constant, either way round.
         /// </summary>
-        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out object? value)
+        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value)
         {
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);
@@ -166,10 +166,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="path">On success, the document path.</param>
         /// <param name="value">On success, the value the literal carries.</param>
         /// <returns><c>true</c> where the two sides were as expected.</returns>
-        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out object? value)
+        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value)
         {
             path = null;
-            value = null;
+            value = JsonScalar.Null;
 
             // A comparison with a promoted VARIANT key coerces its literal to CAST(… AS VARIANT); the
             // box carries the value the fact is about. See CosmosRexTranslator.StripVariantCoercion.
@@ -188,9 +188,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (TryPath(pathNode, fields, rootAlias) is not JsonDocumentPath resolved)
                 return false;
 
+            // Converted once, here, into the scalar a claim holds: the engine boxes an exact 1.5 as a
+            // decimal where a schema's reader read a double, and the theory compares JSON values, not
+            // boxes (#198). A literal that is no JSON scalar -- a UUID, an instant -- proves nothing.
             try
             {
-                value = CosmosRexTranslator.GetLiteralValue(literal);
+                if (JsonScalar.TryFrom(CosmosRexTranslator.GetLiteralValue(literal), out value) == false)
+                    return false;
             }
             catch (CosmosTranslationException)
             {
@@ -209,12 +213,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// leaves a row free to satisfy either. Duplicates collapse, <c>IN ('a', 'a')</c> naming one
         /// value.
         /// </remarks>
-        static bool TryDomain(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out IReadOnlyList<object?>? domain)
+        static bool TryDomain(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out IReadOnlyList<JsonScalar>? domain)
         {
             path = null;
             domain = null;
 
-            var values = new List<object?>();
+            var values = new List<JsonScalar>();
 
             for (var i = 0; i < call.getOperands().size(); i++)
             {

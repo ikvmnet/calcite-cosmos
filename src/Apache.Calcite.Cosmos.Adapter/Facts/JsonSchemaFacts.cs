@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node.TryMember("const", out var constant) && TryLiteral(constant, out var constantValue))
                 State(new JsonClaim.EqualTo(constantValue));
 
-            if (ReadEnum(node) is IReadOnlyList<object?> domain)
+            if (ReadEnum(node) is IReadOnlyList<JsonScalar> domain)
                 State(new JsonClaim.OneOf(domain));
 
             // A pattern constrains a string and is vacuous for anything else, so one written beside no
@@ -236,11 +236,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 return;
 
             var child = path.Property(name);
-            var excluded = new List<object?>();
+            var excluded = new List<JsonScalar>();
 
             if (subschema.TryMember("const", out var constant) && TryLiteral(constant, out var value))
                 excluded.Add(value);
-            else if (ReadEnum(subschema) is IReadOnlyList<object?> domain)
+            else if (ReadEnum(subschema) is IReadOnlyList<JsonScalar> domain)
                 excluded.AddRange(domain);
             else
                 return;
@@ -312,7 +312,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 {
                     // The branch as written, not as resolved: a mapping names its target by the
                     // reference, which following it would have thrown away.
-                    if (branches.At(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not object value)
+                    if (branches.At(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not JsonScalar value)
                         continue;
 
                     var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
@@ -463,7 +463,7 @@ namespace Apache.Calcite.Cosmos.Facts
 
                     // The domain joining every value the branches pin this path to, under this
                     // condition: a branch saying "park" and one saying "map" both entail it.
-                    var values = new List<object?>();
+                    var values = new List<JsonScalar>();
                     foreach (var other in stated)
                     {
                         foreach (var (c, h) in other)
@@ -576,7 +576,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     case "type" when ReadType(node) is (JsonType.Null, _):
                     case "type" when value is JsonArray && value.Size() == 1 && value.At(0).Text() == "null":
                     case "const" when value is null:
-                    case "enum" when ReadEnum(node) is IReadOnlyList<object?> domain && OnlyNulls(domain):
+                    case "enum" when ReadEnum(node) is IReadOnlyList<JsonScalar> domain && OnlyNulls(domain):
                         constrained = true;
                         break;
 
@@ -592,10 +592,10 @@ namespace Apache.Calcite.Cosmos.Facts
 
             return constrained;
 
-            static bool OnlyNulls(IReadOnlyList<object?> domain)
+            static bool OnlyNulls(IReadOnlyList<JsonScalar> domain)
             {
                 foreach (var member in domain)
-                    if (member is not null)
+                    if (member.IsNull == false)
                         return false;
 
                 return true;
@@ -633,11 +633,11 @@ namespace Apache.Calcite.Cosmos.Facts
             JsonClaim? widened = rule.Head.Claim switch
             {
                 JsonClaim.OfType typed => typed with { OrNull = true },
-                JsonClaim.EqualTo { Value: null } equal => equal,
-                JsonClaim.EqualTo equal => new JsonClaim.OneOf(new[] { equal.Value, null }),
-                JsonClaim.OneOf domain when JsonClaim.OneOf.Contains(domain.Values, null) => domain,
-                JsonClaim.OneOf domain => new JsonClaim.OneOf(new List<object?>(domain.Values) { null }),
-                JsonClaim.NotEqualTo { Value: null } => null,
+                JsonClaim.EqualTo { Value.IsNull: true } equal => equal,
+                JsonClaim.EqualTo equal => new JsonClaim.OneOf(new[] { equal.Value, JsonScalar.Null }),
+                JsonClaim.OneOf domain when JsonClaim.OneOf.Contains(domain.Values, JsonScalar.Null) => domain,
+                JsonClaim.OneOf domain => new JsonClaim.OneOf(new List<JsonScalar>(domain.Values) { JsonScalar.Null }),
+                JsonClaim.NotEqualTo { Value.IsNull: true } => null,
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
                 _ => null,
@@ -776,7 +776,7 @@ namespace Apache.Calcite.Cosmos.Facts
                         found.Add(new JsonFact(path, new JsonClaim.EqualTo(constant)));
                         break;
 
-                    case "enum" when ReadEnum(subschema) is IReadOnlyList<object?> domain:
+                    case "enum" when ReadEnum(subschema) is IReadOnlyList<JsonScalar> domain:
                         found.Add(new JsonFact(path, new JsonClaim.OneOf(domain)));
                         break;
 
@@ -846,14 +846,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <returns><c>true</c> where every branch is selected, and no two by the same value.</returns>
         static bool Pins(JsonNode branches, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
-            var seen = new List<object?>();
+            var seen = new List<JsonScalar>();
 
             for (var i = 0; i < branches.Size(); i++)
             {
                 if (branches.At(i) is not JsonNode branch)
                     return false;
 
-                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not object value || JsonClaim.OneOf.Contains(seen, value))
+                if (DiscriminatorValue(branch, parent, name, resolver, recognisers) is not JsonScalar value || JsonClaim.OneOf.Contains(seen, value))
                     return false;
 
                 seen.Add(value);
@@ -871,11 +871,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// where no entry names this branch, OpenAPI's implicit rule applies and the value is the
         /// schema's own name — the last segment of the reference.
         /// </remarks>
-        static object? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
+        static JsonScalar? DiscriminatorValue(JsonNode branch, JsonNode parent, string name, JsonSchemaResolver resolver, JsonSchemaRecognisers recognisers)
         {
             if (resolver.Follow(branch)?.Get("properties")?.Get(name) is JsonNode declared &&
                 resolver.Follow(declared)?.Get("const") is JsonNode constant &&
-                TryLiteral(constant, out var value) && value is not null)
+                TryLiteral(constant, out var value) && value.IsNull == false)
                 return value;
 
             if (parent.Get("discriminator") is not JsonNode discriminator ||
@@ -973,12 +973,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="node">The schema node.</param>
         /// <returns>The domain, or <c>null</c>.</returns>
-        static IReadOnlyList<object?>? ReadEnum(JsonNode node)
+        static IReadOnlyList<JsonScalar>? ReadEnum(JsonNode node)
         {
             if (node.Get("enum") is not JsonNode domain || domain is not JsonArray || domain.Size() == 0)
                 return null;
 
-            var values = new List<object?>(domain.Size());
+            var values = new List<JsonScalar>(domain.Size());
 
             for (var i = 0; i < domain.Size(); i++)
             {
@@ -1000,16 +1000,18 @@ namespace Apache.Calcite.Cosmos.Facts
         static string? Text(JsonNode node, string keyword) => node.Get(keyword).Text();
 
         /// <summary>
-        /// Reads a JSON literal as the CLR value a predicate would compare against.
+        /// Reads a JSON literal as the scalar a claim holds.
         /// </summary>
         /// <remarks>
         /// <c>null</c> is the JSON null: a caller asks only of a member it knows is there, which is
-        /// how a JSON null and a missing member are told apart. A number reads as a <see cref="long"/>
-        /// where it is an integer that fits one, and as a <see cref="double"/> otherwise.
+        /// how a JSON null and a missing member are told apart. A number is read from its text as an
+        /// exact <see cref="decimal"/> wherever one can hold it — a schema's <c>1.5</c> is then the
+        /// <c>1.5</c> a query writes, and an integer too large for a <see cref="long"/> is not wrapped
+        /// into another number — and as a <see cref="double"/> only beyond a decimal's range.
         /// </remarks>
-        static bool TryLiteral(JsonNode? node, out object? value)
+        static bool TryLiteral(JsonNode? node, out JsonScalar value)
         {
-            value = null;
+            value = JsonScalar.Null;
 
             if (node is null)
                 return true;
@@ -1029,7 +1031,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     value = false;
                     return true;
                 case System.Text.Json.JsonValueKind.Number:
-                    value = literal.TryGetValue<long>(out var integer) ? (object)integer : literal.GetValue<double>();
+                    value = literal.TryGetValue<decimal>(out var exact) ? exact : literal.GetValue<double>();
                     return true;
                 default:
                     return false;

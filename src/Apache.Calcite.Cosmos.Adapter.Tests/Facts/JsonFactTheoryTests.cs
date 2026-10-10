@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly CosmosRepresentation EqualityOnly = new("equality-only", PreservesEquality: true, PreservesOrder: false);
         static readonly CosmosRepresentation Ordered = new("ordered", PreservesEquality: true, PreservesOrder: true);
 
-        static JsonFact Equals(JsonDocumentPath path, object? value) => new(path, new JsonClaim.EqualTo(value));
+        static JsonFact Equals(JsonDocumentPath path, JsonScalar value) => new(path, new JsonClaim.EqualTo(value));
 
         static JsonFact Represents(JsonDocumentPath path, CosmosRepresentation representation) => new(path, new JsonClaim.Represents(representation));
 
@@ -57,8 +57,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             }
 
             isNull.Entails(equalsNull).Should().BeTrue();
-            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new object?[] { "a", null }))).Should().BeTrue();
-            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new object?[] { "a" }))).Should().BeFalse();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new JsonScalar[] { "a", null }))).Should().BeTrue();
+            isNull.Entails(new JsonFact(ParkId, new JsonClaim.OneOf(new JsonScalar[] { "a" }))).Should().BeFalse();
             isNull.Entails(new JsonFact(ParkId, new JsonClaim.NotEqualTo("a"))).Should().BeTrue();
             isNull.Entails(new JsonFact(ParkId, new JsonClaim.NotEqualTo(null))).Should().BeFalse();
         }
@@ -97,15 +97,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("Park"))).Should().BeTrue(
                 "an else branch's guard is discharged by an equality to a different value, with no closed world needed");
             set.Knows(new JsonFact(Type, new JsonClaim.NotEqualTo("ParkMap"))).Should().BeFalse();
-            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" }))).Should().BeTrue();
-            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "Trail" }))).Should().BeFalse();
+            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new JsonScalar[] { "Park", "ParkMap" }))).Should().BeTrue();
+            set.Knows(new JsonFact(Type, new JsonClaim.OneOf(new JsonScalar[] { "Park", "Trail" }))).Should().BeFalse();
             set.Knows(new JsonFact(Type, new JsonClaim.OfType(JsonType.Integer))).Should().BeFalse();
         }
 
         [Fact]
         public void ADomainSettlesWhatEveryMemberAgreesOn()
         {
-            var set = JsonFactTheory.Empty.Derive(new[] { new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" })) });
+            var set = JsonFactTheory.Empty.Derive(new[] { new JsonFact(Type, new JsonClaim.OneOf(new JsonScalar[] { "Park", "ParkMap" })) });
 
             set.Knows(new JsonFact(Type, new JsonClaim.OfType(JsonType.String))).Should().BeTrue(
                 "every member is a string, so the type is settled even though the value is not");
@@ -119,7 +119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var theory = new JsonFactTheory(new[]
             {
-                new JsonFactRule(new[] { new JsonFact(Type, new JsonClaim.OneOf(new object?[] { "Park", "ParkMap" })) }, Represents(ParkId, EqualityOnly)),
+                new JsonFactRule(new[] { new JsonFact(Type, new JsonClaim.OneOf(new JsonScalar[] { "Park", "ParkMap" })) }, Represents(ParkId, EqualityOnly)),
             });
 
             theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId).Should().Be(EqualityOnly,
