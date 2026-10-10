@@ -94,6 +94,11 @@ statement used and which it could have used.
 - **Planning has a cost** of its own, in process and independent of Cosmos. It grows with the number of
   containers in the schema, since each container's rules are registered. Expose only the containers an
   application uses.
+- **Joins of views over one container are merged before anything else is planned** (Chapter 12), so a
+  table-per-type hierarchy plans like the one read it becomes rather than like the joins it was written
+  as. A query over five such views still takes seconds to plan rather than milliseconds — Calcite folds
+  constants by compiling them, and explores the projections and filters above the read — and a statement
+  is planned on every execution, so this is paid each time it runs.
 
 ## 19.7 Throttling
 

@@ -1302,6 +1302,30 @@ what one value is worth; 64 bytes is chosen to over-state a value and therefore 
 document, which is the direction that can only ever under-sell projecting and never over-sell it. A
 measured figure would come from the same place the handler above would.
 
+### A merged hierarchy still takes seconds to plan — *medium, and half of it is the host's*
+
+Since #201 the self-join merge fires before anything else and prunes the joins it replaces, which took a
+five-view hierarchy from 8,250 registered expressions to about 1,200 and from minutes to seconds. A query
+over one view registers about 135 and plans in a few hundred milliseconds, and that is the bar. What is
+left, measured offline through the host's prepare (`CosmosPlanningTests`):
+
+- **Constant reduction compiles every time.** `ReduceExpressionsRule` hands the constants it folds to the
+  planner's executor, the host's `RexExecutorImpl`, which compiles them through Janino — about a quarter of
+  a second each under IKVM — and nothing caches the result. The discriminator's comparison is folded once
+  per filter spelling that carries it, fourteen times for one expression. A cache keyed on the expressions,
+  in the host's prepare, took the first query from 7.5 s to 5.8 s. It is the host's to make; nothing here
+  can, short of a rule that folds literal comparisons first.
+- **Calcite still explores the projections and filters above the one read.** The query's filter is pushed
+  through the merged projection a step at a time, each step a new spelling of the condition and a new set,
+  and every projection is registered again over each. A substitution rule that read the whole stack as
+  one projection over one filter was tried and made it worse: `RexSimplify` will not flatten the nested
+  boolean `CASE`s that pushing the discriminator comparison into the merged `CASE`s leaves, so the read it
+  built did not render whole, it could not prune, and it only added alternatives. It would need a
+  simplification of `CASE` with boolean arms that Calcite does not do — and pruning that is safe only where
+  what replaces the stack pushes whole.
+- **The translator runs in rule matching.** `CosmosFilterSplitRule` and `CosmosProjectSplitRule` translate
+  every candidate to decide it, about a sixth of what remains.
+
 ### Recorded decisions worth revisiting
 
 - **`SELECT VALUE` for a single column** — `DESIGN.md` chose the uniform object form deliberately,

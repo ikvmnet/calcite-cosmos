@@ -209,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The other kind of document in the container is described too — a schema is a claim about every
         /// document — by leaving <c>data</c>'s members optional.
         /// </remarks>
-        static JsonObject Schema() => new()
+        internal static JsonObject Schema() => new()
         {
             ["type"] = "object",
             ["required"] = new JsonArray("linkId", "type"),
@@ -259,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The five views over the named container: identifiers read as <c>UUID</c> casts of text accessors,
         /// each narrowed by the link discriminator and its body's kind.
         /// </summary>
-        static IEnumerable<(string Name, string Sql)> Views(string container)
+        internal static IEnumerable<(string Name, string Sql)> Views(string container)
         {
             yield return ("Link", $"""
                 SELECT {Identifier("$.data.guid")} AS "Id",

@@ -79,6 +79,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// the sort on its right.
     /// </para>
     /// <para>
+    /// <b>It fires before anything else does, and the join it replaces is explored no further (#201).</b>
+    /// A <see cref="org.apache.calcite.rel.rules.SubstitutionRule"/>: Volcano queues its matches ahead of
+    /// every other rule's, and once it has fired, prunes the join, so no rule fires on that join again. As an
+    /// ordinary rule it waited behind everything the joins matched — filters pushed into them, pushed
+    /// back out, commuted — and each of those spellings was a set of its own that the merge then fired on
+    /// again: 8,250 expressions and three minutes to plan a five-view hierarchy, for a result one read
+    /// answers. Pruning is sound because what replaces the join is always as good: one read of the
+    /// container in place of several, with nothing the join could do that the read cannot.
+    /// </para>
+    /// <para>
+    /// <b>Which is also why it matches no scan.</b> A substitution rule is a transformation rule, and Volcano
+    /// matches a transformation rule's operands only within one convention — a child in another is skipped.
+    /// The scan is in the container's convention and the filter above it is not, so an operand naming the
+    /// scan never matched. Each side is matched as a projection, or a projection over a projection, and read
+    /// down to its scan by <see cref="Read"/>, which also sees through the projections a subquery or an
+    /// earlier merge stacks there — without waiting for Calcite's merges to remove them first.
+    /// </para>
+    /// <para>
     /// <b>What it declines.</b> A full join: a document holding no key would be one row merged and two
     /// joined. A semi or anti join, which the same substitution answers and nothing has asked for yet. A
     /// sorted side under an inner join, which can drop rows of the page, or on the side an outer join
@@ -86,11 +104,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// deterministic.
     /// </para>
     /// </remarks>
-    public class CosmosSelfJoinRule : RelOptRule
+    public class CosmosSelfJoinRule : RelOptRule, org.apache.calcite.rel.rules.SubstitutionRule
     {
 
+        /// <inheritdoc />
+        public bool autoPruneOld() => true;
+
         /// <summary>
-        /// The rule's instances: one for each combination of a filtered and an unfiltered side.
+        /// The rule's instances: one for each combination of a projection and a projection over a projection on
+        /// each side, and of which side, if either, is sorted.
         /// </summary>
         /// <remarks>
         /// Static, because the rule takes no convention — it reads the container from the scans — and so
@@ -102,9 +124,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var instances = new List<RelOptRule>();
             foreach (var sorted in new[] { Paged.None, Paged.Left, Paged.Right })
-                foreach (var leftFiltered in new[] { true, false })
-                    foreach (var rightFiltered in new[] { true, false })
-                        instances.Add(new CosmosSelfJoinRule(leftFiltered, rightFiltered, sorted));
+                foreach (var leftStacked in new[] { true, false })
+                    foreach (var rightStacked in new[] { true, false })
+                        instances.Add(new CosmosSelfJoinRule(leftStacked, rightStacked, sorted));
 
             return instances.ToArray();
         }
@@ -133,46 +155,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>The rules.</returns>
         public static IEnumerable<RelOptRule> Create() => Instances;
 
-        readonly bool _leftFiltered;
-        readonly bool _rightFiltered;
+        readonly bool _leftStacked;
+        readonly bool _rightStacked;
         readonly Paged _sorted;
 
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
-        /// <param name="leftFiltered">Whether the left side has a filter between its projection and the scan.</param>
-        /// <param name="rightFiltered">Whether the right side does.</param>
+        /// <param name="leftStacked">Whether the left side is matched as a projection over a projection.</param>
+        /// <param name="rightStacked">Whether the right side is.</param>
         /// <param name="sorted">Which side, if either, has a sort above its projection.</param>
         // As CosmosPointReadSplitRule: RelOptRule's operand builders are deprecated in favour of
         // RelRule.Config, whose operand supplier costs more ceremony from C# than it buys.
 #pragma warning disable CS0612
-        public CosmosSelfJoinRule(bool leftFiltered, bool rightFiltered, Paged sorted = Paged.None) :
+        public CosmosSelfJoinRule(bool leftStacked, bool rightStacked, Paged sorted = Paged.None) :
             base(
-                operand((java.lang.Class)typeof(LogicalJoin), Side(leftFiltered, sorted == Paged.Left), Side(rightFiltered, sorted == Paged.Right)),
-                $"CosmosSelfJoinRule({Describe(leftFiltered, sorted == Paged.Left)},{Describe(rightFiltered, sorted == Paged.Right)})")
+                operand((java.lang.Class)typeof(LogicalJoin), Side(leftStacked, sorted == Paged.Left), Side(rightStacked, sorted == Paged.Right)),
+                $"CosmosSelfJoinRule({Describe(leftStacked, sorted == Paged.Left)},{Describe(rightStacked, sorted == Paged.Right)})")
         {
-            _leftFiltered = leftFiltered;
-            _rightFiltered = rightFiltered;
+            _leftStacked = leftStacked;
+            _rightStacked = rightStacked;
             _sorted = sorted;
         }
 
-        static RelOptRuleOperand Side(bool filtered, bool sorted)
+        static RelOptRuleOperand Side(bool stacked, bool sorted)
         {
-            var side = filtered
-                ? operand((java.lang.Class)typeof(LogicalProject), operand((java.lang.Class)typeof(LogicalFilter), operand((java.lang.Class)typeof(TableScan), none())))
-                : operand((java.lang.Class)typeof(LogicalProject), operand((java.lang.Class)typeof(TableScan), none()));
+            var side = stacked
+                ? operand((java.lang.Class)typeof(LogicalProject), operand((java.lang.Class)typeof(LogicalProject), any()))
+                : operand((java.lang.Class)typeof(LogicalProject), any());
 
             return sorted ? operand((java.lang.Class)typeof(LogicalSort), side) : side;
         }
 #pragma warning restore CS0612
 
-        static string Describe(bool filtered, bool sorted) =>
-            (sorted ? "Sort:" : "") + (filtered ? "Filter" : "Scan");
+        static string Describe(bool stacked, bool sorted) =>
+            (sorted ? "Sort:" : "") + (stacked ? "Project:Project" : "Project");
 
         /// <summary>
-        /// One input of the join: a projection over an optional filter over a scan, under an optional sort.
+        /// One input of the join, read down to the scan: its columns and the condition it keeps a document
+        /// on, both over the scan's row, under an optional sort.
         /// </summary>
-        readonly record struct Input(Sort? Sort, Project Project, Filter? Filter, TableScan Scan);
+        readonly record struct Input(Sort? Sort, IReadOnlyList<RexNode> Projects, RexNode? Condition, TableScan Scan);
 
         /// <inheritdoc />
         public override void onMatch(RelOptRuleCall call)
@@ -180,19 +203,94 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var join = (Join)call.rel(0);
             var at = 1;
 
-            Input Next(bool filtered, bool sorted)
+            Input? Next(bool stacked, bool sorted)
             {
                 var sort = sorted ? (Sort)call.rel(at++) : null;
                 var project = (Project)call.rel(at++);
-                var filter = filtered ? (Filter)call.rel(at++) : null;
-                return new Input(sort, project, filter, (TableScan)call.rel(at++));
+                if (stacked)
+                    at++;
+
+                return Read(sort, project);
             }
 
-            var left = Next(_leftFiltered, _sorted == Paged.Left);
-            var right = Next(_rightFiltered, _sorted == Paged.Right);
+            if (Next(_leftStacked, _sorted == Paged.Left) is not Input left || Next(_rightStacked, _sorted == Paged.Right) is not Input right)
+                return;
 
             if (TryMerge(join, left, right) is RelNode merged)
                 call.transformTo(merged);
+        }
+
+        /// <summary>
+        /// Reads a side down to the scan beneath it, through any projections and filters in between.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A view is a projection over a filter over the scan, but what sits under the join is not always
+        /// the view alone: a subquery projects the view's columns again, and a merged join is a projection
+        /// the query's own projection then stands over. Each projection is substituted into the one above
+        /// it and each filter's condition carried down beside it, so what is read is the side's columns and
+        /// condition over the scan's row — the shape the merge needs, without waiting for Calcite's
+        /// transposes and merges to produce it. Waiting was the expensive part: the merge is what makes the
+        /// rest of the plan small, and every rule that fired before it explored the joins it removes (#201).
+        /// </para>
+        /// <para>
+        /// The inputs are equivalence sets, and any member of one means what the others do, so the walk
+        /// takes the first member of each kind it needs and prefers the scan. Logical nodes only: a node in
+        /// another convention is an implementation of the same rows, and nothing here needs one.
+        /// </para>
+        /// </remarks>
+        static Input? Read(Sort? sort, Project project)
+        {
+            var projects = new List<RexNode>(Projections(project));
+            var conditions = new List<RexNode>();
+            var node = project.getInput();
+
+            // Bounded, because a registered plan is a graph: a set can reach itself through a projection
+            // that renames nothing.
+            for (var depth = 0; depth < 8; depth++)
+            {
+                var members = CosmosPlanMembers.Of(node);
+
+                if (First<TableScan>(members) is TableScan scan)
+                    return new Input(sort, projects, And(project.getCluster().getRexBuilder(), conditions.ToArray()), scan);
+
+                if (First<LogicalFilter>(members) is Filter filter)
+                {
+                    conditions.Add(filter.getCondition());
+                    node = filter.getInput();
+                    continue;
+                }
+
+                if (First<LogicalProject>(members) is Project below)
+                {
+                    // Substituted, an expression is evaluated once per reference, and a condition from
+                    // above it is evaluated beneath it — the same only for a function of its row alone. A
+                    // window is not one: a filter moved under it changes the rows it ranges over.
+                    if (IsDeterministic(Projections(below), null) == false)
+                        return null;
+
+                    for (var i = 0; i < projects.Count; i++)
+                        projects[i] = RelOptUtil.pushPastProject(projects[i], below);
+                    for (var i = 0; i < conditions.Count; i++)
+                        conditions[i] = RelOptUtil.pushPastProject(conditions[i], below);
+
+                    node = below.getInput();
+                    continue;
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
+        static T? First<T>(IReadOnlyList<RelNode> members) where T : class
+        {
+            foreach (var member in members)
+                if (member is T match)
+                    return match;
+
+            return null;
         }
 
         /// <summary>
@@ -227,10 +325,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             var rexBuilder = join.getCluster().getRexBuilder();
-            var p = Projections(left.Project);
-            var q = Projections(right.Project);
-            var f = left.Filter?.getCondition();
-            var g = right.Filter?.getCondition();
+            var p = left.Projects;
+            var q = right.Projects;
+            var f = left.Condition;
+            var g = right.Condition;
 
             if (IsDeterministic(p, f) == false || IsDeterministic(q, g) == false)
                 return null;

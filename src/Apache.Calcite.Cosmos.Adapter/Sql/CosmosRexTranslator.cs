@@ -1202,9 +1202,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// that is not a number. Read as a double because that is what the service holds; a literal
         /// the type cannot represent exactly rounds as the stored text rounds, to the same double. A
         /// value beyond the double range parses and comes back infinite, which the caller decides.
+        /// <para>
+        /// Text holding an ASCII character the grammar has no place for is refused before it is parsed.
+        /// Most text asked about is a string literal — a discriminator, a type name — and the parse refuses
+        /// it by throwing, which under IKVM captures a stack trace each time; the planner asks this of
+        /// every equality it considers pushing, and the throws were a measured share of planning (#201).
+        /// Only ASCII is refused early: the grammar's digits are whatever Java calls a digit, and that
+        /// question is left to the parse.
+        /// </para>
         /// </remarks>
         internal static bool TryParseRenderedNumber(string text, out double number)
         {
+            number = 0;
+
+            if (text.Length == 0)
+                return false;
+
+            foreach (var c in text)
+                if (c < 128 && c is not ((>= '0' and <= '9') or '+' or '-' or '.' or 'e' or 'E'))
+                    return false;
+
             try
             {
                 number = new java.math.BigDecimal(text).doubleValue();
