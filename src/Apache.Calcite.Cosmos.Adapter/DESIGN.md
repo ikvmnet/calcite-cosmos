@@ -1399,6 +1399,49 @@ SQL should cast its parameters, at which point Calcite knows the type and the pl
 it; a consumer that does not gets correct rows and a weaker statement. That is a bug in the consumer
 rather than a gap here, and `TODO.md` records the one case a declaration ought to recover.
 
+**One comparison needs the value written rather than bound as it stands: an instant against a stored
+form (#182).** Against a literal, a comparison of a path read as an instant is lowered while the plan
+is made — `CosmosFactRewriter` writes the literal in the spelling the container declares, and the
+service compares stored strings. Against a parameter it declined, the parameter being no literal, so
+`WHERE "ChangeUtcTime" > CAST(? AS TIMESTAMP)` — a "changed since" refresh, sent parameterised by every
+host that prepares — pushed a definedness test and compared every document in process. Nothing in the
+decision needs the value: whether the stored strings answer for the instants is a question about the
+path and the operator, and `CosmosFactRewriter.TryStoredInstant` answers it for the literal and the
+parameter alike. So the translator writes `c.at > @p0` and binds the slot with the path's form;
+`CosmosQueries.Bind` writes the value in it when the statement runs, as the plan would have written the
+literal.
+
+**The value written is the one Calcite's runtime holds, and that was measured rather than assumed.**
+Through Calcite's own driver and through the ADO.NET one alike, a `TIMESTAMP` parameter reaches the
+data context as a `java.lang.Long` of epoch milliseconds — a .NET tick is gone on the way in — and a
+`DATE` as a `java.lang.Integer` of days (`CalciteTemporalParameterMeasurementTests`). And
+`CAST(? AS TIMESTAMP)`, which is `TIMESTAMP(0)`, keeps the milliseconds at run time: only its text is
+written to the declared precision. That sits against the section on casts with a format, which refuses
+a millisecond parse into `TIMESTAMP(0)` so that the pushdown agrees with the declared type rather than
+with the runtime. The two are not in conflict. Refusing leaves the answer where it was, which is
+always available to a plan and never to a parameter's statement once written; and between writing the
+value the runtime compares and writing a truncation of it, only the first leaves every query answering
+the rows it answered before it was pushed. If a release ever applies the precision at run time, the
+measurement fails and this has to follow it.
+
+**A value between two stored spellings cannot be refused, so it is rounded — exactly.** A literal
+finer than the form keeps its comparison in process. A parameter's statement is already written, and
+against a seconds form a millisecond value is one Calcite's runtime can hold. Every stored value lands
+on the form, though, so nothing is stored between two consecutive spellings, and the comparison
+decides which neighbour the value may stand in for without changing what it keeps: `s > v` keeps what
+`s > ⌊v⌋` keeps, `s >= v` what `s >= ⌈v⌉` keeps, and the mirrored pair the same way. An equality is
+true of no stored value and an inequality of every one, which the value written in full gives both, at
+a precision no spelling of the form has. The direction is fixed when the statement is written —
+`CosmosTemporalRounding` on the slot — and the value only decides how far. Against a form of
+millisecond precision or finer, which is the case #182 reported, every value lands and the rounding is
+never consulted.
+
+| comparison | `12:00:00.500` against a seconds form is written as |
+| --- | --- |
+| `>`, `<=` | `12:00:00Z` |
+| `>=`, `<` | `12:00:01Z` |
+| `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
+
 #### Casts over document values
 
 The row model types every document path `ANY`, so a view can only give a column a SQL type by

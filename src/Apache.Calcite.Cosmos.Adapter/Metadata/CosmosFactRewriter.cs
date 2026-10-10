@@ -428,7 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// <para>
         /// <b>The literal is rendered into the path's own shape, and refused where it will not fit.</b>
-        /// <see cref="CosmosStoredForms.RenderDateTime"/> is what decides that, and why truncating
+        /// <see cref="CosmosStoredForms.RenderDateTime(CosmosRepresentation, DateTime)"/> is what decides that, and why truncating
         /// would not be sound is recorded there.
         /// </para>
         /// <para>
@@ -446,7 +446,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (literalNode is not RexLiteral literal || InstantOf(literal) is not DateTime value)
                 return null;
 
-            if (TextAccessorOf(temporalNode, rexBuilder, out var format, out var held) is not RexNode accessor)
+            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
+
+            if (TryStoredInstant(temporalNode, ordering, translator, known, rootAlias, out var representation) is not RexNode accessor)
+                return null;
+
+            if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
+                return null;
+
+            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+        }
+
+        /// <summary>
+        /// Returns the text accessor underneath an expression that reads a path as an instant, where
+        /// the path's declared form makes comparing the stored strings answer what comparing the
+        /// instants would — or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The license, asked apart from what the comparison is against, because two things ask it.
+        /// <see cref="TryLowerInstant"/> writes a literal in the form while the plan is made, and
+        /// <see cref="CosmosRexTranslator"/> binds a parameter to be written in it when the statement
+        /// runs. Whether the stored strings answer for the instants is a question about the path and
+        /// the comparison and not about the value, so it is one question asked in one place, and the
+        /// two cannot come to disagree about which paths they act on.
+        /// </para>
+        /// <para>
+        /// What the value then has to satisfy differs between them, and is theirs to ask: a literal
+        /// that does not land on the form is refused, and a parameter is rounded onto it — see
+        /// <see cref="CosmosTemporalRounding"/>.
+        /// </para>
+        /// </remarks>
+        /// <param name="temporalNode">The expression that may read a path as an instant.</param>
+        /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
+        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="rootAlias">The alias a path must be rooted at.</param>
+        /// <param name="representation">On success, the path's declared form.</param>
+        /// <returns>The text accessor, or <c>null</c>.</returns>
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, CosmosFactSet known, string rootAlias, out CosmosRepresentation representation)
+        {
+            representation = default;
+
+            if (TextAccessorOf(temporalNode, out var format, out var held) is not RexNode accessor)
                 return null;
 
             if (translator.TryResolvePath(accessor, out var path) == false || path is null)
@@ -458,12 +500,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosDocumentPath.From(path) is not CosmosDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation representation)
+            if (known.RepresentationOf(document) is not CosmosRepresentation declared)
                 return null;
 
-            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
-
-            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+            if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
                 return null;
 
             // A parse names how the text is read and is licensed by the format reading the shape; a
@@ -471,14 +511,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // is optional: dropping a conversion the engine would have failed at answers rows where
             // the query answers an error, which is a different query rather than a faster one.
             if (format is not null
-                ? CosmosStoredForms.ParsesExactly(representation, format, held) == false
-                : CosmosStoredForms.EngineReads(representation, held) == false)
+                ? CosmosStoredForms.ParsesExactly(declared, format, held) == false
+                : CosmosStoredForms.EngineReads(declared, held) == false)
                 return null;
 
-            if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
-                return null;
-
-            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+            representation = declared;
+            return accessor;
         }
 
         /// <summary>
@@ -663,14 +701,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
-        /// <param name="rexBuilder">Builds the rebuilt accessor.</param>
         /// <param name="format">
         /// On success, the format a parse reads the text with, or <c>null</c> where the expression
         /// names no format and the conversion is Calcite's own.
         /// </param>
         /// <param name="held">On success, the halves of an instant the expression's value holds.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        static RexNode? TextAccessorOf(RexNode node, RexBuilder rexBuilder, out string? format, out CosmosTemporalParts held)
+        static RexNode? TextAccessorOf(RexNode node, out string? format, out CosmosTemporalParts held)
         {
             format = null;
             held = CosmosTemporalParts.None;
@@ -706,7 +743,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// The value rather than a spelling, for the reason <see cref="UuidOf"/> gives: which spelling
         /// a conforming document stores is the path form to say, and
-        /// <see cref="CosmosStoredForms.RenderDateTime"/> is what says it.
+        /// <see cref="CosmosStoredForms.RenderDateTime(CosmosRepresentation, DateTime)"/> is what says it.
         /// </para>
         /// <para>
         /// <b>Read from the calendar rather than from its text.</b> Measured: <c>getValue</c> answers a

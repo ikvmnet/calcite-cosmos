@@ -75,16 +75,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string MapB = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
         /// <summary>
-        /// The documents: one link of each kind and a second map link, a link carrying no <c>offline</c>
-        /// flag, and a document of another type in the same partition as a link, carrying no guid, which no
-        /// view selects.
+        /// The documents: one link of each kind and a second map link, a link carrying neither an
+        /// <c>offline</c> flag nor a change time, and a document of another type in the same partition as a
+        /// link, carrying no guid, which no view selects.
         /// </summary>
+        /// <remarks>
+        /// The change times sit either side of <c>2026-08-02T12:00:00.000Z</c> and one exactly on it, and
+        /// one is a fraction past it, so that a comparison against a parameter has every boundary to get
+        /// wrong.
+        /// </remarks>
         static readonly string[] Documents = new[]
         {
-            """{"id":"Link$1","linkId":1,"type":"Link","data":{"id":1,"linkId":1,"guid":"@G1","type":"park","label":"Park one","offline":false,"data":{"parkId":"@Park"}}}""",
-            """{"id":"Link$2","linkId":2,"type":"Link","data":{"id":2,"linkId":2,"guid":"@G2","type":"map","label":"Map two","offline":true,"data":{"parkId":"@Park","mapId":"@MapA"}}}""",
-            """{"id":"Link$3","linkId":3,"type":"Link","data":{"id":3,"linkId":3,"guid":"@G3","type":"map","label":"Map three","offline":false,"data":{"parkId":"@Park","mapId":"@MapB"}}}""",
-            """{"id":"Link$4","linkId":4,"type":"Link","data":{"id":4,"linkId":4,"guid":"@G4","type":"spot","label":"Spot four","offline":false,"data":{}}}""",
+            """{"id":"Link$1","linkId":1,"type":"Link","data":{"id":1,"linkId":1,"guid":"@G1","type":"park","label":"Park one","offline":false,"metadata":{"changeUtcTime":"2026-08-01T10:00:00.000Z"},"data":{"parkId":"@Park"}}}""",
+            """{"id":"Link$2","linkId":2,"type":"Link","data":{"id":2,"linkId":2,"guid":"@G2","type":"map","label":"Map two","offline":true,"metadata":{"changeUtcTime":"2026-08-02T12:00:00.000Z"},"data":{"parkId":"@Park","mapId":"@MapA"}}}""",
+            """{"id":"Link$3","linkId":3,"type":"Link","data":{"id":3,"linkId":3,"guid":"@G3","type":"map","label":"Map three","offline":false,"metadata":{"changeUtcTime":"2026-08-02T12:00:00.123Z"},"data":{"parkId":"@Park","mapId":"@MapB"}}}""",
+            """{"id":"Link$4","linkId":4,"type":"Link","data":{"id":4,"linkId":4,"guid":"@G4","type":"spot","label":"Spot four","offline":false,"metadata":{"changeUtcTime":"2026-08-03T00:00:00.500Z"},"data":{}}}""",
             """{"id":"Link$5","linkId":5,"type":"Link","data":{"id":5,"linkId":5,"guid":"@G5","type":"spot","label":"Spot five","data":{}}}""",
             """{"id":"Scan$9","linkId":2,"type":"LinkScan","data":{"id":9,"linkId":2}}""",
         }.Select(Fill).ToArray();
@@ -194,6 +199,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+        const string Milliseconds = @"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$";
+
         /// <summary>
         /// The JSON Schema both containers declare, covering the paths these views read.
         /// </summary>
@@ -220,6 +227,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         ["type"] = new JsonObject { ["type"] = "string" },
                         ["label"] = new JsonObject { ["type"] = "string" },
                         ["offline"] = new JsonObject { ["type"] = "boolean" },
+                        ["metadata"] = new JsonObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject
+                            {
+                                ["changeUtcTime"] = new JsonObject { ["type"] = "string", ["pattern"] = Milliseconds },
+                            },
+                        },
                         ["data"] = new JsonObject
                         {
                             ["type"] = "object",
@@ -250,7 +265,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 SELECT {Identifier("$.data.guid")} AS "Id",
                        CAST({Text("$.data.id")} AS INTEGER) AS "IntId",
                        {Text("$.data.label")} AS "Label",
-                       CAST({Text("$.data.offline")} AS BOOLEAN) AS "Offline"
+                       CAST({Text("$.data.offline")} AS BOOLEAN) AS "Offline",
+                       CAST({Text("$.data.metadata.changeUtcTime")} AS TIMESTAMP(3) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS.FF3''Z''') AS "ChangeUtcTime"
                 FROM "COSMOS"."{container}" AS l
                 WHERE {IsLink}
                   AND {Text("$.data.type")} IN ('park', 'map', 'spot')
@@ -393,19 +409,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         static string Over(string schema, string sql) => sql.Replace("{views}", $"\"{schema}\"");
 
-        static async Task<string> ExplainAsync(string schema, string sql)
+        static async Task<string> ExplainAsync(string schema, string sql, params object[] parameters)
         {
             await using var connection = await OpenAsync();
             await using var command = connection.CreateCommand();
             command.CommandText = "EXPLAIN PLAN FOR " + Over(schema, sql);
+            Bind(command, parameters);
             return ((string?)await command.ExecuteScalarAsync() ?? "").Replace("\r\n", "\n");
         }
 
-        static async Task<List<string>> RowsAsync(string schema, string sql)
+        static void Bind(DbCommand command, object[] parameters)
+        {
+            foreach (var value in parameters)
+            {
+                var parameter = command.CreateParameter();
+                parameter.Value = value;
+                command.Parameters.Add(parameter);
+            }
+        }
+
+        static async Task<List<string>> RowsAsync(string schema, string sql, params object[] parameters)
         {
             await using var connection = await OpenAsync();
             await using var command = connection.CreateCommand();
             command.CommandText = Over(schema, sql);
+            Bind(command, parameters);
 
             var rows = new List<string>();
 
@@ -633,6 +661,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             (await RowsAsync("DECLARED", """SELECT "l"."Id", "l"."Offline" FROM {views}."Link" AS "l" """))
                 .Should().Equal($"{G1}|False", $"{G2}|True", $"{G3}|False", $"{G4}|False", $"{G5}|null");
+        }
+
+        /// <summary>
+        /// A change time compared with a parameter is compared at the service, the parameter written in
+        /// the stored spelling when the statement runs. #182.
+        /// </summary>
+        /// <remarks>
+        /// The parameter is a <see cref="DateTime"/> through the ADO.NET driver, which is how a host sends
+        /// one, and the view reads the stored instant with the format the declared shape is read by.
+        /// The boundaries are the point: a value exactly on a stored instant, and one a fraction short of
+        /// one.
+        /// </remarks>
+        [Theory]
+        [InlineData(">", "2026-08-02T12:00:00.000", new[] { G3, G4 })]
+        [InlineData(">=", "2026-08-02T12:00:00.000", new[] { G2, G3, G4 })]
+        [InlineData("<", "2026-08-02T12:00:00.000", new[] { G1 })]
+        [InlineData("=", "2026-08-02T12:00:00.123", new[] { G3 })]
+        [InlineData("<>", "2026-08-02T12:00:00.123", new[] { G1, G2, G4 })]
+        [InlineData(">", "2026-08-02T12:00:00.122", new[] { G3, G4 })]
+        public async Task AChangeTimeComparedWithAParameterIsComparedAtTheService(string op, string value, string[] expected)
+        {
+            RequireService();
+
+            var sql = $"""SELECT "l"."Id" FROM {"{views}"}."Link" AS "l" WHERE "l"."ChangeUtcTime" {op} CAST(? AS TIMESTAMP)""";
+            var instant = DateTime.SpecifyKind(DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc);
+
+            var plan = await ExplainAsync("DECLARED", sql, instant);
+            FiltersInProcess(plan).Should().BeFalse("the comparison is the service's:\n" + plan);
+
+            (await RowsAsync("DECLARED", sql, instant)).Should().Equal(expected.OrderBy(g => g, StringComparer.Ordinal));
         }
 
         /// <summary>

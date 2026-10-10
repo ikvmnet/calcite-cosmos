@@ -1565,6 +1565,31 @@ reaches the service too, so the rows the ordering sees are rows the equality alr
 string. The circularity is only where the fact comes from the conjunct being translated, which cannot
 confine anything it is itself the test of.
 
+**A declared instant took the parameter too (#182).** A comparison of a stored instant against `?` is
+written in the path's own spelling when the statement runs, the slot carrying the form and the way a
+value between two spellings rounds — `DESIGN.md` under *A prepared statement's value belongs to the
+execution*. The UUID and the numeric forms still lower against a literal only: the same move would
+take them, with a UUID written into its form and an integer into its width, and nothing has asked.
+
+### A null parameter is not SQL's null at the service — *small, found beside #182, and older than it*
+
+A parameter is bound as it arrives, and a SQL `NULL` arrives as a JSON `null`, which the service compares
+as a value. Measured against the emulator, over one path holding `true`, `false`, `null`, a string, a
+number and nothing:
+
+| | keeps | SQL keeps |
+| --- | --- | --- |
+| `c.flag = @n` | the document storing `null` | nothing |
+| `c.flag != @n`, `NOT (c.flag = @n)` | every document holding something other than `null` | nothing |
+| `c.flag > @n` | nothing | nothing |
+
+So every parameterised equality, inequality and negated equality answers rows a null parameter should
+not, and the guards `WriteComparison` writes are about a null at the *path*. The repair is a guard on
+the parameter in those positions — `NOT IS_NULL(@p0)` beside the comparison — which costs nothing where
+the value is not null. A host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity
+Framework does, never sends one, which is likely why nothing has reported it. Not measured against an
+account.
+
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
 A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical

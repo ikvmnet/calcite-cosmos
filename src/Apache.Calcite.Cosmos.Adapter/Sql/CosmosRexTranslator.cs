@@ -2694,6 +2694,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var left = Operand(call, 0);
             var right = Operand(call, 1);
 
+            // An instant read out of a path, against a parameter: written in the path's own spelling
+            // when the value arrives. See TryWriteStoredInstantParameter.
+            if (TryInstantParameter(right) is org.apache.calcite.rex.RexDynamicParam onRight && TryWriteStoredInstantParameter(builder, left, onRight, op))
+                return;
+
+            if (TryInstantParameter(left) is org.apache.calcite.rex.RexDynamicParam onLeft && TryWriteStoredInstantParameter(builder, right, onLeft, Reverse(op)))
+                return;
+
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
@@ -2733,6 +2741,111 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             WriteBinary(builder, left, right, op);
         }
+
+        /// <summary>
+        /// Writes a comparison between an instant read out of a path and a parameter, the parameter
+        /// bound to be written in the path's stored spelling when the statement runs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The literal's lowering, with the value arriving later.</b> Against a literal,
+        /// <see cref="Metadata.CosmosFactRewriter"/> writes the literal in the form the container
+        /// declares for the path while the plan is made, and the comparison is one of stored strings.
+        /// Against a parameter it declined, the parameter being no literal — so the comparison was
+        /// weakened to a definedness test and a "changed since" refresh read every document to
+        /// compare in process (#182). Nothing about the decision needs the value: whether the stored
+        /// strings answer for the instants is a question about the path and the operator, and
+        /// <see cref="Metadata.CosmosFactRewriter.TryStoredInstant"/> answers it for both callers.
+        /// What is left is writing the value, and <see cref="Client.CosmosQueries.Bind"/> does that
+        /// when it exists.
+        /// </para>
+        /// <para>
+        /// <b>A value between two stored spellings cannot be refused, so it is rounded, and the
+        /// operator says which way.</b> A literal that does not land on the form keeps its comparison
+        /// in process; a parameter's statement is already written. Every stored value lands on the
+        /// form, so rounding the parameter onto it in the direction the comparison is insensitive to
+        /// changes nothing it keeps — see <see cref="Metadata.CosmosTemporalRounding"/>. The path is
+        /// written on the left, the operator reversed where it was read the other way round, so that
+        /// the direction is decided once.
+        /// </para>
+        /// <para>
+        /// <b>Which facts.</b> The ones this translator was given, which is the same set the literal's
+        /// lowering is decided from in the filter rules: the conjunct cannot prove its own path's form,
+        /// a comparison against a parameter establishing nothing, so a guard proving it is a sibling
+        /// pushed beside it.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="temporal">The side that may read a path as an instant.</param>
+        /// <param name="parameter">The parameter on the other side.</param>
+        /// <param name="op">The operator, with the path on its left.</param>
+        /// <returns><c>true</c> where the comparison was written.</returns>
+        bool TryWriteStoredInstantParameter(StringBuilder builder, RexNode temporal, org.apache.calcite.rex.RexDynamicParam parameter, string op)
+        {
+            // The two sides compared as one type. Calcite casts one of them where they differ, and a
+            // cast between a DATE and a TIMESTAMP converts.
+            if (temporal.getType()?.getSqlTypeName() != parameter.getType()?.getSqlTypeName())
+                return false;
+
+            var ordering = op is not ("=" or "!=");
+
+            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, this, _facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+                return false;
+
+            var rounding = op switch
+            {
+                ">" or "<=" => Metadata.CosmosTemporalRounding.Down,
+                ">=" or "<" => Metadata.CosmosTemporalRounding.Up,
+                _ => Metadata.CosmosTemporalRounding.None,
+            };
+
+            builder.Append('(');
+            Write(builder, accessor);
+            builder.Append(' ').Append(op).Append(' ');
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding }));
+            builder.Append(')');
+            return true;
+        }
+
+        /// <summary>
+        /// Recognises a parameter of a temporal type, through any casts that keep its value, and
+        /// returns it.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST(? AS TIMESTAMP)</c> compared with a <c>TIMESTAMP(3)</c> arrives as
+        /// <c>CAST(CAST(?0):TIMESTAMP(0)):TIMESTAMP(3)</c>, and a cast between two precisions of one
+        /// type changes nothing at run time — measured, the milliseconds survive the
+        /// <c>TIMESTAMP(0)</c> — so the value compared is the value the parameter carries. A cast
+        /// between a <c>DATE</c> and a <c>TIMESTAMP</c> converts and is not looked through.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns>The parameter, or <c>null</c>.</returns>
+        static org.apache.calcite.rex.RexDynamicParam? TryInstantParameter(RexNode node)
+        {
+            var type = node.getType()?.getSqlTypeName();
+            if (type != SqlTypeName.TIMESTAMP && type != SqlTypeName.DATE)
+                return null;
+
+            while (node is RexCall call
+                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && Operand(call, 0).getType()?.getSqlTypeName() == type)
+                node = Operand(call, 0);
+
+            return node as org.apache.calcite.rex.RexDynamicParam;
+        }
+
+        /// <summary>
+        /// Returns the operator that means the same thing with its operands the other way round.
+        /// </summary>
+        static string Reverse(string op) => op switch
+        {
+            ">" => "<",
+            ">=" => "<=",
+            "<" => ">",
+            "<=" => ">=",
+            _ => op,
+        };
 
         /// <summary>
         /// Determines whether an expression is of a character type.
