@@ -282,6 +282,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             measured.Constraints.Constraints.Should().HaveCount(declared.Constraints.Constraints.Count);
         }
 
+        /// <summary>
+        /// Statistics given outright replace a provider attached before them, which would otherwise be asked
+        /// first and the given measurement never read.
+        /// </summary>
+        [Fact]
+        public void StatisticsReplaceAProviderAttachedBeforeThem()
+        {
+            var fetches = 0;
+
+            var container = new CosmosContainerMetadata("products")
+                .WithStatisticsProvider(() => { fetches++; return new CosmosContainerStatistics(100, 1000, 1); })
+                .WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
+
+            container.Statistics.Should().Be(new CosmosContainerStatistics(4200, 8_400_000, 4));
+            fetches.Should().Be(0);
+        }
+
+        /// <summary>
+        /// And travel through every With attached after them.
+        /// </summary>
+        [Fact]
+        public void StatisticsTravelThroughTheWithsAfterThem()
+        {
+            var container = new CosmosContainerMetadata("links", new[] { "/linkId" })
+                .WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4))
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(EndToEnd.CosmosSelfJoinTests.Schema()))
+                .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) })
+                .WithPartitionKeyDeleteProbe(() => true);
+
+            container.Statistics.Should().Be(new CosmosContainerStatistics(4200, 8_400_000, 4));
+        }
+
         /// <remarks>
         /// What a row costs to move, which for a row model carrying whole documents dominates.
         /// </remarks>
