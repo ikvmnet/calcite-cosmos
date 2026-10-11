@@ -264,6 +264,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             new CosmosTable(container).getStatistic().getRowCount().Should().BeNull();
         }
 
+        /// <summary>
+        /// Statistics attached after a container's facts and keys keep them, as every other With does. They
+        /// were dropped, and with them the key the self-join merge reads.
+        /// </summary>
+        [Fact]
+        public void StatisticsKeepTheFactsAndKeysAttachedBeforeThem()
+        {
+            var declared = new CosmosContainerMetadata("links", new[] { "/linkId" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(EndToEnd.CosmosSelfJoinTests.Schema()))
+                .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) });
+
+            var measured = declared.WithStatistics(new CosmosContainerStatistics(4200, 8_400_000, 4));
+
+            measured.Statistics.Should().Be(new CosmosContainerStatistics(4200, 8_400_000, 4));
+            measured.Facts.Rules.Count.Should().Be(declared.Facts.Rules.Count);
+            measured.Constraints.Constraints.Should().HaveCount(declared.Constraints.Constraints.Count);
+        }
+
         /// <remarks>
         /// What a row costs to move, which for a row model carrying whole documents dominates.
         /// </remarks>

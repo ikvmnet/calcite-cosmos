@@ -436,9 +436,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The metadata.</returns>
         public CosmosContainerMetadata WithStatistics(CosmosContainerStatistics? statistics)
         {
-            return statistics is null
-                ? this
-                : new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics, _uniqueKeys);
+            if (statistics is null)
+                return this;
+
+            // Everything attached since construction travels too, as it does through every other With:
+            // a copy built from the constructor's arguments alone dropped the facts and the declared
+            // constraints, and a container given statistics after its keys lost the keys the self-join
+            // merge reads.
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics, _uniqueKeys);
+            metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = _facts;
+            metadata._declared = _declared;
+            return metadata;
         }
 
         Lazy<bool> _partitionKeyDelete = new(() => false, LazyThreadSafetyMode.ExecutionAndPublication);

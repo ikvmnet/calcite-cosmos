@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Text.Json.Nodes;
@@ -42,10 +42,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
-        static CosmosContainerMetadata Links() =>
+        static CosmosContainerMetadata Links(CosmosContainerStatistics? statistics = null) =>
             new CosmosContainerMetadata("links", new[] { "/linkId" })
                 .WithFacts(CosmosSchemaRecognition.ReadFrom(CosmosSelfJoinTests.Schema()))
-                .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) });
+                .WithConstraints(new[] { CosmosConstraint.Parse("UNIQUE (JSON_VALUE(DOC, '$.data.guid'))", CosmosConstraintSource.Declared) })
+                .WithStatistics(statistics);
 
         /// <summary>
         /// A second container, of maps, which a link names by key.
@@ -77,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// Opens a connection whose root holds the containers and, in <c>V</c>, the views over them.
         /// </summary>
-        static DbConnection Open()
+        static DbConnection Open(CosmosContainerStatistics? statistics = null)
         {
             var connectionString = new CalciteConnectionStringBuilder { CaseSensitive = true }.ConnectionString + ";conformance=LENIENT";
 
@@ -87,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     Apache.Calcite.Geography.Schema.GeographySchema.AddTo(root);
 
                     var cosmos = root.add("COSMOS", new AbstractSchema());
-                    cosmos.add("links", new CosmosTable(Links()));
+                    cosmos.add("links", new CosmosTable(Links(statistics)));
                     cosmos.add("maps", new CosmosTable(Maps()));
 
                     var views = root.add("V", new AbstractSchema());
@@ -104,9 +105,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// Plans a statement, and counts the expressions the planner registered doing it.
         /// </summary>
-        static (string Plan, int Registered) Explain(string sql, params object[] parameters)
+        static (string Plan, int Registered) Explain(string sql, params object[] parameters) =>
+            Explain(null, sql, parameters);
+
+        /// <summary>
+        /// Plans a statement over a links container of the given size, and counts the expressions the
+        /// planner registered doing it.
+        /// </summary>
+        static (string Plan, int Registered) Explain(CosmosContainerStatistics? statistics, string sql, params object[] parameters)
         {
-            using var connection = Open();
+            using var connection = Open(statistics);
             using var command = connection.CreateCommand();
             command.CommandText = "EXPLAIN PLAN FOR " + sql;
 
@@ -242,6 +250,48 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             Scans(plan, "maps").Should().Be(1, plan);
             plan.Should().Contain("CosmosLookupJoin", "the maps are fetched by the keys the links name:\n" + plan);
             registered.Should().BeLessThan(2000, "the merge comes before the joins are explored, which registered 8,397");
+        }
+
+        /// <summary>
+        /// A page of links with their bodies, the spot's location among them, paged by parameters as an
+        /// ORM pages.
+        /// </summary>
+        const string PageOfLinksWithLocations = """
+            SELECT "l1"."Id", "l1"."Label", "s0"."ParkId", "s0"."MapId", "s0"."Location"
+            FROM (
+                SELECT "l"."Id", "l"."Label"
+                FROM "V"."Link" AS "l"
+                ORDER BY "l"."Label" NULLS FIRST
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            ) AS "l1"
+            LEFT JOIN (
+                SELECT "l0"."Id", "p"."ParkId", "m"."MapId", "s"."Location"
+                FROM "V"."LinkBody" AS "l0"
+                LEFT JOIN "V"."ParkLinkBody" AS "p" ON "l0"."Id" = "p"."Id"
+                LEFT JOIN "V"."MapLinkBody" AS "m" ON "l0"."Id" = "m"."Id"
+                LEFT JOIN "V"."SpotLinkBody" AS "s" ON "l0"."Id" = "s"."Id"
+            ) AS "s0" ON "l1"."Id" = "s0"."Id"
+            ORDER BY "l1"."Label" NULLS FIRST
+            """;
+
+        /// <summary>
+        /// A container that reports its size still merges its hierarchy, and a page of it is taken at the
+        /// service.
+        /// </summary>
+        /// <remarks>
+        /// Statistics attached after the container's keys used to drop the keys, so with any document count
+        /// the self-join merge had no unique key to read and every view was a read of its own. Without a
+        /// count, as on the emulator, the planner has no sense of scale and pages in process, which is why
+        /// this is planned against one.
+        /// </remarks>
+        [Fact]
+        public void APageBoundByParametersIsTakenAtTheService()
+        {
+            var (plan, _) = Explain(new CosmosContainerStatistics(10_000, 20_000_000, 1), PageOfLinksWithLocations, 0, 25);
+
+            Scans(plan, "links").Should().Be(1, "the page and its bodies are one read:\n" + plan);
+            plan.Should().MatchRegex(@"CosmosSort\([^\n]*fetch=", "the page is taken at the service:\n" + plan);
+            plan.Should().NotContain("ClrCursorSort", "and not again in process:\n" + plan);
         }
 
     }
