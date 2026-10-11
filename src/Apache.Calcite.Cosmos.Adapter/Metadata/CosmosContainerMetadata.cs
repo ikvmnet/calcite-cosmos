@@ -425,6 +425,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         TimeProvider? _time;
 
         /// <summary>
+        /// Returns a copy carrying everything attached since construction, for a <c>With</c> to change
+        /// the one thing it is about.
+        /// </summary>
+        /// <remarks>
+        /// One place that knows every field, so a field added later is carried by every <c>With</c> or
+        /// by none. <see cref="WithStatistics"/> once built its copy from the constructor's arguments
+        /// alone and dropped the facts and the declared keys, which the self-join merge reads (#204).
+        /// The fetched statistics are not carried: a copy asks its provider again on first use.
+        /// </remarks>
+        CosmosContainerMetadata Copy()
+        {
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
+            metadata._statistics = _statistics;
+            metadata._statisticsProvider = _statisticsProvider;
+            metadata._statisticsTimeToLive = _statisticsTimeToLive;
+            metadata._time = _time;
+            metadata._partitionKeyDelete = _partitionKeyDelete;
+            metadata._facts = _facts;
+            metadata._declared = _declared;
+            return metadata;
+        }
+
+        /// <summary>
         /// Returns the same metadata carrying the given statistics.
         /// </summary>
         /// <remarks>
@@ -439,14 +462,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (statistics is null)
                 return this;
 
-            // Everything attached since construction travels too, as it does through every other With:
-            // a copy built from the constructor's arguments alone dropped the facts and the declared
-            // constraints, and a container given statistics after its keys lost the keys the self-join
-            // merge reads.
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, statistics, _uniqueKeys);
-            metadata._partitionKeyDelete = _partitionKeyDelete;
-            metadata._facts = _facts;
-            metadata._declared = _declared;
+            var metadata = Copy();
+            metadata._statistics = new Lazy<CosmosContainerStatistics?>(() => statistics, LazyThreadSafetyMode.ExecutionAndPublication);
+
+            // A measurement given outright replaces a provider rather than travelling beside it, since
+            // Statistics asks a provider first and would never read this one.
+            metadata._statisticsProvider = null;
+            metadata._statisticsTimeToLive = DefaultStatisticsTimeToLive;
+            metadata._time = null;
             return metadata;
         }
 
@@ -480,13 +503,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (probe is null)
                 throw new ArgumentNullException(nameof(probe));
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
-            metadata._statistics = _statistics;
-            metadata._statisticsProvider = _statisticsProvider;
-            metadata._statisticsTimeToLive = _statisticsTimeToLive;
-            metadata._time = _time;
-            metadata._facts = _facts;
-            metadata._declared = _declared;
+            var metadata = Copy();
 
             // Not expiring, and deliberately: a capability changes when someone enables a preview
             // on the account, which is not something a running process can observe happening.
@@ -516,13 +533,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (timeToLive is TimeSpan span && span <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeToLive), "A statistics time to live must be positive.");
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
+            var metadata = Copy();
             metadata._statisticsProvider = provider;
             metadata._statisticsTimeToLive = timeToLive ?? DefaultStatisticsTimeToLive;
             metadata._time = time;
-            metadata._partitionKeyDelete = _partitionKeyDelete;
-            metadata._facts = _facts;
-            metadata._declared = _declared;
             return metadata;
         }
 
@@ -581,14 +595,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (combined.Count == _facts.Rules.Count)
                 return this;
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
-            metadata._statistics = _statistics;
-            metadata._statisticsProvider = _statisticsProvider;
-            metadata._statisticsTimeToLive = _statisticsTimeToLive;
-            metadata._time = _time;
-            metadata._partitionKeyDelete = _partitionKeyDelete;
+            var metadata = Copy();
             metadata._facts = new JsonFactTheory(combined);
-            metadata._declared = _declared;
             return metadata;
         }
 
@@ -643,13 +651,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (combined.Count == _declared.Count)
                 return this;
 
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
-            metadata._statistics = _statistics;
-            metadata._statisticsProvider = _statisticsProvider;
-            metadata._statisticsTimeToLive = _statisticsTimeToLive;
-            metadata._time = _time;
-            metadata._partitionKeyDelete = _partitionKeyDelete;
-            metadata._facts = _facts;
+            var metadata = Copy();
             metadata._declared = combined;
             return metadata;
         }
