@@ -1,4 +1,4 @@
-# 14. Describing documents with JSON Schema
+﻿# 14. Describing documents with JSON Schema
 
 A container has no row schema, so the adapter cannot know what a document path holds — and that is
 what keeps some comparisons in process. Cosmos stores a UUID as a string; SQL has a `UUID` type; and
@@ -196,7 +196,7 @@ property above the `oneOf`.
 
 | keyword | read as |
 | --- | --- |
-| `type` | the value's JSON type; a union (`["string","null"]`) or OpenAPI's `nullable: true` states nothing |
+| `type` | the value's JSON type, where an `integer` is also a `number`. `["string","null"]` or OpenAPI's `nullable: true` reads as that type or null, and `["integer","number"]` as a number. Any other union states nothing |
 | `properties` | facts about each property's value **if it is present** — never that it is present |
 | `required` | presence, for children of an object that is itself present |
 | `const`, `enum` | the value, or its domain (scalars only) |

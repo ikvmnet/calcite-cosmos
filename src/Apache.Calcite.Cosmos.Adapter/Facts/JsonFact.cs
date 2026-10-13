@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Apache.Calcite.Cosmos.Facts
@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 // A known value settles membership, type and every disequality but its own.
                 (JsonClaim.EqualTo a, JsonClaim.OneOf b) => JsonClaim.OneOf.Contains(b.Values, a.Value),
-                (JsonClaim.EqualTo a, JsonClaim.OfType b) => a.Value.Type == b.Type || b.OrNull && a.Value.Type == JsonType.Null,
+                (JsonClaim.EqualTo a, JsonClaim.OfType b) => a.Value.Type.IsA(b.Type) || b.OrNull && a.Value.Type == JsonType.Null,
                 (JsonClaim.EqualTo a, JsonClaim.NotEqualTo b) => a.Value == b.Value == false,
 
                 // A domain settles a type where every member shares one, and refutes anything
@@ -78,8 +78,9 @@ namespace Apache.Calcite.Cosmos.Facts
                 (JsonClaim.OfType { Type: JsonType.Null }, JsonClaim.Represents) => true,
                 (JsonClaim.EqualTo { Value.IsNull: true }, JsonClaim.Represents) => true,
 
-                // Admitting a null is weaker than not admitting one.
-                (JsonClaim.OfType a, JsonClaim.OfType b) => a.Type == b.Type && b.OrNull,
+                // A wider type is weaker than a narrower one -- an integer is a number -- and admitting
+                // a null is weaker than not admitting one.
+                (JsonClaim.OfType a, JsonClaim.OfType b) => a.Type.IsA(b.Type) && (b.OrNull || a.OrNull == false),
 
                 _ => false,
             };
@@ -131,7 +132,7 @@ namespace Apache.Calcite.Cosmos.Facts
             (JsonClaim.EqualTo x, JsonClaim.EqualTo y) => x.Value == y.Value == false,
             (JsonClaim.EqualTo x, JsonClaim.NotEqualTo y) => x.Value == y.Value,
             (JsonClaim.EqualTo x, JsonClaim.OneOf y) => y.Values.Count > 0 && JsonClaim.OneOf.Contains(y.Values, x.Value) == false,
-            (JsonClaim.EqualTo x, JsonClaim.OfType y) => x.Value.Type != y.Type && (y.OrNull == false || x.Value.Type != JsonType.Null),
+            (JsonClaim.EqualTo x, JsonClaim.OfType y) => x.Value.Type.IsA(y.Type) == false && (y.OrNull == false || x.Value.Type != JsonType.Null),
 
             // Two domains exclude where they share no member; a domain and a disequality where the
             // disequality rules out every member there is.
@@ -191,7 +192,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
 
             foreach (var value in values)
-                if (value.Type == type || orNull && value.Type == JsonType.Null)
+                if (value.Type.IsA(type) || orNull && value.Type == JsonType.Null)
                     return false;
 
             return true;
@@ -214,7 +215,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
 
             foreach (var value in values)
-                if (value.Type != type && (orNull == false || value.Type != JsonType.Null))
+                if (value.Type.IsA(type) == false && (orNull == false || value.Type != JsonType.Null))
                     return false;
 
             return true;
