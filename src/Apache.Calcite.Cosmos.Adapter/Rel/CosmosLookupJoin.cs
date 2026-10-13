@@ -295,6 +295,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             return (physType, [buildType, probeType, physType.RowType],
             [
                 CosmosConverters.ExecutorExpression(probe, implementor.Root),
+                implementor.Root,
                 Expression.Constant(query),
                 Expression.Constant(KeyPrefix),
                 Expression.Constant(_batchSize),
