@@ -211,7 +211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
 
-            org.apache.calcite.runtime.Hook.QUERY_PLAN.run(query.Sql);
+            Convert.CosmosConverters.AnnounceQueryPlan(implementor, this, query.Sql);
 
             var buildType = buildPhysType.RowType;
             var probeType = probePhysType.RowType;

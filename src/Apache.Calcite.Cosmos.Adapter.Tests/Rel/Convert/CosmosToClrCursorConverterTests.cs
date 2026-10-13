@@ -517,6 +517,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <remarks>
+        /// A plan is implemented once for each way it can be opened, and both render the same statement;
+        /// a hook counting statements should see it once (#211).
+        /// </remarks>
+        [Fact]
+        public void TheStatementIsAnnouncedOncePerPlan()
+        {
+            var plan = PlanToClr("SELECT \"id\" FROM products AS c");
+
+            var announced = new List<string>();
+            using (org.apache.calcite.runtime.Hook.QUERY_PLAN.addThread(new Collect(announced)))
+                Implement(plan);
+
+            announced.Should().ContainSingle().Which.Should().Contain("FROM products");
+        }
+
+        /// <summary>
+        /// Collects every value a hook is run with as text.
+        /// </summary>
+        sealed class Collect(List<string> values) : java.util.function.Consumer
+        {
+
+            public void accept(object o) => values.Add(o?.ToString() ?? "");
+
+            public java.util.function.Consumer andThen(java.util.function.Consumer after) => throw new NotSupportedException();
+
+        }
+
+        /// <remarks>
         /// The statement the stub is handed is the projected object constructor, not <c>SELECT VALUE c</c>.
         /// One row shape reaches the reader whatever the query did.
         /// </remarks>
