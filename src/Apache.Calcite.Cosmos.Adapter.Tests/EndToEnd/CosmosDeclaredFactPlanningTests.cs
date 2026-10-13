@@ -1,4 +1,6 @@
-﻿using Apache.Calcite.Cosmos.Adapter.Metadata;
+﻿using System.Linq;
+
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
 
@@ -1625,6 +1627,125 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().Contain("ClrCursorFilter",
                 "and the equality itself is rechecked above: " + PlanText(best));
         }
+
+        // ── A UUID parameter (#207) ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Plans a predicate over the plainly declared reference and renders the statement.
+        /// </summary>
+        static (CosmosQuery Query, string Plan) PlanUuidParameter(string predicate, string pattern = PlainUuid)
+        {
+            var container = Reference(pattern);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {predicate}""", container, out _);
+
+            return (Query(FindCosmos(best), container), PlanText(best));
+        }
+
+        /// <summary>
+        /// The statement as it runs with <c>?0</c> holding the given value, and its slot's bound value.
+        /// </summary>
+        static object? BoundUuid(CosmosQuery query, object value) =>
+            Adapter.Client.CosmosQueries.Bind(query, new UuidContext(value)).Parameters
+                .Single(p => p.Name == query.Parameters.Single(q => q.Value is Adapter.Sql.CosmosDynamicValue).Name).Value;
+
+        /// <summary>
+        /// The comparison #207 reported: a UUID read out of a path declared canonical, against a
+        /// parameter, pushes — as the same comparison against a literal does — and the value is written
+        /// in the stored spelling when it arrives.
+        /// </summary>
+        [Fact]
+        public void AUuidComparisonAgainstAParameterReachesTheStatement()
+        {
+            var (query, plan) = PlanUuidParameter($"{Ref} = ?");
+
+            query.Sql.Should().Contain("(c.ref = @p", "the comparison is the stored strings': " + query.Sql);
+            query.Sql.Should().NotContain("IS_DEFINED(c.ref)", "and is not weakened to a definedness test");
+            plan.Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + plan);
+
+            var slot = query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single();
+            slot.Form.Should().Be(CosmosUuidForms.CanonicalLower, "the slot carries the spelling to write the value in");
+
+            BoundUuid(query, org.apache.calcite.util.UuidValue.fromString(Canonical.ToUpperInvariant())).Should().Be(Canonical,
+                "and the value Calcite's runtime holds is written in it when the statement runs");
+        }
+
+        /// <summary>
+        /// Whatever box the value arrives in, it is written in the path's spelling.
+        /// </summary>
+        [Fact]
+        public void AUuidParameterIsWrittenFromEveryBoxItArrivesIn()
+        {
+            var (query, _) = PlanUuidParameter($"{Ref} = ?", PlainUuid.Replace("a-f", "A-F").Replace("89ab", "89AB"));
+
+            var expected = Canonical.ToUpperInvariant();
+
+            BoundUuid(query, System.Guid.Parse(Canonical)).Should().Be(expected);
+            BoundUuid(query, java.util.UUID.fromString(Canonical)).Should().Be(expected);
+            BoundUuid(query, org.apache.calcite.util.UuidValue.fromString(Canonical)).Should().Be(expected);
+            BoundUuid(query, Canonical).Should().Be(expected);
+        }
+
+        /// <summary>
+        /// A short <c>IN</c> list of parameters is a disjunction of the same equality, and pushes as one.
+        /// </summary>
+        [Fact]
+        public void AShortListOfUuidParametersReachesTheStatement()
+        {
+            var (query, plan) = PlanUuidParameter($"{Ref} IN (?, ?, ?)");
+
+            query.Sql.Split("c.ref = @p").Length.Should().Be(4, "each parameter is compared with the stored string: " + query.Sql);
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Should().HaveCount(3)
+                .And.OnlyContain(slot => slot.Form == CosmosUuidForms.CanonicalLower);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+        }
+
+        /// <summary>
+        /// The parameter on the left reads the comparison backwards, and an ordering lowers as the
+        /// literal's does.
+        /// </summary>
+        [Theory]
+        [InlineData("? = {0}", "(c.ref = @p")]
+        [InlineData("{0} <> ?", "(c.ref != @p")]
+        [InlineData("? < {0}", "(c.ref > @p")]
+        [InlineData("{0} >= ?", "(c.ref >= @p")]
+        public void EveryUuidComparisonAgainstAParameterLowers(string shape, string rendered)
+        {
+            var (query, plan) = PlanUuidParameter(string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, Ref));
+
+            query.Sql.Should().Contain(rendered, query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+        }
+
+        /// <summary>
+        /// Without a declared form nothing says what the stored spelling is, and the comparison stays
+        /// where it was.
+        /// </summary>
+        [Fact]
+        public void WithNothingDeclaredAUuidParameterStaysInProcess()
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {Ref} = ?""", container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("c.ref = @");
+            PlanText(best).Should().Contain("ClrCursorFilter");
+        }
+
+        /// <summary>
+        /// A data context holding the one value a run supplies.
+        /// </summary>
+        sealed class UuidContext(object value) : org.apache.calcite.DataContext
+        {
+
+            public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;
+
+            public org.apache.calcite.adapter.java.JavaTypeFactory getTypeFactory() => null!;
+
+            public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
+
+            public object get(string name) => name == "?0" ? value : null!;
+
+        }
+
 
     }
 

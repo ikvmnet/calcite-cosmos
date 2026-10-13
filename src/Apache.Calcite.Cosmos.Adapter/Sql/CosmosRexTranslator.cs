@@ -2789,6 +2789,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryInstantParameter(left) is org.apache.calcite.rex.RexDynamicParam onLeft && TryWriteStoredInstantParameter(builder, right, onLeft, Reverse(op)))
                 return;
 
+            // A UUID read out of a path, against a parameter: the same, in the path's UUID spelling.
+            // See TryWriteStoredUuidParameter.
+            if (TryUuidParameter(right) is org.apache.calcite.rex.RexDynamicParam uuidOnRight && TryWriteStoredUuidParameter(builder, left, uuidOnRight, op))
+                return;
+
+            if (TryUuidParameter(left) is org.apache.calcite.rex.RexDynamicParam uuidOnLeft && TryWriteStoredUuidParameter(builder, right, uuidOnLeft, Reverse(op)))
+                return;
+
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
@@ -2892,6 +2900,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding }));
             builder.Append(')');
             return true;
+        }
+
+        /// <summary>
+        /// Writes a comparison between a UUID read out of a path and a parameter, the parameter bound
+        /// to be written in the path's stored spelling when the statement runs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The literal's lowering, with the value arriving later</b>, as
+        /// <see cref="TryWriteStoredInstantParameter"/> is for instants. Against a literal,
+        /// <see cref="Metadata.CosmosFactRewriter"/> writes the literal in the path's declared spelling
+        /// and the comparison is one of stored strings. Against a parameter it declined, so an id
+        /// lookup — the shape every Entity Framework and OData key filter takes, both parameterising
+        /// the value — was weakened to a definedness test and read the container whole (#207).
+        /// <see cref="Metadata.CosmosFactRewriter.TryStoredUuid"/> decides whether the path licenses
+        /// the comparison for both callers.
+        /// </para>
+        /// <para>
+        /// <b>An ordering is held to every value rather than to the container's.</b> A confined form
+        /// orders its stored strings as the engine orders values only within its sign class when the
+        /// engine compares signed, and a literal outside the class is refused for that reason. A
+        /// parameter cannot be refused once the statement is written, so an ordering pushes only where
+        /// the spelling's order is the engine's for every value — see
+        /// <see cref="Metadata.CosmosUuidForms.OrdersEveryValue"/>. An equality never needed the class:
+        /// a value no stored string spells matches none, which is the right answer.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="uuid">The side that may read a path as a UUID.</param>
+        /// <param name="parameter">The parameter on the other side.</param>
+        /// <param name="op">The operator, with the path on its left.</param>
+        /// <returns><c>true</c> where the comparison was written.</returns>
+        bool TryWriteStoredUuidParameter(StringBuilder builder, RexNode uuid, org.apache.calcite.rex.RexDynamicParam parameter, string op)
+        {
+            var ordering = op is not ("=" or "!=");
+
+            if (Metadata.CosmosFactRewriter.TryStoredUuid(uuid, ordering, this, _facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+                return false;
+
+            if (ordering && Metadata.CosmosUuidForms.OrdersEveryValue(representation) == false)
+                return false;
+
+            builder.Append('(');
+            Write(builder, accessor);
+            builder.Append(' ').Append(op).Append(' ');
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation }));
+            builder.Append(')');
+            return true;
+        }
+
+        /// <summary>
+        /// Recognises a parameter of type <c>UUID</c>, through any casts to <c>UUID</c> over it, and
+        /// returns it.
+        /// </summary>
+        /// <param name="node">The expression.</param>
+        /// <returns>The parameter, or <c>null</c>.</returns>
+        static org.apache.calcite.rex.RexDynamicParam? TryUuidParameter(RexNode node)
+        {
+            if (node.getType()?.getSqlTypeName() != SqlTypeName.UUID)
+                return null;
+
+            while (node is RexCall call
+                && (KindOf(call) == SqlKind.__Enum.CAST || KindOf(call) == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && Operand(call, 0).getType()?.getSqlTypeName() == SqlTypeName.UUID)
+                node = Operand(call, 0);
+
+            return node as org.apache.calcite.rex.RexDynamicParam;
         }
 
         /// <summary>

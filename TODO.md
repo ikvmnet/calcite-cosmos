@@ -1560,8 +1560,9 @@ confine anything it is itself the test of.
 **A declared instant took the parameter too (#182).** A comparison of a stored instant against `?` is
 written in the path's own spelling when the statement runs, the slot carrying the form and the way a
 value between two spellings rounds — `DESIGN.md` under *A prepared statement's value belongs to the
-execution*. The UUID and the numeric forms still lower against a literal only: the same move would
-take them, with a UUID written into its form and an integer into its width, and nothing has asked.
+execution*. A declared UUID took it next (#207), the slot carrying the UUID form and the value spelled
+into it when it arrives. The numeric forms still lower against a literal only: the same move would
+take them, with an integer written into its width, and nothing has asked.
 
 ### A null parameter is not SQL's null at the service — *small, found beside #182, and older than it*
 

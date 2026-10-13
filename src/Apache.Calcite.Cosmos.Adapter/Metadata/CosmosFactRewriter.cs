@@ -763,6 +763,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)
                 return null;
 
+            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
+
+            if (TryStoredUuid(castNode, ordering, translator, known, rootAlias, out var representation) is not RexNode operand)
+                return null;
+
+            // And the form has to be one whose stored spelling this knows how to write. A
+            // representation that pins some other shape is not this rewrite's business, however well
+            // declared.
+            if (CosmosStoredForms.RenderUuid(representation, value) is not string stored)
+                return null;
+
+            return rexBuilder.makeCall(comparison, operand, rexBuilder.makeLiteral(stored));
+        }
+
+        /// <summary>
+        /// Returns the text accessor underneath a cast to <c>UUID</c>, where the path's declared form
+        /// makes comparing the stored strings answer what comparing the values would — or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// The license, asked apart from what the comparison is against, for the reason
+        /// <see cref="TryStoredInstant"/> gives: <see cref="TryLowerUuid"/> writes a literal in the
+        /// form while the plan is made, and <see cref="CosmosRexTranslator"/> binds a parameter to be
+        /// written in it when the statement runs (#207). Whether the stored strings answer for the
+        /// values is a question about the path and the operator, so both ask it here.
+        /// </remarks>
+        /// <param name="castNode">The expression that may read a path as a UUID.</param>
+        /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
+        /// <param name="translator">Resolves the path underneath.</param>
+        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="rootAlias">The alias a path must be rooted at.</param>
+        /// <param name="representation">On success, the path's declared form.</param>
+        /// <returns>The text accessor, or <c>null</c>.</returns>
+        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, out CosmosRepresentation representation)
+        {
+            representation = default;
+
             if (castNode is not RexCall cast)
                 return null;
 
@@ -784,21 +820,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation representation)
+            if (known.RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
                 return null;
 
-            var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
-
-            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+            if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
                 return null;
 
-            // And the form has to be one whose stored spelling this knows how to write. A
-            // representation that pins some other shape is not this rewrite's business, however well
-            // declared.
-            if (CosmosStoredForms.RenderUuid(representation, value) is not string stored)
-                return null;
-
-            return rexBuilder.makeCall(comparison, operand, rexBuilder.makeLiteral(stored));
+            representation = declared;
+            return operand;
         }
 
         /// <summary>

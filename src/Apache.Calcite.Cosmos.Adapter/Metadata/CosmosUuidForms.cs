@@ -660,6 +660,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (UnsignedUuidComparison == false && spelling.Confined && InSignClass(value) == false)
                 return null;
 
+            return Spell(representation, value);
+        }
+
+        /// <summary>
+        /// Writes a value in a form's spelling whether or not the form could store it.
+        /// </summary>
+        /// <remarks>
+        /// For a parameter, whose statement is written before the value is known and so cannot refuse
+        /// it as <see cref="Render"/> refuses a literal. Against an equality a value outside the form's
+        /// sign class matches no stored string, which is what comparing the values answers; an ordering
+        /// is pushed against a parameter only where <see cref="OrdersEveryValue"/> holds, where the
+        /// class decides nothing.
+        /// </remarks>
+        /// <param name="representation">The path form.</param>
+        /// <param name="value">The value to write.</param>
+        /// <returns>The spelling, or <c>null</c> where this form does not store a UUID.</returns>
+        public static string? Spell(CosmosRepresentation representation, Guid value)
+        {
+            if (Uuids.TryGetValue(representation.Name, out var spelling) == false)
+                return null;
+
             var text = value.ToString(spelling.Hyphenated ? "D" : "N");
 
             if (spelling.Upper)
@@ -667,6 +688,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             return spelling.Braced ? "{" + text + "}" : text;
         }
+
+        /// <summary>
+        /// Determines whether a form's lexical order is the engine's order for every value, in the
+        /// container or not.
+        /// </summary>
+        /// <remarks>
+        /// True of every UUID form under the unsigned comparison, and of none under the signed one: a
+        /// confined form's order holds there only within its sign class, which a value from outside the
+        /// container need not be in.
+        /// </remarks>
+        /// <param name="representation">The path form.</param>
+        /// <returns><c>true</c> where an ordering against any value may compare the spellings.</returns>
+        public static bool OrdersEveryValue(CosmosRepresentation representation) =>
+            UnsignedUuidComparison && IsUuid(representation);
 
         /// <summary>
         /// Determines whether a value has the two sign bits the confined forms pin.
