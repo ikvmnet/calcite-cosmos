@@ -62,6 +62,13 @@ with one           WHERE c.trackingId = @p0   — and routed to the one partitio
 than a container read for every page. A range names no single value, so it is not routed to one
 partition.
 
+A parameter in place of the literal works the same way, which is the shape Entity Framework and
+OData send for every key filter. `CAST(…) = ?` and `CAST(…) IN (?, ?, ?)` become `c.trackingId = @p0`,
+and the adapter writes the bound value in the declared spelling when the statement runs. The value can
+be a `Guid`, a `java.util.UUID`, Calcite's own `UuidValue`, or text that parses as a UUID. An ordering
+against a parameter pushes only under the unsigned comparison (14.3). A value supplied at run time
+can't be checked against a confined pattern the way a literal is.
+
 ### Selecting the value
 
 A UUID is usually in the select list as well as the `WHERE`, and until its spelling is known there is

@@ -89,6 +89,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             var value = root.get(slot.VariableName);
 
+            if (Metadata.CosmosUuidForms.IsUuid(form))
+                return StoredUuid(slot, form, value);
+
             DateTime instant;
 
             try
@@ -114,6 +117,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             {
                 throw new CosmosExecutionException($"Parameter {slot.VariableName} is outside the range of the stored form '{form.Name}'.", e);
             }
+        }
+
+        /// <summary>
+        /// Writes a <c>UUID</c> parameter's value in the stored spelling of the path it is compared with.
+        /// </summary>
+        /// <remarks>
+        /// Calcite boxes a <c>UUID</c> as <c>UuidValue</c>, a host may hand one over as a
+        /// <c>java.util.UUID</c> or a <see cref="Guid"/>, and text is accepted where it parses: each is
+        /// the same value, read the way <see cref="CosmosLookup.Normalize"/> reads a lookup key.
+        /// </remarks>
+        /// <param name="slot">The ordinal the value was read from.</param>
+        /// <param name="form">The stored form to write it in.</param>
+        /// <param name="value">The value the data context holds.</param>
+        /// <returns>The bound value.</returns>
+        /// <exception cref="CosmosExecutionException">The value is not a UUID.</exception>
+        static object? StoredUuid(CosmosDynamicValue slot, Metadata.CosmosRepresentation form, object? value)
+        {
+            var uuid = CosmosLookup.Normalize(value) switch
+            {
+                null => (Guid?)null,
+                Guid g => g,
+                string s when Guid.TryParse(s, out var parsed) => parsed,
+                _ => throw new CosmosExecutionException($"Parameter {slot.VariableName} is compared with a path stored as '{form.Name}', and arrived as '{value!.GetType().FullName}' rather than as a UUID."),
+            };
+
+            if (uuid is not Guid v)
+                return null;
+
+            return Metadata.CosmosUuidForms.Spell(form, v)
+                ?? throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be written in the stored form '{form.Name}'.");
         }
 
         /// <summary>

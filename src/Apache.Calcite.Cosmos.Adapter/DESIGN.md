@@ -1453,6 +1453,16 @@ parameter alike. So the translator writes `c.at > @p0` and binds the slot with t
 `CosmosQueries.Bind` writes the value in it when the statement runs, as the plan would have written the
 literal.
 
+**A UUID against a declared form is the same move (#207)**, and it was the costlier gap: every Entity
+Framework and OData key filter parameterises its id, so an id lookup over a declared UUID path read the
+container whole — 448 MB for one document, measured on an Azure container of 11,868. The decision is
+`CosmosFactRewriter.TryStoredUuid`, which the literal lowering and the translator both ask; the slot
+carries the UUID form, and `CosmosQueries.Bind` spells the value into it from whichever box it arrives
+in. One difference from the literal: a literal outside a confined form's sign class is refused under
+the signed comparison, and a parameter cannot be. An equality needs no class, since a spelling no
+stored value has matches nothing. So only an ordering is held back, to where the order is the
+engine's for every value (`CosmosUuidForms.OrdersEveryValue`).
+
 **The value written is the one Calcite's runtime holds, and that was measured rather than assumed.**
 Through Calcite's own driver and through the ADO.NET one alike, a `TIMESTAMP` parameter reaches the
 data context as a `java.lang.Long` of epoch milliseconds — a .NET tick is gone on the way in — and a

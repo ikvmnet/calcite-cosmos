@@ -27,8 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     {
 
         /// <summary>
-        /// Gets the stored form an instant is to be written in when it arrives, or <c>null</c> where the
-        /// value is bound as it stands.
+        /// Gets the stored form an instant or a UUID is to be written in when it arrives, or <c>null</c>
+        /// where the value is bound as it stands.
         /// </summary>
         /// <remarks>
         /// <para>
