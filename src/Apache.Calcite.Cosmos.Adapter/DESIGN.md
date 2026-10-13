@@ -1435,6 +1435,13 @@ dynamic parameter is written exactly as a literal of its type would be, bound th
 under the same kind of name, and the slot behind the name is closed by `CosmosQueries.Bind` out of
 the data context the execution supplies.
 
+**Every path to the service closes them, the lookup join's included.** A lookup's statement is the
+probe side's filter with the keys appended per batch, and its slots are closed once, at the join's
+open, before any batch is built. They were once left open there: the slot itself was serialized as
+the value, a comparison against an object is never true, and a lookup filtered on a parameter
+returned no rows and no error (#219). A lookup whose filter held only literals was unaffected, which
+is how it went unseen.
+
 **The service takes it.** Measured against a container: `OFFSET @skip LIMIT @take`, the same with an
 `ORDER BY` above it, and `SELECT TOP @take` all run. So nothing about the statement text changes for
 a limit that is not a constant, which is the property that makes one plan serve every page.
@@ -3717,7 +3724,9 @@ no request units at all. Its decisions:
 - **Entries are JSON rows keyed by statement and key, not built rows.** A plan's row builder is the
   plan's own; caching beneath it makes an entry serve every plan that renders the same statement,
   and the statement identity includes the non-key parameter values, so two filters over the same
-  shape cannot cross. Rows are rebuilt from JSON per execution, which is the price of sharing.
+  shape cannot cross. The values are the ones the execution bound, not the slots a prepared
+  statement carries: named by its slots, every execution of one plan would share answers whatever
+  values it was run with. Rows are rebuilt from JSON per execution, which is the price of sharing.
 - **Expire-after-write, and expiry is the only eviction.** A full cache purges what has expired and
   otherwise declines new entries — the same fill-to-bound honesty as the inner cache, with the TTL
   providing turnover. The bound counts rows, with an absence entry counting as one.

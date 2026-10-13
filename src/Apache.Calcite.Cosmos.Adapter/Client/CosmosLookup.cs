@@ -142,6 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <typeparam name="TResult">The joined row type.</typeparam>
         /// <param name="build">The side whose keys are pushed down, already opened; the join owns it.</param>
         /// <param name="executor">Executes the statement.</param>
+        /// <param name="root">The context the statement is executing against, whose values close the slots a prepared statement left open.</param>
         /// <param name="query">The statement, rendered with <paramref name="batchSize"/> key parameters.</param>
         /// <param name="prefix">The key parameters' name prefix.</param>
         /// <param name="batchSize">How many build rows one fetch serves, and how many key parameters the statement carries.</param>
@@ -172,6 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         public static IClrCursor<TResult> Join<TBuild, TProbe, TResult>(
             IClrCursor<TBuild> build,
             ICosmosQueryExecutor executor,
+            org.apache.calcite.DataContext root,
             CosmosQuery query,
             string prefix,
             int batchSize,
@@ -199,6 +201,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (batchSize < 1)
                 throw new ArgumentOutOfRangeException(nameof(batchSize));
 
+            // Closed once, here, before any batch appends its keys: the values a prepared statement
+            // left open belong to the execution, and every batch of it carries the same ones. Left
+            // open, a slot reached the service as the slot itself, which a comparison is never true
+            // against (#219) — and the shared cache, which names a statement by its values, would
+            // have answered one execution with what another fetched.
+            query = CosmosQueries.Bind(query, root);
+
             return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
         }
 
@@ -212,6 +221,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         public static async ValueTask<IClrCursor<TResult>> JoinAsync<TBuild, TProbe, TResult>(
             ValueTask<IClrCursor<TBuild>> build,
             ICosmosQueryExecutor executor,
+            org.apache.calcite.DataContext root,
             CosmosQuery query,
             string prefix,
             int batchSize,
@@ -225,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Func<object, object?>? spell,
             CancellationToken cancellationToken)
         {
-            return Join(await build.ConfigureAwait(false), executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
+            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
         }
 
         /// <summary>

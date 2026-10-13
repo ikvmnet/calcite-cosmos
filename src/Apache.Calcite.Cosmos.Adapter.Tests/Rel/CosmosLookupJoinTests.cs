@@ -82,11 +82,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             readonly SchemaPlus _rootSchema;
             readonly JavaTypeFactory _typeFactory;
+            readonly IReadOnlyDictionary<string, object> _values;
 
-            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory)
+            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory, IReadOnlyDictionary<string, object>? values = null)
             {
                 _rootSchema = rootSchema;
                 _typeFactory = typeFactory;
+                _values = values ?? new Dictionary<string, object>();
             }
 
             public SchemaPlus getRootSchema() => _rootSchema;
@@ -95,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
 
-            public object get(string name) => null!;
+            public object get(string name) => _values.TryGetValue(name, out var value) ? value : null!;
 
         }
 
@@ -193,9 +195,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             return implementor.ImplementRoot((ClrCursorRel)rel, ClrCursorPrefer.Array);
         }
 
-        async Task<List<object>> Execute(RelNode rel)
+        async Task<List<object>> Execute(RelNode rel, IReadOnlyDictionary<string, object>? values = null)
         {
-            var context = new TestDataContext(_rootSchema.plus(), _typeFactory);
+            var context = new TestDataContext(_rootSchema.plus(), _typeFactory, values);
 
             var rows = new List<object>();
 
@@ -266,6 +268,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var keys = Keys(statement);
             keys.Should().HaveCount(CosmosLookupJoin.DefaultBatchSize);
             keys.Distinct().Should().BeEquivalentTo(new object?[] { "a", "b" });
+        }
+
+        /// <remarks>
+        /// A filter on the container's side compares with a parameter, and the statement the lookup sends
+        /// carries the parameter's value rather than the slot the plan left for it. The slot was sent as
+        /// itself, an object no path is greater than, and the join returned nothing without saying so
+        /// (#219).
+        /// </remarks>
+        [Fact]
+        public async Task AParameterInTheLookedUpSidesFilterIsBound()
+        {
+            Given(
+                orders: new[]
+                {
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":1,"_etag":"e","customer":"c2"}""",
+                },
+                products: new[]
+                {
+                    """{"DOC":{"id":"a"},"id":"a","_ts":5,"_etag":"e","category":"bikes"}""",
+                    """{"DOC":{"id":"b"},"id":"b","_ts":5,"_etag":"e","category":"shoes"}""",
+                });
+
+            var plan = Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN (SELECT * FROM products WHERE \"_ts\" > ?) p ON o.id = p.id");
+
+            var rows = await Execute(plan, new Dictionary<string, object> { ["?0"] = java.lang.Long.valueOf(2) });
+            rows.Should().HaveCount(2);
+
+            _productsExecutor.Executed.Should().ContainSingle();
+
+            var statement = _productsExecutor.Executed[0];
+            statement.Parameters.Should().NotContain(p => p.Value is Apache.Calcite.Cosmos.Adapter.Sql.CosmosDynamicValue, "every slot is closed before the statement is sent");
+            statement.Parameters.Where(p => p.Name.StartsWith(CosmosLookupJoin.KeyPrefix) == false).Select(p => p.Value).Should().Contain(2L);
         }
 
         /// <remarks>

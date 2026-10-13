@@ -82,11 +82,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         static ListCursor<T> Async<T>(params T[] items) => new(items);
 
-        static Task<List<string>> Join(IClrCursor<string> build, RecordingExecutor executor, int batchSize = 3, CosmosQuery? query = null, int cacheSize = 0, CosmosLookupCache? shared = null)
+        static Task<List<string>> Join(IClrCursor<string> build, RecordingExecutor executor, int batchSize = 3, CosmosQuery? query = null, int cacheSize = 0, CosmosLookupCache? shared = null, org.apache.calcite.DataContext? root = null)
         {
             return Collect(CosmosLookup.Join(
                 build,
                 executor,
+                root!,
                 query ?? Query(),
                 "@k",
                 batchSize,
@@ -104,6 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Join(
                 build,
                 executor,
+                null!,
                 Query(),
                 "@k",
                 batchSize,
@@ -180,6 +182,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await Collect(CosmosLookup.Join(
                 Async<string?>(null, null),
                 executor,
+                null!,
                 Query(),
                 "@k",
                 3,
@@ -242,6 +245,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await Collect(CosmosLookup.Join<int, long, string>(
                 Async(7),
                 executor,
+                null!,
                 Query(),
                 "@k",
                 3,
@@ -283,6 +287,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             ListCursor.CollectAsync(CosmosLookup.Join<string?, string, string>(
                 build,
                 executor,
+                null!,
                 Query(),
                 "@k",
                 batchSize,
@@ -351,6 +356,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await ListCursor.CollectAsync(CosmosLookup.Join<org.apache.calcite.util.UuidValue, org.apache.calcite.util.UuidValue, string>(
                 new ListCursor<org.apache.calcite.util.UuidValue>([org.apache.calcite.util.UuidValue.fromString(text)]),
                 executor,
+                null!,
                 Query(),
                 "@k",
                 3,
@@ -375,6 +381,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await ListCursor.CollectAsync(CosmosLookup.Join<string, string, string>(
                 new ListCursor<string>(["hats"]),
                 executor,
+                null!,
                 Query(),
                 "@k",
                 3,
@@ -638,6 +645,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await Collect(await CosmosLookup.JoinAsync(
                 OpenBuild(),
                 executor,
+                null!,
                 Query(),
                 "@k",
                 3,
@@ -659,9 +667,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var executor = new RecordingExecutor();
 
-            var noBuild = () => CosmosLookup.Join<string, string, string>(null!, executor, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
-            var noExecutor = () => CosmosLookup.Join<string, string, string>(Async("a"), null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
-            var noBatch = () => CosmosLookup.Join<string, string, string>(Async("a"), executor, Query(), "@k", 0, b => b, e => "", p => p, (b, p) => b);
+            var noBuild = () => CosmosLookup.Join<string, string, string>(null!, executor, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
+            var noExecutor = () => CosmosLookup.Join<string, string, string>(Async("a"), null!, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
+            var noBatch = () => CosmosLookup.Join<string, string, string>(Async("a"), executor, null!, Query(), "@k", 0, b => b, e => "", p => p, (b, p) => b);
 
             noBuild.Should().Throw<ArgumentNullException>();
             noExecutor.Should().Throw<ArgumentNullException>();
@@ -689,6 +697,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var bind = () => CosmosLookup.Bind(Query(), "@k", 2, new object?[] { "a", "b", "c" });
 
             bind.Should().Throw<ArgumentException>();
+        }
+
+        /// <summary>
+        /// A data context that answers the values it was given and nothing else.
+        /// </summary>
+        sealed class Context : org.apache.calcite.DataContext
+        {
+
+            readonly Dictionary<string, object?> _values;
+
+            public Context(params (string Name, object? Value)[] values)
+            {
+                _values = values.ToDictionary(v => v.Name, v => v.Value, StringComparer.Ordinal);
+            }
+
+            public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;
+
+            public org.apache.calcite.adapter.java.JavaTypeFactory getTypeFactory() => null!;
+
+            public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
+
+            public object get(string name) => _values.TryGetValue(name, out var value) ? value! : null!;
+
+        }
+
+        /// <summary>A statement whose own filter compares with a prepared statement's parameter.</summary>
+        static CosmosQuery PricedQuery() => new(
+            "SELECT VALUE c FROM products c WHERE c.price > @p0 AND c.category IN (@k0, @k1, @k2)",
+            new[] { new CosmosParameter("@p0", new CosmosDynamicValue(0)) });
+
+        static Context Price(int value) => new(("?0", java.lang.Integer.valueOf(value)));
+
+        /// <remarks>
+        /// The statement's own slots are closed from the execution's context before the keys are
+        /// appended, as a plain statement's are. Left open, the slot itself was sent as the value, and
+        /// the comparison it stood in was never true: the join returned nothing, and said nothing. #219.
+        /// </remarks>
+        [Fact]
+        public async Task TheStatementsOwnParametersAreBoundFromTheExecution()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+
+            var rows = await Join(Async("bikes"), executor, query: PricedQuery(), root: Price(100));
+
+            executor.Executed.Single().Parameters.Should().Equal(
+                new CosmosParameter("@p0", 100L),
+                new CosmosParameter("@k0", "bikes"),
+                new CosmosParameter("@k1", "bikes"),
+                new CosmosParameter("@k2", "bikes"));
+            rows.Should().Equal("bikes/bikes");
+        }
+
+        /// <remarks>
+        /// The shared cache names a statement by its parameters' values, so it must be named by the
+        /// values the execution bound rather than by the slot every execution shares: an answer fetched
+        /// under one price is no answer under another.
+        /// </remarks>
+        [Fact]
+        public async Task ExecutionsBindingDifferentValuesDoNotShareTheCache()
+        {
+            var shared = new CosmosLookupCache(100, TimeSpan.FromMinutes(5));
+
+            await Join(Async("bikes"), new RecordingExecutor("""{"category":"bikes"}"""), query: PricedQuery(), shared: shared, root: Price(100));
+
+            var other = new RecordingExecutor();
+            await Join(Async("bikes"), other, query: PricedQuery(), shared: shared, root: Price(200));
+
+            var same = new RecordingExecutor();
+            await Join(Async("bikes"), same, query: PricedQuery(), shared: shared, root: Price(100));
+
+            other.Executed.Should().ContainSingle("a different value is a different statement");
+            other.Executed.Single().Parameters[0].Value.Should().Be(200L);
+            same.Executed.Should().BeEmpty("the same value is the same statement, and was remembered");
         }
 
     }
