@@ -647,6 +647,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("""{ "properties": { "body": { "type": "number" } } }""", "2")]
         [InlineData("""{ "required": ["body"], "properties": { "body": { "type": "number" } } }""", "2")]
         [InlineData("""{ "properties": { "body": { "type": ["integer", "number"] } } }""", "2")]
+        [InlineData("""{ "properties": { "body": { "type": "number", "enum": [1, 2] } } }""", "1")]
+        [InlineData("""{ "properties": { "body": { "type": "number", "const": 2 } } }""", "2")]
         [InlineData("""{ "properties": { "body": { "type": "number" } } }""", "1.5")]
         [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "2")]
         public void AWholeNumberIsANumberTheSchemaDeclares(string schema, string value)
