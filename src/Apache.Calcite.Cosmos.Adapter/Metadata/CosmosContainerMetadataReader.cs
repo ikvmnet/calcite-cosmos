@@ -70,7 +70,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             try
             {
-                var response = await container.ReadContainerAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                var response = await container.ReadContainerAsync(QuotaInfo, cancellationToken).ConfigureAwait(false);
                 return await ReadStatisticsAsync(container, response, cancellationToken).ConfigureAwait(false);
             }
             catch (CosmosException)
@@ -88,6 +88,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// query over the container.
         /// </remarks>
         const string ResourceUsageHeader = "x-ms-resource-usage";
+
+        /// <summary>
+        /// Asks a container read to report its usage.
+        /// </summary>
+        /// <remarks>
+        /// Azure Cosmos DB returns <see cref="ResourceUsageHeader"/> only to a read that asks for it,
+        /// which the SDK does by sending <c>x-ms-documentdb-populatequotainfo</c> for this option. The
+        /// emulator sends the header unasked, so a read without it worked there and returned nothing
+        /// from every Azure account (#209).
+        /// </remarks>
+        static ContainerRequestOptions QuotaInfo => new() { PopulateQuotaInfo = true };
 
         /// <summary>
         /// Reads what the service says about the container's size and spread.

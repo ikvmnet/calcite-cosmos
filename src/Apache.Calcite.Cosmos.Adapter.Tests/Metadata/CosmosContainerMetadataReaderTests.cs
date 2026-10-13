@@ -6,6 +6,8 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+
+using NSubstitute;
 using Xunit;
 
 
@@ -259,6 +261,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 new CosmosSortKey("/price", false),
                 new CosmosSortKey("/name", false),
             }).Should().BeFalse();
+        }
+
+        /// <remarks>
+        /// Azure answers <c>x-ms-resource-usage</c> only to a read that asks for quota info, and the
+        /// emulator answers it regardless. The substitute does what Azure does, so a read that does not
+        /// ask gets no statistics (#209).
+        /// </remarks>
+        [Fact]
+        public async System.Threading.Tasks.Task StatisticsAreAskedForWithQuotaInfo()
+        {
+            var container = Substitute.For<Container>();
+
+            container.ReadContainerAsync(Arg.Any<ContainerRequestOptions>(), Arg.Any<System.Threading.CancellationToken>())
+                .Returns(call =>
+                {
+                    var headers = new Headers();
+                    if (call.Arg<ContainerRequestOptions>()?.PopulateQuotaInfo == true)
+                        headers.Add("x-ms-resource-usage", "storedProcedures=0;triggers=0;functions=0;collectionSize=371348;documentsSize=368219;documentsCount=11868");
+
+                    var response = Substitute.For<ContainerResponse>();
+                    response.Headers.Returns(headers);
+                    return response;
+                });
+
+            container.GetFeedRangesAsync(Arg.Any<System.Threading.CancellationToken>())
+                .Returns((IReadOnlyList<FeedRange>)new List<FeedRange>() { FeedRange.FromPartitionKey(new PartitionKey("a")) });
+
+            var statistics = await CosmosContainerMetadataReader.ReadStatisticsAsync(container);
+
+            statistics.Should().NotBeNull();
+            statistics!.Value.DocumentCount.Should().Be(11868);
+            statistics.Value.DocumentSizeInBytes.Should().Be(368219L * 1024L);
         }
 
     }

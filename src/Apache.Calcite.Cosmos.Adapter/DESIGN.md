@@ -1021,7 +1021,9 @@ settled until now: the emulator discards composite indexes on create, reporting 
 response and none on a subsequent read, and then accepts the multi-key form regardless.
 
 **The document count lags, and by more than a moment.** A container read reports `documentsCount` in
-its `x-ms-resource-usage` header, and immediately after writing four documents it reports **zero** —
+its `x-ms-resource-usage` header — on Azure only when the read asks for it, with
+`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require, so until #209 no
+Azure account ever answered — and immediately after writing four documents it reports **zero** —
 the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
 is what a planner row count is allowed to be: approximate and stale. It is not what the rule against
 inferring from documents forbids, which is about the *shape* of the data — a wrong shape yields an
