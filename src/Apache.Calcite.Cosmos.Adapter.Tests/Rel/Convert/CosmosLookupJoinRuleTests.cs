@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             _parks = new CosmosTable(Parks);
         }
 
-        RelNode PlanLogical(string sql)
+        RelNode PlanLogical(string sql, bool expand = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
 
@@ -103,7 +103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
-            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
+            var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config().withExpand(expand));
 
             return converter.convertQuery(validator.validate(parsed), false, true).project();
         }
@@ -116,9 +116,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// because a rule that is only correct when its container's rules were registered last is not
         /// correct. See <see cref="EveryContainerInAQueryCanBeOnTheProbeSide"/>.
         /// </remarks>
-        RelNode Plan(string sql)
+        RelNode Plan(string sql, bool expand = false)
         {
-            var logical = PlanLogical(sql);
+            var logical = PlanLogical(sql, expand);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
 
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
@@ -135,6 +135,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
+
+            // The join rules a host's standard set carries and a bare planner does not: the commute that
+            // puts a key list on the build side, and the semi-join rewrites that offer the in-process
+            // alternative the issue measured (#208). Only where the IN was expanded, so that every other
+            // test here plans as it did.
+            if (expand)
+            {
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.JOIN_COMMUTE);
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_TO_SEMI_JOIN);
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.JOIN_TO_SEMI_JOIN);
+            }
 
             var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
@@ -346,6 +357,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             Contains<CosmosLookupJoin>(plan).Should().BeFalse("there is no key to fetch by:\n" + Text(plan));
         }
+
+        // ── A long IN list (#208) ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// A key list over the inline threshold, against a view that filters the container.
+        /// </summary>
+        static string KeyList(int keys) =>
+            "SELECT \"Id\", \"Name\" FROM (" +
+            "SELECT CAST(JSON_VALUE(m.\"DOC\", '$.data.id') AS UUID) AS \"Id\", JSON_VALUE(m.\"DOC\", '$.data.name') AS \"Name\" FROM parks AS m " +
+            "WHERE JSON_VALUE(m.\"DOC\", '$.type') = 'ParkMap' AND JSON_VALUE(m.\"DOC\", '$.data.metadata.deleteUtcTime') IS NULL) AS v " +
+            "WHERE \"Id\" IN (" + string.Join(", ", System.Linq.Enumerable.Repeat("CAST(? AS UUID)", keys)) + ")";
+
+        /// <summary>
+        /// A list of keys longer than Calcite inlines arrives as a join against the list, and is looked up
+        /// by key whatever its length once the container's size is known: a hundred keys is one batch,
+        /// and reads only the documents they name where a scan reads every one that matches (#208).
+        /// </summary>
+        /// <remarks>
+        /// Without a row count the planner takes the container for Calcite's default of a hundred
+        /// documents, under four of which match the view's filter, and reading four documents once is
+        /// as cheap as it believes: there a long list still loses to the scan, and only the short one
+        /// is asserted. An Azure account answers the count since #209.
+        /// </remarks>
+        [Theory]
+        [InlineData(25, false)]
+        [InlineData(25, true)]
+        [InlineData(50, true)]
+        [InlineData(100, true)]
+        public void AKeyListIsLookedUpByKey(int keys, bool counted)
+        {
+            if (counted)
+                _parks = new CosmosTable(Parks.WithStatistics(new CosmosContainerStatistics(11_868, 11_868L * 48 * 1024, 1)));
+
+            // Expanded as a host expands it: an IN longer than the inline threshold becomes a join
+            // against the list, which is the shape the issue measured.
+            var plan = Plan(KeyList(keys), expand: true);
+
+            Contains<CosmosLookupJoin>(plan).Should().BeTrue("the keys are fetched rather than the container read:\n" + Text(plan));
+        }
+
 
     }
 

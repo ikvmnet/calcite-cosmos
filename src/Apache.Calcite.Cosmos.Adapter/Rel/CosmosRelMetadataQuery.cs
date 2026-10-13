@@ -82,6 +82,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 CosmosPartitionKeyExtractor.PinsAtMostOneDocument(filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias))
                 return java.lang.Double.valueOf(1d);
 
+            if (rel is CosmosLookupJoin lookup && base.getRowCount(rel) is java.lang.Double estimate)
+                return java.lang.Double.valueOf(lookup.BoundRowCount(this, estimate.doubleValue()));
+
             return base.getRowCount(rel);
         }
 
