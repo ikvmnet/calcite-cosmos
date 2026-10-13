@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -228,6 +228,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
                 "an element is not its array, and conflating them would apply one's facts to the other");
         }
+
+        /// <summary>
+        /// An integer is a number: a whole value, a domain of them, and the narrower type all establish
+        /// <c>number</c>, and none of them excludes it. #217.
+        /// </summary>
+        [Fact]
+        public void AnIntegerIsANumber()
+        {
+            var number = new JsonFact(At, new JsonClaim.OfType(JsonType.Number));
+            var nullableNumber = new JsonFact(At, new JsonClaim.OfType(JsonType.Number, OrNull: true));
+
+            foreach (var fact in new[]
+            {
+                Equals(At, 2L),
+                new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1L, 2L })),
+                new JsonFact(At, new JsonClaim.OfType(JsonType.Integer)),
+            })
+            {
+                fact.Entails(number).Should().BeTrue($"{fact.Claim} is a number");
+                fact.Entails(nullableNumber).Should().BeTrue($"{fact.Claim} is a number, which a nullable number admits");
+                fact.Excludes(number).Should().BeFalse($"{fact.Claim} is a number, so a path declared one may hold it");
+            }
+
+            Equals(At, 1.5d).Entails(number).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// The lattice runs one way: a number need not be whole, and a fraction is not an integer.
+        /// </summary>
+        [Fact]
+        public void ANumberIsNotNecessarilyAnInteger()
+        {
+            var integer = new JsonFact(At, new JsonClaim.OfType(JsonType.Integer));
+
+            new JsonFact(At, new JsonClaim.OfType(JsonType.Number)).Entails(integer).Should().BeFalse();
+            new JsonFact(At, new JsonClaim.OfType(JsonType.Integer, OrNull: true))
+                .Entails(new JsonFact(At, new JsonClaim.OfType(JsonType.Number))).Should().BeFalse("admitting a null is weaker than not admitting one");
+
+            Equals(At, 1.5d).Excludes(integer).Should().BeTrue("a value with a fractional part is no integer");
+            Equals(At, "2").Excludes(new JsonFact(At, new JsonClaim.OfType(JsonType.Number))).Should().BeTrue("a string is no number, whatever it spells");
+            new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1.5d, 2.5d })).Excludes(integer).Should().BeTrue();
+        }
+
 
     }
 

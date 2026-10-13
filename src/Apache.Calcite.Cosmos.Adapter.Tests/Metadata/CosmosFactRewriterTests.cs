@@ -634,6 +634,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(equality, schema).Should().NotBe("false", "the declared domain holds the value compared against");
         }
 
+        /// <summary>
+        /// A path declared a number holds whole numbers too, so an equality with one is not a
+        /// contradiction. #217.
+        /// </summary>
+        /// <remarks>
+        /// <c>number</c> was read as "a number that is not an integer", the value <c>2</c> as an integer,
+        /// and the two as excluding each other — so the predicate was rewritten to <c>FALSE</c> and
+        /// nothing came back where every document holding 2 should have.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "properties": { "body": { "type": "number" } } }""", "2")]
+        [InlineData("""{ "required": ["body"], "properties": { "body": { "type": "number" } } }""", "2")]
+        [InlineData("""{ "properties": { "body": { "type": ["integer", "number"] } } }""", "2")]
+        [InlineData("""{ "properties": { "body": { "type": "number", "enum": [1, 2] } } }""", "1")]
+        [InlineData("""{ "properties": { "body": { "type": "number", "const": 2 } } }""", "2")]
+        [InlineData("""{ "properties": { "body": { "type": "number" } } }""", "1.5")]
+        [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "2")]
+        public void AWholeNumberIsANumberTheSchemaDeclares(string schema, string value)
+        {
+            var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
+                Ref(2, SqlTypeName.DECIMAL),
+                _rex.makeExactLiteral(new java.math.BigDecimal(value)));
+
+            Rewrite(equality, schema).Should().NotBe("false", "the declared type admits the value compared against");
+        }
+
+        /// <summary>
+        /// The lattice still excludes what it should: a fraction on a path declared an integer, and a
+        /// number on a path declared a string, keep nothing.
+        /// </summary>
+        [Theory]
+        [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "1.5")]
+        [InlineData("""{ "properties": { "body": { "type": "string" } } }""", "2")]
+        public void AValueOutsideTheDeclaredTypeIsAContradiction(string schema, string value)
+        {
+            var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
+                Ref(2, SqlTypeName.DECIMAL),
+                _rex.makeExactLiteral(new java.math.BigDecimal(value)));
+
+            Rewrite(equality, schema).Should().Be("false", "no document holds the value and satisfies the declaration");
+        }
+
+
     }
 
 }

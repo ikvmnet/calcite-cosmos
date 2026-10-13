@@ -1208,6 +1208,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 .Derive(null).RepresentationOf(JsonDocumentPath.Root.Property("a")).Should().BeNull();
         }
 
+        /// <summary>
+        /// Two types beside each other state what both agree on, and an integer and a number agree on
+        /// a number. Two disjoint types still state nothing. #217.
+        /// </summary>
+        [Theory]
+        [InlineData("""["integer", "number"]""", true)]
+        [InlineData("""["number", "integer"]""", true)]
+        [InlineData("""["integer", "number", "null"]""", true)]
+        [InlineData("""["string", "number"]""", false)]
+        public void AnIntegerBesideANumberIsANumber(string types, bool number)
+        {
+            var path = JsonDocumentPath.Root.Property("n");
+            var facts = Facts("""{ "properties": { "n": { "type": """ + types + """ } } }""");
+
+            facts.Knows(new JsonFact(path, new JsonClaim.OfType(JsonType.Number, OrNull: true))).Should().Be(number, types);
+        }
+
+
     }
 
 }

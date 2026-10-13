@@ -632,6 +632,21 @@ Each side converts once, at its boundary — the reader from JSON, the extractor
 literal that is no JSON scalar, a `UUID` or an instant, proves nothing rather than being carried as a box
 the theory cannot compare.
 
+**A type is a place in a lattice, not a member of a list (#217).** JSON has one number type, and JSON
+Schema's `integer` is the subset of `number` with no fractional part. `JsonType` names the two apart, and
+a value's own type is the narrowest that fits, so `2` is an `Integer`. Compared as a list, a path declared
+`"type": "number"` excluded every whole number: `EqualTo 2` against `OfType Number` read as a
+contradiction, and the rewrite answered `FALSE`. That is #198's failure again, a number's representation
+compared where its value should have been. Every comparison of one type against another now goes through
+`JsonTypes.IsA`, where `Integer` lies beneath `Number` and every other pair of distinct types is disjoint.
+The same relation reads `["integer", "number"]` as a number, where two types side by side used to state
+nothing.
+
+There is still no exclusion between two type claims, and that is deliberate rather than a gap. A type
+claim constrains what a path holds *if* it holds anything, and an absent path satisfies "an object" and
+"an array" at once. Excluding them pairwise would empty contexts that documents without the path still
+fill; it would take presence as a third fact, which a pairwise table cannot see.
+
 #### A schema is one source of facts, and not the only one
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,

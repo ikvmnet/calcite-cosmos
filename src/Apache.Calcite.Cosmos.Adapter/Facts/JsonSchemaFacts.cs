@@ -936,9 +936,20 @@ namespace Apache.Calcite.Cosmos.Facts
                         continue;
                     }
 
-                    // Two types beside each other state only what both agree on, which is nothing.
+                    // Two types beside each other state only what both agree on: the wider, where
+                    // one lies beneath the other -- `["integer", "number"]` is a number -- and
+                    // otherwise nothing.
                     if (single is not null)
-                        return null;
+                    {
+                        if (Parse(single) is not JsonType held || Parse(name ?? "") is not JsonType next)
+                            return null;
+
+                        if (next.IsA(held))
+                            continue;
+
+                        if (held.IsA(next) == false)
+                            return null;
+                    }
 
                     single = name;
                 }
