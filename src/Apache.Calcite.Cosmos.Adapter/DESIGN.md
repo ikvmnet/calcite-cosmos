@@ -3845,6 +3845,25 @@ returns them with it, so selecting the document returns six values before anythi
 itself holds. What a single value weighs is the one guess, and it is made in the direction that can
 only under-sell projecting.
 
+**A residual filter was the same wall by another route (#210).** Where one conjunct does not render,
+the filter split leaves it above the conjunct that does, and the query's projection is above both.
+One statement has one `SELECT`, and the residual sat between the projection and the statement, so the
+statement selected the document. `CosmosProjectResidualRule` moves the projection below a wholly
+residual filter, carrying the paths the residual reads, and rebases the residual onto them. It is
+narrow on purpose, and each limit was measured:
+
+- **The projection must render whole.** Taking apart a mixed projection here as well gave every
+  merged view's `CASE` a projection of its own, and a five-view hierarchy planned for minutes.
+- **Paths only, never sub-predicates.** A column per comparison is a projection per spelling of the
+  predicate.
+- **It declines where the document itself would have to be carried.** That saves nothing, and
+  carrying it looped: the carried reference was pushed as a column on the next firing and carried
+  again beside it.
+
+The split, for its part, no longer weakens a filter over a projection. `FILTER_PROJECT_TRANSPOSE`
+gives that filter an equivalent beneath the projection, where its weakenings are derived against what
+is already applied; derived above, they were blind to it and pushed a definedness test twice.
+
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what
 `TODO.md` still asks for, and would reach the cost decisions below this node, which price nothing

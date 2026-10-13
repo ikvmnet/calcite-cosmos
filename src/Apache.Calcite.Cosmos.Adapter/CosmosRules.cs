@@ -139,6 +139,12 @@ namespace Apache.Calcite.Cosmos.Adapter
             // constant timestamp beside a document column shipped every document whole (#125).
             yield return CosmosProjectSplitRule.Create(convention);
 
+            // And the projection over a filter that stays in process: the filter split leaves the
+            // conjunct that does not render above the one that does, and the projection above both
+            // had nowhere to go, so the statement selected the document (#210). This moves it below,
+            // carrying whatever the residual reads.
+            yield return CosmosProjectResidualRule.Create(convention);
+
             yield return CosmosSortRule.Create(convention);
 
             // Calcite's own transpose, registered for the same reason as the rewrites above: a bare

@@ -1159,7 +1159,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(PlanToAsync(
                 "SELECT * FROM (SELECT CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c) WHERE \"n\" = '30'"));
 
-            plan.Should().NotContain("CosmosFilter", "the predicate reads a rendering, not a path: " + plan);
+            // What it implies may reach the service -- a stored '30' or a stored 30 -- but the
+            // comparison itself stays above the converter, over the column the service projected.
+            plan.Should().MatchRegex(@"ClrCursorFilter\(condition=\[=\(.*, '30'\)\]\)", "the predicate reads a rendering, not a path: " + plan);
+            plan.Should().NotContain("CosmosFilter(condition=[=(", "and the rendering's comparison is not the statement's: " + plan);
         }
 
         // ── The cast to text over a SQL/JSON accessor ─────────────────────────────
@@ -1259,7 +1262,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'");
 
-            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", "the comparison is Calcite's to make: " + Plan(best));
+            // Over the accessor's column where the projection is pushed beneath it (#210), and over the
+            // document where it is not: either way, Calcite's to make.
+            Plan(best).Should().MatchRegex(@"ClrCursorFilter\(condition=\[=\((JSON_VALUE\(\$0, '\$\.label'\)|\$\d+), '30'\)\]\)", "the comparison is Calcite's to make: " + Plan(best));
         }
 
         /// <remarks>

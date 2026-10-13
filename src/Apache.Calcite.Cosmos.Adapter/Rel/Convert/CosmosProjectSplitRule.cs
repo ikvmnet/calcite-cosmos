@@ -262,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// rather than exhaustive over the shapes that happen to exist.
         /// </para>
         /// </remarks>
-        static void Collect(CosmosRexTranslator translator, RexNode node, ProjectionSplit split)
+        internal static void Collect(CosmosRexTranslator translator, RexNode node, ProjectionSplit split)
         {
             if (node is RexInputRef inputRef)
             {
@@ -307,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// What a split decided: the ordinals that go below whole, the ordinals that stay above, the
         /// sub-expressions lifted out of those, and the inputs still read past them.
         /// </summary>
-        sealed class ProjectionSplit
+        internal sealed class ProjectionSplit
         {
 
             /// <summary>The projection's expressions, with their <c>CASE</c> conditions lowered.</summary>
@@ -364,7 +364,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// that is about to be replaced whole, and the replacement would then no longer match what was
         /// pushed.
         /// </remarks>
-        sealed class Rebase : RexShuttle
+        internal sealed class Rebase : RexShuttle
         {
 
             readonly RexBuilder _rexBuilder;
