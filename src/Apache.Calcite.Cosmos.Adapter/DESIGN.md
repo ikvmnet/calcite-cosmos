@@ -3889,7 +3889,9 @@ parallelism inside one query is the SDK's `MaxConcurrency` and stays its busines
 **Through .NET rather than through Calcite**, because Calcite has nowhere to put it. Every `Hook`
 value is plan-time — `PARSE_TREE`, `CONVERTED`, `TRIMMED`, `PROGRAM`, `QUERY_PLAN` — and no adapter
 in the tree reports execution statistics through one. Cassandra, Druid, Elasticsearch, Geode and
-MongoDB all use `Hook.QUERY_PLAN` and stop, which this adapter does too. A meter and an activity
+MongoDB all use `Hook.QUERY_PLAN` and stop, which this adapter does too — once per statement per
+plan, although the plan is implemented twice, once for the synchronous open and once for the
+awaiting one (#211). A meter and an activity
 source are what a .NET caller already has a collector for, cost nothing when nobody is listening,
 and require no coupling to this assembly.
 

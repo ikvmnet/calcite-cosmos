@@ -269,6 +269,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// Two statements, the build side's and the lookup's, and each reaches <c>Hook.QUERY_PLAN</c>
+        /// once though the plan is implemented for both ways of opening it (#211).
+        /// </remarks>
+        [Fact]
+        public void EachStatementIsAnnouncedOncePerPlan()
+        {
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>());
+
+            var plan = Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN products p ON o.id = p.id");
+
+            var announced = new List<string>();
+            using (org.apache.calcite.runtime.Hook.QUERY_PLAN.addThread(new Collect(announced)))
+                Implement(plan);
+
+            announced.Should().HaveCount(2).And.OnlyHaveUniqueItems();
+            announced.Should().ContainSingle(x => x.Contains($"IN ({CosmosLookupJoin.KeyPrefix}0, "));
+        }
+
+        /// <summary>
+        /// Collects every value a hook is run with as text.
+        /// </summary>
+        sealed class Collect(List<string> values) : java.util.function.Consumer
+        {
+
+            public void accept(object o) => values.Add(o?.ToString() ?? "");
+
+            public java.util.function.Consumer andThen(java.util.function.Consumer after) => throw new NotSupportedException();
+
+        }
+
+        /// <remarks>
         /// The join's synchronous body is its own code rather than a wait on the awaiting one: it reads the
         /// build side with <c>Read</c> and waits only for each batch's fetch. So it is held to the same
         /// answer, and to the same single request carrying the same keys.

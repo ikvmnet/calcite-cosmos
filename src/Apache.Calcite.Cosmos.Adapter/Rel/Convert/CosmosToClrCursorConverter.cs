@@ -10,7 +10,6 @@ using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.convert;
 using org.apache.calcite.rel.metadata;
-using org.apache.calcite.runtime;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 {
@@ -240,7 +239,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             rowBuilder ??= CosmosConverters.RowBuilder(physType, getRowType(), readings);
 
-            Hook.QUERY_PLAN.run(query.Sql);
+            CosmosConverters.AnnounceQueryPlan(implementor, this, query.Sql);
 
             return (physType, query, rowBuilder);
         }

@@ -46,6 +46,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             ?? throw new InvalidOperationException($"'{nameof(CosmosSchemas.GetExecutor)}' is missing from {nameof(CosmosSchemas)}.");
 
         /// <summary>
+        /// The nodes each implementor has already announced the statement of.
+        /// </summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ClrCursorRelImplementor, HashSet<RelNode>> Announced = new();
+
+        /// <summary>
+        /// Runs <c>Hook.QUERY_PLAN</c> with a node's statement, once per plan.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A plan is implemented twice, once for each way it can be opened: <c>ImplementRoot</c> walks
+        /// the tree through <c>Implement</c> and again through <c>ImplementAsync</c>, and both render the
+        /// same statement. Announcing it from each made every statement arrive at the hook twice, and a
+        /// hook counting statements counted double (#211).
+        /// </para>
+        /// <para>
+        /// <b>Once per implementor, because one implementor is one plan.</b> The hook stays where it
+        /// runs at plan time, on the thread the command attaches its hooks to; announcing it from the
+        /// open instead would run it on whatever thread an awaited open resumed on.
+        /// </para>
+        /// </remarks>
+        /// <param name="implementor">The implementor of the plan the node belongs to.</param>
+        /// <param name="node">The node whose statement it is.</param>
+        /// <param name="sql">The statement.</param>
+        public static void AnnounceQueryPlan(ClrCursorRelImplementor implementor, RelNode node, string sql)
+        {
+            var announced = Announced.GetValue(implementor, _ => new HashSet<RelNode>(ReferenceEqualityComparer.Instance));
+
+            bool added;
+            lock (announced)
+                added = announced.Add(node);
+
+            if (added)
+                org.apache.calcite.runtime.Hook.QUERY_PLAN.run(sql);
+        }
+
+        /// <summary>
         /// Renders the statement a subtree of Cosmos nodes stands for.
         /// </summary>
         /// <param name="input">The subtree, whose root is the node being converted.</param>
