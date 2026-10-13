@@ -1166,6 +1166,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 "and nothing is left above the converter to extract here");
         }
 
+        /// <summary>
+        /// A projection pushes under a conjunct that stays in process, carrying what the conjunct reads,
+        /// rather than the statement selecting the document for it (#210).
+        /// </summary>
+        /// <remarks>
+        /// <c>products</c> declares no UUID form, so the cast comparison has no Cosmos form and stays
+        /// above the converter. The type test renders, and reaches the service.
+        /// </remarks>
+        [Fact]
+        public void ShouldPushAProjectionUnderAResidualFilterThatReadsAProjectedColumn()
+        {
+            var plan = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.id') AS \"a\", JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\" FROM products AS c " +
+                "WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park' AND CAST(JSON_VALUE(c.\"DOC\", '$.data.id') AS UUID) = UUID'3a900000-0000-4000-8000-000000000001'"));
+
+            plan.Should().NotContain("CosmosProject(DOC=[$0])", "the residual reads a column the projection already selects: " + plan);
+            plan.Should().Contain("a=[JSON_VALUE($0, '$.data.id')]", plan);
+            plan.Should().Contain("b=[JSON_VALUE($0, '$.data.name')]", plan);
+            plan.Should().Contain("CosmosFilter", "the conjunct that renders still reaches the service: " + plan);
+            plan.Should().Contain(":UUID", "and the one that does not is still checked, above: " + plan);
+            System.Text.RegularExpressions.Regex.Matches(plan, "CosmosFilter").Count.Should().Be(1, "and the weakening it implies is pushed once: " + plan);
+        }
+
+        /// <summary>
+        /// Where the residual reads a path the query does not select, the path is selected for it.
+        /// </summary>
+        [Fact]
+        public void ShouldPushAProjectionUnderAResidualFilterCarryingThePathItReads()
+        {
+            var plan = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\" FROM products AS c " +
+                "WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park' AND CAST(JSON_VALUE(c.\"DOC\", '$.data.ref') AS UUID) = UUID'3a900000-0000-4000-8000-000000000001'"));
+
+            plan.Should().NotContain("CosmosProject(DOC=[$0])", plan);
+            plan.Should().Contain("JSON_VALUE($0, '$.data.ref')]", "the residual's path is carried as a column: " + plan);
+            plan.Should().Contain("b=[JSON_VALUE($0, '$.data.name')]", plan);
+        }
+
+
     }
 
 }

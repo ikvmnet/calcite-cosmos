@@ -168,13 +168,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// uses, so a conjunct this puts in the pushable half is one that rule would accept whole. An
         /// input whose binding cannot be derived splits into nothing, and the rule does not fire.
         /// </remarks>
-        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
+        internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
         {
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
             var below = AlreadyApplied(filter.getInput());
+
+            // No weakening over a projection. FILTER_PROJECT_TRANSPOSE gives every such filter an
+            // equivalent beneath the projection, where its weakenings are derived against the filters
+            // already applied. Derived here they are blind to those: a filter left over a pushed
+            // projection is a residual whose weakenings are already below it, and pushing them again
+            // put a redundant definedness test in the statement, or one a declared presence had
+            // deleted (#210).
+            var weakens = OverProjection(filter.getInput()) == false;
 
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
             // and the conjunct that proves the condition is a sibling of the one being lowered. Split
@@ -210,7 +218,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // replacement for the predicate, so the original is still rechecked above.
                 residual.Add(conjunct);
 
-                if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
+                if (weakens &&
+                    TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
                     AlreadyBelow(weakened, below) == false &&
                     translator.TryTranslate(weakened, out _))
                     pushable.Add(weakened);
@@ -995,15 +1004,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static HashSet<string> AlreadyApplied(RelNode? node)
         {
             var applied = new HashSet<string>(StringComparer.Ordinal);
+            var seen = Rel.CosmosPlanMembers.NewSeen();
 
+            // Through a stack of filters as well as across a set's members: a filter keeps its input's
+            // row type, so a conjunct applied anywhere down the stack is applied to this relation in
+            // the same ordinals. Read from the top filter alone, a weakening pushed under a filter the
+            // residual was later split from was pushed again above it — and a redundant filter, which
+            // halves the estimated rows, was then the plan chosen (#210).
             void Collect(RelNode? candidate)
             {
-                if (candidate is not Filter filter)
+                if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
                 var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
                 for (var i = 0; i < conjuncts.size(); i++)
                     applied.Add(((RexNode)conjuncts.get(i)).toString());
+
+                foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
+                    Collect(member);
             }
 
             // Every expression the node stands for, which this did by hand before CosmosPlanMembers
@@ -1013,6 +1031,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 Collect(member);
 
             return applied;
+        }
+
+        /// <summary>
+        /// Determines whether any equivalent form of a subtree is a projection.
+        /// </summary>
+        static bool OverProjection(RelNode? node)
+        {
+            foreach (var member in Rel.CosmosPlanMembers.Of(node))
+                if (member is Project)
+                    return true;
+
+            return false;
         }
 
         static RexNode Compose(RexBuilder rexBuilder, List<RexNode> conjuncts)
