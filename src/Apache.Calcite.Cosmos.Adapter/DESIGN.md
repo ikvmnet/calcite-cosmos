@@ -3666,6 +3666,22 @@ container is always, and for an unbounded near side against a small container is
 fetch would decline the unbounded cases the cost model already prices correctly, and it would not see a
 bound that arrives as a key equality.
 
+**But the model had to know what a key returns (#208).** Calcite estimates an inner join as the two
+sides' product scaled by a selectivity. Against a distinct key list, the one `IN (?, …)` expands to, a
+hundred keys over 445 matching documents came to 667 rows: more than the container could return to
+them. Every node above the join is priced on its rows, so the projection above a lookup cost more than
+the whole in-process semi-join it competed with, and a list of a hundred keys read every matching
+document. `CosmosRelMetadataQuery` now bounds a lookup's row count by what its keys allow. Distinct
+build keys return at most the documents they name, which is no more than the probe side and no more
+than the keys times the documents per key. That is one per key where no distinct count is known, which
+is the assumption a lookup is for. A unique probe key bounds the count by the build side instead. The
+lookup's own charge is the documents fetched under that bound, plus one per request.
+
+What it cannot fix is a container with no row count. The planner then takes it for Calcite's default
+of a hundred documents, under four of which match a typical view's filter, and reading four documents
+once really is cheaper than deduplicating fifty keys and sending them. That was the issue's "no row
+count" column on Azure, where #209 was the cause: the statistics were never asked for.
+
 ## The lookup join's caches
 
 Two caches with two jobs, after Flink's `LookupOptions`, whose names these deliberately echo.

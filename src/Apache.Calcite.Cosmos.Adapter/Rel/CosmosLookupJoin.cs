@@ -155,16 +155,92 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public override RelOptCost? computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq)
         {
             var buildRows = mq.getRowCount(getLeft()).doubleValue();
+            var probeRows = mq.getRowCount(getRight()).doubleValue();
             var rows = mq.getRowCount(this).doubleValue();
 
             // One request per batch, and each is a round trip rather than a row read — which is why the
             // batch size divides here and appears nowhere else in the cost.
             var requests = System.Math.Ceiling(buildRows / _batchSize);
 
+            // The documents fetched: those the keys name, and never more than the probe side holds,
+            // since every batch reads only documents the statement would have selected. The join's
+            // own estimate is not that — see BoundRowCount — and charged on it a list of fifty keys
+            // cost more than reading the container, and lost to a scan that read every matching
+            // document to keep fifty (#208). Each request is charged as a row as well, so a build side
+            // far larger than the container still loses to reading it once.
+            var fetched = System.Math.Min(rows, probeRows) + requests;
+
             return planner.getCostFactory()
-                .makeCost(rows, buildRows + requests, rows)
+                .makeCost(fetched, buildRows + requests, fetched)
                 .multiplyBy(ClrCursorConvention.CostMultiplier);
         }
+
+        /// <summary>
+        /// Bounds Calcite's estimate of the rows this join returns by what its keys allow.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Calcite's estimate does not know a key when it sees one.</b> An inner join is estimated as
+        /// the two sides' product scaled by a selectivity, so a list of a hundred distinct keys against
+        /// 445 documents was estimated at 667 rows: more than the container could return to the keys.
+        /// Every node above the join is priced on that, and the projection above a lookup cost it more
+        /// than the in-process semi-join it replaced cost in total (#208).
+        /// </para>
+        /// <para>
+        /// <b>Distinct build keys bound it by the documents they name</b>: each document matches at most
+        /// one of them, so the join returns at most the documents the keys fetch — no more than the
+        /// probe side, and no more than the keys times the documents each names. A unique probe key
+        /// bounds it by the build side the same way. A left join returns every build row at least once, so its bound is never
+        /// below the build side.
+        /// </para>
+        /// </remarks>
+        /// <param name="mq">The metadata query.</param>
+        /// <param name="estimate">Calcite's estimate.</param>
+        /// <returns>The bounded estimate.</returns>
+        internal double BoundRowCount(RelMetadataQuery mq, double estimate)
+        {
+            var buildRows = mq.getRowCount(getLeft()).doubleValue();
+            var probeRows = mq.getRowCount(getRight()).doubleValue();
+
+            var bound = double.PositiveInfinity;
+
+            if (IsUnique(mq, getLeft(), _buildKey))
+                bound = System.Math.Min(bound, System.Math.Min(probeRows, buildRows * DocumentsPerKey(mq)));
+
+            if (IsUnique(mq, getRight(), _probeKey))
+                bound = System.Math.Min(bound, buildRows);
+
+            if (getJoinType() == JoinRelType.LEFT)
+                bound = System.Math.Max(bound, buildRows);
+
+            return System.Math.Min(estimate, bound);
+        }
+
+        /// <summary>
+        /// Returns how many documents one key is taken to name.
+        /// </summary>
+        /// <remarks>
+        /// The probe side's rows over its key's distinct values where the metadata knows them, and one
+        /// where it does not — which is the ordinary case, a container reporting no distinct counts. One
+        /// is the assumption the operator is for: a lookup joins on a key, and a key that names many
+        /// documents per value is a join this was never going to win by much. It is never above the
+        /// probe side's rows, which bound every use of it.
+        /// </remarks>
+        double DocumentsPerKey(RelMetadataQuery mq)
+        {
+            var probeRows = mq.getRowCount(getRight()).doubleValue();
+
+            if (mq.getDistinctRowCount(getRight(), org.apache.calcite.util.ImmutableBitSet.of(_probeKey), null) is java.lang.Double distinct && distinct.doubleValue() >= 1d)
+                return System.Math.Max(1d, probeRows / distinct.doubleValue());
+
+            return 1d;
+        }
+
+        /// <summary>
+        /// Determines whether the metadata knows a column to hold no value twice.
+        /// </summary>
+        static bool IsUnique(RelMetadataQuery mq, RelNode input, int ordinal) =>
+            mq.areColumnsUnique(input, org.apache.calcite.util.ImmutableBitSet.of(ordinal)) is java.lang.Boolean unique && unique.booleanValue();
 
         /// <inheritdoc />
         /// <remarks>
