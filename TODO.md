@@ -1649,19 +1649,95 @@ answer.
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
-### The fact theory as a package of its own
+### Moving the fact reasoning onto Eggnog — *large; planned, and the decision is not yet in `DESIGN.md`*
 
-`Apache.Calcite.Cosmos.Facts` is a namespace inside the adapter, holding the theory, its claims and the
-schema reader, with stored forms and the geography claim kept on the adapter's side; `DESIGN.md` under
-*Planned Project Layout* says what is in it and why. What would make it a package:
+[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, `0.0.1-pre.46`, MIT, net8.0 and net10.0,
+no dependencies) is a C# reimplementation of egglog's engine. It provides:
+- typed relations, and functions with lattice merges;
+- rulesets, schedules and extraction;
+- scopes: frozen bases that are thread-safe to read, with children that read through to them;
+- case splits that lift to the parent what every case proves.
 
-- **Its own project in this solution** — *small.* Move `Facts/` out, reference it from the adapter. The
-  namespace references nothing of the adapter's, nor of Java — its schema reader is on `System.Text.Json`
-  and resolves references itself — so this is a move and a project file.
-- **A namespace without `Cosmos`** — *small, and a decision.* The types are already named for JSON —
-  `JsonFact`, `JsonFactTheory` and the rest — and only the namespace still says `Cosmos`.
-- **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own
-  each such change is two pull requests and a version.
+It was built for this adapter. The plan of record lives in its repository, as
+[`docs/history/cosmos-integration.md`](https://github.com/alethic/eggnog/blob/eda0c61973cb1e41fc0d9994af3e013a9252c4bd/docs/history/cosmos-integration.md)
+(revision 2, read here at `eda0c61`). Read it before changing anything below; this entry records only
+where the plan stands against this repository. The plan's own decisions, in short:
+- Eggnog replaces `JsonFactTheory.Derive` and the questions on `JsonFactSet`, **not** the rewriter.
+- The rollout is shadow mode, per fact kind, with the modes `horn`, `shadow`, `union` and `eggnog`.
+- Horn's closure is kept as the fallback engine until a measured budget says otherwise.
+- Graphs run serially.
+- `JsonSchemaFacts` and `CosmosFactExtractor` stay as the one front end that feeds both engines.
+
+The plan exists because of the gaps it closes. A Horn theory cannot close gaps 1 and 3 without a disjunctive
+head, which *Atoms, clauses, and why asking is linear* rules out. Eggnog closes them with a case split per
+value a present discriminator can still hold, then lifts what every case proves.
+
+| gap | query, against what is declared | today | closed by |
+| --- | --- | --- | --- |
+| 1 | `kind IN ('order','invoice')`, each kind declaring `ref` a canonical UUID | the UUID comparison stays in process | a query split, then a lift of `form` |
+| 1, per kind | `(type = 'park' AND …) OR (type = 'map' AND …)` | not even the kind test pushes | a derivation per disjunct, in Horn alone |
+| 2 | enum `{order, invoice}` and `kind <> 'invoice'` | the `order` guard never fires | a disequality narrowing a domain |
+| 3 | `anyOf` of two `status` enums, `status = 'purged'` | the comparison as written | one `(OneOf, OneOf)` row in `Entails`, and an empty `Values` |
+| 4, 5 | `maximum: 100` and `n > 500`; an integer `enum` through a `CAST` | a pushed range; an in-process recheck | bound lattices |
+
+**Measured on the published package** (a scratch project, not committed). Eggnog's own test theory,
+`src/Eggnog.Tests/Cosmos/Scoped/CosmosTheory.cs`, was copied and run on `0.0.1-pre.46` from nuget.org:
+- It lowers gap 1's `UuidEq` to `StrEq`.
+- It correctly does not lower the control `IN ('order','note')`, because a `note` has no `ref`.
+- It extracts `PFalse` for a value outside the enum.
+- A query scope that splits costs about **1.5 ms warm**, against microseconds for `Derive` today, which more
+  than a dozen planner rules call. That is the cost the plan's statement memo and demand gate exist to
+  hide, and its budgets B1–B12 are where it is judged.
+
+**What has changed since the plan read this repository.** It read `origin/main` at `7e6ae6a` (#206):
+- **F1 is fixed**, by #217 and #218: `Integer` sits beneath `Number` wherever a claim's type is compared.
+  Phase 0a's `JsonType.cs`/`JsonFact.cs` type row is therefore done. The `(OneOf, OneOf)` subset row for
+  gap 3 is not.
+- **Still open:** F3 (`IsContradictory` pairs claims on paths where `Present` is not known), F5
+  (`ReferenceEquals` on a struct, `CosmosPartitionKeyExtractor.cs:600`), F6 (the "declares nothing" fast
+  path never fires, because every container carries `ServiceFacts`), F2, F4, F7 and F9 as the plan states
+  them. Each wants re-reading against `main` before it is fixed: line numbers have moved.
+- **The gap tests are not in this repository.** `CosmosDeclaredFactPlanningTests.Gaps.cs` existed only as an
+  uncommitted file in a local working copy at `a83fd2a`. It has to be rewritten from the plan's §1.2 and
+  §5.1 and from `prototypes/cosmos-facts/README.md` in Eggnog, with each gap's control.
+
+**The order, from the plan's §5.2; each step is its own pull request to `main`.**
+1. **Phase 0a, correctness and gap tests** — *medium.* No Eggnog yet.
+   - The gap tests, asserting today's plans as recorded divergences.
+   - F2–F5, F7 and F9, each with a plan-level test first.
+   - The gap 3 row.
+   - A logical-level rule turning a `LogicalFilter` that the facts contradict into an empty `Values`. That
+     is also *A contradiction should send nothing* under *Constraints beyond `UNIQUE`*, below.
+   - The pinned tests listed in §5.1 change deliberately, each with a twin.
+2. **Phase 0b, the seam** — *large.* This was *The fact theory as a package of its own*. The work:
+   - Move `Facts/` into an `Apache.Calcite.Cosmos.Facts` project.
+   - Put the questions behind `IJsonFactAnswers` and an `IJsonFactEngine` with a Horn implementation.
+   - Move reasoning state from container metadata onto the schema object.
+   - Turn the `ClaimsFor` scans in `CosmosSelfJoinRule` and `CosmosPartitionKeyExtractor` into questions.
+
+   Plans stay unchanged against golden plans.
+3. **Phase 0c and track D** — *medium each.*
+   - A declared corpus for `CosmosDifferentialTests`, with a document oracle.
+   - A derivation per disjunct in `CosmosFactRewriter.Apply`, which closes gap 1's per-kind spelling in Horn.
+4. **Phases 1 to 3, Eggnog itself** — *large.*
+   - The theory in a `Facts.Saturation` project, and the offline shadow.
+   - Production on scopes, switched per kind.
+   - Splits for gap 1 `IN`.
+
+   Everything Eggnog has to supply for these is released: scopes, tags and mirrors (R2), and splits and lift
+   (R3). The plan's still-open library requests are tracked in Eggnog's `docs/roadmap.md`.
+5. **Phase 4** retires Horn as a decider. **Phase 5**, predicate extraction (the rewriter as e-graph
+   rewrites under an RU cost), is optional and undecided.
+
+**Before Phase 1, record the decision in `DESIGN.md`.** Two things go there:
+- what makes a split sound: the cases cover the parent, because a split happens only where the path is
+  present, there is one case per remaining value, and domains only shrink;
+- why a deletion may read only the schema's facts (`RulesetOptions.Licence`), so that a conjunct never proves
+  itself redundant.
+
+Pin the exact Eggnog version as Calcite is pinned. It is a single-maintainer prerelease whose public surface
+is pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as
+a wrong schema (*A declaration is trusted*).
 
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 
