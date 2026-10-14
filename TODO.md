@@ -1649,7 +1649,7 @@ answer.
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
-### Moving the fact reasoning onto Eggnog — *large; planned, and the decision is not yet in `DESIGN.md`*
+### Moving the fact reasoning onto Eggnog — *large; decided, and the design is not yet in `DESIGN.md`*
 
 [Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, `0.0.1-pre.46`, MIT, net8.0 and net10.0,
 no dependencies) is a C# reimplementation of egglog's engine. It provides:
@@ -1680,14 +1680,45 @@ value a present discriminator can still hold, then lifts what every case proves.
 | 3 | `anyOf` of two `status` enums, `status = 'purged'` | the comparison as written | one `(OneOf, OneOf)` row in `Entails`, and an empty `Values` |
 | 4, 5 | `maximum: 100` and `n > 500`; an integer `enum` through a `CAST` | a pushed range; an in-process recheck | bound lattices |
 
-**Measured on the published package** (a scratch project, not committed). Eggnog's own test theory,
-`src/Eggnog.Tests/Cosmos/Scoped/CosmosTheory.cs`, was copied and run on `0.0.1-pre.46` from nuget.org:
-- It lowers gap 1's `UuidEq` to `StrEq`.
-- It correctly does not lower the control `IN ('order','note')`, because a `note` has no `ref`.
-- It extracts `PFalse` for a value outside the enum.
-- A query scope that splits costs about **1.5 ms warm**, against microseconds for `Derive` today, which more
-  than a dozen planner rules call. That is the cost the plan's statement memo and demand gate exist to
-  hide, and its budgets B1–B12 are where it is judged.
+**Eggnog is the engine; that is settled.** It is meant to solve more than the closure: splits, a rewrite chosen
+by extraction, path equality for `CHECK`, and perhaps one context shared between the implementation plan and
+the execution plan. What is open is how to encode the theory in it, and the spike below answers the first
+part of that.
+
+**Measured: a container's rules belong in its scope as rows, not as rules** (`spikes/EggnogDerive`, whose
+README has the method and every figure). The spike:
+- compiles our own `Facts/` and JSON Schemas through `JsonSchemaFacts`;
+- answers each derivation with Horn and with Eggnog;
+- asks both engines about every head and every established fact before timing anything, and both agree on
+  every answer at every size;
+- runs its contexts as described: JSON's rules frozen in a root, a container's schema frozen in a child, and a
+  query in a child of that.
+
+| compiled rules | Horn, a pinned discriminator | one Eggnog rule per rule | identical bodies merged (the plan's §2.5) | **rules as rows** |
+| --- | --- | --- | --- | --- |
+| 3,231 | 0.45 ms | 16.6 ms | 0.26 ms | 0.29 ms |
+| 32,805 | 4.9 ms | 510 ms, 251 MB, 23 s to register | 1.24 ms; 4.9 ms when contradicted | **0.63 ms; 53 µs when contradicted** |
+| 109,454 | 18.6 ms | — | — | **1.06 ms; 58 µs when contradicted** |
+
+An Eggnog rule costs every query an evaluation, whether or not anything it reads changed. So the plan's mapping,
+in which each guarded rule becomes a local rule of the container's scope, costs in proportion to the number of
+distinct guards. Merging identical bodies keeps that small for one flat discriminator, but nested
+discriminators, `if`/`then` and per-object `required` carriers multiply it.
+
+Held as rows instead, the rules become data, and they are read by about fifteen fixed rules in the root:
+- `step(r, k)` says that the first `k` atoms of rule `r` hold;
+- an atom keyed `(r, k)` says what extends the chain;
+- a pinned value joins its guards through an index.
+
+A query then costs what it fires. This **revises the plan's §2.5 and §3.3**, which want a local rule per guard.
+The mirrors, licences and splits the plan relies on all read tables, so they are unaffected.
+
+**Found beside it, and independent of the engine.** `JsonSchemaFacts.Meet` is quadratic in the size of a
+`oneOf`. It took 7.5 s to read a 33k-rule schema and 76 s for 109k, against 0.26 s and 1.2 s to register them
+in Eggnog. At tens of thousands of rules the schema reader is the bottleneck, whatever the engine.
+
+**Not yet measured over this encoding:** case splits and lift, concurrent query scopes under one frozen
+container scope, and the extraction step. Each is the next spike.
 
 **What has changed since the plan read this repository.** It read `origin/main` at `7e6ae6a` (#206):
 - **F1 is fixed**, by #217 and #218: `Integer` sits beneath `Number` wherever a claim's type is compared.
