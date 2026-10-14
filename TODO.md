@@ -1765,7 +1765,14 @@ question to answer, and either engine may be the one that is wrong. What decides
    concurrent query scopes under one frozen container scope. This is the make-or-break measurement;
    splits are what the move is for.
 4. **The design into `DESIGN.md`** — *small.* Rules as rows, the scope layout, what makes a split sound,
-   and the deletion licence.
+   and the deletion licence. Also the rules of JSON in the root:
+   - a present property has a present object for its parent;
+   - a path with no possible type is absent;
+   - absent and present together is a contradiction.
+
+   These replace *Atoms, clauses, and why asking is linear*'s "no exclusion between two type claims", which
+   was right only for a theory with no atom for absence. The spike's README shows what they prove on schemas
+   of eight rules.
 5. **The seam, then the engine** — *large.*
    - Move `Facts/` into its own project.
    - Put the questions consumers ask behind one interface, so the `ClaimsFor` scans become questions.
