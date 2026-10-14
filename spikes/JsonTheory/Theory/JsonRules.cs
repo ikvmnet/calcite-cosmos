@@ -924,8 +924,10 @@ namespace JsonTheory
             Head("a required property", HeadRequired, (p, v) => Required.Of(p, v));
             Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
 
-            // What a query mentions is relevant, and so is what bears on it: a path's parent and properties, the patterns
-            // it is an instance of, and what a conditional rule reads where its head speaks of a relevant path.
+            // What a query mentions is relevant, and so is what bears on it: a path's parent and array, the patterns it
+            // is an instance of, and what a conditional rule reads where its head speaks of a relevant path. Not a
+            // path's properties: every path is a property of the root, so that would make everything relevant. The
+            // gate decides only where to split, so a split it skips proves less and never anything false.
             Rule("a mentioned path is relevant", r =>
             {
                 var p = r.Var<JPath>("p");
@@ -943,12 +945,6 @@ namespace JsonTheory
                 var (c, p, i) = r.Vars<JPath, JPath, long>("c", "p", "i");
                 r.When(Relevant.Of(c), c.Is(Index.Of(p, i)));
                 r.Then(Relevant.Of(p));
-            });
-            Rule("a property of a relevant path is relevant", r =>
-            {
-                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
-                r.When(Relevant.Of(p), c.Is(Prop.Of(p, n)));
-                r.Then(Relevant.Of(c));
             });
             Rule("the pattern of a relevant instance is relevant", r =>
             {

@@ -175,6 +175,39 @@ always a consistent choice.
 | at the schema itself | no branch leaves `ref` a string, so `ref` is never a string |
 | gap 3: an `anyOf` of two `status` enums, and `status = 'purged'` | no case is left: no document |
 | kind `A` with sub-kinds `x` and `y` that both require `z`, and kind `B`, which requires `z` | `kind IN ('A','B')` proves `z`, through a split inside a split |
+| a kind whose branch contradicts what the schema says outright | the schema's own split finds the case contradictory, and the kind leaves the domain: `kind = 'bad'` keeps no document |
+
+That last row was found by accident. A synthetic container meant for timing declared one kind's property both a
+present string and an integer. The schema's compile-time split dropped that kind from the domain, so a query
+naming it alongside another needed no split at all. The behaviour is sound, and it is now a test of its own.
+
+## What a split costs
+
+`MeasureTests` builds a container of many kinds, each declaring typed properties. Two kinds require `p0` and a
+third does not. It runs in Release, writes its figures to `measure.txt` beside the test assembly, and asserts only
+the answers and the number of cases opened. The machine has 4 cores and runs .NET 10.0.13.
+
+| conditional facts | `kind = 'k0'` | `kind IN` two (2 cases) | `kind IN` five (5 cases) | contradicted | schema compiled |
+| --- | --- | --- | --- | --- | --- |
+| 477 | 7.3 ms (warm-up) | 47 ms (warm-up) | 11.0 ms | 0.82 ms | 491 ms |
+| 5,069 | 2.1 ms | 5.2 ms | 6.6 ms | 0.44 ms | 138 ms |
+| 47,502 | 4.6 ms | 4.6 ms | 11.1 ms | 0.46 ms | 776 ms |
+
+The first row runs first, while tiered compilation is still settling.
+
+Three observations:
+- **The run is not the bulk of the cost.** A 2-case query at 47k facts takes 5.2 ms in the run, of which search
+  is 1.3 ms and merge 1.1 ms; the rest is opening, running and lifting cases.
+- **The cost of a query follows its cases, not the size of the schema.** The 5k and 47k containers cost about
+  the same per case. The root's rules (110 of them) are evaluated on every iteration, so this is slower than
+  `spikes/EggnogDerive`'s rows-only interpreter, which had 15 rules.
+- **Concurrency holds.** 512 split queries on 4 threads under one frozen schema context answered exactly as one
+  thread does, in 540 ms.
+
+**Relevance is what keeps it there.** A first version also made every property of a relevant path relevant.
+Every path is a property of the root, so that made everything relevant, and one rule matched 30,000 times per
+query at 40k facts. Without it, run time fell from 5.1 ms to 1.6 ms. The gate decides only where to split, so
+narrowing it can lose a proof, never invent one.
 
 ## What is checked
 
@@ -259,4 +292,9 @@ always a consistent choice.
   only once the length fixes which elements exist.
 - **A disjunction in the query.** A split on `OR` between predicates over different paths: the integration plan's
   per-kind spelling, `(type = 'park' AND …) OR (type = 'map' AND …)`.
-- **What a split costs on a large schema, and with concurrent queries.** Only correctness is measured here.
+- **A per-statement memo.** A plan asks a dozen questions of one derivation, and each figure above is a fresh
+  query context.
+- **Root rules that could be cheaper:**
+  - several rules match only paths that are rarely touched;
+  - Eggnog's roadmap lists demand-indexed rules;
+  - a theory compiled into fewer, wider rules is the other route.

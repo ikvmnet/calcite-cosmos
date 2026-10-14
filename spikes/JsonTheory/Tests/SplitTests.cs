@@ -188,6 +188,27 @@ namespace JsonTheory.Tests
             Assert.IsTrue(query.IsContradictory);
         }
 
+
+        [TestMethod]
+        public void ABranchNoDocumentCanSatisfyLeavesTheDomain()
+        {
+            // ref is a string in every document; the bad kind says it is a present integer. No document is of the
+            // bad kind, which the schema's own split finds when it is compiled: that case is contradictory, and the
+            // lift joins only the live cases' domains.
+            var schema = Contexts.OpenSchema(
+                new JsonFact[]
+                {
+                    new JsonFact.Present("$.kind"), Is("$.kind", "good", "bad"), new JsonFact.Discriminates("$.kind"),
+                    new JsonFact.OfType("$.ref", Types("string")),
+                },
+                new[] { When(Is("$.kind", "bad"), new JsonFact.Present("$.ref"), new JsonFact.OfType("$.ref", Types("integer"))) },
+                new JsonPathSpec[] { "$.ref" });
+            schema.Freeze();
+
+            Assert.AreEqual(Truth.Never, Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("bad"))));
+            Assert.AreEqual(Truth.Always, Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("good"))));
+            Assert.AreEqual(Truth.Never, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "bad")), "a query for the bad kind keeps nothing");
+        }
     }
 
 }

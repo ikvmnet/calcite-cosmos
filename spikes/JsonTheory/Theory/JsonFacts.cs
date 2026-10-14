@@ -294,6 +294,10 @@ namespace JsonTheory
 
         long _next;
 
+        /// <summary>The report of the last context opened on this thread, for measurement.</summary>
+        [ThreadStatic]
+        public static RunReport? LastReport;
+
         /// <summary>
         /// Makes a query's context beneath <paramref name="parent"/> (the root where it is <c>null</c>): mentions the
         /// paths it will be asked about, assumes the facts and saturates, splitting on the discriminators it mentions.
@@ -327,7 +331,7 @@ namespace JsonTheory
             if (assumed.Count > 0)
                 scope.Assume(assumed.ToArray());
 
-            scope.Run(schedule);
+            LastReport = scope.Run(schedule);
             return scope;
         }
 
