@@ -1339,8 +1339,8 @@ left, measured offline through the host's prepare (`CosmosPlanningTests`):
 
 ## 6. A container's declared facts
 
-Built, #93: a JSON Schema on the `containers` operand, compiled to a Horn theory of
-`(path, claim)` atoms the planner asks. `DESIGN.md` under *What a caller may declare beyond it* is
+Built, #93: a JSON Schema on the `containers` operand, read into `(path, claim)` atoms the planner
+asks, and reasoned about since on Eggnog (*The fact reasoning on Eggnog*, below). `DESIGN.md` under *What a caller may declare beyond it* is
 the design record — the model, the measurements, the keyword audit and the trust boundary. What is
 below is what it does not do yet.
 
@@ -1649,178 +1649,77 @@ answer.
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
-### Moving the fact reasoning onto Eggnog — *large; decided, and the design is not yet in `DESIGN.md`*
+### The fact reasoning on Eggnog — *done; what is left is below*
 
-[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, `0.0.1-pre.46`, MIT, net8.0 and net10.0,
-no dependencies) is a C# reimplementation of egglog's engine. It provides:
-- typed relations, and functions with lattice merges;
-- rulesets, schedules and extraction;
-- scopes: frozen bases that are thread-safe to read, with children that read through to them;
-- case splits that lift to the parent what every case proves.
-
-It was built for this adapter. The plan of record lives in its repository, as
+[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, pinned at `0.0.1-pre.46`, MIT, no dependencies) is
+the engine. It is an egglog-style e-graph with scopes, lattices and case splits, built for this adapter. The plan
+of record is in its repository, as
 [`docs/history/cosmos-integration.md`](https://github.com/alethic/eggnog/blob/eda0c61973cb1e41fc0d9994af3e013a9252c4bd/docs/history/cosmos-integration.md)
-(revision 2, read here at `eda0c61`). Read it before changing anything below; this entry records only
-where the plan stands against this repository. The plan's own decisions, in short:
-- Eggnog replaces `JsonFactTheory.Derive` and the questions on `JsonFactSet`, **not** the rewriter.
-- The rollout is shadow mode, per fact kind, with the modes `horn`, `shadow`, `union` and `eggnog`.
-  **Not adopted here; see below.**
-- Horn's closure is kept as the fallback engine until a measured budget says otherwise. **Not adopted
-  here either.**
-- Graphs run serially.
-- `JsonSchemaFacts` and `CosmosFactExtractor` stay as the one front end that feeds both engines.
+(revision 2, read here at `eda0c61`). This entry records where the adapter stands against that plan.
 
-The plan exists because of the gaps it closes. A Horn theory cannot close gaps 1 and 3 without a disjunctive
-head, which *Atoms, clauses, and why asking is linear* rules out. Eggnog closes them with a case split per
-value a present discriminator can still hold, then lifts what every case proves.
+**What is built.**
+- **The theory is under `Facts/Saturation/`,** internal to the adapter, and its tests are the adapter's. Its
+  `README.md` is the catalogue. `DESIGN.md`, from *The theory of JSON, in layers* through *Generations, and what a
+  question costs*, is the record.
+- **The Horn closure is gone,** with the exclusion table. `JsonFactTheory` compiles a declaration into a frozen
+  context; `Derive` saturates a query's established facts beneath it; `JsonFactSet` reads the answers back. The
+  public API is unchanged, and `ClaimsFor`'s two scans became questions: `HasOneScalarType` and `TryGetValue`.
+- **Generations.** One graph per schema object and generation, retired at a million interned values. Each query
+  context is remembered per declaration for the next 256 established sets, and released once nothing holds it.
+- **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
+  four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
+  nested `not`.
+- **Fixed on the way:**
+  - F3: absence is no longer a contradiction;
+  - F2: an equality with text a number renders as is no longer read as a stored string;
+  - F5: `ReferenceEquals` on a struct.
+- **Gaps closed**, each with a control, in `CosmosDeclaredFactPlanningTests.Gaps.cs`:
+  - gap 1, `kind IN (…)`, by a query split;
+  - gap 2, a disequality narrowing a domain;
+  - gap 3, an `anyOf` of enums, by one `(OneOf, OneOf)` row in `JsonFact.Entails`, the meet's.
 
-| gap | query, against what is declared | today | closed by |
-| --- | --- | --- | --- |
-| 1 | `kind IN ('order','invoice')`, each kind declaring `ref` a canonical UUID | the UUID comparison stays in process | a query split, then a lift of `form` |
-| 1, per kind | `(type = 'park' AND …) OR (type = 'map' AND …)` | not even the kind test pushes | a derivation per disjunct, in Horn alone |
-| 2 | enum `{order, invoice}` and `kind <> 'invoice'` | the `order` guard never fires | a disequality narrowing a domain |
-| 3 | `anyOf` of two `status` enums, `status = 'purged'` | the comparison as written | one `(OneOf, OneOf)` row in `Entails`, and an empty `Values` |
-| 4, 5 | `maximum: 100` and `n > 500`; an integer `enum` through a `CAST` | a pushed range; an in-process recheck | bound lattices |
+**The gate is the adapter suite and the theory's soundness oracle**, not agreement with Horn. Horn's known wrong
+answers (F2–F4) are not the specification. The oracle covers stored forms, extension claims and numbers no decimal
+holds. Three bugs planted in what was added were each caught by it.
 
-**Eggnog is the engine; that is settled.** It is meant to solve more than the closure: splits, a rewrite chosen
-by extraction, path equality for `CHECK`, and perhaps one context shared between the implementation plan and
-the execution plan. What is open is how to encode the theory in it, and the spike below answers the first
-part of that.
+**What is left, roughly in order of value.**
+- **Gaps 4 and 5: a range read off a predicate** — *medium.* The theory has bounds, but nothing feeds them. The
+  extractor reads no `<` or `>`, the adapter's claims have no bound, and `JsonSchemaFacts` reads no `minimum`. The
+  plan's §2.8 says how a numeric-cast comparison becomes a window, and its F10 is a saturation hazard to test first.
+- **Gap 1 spelled per kind** — *medium.* `(type = 'park' AND …) OR (type = 'map' AND …)` wants a derivation per
+  disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only.
+- **The schema reader emits splits rather than a meet** — *large.* A hidden discriminator per undiscriminated
+  `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
+  directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
+  33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
+  bottleneck.
+- **What every container costs** — *medium; measure first.* Every container now reasons through a context,
+  including one that declares nothing but the service's facts. A filter over it costs a query context once per
+  distinct predicate, where the closure cost microseconds. The plan's demand gate (§3.6) answers such a set without
+  the engine where the answer cannot differ. Its F6 is the same observation: `IsEmpty` is never true. Measure
+  planning latency on an undeclared container before choosing.
+- **Interning bounded by the vocabulary, not the traffic** — *medium.* The plan's §2.1 renames a query's literals
+  outside the declared vocabulary, which bounds interning and makes memo keys independent of literals. A generation
+  is retired instead today, which bounds memory and not the rate of rebuilds.
+- **Compiling off the planning thread** — *small.* A declaration compiles on the first question in each generation,
+  on whichever thread asks: tens of milliseconds for a small schema, 0.8 s at 47k facts. The plan's §3.4 compiles and
+  warms each declaration on a background worker, and swaps a generation only once every declaration is ready.
+- **One context per declaration, not per container** — *small.* An account schema applies one declaration to a
+  container in every database, and each still compiles its own.
+- **Run limits** — *small.* A query's run stops on contradiction and otherwise has the engine's defaults: 10,000
+  iterations, 64 cases, a split depth of 4. The plan's §3.8 proposes limits per profile, measured on a corpus.
+- **The declared differential corpus** — *medium.* The rows the service returns for a pushed plan, against an
+  in-process evaluation of the same query, over containers with schemas. The plan's step 1, still owed.
+- F7, alias-blind consumers, wants the tests over `CosmosUnnest` aliases the plan names.
+- F9, documentation drift, wants re-reading against what is here now.
+- **What Eggnog adds beyond the closure** — *large, each its own decision.*
+  - The rewriter as extraction under an RU cost.
+  - Path equality for `CHECK`. The theory has it: a union of two path terms.
+  - One context shared between the implementation plan and the execution plan.
 
-**Measured: a container's rules belong in its scope as rows, not as rules** (`spikes/EggnogDerive`, whose
-README has the method and every figure). The spike:
-- compiles our own `Facts/` and JSON Schemas through `JsonSchemaFacts`;
-- answers each derivation with Horn and with Eggnog;
-- asks both engines about every head and every established fact before timing anything, and both agree on
-  every answer at every size;
-- runs its contexts as described: JSON's rules frozen in a root, a container's schema frozen in a child, and a
-  query in a child of that.
-
-| compiled rules | Horn, a pinned discriminator | one Eggnog rule per rule | identical bodies merged (the plan's §2.5) | **rules as rows** |
-| --- | --- | --- | --- | --- |
-| 3,231 | 0.45 ms | 16.6 ms | 0.26 ms | 0.29 ms |
-| 32,805 | 4.9 ms | 510 ms, 251 MB, 23 s to register | 1.24 ms; 4.9 ms when contradicted | **0.63 ms; 53 µs when contradicted** |
-| 109,454 | 18.6 ms | — | — | **1.06 ms; 58 µs when contradicted** |
-
-An Eggnog rule costs every query an evaluation, whether or not anything it reads changed. So the plan's mapping,
-in which each guarded rule becomes a local rule of the container's scope, costs in proportion to the number of
-distinct guards. Merging identical bodies keeps that small for one flat discriminator, but nested
-discriminators, `if`/`then` and per-object `required` carriers multiply it.
-
-Held as rows instead, the rules become data, and they are read by about fifteen fixed rules in the root:
-- `step(r, k)` says that the first `k` atoms of rule `r` hold;
-- an atom keyed `(r, k)` says what extends the chain;
-- a pinned value joins its guards through an index.
-
-A query then costs what it fires. This **revises the plan's §2.5 and §3.3**, which want a local rule per guard.
-The mirrors, licences and splits the plan relies on all read tables, so they are unaffected.
-
-**Found beside it, and independent of the engine.** `JsonSchemaFacts.Meet` is quadratic in the size of a
-`oneOf`. It took 7.5 s to read a 33k-rule schema and 76 s for 109k, against 0.26 s and 1.2 s to register them
-in Eggnog. At tens of thousands of rules the schema reader is the bottleneck, whatever the engine.
-
-**Not yet measured over this encoding:** case splits and lift, concurrent query scopes under one frozen
-container scope, and the extraction step. Each is the next spike.
-
-**What has changed since the plan read this repository.** It read `origin/main` at `7e6ae6a` (#206):
-- **F1 is fixed**, by #217 and #218: `Integer` sits beneath `Number` wherever a claim's type is compared.
-  Phase 0a's `JsonType.cs`/`JsonFact.cs` type row is therefore done. The `(OneOf, OneOf)` subset row for
-  gap 3 is not.
-- **Still open:** F3 (`IsContradictory` pairs claims on paths where `Present` is not known), F5
-  (`ReferenceEquals` on a struct, `CosmosPartitionKeyExtractor.cs:600`), F6 (the "declares nothing" fast
-  path never fires, because every container carries `ServiceFacts`), F2, F4, F7 and F9 as the plan states
-  them. Each wants re-reading against `main` before it is fixed: line numbers have moved.
-- **The gap tests are not in this repository.** `CosmosDeclaredFactPlanningTests.Gaps.cs` existed only as an
-  uncommitted file in a local working copy at `a83fd2a`. It has to be rewritten from the plan's §1.2 and
-  §5.1 and from `prototypes/cosmos-facts/README.md` in Eggnog, with each gap's control.
-
-**The goal is plans that are right, not plans that do not move.** That removes most of the plan's migration
-machinery: per-kind modes, the production shadow, breakers, golden plans as an exit criterion, and Horn as a
-fallback. It also changes what the gate is. Agreeing with Horn cannot be the gate, because Horn's known wrong
-answers (F2–F4) would then be the specification. Parity with Horn stays a diagnostic: a difference is a
-question to answer, and either engine may be the one that is wrong. What decides is soundness:
-- **A document oracle.** Every fact derived under a query must hold of every document that the declaration
-  admits and that the query's established facts admit. Check it over generated documents that cover:
-  - absent paths and absent parents;
-  - nulls, and mixed types;
-  - integral numbers under `number`;
-  - numbers stored as strings;
-  - values beyond a cast's saturation limits.
-
-  This is the plan's Phase 0c, and it comes before the engine, not after.
-- **`CosmosDifferentialTests` with a declared corpus.** The rows the service returns for a pushed plan are
-  the rows an in-process evaluation of the same query returns.
-
-**The order; each step is its own pull request to `main`.**
-1. **Tests that say what right is** — *medium.* No Eggnog yet, and no engine-specific assertions.
-   - The gap tests, asserting the right plan and not today's.
-   - F2–F4, F7 and F10 as plan-level tests.
-   - The document oracle and the declared differential corpus.
-
-   What fails today stays failing until the step that fixes it. F5 (`ReferenceEquals` on a struct) and F9
-   (documentation drift) are fixed now, being outside the fact engine.
-2. **Fix `JsonSchemaFacts.Meet`** — *small.* It is the bottleneck at size whatever the engine, and splits
-   may later replace it.
-3. **A splits spike over the rows encoding** — *done, as a spike.* `spikes/JsonTheory` puts conditional rules
-   into a schema's context as rows, read by an interpreter in the root, and splits on discriminators. It closes
-   gaps 1, 2 and 3 and a split inside a split, each with a control, and a relevance gate restricts each query to
-   the discriminators that bear on it. The soundness oracle covers rules, splits and lifts.
-
-   Measured on 4 cores, with one query context per question:
-
-   | conditional facts | no split | 2 cases | 5 cases |
-   | --- | --- | --- | --- |
-   | 5,069 | 2.1 ms | 5.2 ms | 6.6 ms |
-   | 47,502 | 4.6 ms | 4.6 ms | 11.1 ms |
-
-   512 concurrent split queries under one frozen schema context answered as one thread does. That is
-   affordable behind a per-statement memo, and the cost follows the cases rather than the size of the schema.
-4. **The design into `DESIGN.md`** — *small.* Rules as rows, the scope layout, what makes a split sound,
-   and the deletion licence. Also the rules of JSON in the root:
-   - a present property has a present object for its parent;
-   - a path with no possible type is absent;
-   - absent and present together is a contradiction.
-
-   These replace *Atoms, clauses, and why asking is linear*'s "no exclusion between two type claims", which
-   was right only for a theory with no atom for absence. The spike's README shows what they prove on schemas
-   of eight rules.
-5. **The seam, then the engine** — *large.*
-   - Move `Facts/` into its own project.
-   - Put the questions consumers ask behind one interface, so the `ClaimsFor` scans become questions.
-   - Implement it on Eggnog, with a per-statement memo, because the planner asks a dozen times per statement
-     and a small schema's query scope costs 50–450 µs.
-   - Switch over, delete `JsonFactTheory`'s closure, and fix in the new theory whatever step 1 left failing.
-6. **Then what Eggnog adds beyond the closure** — *large, each its own decision.*
-   - The rewriter as extraction under an RU cost.
-   - Path equality for `CHECK`.
-   - One context shared between the implementation plan and the execution plan.
-
-**Where it stands, and the decision since: replace the engine outright.** The theory has moved out of `spikes/`
-into `src/Apache.Calcite.Cosmos.Facts.Saturation`, with its tests in `src/Apache.Calcite.Cosmos.Facts.Saturation.Tests`,
-converted to xunit v3 and FluentAssertions. Both are in the solution, but not yet in `src/dist-tests` or the CI matrix.
-The theory is in three layers:
-- **The rules of JSON**, global to the graph and frozen in the root: types and values, objects and arrays, lengths,
-  bounds, equality, and patterns.
-- **The rules of JSON Schema**, local rules of a frozen child of the root (`JsonContexts.JsonSchema`): the keywords,
-  and the interpreter for a schema's conditional rules.
-- **A context per schema, and one per query**, beneath that.
-
-The layering compiles; its tests were not run after the split. Two things are next:
-- `JsonFactTheory`/`JsonFactSet` are to be re-implemented over these contexts, and the Horn closure and `Excludes`
-  deleted. The front end stays: `JsonSchemaFacts`, `CosmosFactExtractor`, `JsonFact`/`JsonClaim`.
-- The extractor gains `Present` beside every comparison it reads.
-
-The gate is the adapter suite plus the soundness oracle: a changed plan must be right, not unchanged.
-
-**Before Phase 1, record the decision in `DESIGN.md`.** Two things go there:
-- what makes a split sound: the cases cover the parent, because a split happens only where the path is
-  present, there is one case per remaining value, and domains only shrink;
-- why a deletion may read only the schema's facts (`RulesetOptions.Licence`), so that a conjunct never proves
-  itself redundant.
-
-Pin the exact Eggnog version as Calcite is pinned. It is a single-maintainer prerelease whose public surface
-is pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as
-a wrong schema (*A declaration is trusted*).
+**Pin the exact Eggnog version as Calcite is pinned.** It is a single-maintainer prerelease whose public surface is
+pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
+schema (*A declaration is trusted*).
 
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 

@@ -100,7 +100,30 @@ over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can tr
 `type` declaration earns its keep on its own.
 
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
-would otherwise send only for the recheck to discard.
+would otherwise send only for the recheck to discard. So does a path the query itself compares: a
+comparison keeps only documents that have the path, so `c.carrier = 'x'` beside a weakened comparison on
+`$.carrier` makes the second one's guard redundant.
+
+### A predicate no document can satisfy
+
+A value the schema rules out keeps no row, and the plan says so: the predicate becomes `false`, and
+no comparison is sent.
+
+```sql
+-- "status": { "enum": ["active", "archived"] }
+SELECT c."id" FROM "shipments" AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'deleted'
+```
+
+```
+without a schema   WHERE c.status = @p0, which the service evaluates to find nothing
+with one           WHERE @p0, bound to false — one round trip that reads no document
+```
+
+The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
+
+**What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
+and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does
+not mention `status` is unaffected, and one asking for a `status` keeps nothing.
 
 ## 14.3 Stored forms: what a `pattern` proves
 
@@ -185,6 +208,15 @@ A fact declared inside a branch is used **only when the query has proved the bra
 the branch takes a conjunct the service will evaluate; it composes with point reads, so a guarded
 lookup by id still becomes one.
 
+A query can also prove the branch in other ways:
+
+- **Several kinds at once.** `kind IN ('shipment', 'return')` uses whatever both kinds declare. Each
+  kind is reasoned about on its own, and what all of them say is kept: if both declare `trackingId` a
+  canonical UUID, the UUID comparison beside it reaches the service. If one of them says nothing
+  about `trackingId`, nothing is concluded.
+- **By ruling the other kinds out.** In a container of orders and shipments, `kind <> 'order'` leaves
+  only shipments, and the shipment branch's facts apply.
+
 What **every** branch implies holds without any conjunct, because every document is in some branch.
 That includes a fact branches state differently but compatibly: if `trackingId` is a canonical UUID in
 the shipment branch and `{ "type": "null" }` in the order branch, every document holds either a canonical
@@ -203,10 +235,10 @@ property above the `oneOf`.
 | `pattern` | a stored form, for the recognised spellings (14.3) |
 | `format` | nothing |
 | `allOf` | every branch |
-| `oneOf`, `anyOf` with a discriminating `const` | each branch, guarded by its discriminator value; and what every branch implies, for every document |
-| `oneOf`, `anyOf` without one | only what every branch implies |
+| `oneOf`, `anyOf` with a discriminating `const` | each branch, for documents that have the discriminator and its value; and what every branch implies, for every document |
+| `oneOf`, `anyOf` without one | only what every branch implies; an `anyOf` of enums, the union of their values |
 | `anyOf`/`oneOf` of `{"type":"null"}` and one other schema | that schema, with each fact widened to admit null |
-| `if` / `then` / `else` | a guard, where the whole `if` can be read |
+| `if` / `then` / `else` | a guard, where the whole `if` can be read. `then` applies where the `if` holds, which includes documents without the property it names; `else` applies where the property is present and holds another value |
 | `dependentRequired`, `dependentSchemas` | guarded by the triggering property's presence |
 | `not` | a single property's `const` or `enum`; otherwise nothing |
 | OpenAPI `discriminator` with `mapping` | which branch each discriminator value selects |
