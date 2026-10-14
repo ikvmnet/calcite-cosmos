@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>net8.0</TargetFrameworks>
+        <Nullable>enable</Nullable>
+        <Description>The rules of JSON and of JSON Schema as an Eggnog root context: facts about the paths of a document, conditional rules held as rows, and case splits on discriminators.</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>icon.png</PackageIcon>
+        <PackageTags>apache;calcite;cosmos;cosmosdb;json;jsonschema;egraph;eggnog</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+        <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Eggnog" Version="0.0.1-pre.46" />
+    </ItemGroup>
+
+</Project>

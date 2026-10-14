@@ -16,6 +16,8 @@
   <Folder Name="/src/">
     <Project Path="src/Apache.Calcite.Cosmos.Adapter/Apache.Calcite.Cosmos.Adapter.csproj" />
     <Project Path="src/Apache.Calcite.Cosmos.Adapter.Tests/Apache.Calcite.Cosmos.Adapter.Tests.csproj" />
+    <Project Path="src/Apache.Calcite.Cosmos.Facts.Saturation/Apache.Calcite.Cosmos.Facts.Saturation.csproj" />
+    <Project Path="src/Apache.Calcite.Cosmos.Facts.Saturation.Tests/Apache.Calcite.Cosmos.Facts.Saturation.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Apache.Cosmos.Sample/Apache.Cosmos.Sample.csproj" />

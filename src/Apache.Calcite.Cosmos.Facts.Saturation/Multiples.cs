@@ -5,9 +5,9 @@ using System.Numerics;
 
 using Eggnog;
 
-using static JsonTheory.JsonValues;
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace JsonTheory
+namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>Arithmetic on <c>multipleOf</c> and on integer ranges.</summary>

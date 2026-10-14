@@ -6,18 +6,19 @@ using System.Threading.Tasks;
 
 using Eggnog;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using FluentAssertions;
 
-using static JsonTheory.JsonValues;
+using Xunit;
 
-namespace JsonTheory.Tests
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
+
+namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 {
 
     /// <summary>
     /// What a split costs on a large schema, and whether queries on many threads under one frozen schema context
     /// answer as one thread does. Prints its figures; asserts only the answers.
     /// </summary>
-    [TestClass]
     public sealed class MeasureTests
     {
 
@@ -26,7 +27,7 @@ namespace JsonTheory.Tests
         /// <summary>The figures, written beside the test assembly as <c>measure.txt</c>: the runner keeps a passing test's output.</summary>
         static void Report(string line)
         {
-            Console.WriteLine(line);
+            TestContext.Current.TestOutputHelper?.WriteLine(line);
             lock (Contexts)
                 System.IO.File.AppendAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "measure.txt"), line + Environment.NewLine);
         }
@@ -100,10 +101,10 @@ namespace JsonTheory.Tests
             return micros >= 1000 ? $"{micros / 1000:F2} ms" : $"{micros:F0} µs";
         }
 
-        [TestMethod]
-        [DataRow(10, 30)]
-        [DataRow(32, 100)]
-        [DataRow(60, 500)]
+        [Theory]
+        [InlineData(10, 30)]
+        [InlineData(32, 100)]
+        [InlineData(60, 500)]
         public void WhatASplitCosts(int kinds, int properties)
         {
             var (schema, heads, compile) = Container(kinds, properties);
@@ -119,7 +120,7 @@ namespace JsonTheory.Tests
             {
                 var report = JsonContexts.LastReport!;
                 Report($"   a 2-case query: {report.Elapsed.TotalMilliseconds:F2} ms in the run (search {report.SearchTime.TotalMilliseconds:F2}, merge {report.MergeTime.TotalMilliseconds:F2}, rebuild {report.RebuildTime.TotalMilliseconds:F2}), {report.Iterations} iterations, {report.CasesOpened} cases, {report.Lifts} lifts, {report.Rules.Count} rules");
-                Assert.AreEqual(2, report.CasesOpened, "kind IN two kinds is a split of two cases");
+                report.CasesOpened.Should().Be(2, "kind IN two kinds is a split of two cases");
                 foreach (var (rule, stats) in report.Rules.OrderByDescending(kv => kv.Value.SearchTime).Take(6))
                     Report($"      {stats.SearchTime.TotalMilliseconds,6:F2} ms  {stats.Matches,7} matches  {rule.Name}");
             }
@@ -130,14 +131,14 @@ namespace JsonTheory.Tests
             Report($"   kind IN five kinds (5 cases)       {five,10}  {a4}");
             Report($"   kind = 'nope' (no document)        {none,10}  {a5}");
 
-            Assert.AreEqual(Truth.Always, a1);
-            Assert.AreEqual(Truth.Always, a2, "both kinds require p0, which takes a split");
-            Assert.AreEqual(Truth.Unknown, a3, "k2 does not require p0 when (0 + 2) % 3 != 0");
-            Assert.AreEqual(Truth.Never, a4, "no kind lets p1 be a boolean");
-            Assert.AreEqual(Truth.Never, a5);
+            a1.Should().Be(Truth.Always);
+            a2.Should().Be(Truth.Always, "both kinds require p0, which takes a split");
+            a3.Should().Be(Truth.Unknown, "k2 does not require p0 when (0 + 2) % 3 != 0");
+            a4.Should().Be(Truth.Never, "no kind lets p1 be a boolean");
+            a5.Should().Be(Truth.Never);
         }
 
-        [TestMethod]
+        [Fact]
         public void QueriesOnManyThreadsAnswerAsOneThreadDoes()
         {
             var (schema, _, _) = Container(32, 100);
@@ -157,7 +158,7 @@ namespace JsonTheory.Tests
 
             Report($"{parallel.Length} split queries on {Environment.ProcessorCount} threads under one frozen schema context: {watch.Elapsed.TotalMilliseconds:F0} ms");
             for (var i = 0; i < parallel.Length; i++)
-                Assert.AreEqual(serial[i % questions.Length], parallel[i], $"question {i % questions.Length} on another thread");
+                parallel[i].Should().Be(serial[i % questions.Length], $"question {i % questions.Length} on another thread");
         }
 
     }

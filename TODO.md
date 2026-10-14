@@ -1795,6 +1795,23 @@ question to answer, and either engine may be the one that is wrong. What decides
    - Path equality for `CHECK`.
    - One context shared between the implementation plan and the execution plan.
 
+**Where it stands, and the decision since: replace the engine outright.** The theory has moved out of `spikes/`
+into `src/Apache.Calcite.Cosmos.Facts.Saturation`, with its tests in `src/Apache.Calcite.Cosmos.Facts.Saturation.Tests`,
+converted to xunit v3 and FluentAssertions. Both are in the solution, but not yet in `src/dist-tests` or the CI matrix.
+The theory is in three layers:
+- **The rules of JSON**, global to the graph and frozen in the root: types and values, objects and arrays, lengths,
+  bounds, equality, and patterns.
+- **The rules of JSON Schema**, local rules of a frozen child of the root (`JsonContexts.JsonSchema`): the keywords,
+  and the interpreter for a schema's conditional rules.
+- **A context per schema, and one per query**, beneath that.
+
+The layering compiles; its tests were not run after the split. Two things are next:
+- `JsonFactTheory`/`JsonFactSet` are to be re-implemented over these contexts, and the Horn closure and `Excludes`
+  deleted. The front end stays: `JsonSchemaFacts`, `CosmosFactExtractor`, `JsonFact`/`JsonClaim`.
+- The extractor gains `Present` beside every comparison it reads.
+
+The gate is the adapter suite plus the soundness oracle: a changed plan must be right, not unchanged.
+
 **Before Phase 1, record the decision in `DESIGN.md`.** Two things go there:
 - what makes a split sound: the cases cover the parent, because a split happens only where the path is
   present, there is one case per remaining value, and domains only shrink;

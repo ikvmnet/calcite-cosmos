@@ -2,11 +2,13 @@ using System.Linq;
 
 using Eggnog;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using FluentAssertions;
 
-using static JsonTheory.JsonValues;
+using Xunit;
 
-namespace JsonTheory.Tests
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
+
+namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 {
 
     /// <summary>
@@ -14,7 +16,6 @@ namespace JsonTheory.Tests
     /// about a disjunction: one case per value a present discriminator can still hold, and whatever every case proves
     /// lifted to the context that split.
     /// </summary>
-    [TestClass]
     public sealed class SplitTests
     {
 
@@ -47,62 +48,62 @@ namespace JsonTheory.Tests
         static Truth Ask(Scope schema, JsonAtom atom, params JsonFact[] facts)
         {
             using var query = Contexts.Open(schema, facts, new[] { atom.Path });
-            Assert.AreEqual(0, query.Children.Count, "cases are gone once the run is");
+            query.Children.Count.Should().Be(0, "cases are gone once the run is");
             return Contexts.Decide(query, atom);
         }
 
-        [TestMethod]
+        [Fact]
         public void OneKindProvesItsBranch()
         {
             var schema = Orders();
-            Assert.AreEqual(Truth.Always, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order")));
-            Assert.AreEqual(Truth.Never, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "note")));
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order")).Should().Be(Truth.Always);
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "note")).Should().Be(Truth.Never);
         }
 
-        [TestMethod]
+        [Fact]
         public void TwoKindsNamedTogetherProveWhatBothBranchesSay()
         {
             // The integration plan's gap 1: `kind IN ('order', 'invoice')` proves ref, though neither branch's guard
             // holds alone. A split opens a case per kind, each proves ref, and that is lifted.
             var schema = Orders();
-            Assert.AreEqual(Truth.Always, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "invoice")));
-            Assert.AreEqual(Truth.Never, Ask(schema, new JsonAtom.EqualTo("$.ref", Of("x")), Is("$.kind", "order", "invoice")));
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "invoice")).Should().Be(Truth.Always);
+            Ask(schema, new JsonAtom.EqualTo("$.ref", Of("x")), Is("$.kind", "order", "invoice")).Should().Be(Truth.Never);
         }
 
-        [TestMethod]
+        [Fact]
         public void TwoKindsOneOfWhichSaysOtherwiseProveNothing()
         {
             // The control: a note carries no ref, so `kind IN ('order', 'note')` proves neither presence nor absence.
             var schema = Orders();
-            Assert.AreEqual(Truth.Unknown, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "note")));
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "note")).Should().Be(Truth.Unknown);
         }
 
-        [TestMethod]
+        [Fact]
         public void WithoutADiscriminatorTwoKindsProveNothing()
         {
             var schema = Orders(discriminated: false);
-            Assert.AreEqual(Truth.Unknown, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "invoice")));
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "order", "invoice")).Should().Be(Truth.Unknown);
         }
 
-        [TestMethod]
+        [Fact]
         public void ADomainLessARefusedValueProvesTheBranchLeft()
         {
             // The integration plan's gap 2, with no split at all: a disequality narrows the domain to one value.
             var schema = Orders();
-            Assert.AreEqual(Truth.Always, Ask(schema, new JsonAtom.Defined("$.ref"),
-                new JsonFact.NotEqual("$.kind", Of("note")), new JsonFact.NotEqual("$.kind", Of("invoice"))));
+            Ask(schema, new JsonAtom.Defined("$.ref"),
+                new JsonFact.NotEqual("$.kind", Of("note")), new JsonFact.NotEqual("$.kind", Of("invoice"))).Should().Be(Truth.Always);
         }
 
-        [TestMethod]
+        [Fact]
         public void WhatEveryBranchSaysHoldsOfTheSchemaItself()
         {
             // Split at the schema: no branch leaves ref a string, whichever applies, so none does.
             var schema = Orders();
-            Assert.AreEqual(Truth.Never, Contexts.Decide(schema, new JsonAtom.HasType("$.ref", "string")));
-            Assert.AreEqual(Truth.Unknown, Contexts.Decide(schema, new JsonAtom.Defined("$.ref")));
+            Contexts.Decide(schema, new JsonAtom.HasType("$.ref", "string")).Should().Be(Truth.Never);
+            Contexts.Decide(schema, new JsonAtom.Defined("$.ref")).Should().Be(Truth.Unknown);
         }
 
-        [TestMethod]
+        [Fact]
         public void AnUndiscriminatedUnionSplitsOnAHiddenDiscriminator()
         {
             // The integration plan's gap 3: `anyOf` of two status enums. A hidden discriminator stands for which branch
@@ -119,16 +120,16 @@ namespace JsonTheory.Tests
             schema.Freeze();
 
             using (var query = Contexts.Open(schema, new JsonFact[] { new JsonFact.Present("$.status"), Is("$.status", "purged") }, new[] { branch }))
-                Assert.IsTrue(query.IsContradictory, "no branch allows purged");
+                query.IsContradictory.Should().BeTrue("no branch allows purged");
 
             using (var query = Contexts.Open(schema, new JsonFact[] { new JsonFact.Present("$.status"), Is("$.status", "draft") }, new[] { branch }))
-                Assert.IsFalse(query.IsContradictory);
+                query.IsContradictory.Should().BeFalse();
 
             // And at the schema, what both branches allow is all status can be.
-            Assert.AreEqual(Truth.Never, Contexts.Decide(schema, new JsonAtom.EqualTo("$.status", Of("purged"))));
+            Contexts.Decide(schema, new JsonAtom.EqualTo("$.status", Of("purged"))).Should().Be(Truth.Never);
         }
 
-        [TestMethod]
+        [Fact]
         public void ADiscriminatorInsideABranchSplitsInsideTheCase()
         {
             // kind A has a sub-kind x or y, each of which requires z; kind B requires z itself. Any A or B has a z,
@@ -149,11 +150,11 @@ namespace JsonTheory.Tests
                 new JsonPathSpec[] { "$.z", "$.sub" });
             schema.Freeze();
 
-            Assert.AreEqual(Truth.Always, Ask(schema, new JsonAtom.Defined("$.z"), Is("$.kind", "A", "B")));
-            Assert.AreEqual(Truth.Unknown, Ask(schema, new JsonAtom.Defined("$.z"), Is("$.kind", "A", "C")));
+            Ask(schema, new JsonAtom.Defined("$.z"), Is("$.kind", "A", "B")).Should().Be(Truth.Always);
+            Ask(schema, new JsonAtom.Defined("$.z"), Is("$.kind", "A", "C")).Should().Be(Truth.Unknown);
         }
 
-        [TestMethod]
+        [Fact]
         public void ABodyOfTwoFactsNeedsBoth()
         {
             var schema = Contexts.OpenSchema(
@@ -162,11 +163,11 @@ namespace JsonTheory.Tests
                 new JsonPathSpec[] { "$.meta.v" });
             schema.Freeze();
 
-            Assert.AreEqual(Truth.Never, Ask(schema, new JsonAtom.EqualTo("$.meta.v", Of(1m)), Is("$.kind", "A"), new JsonFact.Present("$.meta")));
-            Assert.AreEqual(Truth.Unknown, Ask(schema, new JsonAtom.EqualTo("$.meta.v", Of(1m)), Is("$.kind", "A")));
+            Ask(schema, new JsonAtom.EqualTo("$.meta.v", Of(1m)), Is("$.kind", "A"), new JsonFact.Present("$.meta")).Should().Be(Truth.Never);
+            Ask(schema, new JsonAtom.EqualTo("$.meta.v", Of(1m)), Is("$.kind", "A")).Should().Be(Truth.Unknown);
         }
 
-        [TestMethod]
+        [Fact]
         public void ABranchThatContradictsTheQueryIsNoCase()
         {
             // kind A says n is at most 10, kind B that n is a string; a query for n > 50 that is a number leaves only
@@ -185,11 +186,11 @@ namespace JsonTheory.Tests
             {
                 new JsonFact.Present("$.n"), new JsonFact.OfType("$.n", Types("number")), new JsonFact.Lower("$.n", Bound.Above(50)),
             }, new JsonPathSpec[] { "$.kind" });
-            Assert.IsTrue(query.IsContradictory);
+            query.IsContradictory.Should().BeTrue();
         }
 
 
-        [TestMethod]
+        [Fact]
         public void ABranchNoDocumentCanSatisfyLeavesTheDomain()
         {
             // ref is a string in every document; the bad kind says it is a present integer. No document is of the
@@ -205,9 +206,9 @@ namespace JsonTheory.Tests
                 new JsonPathSpec[] { "$.ref" });
             schema.Freeze();
 
-            Assert.AreEqual(Truth.Never, Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("bad"))));
-            Assert.AreEqual(Truth.Always, Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("good"))));
-            Assert.AreEqual(Truth.Never, Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "bad")), "a query for the bad kind keeps nothing");
+            Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("bad"))).Should().Be(Truth.Never);
+            Contexts.Decide(schema, new JsonAtom.EqualTo("$.kind", Of("good"))).Should().Be(Truth.Always);
+            Ask(schema, new JsonAtom.Defined("$.ref"), Is("$.kind", "bad")).Should().Be(Truth.Never, "a query for the bad kind keeps nothing");
         }
     }
 

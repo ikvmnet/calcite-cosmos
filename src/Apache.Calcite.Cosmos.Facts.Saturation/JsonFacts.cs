@@ -6,9 +6,9 @@ using System.Text;
 
 using Eggnog;
 
-using static JsonTheory.JsonValues;
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace JsonTheory
+namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
@@ -278,19 +278,39 @@ namespace JsonTheory
             Rules = new JsonRules(Graph);
             Saturation = Rules.Settle;
 
+            // The rules of JSON hold everywhere: they are the graph's own, and the root is frozen with them.
             var root = Graph.Root;
             if (documentsAreObjects)
                 root.Assume(Rules.Present.Of(Rules.Root.Of()), Rules.Types.Of(Rules.Root.Of()).Is(Types(ObjectType)));
 
             root.Run(Saturation);
             root.Freeze();
+
+            // The rules of JSON Schema hold beneath their own context, a child of the root, and every schema's and
+            // every query's context is made beneath that.
+            JsonSchema = root.CreateChild();
+            Rules.DefineSchemaRules(JsonSchema);
+            JsonSchema.Run(Saturation);
+            JsonSchema.Freeze();
         }
 
+        /// <summary>Gets the graph.</summary>
         public EGraph Graph { get; }
 
+        /// <summary>Gets the tables and rules the graph defines.</summary>
         public JsonRules Rules { get; }
 
+        /// <summary>Gets the schedule that runs the rules of JSON and of JSON Schema to saturation, without splitting.</summary>
         public Schedule Saturation { get; }
+
+        /// <summary>Gets the root context, frozen: the rules of JSON, and nothing else.</summary>
+        public Scope Json => Graph.Root;
+
+        /// <summary>
+        /// Gets the JSON Schema context, frozen: a child of the root holding the rules of JSON Schema, beneath which
+        /// every schema's context and every query's is made.
+        /// </summary>
+        public Scope JsonSchema { get; }
 
         long _next;
 
@@ -299,7 +319,7 @@ namespace JsonTheory
         public static RunReport? LastReport;
 
         /// <summary>
-        /// Makes a query's context beneath <paramref name="parent"/> (the root where it is <c>null</c>): mentions the
+        /// Makes a query's context beneath <paramref name="parent"/> (the JSON Schema context where it is <c>null</c>): mentions the
         /// paths it will be asked about, assumes the facts and saturates, splitting on the discriminators it mentions.
         /// </summary>
         public Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions = null, IEnumerable<JsonGuardedRule>? rules = null) =>
@@ -314,7 +334,7 @@ namespace JsonTheory
 
         Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions, IEnumerable<JsonGuardedRule>? rules, Schedule schedule, bool mention)
         {
-            var scope = (parent ?? Graph.Root).CreateChild();
+            var scope = (parent ?? JsonSchema).CreateChild();
             var mentioned = (mentions ?? System.Array.Empty<JsonPathSpec>()).ToList();
             Mention(scope, mentioned);
 

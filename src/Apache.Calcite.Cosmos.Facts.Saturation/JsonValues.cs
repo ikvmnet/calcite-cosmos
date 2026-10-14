@@ -5,7 +5,7 @@ using System.Linq;
 
 using Eggnog;
 
-namespace JsonTheory
+namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>

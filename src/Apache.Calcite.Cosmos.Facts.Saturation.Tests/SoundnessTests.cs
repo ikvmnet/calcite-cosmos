@@ -4,11 +4,13 @@ using System.Linq;
 
 using Eggnog;
 
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using FluentAssertions;
 
-using static JsonTheory.JsonValues;
+using Xunit;
 
-namespace JsonTheory.Tests
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
+
+namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 {
 
     /// <summary>
@@ -20,7 +22,6 @@ namespace JsonTheory.Tests
     /// A derived fact false of a document that satisfies every premise is an unsound rule: in the adapter, a plan that
     /// drops rows. This is the oracle that stands behind the rules, rather than agreement with any other engine.
     /// </remarks>
-    [TestClass]
     public sealed class SoundnessTests
     {
 
@@ -42,7 +43,7 @@ namespace JsonTheory.Tests
         static readonly (JsonPathSpec, JsonPathSpec)[] Pairs =
             Concrete.SelectMany((a, i) => Concrete.Skip(i + 1).Select(b => (a, b))).ToArray();
 
-        [TestMethod]
+        [Fact]
         public void NothingDerivedIsFalseOfADocumentTheFactsAreTrueOf()
         {
             var random = new Random(20261014);
@@ -71,14 +72,14 @@ namespace JsonTheory.Tests
                 }
 
                 foreach (var premise in premises)
-                    Assert.IsTrue(Documents.IsTrue(document, premise), $"the generator stated a falsehood: {premise} of {document}");
+                    Documents.IsTrue(document, premise).Should().BeTrue($"the generator stated a falsehood: {premise} of {document}");
                 foreach (var rule in rules)
-                    Assert.IsTrue(Documents.IsTrue(document, rule), $"the generator stated a false rule: {rule} of {document}");
+                    Documents.IsTrue(document, rule).Should().BeTrue($"the generator stated a false rule: {rule} of {document}");
 
                 using var scope = Contexts.Open(null, premises, Vocabulary, rules);
                 string Case() => $"document {document}\npremises:\n  {string.Join("\n  ", premises)}\nrules:\n  {string.Join("\n  ", rules)}";
 
-                Assert.IsFalse(scope.IsContradictory, $"contradiction from true facts\n{Case()}");
+                scope.IsContradictory.Should().BeFalse($"contradiction from true facts\n{Case()}");
 
                 foreach (var fact in Derived(scope))
                 {
@@ -102,7 +103,7 @@ namespace JsonTheory.Tests
                 }
             }
 
-            Console.WriteLine($"{derived:N0} derived facts checked");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{derived:N0} derived facts checked");
         }
 
         /// <summary>Everything the context holds about the vocabulary, as facts.</summary>

@@ -5,9 +5,9 @@ using System.Linq;
 
 using Eggnog;
 
-using static JsonTheory.JsonValues;
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace JsonTheory.Tests
+namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 {
 
     /// <summary>A JSON value, small enough to enumerate and generate.</summary>

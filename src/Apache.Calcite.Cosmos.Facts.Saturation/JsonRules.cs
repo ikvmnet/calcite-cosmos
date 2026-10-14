@@ -4,9 +4,9 @@ using System.Linq;
 
 using Eggnog;
 
-using static JsonTheory.JsonValues;
+using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace JsonTheory
+namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
@@ -73,6 +73,7 @@ namespace JsonTheory
             NameMaxLength = graph.DefineFunction<JPath, long>("nameMaxLength", ValueLattice.Min<long>());
 
             Json = graph.DefineRuleset("json");
+            JsonSchema = graph.DefineRuleset("json schema");
 
             DefineValues();
             DefineNumbers();
@@ -88,7 +89,11 @@ namespace JsonTheory
 
         public EGraph Graph { get; }
 
+        /// <summary>Gets the rules of JSON: global to the graph, so they hold in every context.</summary>
         public Ruleset Json { get; }
+
+        /// <summary>Gets the rules of JSON Schema: local to the JSON Schema context, so they hold in it and beneath it.</summary>
+        public Ruleset JsonSchema { get; }
 
         public Constructor<JPath> Root { get; }
 
@@ -173,7 +178,27 @@ namespace JsonTheory
         /// <summary>If the path holds an object, every property name is at most this long (<c>propertyNames</c>).</summary>
         public Function<JPath, long> NameMaxLength { get; }
 
+        readonly List<(string Name, Action<RuleBuilder> Define)> _schemaRules = new();
+
+        /// <summary>Defines a rule of JSON: global to the graph, so it holds in every context.</summary>
         void Rule(string name, Action<RuleBuilder> define) => Json.DefineRule(name, define);
+
+        /// <summary>
+        /// Notes a rule of JSON Schema, to be defined in the context that holds them (<see cref="DefineSchemaRules"/>):
+        /// it reads a fact that only a schema keyword states, or it is the machinery of a schema's conditional rules.
+        /// </summary>
+        void SchemaRule(string name, Action<RuleBuilder> define) => _schemaRules.Add((name, define));
+
+        /// <summary>
+        /// Defines the rules of JSON Schema as local rules of <paramref name="scope"/>, a child of the root, so that they
+        /// hold in it and in every context beneath it and nowhere else. Called once, before the scope is frozen.
+        /// </summary>
+        /// <param name="scope">The JSON Schema context.</param>
+        public void DefineSchemaRules(Scope scope)
+        {
+            foreach (var (name, define) in _schemaRules)
+                scope.DefineRule(JsonSchema, name, define);
+        }
 
         void DefineValues()
         {
@@ -306,7 +331,7 @@ namespace JsonTheory
                 r.Where(t, x => x.Contains(ObjectType) == false);
                 r.Then(Absent.Of(c));
             });
-            Rule("a closed object has no other properties", r =>
+            SchemaRule("a closed object has no other properties", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 var s = r.Var<ValueSet<string>>("s");
@@ -314,7 +339,7 @@ namespace JsonTheory
                 r.Where(s, n, (allowed, name) => allowed.Contains(name) == false);
                 r.Then(Absent.Of(c));
             });
-            Rule("a present object has its required properties", r =>
+            SchemaRule("a present object has its required properties", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 var t = r.Var<ValueSet<string>>("t");
@@ -447,27 +472,27 @@ namespace JsonTheory
             Inherit("maxLength", MaxLength);
             Inherit("minItems", MinItems);
             Inherit("maxItems", MaxItems);
-            Inherit("closed", Closed);
-            Inherit("multipleOf", MultipleOf);
-            Inherit("minProperties", MinProperties);
-            Inherit("maxProperties", MaxProperties);
-            Inherit("nameMinLength", NameMinLength);
-            Inherit("nameMaxLength", NameMaxLength);
-            Rule("an instance inherits a least count of a value", r =>
+            Inherit("closed", Closed, schema: true);
+            Inherit("multipleOf", MultipleOf, schema: true);
+            Inherit("minProperties", MinProperties, schema: true);
+            Inherit("maxProperties", MaxProperties, schema: true);
+            Inherit("nameMinLength", NameMinLength, schema: true);
+            Inherit("nameMaxLength", NameMaxLength, schema: true);
+            SchemaRule("an instance inherits a least count of a value", r =>
             {
                 var (c, e, v) = r.Vars<JPath, JPath, string>("c", "e", "v");
                 var n = r.Var<long>("n");
                 r.When(Instance.Of(c, e), n.Is(ContainsAtLeast.Of(e, v)));
                 r.Then(ContainsAtLeast.Of(c, v).Is(n));
             });
-            Rule("an instance inherits a most count of a value", r =>
+            SchemaRule("an instance inherits a most count of a value", r =>
             {
                 var (c, e, v) = r.Vars<JPath, JPath, string>("c", "e", "v");
                 var n = r.Var<long>("n");
                 r.When(Instance.Of(c, e), n.Is(ContainsAtMost.Of(e, v)));
                 r.Then(ContainsAtMost.Of(c, v).Is(n));
             });
-            Rule("an instance inherits uniqueness", r =>
+            SchemaRule("an instance inherits uniqueness", r =>
             {
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
                 r.When(Instance.Of(c, e), Unique.Of(e));
@@ -479,7 +504,7 @@ namespace JsonTheory
                 r.When(Instance.Of(c, e), Ne.Of(e, v));
                 r.Then(Ne.Of(c, v));
             });
-            Rule("an instance inherits a required property", r =>
+            SchemaRule("an instance inherits a required property", r =>
             {
                 var (c, e, n) = r.Vars<JPath, JPath, string>("c", "e", "n");
                 r.When(Instance.Of(c, e), Required.Of(e, n));
@@ -496,20 +521,20 @@ namespace JsonTheory
         void DefineMore()
         {
             // Numbers: multipleOf, and a small integer range as the values it holds.
-            Rule("a multiple narrows a domain", r =>
+            SchemaRule("a multiple narrows a domain", r =>
             {
                 var (p, d, m) = r.Vars<JPath, ValueSet<string>, decimal>("p", "d", "m");
                 r.When(d.Is(Dom.Of(p)), m.Is(MultipleOf.Of(p)));
                 r.Then(Dom.Of(p).Is(Compute.Of(d, m, Multiples.Only)));
             });
-            Rule("a multiple of a whole number is whole", r =>
+            SchemaRule("a multiple of a whole number is whole", r =>
             {
                 var (p, m) = r.Vars<JPath, decimal>("p", "m");
                 r.When(m.Is(MultipleOf.Of(p)));
                 r.Where(m, x => x == decimal.Truncate(x));
                 r.Then(Types.Of(p).Is(AllTypesBut(FractionType)));
             });
-            Rule("no multiple lies between bounds", r =>
+            SchemaRule("no multiple lies between bounds", r =>
             {
                 var (p, m) = r.Vars<JPath, decimal>("p", "m");
                 var (l, h) = r.Vars<Bound, Bound>("l", "h");
@@ -528,14 +553,14 @@ namespace JsonTheory
             });
 
             // Arrays: uniqueItems, and what an empty or impossible element says of its array.
-            Rule("a unique array is no longer than the values its elements can be", r =>
+            SchemaRule("a unique array is no longer than the values its elements can be", r =>
             {
                 var (p, e) = r.Vars<JPath, JPath>("p", "e");
                 var d = r.Var<ValueSet<string>>("d");
                 r.When(Unique.Of(p), e.Is(Each.Of(p)), d.Is(Dom.Of(e)));
                 r.Then(MaxItems.Of(p).Is(Primitives.Count<string>().Of(d)));
             });
-            Rule("two present elements of a unique array are not one value", r =>
+            SchemaRule("two present elements of a unique array are not one value", r =>
             {
                 var (p, a, b) = r.Vars<JPath, JPath, JPath>("p", "a", "b");
                 var (i, j) = r.Vars<long, long>("i", "j");
@@ -569,13 +594,13 @@ namespace JsonTheory
             });
 
             // Objects: what a required property that cannot be there says, and counting properties.
-            Rule("a required property that cannot be there means no object", r =>
+            SchemaRule("a required property that cannot be there means no object", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 r.When(c.Is(Prop.Of(p, n)), Required.Of(p, n), Absent.Of(c));
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
-            Rule("a closed object cannot require what it excludes", r =>
+            SchemaRule("a closed object cannot require what it excludes", r =>
             {
                 var (p, n) = r.Vars<JPath, string>("p", "n");
                 var s = r.Var<ValueSet<string>>("s");
@@ -583,19 +608,19 @@ namespace JsonTheory
                 r.Where(s, n, (allowed, name) => allowed.Contains(name) == false);
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
-            Rule("a present property is counted", r =>
+            SchemaRule("a present property is counted", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 r.When(Present.Of(c), c.Is(Prop.Of(p, n)));
                 r.Then(PresentNames.Of(p).Is(Primitives.Singleton<string>().Of(n)));
             });
-            Rule("a required property is counted", r =>
+            SchemaRule("a required property is counted", r =>
             {
                 var (p, n) = r.Vars<JPath, string>("p", "n");
                 r.When(Required.Of(p, n));
                 r.Then(RequiredNames.Of(p).Is(Primitives.Singleton<string>().Of(n)));
             });
-            Rule("an object has no more properties than allowed", r =>
+            SchemaRule("an object has no more properties than allowed", r =>
             {
                 var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
                 var m = r.Var<long>("m");
@@ -603,7 +628,7 @@ namespace JsonTheory
                 r.Where(s, m, (names, most) => names.Count > most);
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
-            Rule("an object requires no more properties than allowed", r =>
+            SchemaRule("an object requires no more properties than allowed", r =>
             {
                 var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
                 var m = r.Var<long>("m");
@@ -611,7 +636,7 @@ namespace JsonTheory
                 r.Where(s, m, (names, most) => names.Count > most);
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
-            Rule("a closed object has no more properties than it names", r =>
+            SchemaRule("a closed object has no more properties than it names", r =>
             {
                 var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
                 var m = r.Var<long>("m");
@@ -619,7 +644,7 @@ namespace JsonTheory
                 r.Where(s, m, (names, least) => names.Count < least);
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
-            Rule("no object has crossed property counts", r =>
+            SchemaRule("no object has crossed property counts", r =>
             {
                 var (p, l, h) = r.Vars<JPath, long, long>("p", "l", "h");
                 r.When(l.Is(MinProperties.Of(p)), h.Is(MaxProperties.Of(p)));
@@ -631,20 +656,20 @@ namespace JsonTheory
         void DefineContainsAndNames()
         {
             // contains, minContains and maxContains, for a scalar the elements are compared with.
-            Rule("an array holding a value holds it at least once", r =>
+            SchemaRule("an array holding a value holds it at least once", r =>
             {
                 var (p, v) = r.Vars<JPath, string>("p", "v");
                 r.When(Contains.Of(p, v));
                 r.Then(ContainsAtLeast.Of(p, v).Is(1L));
             });
-            Rule("an array holding a value n times is at least n long", r =>
+            SchemaRule("an array holding a value n times is at least n long", r =>
             {
                 var (p, v) = r.Vars<JPath, string>("p", "v");
                 var n = r.Var<long>("n");
                 r.When(n.Is(ContainsAtLeast.Of(p, v)));
                 r.Then(MinItems.Of(p).Is(n));
             });
-            Rule("an array cannot hold a value its elements cannot be", r =>
+            SchemaRule("an array cannot hold a value its elements cannot be", r =>
             {
                 var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
                 var (n, d) = r.Vars<long, ValueSet<string>>("n", "d");
@@ -653,7 +678,7 @@ namespace JsonTheory
                 r.Where(d, v, (domain, value) => domain.Contains(value) == false);
                 r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
             });
-            Rule("an array cannot hold a value of a type its elements cannot have", r =>
+            SchemaRule("an array cannot hold a value of a type its elements cannot have", r =>
             {
                 var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
                 var (n, t) = r.Vars<long, ValueSet<string>>("n", "t");
@@ -662,7 +687,7 @@ namespace JsonTheory
                 r.Where(t, v, (types, value) => types.Contains(TypeOf(value)) == false);
                 r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
             });
-            Rule("an array cannot hold a value its elements are all not", r =>
+            SchemaRule("an array cannot hold a value its elements are all not", r =>
             {
                 var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
                 var n = r.Var<long>("n");
@@ -670,14 +695,14 @@ namespace JsonTheory
                 r.Where(Primitives.GreaterOrEqual.Of(n, 1L));
                 r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
             });
-            Rule("a unique array holds a value at most once", r =>
+            SchemaRule("a unique array holds a value at most once", r =>
             {
                 var (p, v) = r.Vars<JPath, string>("p", "v");
                 var n = r.Var<long>("n");
                 r.When(Unique.Of(p), n.Is(ContainsAtLeast.Of(p, v)));
                 r.Then(ContainsAtMost.Of(p, v).Is(1L));
             });
-            Rule("no array holds a value more often than at most", r =>
+            SchemaRule("no array holds a value more often than at most", r =>
             {
                 var (p, v) = r.Vars<JPath, string>("p", "v");
                 var (l, h) = r.Vars<long, long>("l", "h");
@@ -685,7 +710,7 @@ namespace JsonTheory
                 r.Where(Primitives.Greater.Of(l, h));
                 r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
             });
-            Rule("an array holding a value no times has no element equal to it", r =>
+            SchemaRule("an array holding a value no times has no element equal to it", r =>
             {
                 var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
                 var h = r.Var<long>("h");
@@ -694,7 +719,7 @@ namespace JsonTheory
                 r.Then(Ne.Of(e, v));
             });
 
-            Rule("an array holding a value no times has no element equal to it, element by element", r =>
+            SchemaRule("an array holding a value no times has no element equal to it, element by element", r =>
             {
                 var (p, c, v) = r.Vars<JPath, JPath, string>("p", "c", "v");
                 var (i, h) = r.Vars<long, long>("i", "h");
@@ -704,7 +729,7 @@ namespace JsonTheory
             });
 
             // propertyNames, for the length of a name.
-            Rule("a property whose name is too short is absent", r =>
+            SchemaRule("a property whose name is too short is absent", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 var l = r.Var<long>("l");
@@ -712,7 +737,7 @@ namespace JsonTheory
                 r.Where(n, l, (name, least) => name.Length < least);
                 r.Then(Absent.Of(c));
             });
-            Rule("a property whose name is too long is absent", r =>
+            SchemaRule("a property whose name is too long is absent", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 var h = r.Var<long>("h");
@@ -834,7 +859,7 @@ namespace JsonTheory
             HeadRequired = g.DefineRelation<long, JPath, string>("head_required", local);
             HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
 
-            Rule("a singleton domain pins its value", r =>
+            SchemaRule("a singleton domain pins its value", r =>
             {
                 var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
                 r.When(d.Is(Dom.Of(p)));
@@ -843,7 +868,7 @@ namespace JsonTheory
             });
 
             void Extends(string name, Func<RuleBuilder, Var<long>, Var<long>, Fact[]> atom, Action<RuleBuilder>? where = null) =>
-                Rule("a body is extended by " + name, r =>
+                SchemaRule("a body is extended by " + name, r =>
                 {
                     var (id, k) = r.Vars<long, long>("r", "k");
                     r.When(new[] { Step.Of(id, k) }.Concat(atom(r, id, k)).ToArray());
@@ -855,7 +880,7 @@ namespace JsonTheory
             Extends("a present path", (r, id, k) => { var p = P(r); return new[] { AtomPresent.Of(id, k, p), Present.Of(p) }; });
             Extends("an absent path", (r, id, k) => { var p = P(r); return new[] { AtomAbsent.Of(id, k, p), Absent.Of(p) }; });
             Extends("a pinned value", (r, id, k) => { var p = P(r); var v = r.Var<string>("v"); return new[] { AtomEqual.Of(id, k, p, v), Pinned.Of(p, v) }; });
-            Rule("a body is extended by a domain within a set", r =>
+            SchemaRule("a body is extended by a domain within a set", r =>
             {
                 var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
                 var (s, d) = r.Vars<ValueSet<string>, ValueSet<string>>("s", "d");
@@ -863,7 +888,7 @@ namespace JsonTheory
                 r.Where(Primitives.IsSubsetOf<string>().Of(d, s));
                 r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
             });
-            Rule("a body is extended by types within a set", r =>
+            SchemaRule("a body is extended by types within a set", r =>
             {
                 var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
                 var (s, t) = r.Vars<ValueSet<string>, ValueSet<string>>("s", "t");
@@ -871,14 +896,14 @@ namespace JsonTheory
                 r.Where(Primitives.IsSubsetOf<string>().Of(t, s));
                 r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
             });
-            Rule("a body is extended by a stated disequality", r =>
+            SchemaRule("a body is extended by a stated disequality", r =>
             {
                 var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
                 var v = r.Var<string>("v");
                 r.When(Step.Of(id, k), AtomNe.Of(id, k, p, v), Ne.Of(p, v));
                 r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
             });
-            Rule("a body is extended by a disequality a domain proves", r =>
+            SchemaRule("a body is extended by a disequality a domain proves", r =>
             {
                 var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
                 var (v, d) = r.Vars<string, ValueSet<string>>("v", "d");
@@ -886,7 +911,7 @@ namespace JsonTheory
                 r.Where(d, v, (domain, value) => domain.Contains(value) == false);
                 r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
             });
-            Rule("a complete body", r =>
+            SchemaRule("a complete body", r =>
             {
                 var (id, n) = r.Vars<long, long>("r", "n");
                 r.When(Step.Of(id, n), Length.Of(id, n));
@@ -894,7 +919,7 @@ namespace JsonTheory
             });
 
             void Head<T>(string name, Relation<long, JPath, T> table, Func<Term<JPath>, Term<T>, Fact> fact) =>
-                Rule("a complete body states " + name, r =>
+                SchemaRule("a complete body states " + name, r =>
                 {
                     var (id, p) = r.Vars<long, JPath>("r", "p");
                     var v = r.Var<T>("v");
@@ -902,13 +927,13 @@ namespace JsonTheory
                     r.Then(fact(p, v));
                 });
 
-            Rule("a complete body states presence", r =>
+            SchemaRule("a complete body states presence", r =>
             {
                 var (id, p) = r.Vars<long, JPath>("r", "p");
                 r.When(Done.Of(id), HeadPresent.Of(id, p));
                 r.Then(Present.Of(p));
             });
-            Rule("a complete body states absence", r =>
+            SchemaRule("a complete body states absence", r =>
             {
                 var (id, p) = r.Vars<long, JPath>("r", "p");
                 r.When(Done.Of(id), HeadAbsent.Of(id, p));
@@ -928,31 +953,31 @@ namespace JsonTheory
             // is an instance of, and what a conditional rule reads where its head speaks of a relevant path. Not a
             // path's properties: every path is a property of the root, so that would make everything relevant. The
             // gate decides only where to split, so a split it skips proves less and never anything false.
-            Rule("a mentioned path is relevant", r =>
+            SchemaRule("a mentioned path is relevant", r =>
             {
                 var p = r.Var<JPath>("p");
                 r.When(Mentioned.Of(p));
                 r.Then(Relevant.Of(p));
             });
-            Rule("the parent of a relevant path is relevant", r =>
+            SchemaRule("the parent of a relevant path is relevant", r =>
             {
                 var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
                 r.When(Relevant.Of(c), c.Is(Prop.Of(p, n)));
                 r.Then(Relevant.Of(p));
             });
-            Rule("the array of a relevant element is relevant", r =>
+            SchemaRule("the array of a relevant element is relevant", r =>
             {
                 var (c, p, i) = r.Vars<JPath, JPath, long>("c", "p", "i");
                 r.When(Relevant.Of(c), c.Is(Index.Of(p, i)));
                 r.Then(Relevant.Of(p));
             });
-            Rule("the pattern of a relevant instance is relevant", r =>
+            SchemaRule("the pattern of a relevant instance is relevant", r =>
             {
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
                 r.When(Relevant.Of(c), Instance.Of(c, e));
                 r.Then(Relevant.Of(e));
             });
-            Rule("what a rule reads is relevant where what it states is", r =>
+            SchemaRule("what a rule reads is relevant where what it states is", r =>
             {
                 var (id, h, p) = r.Vars<long, JPath, JPath>("r", "h", "p");
                 r.When(Relevant.Of(h), HeadPath.Of(id, h), AtomPath.Of(id, p));
@@ -964,13 +989,13 @@ namespace JsonTheory
             // again on a discriminator its own branch makes present.
             SchemaSplit = g.DefineDomainSplit<JPath, string>("discriminator", Dom, new[] { Discriminator, Present });
             QuerySplit = g.DefineDomainSplit<JPath, string>("relevant discriminator", Dom, new[] { Discriminator, Present, Relevant });
-            Settle = Schedule.Saturate(Json);
+            Settle = Schedule.Saturate(Json, JsonSchema);
             SchemaSaturation = Schedule.Saturate(Settle, Schedule.Split(SchemaSplit, Schedule.Saturate(Settle, Schedule.Split(SchemaSplit, Settle))));
             QuerySaturation = Schedule.Saturate(Settle, Schedule.Split(QuerySplit, Schedule.Saturate(Settle, Schedule.Split(QuerySplit, Settle))));
         }
 
-        void Inherit<T>(string name, Function<JPath, T> table) =>
-            Rule($"an instance inherits {name}", r =>
+        void Inherit<T>(string name, Function<JPath, T> table, bool schema = false) =>
+            (schema ? (Action<string, Action<RuleBuilder>>)SchemaRule : Rule)($"an instance inherits {name}", r =>
             {
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
                 var v = r.Var<T>("v");
