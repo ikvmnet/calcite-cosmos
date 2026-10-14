@@ -18,9 +18,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
     /// </summary>
     /// <remarks>
     /// Two things are being pinned. That a guarded fact is unusable until its guard is proven, which is
-    /// the whole soundness argument for a container holding more than one kind of document; and that
-    /// subsumption is not a rule — a known value settles presence, type and disequality without any of
-    /// them being derived, which is what keeps the rule set linear in the schema.
+    /// the whole soundness argument for a container holding more than one kind of document; and that a
+    /// known value settles type, membership and disequality — but never presence, which a claim about a
+    /// value does not make.
     /// </remarks>
     public class JsonFactTheoryTests
     {
@@ -248,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             {
                 fact.Entails(number).Should().BeTrue($"{fact.Claim} is a number");
                 fact.Entails(nullableNumber).Should().BeTrue($"{fact.Claim} is a number, which a nullable number admits");
-                fact.Excludes(number).Should().BeFalse($"{fact.Claim} is a number, so a path declared one may hold it");
+                JsonFactTheory.Empty.Derive(new[] { fact, Present(At), number }).IsContradictory.Should().BeFalse($"{fact.Claim} is a number, so a path declared one may hold it");
             }
 
             Equals(At, 1.5d).Entails(number).Should().BeTrue();
@@ -266,10 +266,185 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             new JsonFact(At, new JsonClaim.OfType(JsonType.Integer, OrNull: true))
                 .Entails(new JsonFact(At, new JsonClaim.OfType(JsonType.Number))).Should().BeFalse("admitting a null is weaker than not admitting one");
 
-            Equals(At, 1.5d).Excludes(integer).Should().BeTrue("a value with a fractional part is no integer");
-            Equals(At, "2").Excludes(new JsonFact(At, new JsonClaim.OfType(JsonType.Number))).Should().BeTrue("a string is no number, whatever it spells");
-            new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1.5d, 2.5d })).Excludes(integer).Should().BeTrue();
+            Contradicts(Equals(At, 1.5d), integer).Should().BeTrue("a value with a fractional part is no integer");
+            Contradicts(Equals(At, "2"), new JsonFact(At, new JsonClaim.OfType(JsonType.Number))).Should().BeTrue("a string is no number, whatever it spells");
+            Contradicts(new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1.5d, 2.5d })), integer).Should().BeTrue();
         }
+
+        /// <summary>
+        /// Two claims no one value satisfies say that the path is absent, and contradict each other only beside a
+        /// presence. F3: a declared enum and a type outside it are a schema saying the property is never there, which
+        /// a document satisfies by not having it — so no query over the container is answered as empty for it.
+        /// </summary>
+        [Fact]
+        public void TwoClaimsNoValueSatisfiesProveAbsenceAndNotAContradiction()
+        {
+            var number = new JsonFact(At, new JsonClaim.OfType(JsonType.Number));
+            var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, "2"), number });
+
+            set.IsContradictory.Should().BeFalse("a document without the path satisfies both");
+            set.Knows(new JsonFact(At, new JsonClaim.Present())).Should().BeFalse();
+            set.Knows(Equals(At, "anything")).Should().BeTrue("an absent path satisfies every claim about its value");
+
+            var declared = new JsonFactTheory(new[]
+            {
+                JsonFactRule.Unconditional(new JsonFact(Type, new JsonClaim.OneOf(new JsonScalar[] { "Park", "ParkMap" }))),
+                JsonFactRule.Unconditional(new JsonFact(Type, new JsonClaim.OfType(JsonType.Integer))),
+            });
+
+            declared.Derive(null).IsContradictory.Should().BeFalse("the declaration admits every document without a type");
+            declared.Derive(new[] { new JsonFact(Type, new JsonClaim.Present()) }).IsContradictory.Should().BeTrue("and none with one");
+        }
+
+        /// <summary>
+        /// A pinned value is read back as the scalar it is, and only where exactly one value is possible.
+        /// </summary>
+        [Fact]
+        public void APinnedValueIsReadBackAsItsScalar()
+        {
+            foreach (var value in new JsonScalar[] { "ParkMap", 42L, 1.5m, true, JsonScalar.Null, 1e300 })
+            {
+                var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, value) });
+
+                set.TryGetValue(At, out var read).Should().BeTrue($"{value} is pinned");
+                read.Should().Be(value);
+            }
+
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })) })
+                .TryGetValue(At, out _).Should().BeFalse("two values are possible");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(At, out _).Should().BeFalse("nothing is known of the value");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(Type, out _).Should().BeFalse("nor of a path nothing mentions");
+        }
+
+        /// <summary>
+        /// A number a decimal cannot hold is one value, of its own type, and no bound or domain loses it.
+        /// </summary>
+        [Fact]
+        public void ANumberBeyondADecimalIsCarried()
+        {
+            var huge = JsonFactTheory.Empty.Derive(new[] { Equals(At, 1e300), Present(At) });
+
+            huge.IsContradictory.Should().BeFalse();
+            huge.Knows(new JsonFact(At, new JsonClaim.OfType(JsonType.Integer))).Should().BeTrue("1e300 is whole");
+            huge.Knows(Equals(At, 1e300)).Should().BeTrue();
+            huge.Knows(Equals(At, 2e300)).Should().BeFalse("another such number is another value");
+
+            JsonFactTheory.Empty.Derive(new[] { Equals(At, 1e300), Equals(At, 2e300), Present(At) }).IsContradictory.Should().BeTrue();
+        }
+
+        /// <summary>
+        /// One scalar kind is what makes a path's text a faithful reading of its value; a null beside it reads as no
+        /// text, and two kinds read alike.
+        /// </summary>
+        [Fact]
+        public void OneScalarKindIsAskedOfTheTypes()
+        {
+            JsonFactSet Typed(JsonType type, bool orNull = false) =>
+                JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OfType(type, orNull)) });
+
+            Typed(JsonType.String).HasOneScalarType(At).Should().BeTrue();
+            Typed(JsonType.String, orNull: true).HasOneScalarType(At).Should().BeTrue("a null reads as no text at all");
+            Typed(JsonType.Number).HasOneScalarType(At).Should().BeTrue("an integer and a fraction are one kind");
+            Typed(JsonType.Object).HasOneScalarType(At).Should().BeFalse();
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "1", 1L })) })
+                .HasOneScalarType(At).Should().BeFalse("a string and a number read alike");
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })) })
+                .HasOneScalarType(At).Should().BeTrue("a domain of strings settles the kind as a declared type does");
+        }
+
+        /// <summary>
+        /// Always a scalar is there, of one kind, and never null.
+        /// </summary>
+        [Fact]
+        public void AlwaysAScalarIsThereOfOneKindAndNeverNull()
+        {
+            JsonFactSet With(params JsonFact[] facts) => JsonFactTheory.Empty.Derive(facts);
+            var integer = new JsonFact(At, new JsonClaim.OfType(JsonType.Integer));
+
+            With(integer, Present(At)).IsAlwaysScalar(At).Should().BeTrue();
+            With(integer).IsAlwaysScalar(At).Should().BeFalse("an absent path reads as null");
+            With(new JsonFact(At, new JsonClaim.OfType(JsonType.Integer, OrNull: true)), Present(At)).IsAlwaysScalar(At).Should().BeFalse("and so does a stored null");
+            With(Equals(At, "x"), Present(At)).IsAlwaysScalar(At).Should().BeTrue("a value settles its type");
+        }
+
+        /// <summary>
+        /// An extension says in JSON's terms what it entails, and those are what the rest of the theory reads: a
+        /// geography is an object, and one that is there, so the path's parent is there too.
+        /// </summary>
+        [Fact]
+        public void AnExtensionStatesWhatItEntails()
+        {
+            var location = JsonDocumentPath.Root.Property("data").Property("location");
+            var theory = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())) });
+            var set = theory.Derive(null);
+
+            set.IsAlwaysGeography(location).Should().BeTrue();
+            set.Knows(Present(location)).Should().BeTrue();
+            set.Knows(new JsonFact(location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
+            set.Knows(Present(JsonDocumentPath.Root.Property("data"))).Should().BeTrue("a present property has a present object for a parent");
+            set.IsAlwaysGeography(At).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A statement asking twice reads one context: the same established set is answered by the same set.
+        /// </summary>
+        [Fact]
+        public void TheSameEstablishedSetIsAnsweredOnce()
+        {
+            var theory = new JsonFactTheory(new[] { new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) });
+
+            var first = theory.Derive(new[] { Equals(Type, "ParkMap"), Present(Type) });
+            var again = theory.Derive(new[] { Present(Type), Equals(Type, "ParkMap"), Present(Type) });
+
+            again.Should().BeSameAs(first, "the order of the facts and a repeated one say nothing new");
+            theory.Derive(new[] { Equals(Type, "Park") }).Should().NotBeSameAs(first);
+        }
+
+        /// <summary>
+        /// A generation that has interned enough is retired, a theory compiles itself into the next, and its answers
+        /// do not change; one given out by the retired generation still answers.
+        /// </summary>
+        [Fact]
+        public void ATheoryAnswersAlikeInEveryGeneration()
+        {
+            var generations = new JsonFactGenerations(internedLimit: 1);
+            var theory = new JsonFactTheory(new[] { new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) }, generations);
+
+            var first = theory.Derive(new[] { Equals(Type, "ParkMap") });
+            var started = generations.Started;
+            var second = theory.Derive(new[] { Equals(Type, "ParkMap") });
+
+            generations.Started.Should().BeGreaterThan(started, "the first generation interned more than its limit");
+            second.Should().NotBeSameAs(first);
+            second.RepresentationOf(ParkId).Should().Be(EqualityOnly);
+            first.RepresentationOf(ParkId).Should().Be(EqualityOnly, "a retired generation lives as long as an answer it gave");
+            theory.Derive(null).RepresentationOf(ParkId).Should().BeNull();
+        }
+
+        /// <summary>
+        /// Many threads asking one theory get what one thread gets.
+        /// </summary>
+        [Fact]
+        public void ConcurrentQuestionsAnswerAsOneThreadDoes()
+        {
+            var theory = new JsonFactTheory(new[] { new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) });
+            var kinds = new JsonScalar[] { "ParkMap", "Park", "Trail", "Map" };
+
+            var answers = new CosmosRepresentation?[256];
+            System.Threading.Tasks.Parallel.For(0, answers.Length, i =>
+                answers[i] = theory.Derive(new[] { Equals(Type, kinds[i % kinds.Length]), new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { i % 7 })) }).RepresentationOf(ParkId));
+
+            for (var i = 0; i < answers.Length; i++)
+                answers[i].Should().Be(i % kinds.Length == 0 ? EqualityOnly : null, $"question {i}");
+        }
+
+        static JsonFact Present(JsonDocumentPath path) => new(path, new JsonClaim.Present());
+
+        /// <summary>
+        /// Whether two claims about a path that is there have no document in common.
+        /// </summary>
+        static bool Contradicts(JsonFact left, JsonFact right) =>
+            JsonFactTheory.Empty.Derive(new[] { left, right, Present(left.Path) }).IsContradictory;
 
 
     }

@@ -21,6 +21,16 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- The engine the fact theory runs on: a single-maintainer prerelease, pinned the way Calcite is. -->
+        <PackageReference Include="Eggnog" Version="0.0.1-pre.46" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The theory of JSON under Facts/Saturation is internal, and its tests are the adapter's. -->
+        <InternalsVisibleTo Include="Apache.Calcite.Cosmos.Adapter.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="IKVM" Version="8.16.1" />
         <PackageReference Include="IKVM.Java.Extensions" Version="8.16.1" />
         <PackageReference Include="IKVM.Maven.Sdk" Version="1.12.1" />

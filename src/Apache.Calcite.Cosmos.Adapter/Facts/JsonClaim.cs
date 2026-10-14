@@ -12,7 +12,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// property holding a particular value — and a claim a rewrite can consume — a path holding a
     /// canonical lowercase UUID — are the same kind of thing, and keeping them the same kind is what
     /// lets a schema express facts that are conditional on other facts without a second mechanism. See
-    /// <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
+    /// <c>DESIGN.md</c> under <em>The theory of JSON, in layers</em>.
     /// </remarks>
     public abstract record JsonClaim
     {

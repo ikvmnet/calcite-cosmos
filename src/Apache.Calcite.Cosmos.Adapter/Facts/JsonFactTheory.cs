@@ -2,25 +2,37 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
+
 namespace Apache.Calcite.Cosmos.Facts
 {
 
     /// <summary>
-    /// A container's declared schema, compiled to rules the planner can ask questions of.
+    /// A container's declared schema, compiled to a context of the theory of JSON that the planner can ask questions of.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Compiled once, when the schema is registered — unlike the row count beside it this is derived
-    /// from an operand and never changes, so it is a cache with no expiry. Asking it is
-    /// <see cref="Derive"/>, which forward-chains from what a query established to everything that
-    /// follows.
+    /// <b>Three layers above it, and one per query below.</b> The rules of JSON are the graph's own, frozen in its root;
+    /// the rules of JSON Schema are local to a frozen child of the root; and this declaration is a frozen context beneath
+    /// that, holding its unconditional facts as facts and its conditional ones as rows a fixed interpreter reads. Asking
+    /// it is <see cref="Derive"/>: what a query established becomes a context beneath this one, saturated, and read.
     /// </para>
     /// <para>
-    /// The cost is linear in the size of the theory: each rule fires at most once, and a rule is
-    /// reconsidered only when a fact about a path its body mentions is added. Dowling and Gallier
-    /// (1984) is the result; the counter-per-clause form there is adapted here to re-scan the body
-    /// instead, because a body atom is satisfied by any known fact that <em>entails</em> it rather
-    /// than only by its literal self, and bodies are one or two atoms long.
+    /// <b>A conditional rule is a row, not a rule of the engine.</b> One engine rule per declared rule costs every query
+    /// an evaluation of each, fired or not — half a second at thirty thousand. As rows, a query costs the rules it fires.
+    /// </para>
+    /// <para>
+    /// <b>A disjunction is reasoned about by cases.</b> Where a query leaves a discriminator two or more values, the
+    /// context splits on them, one case per value, and keeps what every case proves: <c>kind IN ('order', 'invoice')</c>
+    /// proves what both kinds declare, which no single guard does.
+    /// </para>
+    /// <para>
+    /// <b>Compiled when first asked, and again in each generation.</b> The graph a declaration compiles into is retired
+    /// once it has interned enough (see <see cref="JsonFactGenerations"/>), and the next question compiles it into the
+    /// one that replaced it. A statement asks a dozen times and a context costs milliseconds, so what a query
+    /// established is remembered for the statements that follow: an established set is answered by one context.
     /// </para>
     /// </remarks>
     public sealed class JsonFactTheory
@@ -31,57 +43,117 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public static readonly JsonFactTheory Empty = new(Array.Empty<JsonFactRule>());
 
+        /// <summary>
+        /// How many established sets a compiled theory remembers the answers to.
+        /// </summary>
+        const int Remembered = 256;
+
+        /// <summary>
+        /// How a query's context runs: it stops once it is contradictory, there being nothing more to know of a predicate
+        /// that keeps no row.
+        /// </summary>
+        static readonly RunOptions QueryRun = new() { StopOnContradiction = true };
+
         readonly JsonFactRule[] _rules;
-        readonly Dictionary<JsonDocumentPath, List<int>> _mentioning;
-        readonly int[] _unconditional;
-        readonly Lazy<JsonFactSet> _stated;
         readonly bool _conditional;
         readonly bool _representations;
+        readonly JsonFactVocabulary _vocabulary = new();
+        readonly List<Saturation.JsonFact> _stated = new();
+        readonly List<JsonGuardedRule> _guarded = new();
+        readonly List<JsonPathSpec> _paths = new();
+        readonly bool _splits;
+        readonly object _compiling = new();
+        Compiled? _compiled;
 
         /// <summary>
         /// Initializes a new instance.
         /// </summary>
         /// <param name="rules">The compiled rules.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <c>null</c>.</exception>
-        public JsonFactTheory(IEnumerable<JsonFactRule> rules)
+        public JsonFactTheory(IEnumerable<JsonFactRule> rules) :
+            this(rules, null)
+        {
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance that reasons in the given generations.
+        /// </summary>
+        /// <param name="rules">The compiled rules.</param>
+        /// <param name="generations">The generations to compile into, or <c>null</c> for <see cref="JsonFactGenerations.Default"/>.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="rules"/> is <c>null</c>.</exception>
+        internal JsonFactTheory(IEnumerable<JsonFactRule> rules, JsonFactGenerations? generations)
         {
             if (rules is null)
                 throw new ArgumentNullException(nameof(rules));
 
             _rules = new List<JsonFactRule>(rules).ToArray();
-            _mentioning = new Dictionary<JsonDocumentPath, List<int>>();
+            Generations = generations ?? JsonFactGenerations.Default;
 
-            var unconditional = new List<int>();
-
-            for (var i = 0; i < _rules.Length; i++)
-            {
-                if (_rules[i].Body.Count == 0)
-                {
-                    unconditional.Add(i);
-                    continue;
-                }
-
-                foreach (var atom in _rules[i].Body)
-                {
-                    if (_mentioning.TryGetValue(atom.Path, out var list) == false)
-                        _mentioning[atom.Path] = list = new List<int>();
-
-                    if (list.Contains(i) == false)
-                        list.Add(i);
-                }
-            }
-
-            _unconditional = unconditional.ToArray();
-            _conditional = _unconditional.Length != _rules.Length;
+            var paths = new HashSet<JsonPathSpec>();
+            var discriminators = new HashSet<JsonPathSpec>();
 
             foreach (var rule in _rules)
+            {
                 if (rule.Head.Claim is JsonClaim.Represents)
                     _representations = true;
 
-            // What holds before a query proves anything is the same answer every time, and every
-            // container has one now that the service's own guarantees are in here. Computed once.
-            _stated = new Lazy<JsonFactSet>(() => Close(null), LazyThreadSafetyMode.ExecutionAndPublication);
+                if (rule.Body.Count > 0)
+                    _conditional = true;
+
+                var heads = new List<Saturation.JsonFact>(JsonFactEncoding.Statement(rule.Head, _vocabulary, register: true));
+                if (heads.Count == 0)
+                    continue;
+
+                foreach (var head in heads)
+                    paths.Add(head.Path);
+
+                if (rule.Body.Count == 0)
+                {
+                    _stated.AddRange(heads);
+                    continue;
+                }
+
+                // A body the theory cannot read is no rule at all: dropping it loses what it states, and a rule read in
+                // part would state it of documents its body excludes.
+                var body = new List<Saturation.JsonFact>(rule.Body.Count);
+                foreach (var atom in rule.Body)
+                {
+                    if (JsonFactEncoding.Condition(atom) is not Saturation.JsonFact condition)
+                    {
+                        body = null;
+                        break;
+                    }
+
+                    body.Add(condition);
+                }
+
+                if (body is null)
+                    continue;
+
+                foreach (var condition in body)
+                {
+                    paths.Add(condition.Path);
+
+                    // A path a body reads a value of is one a split can decide the body on.
+                    if (condition is Saturation.JsonFact.OneOf or Saturation.JsonFact.NotEqual)
+                        discriminators.Add(condition.Path);
+                }
+
+                _guarded.Add(new JsonGuardedRule(body, heads));
+            }
+
+            foreach (var discriminator in discriminators)
+                _stated.Add(new Saturation.JsonFact.Discriminates(discriminator));
+
+            _paths.AddRange(paths);
+            _splits = discriminators.Count > 0;
         }
+
+        /// <summary>
+        /// Gets the generations this theory compiles into.
+        /// </summary>
+        internal JsonFactGenerations Generations { get; }
 
         /// <summary>
         /// Gets whether every rule holds outright, so that nothing a query proves can add to them.
@@ -113,92 +185,214 @@ namespace Apache.Calcite.Cosmos.Facts
         public bool IsEmpty => _rules.Length == 0;
 
         /// <summary>
-        /// Closes a query's established facts under the container's rules.
+        /// Saturates a query's established facts beneath the container's declaration.
         /// </summary>
         /// <remarks>
-        /// The facts a query establishes are read off its predicate — an equality pins a value, an
-        /// <c>IN</c> a domain, an <c>IS NOT NULL</c> a presence. What comes back is those plus
-        /// everything the schema says follows from them, which is what a rewrite consults.
+        /// The facts a query establishes are read off its predicate — an equality pins a value and says the path is
+        /// there, an <c>IN</c> a domain, an <c>IS NOT NULL</c> a presence. What comes back knows those and everything the
+        /// rules of JSON, of JSON Schema and of the declaration prove from them beside what the declaration states.
+        /// Asked with nothing, it is the declaration's own context, which every query's lies beneath.
         /// </remarks>
         /// <param name="established">What the query proved, which may be empty.</param>
-        /// <returns>The closure.</returns>
+        /// <returns>What is known.</returns>
         public JsonFactSet Derive(IEnumerable<JsonFact>? established)
         {
-            if (established is null || established is ICollection<JsonFact> { Count: 0 })
-                return _stated.Value;
-
-            return Close(established);
-        }
-
-        JsonFactSet Close(IEnumerable<JsonFact>? established)
-        {
-            if (_rules.Length == 0 && established is null)
+            var facts = Distinct(established);
+            if (facts.Length == 0 && _rules.Length == 0)
                 return JsonFactSet.Empty;
 
-            var byPath = new Dictionary<JsonDocumentPath, List<JsonFact>>();
-            var pending = new Queue<JsonDocumentPath>();
-            var fired = new bool[_rules.Length];
+            var compiled = Compile();
+            return facts.Length == 0 ? compiled.Outright : compiled.Derive(facts);
+        }
 
-            void Add(JsonFact fact)
+        /// <summary>
+        /// Determines whether an exception is one the engine raises for a context it could not answer for, which loses
+        /// facts rather than failing a plan.
+        /// </summary>
+        internal static bool IsEngineFailure(Exception e) =>
+            e is RuleEvaluationException or FactConflictException or ScopeContradictedException
+                or InvalidOperationException or ObjectDisposedException;
+
+        static JsonFact[] Distinct(IEnumerable<JsonFact>? established)
+        {
+            if (established is null)
+                return Array.Empty<JsonFact>();
+
+            var seen = new HashSet<JsonFact>();
+            var list = new List<JsonFact>();
+            foreach (var fact in established)
+                if (seen.Add(fact))
+                    list.Add(fact);
+
+            return list.ToArray();
+        }
+
+        /// <summary>
+        /// Returns this declaration compiled into the current generation, compiling it where it is not.
+        /// </summary>
+        Compiled Compile()
+        {
+            var generation = Generations.Current;
+            var compiled = Volatile.Read(ref _compiled);
+            if (compiled is not null && ReferenceEquals(compiled.Generation, generation))
+                return compiled;
+
+            lock (_compiling)
             {
-                if (byPath.TryGetValue(fact.Path, out var known) == false)
-                    byPath[fact.Path] = known = new List<JsonFact>();
-
-                foreach (var candidate in known)
-                    if (candidate.Entails(fact))
-                        return;
-
-                known.Add(fact);
-                pending.Enqueue(fact.Path);
-            }
-
-            if (established is not null)
-                foreach (var fact in established)
-                    Add(fact);
-
-            // What the schema states outright holds before anything is established, and may itself
-            // satisfy another rule's body.
-            foreach (var i in _unconditional)
-            {
-                fired[i] = true;
-                Add(_rules[i].Head);
-            }
-
-            var set = new JsonFactSet(byPath);
-
-            while (pending.Count > 0)
-            {
-                var path = pending.Dequeue();
-
-                if (_mentioning.TryGetValue(path, out var candidates) == false)
-                    continue;
-
-                foreach (var i in candidates)
+                compiled = _compiled;
+                if (compiled is null || ReferenceEquals(compiled.Generation, generation) == false)
                 {
-                    if (fired[i])
-                        continue;
+                    compiled = new Compiled(this, generation);
+                    Volatile.Write(ref _compiled, compiled);
+                }
 
-                    var rule = _rules[i];
-                    var satisfied = true;
+                return compiled;
+            }
+        }
 
-                    foreach (var atom in rule.Body)
-                    {
-                        if (set.Knows(atom) == false)
-                        {
-                            satisfied = false;
-                            break;
-                        }
-                    }
+        /// <summary>
+        /// The declaration in one generation: its frozen context, and the answers it has given.
+        /// </summary>
+        sealed class Compiled
+        {
 
-                    if (satisfied == false)
-                        continue;
+            readonly JsonFactTheory _theory;
+            readonly Scope? _schema;
+            readonly Dictionary<Key, LinkedListNode<KeyValuePair<Key, JsonFactSet>>> _memo = new();
+            readonly LinkedList<KeyValuePair<Key, JsonFactSet>> _recent = new();
 
-                    fired[i] = true;
-                    Add(rule.Head);
+            public Compiled(JsonFactTheory theory, JsonFactGenerations.Generation generation)
+            {
+                _theory = theory;
+                Generation = generation;
+
+                var contexts = generation.Contexts;
+
+                try
+                {
+                    var schema = contexts.OpenSchema(theory._stated, theory._guarded, theory._paths);
+                    schema.Freeze();
+                    _schema = schema;
+                    Outright = new JsonFactSet(contexts.Rules, theory._vocabulary, schema, owned: false);
+                }
+                catch (Exception e) when (IsEngineFailure(e))
+                {
+                    // A declaration the engine cannot compile states nothing; every question is answered no.
+                    Outright = JsonFactSet.Empty;
                 }
             }
 
-            return set;
+            public JsonFactGenerations.Generation Generation { get; }
+
+            /// <summary>
+            /// Gets what holds of every document, whatever a query proved.
+            /// </summary>
+            public JsonFactSet Outright { get; }
+
+            public JsonFactSet Derive(JsonFact[] established)
+            {
+                if (_schema is null)
+                    return Outright;
+
+                var key = new Key(established);
+
+                lock (_memo)
+                {
+                    if (_memo.TryGetValue(key, out var node))
+                    {
+                        _recent.Remove(node);
+                        _recent.AddFirst(node);
+                        return node.Value.Value;
+                    }
+                }
+
+                var set = Open(established);
+
+                lock (_memo)
+                {
+                    // Another thread may have answered the same set meanwhile; one answer is kept, so that a statement
+                    // asking twice reads one context.
+                    if (_memo.TryGetValue(key, out var raced))
+                        return raced.Value.Value;
+
+                    _memo[key] = _recent.AddFirst(new KeyValuePair<Key, JsonFactSet>(key, set));
+
+                    while (_recent.Count > Remembered)
+                    {
+                        var last = _recent.Last!;
+                        _recent.RemoveLast();
+                        _memo.Remove(last.Value.Key);
+                    }
+                }
+
+                return set;
+            }
+
+            /// <summary>
+            /// Makes a query's context beneath the declaration's, holding what it established.
+            /// </summary>
+            JsonFactSet Open(JsonFact[] established)
+            {
+                var contexts = Generation.Contexts;
+                var facts = new List<Saturation.JsonFact>();
+                var paths = new HashSet<JsonPathSpec>();
+
+                foreach (var fact in established)
+                {
+                    paths.Add(JsonFactEncoding.Path(fact.Path));
+                    facts.AddRange(JsonFactEncoding.Statement(fact, _theory._vocabulary, register: false));
+                }
+
+                try
+                {
+                    var scope = contexts.Open(_schema, facts, paths, rules: null, split: _theory._splits, options: QueryRun);
+                    return new JsonFactSet(contexts.Rules, _theory._vocabulary, scope, owned: true);
+                }
+                catch (Exception e) when (IsEngineFailure(e))
+                {
+                    // What holds of every document holds of the ones the query keeps.
+                    return Outright;
+                }
+            }
+
+        }
+
+        /// <summary>
+        /// An established set as a memo key: the facts, compared as a set.
+        /// </summary>
+        readonly struct Key : IEquatable<Key>
+        {
+
+            readonly JsonFact[] _facts;
+            readonly int _hash;
+
+            public Key(JsonFact[] facts)
+            {
+                _facts = facts;
+
+                var hash = facts.Length;
+                foreach (var fact in facts)
+                    hash ^= fact.GetHashCode();
+
+                _hash = hash;
+            }
+
+            public bool Equals(Key other)
+            {
+                if (_facts.Length != other._facts.Length || _hash != other._hash)
+                    return false;
+
+                foreach (var fact in _facts)
+                    if (Array.IndexOf(other._facts, fact) < 0)
+                        return false;
+
+                return true;
+            }
+
+            public override bool Equals(object? obj) => obj is Key other && Equals(other);
+
+            public override int GetHashCode() => _hash;
+
         }
 
     }

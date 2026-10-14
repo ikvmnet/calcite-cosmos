@@ -6,13 +6,15 @@ using System.Threading.Tasks;
 
 using Eggnog;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 using FluentAssertions;
 
 using Xunit;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
     /// <summary>

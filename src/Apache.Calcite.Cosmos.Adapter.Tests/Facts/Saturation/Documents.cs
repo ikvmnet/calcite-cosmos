@@ -5,9 +5,11 @@ using System.Linq;
 
 using Eggnog;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
     /// <summary>A JSON value, small enough to enumerate and generate.</summary>
@@ -20,6 +22,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 
         public sealed record Num(decimal Value) : J;
 
+        /// <summary>A number a decimal cannot hold, which the theory carries approximately.</summary>
+        public sealed record Huge(double Value) : J;
+
         public sealed record Str(string Value) : J;
 
         public sealed record Obj(SortedDictionary<string, J> Properties) : J;
@@ -31,6 +36,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
             Null => JsonValues.NullType,
             Bool => JsonValues.BooleanType,
             Num n => n.Value == decimal.Truncate(n.Value) ? IntegerType : FractionType,
+            Huge h => Math.Floor(h.Value) == h.Value ? IntegerType : FractionType,
             Str => JsonValues.StringType,
             Obj => JsonValues.ObjectType,
             _ => JsonValues.ArrayType,
@@ -44,6 +50,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
             Null => NullValue,
             Bool b => Of(b.Value),
             Num n => Of(n.Value),
+            Huge h => Of(h.Value),
             Str s => Of(s.Value),
             _ => throw new InvalidOperationException("not a scalar"),
         };
@@ -53,6 +60,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
             Null => "null",
             Bool b => b.Value ? "true" : "false",
             Num n => n.Value.ToString(CultureInfo.InvariantCulture),
+            Huge h => h.Value.ToString("R", CultureInfo.InvariantCulture),
             Str s => "\"" + s.Value + "\"",
             Obj o => "{" + string.Join(", ", o.Properties.Select(kv => $"\"{kv.Key}\": {kv.Value}")) + "}",
             Arr a => "[" + string.Join(", ", a.Elements) + "]",
@@ -74,10 +82,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
 
         static readonly string[] StringsSeen = { "", "x", "yy", "abc" };
 
+        /// <summary>Numbers beyond a decimal's range and below its precision, which the theory holds approximately.</summary>
+        static readonly double[] HugeSeen = { 1e30, -1e30, 1.5e-30 };
+
+        /// <summary>The stored forms a fact may name: any string, and a string of at most one character.</summary>
+        public static readonly string[] Forms = { "text", "short" };
+
+        /// <summary>The extension claims a fact may name: here, that the value is an object.</summary>
+        public static readonly string[] Extensions = { "object" };
+
         /// <summary>Scalars a fact or a predicate may name: those a document can hold, and some it cannot.</summary>
         public static readonly string[] Universe =
             new[] { NullValue, Of(true), Of(false) }
                 .Concat(NumbersSeen.Concat(new[] { 3m, 7.5m }).Select(Of))
+                .Concat(HugeSeen.Select(Of))
                 .Concat(StringsSeen.Concat(new[] { "zz" }).Select(Of))
                 .ToArray();
 
@@ -88,6 +106,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
             {
                 0 => new J.Null(),
                 1 => new J.Bool(random.Next(2) == 0),
+                2 or 3 when random.Next(12) == 0 => new J.Huge(HugeSeen[random.Next(HugeSeen.Length)]),
                 2 or 3 => new J.Num(NumbersSeen[random.Next(NumbersSeen.Length)]),
                 4 or 5 => new J.Str(StringsSeen[random.Next(StringsSeen.Length)]),
                 6 => Object(random, depth + 1),
@@ -160,15 +179,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 JsonFact.OfType f => f.Types.Contains(v.Type),
                 JsonFact.OneOf f => v.IsScalar && f.Values.Contains(v.Encoded),
                 JsonFact.NotEqual f => v.IsScalar == false || v.Encoded != f.Value,
-                JsonFact.Lower f => v is not J.Num n || f.Bound.AdmitsAbove(n.Value),
-                JsonFact.Upper f => v is not J.Num n || f.Bound.AdmitsBelow(n.Value),
+                JsonFact.Lower f => v is J.Huge h ? Above(h.Value, f.Bound) : v is not J.Num n || f.Bound.AdmitsAbove(n.Value),
+                JsonFact.Upper f => v is J.Huge h ? Below(h.Value, f.Bound) : v is not J.Num n || f.Bound.AdmitsBelow(n.Value),
+                JsonFact.Form f => v is J.Null || v is J.Str s && (f.Name != "short" || s.Value.Length <= 1),
+                JsonFact.Extension f => f.Key == "object" && v is J.Obj,
                 JsonFact.MinLength f => v is not J.Str s || s.Value.Length >= f.Length,
                 JsonFact.MaxLength f => v is not J.Str s || s.Value.Length <= f.Length,
                 JsonFact.MinItems f => v is not J.Arr a || a.Elements.Count >= f.Count,
                 JsonFact.MaxItems f => v is not J.Arr a || a.Elements.Count <= f.Count,
                 JsonFact.ClosedTo f => v is not J.Obj o || o.Properties.Keys.All(f.Properties.Contains),
                 JsonFact.Requires f => v is not J.Obj o || o.Properties.ContainsKey(f.Property),
-                JsonFact.MultipleOf f => v is not J.Num n || Multiples.IsMultiple(n.Value, f.Factor),
+                // Whether a number held approximately is a multiple is not decided here, so none is claimed to be.
+                JsonFact.MultipleOf f => v is not (J.Num or J.Huge) || v is J.Num n && Multiples.IsMultiple(n.Value, f.Factor),
                 JsonFact.UniqueItems => v is not J.Arr a || a.Elements.Select(Key).Distinct().Count() == a.Elements.Count,
                 JsonFact.MinProperties f => v is not J.Obj o || o.Properties.Count >= f.Count,
                 JsonFact.MaxProperties f => v is not J.Obj o || o.Properties.Count <= f.Count,
@@ -179,6 +201,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 _ => throw new NotSupportedException(fact.GetType().Name),
             });
         }
+
+        /// <summary>Whether a number far from every bound lies above a lower one; compared as a double, which is exact there.</summary>
+        static bool Above(double x, Bound lower) => lower.Open ? x > (double)lower.Value : x >= (double)lower.Value;
+
+        /// <summary>Whether a number far from every bound lies below an upper one.</summary>
+        static bool Below(double x, Bound upper) => upper.Open ? x < (double)upper.Value : x <= (double)upper.Value;
 
         /// <summary>A value's identity under JSON equality.</summary>
         public static string Key(J value) => value.IsScalar ? value.Encoded : value.ToString();
@@ -203,7 +231,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 JsonAtom.Defined => true,
                 JsonAtom.HasType t => JsonValues.Types(t.Type).Contains(v.Type),
                 JsonAtom.EqualTo e => v.IsScalar && v.Encoded == e.Value,
-                JsonAtom.NumberIn n => v is J.Num x && (n.Lower is not Bound l || l.AdmitsAbove(x.Value)) && (n.Upper is not Bound u || u.AdmitsBelow(x.Value)),
+                JsonAtom.NumberIn n => v is J.Num x && (n.Lower is not Bound l || l.AdmitsAbove(x.Value)) && (n.Upper is not Bound u || u.AdmitsBelow(x.Value))
+                    || v is J.Huge h && (n.Lower is not Bound hl || Above(h.Value, hl)) && (n.Upper is not Bound hu || Below(h.Value, hu)),
                 JsonAtom.LengthIn n => v is J.Arr a && a.Elements.Count >= (n.Min ?? 0) && a.Elements.Count <= (n.Max ?? long.MaxValue),
                 JsonAtom.ArrayHolds h => v is J.Arr a && a.Elements.Any(e => e.IsScalar && e.Encoded == h.Value),
                 _ => throw new NotSupportedException(atom.GetType().Name),

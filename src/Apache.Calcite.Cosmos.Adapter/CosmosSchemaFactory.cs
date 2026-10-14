@@ -221,11 +221,15 @@ namespace Apache.Calcite.Cosmos.Adapter
             var lookupCache = ReadLookupCache(operand);
             var statisticsTimeToLive = ReadStatisticsTimeToLive(operand);
 
+            // What the containers declare is reasoned about in graphs this schema owns, one generation at a time, so
+            // that what it learns goes when it does.
+            var generations = new Facts.JsonFactGenerations();
+
             // Naming a database gives a schema whose tables are its containers. Omitting it gives the
             // account: one subschema per database, which is how Cosmos nests and how Calcite nests, and
             // which needs one client rather than one per database.
             if (GetString(operand, DatabaseOperand) is not string database || database.Length == 0)
-                return CreateAccountSchema(client, containers, indexMetrics, lookupCache, statisticsTimeToLive);
+                return CreateAccountSchema(client, containers, indexMetrics, lookupCache, generations, statisticsTimeToLive);
 
             var db = client.GetDatabase(database);
 
@@ -233,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // schema holds outlives this call. A container reference is a handle rather than a connection,
             // so binding one per table costs nothing.
             return new CosmosSchema(
-                ReadContainers(db, containers, statisticsTimeToLive),
+                ReadContainers(db, containers, generations, statisticsTimeToLive),
                 container => new CosmosQueryExecutor(db.GetContainer(container.Name), indexMetrics),
                 lookupCache is null ? null : _ => new CosmosLookupCache(lookupCache.Value.MaxRows, lookupCache.Value.ExpireAfterWrite));
         }
@@ -299,7 +303,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// useful where they share container names. Omitting it, which is the ordinary case here,
         /// exposes every container of every database.
         /// </remarks>
-        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<CosmosContainerDeclaration> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, TimeSpan? statisticsTimeToLive = null)
+        static Schema CreateAccountSchema(CosmosClient client, IReadOnlyList<CosmosContainerDeclaration> containers, bool indexMetrics, (int MaxRows, TimeSpan ExpireAfterWrite)? lookupCache, Facts.JsonFactGenerations generations, TimeSpan? statisticsTimeToLive = null)
         {
             var databases = new List<KeyValuePair<string, IReadOnlyList<CosmosContainerMetadata>>>();
 
@@ -310,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     foreach (var properties in iterator.ReadNextAsync(CancellationToken.None).GetAwaiter().GetResult())
                     {
                         var database = client.GetDatabase(properties.Id);
-                        databases.Add(new(properties.Id, ReadContainers(database, containers, statisticsTimeToLive)));
+                        databases.Add(new(properties.Id, ReadContainers(database, containers, generations, statisticsTimeToLive)));
                     }
                 }
             }
@@ -451,7 +455,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Reads metadata for the named containers, or for every container in the database when
         /// none are named.
         /// </summary>
-        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<CosmosContainerDeclaration> declared, TimeSpan? statisticsTimeToLive = null)
+        static IReadOnlyList<CosmosContainerMetadata> ReadContainers(Database database, IReadOnlyList<CosmosContainerDeclaration> declared, Facts.JsonFactGenerations generations, TimeSpan? statisticsTimeToLive = null)
         {
             var containers = new List<CosmosContainerMetadata>();
 
@@ -460,6 +464,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 foreach (var declaration in declared)
                     containers.Add(CosmosContainerMetadataReader
                         .ReadAsync(database.GetContainer(declaration.Name), statisticsTimeToLive, CancellationToken.None).GetAwaiter().GetResult()
+                        .WithFactGenerations(generations)
                         .WithFacts(declaration.Facts)
                         .WithConstraints(declaration.Constraints ?? System.Array.Empty<Metadata.CosmosConstraint>()));
 
@@ -482,7 +487,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             using var iterator = database.GetContainerQueryIterator<ContainerProperties>();
             while (iterator.HasMoreResults)
                 foreach (var properties in iterator.ReadNextAsync(CancellationToken.None).GetAwaiter().GetResult())
-                    containers.Add(CosmosContainerMetadataReader.FromProperties(properties));
+                    containers.Add(CosmosContainerMetadataReader.FromProperties(properties).WithFactGenerations(generations));
 
             return containers;
         }

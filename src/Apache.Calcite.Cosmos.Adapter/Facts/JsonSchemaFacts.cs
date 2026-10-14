@@ -16,7 +16,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// too — so this yields <em>rules</em> rather than a theory, and
     /// <see cref="JsonFactTheory"/> is what a container assembles out of every source it has. They
     /// have to end up in one theory rather than several: a rule's body may be satisfied by a fact
-    /// another source stated, and forward chaining only fires such a rule when it sees both at once.
+    /// another source stated, and only a context holding both fires it.
     /// </para>
     /// <para>
     /// The walk carries a <em>guard</em> — the facts that must hold for the branch being walked to be
@@ -245,11 +245,17 @@ namespace Apache.Calcite.Cosmos.Facts
             else
                 return;
 
-            // Failing the inner schema means the property is there and is none of what it named.
-            rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.Present())));
+            // Failing the inner schema means the property is there and is none of what it named -- of an
+            // object that is there: `properties` constrains nothing where there is no object, so a nested
+            // one carries the object's presence, as `required` does.
+            var carrier = path.IsRoot
+                ? guard
+                : Extend(guard, new JsonFact(path, new JsonClaim.Present()));
+
+            rules.Add(new JsonFactRule(carrier, new JsonFact(child, new JsonClaim.Present())));
 
             foreach (var member in excluded)
-                rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.NotEqualTo(member))));
+                rules.Add(new JsonFactRule(carrier, new JsonFact(child, new JsonClaim.NotEqualTo(member))));
         }
 
         /// <summary>
@@ -273,15 +279,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>Discriminated.</b> Where every branch pins the same property to a different <c>const</c>,
         /// proving that property's value proves which branch applies — under <c>oneOf</c> because
         /// exactly one matches and the others are refuted, under <c>anyOf</c> because at least one does
-        /// and only one can. So the branch is walked with that equality added to the guard.
+        /// and only one can. So the branch is walked with the property's presence and that equality
+        /// added to the guard: a <c>const</c> is vacuous for an absent property, so where it is absent
+        /// nothing is refuted and nothing is proven.
         /// </para>
         /// <para>
         /// <b>Undiscriminated.</b> Nothing selects a branch, so the only facts that hold are the ones
         /// every branch states — the meet. Taking a branch's facts on their own would be claiming what
-        /// only one alternative says, and stating the alternatives as a disjunction would take the
-        /// theory out of Horn and make asking it intractable. Only the facts each branch states
-        /// directly are intersected; a conditional nested inside an undiscriminated branch is dropped,
-        /// which loses facts and stays sound.
+        /// only one alternative says. The theory reasons about alternatives by splitting on a
+        /// discriminator, and an undiscriminated union has none until the reader names a hidden one.
+        /// Only the facts each branch states directly are intersected; a conditional nested inside an
+        /// undiscriminated branch is dropped, which loses facts and stays sound.
         /// </para>
         /// <para>
         /// <b>Nullable.</b> Where every branch but one admits only <c>null</c>, the union is that one
@@ -315,7 +323,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     if (branches.At(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not JsonScalar value)
                         continue;
 
-                    var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
+                    // The discriminator there, and holding the branch's value. A document without it may be in any
+                    // branch whose other constraints it meets, so the value alone selects nothing.
+                    var at = path.Property(discriminator);
+                    var selected = Extend(Extend(guard, new JsonFact(at, new JsonClaim.Present())), new JsonFact(at, new JsonClaim.EqualTo(value)));
                     var stated = new List<JsonFactRule>();
                     Walk(branches.At(i), path, selected, stated, resolver, recognisers, visiting);
 
@@ -617,7 +628,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>A claim that something is there</b> does not survive a null at all. A <c>required</c>
         /// child, a <c>not</c>'s property, a geography: each is true of the object the branch
         /// describes and false of a null standing in its place, where nothing below is present. So
-        /// those rules are kept under one more condition, that the union's value is not null.
+        /// those rules are kept under two more conditions, that the union's value is there and is not
+        /// null — a disequality alone holds of an absent path too, which no branch describes.
         /// Everything else below is a claim about a value <em>if there is one</em>, which a null
         /// makes vacuous rather than false.
         /// </para>
@@ -625,7 +637,7 @@ namespace Apache.Calcite.Cosmos.Facts
         static JsonFactRule? AdmitNull(JsonFactRule rule, JsonDocumentPath path)
         {
             if (rule.Head.Entails(new JsonFact(rule.Head.Path, new JsonClaim.Present())))
-                return new JsonFactRule(Extend(rule.Body, new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
+                return new JsonFactRule(Extend(Extend(rule.Body, new JsonFact(path, new JsonClaim.Present())), new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
 
             if (rule.Head.Path.Equals(path) == false)
                 return rule;
@@ -660,8 +672,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <para>
         /// <b>The <c>else</c> needs a single condition.</b> Its guard is the negation of the
         /// <c>if</c>, and the negation of a conjunction is a disjunction, which has no conjunctive
-        /// body. Where the condition is one equality the negation is one disequality and the branch is
-        /// usable; otherwise it is dropped.
+        /// body. Where the condition is one equality on a property the negation is the property there
+        /// and unequal — an absent one satisfies the <c>if</c> — and the branch is usable; otherwise it
+        /// is dropped.
         /// </para>
         /// </remarks>
         static void WalkConditional(
@@ -687,7 +700,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (node.Get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is JsonClaim.EqualTo equality)
             {
-                var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
+                // Failing it is the property there and something else: where it is absent the condition holds
+                // vacuously, and the then branch applies.
+                var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.Present()), new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
                 Walk(otherwise, path, extended, rules, resolver, recognisers, visiting);
             }
         }

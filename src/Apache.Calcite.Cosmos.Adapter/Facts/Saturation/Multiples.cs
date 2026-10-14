@@ -11,7 +11,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>Arithmetic on <c>multipleOf</c> and on integer ranges.</summary>
-    public static class Multiples
+    internal static class Multiples
     {
 
         /// <summary>
@@ -38,9 +38,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         public static bool IsMultiple(decimal x, decimal m) => m != 0 && decimal.Remainder(x, m) == 0;
 
-        /// <summary>A domain less the numbers that are not multiples; members that are not numbers are kept.</summary>
+        /// <summary>A domain less the numbers that are not multiples; members that are not exact numbers are kept.</summary>
         public static ValueSet<string> Only(ValueSet<string> values, decimal m) =>
-            ValueSet.From(values.Where(v => IsNumber(v) == false || IsMultiple(NumberOf(v), m)));
+            ValueSet.From(values.Where(v => TryNumberOf(v, out var x) == false || IsMultiple(x, m)));
 
         /// <summary>Whether no multiple of <paramref name="m"/> lies between two bounds.</summary>
         public static bool NoneBetween(decimal m, Bound lower, Bound upper)

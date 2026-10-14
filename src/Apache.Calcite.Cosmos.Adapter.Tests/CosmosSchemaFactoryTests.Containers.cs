@@ -109,7 +109,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 var facts = new JsonFactTheory(declared[0].Facts);
 
                 facts.Derive(null).RepresentationOf(parkId).Should().BeNull();
-                facts.Derive(new[] { new JsonFact(type, new JsonClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
+
+                // What `type = 'ParkMap'` establishes: the value, and the discriminator there, as every row the
+                // comparison keeps has it.
+                facts.Derive(new[] { new JsonFact(type, new JsonClaim.EqualTo("ParkMap")), new JsonFact(type, new JsonClaim.Present()) }).RepresentationOf(parkId)
                     .Should().Be(CosmosUuidForms.CanonicalLower);
             }
 

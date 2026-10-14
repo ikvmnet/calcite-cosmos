@@ -17,14 +17,15 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Subsumption lives here rather than in the theory's clauses, and that is a size decision
-        /// rather than a taste one: <c>EqualTo v</c> entails <c>OneOf S</c> for every set containing
-        /// <c>v</c>, so materialising the entailments would be unbounded where asking is a switch.
-        /// See <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
+        /// What the schema reader's meet of a union asks, and nothing else: a claim is kept where every
+        /// branch states one entailing it. The theory answers a query's questions from its own tables,
+        /// where a value settles its type and a domain within another settles that one. When the reader
+        /// states a union's branches as cases of a hidden discriminator instead, this goes with the meet.
+        /// See <c>DESIGN.md</c> under <em>The theory of JSON, in layers</em>.
         /// </para>
         /// <para>
         /// Only claims about the same path relate. Nothing here crosses paths; that is what the
-        /// theory's clauses are for.
+        /// theory's rules are for.
         /// </para>
         /// </remarks>
         /// <param name="other">The fact to establish.</param>
@@ -59,6 +60,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 (JsonClaim.OneOf a, JsonClaim.OfType b) => AllOfType(a.Values, b.Type, b.OrNull),
                 (JsonClaim.OneOf a, JsonClaim.NotEqualTo b) => JsonClaim.OneOf.Contains(a.Values, b.Value) == false,
 
+                // A domain within another settles it: what is one of {open, closed} is one of
+                // {open, closed, archived}, which is how an anyOf of two enums meets.
+                (JsonClaim.OneOf a, JsonClaim.OneOf b) => a.Values.Count > 0 && Within(a.Values, b.Values),
+
                 // A stored form is a string.
                 // A stored form says what the strings at a path look like, and says nothing about
                 // whether a null is there beside them -- so it entails only the claim that admits one.
@@ -87,112 +92,12 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Determines whether this fact and <paramref name="other"/> cannot both hold of one document.
+        /// Determines whether every member of one domain is a member of another.
         /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Not the negation of <see cref="Entails"/>, and a separate table for that reason.</b>
-        /// Entailment is one claim implying another; exclusion is two claims having no document in
-        /// common. Most pairs do neither — <c>OneOf {a,b}</c> and <c>NotEqualTo a</c> leave <c>b</c> —
-        /// so the answer here is "no" unless a row says otherwise, which is the same
-        /// sound-by-construction stance the table above takes.
-        /// </para>
-        /// <para>
-        /// <b>A claim about a value does not claim the path is there</b>, and exclusion does not need
-        /// it to. A declared domain constrains what a path holds <em>if it holds anything</em>; a
-        /// query establishing a value outside that domain therefore keeps no document, because a
-        /// document holding the value would contradict the declaration and one holding nothing fails
-        /// the query's own comparison. Either way no row survives, which is the claim being made.
-        /// </para>
-        /// <para>
-        /// An empty domain excludes nothing. It settles nothing, the same answer
-        /// <see cref="AllOfType"/> gives for the same reason.
-        /// </para>
-        /// </remarks>
-        /// <param name="other">The fact to test against.</param>
-        /// <returns><c>true</c> where no document satisfies both.</returns>
-        public bool Excludes(JsonFact other)
+        static bool Within(IReadOnlyList<JsonScalar> values, IReadOnlyList<JsonScalar> of)
         {
-            if (Path.Equals(other.Path) == false)
-                return false;
-
-            return Exclusive(Claim, other.Claim) || Exclusive(other.Claim, Claim);
-        }
-
-        /// <summary>
-        /// The exclusion table, read in one direction; <see cref="Excludes"/> asks it both ways.
-        /// </summary>
-        /// <param name="a">One claim.</param>
-        /// <param name="b">The other.</param>
-        /// <returns><c>true</c> where no document satisfies both.</returns>
-        static bool Exclusive(JsonClaim a, JsonClaim b) => (a, b) switch
-        {
-            // A value settles everything about itself, so it excludes any other value, its own
-            // disequality, a domain it is not in, and a type it is not of.
-            (JsonClaim.EqualTo x, JsonClaim.EqualTo y) => x.Value == y.Value == false,
-            (JsonClaim.EqualTo x, JsonClaim.NotEqualTo y) => x.Value == y.Value,
-            (JsonClaim.EqualTo x, JsonClaim.OneOf y) => y.Values.Count > 0 && JsonClaim.OneOf.Contains(y.Values, x.Value) == false,
-            (JsonClaim.EqualTo x, JsonClaim.OfType y) => x.Value.Type.IsA(y.Type) == false && (y.OrNull == false || x.Value.Type != JsonType.Null),
-
-            // Two domains exclude where they share no member; a domain and a disequality where the
-            // disequality rules out every member there is.
-            (JsonClaim.OneOf x, JsonClaim.OneOf y) => Disjoint(x.Values, y.Values),
-            (JsonClaim.OneOf x, JsonClaim.NotEqualTo y) => OnlyValue(x.Values, y.Value),
-            (JsonClaim.OneOf x, JsonClaim.OfType y) => NoneOfType(x.Values, y.Type, y.OrNull),
-
-            _ => false,
-        };
-
-        /// <summary>
-        /// Determines whether two domains share no member.
-        /// </summary>
-        /// <param name="left">One domain.</param>
-        /// <param name="right">The other.</param>
-        /// <returns><c>true</c> where they share none and both state something.</returns>
-        static bool Disjoint(IReadOnlyList<JsonScalar> left, IReadOnlyList<JsonScalar> right)
-        {
-            if (left.Count == 0 || right.Count == 0)
-                return false;
-
-            foreach (var value in left)
-                if (JsonClaim.OneOf.Contains(right, value))
-                    return false;
-
-            return true;
-        }
-
-        /// <summary>
-        /// Determines whether a domain admits one value and nothing else.
-        /// </summary>
-        /// <param name="values">The domain.</param>
-        /// <param name="value">The value.</param>
-        /// <returns><c>true</c> where every member is that value.</returns>
-        static bool OnlyValue(IReadOnlyList<JsonScalar> values, JsonScalar value)
-        {
-            if (values.Count == 0)
-                return false;
-
-            foreach (var member in values)
-                if (member != value)
-                    return false;
-
-            return true;
-        }
-
-        /// <summary>
-        /// Determines whether no member of a domain is of one JSON type.
-        /// </summary>
-        /// <param name="values">The domain.</param>
-        /// <param name="type">The type to test for.</param>
-        /// <param name="orNull">Whether a JSON null counts as a member.</param>
-        /// <returns><c>true</c> where no member is of that type and the domain states something.</returns>
-        static bool NoneOfType(IReadOnlyList<JsonScalar> values, JsonType type, bool orNull)
-        {
-            if (values.Count == 0)
-                return false;
-
             foreach (var value in values)
-                if (value.Type.IsA(type) || orNull && value.Type == JsonType.Null)
+                if (JsonClaim.OneOf.Contains(of, value) == false)
                     return false;
 
             return true;

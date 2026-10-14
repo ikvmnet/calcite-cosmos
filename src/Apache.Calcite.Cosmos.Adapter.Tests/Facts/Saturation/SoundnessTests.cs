@@ -4,13 +4,15 @@ using System.Linq;
 
 using Eggnog;
 
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
 using FluentAssertions;
 
 using Xunit;
 
 using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 
-namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
     /// <summary>
@@ -175,6 +177,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 foreach (var key in Documents.Keys)
                     if (scope.Check(r.Required.Of(p, key)))
                         yield return new JsonFact.Requires(path, key);
+
+                foreach (var form in Documents.Forms)
+                    if (scope.Check(r.Form.Of(p, form)))
+                        yield return new JsonFact.Form(path, form);
+
+                foreach (var key in Documents.Extensions)
+                    if (scope.Check(r.Extension.Of(p, key)))
+                        yield return new JsonFact.Extension(path, key);
             }
         }
 
@@ -184,6 +194,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
         {
             typeof(JsonFact.Present), typeof(JsonFact.Absent), typeof(JsonFact.OfType), typeof(JsonFact.OneOf), typeof(JsonFact.NotEqual),
             typeof(JsonFact.Lower), typeof(JsonFact.Upper), typeof(JsonFact.MinItems), typeof(JsonFact.MaxItems), typeof(JsonFact.Requires), typeof(JsonFact.ClosedTo),
+            typeof(JsonFact.Form), typeof(JsonFact.Extension),
         };
 
         /// <summary>A fact of one of the kinds, true of the document.</summary>
@@ -265,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 var objects = values.OfType<J.Obj>().ToList();
 
                 // Facts bearing on what the document holds there are drawn more often than those that hold vacuously.
-                var kinds = Enumerable.Range(0, 23).ToList();
+                var kinds = Enumerable.Range(0, 25).ToList();
                 if (objects.Count > 0)
                     kinds.AddRange(new[] { 10, 11, 16, 17, 21, 22, 10, 11, 16, 17, 21, 22 });
                 if (arrays.Count > 0)
@@ -275,7 +286,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                 if (numbers.Count > 0)
                     kinds.AddRange(new[] { 4, 5, 14, 4, 5, 14 });
                 if (strings.Count > 0)
-                    kinds.AddRange(new[] { 6, 7 });
+                    kinds.AddRange(new[] { 6, 7, 23, 23 });
+                if (values.OfType<J.Huge>().Any())
+                    kinds.AddRange(new[] { 2, 4, 5, 2, 4, 5 });
                 if (scalars.Count > 0)
                     kinds.AddRange(new[] { 2, 3, 2 });
 
@@ -311,10 +324,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation.Tests
                         ? new JsonFact.ContainsAtMost(path, v2, values.OfType<J.Arr>().Select(a => (long)a.Elements.Count(e => e.IsScalar && e.Encoded == v2)).DefaultIfEmpty(random.Next(2)).Max() + random.Next(2)) : null,
                     21 => new JsonFact.NameMinLength(path, Math.Max(0, objects.SelectMany(o => o.Properties.Keys).Select(k => (long)k.Length).DefaultIfEmpty(2).Min() - random.Next(2))),
                     22 => new JsonFact.NameMaxLength(path, objects.SelectMany(o => o.Properties.Keys).Select(k => (long)k.Length).DefaultIfEmpty(1).Max() + random.Next(2) - (objects.Count == 0 ? 0 : 0)),
+                    23 => new JsonFact.Form(path, Documents.Forms[random.Next(Documents.Forms.Length)]),
+                    24 => new JsonFact.Extension(path, Documents.Extensions[random.Next(Documents.Extensions.Length)]),
                     _ => null,
                 };
 
-                if (fact is not null)
+                // A proposal false of the document is drawn again: a bound beside a number held approximately, a form
+                // beside a value that is not a string, a claim of an object beside a scalar.
+                if (fact is not null && Documents.IsTrue(document, fact))
                     return fact;
             }
         }

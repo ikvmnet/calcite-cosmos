@@ -11,7 +11,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <summary>
     /// A path into a document: a class of terms built from <c>Root</c>, <c>Prop</c>, <c>Index</c> and <c>Each</c>.
     /// </summary>
-    public readonly record struct JPath(ClassId Id) : ISort<JPath>
+    internal readonly record struct JPath(ClassId Id) : ISort<JPath>
     {
 
         public static JPath FromId(ClassId id) => new(id);
@@ -21,7 +21,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <summary>
     /// A bound on a number: the value, and whether the bound itself is excluded.
     /// </summary>
-    public readonly record struct Bound(decimal Value, bool Open)
+    internal readonly record struct Bound(decimal Value, bool Open)
     {
 
         public static Bound AtLeast(decimal value) => new(value, false);
@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// A number is <c>integer</c> or <c>fraction</c>, as JSON Schema reads it: <c>1.0</c> is an integer. So a schema's
     /// <c>number</c> is two members, and every "is a" between types is a subset test.
     /// </remarks>
-    public static class JsonValues
+    internal static class JsonValues
     {
 
         public const string StringType = "string";
@@ -119,25 +119,74 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return (normal == decimal.Truncate(normal) ? IntegerType : FractionType) + "|" + normal.ToString(CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// A number a <see cref="decimal"/> cannot hold — too large, too small, or not finite — as its type and an
+        /// approximate spelling, which no exact number shares.
+        /// </summary>
+        /// <remarks>
+        /// Its type is read as JSON Schema reads any number's, so it is an integer or a fraction like any other. Its value
+        /// is opaque: no bound, multiple or range reads it, so each keeps it rather than guess where it lies. A number a
+        /// decimal can hold is written as one, so that one value has one spelling.
+        /// </remarks>
+        public static string Of(double value)
+        {
+            if (double.IsFinite(value))
+            {
+                try
+                {
+                    var exact = (decimal)value;
+                    if (exact != 0 || value == 0)
+                        return Of(exact);
+                }
+                catch (OverflowException)
+                {
+                }
+            }
+
+            var integral = Math.Floor(value) == value && double.IsInfinity(value) == false;
+            return (integral ? IntegerType : FractionType) + "|" + Approximate + value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>What marks a number's spelling as approximate: a character no exact number is written with.</summary>
+        const char Approximate = '~';
+
         public static string TypeOf(string value) => value.Substring(0, value.IndexOf('|'));
 
         public static ValueSet<string> TypesOf(ValueSet<string> values) => ValueSet.From(values.Select(TypeOf));
 
         public static bool IsNumber(string value) => TypeOf(value) is IntegerType or FractionType;
 
+        /// <summary>Whether a value is a number whose value can be read, rather than one held approximately.</summary>
+        public static bool IsExactNumber(string value) => IsNumber(value) && value[value.IndexOf('|') + 1] != Approximate;
+
         public static decimal NumberOf(string value) => decimal.Parse(value.Substring(value.IndexOf('|') + 1), CultureInfo.InvariantCulture);
+
+        /// <summary>Reads a number's value, or answers <c>false</c> where it is not a number or is held approximately.</summary>
+        public static bool TryNumberOf(string value, out decimal number)
+        {
+            number = 0;
+            if (IsExactNumber(value) == false)
+                return false;
+
+            number = NumberOf(value);
+            return true;
+        }
+
+        /// <summary>The approximate value of a number held approximately, or <c>null</c>.</summary>
+        public static double? ApproximateOf(string value) =>
+            IsNumber(value) && IsExactNumber(value) == false ? double.Parse(value.Substring(value.IndexOf('|') + 2), CultureInfo.InvariantCulture) : null;
 
         public static bool IsString(string value) => TypeOf(value) == StringType;
 
         public static string StringOf(string value) => value.Substring(value.IndexOf('|') + 1);
 
-        /// <summary>A domain less the numbers a lower bound refuses; members that are not numbers are kept.</summary>
+        /// <summary>A domain less the numbers a lower bound refuses; members that are not exact numbers are kept.</summary>
         public static ValueSet<string> AtLeast(ValueSet<string> values, Bound lower) =>
-            ValueSet.From(values.Where(v => IsNumber(v) == false || lower.AdmitsAbove(NumberOf(v))));
+            ValueSet.From(values.Where(v => TryNumberOf(v, out var x) == false || lower.AdmitsAbove(x)));
 
-        /// <summary>A domain less the numbers an upper bound refuses; members that are not numbers are kept.</summary>
+        /// <summary>A domain less the numbers an upper bound refuses; members that are not exact numbers are kept.</summary>
         public static ValueSet<string> AtMost(ValueSet<string> values, Bound upper) =>
-            ValueSet.From(values.Where(v => IsNumber(v) == false || upper.AdmitsBelow(NumberOf(v))));
+            ValueSet.From(values.Where(v => TryNumberOf(v, out var x) == false || upper.AdmitsBelow(x)));
 
         /// <summary>A domain less the strings shorter than a length; members that are not strings are kept.</summary>
         public static ValueSet<string> LengthAtLeast(ValueSet<string> values, long least) =>

@@ -554,8 +554,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <b>A schema is a source of facts rather than the thing facts are made of.</b> A model file's
         /// JSON Schema is one; what the service guarantees about the properties it maintains itself is
         /// another, and neither is privileged in the rules. They have to share one theory rather than
-        /// sit in two, because a rule's body may be satisfied by a fact from the other source and
-        /// forward chaining only fires such a rule when it sees both at once.
+        /// sit in two, because a rule's body may be satisfied by a fact from the other source and only
+        /// a context holding both fires it.
         /// </para>
         /// <para>
         /// <b>Which leaves the trust boundary to be stated rather than typed.</b> Every other member of
@@ -596,7 +596,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return this;
 
             var metadata = Copy();
-            metadata._facts = new JsonFactTheory(combined);
+            metadata._facts = new JsonFactTheory(combined, _facts.Generations);
+            return metadata;
+        }
+
+        /// <summary>
+        /// Returns the same metadata reasoning about its facts in the given generations of graphs.
+        /// </summary>
+        /// <remarks>
+        /// What a schema learns hangs off the schema: the schema factory makes one set of generations per schema object
+        /// and binds every container it reads to it, so that the containers share one graph and nothing outlives the
+        /// schema. Metadata built any other way reasons in <see cref="JsonFactGenerations.Default"/>.
+        /// </remarks>
+        /// <param name="generations">The generations.</param>
+        /// <returns>The metadata.</returns>
+        internal CosmosContainerMetadata WithFactGenerations(JsonFactGenerations generations)
+        {
+            if (generations is null)
+                throw new ArgumentNullException(nameof(generations));
+
+            if (ReferenceEquals(_facts.Generations, generations))
+                return this;
+
+            var metadata = Copy();
+            metadata._facts = generations.Bind(_facts);
             return metadata;
         }
 

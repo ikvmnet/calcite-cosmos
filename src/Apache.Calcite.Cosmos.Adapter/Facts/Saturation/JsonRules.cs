@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// a query mention, and it terminates: every lattice here only narrows.
     /// </para>
     /// </remarks>
-    public sealed class JsonRules
+    internal sealed class JsonRules
     {
 
         public JsonRules(EGraph graph)
@@ -71,6 +71,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ContainsAtMost = graph.DefineFunction<JPath, string, long>("containsAtMost", ValueLattice.Min<long>());
             NameMinLength = graph.DefineFunction<JPath, long>("nameMinLength", ValueLattice.Max<long>());
             NameMaxLength = graph.DefineFunction<JPath, long>("nameMaxLength", ValueLattice.Min<long>());
+            Form = graph.DefineRelation<JPath, string>("form");
+            Extension = graph.DefineRelation<JPath, string>("extension");
 
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
@@ -177,6 +179,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>If the path holds an object, every property name is at most this long (<c>propertyNames</c>).</summary>
         public Function<JPath, long> NameMaxLength { get; }
+
+        /// <summary>
+        /// If the path holds a string, it is spelled in the named stored form: a canonical UUID, a fixed ISO-8601 shape.
+        /// What a form is, the theory does not know; that it is a way of writing strings is all it reads.
+        /// </summary>
+        public Relation<JPath, string> Form { get; }
+
+        /// <summary>
+        /// The path holds what a host's own claim, named by a key, says it holds. The theory reads nothing of it: what
+        /// it says in JSON's terms — that the path is there, that it is an object — is stated beside it by whoever states
+        /// it, so it is not inherited through a pattern, which would carry a presence it may imply.
+        /// </summary>
+        public Relation<JPath, string> Extension { get; }
 
         readonly List<(string Name, Action<RuleBuilder> Define)> _schemaRules = new();
 
@@ -306,6 +321,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(l.Is(MinLength.Of(p)), h.Is(MaxLength.Of(p)));
                 r.Where(Primitives.Greater.Of(l, h));
                 r.Then(Types.Of(p).Is(AllTypesBut(StringType)));
+            });
+            SchemaRule("a stored form is a string or null", r =>
+            {
+                var (p, n) = r.Vars<JPath, string>("p", "n");
+                r.When(Form.Of(p, n));
+                r.Then(Types.Of(p).Is(Types(StringType, NullType)));
             });
         }
 
@@ -497,6 +518,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
                 r.When(Instance.Of(c, e), Unique.Of(e));
                 r.Then(Unique.Of(c));
+            });
+            SchemaRule("an instance inherits a stored form", r =>
+            {
+                var (c, e, n) = r.Vars<JPath, JPath, string>("c", "e", "n");
+                r.When(Instance.Of(c, e), Form.Of(e, n));
+                r.Then(Form.Of(c, n));
             });
             Rule("an instance inherits a disequality", r =>
             {
@@ -819,6 +846,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         internal Relation<long, JPath, long> HeadMaxItems { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadRequired { get; private set; } = null!;
         internal Relation<long, JPath, ValueSet<string>> HeadClosed { get; private set; } = null!;
+        internal Relation<long, JPath, string> HeadForm { get; private set; } = null!;
+        internal Relation<long, JPath, string> HeadExtension { get; private set; } = null!;
 
         /// <summary>
         /// A schema's conditional statements — a <c>oneOf</c> branch under its discriminator, an <c>if</c>/<c>then</c> —
@@ -858,6 +887,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             HeadMaxItems = g.DefineRelation<long, JPath, long>("head_maxItems", local);
             HeadRequired = g.DefineRelation<long, JPath, string>("head_required", local);
             HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
+            HeadForm = g.DefineRelation<long, JPath, string>("head_form", local);
+            HeadExtension = g.DefineRelation<long, JPath, string>("head_extension", local);
 
             SchemaRule("a singleton domain pins its value", r =>
             {
@@ -948,6 +979,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Head("a most length", HeadMaxItems, (p, v) => MaxItems.Of(p).Is(v));
             Head("a required property", HeadRequired, (p, v) => Required.Of(p, v));
             Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
+            Head("a stored form", HeadForm, (p, v) => Form.Of(p, v));
+            Head("a host's claim", HeadExtension, (p, v) => Extension.Of(p, v));
 
             // What a query mentions is relevant, and so is what bears on it: a path's parent and array, the patterns it
             // is an instance of, and what a conditional rule reads where its head speaks of a relevant path. Not a

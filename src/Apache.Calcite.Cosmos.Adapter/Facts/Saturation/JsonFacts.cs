@@ -15,7 +15,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// A path written the way a person writes one: <c>$</c>, <c>$.a.b</c>, <c>$.tags[10]</c>, and <c>$.items[*].id</c>
     /// for property <c>id</c> of every element of <c>items</c>.
     /// </summary>
-    public sealed record JsonPathSpec(IReadOnlyList<object> Segments)
+    internal sealed record JsonPathSpec(IReadOnlyList<object> Segments)
     {
 
         /// <summary>The segment that stands for every element of an array.</summary>
@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     }
 
     /// <summary>A statement about a path, to be assumed into a context.</summary>
-    public abstract record JsonFact(JsonPathSpec Path)
+    internal abstract record JsonFact(JsonPathSpec Path)
     {
 
         public sealed record Present(JsonPathSpec Path) : JsonFact(Path);
@@ -165,6 +165,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         public sealed record NameMaxLength(JsonPathSpec Path, long Length) : JsonFact(Path);
 
+        /// <summary>If the path holds a string, it is spelled in the named stored form.</summary>
+        public sealed record Form(JsonPathSpec Path, string Name) : JsonFact(Path);
+
+        /// <summary>The path holds what a host's claim, named by its key, says; the theory reads nothing of it.</summary>
+        public sealed record Extension(JsonPathSpec Path, string Key) : JsonFact(Path);
+
         /// <summary>A split may open one case per value the path can hold. Says nothing about any document.</summary>
         public sealed record Discriminates(JsonPathSpec Path) : JsonFact(Path);
 
@@ -196,6 +202,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 ContainsAtMost f => r.ContainsAtMost.Of(p, f.Value).Is(f.Count),
                 NameMinLength f => r.NameMinLength.Of(p).Is(f.Length),
                 NameMaxLength f => r.NameMaxLength.Of(p).Is(f.Length),
+                Form f => r.Form.Of(p, f.Name),
+                Extension f => r.Extension.Of(p, f.Key),
                 Discriminates => r.Discriminator.Of(p),
                 _ => throw new NotSupportedException(GetType().Name),
             };
@@ -212,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// path present or absent, a disequality stated or proven by a domain. So a body fact is a statement about the
     /// document like any other, and the rule is true of a document where its body is false of it or its head true.
     /// </remarks>
-    public sealed record JsonGuardedRule(IReadOnlyList<JsonFact> When, IReadOnlyList<JsonFact> Then)
+    internal sealed record JsonGuardedRule(IReadOnlyList<JsonFact> When, IReadOnlyList<JsonFact> Then)
     {
 
         public override string ToString() => $"if {string.Join(" and ", When)} then {string.Join(" and ", Then)}";
@@ -224,7 +232,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// holds what it asks, which is how Cosmos DB evaluates the comparison it stands for: a comparison over an absent
     /// path, or across types, is undefined, and a filter keeps no row for it.
     /// </summary>
-    public abstract record JsonAtom(JsonPathSpec Path)
+    internal abstract record JsonAtom(JsonPathSpec Path)
     {
 
         /// <summary><c>IS_DEFINED</c>.</summary>
@@ -251,7 +259,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     }
 
     /// <summary>What every document a context admits says about a predicate.</summary>
-    public enum Truth
+    internal enum Truth
     {
 
         /// <summary>Some documents satisfy it and some may not, or the context cannot tell.</summary>
@@ -268,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <summary>
     /// A graph whose root holds the rules of JSON, frozen, beneath which contexts for schemas and queries are made.
     /// </summary>
-    public sealed class JsonContexts
+    internal sealed class JsonContexts
     {
 
         /// <param name="documentsAreObjects">Whether every document is an object, as every Cosmos DB item is.</param>
@@ -322,22 +330,28 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// Makes a query's context beneath <paramref name="parent"/> (the JSON Schema context where it is <c>null</c>): mentions the
         /// paths it will be asked about, assumes the facts and saturates, splitting on the discriminators it mentions.
         /// </summary>
-        public Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions = null, IEnumerable<JsonGuardedRule>? rules = null) =>
-            Open(parent, facts, mentions, rules, Rules.QuerySaturation, mention: true);
+        /// <param name="parent">The schema's context, frozen; or <c>null</c> for the JSON Schema context.</param>
+        /// <param name="facts">What the query establishes.</param>
+        /// <param name="mentions">The paths the context will be asked about, beside the facts' own.</param>
+        /// <param name="rules">Conditional rules of the query's own, as rows.</param>
+        /// <param name="split">
+        /// Whether to split on discriminators. A context beneath a schema that names none has nothing to split on, and
+        /// the split step costs a run even where it opens no case.
+        /// </param>
+        /// <param name="options">The run's limits; <c>null</c> for the engine's defaults.</param>
+        public Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions = null, IEnumerable<JsonGuardedRule>? rules = null, bool split = true, RunOptions? options = null) =>
+            Open(parent, facts, mentions, rules, split ? Rules.QuerySaturation : Rules.Settle, mention: true, options);
 
         /// <summary>
         /// Makes a schema's context: its facts and its conditional rules, saturated with a split on every
         /// discriminator, so that what every branch implies holds outright. Freeze it to put queries beneath it.
         /// </summary>
         public Scope OpenSchema(IEnumerable<JsonFact> facts, IEnumerable<JsonGuardedRule>? rules = null, IEnumerable<JsonPathSpec>? mentions = null) =>
-            Open(null, facts, mentions, rules, Rules.SchemaSaturation, mention: false);
+            Open(null, facts, mentions, rules, Rules.SchemaSaturation, mention: false, null);
 
-        Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions, IEnumerable<JsonGuardedRule>? rules, Schedule schedule, bool mention)
+        Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions, IEnumerable<JsonGuardedRule>? rules, Schedule schedule, bool mention, RunOptions? options)
         {
-            var scope = (parent ?? JsonSchema).CreateChild();
             var mentioned = (mentions ?? System.Array.Empty<JsonPathSpec>()).ToList();
-            Mention(scope, mentioned);
-
             var list = facts.ToList();
             var assumed = list.Select(f => f.ToFact(Rules)).ToList();
             foreach (var rule in rules ?? System.Array.Empty<JsonGuardedRule>())
@@ -348,10 +362,22 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 foreach (var path in mentioned.Concat(list.Select(f => f.Path)).Distinct())
                     assumed.Add(Rules.Mentioned.Of(path.ToTerm(Rules)));
 
-            if (assumed.Count > 0)
-                scope.Assume(assumed.ToArray());
+            // A context that fails to open is released here rather than left beneath its parent.
+            var scope = (parent ?? JsonSchema).CreateChild();
+            try
+            {
+                Mention(scope, mentioned);
+                if (assumed.Count > 0)
+                    scope.Assume(assumed.ToArray());
 
-            LastReport = scope.Run(schedule);
+                LastReport = scope.Run(schedule, options);
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
+
             return scope;
         }
 
@@ -408,6 +434,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     JsonFact.MaxItems f => r.HeadMaxItems.Of(id, p, f.Count),
                     JsonFact.Requires f => r.HeadRequired.Of(id, p, f.Property),
                     JsonFact.ClosedTo f => r.HeadClosed.Of(id, p, f.Properties),
+                    JsonFact.Form f => r.HeadForm.Of(id, p, f.Name),
+                    JsonFact.Extension f => r.HeadExtension.Of(id, p, f.Key),
                     _ => throw new NotSupportedException("a head of " + head.GetType().Name),
                 };
             }
@@ -491,10 +519,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                     if (dom is not null)
                     {
-                        var numbers = dom.Where(IsNumber).Select(NumberOf).ToList();
-                        if (numbers.Any(x => In(x, range.Lower, range.Upper)) == false)
+                        // A number held approximately may lie anywhere, so it keeps the range from being refuted and
+                        // from being proven.
+                        var numbers = dom.Where(IsExactNumber).Select(NumberOf).ToList();
+                        var approximate = dom.Any(v => IsNumber(v) && IsExactNumber(v) == false);
+                        if (approximate == false && numbers.Any(x => In(x, range.Lower, range.Upper)) == false)
                             return Truth.Never;
-                        if (present && dom.All(IsNumber) && numbers.All(x => In(x, range.Lower, range.Upper)))
+                        if (present && dom.All(IsExactNumber) && numbers.All(x => In(x, range.Lower, range.Upper)))
                             return Truth.Always;
                     }
 
@@ -574,9 +605,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             if (scope.Check(r.Ne.Of(p, value)))
                 return true;
 
-            if (IsNumber(value))
+            if (TryNumberOf(value, out var x))
             {
-                var x = NumberOf(value);
                 if (scope.TryGet(r.MultipleOf.Of(p), out var m) && Multiples.IsMultiple(x, m) == false)
                     return true;
                 if (scope.TryGet(r.Lo.Of(p), out var lo) && lo.AdmitsAbove(x) == false)
