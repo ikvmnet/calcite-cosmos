@@ -1664,7 +1664,9 @@ It was built for this adapter. The plan of record lives in its repository, as
 where the plan stands against this repository. The plan's own decisions, in short:
 - Eggnog replaces `JsonFactTheory.Derive` and the questions on `JsonFactSet`, **not** the rewriter.
 - The rollout is shadow mode, per fact kind, with the modes `horn`, `shadow`, `union` and `eggnog`.
-- Horn's closure is kept as the fallback engine until a measured budget says otherwise.
+  **Not adopted here; see below.**
+- Horn's closure is kept as the fallback engine until a measured budget says otherwise. **Not adopted
+  here either.**
 - Graphs run serially.
 - `JsonSchemaFacts` and `CosmosFactExtractor` stay as the one front end that feeds both engines.
 
@@ -1732,33 +1734,48 @@ container scope, and the extraction step. Each is the next spike.
   uncommitted file in a local working copy at `a83fd2a`. It has to be rewritten from the plan's §1.2 and
   §5.1 and from `prototypes/cosmos-facts/README.md` in Eggnog, with each gap's control.
 
-**The order, from the plan's §5.2; each step is its own pull request to `main`.**
-1. **Phase 0a, correctness and gap tests** — *medium.* No Eggnog yet.
-   - The gap tests, asserting today's plans as recorded divergences.
-   - F2–F5, F7 and F9, each with a plan-level test first.
-   - The gap 3 row.
-   - A logical-level rule turning a `LogicalFilter` that the facts contradict into an empty `Values`. That
-     is also *A contradiction should send nothing* under *Constraints beyond `UNIQUE`*, below.
-   - The pinned tests listed in §5.1 change deliberately, each with a twin.
-2. **Phase 0b, the seam** — *large.* This was *The fact theory as a package of its own*. The work:
-   - Move `Facts/` into an `Apache.Calcite.Cosmos.Facts` project.
-   - Put the questions behind `IJsonFactAnswers` and an `IJsonFactEngine` with a Horn implementation.
-   - Move reasoning state from container metadata onto the schema object.
-   - Turn the `ClaimsFor` scans in `CosmosSelfJoinRule` and `CosmosPartitionKeyExtractor` into questions.
+**The goal is plans that are right, not plans that do not move.** That removes most of the plan's migration
+machinery: per-kind modes, the production shadow, breakers, golden plans as an exit criterion, and Horn as a
+fallback. It also changes what the gate is. Agreeing with Horn cannot be the gate, because Horn's known wrong
+answers (F2–F4) would then be the specification. Parity with Horn stays a diagnostic: a difference is a
+question to answer, and either engine may be the one that is wrong. What decides is soundness:
+- **A document oracle.** Every fact derived under a query must hold of every document that the declaration
+  admits and that the query's established facts admit. Check it over generated documents that cover:
+  - absent paths and absent parents;
+  - nulls, and mixed types;
+  - integral numbers under `number`;
+  - numbers stored as strings;
+  - values beyond a cast's saturation limits.
 
-   Plans stay unchanged against golden plans.
-3. **Phase 0c and track D** — *medium each.*
-   - A declared corpus for `CosmosDifferentialTests`, with a document oracle.
-   - A derivation per disjunct in `CosmosFactRewriter.Apply`, which closes gap 1's per-kind spelling in Horn.
-4. **Phases 1 to 3, Eggnog itself** — *large.*
-   - The theory in a `Facts.Saturation` project, and the offline shadow.
-   - Production on scopes, switched per kind.
-   - Splits for gap 1 `IN`.
+  This is the plan's Phase 0c, and it comes before the engine, not after.
+- **`CosmosDifferentialTests` with a declared corpus.** The rows the service returns for a pushed plan are
+  the rows an in-process evaluation of the same query returns.
 
-   Everything Eggnog has to supply for these is released: scopes, tags and mirrors (R2), and splits and lift
-   (R3). The plan's still-open library requests are tracked in Eggnog's `docs/roadmap.md`.
-5. **Phase 4** retires Horn as a decider. **Phase 5**, predicate extraction (the rewriter as e-graph
-   rewrites under an RU cost), is optional and undecided.
+**The order; each step is its own pull request to `main`.**
+1. **Tests that say what right is** — *medium.* No Eggnog yet, and no engine-specific assertions.
+   - The gap tests, asserting the right plan and not today's.
+   - F2–F4, F7 and F10 as plan-level tests.
+   - The document oracle and the declared differential corpus.
+
+   What fails today stays failing until the step that fixes it. F5 (`ReferenceEquals` on a struct) and F9
+   (documentation drift) are fixed now, being outside the fact engine.
+2. **Fix `JsonSchemaFacts.Meet`** — *small.* It is the bottleneck at size whatever the engine, and splits
+   may later replace it.
+3. **A splits spike over the rows encoding** — *medium.* Gap 1 `IN` and the undiscriminated `anyOf`, with
+   concurrent query scopes under one frozen container scope. This is the make-or-break measurement;
+   splits are what the move is for.
+4. **The design into `DESIGN.md`** — *small.* Rules as rows, the scope layout, what makes a split sound,
+   and the deletion licence.
+5. **The seam, then the engine** — *large.*
+   - Move `Facts/` into its own project.
+   - Put the questions consumers ask behind one interface, so the `ClaimsFor` scans become questions.
+   - Implement it on Eggnog, with a per-statement memo, because the planner asks a dozen times per statement
+     and a small schema's query scope costs 50–450 µs.
+   - Switch over, delete `JsonFactTheory`'s closure, and fix in the new theory whatever step 1 left failing.
+6. **Then what Eggnog adds beyond the closure** — *large, each its own decision.*
+   - The rewriter as extraction under an RU cost.
+   - Path equality for `CHECK`.
+   - One context shared between the implementation plan and the execution plan.
 
 **Before Phase 1, record the decision in `DESIGN.md`.** Two things go there:
 - what makes a split sound: the cases cover the parent, because a split happens only where the path is
