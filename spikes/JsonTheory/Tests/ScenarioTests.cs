@@ -236,6 +236,109 @@ namespace JsonTheory.Tests
             Assert.AreEqual(Truth.Unknown, Decide(new JsonAtom.EqualTo("$.a", Of("x")), OfType("$.a", "string")));
         }
 
+        // multipleOf, and integer ranges.
+
+        [TestMethod]
+        public void ANumberThatIsNotAMultipleIsNever()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.EqualTo("$.n", Of(7m)), new JsonFact.MultipleOf("$.n", 5)));
+            Assert.AreEqual(Truth.Unknown, Decide(new JsonAtom.EqualTo("$.n", Of(15m)), new JsonFact.MultipleOf("$.n", 5)));
+        }
+
+        [TestMethod]
+        public void AMultipleOfAWholeNumberIsAnInteger()
+        {
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.HasType("$.n", "integer"),
+                new JsonFact.MultipleOf("$.n", 2), OfType("$.n", "number"), new JsonFact.Present("$.n")));
+        }
+
+        [TestMethod]
+        public void TwoMultiplesAreAMultipleOfTheirLeastCommonMultiple()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.EqualTo("$.n", Of(6m)), new JsonFact.MultipleOf("$.n", 4), new JsonFact.MultipleOf("$.n", 6)));
+            Assert.AreEqual(Truth.Unknown, Decide(new JsonAtom.EqualTo("$.n", Of(12m)), new JsonFact.MultipleOf("$.n", 4), new JsonFact.MultipleOf("$.n", 6)));
+        }
+
+        [TestMethod]
+        public void NoMultipleBetweenBoundsMeansNoNumber()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.n", "number"),
+                new JsonFact.MultipleOf("$.n", 10), new JsonFact.Lower("$.n", Bound.AtLeast(11)), new JsonFact.Upper("$.n", Bound.AtMost(19))));
+        }
+
+        [TestMethod]
+        public void AnIntegerInASmallRangeIsOneOfItsValues()
+        {
+            JsonFact[] facts =
+            {
+                OfType("$.n", "integer"), new JsonFact.Lower("$.n", Bound.AtLeast(1)), new JsonFact.Upper("$.n", Bound.AtMost(3)),
+                new JsonFact.NotEqual("$.n", Of(1m)), new JsonFact.NotEqual("$.n", Of(3m)), new JsonFact.Present("$.n"),
+            };
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.EqualTo("$.n", Of(2m)), facts));
+            Assert.IsTrue(Contradictory(facts.Append(new JsonFact.NotEqual("$.n", Of(2m))).ToArray()));
+        }
+
+        // uniqueItems.
+
+        [TestMethod]
+        public void AUniqueArrayIsNoLongerThanTheValuesItsItemsCanBe()
+        {
+            JsonFact[] facts = { new JsonFact.UniqueItems("$.tags"), new JsonFact.OneOf("$.tags[*]", ValueSet.Of(Of("a"), Of("b"))) };
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.LengthIn("$.tags", 3, null), facts));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.tags[2]"), facts));
+            Assert.AreEqual(Truth.Unknown, Decide(new JsonAtom.Defined("$.tags[1]"), facts));
+        }
+
+        [TestMethod]
+        public void AUniqueArrayOfBooleansHasAtMostTwo()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.flags[2]"), new JsonFact.UniqueItems("$.flags"), OfType("$.flags[*]", "boolean")));
+        }
+
+        [TestMethod]
+        public void TwoEqualItemsOfAUniqueArrayContradict()
+        {
+            Assert.IsTrue(Contradictory(new JsonFact.UniqueItems("$.t"),
+                new JsonFact.Present("$.t[0]"), new JsonFact.OneOf("$.t[0]", ValueSet.Of(Of("a"))),
+                new JsonFact.Present("$.t[1]"), new JsonFact.OneOf("$.t[1]", ValueSet.Of(Of("a")))));
+        }
+
+        // What cannot be there says what its parent is not.
+
+        [TestMethod]
+        public void ARequiredPropertyThatCannotBeThereMeansNoObject()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.o", "object"), new JsonFact.Requires("$.o", "x"), new JsonFact.Absent("$.o.x")));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.o", "object"), new JsonFact.Requires("$.o", "x"), new JsonFact.ClosedTo("$.o", ValueSet.Of("y"))));
+        }
+
+        [TestMethod]
+        public void ARequiredItemThatCannotBeThereMeansNoArray()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.t", "array"), new JsonFact.MinItems("$.t", 1), new JsonFact.OfType("$.t[*]", ValueSet.Of<string>())));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.t", "array"), new JsonFact.MinItems("$.t", 3), new JsonFact.Absent("$.t[2]")));
+        }
+
+        [TestMethod]
+        public void AnArrayOfExactlyThreeHasItsThirdAndNoFourth()
+        {
+            JsonFact[] facts = { new JsonFact.MinItems("$.t", 3), new JsonFact.MaxItems("$.t", 3), new JsonFact.Present("$.t"), OfType("$.t", "array") };
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.Defined("$.t[2]"), facts));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.t[3]"), facts));
+        }
+
+        // Counting properties.
+
+        [TestMethod]
+        public void AnObjectHasNoMorePropertiesThanAllowed()
+        {
+            Assert.IsTrue(Contradictory(new JsonFact.MaxProperties("$.o", 1), new JsonFact.Present("$.o.a"), new JsonFact.Present("$.o.b")));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.o", "object"),
+                new JsonFact.MaxProperties("$.o", 1), new JsonFact.Requires("$.o", "a"), new JsonFact.Requires("$.o", "b")));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.o", "object"),
+                new JsonFact.MinProperties("$.o", 3), new JsonFact.ClosedTo("$.o", ValueSet.Of("a", "b"))));
+        }
+
         // The layering: a schema's facts in a frozen context, a query's in a child of it.
 
         [TestMethod]

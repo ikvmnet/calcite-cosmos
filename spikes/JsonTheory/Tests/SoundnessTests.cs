@@ -45,10 +45,14 @@ namespace JsonTheory.Tests
             var random = new Random(20261014);
             var derived = 0;
 
-            for (var trial = 0; trial < 4_000; trial++)
+            for (var trial = 0; trial < 12_000; trial++)
             {
                 var document = Documents.Object(random, 0);
-                var premises = Enumerable.Range(0, 1 + random.Next(6)).Select(_ => TrueFact(random, document)).ToList();
+                // Most facts are about one path and its relatives, so that facts which only combine on one path, or on
+                // an array and its elements, meet in a trial.
+                var focus = Relatives(Vocabulary[random.Next(Vocabulary.Length)]);
+                var premises = Enumerable.Range(0, 1 + random.Next(6))
+                    .Select(_ => TrueFact(random, document, random.Next(4) != 0 ? focus[random.Next(focus.Count)] : null)).ToList();
                 foreach (var premise in premises)
                     Assert.IsTrue(Documents.IsTrue(document, premise), $"the generator stated a falsehood: {premise} of {document}");
 
@@ -112,6 +116,20 @@ namespace JsonTheory.Tests
                     yield return new JsonFact.MaxItems(path, maxItems);
                 if (scope.TryGet(r.Closed.Of(p), out var closed))
                     yield return new JsonFact.ClosedTo(path, closed);
+                if (scope.TryGet(r.MultipleOf.Of(p), out var factor))
+                    yield return new JsonFact.MultipleOf(path, factor);
+                if (scope.Check(r.Unique.Of(p)))
+                    yield return new JsonFact.UniqueItems(path);
+                if (scope.TryGet(r.MinProperties.Of(p), out var minProperties))
+                    yield return new JsonFact.MinProperties(path, minProperties);
+                if (scope.TryGet(r.MaxProperties.Of(p), out var maxProperties))
+                    yield return new JsonFact.MaxProperties(path, maxProperties);
+                if (scope.TryGet(r.PresentNames.Of(p), out var named))
+                    foreach (var name in named)
+                        yield return new JsonFact.Present(path[name]);
+                if (scope.TryGet(r.RequiredNames.Of(p), out var requiredNames))
+                    foreach (var name in requiredNames)
+                        yield return new JsonFact.Requires(path, name);
 
                 foreach (var value in Documents.Universe)
                 {
@@ -127,12 +145,19 @@ namespace JsonTheory.Tests
             }
         }
 
+        /// <summary>A path of the vocabulary, with the vocabulary's paths for its elements and its parent.</summary>
+        static List<JsonPathSpec> Relatives(JsonPathSpec path)
+        {
+            var parent = path.Segments.Count > 0 ? new JsonPathSpec(path.Segments.Take(path.Segments.Count - 1).ToArray()) : null;
+            return Vocabulary.Where(v => v.Equals(path) || v.Equals(path.Elements) || parent is not null && v.Equals(parent)).ToList();
+        }
+
         /// <summary>A fact about a path of the vocabulary, true of the document.</summary>
-        static JsonFact TrueFact(Random random, J document)
+        static JsonFact TrueFact(Random random, J document, JsonPathSpec? focus)
         {
             while (true)
             {
-                var path = Vocabulary[random.Next(Vocabulary.Length)];
+                var path = focus ?? Vocabulary[random.Next(Vocabulary.Length)];
                 var values = Documents.Values(document, path);
                 var scalars = values.Where(v => v.IsScalar).Select(v => v.Encoded).ToList();
                 var numbers = values.OfType<J.Num>().Select(n => n.Value).ToList();
@@ -140,11 +165,24 @@ namespace JsonTheory.Tests
                 var arrays = values.OfType<J.Arr>().Select(a => (long)a.Elements.Count).ToList();
                 var objects = values.OfType<J.Obj>().ToList();
 
-                JsonFact? fact = random.Next(14) switch
+                // Facts bearing on what the document holds there are drawn more often than those that hold vacuously.
+                var kinds = Enumerable.Range(0, 18).ToList();
+                if (objects.Count > 0)
+                    kinds.AddRange(new[] { 10, 11, 16, 17, 10, 11, 16, 17 });
+                if (arrays.Count > 0)
+                    kinds.AddRange(new[] { 8, 9, 15, 8, 9, 15 });
+                if (numbers.Count > 0)
+                    kinds.AddRange(new[] { 4, 5, 14, 4, 5, 14 });
+                if (strings.Count > 0)
+                    kinds.AddRange(new[] { 6, 7 });
+                if (scalars.Count > 0)
+                    kinds.AddRange(new[] { 2, 3, 2 });
+
+                JsonFact? fact = kinds[random.Next(kinds.Count)] switch
                 {
                     0 when path.IsPattern == false => values.Count > 0 ? new JsonFact.Present(path) : new JsonFact.Absent(path),
                     1 => new JsonFact.OfType(path, ValueSet.From(values.Select(v => v.Type).Concat(AllTypes.Where(_ => random.Next(3) == 0)))),
-                    2 when values.All(v => v.IsScalar) => new JsonFact.OneOf(path, ValueSet.From(scalars.Concat(Documents.Universe.Where(_ => random.Next(4) == 0)))),
+                    2 when values.All(v => v.IsScalar) => new JsonFact.OneOf(path, ValueSet.From(scalars.Concat(Documents.Universe.Where(_ => random.Next(2) == 0 && random.Next(4) == 0)))),
                     3 => Documents.Universe.Where(u => scalars.Contains(u) == false).ToList() is { Count: > 0 } others
                         ? new JsonFact.NotEqual(path, others[random.Next(others.Count)]) : null,
                     4 => new JsonFact.Lower(path, LowerBelow(random, numbers)),
@@ -159,6 +197,11 @@ namespace JsonTheory.Tests
                     12 when path.IsPattern == false => values.SingleOrDefault() is J.Arr a && a.Elements.Where(e => e.IsScalar).ToList() is { Count: > 0 } held
                         ? new JsonFact.Holds(path, held[random.Next(held.Count)].Encoded) : null,
                     13 when path.IsPattern == false => values.Count > 0 ? new JsonFact.Present(path) : new JsonFact.Absent(path),
+                    14 => new[] { 0.5m, 1m, 2m, 2.5m, 5m, 10m }.Where(m => numbers.All(x => Multiples.IsMultiple(x, m))).ToList() is { Count: > 0 } factors
+                        ? new JsonFact.MultipleOf(path, factors[random.Next(factors.Count)]) : null,
+                    15 => values.OfType<J.Arr>().All(a => a.Elements.Select(Documents.Key).Distinct().Count() == a.Elements.Count) ? new JsonFact.UniqueItems(path) : null,
+                    16 => new JsonFact.MinProperties(path, Math.Max(0, (objects.Count > 0 ? objects.Min(o => o.Properties.Count) : 2) - random.Next(2))),
+                    17 => new JsonFact.MaxProperties(path, (objects.Count > 0 ? objects.Max(o => o.Properties.Count) : random.Next(3)) + random.Next(2)),
                     _ => null,
                 };
 

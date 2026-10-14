@@ -48,7 +48,7 @@ namespace JsonTheory.Tests
             _ => throw new InvalidOperationException("not a scalar"),
         };
 
-        public override string ToString() => this switch
+        public sealed override string ToString() => this switch
         {
             Null => "null",
             Bool b => b.Value ? "true" : "false",
@@ -150,9 +150,16 @@ namespace JsonTheory.Tests
                 JsonFact.MaxItems f => v is not J.Arr a || a.Elements.Count <= f.Count,
                 JsonFact.ClosedTo f => v is not J.Obj o || o.Properties.Keys.All(f.Properties.Contains),
                 JsonFact.Requires f => v is not J.Obj o || o.Properties.ContainsKey(f.Property),
+                JsonFact.MultipleOf f => v is not J.Num n || Multiples.IsMultiple(n.Value, f.Factor),
+                JsonFact.UniqueItems => v is not J.Arr a || a.Elements.Select(Key).Distinct().Count() == a.Elements.Count,
+                JsonFact.MinProperties f => v is not J.Obj o || o.Properties.Count >= f.Count,
+                JsonFact.MaxProperties f => v is not J.Obj o || o.Properties.Count <= f.Count,
                 _ => throw new NotSupportedException(fact.GetType().Name),
             });
         }
+
+        /// <summary>A value's identity under JSON equality.</summary>
+        public static string Key(J value) => value.IsScalar ? value.Encoded : value.ToString();
 
         /// <summary>Whether a predicate is true of a document.</summary>
         public static bool IsTrue(J document, JsonAtom atom)

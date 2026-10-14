@@ -30,6 +30,9 @@ array at `p`. Written out, these are `$`, `$.a.b`, `$.tags[10]` and `$.items[*].
 | `closed(p) = S` | **if** an object, its properties are among `S` (`additionalProperties: false`) |
 | `required(p, n)` | **if** an object, it has `n` |
 | `contains(p, v)` | the path is an array with an element equal to `v` |
+| `multipleOf(p) = m` | **if** a number, it is a multiple of `m`; two of them merge to their least common multiple |
+| `unique(p)` | **if** an array, no two elements are equal (`uniqueItems`) |
+| `minProperties(p)`, `maxProperties(p)` | **if** an object, its property count lies within these |
 
 Nearly every fact is conditional on the path being there, which is what JSON Schema's keywords mean. That is what
 lets two claims no single value satisfies prove something without contradicting each other: a string and an
@@ -84,6 +87,24 @@ saturation terminates.
 - An array holds no value its elements cannot be: not outside their domain, not of a type they cannot have, and
   nothing at all where no element can be there.
 
+**`multipleOf`, integer ranges, `uniqueItems`, property counts**
+- A multiple narrows a domain.
+- A multiple of a whole number is whole.
+- No multiple lies between bounds, so there is no number.
+- An integer between near bounds is one of the integers between them. This turns `1 ≤ n ≤ 3` into the domain
+  `{1, 2, 3}`, which disequalities can then empty.
+- A unique array is no longer than the values its elements can be: two for booleans, `|enum|` for an enum.
+- Two present elements of a unique array are not one value.
+- Properties are counted:
+  - an object has no more properties, present or required, than `maxProperties` allows;
+  - a closed object has no more properties than it names;
+  - no object has crossed property counts.
+
+**What cannot be there says what its parent is not**
+- A required property that cannot be there means no object. So does one a closed object excludes.
+- An element an array must hold and cannot means no array.
+- An array whose elements cannot be there is empty, and an empty array has no element.
+
 **Patterns**
 - An element is an instance of every element.
 - So is a property of an instance, an element of an instance, and every element of an instance.
@@ -91,26 +112,35 @@ saturation terminates.
   - `types`, `dom`, `ne` and both numeric bounds;
   - both length bounds and both item bounds;
   - `closed` and `required`;
+  - `multipleOf`, `unique` and the property counts;
   - absence.
 
 **Cosmos DB:** the root context also states that every document is a present object.
 
 ## What is checked
 
-- **Soundness.** The theory never derives a falsehood from truths. 4,000 seeded trials each do the following:
+- **Soundness.** The theory never derives a falsehood from truths. 12,000 seeded trials each do the following:
   - generate a document;
-  - state up to six random facts that are true of it, over twenty concrete paths and seven patterns;
+  - state up to six random facts that are true of it, over twenty concrete paths and seven patterns. Most are about
+    one path and its relatives (its elements and its parent), and they are weighted towards facts that bear on
+    what the document holds there;
   - saturate;
   - check that the context is not contradictory, that every fact derived about every path is true of that
     document, and that twelve random predicates decided *always* or *never* are decided rightly for it.
 
   An unsound rule is a plan that drops rows, so this oracle stands behind the rules, rather than agreement with any
   other engine.
-- **The oracle is shown to catch unsound rules.** Each of three planted bugs fails it:
+- **The oracle is shown to catch unsound rules.** Each of six planted bugs fails it:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
-  - `required` firing without checking for an object.
-- **25 scenarios**, among them:
+  - `required` firing without checking for an object;
+  - any multiple read as whole;
+  - a unique array allowed one value fewer than it can hold;
+  - a closed object counted wrong against `minProperties`.
+
+  The last two slipped through the first generator, which rarely put facts on an array and its elements together
+  in one trial. The relatives and the weighting are what made the oracle catch them.
+- **37 scenarios**, among them:
   - a string has no properties;
   - a number is not another number;
   - an absent value is not null;
@@ -136,13 +166,12 @@ saturation terminates.
   `spikes/EggnogDerive` measured.
 
 **More rules of JSON**
-- `uniqueItems`: an array of unique items is no longer than the domain its items are drawn from.
-- `multipleOf`.
-- `minProperties` and `maxProperties`.
 - `contains`, `minContains` and `maxContains`.
 - `propertyNames`.
-- `ARRAY_LENGTH(p) = n` pinning which elements are present.
+- `const` and `enum` over objects and arrays.
 - An equality between two paths, for `CHECK (a = b)`. This one wants values as e-classes rather than domains.
+- Rules that are a schema's rather than JSON's (`dependentRequired`, `if`/`then`, `oneOf`). These go in as rows
+  beneath the root, not as root rules.
 
 **Reasoning that needs a case split**
 - **The converse of inheritance:** what every individual element is proven to be, every element is. This holds

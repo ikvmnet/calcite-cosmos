@@ -133,6 +133,14 @@ namespace JsonTheory
 
         public sealed record Holds(JsonPathSpec Path, string Value) : JsonFact(Path);
 
+        public sealed record MultipleOf(JsonPathSpec Path, decimal Factor) : JsonFact(Path);
+
+        public sealed record UniqueItems(JsonPathSpec Path) : JsonFact(Path);
+
+        public sealed record MinProperties(JsonPathSpec Path, long Count) : JsonFact(Path);
+
+        public sealed record MaxProperties(JsonPathSpec Path, long Count) : JsonFact(Path);
+
         public Fact ToFact(JsonRules r)
         {
             var p = Path.ToTerm(r);
@@ -152,6 +160,10 @@ namespace JsonTheory
                 ClosedTo f => r.Closed.Of(p).Is(f.Properties),
                 Requires f => r.Required.Of(p, f.Property),
                 Holds f => r.Contains.Of(p, f.Value),
+                MultipleOf f => r.MultipleOf.Of(p).Is(f.Factor),
+                UniqueItems => r.Unique.Of(p),
+                MinProperties f => r.MinProperties.Of(p).Is(f.Count),
+                MaxProperties f => r.MaxProperties.Of(p).Is(f.Count),
                 _ => throw new NotSupportedException(GetType().Name),
             };
         }
@@ -381,6 +393,8 @@ namespace JsonTheory
             if (IsNumber(value))
             {
                 var x = NumberOf(value);
+                if (scope.TryGet(r.MultipleOf.Of(p), out var m) && Multiples.IsMultiple(x, m) == false)
+                    return true;
                 if (scope.TryGet(r.Lo.Of(p), out var lo) && lo.AdmitsAbove(x) == false)
                     return true;
                 if (scope.TryGet(r.Hi.Of(p), out var hi) && hi.AdmitsBelow(x) == false)

@@ -60,6 +60,13 @@ namespace JsonTheory
             Required = graph.DefineRelation<JPath, string>("required");
             Contains = graph.DefineRelation<JPath, string>("contains");
             Instance = graph.DefineRelation<JPath, JPath>("instance");
+            graph.Values.Register<decimal>("decimal");
+            MultipleOf = graph.DefineFunction<JPath, decimal>("multipleOf", new ValueLattice<decimal>("least common multiple", Multiples.Lcm));
+            Unique = graph.DefineRelation<JPath>("unique");
+            MinProperties = graph.DefineFunction<JPath, long>("minProperties", ValueLattice.Max<long>());
+            MaxProperties = graph.DefineFunction<JPath, long>("maxProperties", ValueLattice.Min<long>());
+            PresentNames = graph.DefineFunction<JPath, ValueSet<string>>("presentNames", ValueLattice.Union<string>());
+            RequiredNames = graph.DefineFunction<JPath, ValueSet<string>>("requiredNames", ValueLattice.Union<string>());
 
             Json = graph.DefineRuleset("json");
 
@@ -69,6 +76,7 @@ namespace JsonTheory
             DefineObjects();
             DefineArrays();
             DefinePatterns();
+            DefineMore();
         }
 
         public EGraph Graph { get; }
@@ -127,6 +135,24 @@ namespace JsonTheory
 
         /// <summary>The first path is one of those the second, a pattern, stands for.</summary>
         public Relation<JPath, JPath> Instance { get; }
+
+        /// <summary>If the path holds a number, it is a multiple of this.</summary>
+        public Function<JPath, decimal> MultipleOf { get; }
+
+        /// <summary>If the path holds an array, no two of its elements are equal.</summary>
+        public Relation<JPath> Unique { get; }
+
+        /// <summary>If the path holds an object, it has at least this many properties.</summary>
+        public Function<JPath, long> MinProperties { get; }
+
+        /// <summary>If the path holds an object, it has at most this many properties.</summary>
+        public Function<JPath, long> MaxProperties { get; }
+
+        /// <summary>Properties the path is known to have, all of them present.</summary>
+        public Function<JPath, ValueSet<string>> PresentNames { get; }
+
+        /// <summary>Properties the path has if it holds an object.</summary>
+        public Function<JPath, ValueSet<string>> RequiredNames { get; }
 
         void Rule(string name, Action<RuleBuilder> define) => Json.DefineRule(name, define);
 
@@ -397,6 +423,15 @@ namespace JsonTheory
             Inherit("minItems", MinItems);
             Inherit("maxItems", MaxItems);
             Inherit("closed", Closed);
+            Inherit("multipleOf", MultipleOf);
+            Inherit("minProperties", MinProperties);
+            Inherit("maxProperties", MaxProperties);
+            Rule("an instance inherits uniqueness", r =>
+            {
+                var (c, e) = r.Vars<JPath, JPath>("c", "e");
+                r.When(Instance.Of(c, e), Unique.Of(e));
+                r.Then(Unique.Of(c));
+            });
             Rule("an instance inherits a disequality", r =>
             {
                 var (c, e, v) = r.Vars<JPath, JPath, string>("c", "e", "v");
@@ -414,6 +449,141 @@ namespace JsonTheory
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
                 r.When(Instance.Of(c, e), Absent.Of(e));
                 r.Then(Absent.Of(c));
+            });
+        }
+
+        void DefineMore()
+        {
+            // Numbers: multipleOf, and a small integer range as the values it holds.
+            Rule("a multiple narrows a domain", r =>
+            {
+                var (p, d, m) = r.Vars<JPath, ValueSet<string>, decimal>("p", "d", "m");
+                r.When(d.Is(Dom.Of(p)), m.Is(MultipleOf.Of(p)));
+                r.Then(Dom.Of(p).Is(Compute.Of(d, m, Multiples.Only)));
+            });
+            Rule("a multiple of a whole number is whole", r =>
+            {
+                var (p, m) = r.Vars<JPath, decimal>("p", "m");
+                r.When(m.Is(MultipleOf.Of(p)));
+                r.Where(m, x => x == decimal.Truncate(x));
+                r.Then(Types.Of(p).Is(AllTypesBut(FractionType)));
+            });
+            Rule("no multiple lies between bounds", r =>
+            {
+                var (p, m) = r.Vars<JPath, decimal>("p", "m");
+                var (l, h) = r.Vars<Bound, Bound>("l", "h");
+                r.When(m.Is(MultipleOf.Of(p)), l.Is(Lo.Of(p)), h.Is(Hi.Of(p)));
+                r.Where(m, l, h, Multiples.NoneBetween);
+                r.Then(Types.Of(p).Is(AllTypesBut(IntegerType, FractionType)));
+            });
+            Rule("an integer between near bounds is one of the integers between them", r =>
+            {
+                var (p, t) = r.Vars<JPath, ValueSet<string>>("p", "t");
+                var (l, h) = r.Vars<Bound, Bound>("l", "h");
+                r.When(t.Is(Types.Of(p)), l.Is(Lo.Of(p)), h.Is(Hi.Of(p)));
+                r.Where(t, x => x.IsSubsetOf(ValueSet.Of(IntegerType)));
+                r.Where(l, h, (lower, upper) => Multiples.IntegersBetween(lower, upper) is { Count: <= 64 });
+                r.Then(Dom.Of(p).Is(Compute.Of(l, h, (lower, upper) => ValueSet.From(Multiples.IntegersBetween(lower, upper)!.Select(Of)))));
+            });
+
+            // Arrays: uniqueItems, and what an empty or impossible element says of its array.
+            Rule("a unique array is no longer than the values its elements can be", r =>
+            {
+                var (p, e) = r.Vars<JPath, JPath>("p", "e");
+                var d = r.Var<ValueSet<string>>("d");
+                r.When(Unique.Of(p), e.Is(Each.Of(p)), d.Is(Dom.Of(e)));
+                r.Then(MaxItems.Of(p).Is(Primitives.Count<string>().Of(d)));
+            });
+            Rule("two present elements of a unique array are not one value", r =>
+            {
+                var (p, a, b) = r.Vars<JPath, JPath, JPath>("p", "a", "b");
+                var (i, j) = r.Vars<long, long>("i", "j");
+                var (da, db) = r.Vars<ValueSet<string>, ValueSet<string>>("da", "db");
+                r.When(Unique.Of(p), a.Is(Index.Of(p, i)), b.Is(Index.Of(p, j)), Present.Of(a), Present.Of(b), da.Is(Dom.Of(a)), db.Is(Dom.Of(b)));
+                r.Where(Primitives.Less.Of(i, j));
+                r.Where(da, db, (x, y) => x.Count == 1 && x.Equals(y));
+                r.Then(Graph.Contradiction.Of());
+            });
+            Rule("an array whose elements cannot be there is empty", r =>
+            {
+                var (p, e) = r.Vars<JPath, JPath>("p", "e");
+                r.When(e.Is(Each.Of(p)), Absent.Of(e));
+                r.Then(MaxItems.Of(p).Is(0L));
+            });
+            Rule("an empty array has no element", r =>
+            {
+                var (p, e) = r.Vars<JPath, JPath>("p", "e");
+                var h = r.Var<long>("h");
+                r.When(e.Is(Each.Of(p)), h.Is(MaxItems.Of(p)));
+                r.Where(h, x => x == 0);
+                r.Then(Absent.Of(e));
+            });
+            Rule("an element an array must hold and cannot means no array", r =>
+            {
+                var (c, p, i) = r.Vars<JPath, JPath, long>("c", "p", "i");
+                var l = r.Var<long>("l");
+                r.When(c.Is(Index.Of(p, i)), Absent.Of(c), l.Is(MinItems.Of(p)));
+                r.Where(Primitives.Less.Of(i, l));
+                r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
+            });
+
+            // Objects: what a required property that cannot be there says, and counting properties.
+            Rule("a required property that cannot be there means no object", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                r.When(c.Is(Prop.Of(p, n)), Required.Of(p, n), Absent.Of(c));
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+            Rule("a closed object cannot require what it excludes", r =>
+            {
+                var (p, n) = r.Vars<JPath, string>("p", "n");
+                var s = r.Var<ValueSet<string>>("s");
+                r.When(Required.Of(p, n), s.Is(Closed.Of(p)));
+                r.Where(s, n, (allowed, name) => allowed.Contains(name) == false);
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+            Rule("a present property is counted", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                r.When(Present.Of(c), c.Is(Prop.Of(p, n)));
+                r.Then(PresentNames.Of(p).Is(Primitives.Singleton<string>().Of(n)));
+            });
+            Rule("a required property is counted", r =>
+            {
+                var (p, n) = r.Vars<JPath, string>("p", "n");
+                r.When(Required.Of(p, n));
+                r.Then(RequiredNames.Of(p).Is(Primitives.Singleton<string>().Of(n)));
+            });
+            Rule("an object has no more properties than allowed", r =>
+            {
+                var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
+                var m = r.Var<long>("m");
+                r.When(s.Is(PresentNames.Of(p)), m.Is(MaxProperties.Of(p)));
+                r.Where(s, m, (names, most) => names.Count > most);
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+            Rule("an object requires no more properties than allowed", r =>
+            {
+                var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
+                var m = r.Var<long>("m");
+                r.When(s.Is(RequiredNames.Of(p)), m.Is(MaxProperties.Of(p)));
+                r.Where(s, m, (names, most) => names.Count > most);
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+            Rule("a closed object has no more properties than it names", r =>
+            {
+                var (p, s) = r.Vars<JPath, ValueSet<string>>("p", "s");
+                var m = r.Var<long>("m");
+                r.When(s.Is(Closed.Of(p)), m.Is(MinProperties.Of(p)));
+                r.Where(s, m, (names, least) => names.Count < least);
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+            Rule("no object has crossed property counts", r =>
+            {
+                var (p, l, h) = r.Vars<JPath, long, long>("p", "l", "h");
+                r.When(l.Is(MinProperties.Of(p)), h.Is(MaxProperties.Of(p)));
+                r.Where(Primitives.Greater.Of(l, h));
+                r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
             });
         }
 
