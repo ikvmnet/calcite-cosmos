@@ -68,7 +68,7 @@ namespace JsonTheory.Tests
     static class Documents
     {
 
-        public static readonly string[] Keys = { "a", "b", "c" };
+        public static readonly string[] Keys = { "a", "b", "c", "dd" };
 
         static readonly decimal[] NumbersSeen = { -1m, 0m, 1m, 2m, 2.5m, 10m, 499.5m, 500m };
 
@@ -105,6 +105,18 @@ namespace JsonTheory.Tests
             return new J.Obj(properties);
         }
 
+        /// <summary>A copy of a document whose property <paramref name="to"/> holds what <paramref name="from"/> does.</summary>
+        public static J.Obj Copying(J.Obj document, string from, string to)
+        {
+            var properties = new SortedDictionary<string, J>(document.Properties, StringComparer.Ordinal);
+            if (properties.TryGetValue(from, out var value))
+                properties[to] = value;
+            else
+                properties.Remove(to);
+
+            return new J.Obj(properties);
+        }
+
         /// <summary>
         /// The values at every path a path stands for: none or one for a concrete path, every element's for a pattern.
         /// </summary>
@@ -128,6 +140,10 @@ namespace JsonTheory.Tests
             var values = Values(document, fact.Path);
             switch (fact)
             {
+                case JsonFact.Same same:
+                    var others = Values(document, same.Other);
+                    return values.Count == 0 && others.Count == 0
+                        || values.Count == 1 && others.Count == 1 && Key(values[0]) == Key(others[0]);
                 case JsonFact.Present:
                     return values.Count > 0;
                 case JsonFact.Absent:
@@ -154,6 +170,10 @@ namespace JsonTheory.Tests
                 JsonFact.UniqueItems => v is not J.Arr a || a.Elements.Select(Key).Distinct().Count() == a.Elements.Count,
                 JsonFact.MinProperties f => v is not J.Obj o || o.Properties.Count >= f.Count,
                 JsonFact.MaxProperties f => v is not J.Obj o || o.Properties.Count <= f.Count,
+                JsonFact.ContainsAtLeast f => v is not J.Arr a || a.Elements.Count(e => e.IsScalar && e.Encoded == f.Value) >= f.Count,
+                JsonFact.ContainsAtMost f => v is not J.Arr a || a.Elements.Count(e => e.IsScalar && e.Encoded == f.Value) <= f.Count,
+                JsonFact.NameMinLength f => v is not J.Obj o || o.Properties.Keys.All(k => k.Length >= f.Length),
+                JsonFact.NameMaxLength f => v is not J.Obj o || o.Properties.Keys.All(k => k.Length <= f.Length),
                 _ => throw new NotSupportedException(fact.GetType().Name),
             });
         }
@@ -167,6 +187,9 @@ namespace JsonTheory.Tests
             var values = Values(document, atom.Path);
             if (values.Count != 1)
                 return false;
+
+            if (atom is JsonAtom.SameAs same)
+                return Values(document, same.Other) is { Count: 1 } other && Key(other[0]) == Key(values[0]);
 
             var v = values[0];
             return atom switch

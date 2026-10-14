@@ -141,6 +141,18 @@ namespace JsonTheory
 
         public sealed record MaxProperties(JsonPathSpec Path, long Count) : JsonFact(Path);
 
+        /// <summary>The two paths hold one value, or are both absent: what <c>c.a = c.b</c> proves, and what a
+        /// <c>CHECK (a = b)</c> over paths that are both there states.</summary>
+        public sealed record Same(JsonPathSpec Path, JsonPathSpec Other) : JsonFact(Path);
+
+        public sealed record ContainsAtLeast(JsonPathSpec Path, string Value, long Count) : JsonFact(Path);
+
+        public sealed record ContainsAtMost(JsonPathSpec Path, string Value, long Count) : JsonFact(Path);
+
+        public sealed record NameMinLength(JsonPathSpec Path, long Length) : JsonFact(Path);
+
+        public sealed record NameMaxLength(JsonPathSpec Path, long Length) : JsonFact(Path);
+
         public Fact ToFact(JsonRules r)
         {
             var p = Path.ToTerm(r);
@@ -164,6 +176,11 @@ namespace JsonTheory
                 UniqueItems => r.Unique.Of(p),
                 MinProperties f => r.MinProperties.Of(p).Is(f.Count),
                 MaxProperties f => r.MaxProperties.Of(p).Is(f.Count),
+                Same f => p.Is(f.Other.ToTerm(r)),
+                ContainsAtLeast f => r.ContainsAtLeast.Of(p, f.Value).Is(f.Count),
+                ContainsAtMost f => r.ContainsAtMost.Of(p, f.Value).Is(f.Count),
+                NameMinLength f => r.NameMinLength.Of(p).Is(f.Length),
+                NameMaxLength f => r.NameMaxLength.Of(p).Is(f.Length),
                 _ => throw new NotSupportedException(GetType().Name),
             };
         }
@@ -195,6 +212,9 @@ namespace JsonTheory
 
         /// <summary><c>ARRAY_CONTAINS</c> of a scalar.</summary>
         public sealed record ArrayHolds(JsonPathSpec Path, string Value) : JsonAtom(Path);
+
+        /// <summary>An equality between two paths, true where both are there and hold one value.</summary>
+        public sealed record SameAs(JsonPathSpec Path, JsonPathSpec Other) : JsonAtom(Path);
 
     }
 
@@ -371,7 +391,28 @@ namespace JsonTheory
                     if (CannotHold(scope, each, eachTypes, eachDom, holds.Value))
                         return Truth.Never;
 
-                    return scope.Check(r.Contains.Of(p, holds.Value)) ? Truth.Always : Truth.Unknown;
+                    if (scope.TryGet(r.ContainsAtMost.Of(p, holds.Value), out var none) && none == 0)
+                        return Truth.Never;
+
+                    var held = scope.Check(r.Contains.Of(p, holds.Value))
+                        || present && types.IsSubsetOf(Types(ArrayType)) && scope.TryGet(r.ContainsAtLeast.Of(p, holds.Value), out var least) && least >= 1;
+                    return held ? Truth.Always : Truth.Unknown;
+                }
+
+                case JsonAtom.SameAs same:
+                {
+                    var q = same.Other.ToTerm(r);
+                    if (scope.Check(r.Absent.Of(q)))
+                        return Truth.Never;
+
+                    var otherTypes = scope.TryGet(r.Types.Of(q), out var ot) ? ot : AllTypes;
+                    if (types.Any(otherTypes.Contains) == false)
+                        return Truth.Never;
+                    if (dom is not null && scope.TryGet(r.Dom.Of(q), out var od) && dom.Any(od.Contains) == false && (types.IsSubsetOf(Scalars) || otherTypes.IsSubsetOf(Scalars)))
+                        return Truth.Never;
+
+                    var equal = scope.AreEqual(scope.Make((ConstructorTerm<JPath>)p), q);
+                    return equal && present ? Truth.Always : Truth.Unknown;
                 }
 
                 default:

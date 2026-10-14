@@ -339,6 +339,102 @@ namespace JsonTheory.Tests
                 new JsonFact.MinProperties("$.o", 3), new JsonFact.ClosedTo("$.o", ValueSet.Of("a", "b"))));
         }
 
+        // Two paths holding one value: a union of two path terms, and congruence does the rest.
+
+        [TestMethod]
+        public void PathsHoldingOneValueShareEveryFact()
+        {
+            JsonFact[] facts = { new JsonFact.Same("$.a", "$.b"), new JsonFact.OneOf("$.a", ValueSet.Of(Of(1m))) };
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.EqualTo("$.b", Of(2m)), facts));
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.Defined("$.b"), facts.Append(new JsonFact.Present("$.a")).ToArray()));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.b"), facts.Append(new JsonFact.Absent("$.a")).ToArray()));
+        }
+
+        [TestMethod]
+        public void PathsHoldingOneValueHaveOneValueBeneathThem()
+        {
+            // Congruence: if $.a and $.b are one value, so are $.a.x and $.b.x, and $.a[2] and $.b[2].
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.Defined("$.b.x"), new JsonFact.Same("$.a", "$.b"), new JsonFact.Present("$.a.x")));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.EqualTo("$.b[2]", Of("z")),
+                new JsonFact.Same("$.a", "$.b"), new JsonFact.OneOf("$.a[2]", ValueSet.Of(Of("y")))));
+        }
+
+        [TestMethod]
+        public void PathsHoldingDifferentValuesAreNotOne()
+        {
+            Assert.IsTrue(Contradictory(new JsonFact.Same("$.a", "$.b"), new JsonFact.Present("$.a"),
+                new JsonFact.OneOf("$.a", ValueSet.Of(Of(1m))), new JsonFact.OneOf("$.b", ValueSet.Of(Of(2m)))));
+        }
+
+        [TestMethod]
+        public void EqualityBetweenPathsIsTransitive()
+        {
+            using var scope = Contexts.Open(null, new JsonFact[] { new JsonFact.Same("$.a", "$.b"), new JsonFact.Same("$.b", "$.c"), new JsonFact.Present("$.a") },
+                new JsonPathSpec[] { "$.a", "$.c" });
+            Assert.AreEqual(Truth.Always, Contexts.Decide(scope, new JsonAtom.SameAs("$.a", "$.c")));
+        }
+
+        [TestMethod]
+        public void ACheckAcrossPathsCarriesTypes()
+        {
+            // CHECK (data.id = linkId), with linkId declared a string: data.id is no integer.
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.data.id", "integer"),
+                new JsonFact.Same("$.data.id", "$.linkId"), OfType("$.linkId", "string")));
+        }
+
+        [TestMethod]
+        public void PathsOfDifferentTypesAreNeverEqual()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.SameAs("$.a", "$.b"), OfType("$.a", "string"), OfType("$.b", "number")));
+        }
+
+        [TestMethod]
+        public void NoValueIsOneOfItsOwnProperties()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.a"), new JsonFact.Same("$.a", "$.a.x")));
+        }
+
+        // contains, minContains and maxContains.
+
+        [TestMethod]
+        public void AnArrayHoldingAValueThreeTimesIsAtLeastThreeLong()
+        {
+            JsonFact[] facts = { new JsonFact.ContainsAtLeast("$.t", Of("a"), 3), new JsonFact.Present("$.t"), OfType("$.t", "array") };
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.Defined("$.t[2]"), facts));
+            Assert.AreEqual(Truth.Always, Decide(new JsonAtom.ArrayHolds("$.t", Of("a")), facts));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.LengthIn("$.t", null, 2), facts));
+        }
+
+        [TestMethod]
+        public void AnArrayCannotHoldWhatItsItemsCannotBe()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.t", "array"),
+                new JsonFact.ContainsAtLeast("$.t", Of("z"), 1), new JsonFact.OneOf("$.t[*]", ValueSet.Of(Of("a"), Of("b")))));
+        }
+
+        [TestMethod]
+        public void AUniqueArrayHoldsAValueAtMostOnce()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.HasType("$.t", "array"),
+                new JsonFact.UniqueItems("$.t"), new JsonFact.ContainsAtLeast("$.t", Of("a"), 2)));
+        }
+
+        [TestMethod]
+        public void AnArrayHoldingAValueNoTimesHasNoItemEqualToIt()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.EqualTo("$.t[4]", Of("a")), new JsonFact.ContainsAtMost("$.t", Of("a"), 0)));
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.ArrayHolds("$.t", Of("a")), new JsonFact.ContainsAtMost("$.t", Of("a"), 0)));
+        }
+
+        // propertyNames.
+
+        [TestMethod]
+        public void APropertyWhoseNameIsTooLongIsAbsent()
+        {
+            Assert.AreEqual(Truth.Never, Decide(new JsonAtom.Defined("$.o.longname"), new JsonFact.NameMaxLength("$.o", 4)));
+            Assert.AreEqual(Truth.Unknown, Decide(new JsonAtom.Defined("$.o.name"), new JsonFact.NameMaxLength("$.o", 4)));
+        }
+
         // The layering: a schema's facts in a frozen context, a query's in a child of it.
 
         [TestMethod]

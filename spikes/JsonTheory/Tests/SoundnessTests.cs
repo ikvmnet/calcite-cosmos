@@ -31,13 +31,16 @@ namespace JsonTheory.Tests
             {
                 "$", "$.a", "$.b", "$.c", "$.a.a", "$.a.b", "$.a.c", "$.b.a",
                 "$.a[0]", "$.a[1]", "$.a[2]", "$.a[3]", "$.a[4]", "$.b[0]", "$.b[1]",
-                "$.a[0].a", "$.a[1].b", "$.a[0][0]", "$.a[1][1]", "$.a.a[0]",
+                "$.a[0].a", "$.a[1].b", "$.a[0][0]", "$.a[1][1]", "$.a.a[0]", "$.dd", "$.a.dd", "$.b.b", "$.b[0].a",
             }.Select(JsonPathSpec.Parse).ToArray();
 
         static readonly JsonPathSpec[] Patterns =
             new[] { "$.a[*]", "$.b[*]", "$.a[*].a", "$.a[*].b", "$.a[*][*]", "$.a[*][0]", "$.a.a[*]" }.Select(JsonPathSpec.Parse).ToArray();
 
         static readonly JsonPathSpec[] Vocabulary = Concrete.Concat(Patterns).ToArray();
+
+        static readonly (JsonPathSpec, JsonPathSpec)[] Pairs =
+            Concrete.SelectMany((a, i) => Concrete.Skip(i + 1).Select(b => (a, b))).ToArray();
 
         [TestMethod]
         public void NothingDerivedIsFalseOfADocumentTheFactsAreTrueOf()
@@ -47,7 +50,10 @@ namespace JsonTheory.Tests
 
             for (var trial = 0; trial < 12_000; trial++)
             {
+                // A third of the documents hold one value at two places, so that equalities between paths are true often.
                 var document = Documents.Object(random, 0);
+                if (random.Next(3) == 0)
+                    document = Documents.Copying(document, "a", "b");
                 // Most facts are about one path and its relatives, so that facts which only combine on one path, or on
                 // an array and its elements, meet in a trial.
                 var focus = Relatives(Vocabulary[random.Next(Vocabulary.Length)]);
@@ -67,6 +73,11 @@ namespace JsonTheory.Tests
                     if (Documents.IsTrue(document, fact) == false)
                         Assert.Fail($"derived {fact}, false of the document\n{Case()}");
                 }
+
+                foreach (var (left, right) in Pairs)
+                    if (scope.AreEqual(scope.Make((ConstructorTerm<JPath>)left.ToTerm(Contexts.Rules)), right.ToTerm(Contexts.Rules))
+                        && Documents.IsTrue(document, new JsonFact.Same(left, right)) == false)
+                        Assert.Fail($"derived {left} = {right}, false of the document\n{Case()}");
 
                 for (var i = 0; i < 12; i++)
                 {
@@ -116,6 +127,10 @@ namespace JsonTheory.Tests
                     yield return new JsonFact.MaxItems(path, maxItems);
                 if (scope.TryGet(r.Closed.Of(p), out var closed))
                     yield return new JsonFact.ClosedTo(path, closed);
+                if (scope.TryGet(r.NameMinLength.Of(p), out var nameMin))
+                    yield return new JsonFact.NameMinLength(path, nameMin);
+                if (scope.TryGet(r.NameMaxLength.Of(p), out var nameMax))
+                    yield return new JsonFact.NameMaxLength(path, nameMax);
                 if (scope.TryGet(r.MultipleOf.Of(p), out var factor))
                     yield return new JsonFact.MultipleOf(path, factor);
                 if (scope.Check(r.Unique.Of(p)))
@@ -137,6 +152,10 @@ namespace JsonTheory.Tests
                         yield return new JsonFact.NotEqual(path, value);
                     if (scope.Check(r.Contains.Of(p, value)))
                         yield return new JsonFact.Holds(path, value);
+                    if (scope.TryGet(r.ContainsAtLeast.Of(p, value), out var atLeast))
+                        yield return new JsonFact.ContainsAtLeast(path, value, atLeast);
+                    if (scope.TryGet(r.ContainsAtMost.Of(p, value), out var atMost))
+                        yield return new JsonFact.ContainsAtMost(path, value, atMost);
                 }
 
                 foreach (var key in Documents.Keys)
@@ -166,11 +185,13 @@ namespace JsonTheory.Tests
                 var objects = values.OfType<J.Obj>().ToList();
 
                 // Facts bearing on what the document holds there are drawn more often than those that hold vacuously.
-                var kinds = Enumerable.Range(0, 18).ToList();
+                var kinds = Enumerable.Range(0, 23).ToList();
                 if (objects.Count > 0)
-                    kinds.AddRange(new[] { 10, 11, 16, 17, 10, 11, 16, 17 });
+                    kinds.AddRange(new[] { 10, 11, 16, 17, 21, 22, 10, 11, 16, 17, 21, 22 });
                 if (arrays.Count > 0)
-                    kinds.AddRange(new[] { 8, 9, 15, 8, 9, 15 });
+                    kinds.AddRange(new[] { 8, 9, 15, 19, 20, 8, 9, 15, 19, 20 });
+                if (path.IsPattern == false && values.Count > 0)
+                    kinds.AddRange(new[] { 18, 18, 18 });
                 if (numbers.Count > 0)
                     kinds.AddRange(new[] { 4, 5, 14, 4, 5, 14 });
                 if (strings.Count > 0)
@@ -202,12 +223,27 @@ namespace JsonTheory.Tests
                     15 => values.OfType<J.Arr>().All(a => a.Elements.Select(Documents.Key).Distinct().Count() == a.Elements.Count) ? new JsonFact.UniqueItems(path) : null,
                     16 => new JsonFact.MinProperties(path, Math.Max(0, (objects.Count > 0 ? objects.Min(o => o.Properties.Count) : 2) - random.Next(2))),
                     17 => new JsonFact.MaxProperties(path, (objects.Count > 0 ? objects.Max(o => o.Properties.Count) : random.Next(3)) + random.Next(2)),
+                    18 when path.IsPattern == false => Concrete.Where(o => o.Equals(path) == false && Documents.IsTrue(document, new JsonFact.Same(path, o))).ToList() is { Count: > 0 } same
+                        ? new JsonFact.Same(path, same[random.Next(same.Count)]) : null,
+                    19 => Counted(random, values) is var v1
+                        ? new JsonFact.ContainsAtLeast(path, v1, Math.Max(0, values.OfType<J.Arr>().Select(a => (long)a.Elements.Count(e => e.IsScalar && e.Encoded == v1)).DefaultIfEmpty(2).Min() - random.Next(2))) : null,
+                    20 => Counted(random, values) is var v2
+                        ? new JsonFact.ContainsAtMost(path, v2, values.OfType<J.Arr>().Select(a => (long)a.Elements.Count(e => e.IsScalar && e.Encoded == v2)).DefaultIfEmpty(random.Next(2)).Max() + random.Next(2)) : null,
+                    21 => new JsonFact.NameMinLength(path, Math.Max(0, objects.SelectMany(o => o.Properties.Keys).Select(k => (long)k.Length).DefaultIfEmpty(2).Min() - random.Next(2))),
+                    22 => new JsonFact.NameMaxLength(path, objects.SelectMany(o => o.Properties.Keys).Select(k => (long)k.Length).DefaultIfEmpty(1).Max() + random.Next(2) - (objects.Count == 0 ? 0 : 0)),
                     _ => null,
                 };
 
                 if (fact is not null)
                     return fact;
             }
+        }
+
+        /// <summary>A value to count in arrays: half the time one an array there holds, so that counts are exact.</summary>
+        static string Counted(Random random, List<J> values)
+        {
+            var held = values.OfType<J.Arr>().SelectMany(a => a.Elements).Where(e => e.IsScalar).Select(e => e.Encoded).ToList();
+            return held.Count > 0 && random.Next(2) == 0 ? held[random.Next(held.Count)] : Documents.Universe[random.Next(Documents.Universe.Length)];
         }
 
         static Bound LowerBelow(Random random, List<decimal> numbers)
@@ -245,8 +281,9 @@ namespace JsonTheory.Tests
             Bound? Edge() => random.Next(3) == 0 ? null : new Bound(random.Next(-2, 12) + (random.Next(2) == 0 ? 0.5m : 0m), random.Next(2) == 0);
             long? Count() => random.Next(3) == 0 ? null : random.Next(0, 6);
 
-            return random.Next(6) switch
+            return random.Next(7) switch
             {
+                6 => new JsonAtom.SameAs(path, Concrete[random.Next(Concrete.Length)]),
                 0 => new JsonAtom.Defined(path),
                 1 => new JsonAtom.HasType(path, new[] { "string", "number", "integer", "boolean", "null", "object", "array" }[random.Next(7)]),
                 2 => new JsonAtom.EqualTo(path, value),

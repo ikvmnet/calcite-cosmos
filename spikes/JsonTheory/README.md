@@ -33,6 +33,9 @@ array at `p`. Written out, these are `$`, `$.a.b`, `$.tags[10]` and `$.items[*].
 | `multipleOf(p) = m` | **if** a number, it is a multiple of `m`; two of them merge to their least common multiple |
 | `unique(p)` | **if** an array, no two elements are equal (`uniqueItems`) |
 | `minProperties(p)`, `maxProperties(p)` | **if** an object, its property count lies within these |
+| `containsAtLeast(p, v)`, `containsAtMost(p, v)` | **if** an array, this many of its elements equal `v` (`contains`, `minContains`, `maxContains`) |
+| `nameMinLength(p)`, `nameMaxLength(p)` | **if** an object, its property names are within these lengths (`propertyNames`) |
+| `p ≡ q` | the two paths hold one value, or are both absent: a union of the two path terms |
 
 Nearly every fact is conditional on the path being there, which is what JSON Schema's keywords mean. That is what
 lets two claims no single value satisfies prove something without contradicting each other: a string and an
@@ -100,6 +103,23 @@ saturation terminates.
   - a closed object has no more properties than it names;
   - no object has crossed property counts.
 
+**Two paths holding one value.** This is a union of two path terms, which is what an e-graph is for:
+- Congruence makes their properties and elements one as well: `$.a ≡ $.b` gives `$.a.x ≡ $.b.x` and
+  `$.a[2] ≡ $.b[2]`.
+- Every fact about either, presence included, is a fact about both.
+- A query's `c.a = c.b` proves it, and so does a `CHECK (a = b)` over paths that are both there.
+- No value contains itself, so a path equal to one of its own descendants is absent.
+
+**`contains`, `minContains`, `maxContains`**
+- An array holding a value is a present, non-empty array; holding it `n` times, it is at least `n` long.
+- An array cannot hold a value its elements cannot be: not outside their domain, not of a type they cannot
+  have, and not one they are all unequal to.
+- A unique array holds a value at most once.
+- No array holds a value more often than at most.
+- An array holding a value no times has no element equal to it.
+
+**`propertyNames`:** a property whose name is too short or too long is absent.
+
 **What cannot be there says what its parent is not**
 - A required property that cannot be there means no object. So does one a closed object excludes.
 - An element an array must hold and cannot means no array.
@@ -112,7 +132,7 @@ saturation terminates.
   - `types`, `dom`, `ne` and both numeric bounds;
   - both length bounds and both item bounds;
   - `closed` and `required`;
-  - `multipleOf`, `unique` and the property counts;
+  - `multipleOf`, `unique`, the property counts, the name lengths and the counts of a value;
   - absence.
 
 **Cosmos DB:** the root context also states that every document is a present object.
@@ -130,17 +150,24 @@ saturation terminates.
 
   An unsound rule is a plan that drops rows, so this oracle stands behind the rules, rather than agreement with any
   other engine.
-- **The oracle is shown to catch unsound rules.** Each of six planted bugs fails it:
+- **Equalities checked too.** A third of the generated documents hold one value at two places. Every pair of
+  concrete paths the theory proves equal must hold one value in the document.
+- **The oracle is shown to catch unsound rules.** Each of ten planted bugs fails it:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
   - `required` firing without checking for an object;
   - any multiple read as whole;
   - a unique array allowed one value fewer than it can hold;
-  - a closed object counted wrong against `minProperties`.
+  - a closed object counted wrong against `minProperties`;
+  - a value held `n` times requiring `n + 1` elements;
+  - a name exactly as long as the limit read as too long;
+  - at most one occurrence read as none;
+  - two present properties of one object made one value.
 
-  The last two slipped through the first generator, which rarely put facts on an array and its elements together
-  in one trial. The relatives and the weighting are what made the oracle catch them.
-- **37 scenarios**, among them:
+  Three of these slipped through earlier generators. One generator rarely put facts on an array and its
+  elements together in one trial; another rarely counted a value an array actually holds. Each time the
+  generator was fixed, not the expectation.
+- **49 scenarios**, among them:
   - a string has no properties;
   - a number is not another number;
   - an absent value is not null;
@@ -166,10 +193,11 @@ saturation terminates.
   `spikes/EggnogDerive` measured.
 
 **More rules of JSON**
-- `contains`, `minContains` and `maxContains`.
-- `propertyNames`.
-- `const` and `enum` over objects and arrays.
-- An equality between two paths, for `CHECK (a = b)`. This one wants values as e-classes rather than domains.
+- `contains` with a subschema rather than a scalar, which is an existential and the schema compiler's to expand.
+- `propertyNames` with a pattern, which is the adapter's to recognise.
+- `const` and `enum` over objects and arrays, which the schema compiler expands into facts about each path.
+- An equality that holds only where both paths are there: SQL's `CHECK`, over an optional path. The strong form
+  above is a union; this weak one is not.
 - Rules that are a schema's rather than JSON's (`dependentRequired`, `if`/`then`, `oneOf`). These go in as rows
   beneath the root, not as root rules.
 

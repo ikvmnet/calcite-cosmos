@@ -67,6 +67,10 @@ namespace JsonTheory
             MaxProperties = graph.DefineFunction<JPath, long>("maxProperties", ValueLattice.Min<long>());
             PresentNames = graph.DefineFunction<JPath, ValueSet<string>>("presentNames", ValueLattice.Union<string>());
             RequiredNames = graph.DefineFunction<JPath, ValueSet<string>>("requiredNames", ValueLattice.Union<string>());
+            ContainsAtLeast = graph.DefineFunction<JPath, string, long>("containsAtLeast", ValueLattice.Max<long>());
+            ContainsAtMost = graph.DefineFunction<JPath, string, long>("containsAtMost", ValueLattice.Min<long>());
+            NameMinLength = graph.DefineFunction<JPath, long>("nameMinLength", ValueLattice.Max<long>());
+            NameMaxLength = graph.DefineFunction<JPath, long>("nameMaxLength", ValueLattice.Min<long>());
 
             Json = graph.DefineRuleset("json");
 
@@ -77,6 +81,8 @@ namespace JsonTheory
             DefineArrays();
             DefinePatterns();
             DefineMore();
+            DefineContainsAndNames();
+            DefineEquality();
         }
 
         public EGraph Graph { get; }
@@ -153,6 +159,18 @@ namespace JsonTheory
 
         /// <summary>Properties the path has if it holds an object.</summary>
         public Function<JPath, ValueSet<string>> RequiredNames { get; }
+
+        /// <summary>If the path holds an array, at least this many of its elements equal the scalar (<c>contains</c>, <c>minContains</c>).</summary>
+        public Function<JPath, string, long> ContainsAtLeast { get; }
+
+        /// <summary>If the path holds an array, at most this many of its elements equal the scalar (<c>maxContains</c>).</summary>
+        public Function<JPath, string, long> ContainsAtMost { get; }
+
+        /// <summary>If the path holds an object, every property name is at least this long (<c>propertyNames</c>).</summary>
+        public Function<JPath, long> NameMinLength { get; }
+
+        /// <summary>If the path holds an object, every property name is at most this long (<c>propertyNames</c>).</summary>
+        public Function<JPath, long> NameMaxLength { get; }
 
         void Rule(string name, Action<RuleBuilder> define) => Json.DefineRule(name, define);
 
@@ -426,6 +444,22 @@ namespace JsonTheory
             Inherit("multipleOf", MultipleOf);
             Inherit("minProperties", MinProperties);
             Inherit("maxProperties", MaxProperties);
+            Inherit("nameMinLength", NameMinLength);
+            Inherit("nameMaxLength", NameMaxLength);
+            Rule("an instance inherits a least count of a value", r =>
+            {
+                var (c, e, v) = r.Vars<JPath, JPath, string>("c", "e", "v");
+                var n = r.Var<long>("n");
+                r.When(Instance.Of(c, e), n.Is(ContainsAtLeast.Of(e, v)));
+                r.Then(ContainsAtLeast.Of(c, v).Is(n));
+            });
+            Rule("an instance inherits a most count of a value", r =>
+            {
+                var (c, e, v) = r.Vars<JPath, JPath, string>("c", "e", "v");
+                var n = r.Var<long>("n");
+                r.When(Instance.Of(c, e), n.Is(ContainsAtMost.Of(e, v)));
+                r.Then(ContainsAtMost.Of(c, v).Is(n));
+            });
             Rule("an instance inherits uniqueness", r =>
             {
                 var (c, e) = r.Vars<JPath, JPath>("c", "e");
@@ -584,6 +618,119 @@ namespace JsonTheory
                 r.When(l.Is(MinProperties.Of(p)), h.Is(MaxProperties.Of(p)));
                 r.Where(Primitives.Greater.Of(l, h));
                 r.Then(Types.Of(p).Is(AllTypesBut(ObjectType)));
+            });
+        }
+
+        void DefineContainsAndNames()
+        {
+            // contains, minContains and maxContains, for a scalar the elements are compared with.
+            Rule("an array holding a value holds it at least once", r =>
+            {
+                var (p, v) = r.Vars<JPath, string>("p", "v");
+                r.When(Contains.Of(p, v));
+                r.Then(ContainsAtLeast.Of(p, v).Is(1L));
+            });
+            Rule("an array holding a value n times is at least n long", r =>
+            {
+                var (p, v) = r.Vars<JPath, string>("p", "v");
+                var n = r.Var<long>("n");
+                r.When(n.Is(ContainsAtLeast.Of(p, v)));
+                r.Then(MinItems.Of(p).Is(n));
+            });
+            Rule("an array cannot hold a value its elements cannot be", r =>
+            {
+                var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
+                var (n, d) = r.Vars<long, ValueSet<string>>("n", "d");
+                r.When(n.Is(ContainsAtLeast.Of(p, v)), e.Is(Each.Of(p)), d.Is(Dom.Of(e)));
+                r.Where(Primitives.GreaterOrEqual.Of(n, 1L));
+                r.Where(d, v, (domain, value) => domain.Contains(value) == false);
+                r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
+            });
+            Rule("an array cannot hold a value of a type its elements cannot have", r =>
+            {
+                var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
+                var (n, t) = r.Vars<long, ValueSet<string>>("n", "t");
+                r.When(n.Is(ContainsAtLeast.Of(p, v)), e.Is(Each.Of(p)), t.Is(Types.Of(e)));
+                r.Where(Primitives.GreaterOrEqual.Of(n, 1L));
+                r.Where(t, v, (types, value) => types.Contains(TypeOf(value)) == false);
+                r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
+            });
+            Rule("an array cannot hold a value its elements are all not", r =>
+            {
+                var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
+                var n = r.Var<long>("n");
+                r.When(n.Is(ContainsAtLeast.Of(p, v)), e.Is(Each.Of(p)), Ne.Of(e, v));
+                r.Where(Primitives.GreaterOrEqual.Of(n, 1L));
+                r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
+            });
+            Rule("a unique array holds a value at most once", r =>
+            {
+                var (p, v) = r.Vars<JPath, string>("p", "v");
+                var n = r.Var<long>("n");
+                r.When(Unique.Of(p), n.Is(ContainsAtLeast.Of(p, v)));
+                r.Then(ContainsAtMost.Of(p, v).Is(1L));
+            });
+            Rule("no array holds a value more often than at most", r =>
+            {
+                var (p, v) = r.Vars<JPath, string>("p", "v");
+                var (l, h) = r.Vars<long, long>("l", "h");
+                r.When(l.Is(ContainsAtLeast.Of(p, v)), h.Is(ContainsAtMost.Of(p, v)));
+                r.Where(Primitives.Greater.Of(l, h));
+                r.Then(Types.Of(p).Is(AllTypesBut(ArrayType)));
+            });
+            Rule("an array holding a value no times has no element equal to it", r =>
+            {
+                var (p, e, v) = r.Vars<JPath, JPath, string>("p", "e", "v");
+                var h = r.Var<long>("h");
+                r.When(h.Is(ContainsAtMost.Of(p, v)), e.Is(Each.Of(p)));
+                r.Where(h, x => x == 0);
+                r.Then(Ne.Of(e, v));
+            });
+
+            Rule("an array holding a value no times has no element equal to it, element by element", r =>
+            {
+                var (p, c, v) = r.Vars<JPath, JPath, string>("p", "c", "v");
+                var (i, h) = r.Vars<long, long>("i", "h");
+                r.When(h.Is(ContainsAtMost.Of(p, v)), c.Is(Index.Of(p, i)));
+                r.Where(h, x => x == 0);
+                r.Then(Ne.Of(c, v));
+            });
+
+            // propertyNames, for the length of a name.
+            Rule("a property whose name is too short is absent", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                var l = r.Var<long>("l");
+                r.When(c.Is(Prop.Of(p, n)), l.Is(NameMinLength.Of(p)));
+                r.Where(n, l, (name, least) => name.Length < least);
+                r.Then(Absent.Of(c));
+            });
+            Rule("a property whose name is too long is absent", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                var h = r.Var<long>("h");
+                r.When(c.Is(Prop.Of(p, n)), h.Is(NameMaxLength.Of(p)));
+                r.Where(n, h, (name, most) => name.Length > most);
+                r.Then(Absent.Of(c));
+            });
+        }
+
+        void DefineEquality()
+        {
+            // Two paths holding one value are one class of path, so congruence makes their properties and elements one
+            // too, and every fact about either is a fact about both. No value contains itself, so a path equal to one
+            // of its own descendants holds nothing.
+            Rule("a value is not one of its own properties", r =>
+            {
+                var (p, n) = r.Vars<JPath, string>("p", "n");
+                r.When(p.Is(Prop.Of(p, n)));
+                r.Then(Absent.Of(p));
+            });
+            Rule("a value is not one of its own elements", r =>
+            {
+                var (p, i) = r.Vars<JPath, long>("p", "i");
+                r.When(p.Is(Index.Of(p, i)));
+                r.Then(Absent.Of(p));
             });
         }
 
