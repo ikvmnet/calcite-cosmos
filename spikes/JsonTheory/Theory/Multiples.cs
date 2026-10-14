@@ -28,6 +28,14 @@ namespace JsonTheory
             return (decimal)lcm / (decimal)factor;
         }
 
+        /// <summary>The greatest common divisor of two positive decimals: what a multiple of one or the other is a multiple of.</summary>
+        public static decimal Gcd(decimal a, decimal b)
+        {
+            var scale = Math.Max(Scale(a), Scale(b));
+            var factor = BigInteger.Pow(10, scale);
+            return (decimal)BigInteger.GreatestCommonDivisor(ToBig(a, scale), ToBig(b, scale)) / (decimal)factor;
+        }
+
         public static bool IsMultiple(decimal x, decimal m) => m != 0 && decimal.Remainder(x, m) == 0;
 
         /// <summary>A domain less the numbers that are not multiples; members that are not numbers are kept.</summary>

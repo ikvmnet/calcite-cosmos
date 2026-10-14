@@ -137,6 +137,45 @@ saturation terminates.
 
 **Cosmos DB:** the root context also states that every document is a present object.
 
+## A schema's conditional statements, and case splits
+
+A `oneOf` branch under its discriminator, or an `if`/`then`, holds only in some documents, so it is not a rule of
+JSON. It is a **conditional rule** of one schema: `JsonGuardedRule(When, Then)`. Conditional rules go into the
+schema's context as rows, and a fixed interpreter in the root reads them:
+- `step(r, k)` says that the first `k` facts of rule `r`'s body are known;
+- an atom keyed `(r, k)` extends the chain;
+- once the body is complete, the head rows become facts.
+
+A query therefore costs the rules it fires, not the rules there are. `spikes/EggnogDerive` measured this layout at
+109,000 rules.
+
+**Splits.** Where a discriminator is present and its domain still holds several values, the context opens one case
+per value and lifts to itself what every case proves. The cases cover the context, because the path is there and
+its value is one of the domain's.
+- A schema's context splits on every discriminator when it is compiled, so what every branch implies holds of the
+  schema outright.
+- A query's context splits only on **relevant** discriminators, and a case may split again on a discriminator its
+  own branch makes present. A path is relevant if any of these holds:
+  - the query mentions it;
+  - it is a parent, property, element or pattern of a relevant path;
+  - a conditional rule reads it and states something about a relevant path.
+
+  That is the integration plan's "governs" demand gate, written as rules.
+
+**Hidden discriminators.** An undiscriminated `anyOf` gets a discriminator over its branch numbers, at a path that
+is no place in any document (`JsonPathSpec.HiddenNamed`). Every document matches some branch, so a branch number is
+always a consistent choice.
+
+| scenario | what the split proves |
+| --- | --- |
+| gap 1: `kind IN ('order','invoice')`, both of which declare `ref` | `ref` is present, and is an integer |
+| its control: `kind IN ('order','note')`, a note having no `ref` | nothing about `ref`, rightly |
+| the same, with no discriminator declared | nothing |
+| gap 2: `kind <> 'note' AND kind <> 'invoice'` | the order branch, with no split at all |
+| at the schema itself | no branch leaves `ref` a string, so `ref` is never a string |
+| gap 3: an `anyOf` of two `status` enums, and `status = 'purged'` | no case is left: no document |
+| kind `A` with sub-kinds `x` and `y` that both require `z`, and kind `B`, which requires `z` | `kind IN ('A','B')` proves `z`, through a split inside a split |
+
 ## What is checked
 
 - **Soundness.** The theory never derives a falsehood from truths. 12,000 seeded trials each do the following:
@@ -150,9 +189,14 @@ saturation terminates.
 
   An unsound rule is a plan that drops rows, so this oracle stands behind the rules, rather than agreement with any
   other engine.
+- **Conditional rules and splits checked too.** Half the trials carry the following:
+  - **A discriminator** over a path holding a scalar, whose domain is its value plus others, so that splits open.
+  - **Up to three conditional rules true of the document.** A body may name one or two of the discriminator's
+    values or refuse one of them. Where a body is false of the document, the head is drawn from another document,
+    so a rule that fires when it should not states a falsehood and is caught.
 - **Equalities checked too.** A third of the generated documents hold one value at two places. Every pair of
   concrete paths the theory proves equal must hold one value in the document.
-- **The oracle is shown to catch unsound rules.** Each of ten planted bugs fails it:
+- **The oracle is shown to catch unsound rules.** Each of fourteen planted bugs fails it:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
   - `required` firing without checking for an object;
@@ -162,12 +206,20 @@ saturation terminates.
   - a value held `n` times requiring `n + 1` elements;
   - a name exactly as long as the limit read as too long;
   - at most one occurrence read as none;
-  - two present properties of one object made one value.
+  - two present properties of one object made one value;
+  - a conditional rule firing one atom early;
+  - a body's domain atom checked the wrong way round;
+  - a body's disequality read from a domain that holds the value;
+  - a lift that intersects types across cases instead of joining them. This shows the trials really split.
 
-  Three of these slipped through earlier generators. One generator rarely put facts on an array and its
-  elements together in one trial; another rarely counted a value an array actually holds. Each time the
-  generator was fixed, not the expectation.
-- **49 scenarios**, among them:
+  Five of these slipped through earlier generators, which in turn:
+  - rarely put facts on an array and its elements together in one trial;
+  - rarely counted a value an array actually holds;
+  - never let a body name two values of a discriminator;
+  - never let a body refuse one of its values.
+
+  Each time the generator was fixed, not the expectation.
+- **59 scenarios**, ten of them conditional rules and splits, and among the rest:
   - a string has no properties;
   - a number is not another number;
   - an absent value is not null;
@@ -189,8 +241,9 @@ saturation terminates.
 - **The extractor has to state what a predicate proves.** A comparison proves its path present, which is the
   integration plan's F4.
 - **The rewriter has to ask `Decide`,** where it now asks `Knows`.
-- **A schema's guarded rules** (`oneOf`, `if`/`then`) go in as rows, read by fixed rules in the root, as
-  `spikes/EggnogDerive` measured.
+- **The schema compiler has to emit conditional rules and discriminators.** That means `oneOf` under its
+  discriminator, `if`/`then`/`else`, `dependentRequired`, and a hidden discriminator for each undiscriminated
+  `anyOf`. Today's compiler emits `JsonFactRule`s and a meet.
 
 **More rules of JSON**
 - `contains` with a subschema rather than a scalar, which is an existential and the schema compiler's to expand.
@@ -201,7 +254,9 @@ saturation terminates.
 - Rules that are a schema's rather than JSON's (`dependentRequired`, `if`/`then`, `oneOf`). These go in as rows
   beneath the root, not as root rules.
 
-**Reasoning that needs a case split**
+**Reasoning still to add**
 - **The converse of inheritance:** what every individual element is proven to be, every element is. This holds
   only once the length fixes which elements exist.
-- **A disjunction in the schema.**
+- **A disjunction in the query.** A split on `OR` between predicates over different paths: the integration plan's
+  per-kind spelling, `(type = 'park' AND …) OR (type = 'map' AND …)`.
+- **What a split costs on a large schema, and with concurrent queries.** Only correctness is measured here.

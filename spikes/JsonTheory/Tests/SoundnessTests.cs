@@ -59,11 +59,24 @@ namespace JsonTheory.Tests
                 var focus = Relatives(Vocabulary[random.Next(Vocabulary.Length)]);
                 var premises = Enumerable.Range(0, 1 + random.Next(6))
                     .Select(_ => TrueFact(random, document, random.Next(4) != 0 ? focus[random.Next(focus.Count)] : null)).ToList();
+                // Half the trials carry a discriminator and conditional rules, so that splits and lifts are checked too.
+                var rules = new List<JsonGuardedRule>();
+                if (random.Next(2) == 0)
+                {
+                    var discriminator = Discriminator(random, document);
+                    if (discriminator is not null)
+                        premises.AddRange(discriminator.Value.Facts);
+                    for (var n = 1 + random.Next(3); n > 0; n--)
+                        rules.Add(TrueRule(random, document, discriminator?.Path, discriminator?.Domain, focus));
+                }
+
                 foreach (var premise in premises)
                     Assert.IsTrue(Documents.IsTrue(document, premise), $"the generator stated a falsehood: {premise} of {document}");
+                foreach (var rule in rules)
+                    Assert.IsTrue(Documents.IsTrue(document, rule), $"the generator stated a false rule: {rule} of {document}");
 
-                using var scope = Contexts.Open(null, premises, Vocabulary);
-                string Case() => $"document {document}\npremises:\n  {string.Join("\n  ", premises)}";
+                using var scope = Contexts.Open(null, premises, Vocabulary, rules);
+                string Case() => $"document {document}\npremises:\n  {string.Join("\n  ", premises)}\nrules:\n  {string.Join("\n  ", rules)}";
 
                 Assert.IsFalse(scope.IsContradictory, $"contradiction from true facts\n{Case()}");
 
@@ -162,6 +175,72 @@ namespace JsonTheory.Tests
                     if (scope.Check(r.Required.Of(p, key)))
                         yield return new JsonFact.Requires(path, key);
             }
+        }
+
+        static readonly HashSet<Type> BodyKinds = new() { typeof(JsonFact.Present), typeof(JsonFact.Absent), typeof(JsonFact.OneOf), typeof(JsonFact.OfType), typeof(JsonFact.NotEqual) };
+
+        static readonly HashSet<Type> HeadKinds = new()
+        {
+            typeof(JsonFact.Present), typeof(JsonFact.Absent), typeof(JsonFact.OfType), typeof(JsonFact.OneOf), typeof(JsonFact.NotEqual),
+            typeof(JsonFact.Lower), typeof(JsonFact.Upper), typeof(JsonFact.MinItems), typeof(JsonFact.MaxItems), typeof(JsonFact.Requires), typeof(JsonFact.ClosedTo),
+        };
+
+        /// <summary>A fact of one of the kinds, true of the document.</summary>
+        static JsonFact TrueFactOf(Random random, J document, HashSet<Type> kinds, JsonPathSpec? focus = null)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                var fact = TrueFact(random, document, attempt < 20 ? focus : null);
+                if (kinds.Contains(fact.GetType()))
+                    return fact;
+            }
+        }
+
+        /// <summary>
+        /// A conditional rule true of the document. Its body is true of it or not; where it is not, the head is drawn
+        /// from another document, so that a rule which fires when its body is false is caught stating a falsehood.
+        /// </summary>
+        static JsonGuardedRule TrueRule(Random random, J document, JsonPathSpec? discriminator, IReadOnlyList<string>? domain, List<JsonPathSpec> focus)
+        {
+            while (true)
+            {
+                var other = Documents.Object(random, 0);
+                var when = new List<JsonFact>();
+
+                // A body naming one or two of the discriminator's values, the second of which reads a domain within a set.
+                // Or refusing one of them, the way gap 2's `kind <> 'invoice'` does.
+                if (discriminator is not null)
+                    switch (random.Next(3))
+                    {
+                        case 0:
+                            when.Add(new JsonFact.OneOf(discriminator, ValueSet.From(domain!.OrderBy(_ => random.Next()).Take(1 + random.Next(2)))));
+                            break;
+                        case 1:
+                            when.Add(new JsonFact.NotEqual(discriminator, domain![random.Next(domain.Count)]));
+                            break;
+                    }
+                for (var n = when.Count == 0 ? 1 + random.Next(2) : random.Next(2); n > 0; n--)
+                    when.Add(TrueFactOf(random, random.Next(2) == 0 ? document : other, BodyKinds, random.Next(2) == 0 ? focus[random.Next(focus.Count)] : null));
+
+                var holds = when.All(f => Documents.IsTrue(document, f));
+                var then = Enumerable.Range(0, 1 + random.Next(2)).Select(_ => TrueFactOf(random, holds ? document : other, HeadKinds)).ToList();
+                var rule = new JsonGuardedRule(when, then);
+                if (Documents.IsTrue(document, rule))
+                    return rule;
+            }
+        }
+
+        /// <summary>A discriminator over a concrete path holding a scalar, with a domain of its value and others.</summary>
+        static (JsonPathSpec Path, IReadOnlyList<string> Domain, JsonFact[] Facts)? Discriminator(Random random, J document)
+        {
+            var candidates = Concrete.Where(c => Documents.Values(document, c) is { Count: 1 } v && v[0].IsScalar).ToList();
+            if (candidates.Count == 0)
+                return null;
+
+            var path = candidates[random.Next(candidates.Count)];
+            var value = Documents.Values(document, path)[0].Encoded;
+            var domain = new[] { value }.Concat(Documents.Universe.Where(u => u != value).OrderBy(_ => random.Next()).Take(1 + random.Next(3))).ToList();
+            return (path, domain, new JsonFact[] { new JsonFact.Present(path), new JsonFact.OneOf(path, ValueSet.From(domain)), new JsonFact.Discriminates(path) });
         }
 
         /// <summary>A path of the vocabulary, with the vocabulary's paths for its elements and its parent.</summary>

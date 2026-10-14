@@ -46,6 +46,14 @@ namespace JsonTheory
         public static Bound StricterUpper(Bound a, Bound b) =>
             a.Value < b.Value ? a : b.Value < a.Value ? b : new(a.Value, a.Open || b.Open);
 
+        /// <summary>The weaker of two lower bounds: what holds whichever of two cases does.</summary>
+        public static Bound WeakerLower(Bound a, Bound b) =>
+            a.Value < b.Value ? a : b.Value < a.Value ? b : new(a.Value, a.Open && b.Open);
+
+        /// <summary>The weaker of two upper bounds: what holds whichever of two cases does.</summary>
+        public static Bound WeakerUpper(Bound a, Bound b) =>
+            a.Value > b.Value ? a : b.Value > a.Value ? b : new(a.Value, a.Open && b.Open);
+
         /// <summary>Whether no number lies between a lower and an upper bound.</summary>
         public static bool NoNumberBetween(Bound lower, Bound upper) =>
             lower.Value > upper.Value || lower.Value == upper.Value && (lower.Open || upper.Open);

@@ -31,6 +31,12 @@ namespace JsonTheory
 
         public bool IsPattern => Segments.Any(s => ReferenceEquals(s, Every));
 
+        /// <summary>The name of a hidden discriminator this stands for, which is no place in any document.</summary>
+        public string? Hidden { get; init; }
+
+        /// <summary>A hidden discriminator: which branch of an undiscriminated union applies.</summary>
+        public static JsonPathSpec HiddenNamed(string name) => new(System.Array.Empty<object>()) { Hidden = name };
+
         public static JsonPathSpec Parse(string text)
         {
             if (text.StartsWith('$') == false)
@@ -69,6 +75,9 @@ namespace JsonTheory
 
         public Term<JPath> ToTerm(JsonRules rules)
         {
+            if (Hidden is not null)
+                return rules.Ghost.Of(Hidden);
+
             Term<JPath> term = rules.Root.Of();
             foreach (var segment in Segments)
                 term = segment switch
@@ -81,12 +90,15 @@ namespace JsonTheory
             return term;
         }
 
-        public bool Equals(JsonPathSpec? other) => other is not null && Segments.SequenceEqual(other.Segments);
+        public bool Equals(JsonPathSpec? other) => other is not null && Hidden == other.Hidden && Segments.SequenceEqual(other.Segments);
 
-        public override int GetHashCode() => Segments.Aggregate(17, (h, s) => h * 31 + (ReferenceEquals(s, Every) ? 7 : s.GetHashCode()));
+        public override int GetHashCode() => Segments.Aggregate(Hidden?.GetHashCode() ?? 17, (h, s) => h * 31 + (ReferenceEquals(s, Every) ? 7 : s.GetHashCode()));
 
         public override string ToString()
         {
+            if (Hidden is not null)
+                return "hidden:" + Hidden;
+
             var builder = new StringBuilder("$");
             foreach (var segment in Segments)
                 builder.Append(segment switch
@@ -153,6 +165,9 @@ namespace JsonTheory
 
         public sealed record NameMaxLength(JsonPathSpec Path, long Length) : JsonFact(Path);
 
+        /// <summary>A split may open one case per value the path can hold. Says nothing about any document.</summary>
+        public sealed record Discriminates(JsonPathSpec Path) : JsonFact(Path);
+
         public Fact ToFact(JsonRules r)
         {
             var p = Path.ToTerm(r);
@@ -181,9 +196,26 @@ namespace JsonTheory
                 ContainsAtMost f => r.ContainsAtMost.Of(p, f.Value).Is(f.Count),
                 NameMinLength f => r.NameMinLength.Of(p).Is(f.Length),
                 NameMaxLength f => r.NameMaxLength.Of(p).Is(f.Length),
+                Discriminates => r.Discriminator.Of(p),
                 _ => throw new NotSupportedException(GetType().Name),
             };
         }
+
+    }
+
+    /// <summary>
+    /// A schema's conditional statement: where every fact of <see cref="When"/> is known, every fact of
+    /// <see cref="Then"/> holds. A <c>oneOf</c> branch under its discriminator, an <c>if</c>/<c>then</c>.
+    /// </summary>
+    /// <remarks>
+    /// A body fact is known the way the theory knows any fact: a domain within the set, types within the set, the
+    /// path present or absent, a disequality stated or proven by a domain. So a body fact is a statement about the
+    /// document like any other, and the rule is true of a document where its body is false of it or its head true.
+    /// </remarks>
+    public sealed record JsonGuardedRule(IReadOnlyList<JsonFact> When, IReadOnlyList<JsonFact> Then)
+    {
+
+        public override string ToString() => $"if {string.Join(" and ", When)} then {string.Join(" and ", Then)}";
 
     }
 
@@ -244,7 +276,7 @@ namespace JsonTheory
         {
             Graph = new EGraph();
             Rules = new JsonRules(Graph);
-            Saturation = Schedule.Saturate(Rules.Json);
+            Saturation = Rules.Settle;
 
             var root = Graph.Root;
             if (documentsAreObjects)
@@ -260,20 +292,101 @@ namespace JsonTheory
 
         public Schedule Saturation { get; }
 
+        long _next;
+
         /// <summary>
-        /// Makes a child context of <paramref name="parent"/> (the root where it is <c>null</c>), mentions the paths it
-        /// will be asked about, assumes the facts and saturates. Freeze it to put contexts beneath it.
+        /// Makes a query's context beneath <paramref name="parent"/> (the root where it is <c>null</c>): mentions the
+        /// paths it will be asked about, assumes the facts and saturates, splitting on the discriminators it mentions.
         /// </summary>
-        public Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions = null)
+        public Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions = null, IEnumerable<JsonGuardedRule>? rules = null) =>
+            Open(parent, facts, mentions, rules, Rules.QuerySaturation, mention: true);
+
+        /// <summary>
+        /// Makes a schema's context: its facts and its conditional rules, saturated with a split on every
+        /// discriminator, so that what every branch implies holds outright. Freeze it to put queries beneath it.
+        /// </summary>
+        public Scope OpenSchema(IEnumerable<JsonFact> facts, IEnumerable<JsonGuardedRule>? rules = null, IEnumerable<JsonPathSpec>? mentions = null) =>
+            Open(null, facts, mentions, rules, Rules.SchemaSaturation, mention: false);
+
+        Scope Open(Scope? parent, IEnumerable<JsonFact> facts, IEnumerable<JsonPathSpec>? mentions, IEnumerable<JsonGuardedRule>? rules, Schedule schedule, bool mention)
         {
             var scope = (parent ?? Graph.Root).CreateChild();
-            Mention(scope, mentions ?? System.Array.Empty<JsonPathSpec>());
-            var list = facts.ToList();
-            if (list.Count > 0)
-                scope.Assume(list.Select(f => f.ToFact(Rules)).ToArray());
+            var mentioned = (mentions ?? System.Array.Empty<JsonPathSpec>()).ToList();
+            Mention(scope, mentioned);
 
-            scope.Run(Saturation);
+            var list = facts.ToList();
+            var assumed = list.Select(f => f.ToFact(Rules)).ToList();
+            foreach (var rule in rules ?? System.Array.Empty<JsonGuardedRule>())
+                assumed.AddRange(Declare(rule));
+
+            // A query splits only on what it mentions: the paths it asks about and the facts it states.
+            if (mention)
+                foreach (var path in mentioned.Concat(list.Select(f => f.Path)).Distinct())
+                    assumed.Add(Rules.Mentioned.Of(path.ToTerm(Rules)));
+
+            if (assumed.Count > 0)
+                scope.Assume(assumed.ToArray());
+
+            scope.Run(schedule);
             return scope;
+        }
+
+        /// <summary>A conditional rule as rows: its body as a chain of atoms, its head as facts keyed by its number.</summary>
+        IEnumerable<Fact> Declare(JsonGuardedRule rule)
+        {
+            var r = Rules;
+            if (rule.When.Count == 0)
+            {
+                foreach (var head in rule.Then)
+                    yield return head.ToFact(r);
+                yield break;
+            }
+
+            var id = System.Threading.Interlocked.Increment(ref _next);
+            yield return r.Step.Of(id, 0L);
+            yield return r.Length.Of(id, (long)rule.When.Count);
+
+            foreach (var atom in rule.When)
+                yield return r.AtomPath.Of(id, atom.Path.ToTerm(r));
+            foreach (var head in rule.Then)
+                yield return r.HeadPath.Of(id, head.Path.ToTerm(r));
+
+            for (var k = 0; k < rule.When.Count; k++)
+            {
+                var atom = rule.When[k];
+                var p = atom.Path.ToTerm(r);
+                long at = k;
+                yield return atom switch
+                {
+                    JsonFact.Present => r.AtomPresent.Of(id, at, p),
+                    JsonFact.Absent => r.AtomAbsent.Of(id, at, p),
+                    JsonFact.OneOf { Values.Count: 1 } one => r.AtomEqual.Of(id, at, p, one.Values[0]),
+                    JsonFact.OneOf f => r.AtomIn.Of(id, at, p, f.Values),
+                    JsonFact.OfType f => r.AtomType.Of(id, at, p, f.Types),
+                    JsonFact.NotEqual f => r.AtomNe.Of(id, at, p, f.Value),
+                    _ => throw new NotSupportedException("a body of " + atom.GetType().Name),
+                };
+            }
+
+            foreach (var head in rule.Then)
+            {
+                var p = head.Path.ToTerm(r);
+                yield return head switch
+                {
+                    JsonFact.Present => r.HeadPresent.Of(id, p),
+                    JsonFact.Absent => r.HeadAbsent.Of(id, p),
+                    JsonFact.OfType f => r.HeadType.Of(id, p, f.Types),
+                    JsonFact.OneOf f => r.HeadDom.Of(id, p, f.Values),
+                    JsonFact.NotEqual f => r.HeadNe.Of(id, p, f.Value),
+                    JsonFact.Lower f => r.HeadLo.Of(id, p, f.Bound),
+                    JsonFact.Upper f => r.HeadHi.Of(id, p, f.Bound),
+                    JsonFact.MinItems f => r.HeadMinItems.Of(id, p, f.Count),
+                    JsonFact.MaxItems f => r.HeadMaxItems.Of(id, p, f.Count),
+                    JsonFact.Requires f => r.HeadRequired.Of(id, p, f.Property),
+                    JsonFact.ClosedTo f => r.HeadClosed.Of(id, p, f.Properties),
+                    _ => throw new NotSupportedException("a head of " + head.GetType().Name),
+                };
+            }
         }
 
         /// <summary>
@@ -289,6 +402,12 @@ namespace JsonTheory
 
         static IEnumerable<JsonPathSpec> Prefixes(JsonPathSpec path)
         {
+            if (path.Hidden is not null)
+            {
+                yield return path;
+                yield break;
+            }
+
             for (var n = path.Segments.Count; n >= 1; n--)
                 yield return new JsonPathSpec(path.Segments.Take(n).ToArray());
         }

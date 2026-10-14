@@ -140,6 +140,8 @@ namespace JsonTheory.Tests
             var values = Values(document, fact.Path);
             switch (fact)
             {
+                case JsonFact.Discriminates:
+                    return true;
                 case JsonFact.Same same:
                     var others = Values(document, same.Other);
                     return values.Count == 0 && others.Count == 0
@@ -180,6 +182,10 @@ namespace JsonTheory.Tests
 
         /// <summary>A value's identity under JSON equality.</summary>
         public static string Key(J value) => value.IsScalar ? value.Encoded : value.ToString();
+
+        /// <summary>Whether a conditional rule is true of a document: its body false of it, or its head true.</summary>
+        public static bool IsTrue(J document, JsonGuardedRule rule) =>
+            rule.When.All(f => IsTrue(document, f)) == false || rule.Then.All(f => IsTrue(document, f));
 
         /// <summary>Whether a predicate is true of a document.</summary>
         public static bool IsTrue(J document, JsonAtom atom)

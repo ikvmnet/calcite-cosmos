@@ -1761,9 +1761,15 @@ question to answer, and either engine may be the one that is wrong. What decides
    (documentation drift) are fixed now, being outside the fact engine.
 2. **Fix `JsonSchemaFacts.Meet`** — *small.* It is the bottleneck at size whatever the engine, and splits
    may later replace it.
-3. **A splits spike over the rows encoding** — *medium.* Gap 1 `IN` and the undiscriminated `anyOf`, with
-   concurrent query scopes under one frozen container scope. This is the make-or-break measurement;
-   splits are what the move is for.
+3. **A splits spike over the rows encoding** — *medium, and half done.* `spikes/JsonTheory` puts conditional
+   rules into a schema's context as rows, read by an interpreter in the root, and splits on discriminators.
+   What is done:
+   - gaps 1, 2 and 3, and a split inside a split, each with a control;
+   - a relevance gate that restricts a query to the discriminators that bear on it;
+   - the soundness oracle's coverage of rules, splits and lifts, including four planted bugs in that machinery.
+
+   **What is left is the measurement:** a split's cost on a large schema, and concurrent query scopes under one
+   frozen container scope.
 4. **The design into `DESIGN.md`** — *small.* Rules as rows, the scope layout, what makes a split sound,
    and the deletion licence. Also the rules of JSON in the root:
    - a present property has a present object for its parent;

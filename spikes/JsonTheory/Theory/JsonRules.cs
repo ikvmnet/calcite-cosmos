@@ -50,8 +50,8 @@ namespace JsonTheory
             Types = graph.DefineFunction<JPath, ValueSet<string>>("types", ValueLattice.Intersect<string>());
             Dom = graph.DefineFunction<JPath, ValueSet<string>>("dom", ValueLattice.Intersect<string>());
             Ne = graph.DefineRelation<JPath, string>("ne");
-            Lo = graph.DefineFunction<JPath, Bound>("lo", new ValueLattice<Bound>("stricter lower", Bound.StricterLower));
-            Hi = graph.DefineFunction<JPath, Bound>("hi", new ValueLattice<Bound>("stricter upper", Bound.StricterUpper));
+            Lo = graph.DefineFunction<JPath, Bound>("lo", new ValueLattice<Bound>("stricter lower", Bound.StricterLower, Bound.WeakerLower));
+            Hi = graph.DefineFunction<JPath, Bound>("hi", new ValueLattice<Bound>("stricter upper", Bound.StricterUpper, Bound.WeakerUpper));
             MinLength = graph.DefineFunction<JPath, long>("minLength", ValueLattice.Max<long>());
             MaxLength = graph.DefineFunction<JPath, long>("maxLength", ValueLattice.Min<long>());
             MinItems = graph.DefineFunction<JPath, long>("minItems", ValueLattice.Max<long>());
@@ -61,7 +61,7 @@ namespace JsonTheory
             Contains = graph.DefineRelation<JPath, string>("contains");
             Instance = graph.DefineRelation<JPath, JPath>("instance");
             graph.Values.Register<decimal>("decimal");
-            MultipleOf = graph.DefineFunction<JPath, decimal>("multipleOf", new ValueLattice<decimal>("least common multiple", Multiples.Lcm));
+            MultipleOf = graph.DefineFunction<JPath, decimal>("multipleOf", new ValueLattice<decimal>("least common multiple", Multiples.Lcm, Multiples.Gcd));
             Unique = graph.DefineRelation<JPath>("unique");
             MinProperties = graph.DefineFunction<JPath, long>("minProperties", ValueLattice.Max<long>());
             MaxProperties = graph.DefineFunction<JPath, long>("maxProperties", ValueLattice.Min<long>());
@@ -83,6 +83,7 @@ namespace JsonTheory
             DefineMore();
             DefineContainsAndNames();
             DefineEquality();
+            DefineGuarded();
         }
 
         public EGraph Graph { get; }
@@ -208,6 +209,12 @@ namespace JsonTheory
                 var p = r.Var<JPath>("p");
                 r.When(Ne.Of(p, NullValue));
                 r.Then(Types.Of(p).Is(AllTypesBut(NullType)));
+            });
+            Rule("an absent path has no possible type", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(Absent.Of(p));
+                r.Then(Types.Of(p).Is(ValueSet.Of<string>()));
             });
             Rule("a path of no possible type is absent", r =>
             {
@@ -732,6 +739,238 @@ namespace JsonTheory
                 r.When(p.Is(Index.Of(p, i)));
                 r.Then(Absent.Of(p));
             });
+        }
+
+        /// <summary>A hidden discriminator: no place in any document, standing for which branch of a union applies.</summary>
+        public Constructor<string, JPath> Ghost { get; private set; } = null!;
+
+        /// <summary>A path a split may open one case per value of.</summary>
+        public Relation<JPath> Discriminator { get; private set; } = null!;
+
+        /// <summary>A path a query mentions.</summary>
+        public Relation<JPath> Mentioned { get; private set; } = null!;
+
+        /// <summary>
+        /// A path whose facts bear on what a query mentions: the paths it mentions, the paths around them, and the
+        /// paths a conditional rule's body reads where its head speaks of a relevant path. A query splits only on
+        /// relevant discriminators.
+        /// </summary>
+        public Relation<JPath> Relevant { get; private set; } = null!;
+
+        internal Relation<long, JPath> HeadPath { get; private set; } = null!;
+        internal Relation<long, JPath> AtomPath { get; private set; } = null!;
+
+        /// <summary>The split a schema's context opens on every discriminator, to lift what every branch implies.</summary>
+        public SplitRule SchemaSplit { get; private set; } = null!;
+
+        /// <summary>The split a query's context opens on discriminators it mentions.</summary>
+        public SplitRule QuerySplit { get; private set; } = null!;
+
+        /// <summary>The rules of JSON to saturation, without splitting.</summary>
+        public Schedule Settle { get; private set; } = null!;
+
+        public Schedule SchemaSaturation { get; private set; } = null!;
+
+        public Schedule QuerySaturation { get; private set; } = null!;
+
+        internal Relation<long, long> Step { get; private set; } = null!;
+        internal Relation<long, long> Length { get; private set; } = null!;
+        internal Relation<long> Done { get; private set; } = null!;
+        internal Relation<JPath, string> Pinned { get; private set; } = null!;
+        internal Relation<long, long, JPath> AtomPresent { get; private set; } = null!;
+        internal Relation<long, long, JPath> AtomAbsent { get; private set; } = null!;
+        internal Relation<long, long, JPath, string> AtomEqual { get; private set; } = null!;
+        internal Relation<long, long, JPath, ValueSet<string>> AtomIn { get; private set; } = null!;
+        internal Relation<long, long, JPath, ValueSet<string>> AtomType { get; private set; } = null!;
+        internal Relation<long, long, JPath, string> AtomNe { get; private set; } = null!;
+        internal Relation<long, JPath> HeadPresent { get; private set; } = null!;
+        internal Relation<long, JPath> HeadAbsent { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadType { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadDom { get; private set; } = null!;
+        internal Relation<long, JPath, string> HeadNe { get; private set; } = null!;
+        internal Relation<long, JPath, Bound> HeadLo { get; private set; } = null!;
+        internal Relation<long, JPath, Bound> HeadHi { get; private set; } = null!;
+        internal Relation<long, JPath, long> HeadMinItems { get; private set; } = null!;
+        internal Relation<long, JPath, long> HeadMaxItems { get; private set; } = null!;
+        internal Relation<long, JPath, string> HeadRequired { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadClosed { get; private set; } = null!;
+
+        /// <summary>
+        /// A schema's conditional statements — a <c>oneOf</c> branch under its discriminator, an <c>if</c>/<c>then</c> —
+        /// held as rows of the schema's context and read by these fixed rules, so that a query costs the rules it
+        /// fires rather than the rules there are. Rule <c>r</c>'s body is a chain of atoms: <c>step(r, k)</c> says its
+        /// first <c>k</c> hold, an atom keyed <c>(r, k)</c> extends it, and once it is complete the head rows of
+        /// <c>r</c> become facts.
+        /// </summary>
+        void DefineGuarded()
+        {
+            var g = Graph;
+            var local = new TableOptions { Lift = false };
+            Ghost = g.DefineConstructor<string, JPath>("Ghost");
+            Discriminator = g.DefineRelation<JPath>("discriminator");
+            Mentioned = g.DefineRelation<JPath>("mentioned", local);
+            Relevant = g.DefineRelation<JPath>("relevant", local);
+            HeadPath = g.DefineRelation<long, JPath>("head_path", local);
+            AtomPath = g.DefineRelation<long, JPath>("atom_path", local);
+            Step = g.DefineRelation<long, long>("step", local);
+            Length = g.DefineRelation<long, long>("length", local);
+            Done = g.DefineRelation<long>("done", local);
+            Pinned = g.DefineRelation<JPath, string>("pinned", local);
+            AtomPresent = g.DefineRelation<long, long, JPath>("atom_present", local);
+            AtomAbsent = g.DefineRelation<long, long, JPath>("atom_absent", local);
+            AtomEqual = g.DefineRelation<long, long, JPath, string>("atom_equal", local);
+            AtomIn = g.DefineRelation<long, long, JPath, ValueSet<string>>("atom_in", local);
+            AtomType = g.DefineRelation<long, long, JPath, ValueSet<string>>("atom_type", local);
+            AtomNe = g.DefineRelation<long, long, JPath, string>("atom_ne", local);
+            HeadPresent = g.DefineRelation<long, JPath>("head_present", local);
+            HeadAbsent = g.DefineRelation<long, JPath>("head_absent", local);
+            HeadType = g.DefineRelation<long, JPath, ValueSet<string>>("head_types", local);
+            HeadDom = g.DefineRelation<long, JPath, ValueSet<string>>("head_dom", local);
+            HeadNe = g.DefineRelation<long, JPath, string>("head_ne", local);
+            HeadLo = g.DefineRelation<long, JPath, Bound>("head_lo", local);
+            HeadHi = g.DefineRelation<long, JPath, Bound>("head_hi", local);
+            HeadMinItems = g.DefineRelation<long, JPath, long>("head_minItems", local);
+            HeadMaxItems = g.DefineRelation<long, JPath, long>("head_maxItems", local);
+            HeadRequired = g.DefineRelation<long, JPath, string>("head_required", local);
+            HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
+
+            Rule("a singleton domain pins its value", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Where(d, x => x.Count == 1);
+                r.Then(Pinned.Of(p, Compute.Of(d, x => x[0])));
+            });
+
+            void Extends(string name, Func<RuleBuilder, Var<long>, Var<long>, Fact[]> atom, Action<RuleBuilder>? where = null) =>
+                Rule("a body is extended by " + name, r =>
+                {
+                    var (id, k) = r.Vars<long, long>("r", "k");
+                    r.When(new[] { Step.Of(id, k) }.Concat(atom(r, id, k)).ToArray());
+                    where?.Invoke(r);
+                    r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
+                });
+
+            Var<JPath> P(RuleBuilder r) => r.Var<JPath>("p");
+            Extends("a present path", (r, id, k) => { var p = P(r); return new[] { AtomPresent.Of(id, k, p), Present.Of(p) }; });
+            Extends("an absent path", (r, id, k) => { var p = P(r); return new[] { AtomAbsent.Of(id, k, p), Absent.Of(p) }; });
+            Extends("a pinned value", (r, id, k) => { var p = P(r); var v = r.Var<string>("v"); return new[] { AtomEqual.Of(id, k, p, v), Pinned.Of(p, v) }; });
+            Rule("a body is extended by a domain within a set", r =>
+            {
+                var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
+                var (s, d) = r.Vars<ValueSet<string>, ValueSet<string>>("s", "d");
+                r.When(Step.Of(id, k), AtomIn.Of(id, k, p, s), d.Is(Dom.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(d, s));
+                r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
+            });
+            Rule("a body is extended by types within a set", r =>
+            {
+                var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
+                var (s, t) = r.Vars<ValueSet<string>, ValueSet<string>>("s", "t");
+                r.When(Step.Of(id, k), AtomType.Of(id, k, p, s), t.Is(Types.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(t, s));
+                r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
+            });
+            Rule("a body is extended by a stated disequality", r =>
+            {
+                var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
+                var v = r.Var<string>("v");
+                r.When(Step.Of(id, k), AtomNe.Of(id, k, p, v), Ne.Of(p, v));
+                r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
+            });
+            Rule("a body is extended by a disequality a domain proves", r =>
+            {
+                var (id, k, p) = r.Vars<long, long, JPath>("r", "k", "p");
+                var (v, d) = r.Vars<string, ValueSet<string>>("v", "d");
+                r.When(Step.Of(id, k), AtomNe.Of(id, k, p, v), d.Is(Dom.Of(p)));
+                r.Where(d, v, (domain, value) => domain.Contains(value) == false);
+                r.Then(Step.Of(id, Primitives.Add.Of(k, 1L)));
+            });
+            Rule("a complete body", r =>
+            {
+                var (id, n) = r.Vars<long, long>("r", "n");
+                r.When(Step.Of(id, n), Length.Of(id, n));
+                r.Then(Done.Of(id));
+            });
+
+            void Head<T>(string name, Relation<long, JPath, T> table, Func<Term<JPath>, Term<T>, Fact> fact) =>
+                Rule("a complete body states " + name, r =>
+                {
+                    var (id, p) = r.Vars<long, JPath>("r", "p");
+                    var v = r.Var<T>("v");
+                    r.When(Done.Of(id), table.Of(id, p, v));
+                    r.Then(fact(p, v));
+                });
+
+            Rule("a complete body states presence", r =>
+            {
+                var (id, p) = r.Vars<long, JPath>("r", "p");
+                r.When(Done.Of(id), HeadPresent.Of(id, p));
+                r.Then(Present.Of(p));
+            });
+            Rule("a complete body states absence", r =>
+            {
+                var (id, p) = r.Vars<long, JPath>("r", "p");
+                r.When(Done.Of(id), HeadAbsent.Of(id, p));
+                r.Then(Absent.Of(p));
+            });
+            Head("types", HeadType, (p, v) => Types.Of(p).Is(v));
+            Head("a domain", HeadDom, (p, v) => Dom.Of(p).Is(v));
+            Head("a disequality", HeadNe, (p, v) => Ne.Of(p, v));
+            Head("a lower bound", HeadLo, (p, v) => Lo.Of(p).Is(v));
+            Head("an upper bound", HeadHi, (p, v) => Hi.Of(p).Is(v));
+            Head("a least length", HeadMinItems, (p, v) => MinItems.Of(p).Is(v));
+            Head("a most length", HeadMaxItems, (p, v) => MaxItems.Of(p).Is(v));
+            Head("a required property", HeadRequired, (p, v) => Required.Of(p, v));
+            Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
+
+            // What a query mentions is relevant, and so is what bears on it: a path's parent and properties, the patterns
+            // it is an instance of, and what a conditional rule reads where its head speaks of a relevant path.
+            Rule("a mentioned path is relevant", r =>
+            {
+                var p = r.Var<JPath>("p");
+                r.When(Mentioned.Of(p));
+                r.Then(Relevant.Of(p));
+            });
+            Rule("the parent of a relevant path is relevant", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                r.When(Relevant.Of(c), c.Is(Prop.Of(p, n)));
+                r.Then(Relevant.Of(p));
+            });
+            Rule("the array of a relevant element is relevant", r =>
+            {
+                var (c, p, i) = r.Vars<JPath, JPath, long>("c", "p", "i");
+                r.When(Relevant.Of(c), c.Is(Index.Of(p, i)));
+                r.Then(Relevant.Of(p));
+            });
+            Rule("a property of a relevant path is relevant", r =>
+            {
+                var (c, p, n) = r.Vars<JPath, JPath, string>("c", "p", "n");
+                r.When(Relevant.Of(p), c.Is(Prop.Of(p, n)));
+                r.Then(Relevant.Of(c));
+            });
+            Rule("the pattern of a relevant instance is relevant", r =>
+            {
+                var (c, e) = r.Vars<JPath, JPath>("c", "e");
+                r.When(Relevant.Of(c), Instance.Of(c, e));
+                r.Then(Relevant.Of(e));
+            });
+            Rule("what a rule reads is relevant where what it states is", r =>
+            {
+                var (id, h, p) = r.Vars<long, JPath, JPath>("r", "h", "p");
+                r.When(Relevant.Of(h), HeadPath.Of(id, h), AtomPath.Of(id, p));
+                r.Then(Relevant.Of(p));
+            });
+
+            // One case per value a present discriminator can still hold: the cases cover the context, because the path
+            // is there and its value is one of the domain's. What every case proves is lifted, and a case may split
+            // again on a discriminator its own branch makes present.
+            SchemaSplit = g.DefineDomainSplit<JPath, string>("discriminator", Dom, new[] { Discriminator, Present });
+            QuerySplit = g.DefineDomainSplit<JPath, string>("relevant discriminator", Dom, new[] { Discriminator, Present, Relevant });
+            Settle = Schedule.Saturate(Json);
+            SchemaSaturation = Schedule.Saturate(Settle, Schedule.Split(SchemaSplit, Schedule.Saturate(Settle, Schedule.Split(SchemaSplit, Settle))));
+            QuerySaturation = Schedule.Saturate(Settle, Schedule.Split(QuerySplit, Schedule.Saturate(Settle, Schedule.Split(QuerySplit, Settle))));
         }
 
         void Inherit<T>(string name, Function<JPath, T> table) =>
