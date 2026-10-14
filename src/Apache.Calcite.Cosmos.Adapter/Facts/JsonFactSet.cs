@@ -19,7 +19,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>A context of the theory, read.</b> The container's declaration is a frozen context, and what a query
     /// established is a context beneath it, saturated under the rules of JSON and of JSON Schema. Asking a question is a
     /// read of its tables — a presence, a set of types, a domain, a form — so an answer is whatever the rules proved, and
-    /// not only what one fact entails of another.
+    /// not only what one fact entails of another. Where the engine could prove nothing more than a query states, the
+    /// tables are read off the query instead (<see cref="JsonFactOverlay"/>), and asked the same way.
     /// </para>
     /// <para>
     /// <b>A fact about a value holds if the value is there.</b> Every claim but <see cref="JsonClaim.Present"/> and a
@@ -37,33 +38,44 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// What is known when nothing is declared and nothing was established.
         /// </summary>
-        public static readonly JsonFactSet Empty = new(null, null, null, null);
+        public static readonly JsonFactSet Empty = new(null, null);
 
-        readonly JsonRules? _rules;
+        readonly JsonFactTables? _tables;
         readonly JsonFactVocabulary? _vocabulary;
-        readonly Scope? _scope;
-        readonly Lease? _lease;
 
         /// <summary>
-        /// Initializes a new instance.
+        /// Initializes a new instance reading a context of the theory.
         /// </summary>
         /// <param name="rules">The tables of the graph the context belongs to.</param>
         /// <param name="vocabulary">The tokens of the theory's stored forms and extensions.</param>
         /// <param name="scope">The context.</param>
         /// <param name="owned">Whether the set owns the context, which it releases once it is collected: a query's.</param>
-        internal JsonFactSet(JsonRules? rules, JsonFactVocabulary? vocabulary, Scope? scope, bool owned) :
-            this(rules, vocabulary, scope, owned && scope is not null ? new Lease(scope) : null)
+        internal JsonFactSet(JsonRules rules, JsonFactVocabulary vocabulary, Scope scope, bool owned) :
+            this(new JsonScopeTables(rules, scope, owned), vocabulary)
         {
 
         }
 
-        JsonFactSet(JsonRules? rules, JsonFactVocabulary? vocabulary, Scope? scope, Lease? lease)
+        /// <summary>
+        /// Initializes a new instance reading the given tables.
+        /// </summary>
+        /// <param name="tables">What is known, or <c>null</c> where nothing is.</param>
+        /// <param name="vocabulary">The tokens of the theory's stored forms and extensions.</param>
+        internal JsonFactSet(JsonFactTables? tables, JsonFactVocabulary? vocabulary)
         {
-            _rules = rules;
+            _tables = tables;
             _vocabulary = vocabulary;
-            _scope = scope;
-            _lease = lease;
         }
+
+        /// <summary>
+        /// Gets the tables the set reads, or <c>null</c> where nothing is known.
+        /// </summary>
+        internal JsonFactTables? Tables => _tables;
+
+        /// <summary>
+        /// Gets the tokens of the theory's stored forms and extensions.
+        /// </summary>
+        internal JsonFactVocabulary? Vocabulary => _vocabulary;
 
         /// <summary>
         /// Determines whether a fact holds.
@@ -74,47 +86,47 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="fact">The fact to test.</param>
         /// <returns><c>true</c> if it holds.</returns>
-        public bool Knows(JsonFact fact) => Read(false, (scope, r) =>
+        public bool Knows(JsonFact fact) => Read(false, t =>
         {
-            var p = Term(fact.Path, r);
+            var p = fact.Path;
 
             switch (fact.Claim)
             {
                 case JsonClaim.Present:
-                    return scope.Check(r.Present.Of(p));
+                    return t.Present(p);
 
                 case JsonClaim.OfType typed:
-                    return scope.TryGet(r.Types.Of(p), out var types) && types.IsSubsetOf(JsonFactEncoding.Types(typed.Type, typed.OrNull));
+                    return t.TryTypes(p, out var types) && types.IsSubsetOf(JsonFactEncoding.Types(typed.Type, typed.OrNull));
 
                 case JsonClaim.EqualTo equal:
-                    return scope.TryGet(r.Dom.Of(p), out var pinned) && pinned.IsSubsetOf(ValueSet.Of(JsonFactEncoding.Value(equal.Value)));
+                    return t.TryDom(p, out var pinned) && pinned.IsSubsetOf(ValueSet.Of(JsonFactEncoding.Value(equal.Value)));
 
                 case JsonClaim.OneOf domain:
-                    return scope.TryGet(r.Dom.Of(p), out var within) && within.IsSubsetOf(JsonFactEncoding.Domain(domain.Values));
+                    return t.TryDom(p, out var within) && within.IsSubsetOf(JsonFactEncoding.Domain(domain.Values));
 
                 case JsonClaim.NotEqualTo unequal:
                 {
                     var value = JsonFactEncoding.Value(unequal.Value);
-                    return scope.Check(r.Ne.Of(p, value))
-                        || scope.TryGet(r.Dom.Of(p), out var excluding) && excluding.Contains(value) == false
-                        || scope.TryGet(r.Types.Of(p), out var others) && others.Contains(TypeOf(value)) == false;
+                    return t.Ne(p, value)
+                        || t.TryDom(p, out var excluding) && excluding.Contains(value) == false
+                        || t.TryTypes(p, out var others) && others.Contains(TypeOf(value)) == false;
                 }
 
                 case JsonClaim.LowerBound lower:
-                    return NoNumber(scope, r, p)
-                        || scope.TryGet(r.Lo.Of(p), out var lo) && Bound.StricterLower(lo, new Bound(lower.Value, lower.Exclusive)) == lo
-                        || scope.TryGet(r.Dom.Of(p), out var above) && above.Count > 0 && above.All(v => TryNumberOf(v, out var x) ? lower.Admits(x) : IsNumber(v) == false);
+                    return NoNumber(t, p)
+                        || t.TryLo(p, out var lo) && Bound.StricterLower(lo, new Bound(lower.Value, lower.Exclusive)) == lo
+                        || t.TryDom(p, out var above) && above.Count > 0 && above.All(v => TryNumberOf(v, out var x) ? lower.Admits(x) : IsNumber(v) == false);
 
                 case JsonClaim.UpperBound upper:
-                    return NoNumber(scope, r, p)
-                        || scope.TryGet(r.Hi.Of(p), out var hi) && Bound.StricterUpper(hi, new Bound(upper.Value, upper.Exclusive)) == hi
-                        || scope.TryGet(r.Dom.Of(p), out var below) && below.Count > 0 && below.All(v => TryNumberOf(v, out var x) ? upper.Admits(x) : IsNumber(v) == false);
+                    return NoNumber(t, p)
+                        || t.TryHi(p, out var hi) && Bound.StricterUpper(hi, new Bound(upper.Value, upper.Exclusive)) == hi
+                        || t.TryDom(p, out var below) && below.Count > 0 && below.All(v => TryNumberOf(v, out var x) ? upper.Admits(x) : IsNumber(v) == false);
 
                 case JsonClaim.Represents represents:
-                    return _vocabulary!.TryForm(represents.Form, out var form) && scope.Check(r.Form.Of(p, form));
+                    return _vocabulary!.TryForm(represents.Form, out var form) && t.Form(p, form);
 
                 case JsonClaim.Extension extension:
-                    return _vocabulary!.TryExtension(extension, out var key) && scope.Check(r.Extension.Of(p, key));
+                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key);
 
                 default:
                     return false;
@@ -131,15 +143,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns>The forms, which may be empty.</returns>
-        public IReadOnlyList<IJsonStoredForm> FormsOf(JsonDocumentPath path) => Read<IReadOnlyList<IJsonStoredForm>>(Array.Empty<IJsonStoredForm>(), (scope, r) =>
+        public IReadOnlyList<IJsonStoredForm> FormsOf(JsonDocumentPath path) => Read<IReadOnlyList<IJsonStoredForm>>(Array.Empty<IJsonStoredForm>(), t =>
         {
             if (_vocabulary!.Forms.Count == 0)
                 return Array.Empty<IJsonStoredForm>();
 
-            var p = Term(path, r);
             var forms = new List<IJsonStoredForm>();
             foreach (var (form, token) in _vocabulary.Forms)
-                if (scope.Check(r.Form.Of(p, token)))
+                if (t.Form(path, token))
                     forms.Add(form);
 
             return forms;
@@ -169,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// nothing survives.
         /// </para>
         /// </remarks>
-        public bool IsContradictory => Read(false, (scope, _) => scope.IsContradictory);
+        public bool IsContradictory => Read(false, t => t.IsContradictory);
 
         /// <summary>
         /// Returns what is known about a path as claims, for diagnostics.
@@ -180,32 +191,31 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns>The claims, which may be empty.</returns>
-        public IReadOnlyList<JsonClaim> ClaimsFor(JsonDocumentPath path) => Read<IReadOnlyList<JsonClaim>>(Array.Empty<JsonClaim>(), (scope, r) =>
+        public IReadOnlyList<JsonClaim> ClaimsFor(JsonDocumentPath path) => Read<IReadOnlyList<JsonClaim>>(Array.Empty<JsonClaim>(), t =>
         {
-            var p = Term(path, r);
             var claims = new List<JsonClaim>();
 
-            if (scope.Check(r.Present.Of(p)))
+            if (t.Present(path))
                 claims.Add(new JsonClaim.Present());
 
-            if (scope.TryGet(r.Types.Of(p), out var types) && TypeClaim(types) is JsonClaim.OfType typed)
+            if (t.TryTypes(path, out var types) && TypeClaim(types) is JsonClaim.OfType typed)
                 claims.Add(typed);
 
-            if (scope.TryGet(r.Dom.Of(p), out var dom) && Decode(dom) is { } values)
+            if (t.TryDom(path, out var dom) && Decode(dom) is { } values)
                 claims.Add(values.Count == 1 ? new JsonClaim.EqualTo(values[0]) : new JsonClaim.OneOf(values));
 
-            if (scope.TryGet(r.Lo.Of(p), out var lo))
+            if (t.TryLo(path, out var lo))
                 claims.Add(new JsonClaim.LowerBound(lo.Value, lo.Open));
 
-            if (scope.TryGet(r.Hi.Of(p), out var hi))
+            if (t.TryHi(path, out var hi))
                 claims.Add(new JsonClaim.UpperBound(hi.Value, hi.Open));
 
             foreach (var (form, token) in _vocabulary!.Forms)
-                if (scope.Check(r.Form.Of(p, token)))
+                if (t.Form(path, token))
                     claims.Add(new JsonClaim.Represents(form));
 
             foreach (var (extension, key) in _vocabulary.Extensions)
-                if (scope.Check(r.Extension.Of(p, key)))
+                if (t.Extension(path, key))
                     claims.Add(extension);
 
             return claims;
@@ -238,14 +248,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns><c>true</c> where every document holds a scalar of a known type there.</returns>
-        public bool IsAlwaysScalar(JsonDocumentPath path) => Read(false, (scope, r) =>
-        {
-            var p = Term(path, r);
-            return scope.Check(r.Present.Of(p))
-                && scope.TryGet(r.Types.Of(p), out var types)
+        public bool IsAlwaysScalar(JsonDocumentPath path) => Read(false, t =>
+            t.Present(path)
+                && t.TryTypes(path, out var types)
                 && types.Contains(NullType) == false
-                && IsOneScalarKind(types);
-        });
+                && IsOneScalarKind(types));
 
         /// <summary>
         /// Determines whether every value a path holds is a scalar of one kind, or null.
@@ -257,8 +264,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns><c>true</c> where the path holds scalars of one kind.</returns>
-        public bool HasOneScalarType(JsonDocumentPath path) => Read(false, (scope, r) =>
-            scope.TryGet(r.Types.Of(Term(path, r)), out var types) && IsOneScalarKind(types));
+        public bool HasOneScalarType(JsonDocumentPath path) => Read(false, t =>
+            t.TryTypes(path, out var types) && IsOneScalarKind(types));
 
         /// <summary>
         /// Returns the one value a path holds wherever it is there, if one is known.
@@ -274,8 +281,8 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             // A tuple rather than a nullable scalar: a scalar converts from a null string, so a conditional between one
             // and null types as a scalar, and answers the JSON null where it meant no answer.
-            var (found, only) = Read((false, JsonScalar.Null), (scope, r) =>
-                scope.TryGet(r.Dom.Of(Term(path, r)), out var dom) && dom.Count == 1 && JsonFactEncoding.TryScalar(dom[0], out var one)
+            var (found, only) = Read((false, JsonScalar.Null), t =>
+                t.TryDom(path, out var dom) && dom.Count == 1 && JsonFactEncoding.TryScalar(dom[0], out var one)
                     ? (true, one)
                     : (false, JsonScalar.Null));
 
@@ -284,41 +291,15 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Reads the context, one call at a time where it is not frozen; or answers <paramref name="otherwise"/> where
-        /// there is none, or where the engine fails, which loses a fact and invents none.
+        /// Reads the tables, or answers <paramref name="otherwise"/> where nothing is known.
         /// </summary>
-        T Read<T>(T otherwise, Func<Scope, JsonRules, T> read)
-        {
-            if (_scope is null)
-                return otherwise;
-
-            try
-            {
-                if (_lease is null)
-                    return read(_scope, _rules!);
-
-                lock (_lease)
-                    return read(_scope, _rules!);
-            }
-            catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
-            {
-                return otherwise;
-            }
-            finally
-            {
-                // The lease releases the context once the set is collected, and the set may be collectable before a read
-                // of its context returns.
-                GC.KeepAlive(_lease);
-            }
-        }
-
-        static Term<JPath> Term(JsonDocumentPath path, JsonRules rules) => JsonFactEncoding.Path(path).ToTerm(rules);
+        T Read<T>(T otherwise, Func<JsonFactTables, T> read) => _tables is null ? otherwise : read(_tables);
 
         /// <summary>
         /// Determines whether a path holds no number, which satisfies every bound.
         /// </summary>
-        static bool NoNumber(Scope scope, JsonRules r, Term<JPath> p) =>
-            scope.TryGet(r.Types.Of(p), out var types) && types.Contains(IntegerType) == false && types.Contains(FractionType) == false;
+        static bool NoNumber(JsonFactTables tables, JsonDocumentPath path) =>
+            tables.TryTypes(path, out var types) && types.Contains(IntegerType) == false && types.Contains(FractionType) == false;
 
         /// <summary>
         /// Determines whether a set of types, less a null, is one scalar kind: strings, numbers, or booleans.
@@ -384,31 +365,6 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             return values;
-        }
-
-        /// <summary>
-        /// Holds a query's context and releases it once nothing holds the set, so that a context the memo let go of does
-        /// not stay listed beneath its container's for the life of the generation.
-        /// </summary>
-        /// <remarks>
-        /// A finalizer, because nothing calls into a set to say it is done with it: a set is handed to a translator, kept
-        /// by a rule for the length of a match, and dropped. Releasing a context never throws and may run on any thread.
-        /// </remarks>
-        sealed class Lease
-        {
-
-            readonly Scope _scope;
-
-            public Lease(Scope scope)
-            {
-                _scope = scope;
-            }
-
-            ~Lease()
-            {
-                _scope.Dispose();
-            }
-
         }
 
     }

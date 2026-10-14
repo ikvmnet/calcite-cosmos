@@ -34,6 +34,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// one that replaced it. A statement asks a dozen times and a context costs milliseconds, so what a query
     /// established is remembered for the statements that follow: an established set is answered by one context.
     /// </para>
+    /// <para>
+    /// <b>Not every question needs the engine.</b> A declaration with no conditional rule, asked about paths it says
+    /// nothing of, cannot meet what the query established, and the answer is read off the two directly: see
+    /// <see cref="JsonFactOverlay"/>. That is every filter over a container that declares no schema.
+    /// </para>
     /// </remarks>
     public sealed class JsonFactTheory
     {
@@ -61,6 +66,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly List<Saturation.JsonFact> _stated = new();
         readonly List<JsonGuardedRule> _guarded = new();
         readonly List<JsonPathSpec> _paths = new();
+        readonly List<JsonDocumentPath> _statedPaths = new();
         readonly bool _splits;
         readonly object _compiling = new();
         Compiled? _compiled;
@@ -111,6 +117,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (rule.Body.Count == 0)
                 {
                     _stated.AddRange(heads);
+                    _statedPaths.Add(rule.Head.Path);
                     continue;
                 }
 
@@ -206,6 +213,16 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// Saturates a query's established facts on the engine, whatever they are, remembering nothing: what
+        /// <see cref="Derive"/> answers is held to it.
+        /// </summary>
+        /// <param name="established">What the query proved.</param>
+        /// <param name="mentioned">Paths for the context to know of beside those it established.</param>
+        /// <returns>What is known.</returns>
+        internal JsonFactSet DeriveOnEngine(IEnumerable<JsonFact> established, IEnumerable<JsonDocumentPath> mentioned) =>
+            Compile().Open(Distinct(established), mentioned);
+
+        /// <summary>
         /// Determines whether an exception is one the engine raises for a context it could not answer for, which loses
         /// facts rather than failing a plan.
         /// </summary>
@@ -294,6 +311,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (_schema is null)
                     return Outright;
 
+                // Where nothing the engine derives could change an answer, it is not asked.
+                if (_theory._conditional == false
+                    && JsonFactOverlay.TryOpen(established, _theory._statedPaths, Outright.Tables!) is JsonFactOverlay overlay)
+                    return new JsonFactSet(overlay, _theory._vocabulary);
+
                 var key = new Key(established);
 
                 lock (_memo)
@@ -331,11 +353,19 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <summary>
             /// Makes a query's context beneath the declaration's, holding what it established.
             /// </summary>
-            JsonFactSet Open(JsonFact[] established)
+            /// <param name="established">What the query established.</param>
+            /// <param name="mentioned">Paths for the context to know of beside those, which a test asks about.</param>
+            public JsonFactSet Open(JsonFact[] established, IEnumerable<JsonDocumentPath>? mentioned = null)
             {
+                if (_schema is null)
+                    return Outright;
+
                 var contexts = Generation.Contexts;
                 var facts = new List<Saturation.JsonFact>();
                 var paths = new HashSet<JsonPathSpec>();
+
+                foreach (var path in mentioned ?? Array.Empty<JsonDocumentPath>())
+                    paths.Add(JsonFactEncoding.Path(path));
 
                 foreach (var fact in established)
                 {

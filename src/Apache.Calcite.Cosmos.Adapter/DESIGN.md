@@ -779,6 +779,21 @@ Its parent lists it until then, so without the release it would live as long as 
 A small schema's query costs a few milliseconds on a workstation, once per distinct predicate. The Horn
 closure cost about 5 ms at 33k rules and 18.6 ms at 109k, and so did every planner question, with no memo.
 
+**Not every question goes to the engine.** A container that declares no schema still states what the
+service guarantees of `id`, `_ts` and `_etag`, so it is never empty, and every filter over it opened a query
+context. A filter the split rule divides asks with four distinct sets — the whole predicate, the conjuncts
+it can push, the pushed half with the cast weakened to a presence, and the residual — at about 1.8 ms
+each, which doubled what a single-container plan cost. `JsonFactOverlay` is the plan's demand gate for the
+case it covers: a declaration with no conditional rule, and a query whose facts are each one claim beside a
+presence on a path that neither lies beneath another nor meets one the declaration states. Then the rules
+of JSON add only what one claim says of its own path's types, the present objects above it, and the
+absence of what lies beneath a scalar, and the answer is read off the query's facts and the declaration's
+own context without opening one. Anything else goes to the engine. `JsonFactOverlayTests` holds it to the
+engine over generated sets, and catches each of three bugs planted in it; a fourth, dropping the types a
+disequality with null rules out, changes no answer a set gives. An undeclared container opens no
+context now, and plans as fast as it did on the closure: 8–16 ms a plan against 11–14 ms, over three
+runs alternating the two on one workstation, where the engine had taken about twice the closure's time.
+
 **Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
 is invented.
@@ -3372,6 +3387,8 @@ src/
       JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
       JsonFactRule.cs               ✔ A guarded claim
       JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what it knows for one query
+      JsonFactTables.cs             ✔ What a set reads: a context's tables, or the overlay's
+      JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
       JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
       JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
       Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal

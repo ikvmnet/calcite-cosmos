@@ -1707,11 +1707,18 @@ holds. Three bugs planted in what was added were each caught by it.
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
   33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
   bottleneck.
-- **What every container costs** — *medium; measure first.* Every container now reasons through a context,
-  including one that declares nothing but the service's facts. A filter over it costs a query context once per
-  distinct predicate, where the closure cost microseconds. The plan's demand gate (§3.6) answers such a set without
-  the engine where the answer cannot differ. Its F6 is the same observation: `IsEmpty` is never true. Measure
-  planning latency on an undeclared container before choosing.
+- **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
+  conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
+  without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
+  the engine took about twice the closure's time). A declaration with conditional rules still opens a context
+  for every distinct established set, four a plan where the split rule fires. Against the closure, on one
+  workstation, a filter over a discriminated `oneOf` costs 19–26 ms a plan at two kinds and 25–34 ms at
+  twenty, against 10–13 and 14–15; the engine is ahead at two hundred kinds (10 ms against 41) and at a
+  thousand (23 ms against 78). The first plan in a generation also compiles the declaration: 0.4 s at two
+  hundred kinds and 0.6 s at a thousand, against the closure's 65 and 190 ms. The plan's gate (§3.6) extends
+  to these: an established path no conditional rule's body reads, directly or through the path-dependency
+  closure, cannot change an answer. The memo helps less than it might: four sets a plan, keyed by literal, fill
+  256 entries in sixty-odd distinct statements.
 - **Interning bounded by the vocabulary, not the traffic** — *medium.* The plan's §2.1 renames a query's literals
   outside the declared vocabulary, which bounds interning and makes memo keys independent of literals. A generation
   is retired instead today, which bounds memory and not the rate of rebuilds.
