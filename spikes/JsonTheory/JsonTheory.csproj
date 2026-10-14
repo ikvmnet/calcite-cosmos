@@ -1,0 +1,16 @@
+<Project Sdk="MSTest.Sdk">
+
+    <!-- The rules of JSON as an Eggnog root context, with a soundness oracle. A spike: not in the solution. -->
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Eggnog" Version="0.0.1-pre.46" />
+    </ItemGroup>
+
+</Project>
