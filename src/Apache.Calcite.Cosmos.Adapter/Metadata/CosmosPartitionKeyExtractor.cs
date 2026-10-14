@@ -566,14 +566,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (outright.Knows(new JsonFact(path, new JsonClaim.Present())) == false)
                     continue;
 
-                foreach (var claim in outright.ClaimsFor(path))
-                {
-                    if (claim is not JsonClaim.EqualTo equality)
-                        continue;
-
-                    pinned[policy] = equality.Value.ToClrValue();
-                    break;
-                }
+                if (outright.TryGetValue(path, out var value))
+                    pinned[policy] = value.ToClrValue();
             }
         }
 
@@ -597,7 +591,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 path = path.Property(segment);
             }
 
-            return ReferenceEquals(path, JsonDocumentPath.Root) ? null : path;
+            return path.IsRoot ? null : path;
         }
 
         /// <summary>

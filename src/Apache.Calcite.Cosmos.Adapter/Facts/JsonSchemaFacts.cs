@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Apache.Calcite.Cosmos.Facts
@@ -16,7 +17,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// too — so this yields <em>rules</em> rather than a theory, and
     /// <see cref="JsonFactTheory"/> is what a container assembles out of every source it has. They
     /// have to end up in one theory rather than several: a rule's body may be satisfied by a fact
-    /// another source stated, and forward chaining only fires such a rule when it sees both at once.
+    /// another source stated, and only a context holding both fires it.
     /// </para>
     /// <para>
     /// The walk carries a <em>guard</em> — the facts that must hold for the branch being walked to be
@@ -104,6 +105,11 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (ReadEnum(node) is IReadOnlyList<JsonScalar> domain)
                 State(new JsonClaim.OneOf(domain));
+
+            // A bound constrains a number and is vacuous for anything else, which is what a bound claim
+            // says, so it is read beside no type and without one.
+            foreach (var bound in ReadBounds(node))
+                State(bound);
 
             // A pattern constrains a string and is vacuous for anything else, so one written beside no
             // declared type says nothing: a document storing the number 30 at that path conforms to it.
@@ -245,11 +251,17 @@ namespace Apache.Calcite.Cosmos.Facts
             else
                 return;
 
-            // Failing the inner schema means the property is there and is none of what it named.
-            rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.Present())));
+            // Failing the inner schema means the property is there and is none of what it named -- of an
+            // object that is there: `properties` constrains nothing where there is no object, so a nested
+            // one carries the object's presence, as `required` does.
+            var carrier = path.IsRoot
+                ? guard
+                : Extend(guard, new JsonFact(path, new JsonClaim.Present()));
+
+            rules.Add(new JsonFactRule(carrier, new JsonFact(child, new JsonClaim.Present())));
 
             foreach (var member in excluded)
-                rules.Add(new JsonFactRule(guard, new JsonFact(child, new JsonClaim.NotEqualTo(member))));
+                rules.Add(new JsonFactRule(carrier, new JsonFact(child, new JsonClaim.NotEqualTo(member))));
         }
 
         /// <summary>
@@ -273,15 +285,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>Discriminated.</b> Where every branch pins the same property to a different <c>const</c>,
         /// proving that property's value proves which branch applies — under <c>oneOf</c> because
         /// exactly one matches and the others are refuted, under <c>anyOf</c> because at least one does
-        /// and only one can. So the branch is walked with that equality added to the guard.
+        /// and only one can. So the branch is walked with the property's presence and that equality
+        /// added to the guard: a <c>const</c> is vacuous for an absent property, so where it is absent
+        /// nothing is refuted and nothing is proven.
         /// </para>
         /// <para>
         /// <b>Undiscriminated.</b> Nothing selects a branch, so the only facts that hold are the ones
         /// every branch states — the meet. Taking a branch's facts on their own would be claiming what
-        /// only one alternative says, and stating the alternatives as a disjunction would take the
-        /// theory out of Horn and make asking it intractable. Only the facts each branch states
-        /// directly are intersected; a conditional nested inside an undiscriminated branch is dropped,
-        /// which loses facts and stays sound.
+        /// only one alternative says. The theory reasons about alternatives by splitting on a
+        /// discriminator, and an undiscriminated union has none until the reader names a hidden one.
+        /// Only the facts each branch states directly are intersected; a conditional nested inside an
+        /// undiscriminated branch is dropped, which loses facts and stays sound.
         /// </para>
         /// <para>
         /// <b>Nullable.</b> Where every branch but one admits only <c>null</c>, the union is that one
@@ -315,7 +329,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     if (branches.At(i) is not JsonNode branch || DiscriminatorValue(branch, parent, discriminator, resolver, recognisers) is not JsonScalar value)
                         continue;
 
-                    var selected = Extend(guard, new JsonFact(path.Property(discriminator), new JsonClaim.EqualTo(value)));
+                    // The discriminator there, and holding the branch's value. A document without it may be in any
+                    // branch whose other constraints it meets, so the value alone selects nothing.
+                    var at = path.Property(discriminator);
+                    var selected = Extend(Extend(guard, new JsonFact(at, new JsonClaim.Present())), new JsonFact(at, new JsonClaim.EqualTo(value)));
                     var stated = new List<JsonFactRule>();
                     Walk(branches.At(i), path, selected, stated, resolver, recognisers, visiting);
 
@@ -617,7 +634,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>A claim that something is there</b> does not survive a null at all. A <c>required</c>
         /// child, a <c>not</c>'s property, a geography: each is true of the object the branch
         /// describes and false of a null standing in its place, where nothing below is present. So
-        /// those rules are kept under one more condition, that the union's value is not null.
+        /// those rules are kept under two more conditions, that the union's value is there and is not
+        /// null — a disequality alone holds of an absent path too, which no branch describes.
         /// Everything else below is a claim about a value <em>if there is one</em>, which a null
         /// makes vacuous rather than false.
         /// </para>
@@ -625,7 +643,7 @@ namespace Apache.Calcite.Cosmos.Facts
         static JsonFactRule? AdmitNull(JsonFactRule rule, JsonDocumentPath path)
         {
             if (rule.Head.Entails(new JsonFact(rule.Head.Path, new JsonClaim.Present())))
-                return new JsonFactRule(Extend(rule.Body, new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
+                return new JsonFactRule(Extend(Extend(rule.Body, new JsonFact(path, new JsonClaim.Present())), new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
 
             if (rule.Head.Path.Equals(path) == false)
                 return rule;
@@ -640,6 +658,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 JsonClaim.NotEqualTo { Value.IsNull: true } => null,
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
+
+                // A bound binds a number and holds of a null already.
+                JsonClaim.LowerBound bound => bound,
+                JsonClaim.UpperBound bound => bound,
                 _ => null,
             };
 
@@ -660,8 +682,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <para>
         /// <b>The <c>else</c> needs a single condition.</b> Its guard is the negation of the
         /// <c>if</c>, and the negation of a conjunction is a disjunction, which has no conjunctive
-        /// body. Where the condition is one equality the negation is one disequality and the branch is
-        /// usable; otherwise it is dropped.
+        /// body. Where the condition is one equality on a property the negation is the property there
+        /// and unequal — an absent one satisfies the <c>if</c> — and the branch is usable; otherwise it
+        /// is dropped.
         /// </para>
         /// </remarks>
         static void WalkConditional(
@@ -687,7 +710,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (node.Get("else") is JsonNode otherwise && atoms.Count == 1 && atoms[0].Claim is JsonClaim.EqualTo equality)
             {
-                var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
+                // Failing it is the property there and something else: where it is absent the condition holds
+                // vacuously, and the then branch applies.
+                var extended = new List<JsonFact>(guard) { new(atoms[0].Path, new JsonClaim.Present()), new(atoms[0].Path, new JsonClaim.NotEqualTo(equality.Value)) };
                 Walk(otherwise, path, extended, rules, resolver, recognisers, visiting);
             }
         }
@@ -976,6 +1001,37 @@ namespace Apache.Calcite.Cosmos.Facts
         };
 
         /// <summary>
+        /// Reads <c>minimum</c>, <c>maximum</c> and their exclusive forms as bounds.
+        /// </summary>
+        /// <remarks>
+        /// <c>exclusiveMinimum</c> is a number of its own from 2019-09, and before that a flag making
+        /// <c>minimum</c> exclusive; OpenAPI 3.0 writes the flag and 3.1 the number. Both are read, and
+        /// where both a <c>minimum</c> and a numeric <c>exclusiveMinimum</c> are given, both are bounds and
+        /// the stricter is what binds. A bound no decimal holds is not read.
+        /// </remarks>
+        /// <param name="node">The schema node.</param>
+        /// <returns>The bounds, which may be none.</returns>
+        static IEnumerable<JsonClaim> ReadBounds(JsonNode node)
+        {
+            if (Number(node, "minimum") is decimal minimum)
+                yield return new JsonClaim.LowerBound(minimum, node.Get("exclusiveMinimum").Boolean() == true);
+
+            if (Number(node, "exclusiveMinimum") is decimal above)
+                yield return new JsonClaim.LowerBound(above, Exclusive: true);
+
+            if (Number(node, "maximum") is decimal maximum)
+                yield return new JsonClaim.UpperBound(maximum, node.Get("exclusiveMaximum").Boolean() == true);
+
+            if (Number(node, "exclusiveMaximum") is decimal below)
+                yield return new JsonClaim.UpperBound(below, Exclusive: true);
+
+            static decimal? Number(JsonNode node, string keyword) =>
+                node.TryMember(keyword, out var member) && member is JsonValue && TryLiteral(member, out var value) && value.ToClrValue() is decimal number
+                    ? number
+                    : null;
+        }
+
+        /// <summary>
         /// Reads an <c>enum</c> as a domain of scalars.
         /// </summary>
         /// <remarks>
@@ -1018,7 +1074,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// how a JSON null and a missing member are told apart. A number is read from its text as an
         /// exact <see cref="decimal"/> wherever one can hold it — a schema's <c>1.5</c> is then the
         /// <c>1.5</c> a query writes, and an integer too large for a <see cref="long"/> is not wrapped
-        /// into another number — and as a <see cref="double"/> only beyond a decimal's range.
+        /// into another number — and as a <see cref="double"/> only beyond a decimal's range. A literal
+        /// built in code reads as the same literal parsed.
         /// </remarks>
         static bool TryLiteral(JsonNode? node, out JsonScalar value)
         {
@@ -1030,19 +1087,27 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node is not JsonValue literal)
                 return false;
 
-            switch (literal.GetValueKind())
+            // A parsed literal is its text. One built in code holds the CLR value it was given and converts to that
+            // type alone -- an int maximum is no decimal, a Guid const no string -- so it is written out and read
+            // back, as the same literal parsed.
+            var text = literal.TryGetValue<JsonElement>(out var parsed) ? parsed : JsonSerializer.SerializeToElement(literal);
+
+            switch (text.ValueKind)
             {
-                case System.Text.Json.JsonValueKind.String:
-                    value = literal.GetValue<string>();
+                case JsonValueKind.String:
+                    value = text.GetString()!;
                     return true;
-                case System.Text.Json.JsonValueKind.True:
+                case JsonValueKind.True:
                     value = true;
                     return true;
-                case System.Text.Json.JsonValueKind.False:
+                case JsonValueKind.False:
                     value = false;
                     return true;
-                case System.Text.Json.JsonValueKind.Number:
-                    value = literal.TryGetValue<decimal>(out var exact) ? exact : literal.GetValue<double>();
+                case JsonValueKind.Number when text.TryGetDecimal(out var exact):
+                    value = exact;
+                    return true;
+                case JsonValueKind.Number:
+                    value = text.GetDouble();
                     return true;
                 default:
                     return false;

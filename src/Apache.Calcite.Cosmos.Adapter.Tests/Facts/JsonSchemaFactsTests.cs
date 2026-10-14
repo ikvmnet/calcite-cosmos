@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
@@ -130,6 +131,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         static JsonFact Equals(JsonDocumentPath path, JsonScalar value) => new(path, new JsonClaim.EqualTo(value));
 
+        /// <summary>
+        /// What a query's equality establishes: the value, and that the path is there, which every row a comparison
+        /// keeps has. A discriminator's value selects a branch only where the discriminator is there.
+        /// </summary>
+        static JsonFact[] Proved(JsonDocumentPath path, JsonScalar value) => new[] { Equals(path, value), new JsonFact(path, new JsonClaim.Present()) };
+
         const string Parks = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -174,9 +181,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             theory.Derive(null).RepresentationOf(ParkId).Should().BeNull(
                 "a Park does not carry parkId at all, so nothing about it is known unconditionally");
 
-            theory.Derive(new[] { Equals(Type, "Park") }).RepresentationOf(ParkId).Should().BeNull();
+            theory.Derive(Proved(Type, "Park")).RepresentationOf(ParkId).Should().BeNull();
 
-            theory.Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId)
+            theory.Derive(Proved(Type, "ParkMap")).RepresentationOf(ParkId)
                 .Should().Be(CosmosUuidForms.CanonicalLower,
                     "the discriminator selects the branch, and the branch is where the pattern was declared");
         }
@@ -185,26 +192,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         public void AReferenceIsFollowedToWhereThePatternIsDeclared()
         {
             // The pattern is not in the branch; it is in $defs, reached through a $ref.
-            Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") }).RepresentationOf(ParkId)
+            Compile(Parks).Derive(Proved(Type, "ParkMap")).RepresentationOf(ParkId)
                 .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
         [Fact]
         public void RequiredIsRead_AndIsAboutTheChild()
         {
-            var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
+            var derived = Compile(Parks).Derive(Proved(Type, "ParkMap"));
 
             derived.Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse(
                 "required constrains an object and says nothing where there is no object, so a nested one waits on its parent");
 
             Compile(Parks)
-                .Derive(new[] { Equals(Type, "ParkMap"), new JsonFact(Data, new JsonClaim.Present()) })
+                .Derive(Proved(Type, "ParkMap").Append(new JsonFact(Data, new JsonClaim.Present())))
                 .Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeTrue("and holds once the parent is known to be there");
             derived.Knows(new JsonFact(Type, new JsonClaim.Present())).Should().BeTrue();
             derived.Knows(new JsonFact(At, new JsonClaim.Present())).Should().BeFalse(
                 "properties says what a value is, not that there is one; only required says that");
 
-            Compile(Parks).Derive(new[] { Equals(Type, "Park") })
+            Compile(Parks).Derive(Proved(Type, "Park"))
                 .Knows(new JsonFact(ParkId, new JsonClaim.Present())).Should().BeFalse();
         }
 
@@ -222,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ADateAtOneFixedShapeAndACanonicalUuidBothPreserveOrder()
         {
-            var derived = Compile(Parks).Derive(new[] { Equals(Type, "ParkMap") });
+            var derived = Compile(Parks).Derive(Proved(Type, "ParkMap"));
 
             derived.RepresentationOf(At)!.Value.PreservesOrder.Should().BeTrue(
                 "one fixed ISO-8601 UTC shape sorts lexically the way it sorts chronologically");
@@ -699,10 +706,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ADiscriminatedUnionKeepsItsPerBranchFacts()
         {
-            var map = Compile(Links).Derive(new[] { Equals(LinkType, "map") });
+            var map = Compile(Links).Derive(Proved(LinkType, "map"));
             map.Knows(new JsonFact(LinkMapId, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
 
-            var spot = Compile(Links).Derive(new[] { Equals(LinkType, "spot") });
+            var spot = Compile(Links).Derive(Proved(LinkType, "spot"));
             spot.Knows(new JsonFact(LinkMapId, new JsonClaim.EqualTo(null))).Should().BeTrue();
         }
 
@@ -823,7 +830,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var at = JsonDocumentPath.Root.Property("at");
 
             theory.Derive(null).RepresentationOf(at).Should().BeNull();
-            theory.Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "map") }).RepresentationOf(at)
+            theory.Derive(Proved(JsonDocumentPath.Root.Property("kind"), "map")).RepresentationOf(at)
                 .Should().Be(CosmosTemporalForms.Iso8601Date);
         }
 
@@ -842,7 +849,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             var at = JsonDocumentPath.Root.Property("at");
 
-            Compile(PartlyUnderstood).Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "map") })
+            Compile(PartlyUnderstood).Derive(Proved(JsonDocumentPath.Root.Property("kind"), "map"))
                 .RepresentationOf(at).Should().BeNull(
                     "the whole condition has to be understood, or the guard is weaker than the schema's");
         }
@@ -862,10 +869,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var kind = JsonDocumentPath.Root.Property("kind");
             var theory = Compile(Conditional);
 
-            theory.Derive(new[] { Equals(kind, "trail") }).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
+            theory.Derive(Proved(kind, "trail")).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
                 .Should().BeTrue("an equality to a different value discharges the negative premise");
 
-            theory.Derive(new[] { Equals(kind, "map") }).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
+            theory.Derive(Proved(kind, "map")).Knows(new JsonFact(at, new JsonClaim.OfType(JsonType.Integer)))
                 .Should().BeFalse();
         }
 
@@ -883,6 +890,100 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             derived.Knows(new JsonFact(status, new JsonClaim.OfType(JsonType.String))).Should().BeTrue(
                 "every member is a string, so the type follows from the domain");
             derived.Knows(new JsonFact(status, new JsonClaim.NotEqualTo("archived"))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// <c>minimum</c> and <c>maximum</c> bound a number, in 2019-09's spelling of the exclusive forms and in
+        /// Draft 4's, which OpenAPI 3.0 writes.
+        /// </summary>
+        [Fact]
+        public void ABoundIsReadInEitherSpelling()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+
+            var numbered = Compile("""{ "properties": { "n": { "minimum": 1, "exclusiveMaximum": 10 } } }""").Derive(null);
+            numbered.Knows(new JsonFact(n, new JsonClaim.LowerBound(1))).Should().BeTrue();
+            numbered.Knows(new JsonFact(n, new JsonClaim.LowerBound(1, Exclusive: true))).Should().BeFalse("1 itself is admitted");
+            numbered.Knows(new JsonFact(n, new JsonClaim.UpperBound(10, Exclusive: true))).Should().BeTrue();
+            numbered.Knows(new JsonFact(n, new JsonClaim.Present())).Should().BeFalse("a bound says nothing of whether there is a number");
+
+            var flagged = Compile("""{ "properties": { "n": { "minimum": 1, "exclusiveMinimum": true, "maximum": 10 } } }""").Derive(null);
+            flagged.Knows(new JsonFact(n, new JsonClaim.LowerBound(1, Exclusive: true))).Should().BeTrue();
+            flagged.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue();
+            flagged.Knows(new JsonFact(n, new JsonClaim.UpperBound(10, Exclusive: true))).Should().BeFalse("the flag beside minimum is about minimum");
+        }
+
+        /// <summary>
+        /// A bound binds numbers only, so a union of a string and a bounded number is bounded, and a union of two
+        /// bounds is bounded on each side both state.
+        /// </summary>
+        [Fact]
+        public void AUnionMeetsOnTheBoundsEveryBranchSatisfies()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+
+            var stringOrNumber = Compile("""{ "properties": { "n": { "anyOf": [ { "type": "string" }, { "type": "number", "minimum": 0 } ] } } }""").Derive(null);
+            stringOrNumber.Knows(new JsonFact(n, new JsonClaim.LowerBound(0))).Should().BeTrue("a string is no number, and the number is at least 0");
+
+            var two = Compile("""{ "properties": { "n": { "anyOf": [ { "minimum": 0 }, { "minimum": 5, "maximum": 10 } ] } } }""").Derive(null);
+            two.Knows(new JsonFact(n, new JsonClaim.LowerBound(0))).Should().BeTrue();
+            two.Knows(new JsonFact(n, new JsonClaim.LowerBound(5))).Should().BeFalse("the first branch admits 1");
+            two.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeFalse("and 11");
+
+            var nullable = Compile("""{ "properties": { "n": { "anyOf": [ { "type": "null" }, { "type": "integer", "maximum": 10 } ] } } }""").Derive(null);
+            nullable.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue("a null is no number for the bound to refuse");
+            nullable.Knows(new JsonFact(n, new JsonClaim.OfType(JsonType.Integer, OrNull: true))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A schema built in code holds CLR numbers, and each converts to its own type alone: an <c>int</c> is no
+        /// decimal. It reads as the same schema parsed, where it used to throw out of the reader and lose the whole
+        /// declaration.
+        /// </summary>
+        [Fact]
+        public void NumbersBuiltInCodeReadAsTheSameNumbersParsed()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+            var x = JsonDocumentPath.Root.Property("x");
+            var status = JsonDocumentPath.Root.Property("status");
+
+            var built = new System.Text.Json.Nodes.JsonObject
+            {
+                ["properties"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["n"] = new System.Text.Json.Nodes.JsonObject { ["minimum"] = 1L, ["maximum"] = 10 },
+                    ["x"] = new System.Text.Json.Nodes.JsonObject { ["exclusiveMaximum"] = 2.5 },
+                    ["status"] = new System.Text.Json.Nodes.JsonObject { ["enum"] = new System.Text.Json.Nodes.JsonArray(1, 2, 3) },
+                },
+            };
+
+            var derived = new JsonFactTheory(CosmosSchemaRecognition.ReadFrom(built)).Derive(null);
+
+            derived.Knows(new JsonFact(n, new JsonClaim.LowerBound(1))).Should().BeTrue();
+            derived.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue();
+            derived.Knows(new JsonFact(x, new JsonClaim.UpperBound(2.5m, Exclusive: true))).Should().BeTrue();
+            derived.Knows(new JsonFact(status, new JsonClaim.OneOf(new JsonScalar[] { 1m, 2m, 3m }))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// The same for a string: a <c>Guid</c> built in code is written as a string and is no string to convert to.
+        /// </summary>
+        [Fact]
+        public void AStringBuiltInCodeReadsAsTheSameStringParsed()
+        {
+            var id = JsonDocumentPath.Root.Property("id");
+            var guid = System.Guid.Parse("123e4567-e89b-12d3-a456-426614174000");
+
+            var built = new System.Text.Json.Nodes.JsonObject
+            {
+                ["properties"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = new System.Text.Json.Nodes.JsonObject { ["const"] = guid },
+                },
+            };
+
+            new JsonFactTheory(CosmosSchemaRecognition.ReadFrom(built)).Derive(null)
+                .Knows(new JsonFact(id, new JsonClaim.EqualTo(guid.ToString()))).Should().BeTrue();
         }
 
         /// <summary>
@@ -913,8 +1014,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var kind = JsonDocumentPath.Root.Property("kind");
 
             theory.Derive(null).RepresentationOf(reference).Should().BeNull();
-            theory.Derive(new[] { Equals(kind, "order") }).RepresentationOf(reference).Should().BeNull();
-            theory.Derive(new[] { Equals(kind, "shipment") }).RepresentationOf(reference)
+            theory.Derive(Proved(kind, "order")).RepresentationOf(reference).Should().BeNull();
+            theory.Derive(Proved(kind, "shipment")).RepresentationOf(reference)
                 .Should().Be(CosmosUuidForms.CanonicalLower);
         }
 
@@ -936,7 +1037,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             }
             """;
 
-            Compile(Implicit).Derive(new[] { Equals(JsonDocumentPath.Root.Property("kind"), "Shipment") })
+            Compile(Implicit).Derive(Proved(JsonDocumentPath.Root.Property("kind"), "Shipment"))
                 .RepresentationOf(JsonDocumentPath.Root.Property("ref"))
                 .Should().Be(CosmosUuidForms.CanonicalLower);
         }
@@ -1155,6 +1256,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             // Two constraints under a not is a disjunction over which of them failed, and yields none.
             Compile("""{ "not": { "properties": { "k": { "const": "A" }, "j": { "const": "B" } } } }""")
                 .Derive(null).Knows(new JsonFact(k, new JsonClaim.Present())).Should().BeFalse();
+
+            // A not inside a property constrains that property's object, which a document need not have:
+            // its k is there only where the object is.
+            var o = JsonDocumentPath.Root.Property("o");
+            var nested = Compile("""{ "properties": { "o": { "not": { "properties": { "k": { "const": "A" } } } } } }""");
+
+            nested.Derive(null).Knows(new JsonFact(o.Property("k"), new JsonClaim.Present())).Should().BeFalse("a document without o satisfies the schema");
+            nested.Derive(new[] { new JsonFact(o, new JsonClaim.Present()) }).Knows(new JsonFact(o.Property("k"), new JsonClaim.Present())).Should().BeTrue();
+            nested.Derive(new[] { new JsonFact(o, new JsonClaim.Present()) }).Knows(new JsonFact(o.Property("k"), new JsonClaim.NotEqualTo("A"))).Should().BeTrue();
         }
 
         /// <summary>

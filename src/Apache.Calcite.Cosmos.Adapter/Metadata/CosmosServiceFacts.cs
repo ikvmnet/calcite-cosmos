@@ -16,7 +16,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// what an application writes; it has nothing to say about <c>id</c> or <c>_ts</c>, which the
     /// service defines. So these are stated here and assembled into the same theory a declared schema
     /// contributes to — one theory rather than two, because a declared rule's body may be satisfied by
-    /// a fact stated here and forward chaining fires such a rule only when it sees both at once.
+    /// a fact stated here and only a context holding both fires it.
     /// </para>
     /// <para>
     /// <b>The trust is of a different kind, and that is worth knowing rather than encoding.</b> A fact

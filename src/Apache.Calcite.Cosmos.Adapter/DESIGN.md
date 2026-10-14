@@ -598,54 +598,205 @@ is rechecked above — the cast itself is gone from the plan either way. A decla
 ought to delete the numeric disjunct and does not yet; `TODO.md` records it beside the same gap the
 parameter work found.
 
-#### Atoms, clauses, and why asking is linear
+#### The theory of JSON, in layers
 
-One atom kind, `(path, claim)`. A claim a query can establish — a discriminator holding a value — and a
-claim a rewrite can consume — a path holding a canonical UUID — are the same kind of thing, and keeping
-them one kind is what lets a schema state facts conditional on other facts without a second mechanism.
-Subsumption is a function on a fact rather than more clauses, because materialising it would be
-unbounded: `EqualTo v` entails `OneOf S` for every set containing `v`.
+A container's declaration is reasoned about by a theory of JSON written as an
+[Eggnog](https://github.com/alethic/eggnog) e-graph, under `Facts/Saturation/`. What a query established is
+saturated beneath the declaration, and a question is a read of what saturation proved. The front end is
+unchanged: `JsonSchemaFacts` reads a schema into `JsonFactRule`s of `(path, claim)` atoms, and
+`CosmosFactExtractor` reads a predicate into the same atoms. `JsonFactTheory` compiles the rules into the
+theory, and `JsonFactSet` answers in the old vocabulary, so a consumer asks what it always asked.
 
-A rule is a conjunctive body and a single-atom head, which makes the compiled schema a **definite
-propositional Horn theory** — entailment linear in the theory, by forward chaining with a counter per
-clause (Dowling and Gallier, 1984). The counter form is adapted to re-scan the body when a fact about a
-path it mentions arrives, because a body atom is satisfied by anything that *entails* it, and bodies
-are one or two atoms long.
+**Four contexts, three of them frozen.**
 
-**The rule that keeps it there: never a disjunctive head.** A branch yielding "A or B" leaves Horn and
-entailment becomes intractable, so an undiscriminated `anyOf` contributes the **meet** — the facts
-every branch entails — which is a sound under-approximation and free.
+1. **The root holds the rules of JSON**, global to the graph: what is true of every document because it is
+   JSON. A present property has a present object for a parent. Only an object has properties and only an array
+   has elements. A value is of its own type. A bound, a length or a disequality narrows a domain. A path with no
+   possible type is absent, and absent and present together is a contradiction.
+2. **A child of the root holds the rules of JSON Schema**, as local rules (`JsonContexts.JsonSchema`). These
+   read what only a schema keyword states — `required`, a closed object, `multipleOf`, `uniqueItems`, counts of
+   items and properties, a stored form — and they include the interpreter for a schema's conditional rules.
+3. **Each declaration is a context of its own** beneath that. It holds the unconditional facts as facts, the
+   conditional ones as rows, and its discriminators marked. Its own split is saturated and frozen once.
+4. **Each established set is a query context**, transient, beneath its declaration.
 
-**Nothing entails presence.** A schema's `properties` constrains the value a path holds *if it holds
-one*; only `required` says it holds one. Reading the first as the second would claim of every document
-what the schema claimed of none.
+A rule belongs to JSON when everything it reads is a property of the document itself: presence, type, value,
+lengths, bounds, membership, elements, equality. It belongs to JSON Schema when it reads a fact only a schema
+keyword states, or when it is the conditional-rule machinery. The split keeps the layers distinct, so that
+a context could one day hold JSON's rules without a schema's.
 
-**A value is a JSON scalar, compared as JSON compares it (#198).** A claim's value comes from a schema
-and from a query, and each side used to hand over a CLR box: the schema reader a `long` or a `double`, a
-query an exact `decimal` for `1.5` or `1.0`. Two boxes of one number are unequal, so the exclusion table
-read `EqualTo 1.5` as excluding a domain holding `1.5`, the fact set as contradictory, and the rewrite
-answered `FALSE` — no rows, where every matching document should have come back. So a value is a
-`JsonScalar`: null, a boolean, a string or a number, with a number compared by its value and held as an
-exact `decimal` wherever one can hold it. A `double` would make two large integers one key, and a fact
-about one a fact about the other; a number no decimal can hold stays a `double`, equal only to itself.
-Each side converts once, at its boundary — the reader from JSON, the extractor from a literal — and a
-literal that is no JSON scalar, a `UUID` or an instant, proves nothing rather than being carried as a box
-the theory cannot compare.
+**Paths are terms, and two equal paths are one class.** `Root`, `Prop`, `Index`, `Each` for every element
+of an array, and `Ghost` for a discriminator no document holds. Congruence makes the properties of equal
+paths equal, which is what `CHECK (a = b)` will need.
+
+**A fact says what a path holds if it holds anything.** The facts are: a set of types over string, integer,
+fraction, boolean, null, object and array; a domain; disequalities; numeric bounds; string and array
+lengths; a closed object; required properties; and the rest of JSON Schema's assertions. Each is
+conditional on presence, as JSON Schema's own keywords are, and an absent path satisfies all of them. Only
+`present`, `absent` and `contains` say whether something is there. A claim `OfType(T, OrNull)` is the set of
+`T`'s members, with `null` added where it is admitted, so `number` is `{integer, fraction}` and *an integer is
+a number* is a subset test rather than a rule.
+
+**Nothing entails presence** — the stance this section has always taken, now carried by the encoding rather
+than by a table. A schema's `properties` constrains the value a path holds if it holds one; only `required`
+says it holds one. A host's extension says for itself what it entails: a geography is an object and is there,
+so its token is stated beside `present` and `{object}`, and that is how the rest of the theory reads it.
+
+#### Absence is not a contradiction
+
+Two claims no one value satisfies — a string and an object, an enum and a type outside it — leave the path no
+possible type, so it is absent. That is a fact about documents, and every document without the path
+satisfies it. It becomes a contradiction only beside a presence.
+
+The Horn engine had no atom for absence. It paired such claims as excluding each other whether or not
+anything said the path was there. A schema stating `type: integer` beside a string `enum` therefore made
+every predicate over the container `false`, every document of it lost (F3, pinned by
+`TwoDeclaredClaimsNoValueSatisfiesContradictNoQuery`). Its stance of "no exclusion between two type claims"
+avoided only half of that mistake, and was right only for a theory that could not say *absent*.
+
+**The query supplies the presence.** A comparison is undefined at the service over an absent path and
+unknown in process, and a filter keeps no row for either. So every row a comparison keeps has its path, and
+`CosmosFactExtractor` states `Present` beside every equality, disequality and `IN` it reads (F4). That
+presence is what turns `status = 'deleted'` against a declared `enum` into a contradiction rather than a
+proof that `status` is absent. It is also why an `IS_DEFINED` guard beside a comparison on the same path is
+deleted.
+
+**A range supplies a bound, and binds only numbers.** A comparison through a numeric cast puts the raw
+value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the extractor states that
+window as two bound claims beside the presence (`CosmosNumericWindow`, the one the split rule pushes). A
+bound binds numbers only, because the cast converts a stored string too: `> 500` keeps `"600"`. So a range
+beyond a declared `maximum` leaves the path no number, which contradicts the presence only where the
+declaration leaves it nothing else, a `type: integer` (gap 4, `ARangeBeyondADeclaredBoundKeepsNoNumber`).
+A range no member of an integer `enum` lies in empties the domain (gap 5, `ARangeOutsideAnEnumKeepsNothing`).
+Any other order comparison states only the presence. Over a typed path the comparison follows a
+conversion, or Calcite's ordering of a `VARIANT` across types, and neither has been measured to keep the
+stored number on its side of the constant.
+
+#### A conditional rule is a row
+
+A schema's conditional statements — a `oneOf` branch under its discriminator, an `if`/`then` — are held as
+rows of the declaration's context and read by about fifteen fixed rules in the JSON Schema layer.
+
+- `step(r, k)` says that the first `k` atoms of rule `r`'s body hold.
+- An atom keyed `(r, k)` extends the chain.
+- A complete body turns the head rows of `r` into facts.
+
+An engine rule costs every query an evaluation, fired or not. The spike measured one engine rule per
+declared rule at 510 ms and 251 MB per query, at 33k rules. As rows, a query cost 0.63 ms at 33k and 1.06 ms
+at 109k (`spikes/EggnogDerive/README.md`): it costs what it fires. A schema of tens of thousands of rules is
+the case this has to survive.
+
+**A body atom is known the way any fact is, and means what the claim means.** The atom `kind = 'A'` holds
+where every value `kind` may hold is `'A'`, a domain within `{A}`. That is exactly JSON Schema's
+`if: {properties: {kind: {const: "A"}}}`, which holds vacuously where `kind` is absent, and the `then` branch
+applies there. So the schema reader states a presence wherever the condition is one:
+
+- a discriminated branch applies where the discriminator is there and holds the branch's value — a document
+  without one may be in any branch;
+- an `else` applies where the property is there and holds another value;
+- the object branch of a nullable union applies where the value is there and is not null.
+
+**What a conditional fact needs, then, is what the query proved, and nothing else.** A query's `kind = 'A'`
+states the value and the presence. The rule fires there, and over a document the guard does not cover, the
+conjunct that proved it has already excluded the row — the argument *A declaration is trusted* makes for
+every guard.
+
+#### What makes a split sound
+
+A Horn theory cannot close `kind IN ('order', 'invoice')`, each kind declaring `ref` a canonical UUID,
+without a disjunctive head. The theory splits instead (gap 1, `TwoKindsNamedTogetherProveWhatBothDeclare`):
+one case per value the query leaves the discriminator, each assuming the domain is that value. Saturation
+runs in each case, and what every live case proves is lifted to the context that split.
+
+The split is a domain split guarded by three facts: the path is a discriminator, it is present, and a query
+mentions it. It is sound because the cases cover the context.
+
+- **The path is there**, so its value is one of its domain's. A split on a path that may be absent would
+  leave out every document without it, which is why presence is a guard and not an option.
+- **There is one case per remaining value**, and a case whose value no document holds is contradicted and
+  drops out of the lift.
+- **Domains only narrow**, so cases made for a wider domain still cover a narrower one.
+
+A guard can only make a split less frequent: fewer cases and fewer facts, never an unsound one. That is what
+lets the relevance gate choose where a query splits. A path is relevant if a query mentions it, if it is the
+parent, array or pattern of a relevant path, or if a conditional rule reads it where the rule's head speaks of
+a relevant path. Every path a body reads a value of is marked a discriminator. A declaration's own context
+splits on each one that is present, so that what every branch implies holds outright, and a query splits on
+the relevant ones. A case may split again, to a depth of two.
+
+**A deletion reads only the declaration.** `CosmosFactRewriter.IsAlwaysTrue` deletes a conjunct only where
+the declaration's own context proves it. A fact a query proved may rest on the very conjunct being deleted,
+and the predicate left behind would prove less than it did. Eggnog's `RulesetOptions.Licence` says the same
+thing inside the engine, for a rewrite done there; here it is the choice of which context to ask.
+
+#### Values, and one spelling each
+
+**A value is a JSON scalar, compared as JSON compares it (#198).** A claim's value comes from a schema and
+from a query, and each side used to hand over a CLR box: the schema reader a `long` or a `double`, a query an
+exact `decimal` for `1.5` or `1.0`. Two boxes of one number are unequal, so the exclusion table read
+`EqualTo 1.5` as excluding a domain holding `1.5`, and the rewrite answered `FALSE` — no rows, where every
+matching document should have come back. So a value is a `JsonScalar`: null, a boolean, a string or a number,
+with a number compared by its value and held as an exact `decimal` wherever one can hold it. Each side
+converts once, at its boundary — the reader from JSON, the extractor from a literal — and a literal that is no
+JSON scalar, a `UUID` or an instant, proves nothing.
+
+In the theory a scalar is a string tagged with its type, `string|x`, `integer|2`, `fraction|1.5`, so a domain
+is a set and each member's type is read off its tag. `1.0` and `1` are one spelling. A number no decimal can
+hold keeps its type and an approximate spelling no exact number shares. No bound, multiple or range reads its
+value, so each keeps it rather than guess where it lies.
 
 **A type is a place in a lattice, not a member of a list (#217).** JSON has one number type, and JSON
-Schema's `integer` is the subset of `number` with no fractional part. `JsonType` names the two apart, and
-a value's own type is the narrowest that fits, so `2` is an `Integer`. Compared as a list, a path declared
-`"type": "number"` excluded every whole number: `EqualTo 2` against `OfType Number` read as a
-contradiction, and the rewrite answered `FALSE`. That is #198's failure again, a number's representation
-compared where its value should have been. Every comparison of one type against another now goes through
-`JsonTypes.IsA`, where `Integer` lies beneath `Number` and every other pair of distinct types is disjoint.
-The same relation reads `["integer", "number"]` as a number, where two types side by side used to state
-nothing.
+Schema's `integer` is the subset of `number` with no fractional part. Compared as a list, a path declared
+`"type": "number"` excluded every whole number, and the rewrite answered `FALSE`. As sets of members the
+question cannot be asked wrongly: `{integer}` is within `{integer, fraction}`. The front end still compares
+`JsonType`s, for `JsonSchemaFacts.Meet`, through `JsonTypes.IsA`.
 
-There is still no exclusion between two type claims, and that is deliberate rather than a gap. A type
-claim constrains what a path holds *if* it holds anything, and an absent path satisfies "an object" and
-"an array" at once. Excluding them pairwise would empty contexts that documents without the path still
-fill; it would take presence as a third fact, which a pairwise table cannot see.
+#### Generations, and what a question costs
+
+**One graph per schema object and generation.** A graph holds the rules once and every container's context
+beneath them, so the containers of a schema object share it: `CosmosSchemaFactory` makes one set of
+`JsonFactGenerations` per schema object and binds each container to it. Metadata built any other way shares
+a default one.
+
+**A graph interns every value it is written, and never frees one**, so a graph serving queries forever grows
+forever. A generation is therefore retired once it has interned a million values. The next question starts
+a new one, and each declaration compiles itself into it when it is next asked. Nothing disposes a retired
+generation: a statement holding one of its answers keeps it alive, and once none does it is collected whole.
+
+**A query's context lives as long as its answer.** A planner asks about one statement a dozen times —
+matching a rule, converting, splitting, implementing — so a compiled declaration remembers the answers to its
+last 256 established sets, compared as sets. A context the memo lets go of is released once nothing holds it.
+Its parent lists it until then, so without the release it would live as long as the generation.
+
+**What it costs.** Measured on four cores in the cloud:
+
+- a query with no split costs 4.6 ms against 47k conditional facts;
+- a split of two cases costs 4.6 ms, and one of five 11 ms;
+- a contradicted query costs 0.46 ms;
+- compiling and freezing that declaration takes 0.8 s;
+- 512 concurrent split queries under one frozen declaration answer as serial ones do.
+
+A small schema's query costs a few milliseconds on a workstation, once per distinct predicate. The Horn
+closure cost about 5 ms at 33k rules and 18.6 ms at 109k, and so did every planner question, with no memo.
+
+**Not every question goes to the engine.** A container that declares no schema still states what the
+service guarantees of `id`, `_ts` and `_etag`, so it is never empty, and every filter over it opened a query
+context. A filter the split rule divides asks with four distinct sets — the whole predicate, the conjuncts
+it can push, the pushed half with the cast weakened to a presence, and the residual — at about 1.8 ms
+each, which doubled what a single-container plan cost. `JsonFactOverlay` is the plan's demand gate for the
+case it covers: a declaration with no conditional rule, and a query whose facts are each one claim beside a
+presence on a path that neither lies beneath another nor meets one the declaration states. Then the rules
+of JSON add only what one claim says of its own path's types, the present objects above it, and the
+absence of what lies beneath a scalar, and the answer is read off the query's facts and the declaration's
+own context without opening one. Anything else goes to the engine. `JsonFactOverlayTests` holds it to the
+engine over generated sets, and catches each of three bugs planted in it; a fourth, dropping the types a
+disequality with null rules out, changes no answer a set gives. An undeclared container opens no
+context now, and plans as fast as it did on the closure: 8–16 ms a plan against 11–14 ms, over three
+runs alternating the two on one workstation, where the engine had taken about twice the closure's time.
+
+**Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
+declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
+is invented.
 
 #### A schema is one source of facts, and not the only one
 
@@ -655,9 +806,9 @@ container. `CosmosServiceFacts` states it, `JsonSchemaFacts` reads a model's, an
 `CosmosContainerMetadata.Facts` is the assembly.
 
 **They have to share one theory rather than sit in two**, and that is correctness rather than tidiness:
-a rule stated by one source may have a body satisfied by a fact from the other, and forward chaining
-fires such a rule only when it sees both at once. Two theories asked separately would lose the
-derivation silently.
+a rule stated by one source may have a body satisfied by a fact from the other, and only a context
+holding both fires it. Two theories asked separately would lose the derivation silently. So the service's
+facts are stated into every container's own context, beside what its schema declares.
 
 It also removed a duplicate. `CosmosAggregate` carried a hard-coded list of the three service
 properties to decide whether a grouping key needs its `IS_DEFINED` normalisation; asking the fact set
@@ -688,7 +839,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `pattern` | a regular expression | a stored form, for recognised spellings only |
 | `format` | an annotation | nothing |
 | `allOf` | every branch applies | every branch, same guard |
-| `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the value; and the meet, unguarded |
+| `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the discriminator's presence and value; and the meet, unguarded |
 | `oneOf`/`anyOf`, undiscriminated | one of them applies | the meet |
 | `oneOf`/`anyOf`, `null` and one other branch | the other branch, or a null | that branch, each fact widened to admit the null |
 | `if`/`then`/`else` | a conditional | a guard, only where the whole condition is read |
@@ -698,18 +849,20 @@ like an assertion about a document is often an assertion about a document **if s
 | `$defs`, `definitions` | a place to keep schemas | nothing — they constrain no path |
 | `additionalProperties`, `patternProperties`, `propertyNames` | constrain paths that cannot be named here | nothing |
 | `items`, `prefixItems`, `contains` | constrain elements | nothing |
-| `minimum`, `maxLength`, … | bounds | nothing — no claim is about an interval |
+| `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | bounds on a number | a bound, binding numbers only; Draft 4's flag beside `minimum` and 2019-09's number alike |
+| `minLength`, `maxLength`, `multipleOf`, … | other bounds | nothing yet — the theory has them, and no claim states them |
 
 An OpenAPI `discriminator` is read alongside a branch's own `const`, and the two rest on different
 ground. A branch that pins the property refutes every other branch, and `oneOf` does the rest. A
 `mapping` refutes nothing — validation alone could not tell the branches apart — so what carries it is
 that the author declared it, which is the footing the whole schema is trusted on anyway.
 
-**Two readings that look unsound and are not.** The guard taken from an `if` is *stronger* than the
-`if` — `{properties: {k: {const: "B"}}}` is satisfied vacuously by a document with no `k`, while the
-guard demands one — so `then` is applied to fewer documents than the schema allows, not more. And the
-meet holds under `oneOf` and `anyOf` alike: a fact every branch states is true whether exactly one
-validates or at least one does.
+**Two readings that look unsound and are not.** The guard taken from an `if` is the `if` exactly —
+`{properties: {k: {const: "B"}}}` is satisfied vacuously by a document with no `k`, and a body atom about
+`k`'s value holds vacuously where `k` is absent, as every claim about a value does. Its `else` is the `if`
+failing, which needs `k` there and something else, so it carries the presence. And the meet holds under
+`oneOf` and `anyOf` alike: a fact every branch states is true whether exactly one validates or at least
+one does.
 
 **A union with `null` is a third spelling of nullable, not a union.** `anyOf: [{type: null}, X]`
 is how 2020-12 writes an optional value most often, and the meet reads nothing from it — a null and a
@@ -719,8 +872,9 @@ gains `null` as a member, a disequality of anything but `null` is kept, and a st
 as it is, already being silent about whether a string is there. A fact that says something is
 **there** — a `required` child, a `not`'s property, a geography — is false of a null standing in for
 the object, and `Present` cannot tell them apart since `IS_DEFINED` is true of a null; so those rules
-are kept under one more condition, `NotEqualTo(null)` at the union's path. Everything else below is
-a claim about a value if there is one, and a null makes it vacuous rather than false. #172.
+are kept under two more conditions at the union's path, `Present` and `NotEqualTo(null)`: a disequality
+alone holds of an absent path too, where no branch describes anything. Everything else below is a claim
+about a value if there is one, and a null makes it vacuous rather than false. #172.
 
 **The meet is taken by entailment, and a discriminated union has one too (#175).** It used to be the
 claims every branch stated *equally*, so `"a string"` in one branch and `null` in another cancelled —
@@ -731,7 +885,8 @@ domain joining every constant and domain the branches name — and keeps every c
 claim entailing. All of them, not only the strongest: a consumer that asks for a type by its shape
 rather than through entailment finds it beside the stored form that entails it. `JsonFact.Entails`
 needed the rows saying so — a null entails a stored form, a type admitting a null, a domain holding one,
-and every disequality but its own.
+and every disequality but its own; and a domain entails every domain holding it, which is how an `anyOf`
+of two enums meets in the enum of their members (gap 3, `AUnionOfEnumsIsTheirMembers`).
 
 A discriminated union took only its branches, each guarded by the discriminator's value, which pays
 only where a query proves one. A query over every kind proves none and got nothing — even where every
@@ -1625,7 +1780,12 @@ is a claim about it and nothing else:
 Saturation is the row that had to be found rather than reasoned about. `CAST(x AS INTEGER) =
 2147483647` is true of a document storing `1e30`, so a window around the limit excludes exactly the
 document that matches — and the corpus caught it as a lost row before the bound stopped stating that
-side. Only equality is affected; the inequalities already admit everything past the limit.
+side. The same is true of any comparison the limit itself satisfies: `> -3000000000` keeps a stored
+`-1e30`, which converts to the lower limit. So `CosmosNumericWindow` states a side only where the limit
+fails the comparison. No literal reaches it that way today — a constant beyond the target's range is
+wider than it, and Calcite widens the cast to compare them, which the window does not read through — and
+`AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead. The fact extractor reads
+the same window as a bound, so the two cannot come to disagree about it.
 
 `CAST` and `SAFE_CAST` are treated alike, and the difference between them is why the sieve has to admit
 rather than exclude: a value that will not convert raises under one and yields null under the other,
@@ -3226,7 +3386,12 @@ src/
                                         documents, knowing nothing of Calcite, Cosmos or the adapter
       JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
       JsonFactRule.cs               ✔ A guarded claim
-      JsonFactTheory.cs, JsonFactSet.cs ✔ The Horn theory, and what it derives for one query
+      JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what it knows for one query
+      JsonFactTables.cs             ✔ What a set reads: a context's tables, or the overlay's
+      JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
+      JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
+      JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
+      Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads

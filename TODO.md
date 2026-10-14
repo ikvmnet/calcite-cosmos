@@ -1339,8 +1339,8 @@ left, measured offline through the host's prepare (`CosmosPlanningTests`):
 
 ## 6. A container's declared facts
 
-Built, #93: a JSON Schema on the `containers` operand, compiled to a Horn theory of
-`(path, claim)` atoms the planner asks. `DESIGN.md` under *What a caller may declare beyond it* is
+Built, #93: a JSON Schema on the `containers` operand, read into `(path, claim)` atoms the planner
+asks, and reasoned about since on Eggnog (*The fact reasoning on Eggnog*, below). `DESIGN.md` under *What a caller may declare beyond it* is
 the design record — the model, the measurements, the keyword audit and the trust boundary. What is
 below is what it does not do yet.
 
@@ -1649,19 +1649,98 @@ answer.
   says why, but a long schema buries the operands beside it, and a path or URL wants deciding — a URL
   being a fetch at schema registration.
 
-### The fact theory as a package of its own
+### The fact reasoning on Eggnog — *done; what is left is below*
 
-`Apache.Calcite.Cosmos.Facts` is a namespace inside the adapter, holding the theory, its claims and the
-schema reader, with stored forms and the geography claim kept on the adapter's side; `DESIGN.md` under
-*Planned Project Layout* says what is in it and why. What would make it a package:
+[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, pinned at `0.0.1-pre.46`, MIT, no dependencies) is
+the engine. It is an egglog-style e-graph with scopes, lattices and case splits, built for this adapter. The plan
+of record is in its repository, as
+[`docs/history/cosmos-integration.md`](https://github.com/alethic/eggnog/blob/eda0c61973cb1e41fc0d9994af3e013a9252c4bd/docs/history/cosmos-integration.md)
+(revision 2, read here at `eda0c61`). This entry records where the adapter stands against that plan.
 
-- **Its own project in this solution** — *small.* Move `Facts/` out, reference it from the adapter. The
-  namespace references nothing of the adapter's, nor of Java — its schema reader is on `System.Text.Json`
-  and resolves references itself — so this is a move and a project file.
-- **A namespace without `Cosmos`** — *small, and a decision.* The types are already named for JSON —
-  `JsonFact`, `JsonFactTheory` and the rest — and only the namespace still says `Cosmos`.
-- **Only once something else wants it.** The theory has changed nearly weekly; as a package of its own
-  each such change is two pull requests and a version.
+**What is built.**
+- **The theory is under `Facts/Saturation/`,** internal to the adapter, and its tests are the adapter's. Its
+  `README.md` is the catalogue. `DESIGN.md`, from *The theory of JSON, in layers* through *Generations, and what a
+  question costs*, is the record.
+- **The Horn closure is gone,** with the exclusion table. `JsonFactTheory` compiles a declaration into a frozen
+  context; `Derive` saturates a query's established facts beneath it; `JsonFactSet` reads the answers back. The
+  public API is unchanged, and `ClaimsFor`'s two scans became questions: `HasOneScalarType` and `TryGetValue`.
+- **Generations.** One graph per schema object and generation, retired at a million interned values. Each query
+  context is remembered per declaration for the next 256 established sets, and released once nothing holds it.
+- **The extractor states `Present` beside every comparison** (F4's query half). The schema reader states it in
+  four guards (F4's other half): a discriminated branch, an `else`, the object branch of a nullable union, and a
+  nested `not`.
+- **Fixed on the way:**
+  - F3: absence is no longer a contradiction;
+  - F2: an equality with text a number renders as is no longer read as a stored string;
+  - F5: `ReferenceEquals` on a struct.
+- **Gaps closed**, each with a control, in `CosmosDeclaredFactPlanningTests.Gaps.cs`:
+  - gap 1, `kind IN (…)`, by a query split;
+  - gap 2, a disequality narrowing a domain;
+  - gap 3, an `anyOf` of enums, by one `(OneOf, OneOf)` row in `JsonFact.Entails`, the meet's;
+  - gap 4, a range beyond a declared `maximum`, and gap 5, a range outside an integer `enum`. `JsonSchemaFacts`
+    reads `minimum`, `maximum` and both spellings of their exclusive forms as `LowerBound` and `UpperBound` claims,
+    which bind numbers only. The extractor reads a comparison through a numeric cast as the window
+    `CosmosNumericWindow` gives, the one the split rule pushes.
+- **F10's window, asked of every comparison.** The window states a side only where the cast's saturation limit
+  fails the comparison, where it used to ask that of an equality alone. No literal reaches the window with a
+  bound beyond the opposite limit today: Calcite widens the cast to compare one, and the window does not read
+  through the widening. `AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead.
+
+**The gate is the adapter suite and the theory's soundness oracle**, not agreement with Horn. Horn's known wrong
+answers (F2–F4) are not the specification. The oracle covers stored forms, extension claims and numbers no decimal
+holds. Three bugs planted in what was added were each caught by it.
+
+**What is left, roughly in order of value.**
+- **A bound from a comparison on a typed path** — *small, once measured.* `c.price > 500` over a promoted
+  `VARIANT`, or `JSON_VALUE(… RETURNING INTEGER) > 500`, states only that the path is there. A bound needs the
+  comparison to keep the stored number on its side of the constant. That is unmeasured for `RETURNING`'s
+  conversion, which may round or saturate, and for Calcite's ordering of two `VARIANT`s of different numeric
+  types.
+- **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
+  theory's rows have no bound atom yet.
+- **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
+  rest, and the adapter has no claim for them, so the reader states none.
+- **Gap 1 spelled per kind** — *medium.* `(type = 'park' AND …) OR (type = 'map' AND …)` wants a derivation per
+  disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only.
+- **The schema reader emits splits rather than a meet** — *large.* A hidden discriminator per undiscriminated
+  `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
+  directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
+  33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
+  bottleneck.
+- **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
+  conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
+  without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
+  the engine took about twice the closure's time). A declaration with conditional rules still opens a context
+  for every distinct established set, four a plan where the split rule fires. Against the closure, on one
+  workstation, a filter over a discriminated `oneOf` costs 19–26 ms a plan at two kinds and 25–34 ms at
+  twenty, against 10–13 and 14–15; the engine is ahead at two hundred kinds (10 ms against 41) and at a
+  thousand (23 ms against 78). The first plan in a generation also compiles the declaration: 0.4 s at two
+  hundred kinds and 0.6 s at a thousand, against the closure's 65 and 190 ms. The plan's gate (§3.6) extends
+  to these: an established path no conditional rule's body reads, directly or through the path-dependency
+  closure, cannot change an answer. The memo helps less than it might: four sets a plan, keyed by literal, fill
+  256 entries in sixty-odd distinct statements.
+- **Interning bounded by the vocabulary, not the traffic** — *medium.* The plan's §2.1 renames a query's literals
+  outside the declared vocabulary, which bounds interning and makes memo keys independent of literals. A generation
+  is retired instead today, which bounds memory and not the rate of rebuilds.
+- **Compiling off the planning thread** — *small.* A declaration compiles on the first question in each generation,
+  on whichever thread asks: tens of milliseconds for a small schema, 0.8 s at 47k facts. The plan's §3.4 compiles and
+  warms each declaration on a background worker, and swaps a generation only once every declaration is ready.
+- **One context per declaration, not per container** — *small.* An account schema applies one declaration to a
+  container in every database, and each still compiles its own.
+- **Run limits** — *small.* A query's run stops on contradiction and otherwise has the engine's defaults: 10,000
+  iterations, 64 cases, a split depth of 4. The plan's §3.8 proposes limits per profile, measured on a corpus.
+- **The declared differential corpus** — *medium.* The rows the service returns for a pushed plan, against an
+  in-process evaluation of the same query, over containers with schemas. The plan's step 1, still owed.
+- F7, alias-blind consumers, wants the tests over `CosmosUnnest` aliases the plan names.
+- F9, documentation drift, wants re-reading against what is here now.
+- **What Eggnog adds beyond the closure** — *large, each its own decision.*
+  - The rewriter as extraction under an RU cost.
+  - Path equality for `CHECK`. The theory has it: a union of two path terms.
+  - One context shared between the implementation plan and the execution plan.
+
+**Pin the exact Eggnog version as Calcite is pinned.** It is a single-maintainer prerelease whose public surface is
+pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
+schema (*A declaration is trusted*).
 
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 

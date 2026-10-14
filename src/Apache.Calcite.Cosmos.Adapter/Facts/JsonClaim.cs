@@ -12,7 +12,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// property holding a particular value — and a claim a rewrite can consume — a path holding a
     /// canonical lowercase UUID — are the same kind of thing, and keeping them the same kind is what
     /// lets a schema express facts that are conditional on other facts without a second mechanism. See
-    /// <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
+    /// <c>DESIGN.md</c> under <em>The theory of JSON, in layers</em>.
     /// </remarks>
     public abstract record JsonClaim
     {
@@ -144,6 +144,51 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 return false;
             }
+
+        }
+
+        /// <summary>
+        /// The value at the path, where it is a number, is at least this, or above it where exclusive.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A bound binds numbers and nothing else</b>, as JSON Schema's <c>minimum</c> does: a string
+        /// at the path is no counterexample. That is also what a comparison through a numeric cast can
+        /// say, because the cast converts a stored string too — see
+        /// <c>CosmosNumericWindow</c>.
+        /// </para>
+        /// <para>
+        /// One claim per side rather than an interval, so that a union whose branches bound the same
+        /// path differently still meets on each side the branches agree on.
+        /// </para>
+        /// </remarks>
+        /// <param name="Value">The bound.</param>
+        /// <param name="Exclusive">Whether the bound itself is excluded.</param>
+        public sealed record LowerBound(decimal Value, bool Exclusive = false) : JsonClaim
+        {
+
+            /// <summary>
+            /// Determines whether a number satisfies the bound.
+            /// </summary>
+            public bool Admits(decimal number) => number > Value || number == Value && Exclusive == false;
+
+        }
+
+        /// <summary>
+        /// The value at the path, where it is a number, is at most this, or below it where exclusive.
+        /// </summary>
+        /// <remarks>
+        /// The upper side of <see cref="LowerBound"/>, and binding numbers only for the same reason.
+        /// </remarks>
+        /// <param name="Value">The bound.</param>
+        /// <param name="Exclusive">Whether the bound itself is excluded.</param>
+        public sealed record UpperBound(decimal Value, bool Exclusive = false) : JsonClaim
+        {
+
+            /// <summary>
+            /// Determines whether a number satisfies the bound.
+            /// </summary>
+            public bool Admits(decimal number) => number < Value || number == Value && Exclusive == false;
 
         }
 

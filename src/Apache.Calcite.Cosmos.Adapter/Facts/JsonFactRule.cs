@@ -11,11 +11,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A conjunctive body and a single-atom head is what makes the compiled schema a definite Horn
-    /// theory, and that is not a stylistic choice — it is what keeps asking it a linear-time question
-    /// rather than a satisfiability one. The moment a rule could conclude "A or B" the theory leaves
-    /// Horn and entailment becomes intractable, so an undiscriminated <c>anyOf</c> contributes only
-    /// the facts every branch agrees on rather than a disjunction. See <c>DESIGN.md</c> under <em>Atoms, clauses, and why asking is linear</em>.
+    /// A conjunctive body and a single-atom head. The theory holds a rule with a body as a row, read by
+    /// a fixed interpreter, so a query costs the rules it fires rather than the rules there are; and it
+    /// reasons about a disjunction by splitting on a discriminator rather than by a disjunctive head, so
+    /// an undiscriminated <c>anyOf</c> contributes only the facts every branch agrees on. See
+    /// <c>DESIGN.md</c> under <em>A conditional rule is a row</em>.
     /// </para>
     /// <para>
     /// An empty body is the ordinary case: a fact the schema states unconditionally.

@@ -643,21 +643,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(value, out var accessed) == false)
                 return false;
 
+            // One scalar kind is what makes its text a faithful reading of its value.
             path = CosmosDocumentPaths.From(accessed);
-            return path is JsonDocumentPath scalar && IsOneScalarType(facts, scalar);
-        }
-
-        /// <summary>
-        /// Determines whether the facts give a path one scalar type, which is what makes its text a
-        /// faithful reading of its value.
-        /// </summary>
-        static bool IsOneScalarType(JsonFactSet facts, JsonDocumentPath path)
-        {
-            foreach (var claim in facts.ClaimsFor(path))
-                if (claim is JsonClaim.OfType { Type: JsonType.String or JsonType.Number or JsonType.Integer or JsonType.Boolean })
-                    return true;
-
-            return false;
+            return path is JsonDocumentPath scalar && facts.HasOneScalarType(scalar);
         }
 
         static IReadOnlyList<RexNode> Projections(Project project)

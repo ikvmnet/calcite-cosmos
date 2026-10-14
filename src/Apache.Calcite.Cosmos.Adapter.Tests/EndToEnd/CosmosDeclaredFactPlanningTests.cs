@@ -33,7 +33,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// declared stored form lowers it to a string equality, the statement carries it, the partition
     /// key is recovered from it, and the plan stops carrying an in-process filter.
     /// </remarks>
-    public class CosmosDeclaredFactPlanningTests
+    public partial class CosmosDeclaredFactPlanningTests
     {
 
         const string Canonical = "123e4567-e89b-12d3-a456-426614174000";

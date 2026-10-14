@@ -109,7 +109,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 var facts = new JsonFactTheory(declared[0].Facts);
 
                 facts.Derive(null).RepresentationOf(parkId).Should().BeNull();
-                facts.Derive(new[] { new JsonFact(type, new JsonClaim.EqualTo("ParkMap")) }).RepresentationOf(parkId)
+
+                // What `type = 'ParkMap'` establishes: the value, and the discriminator there, as every row the
+                // comparison keeps has it.
+                facts.Derive(new[] { new JsonFact(type, new JsonClaim.EqualTo("ParkMap")), new JsonFact(type, new JsonClaim.Present()) }).RepresentationOf(parkId)
                     .Should().Be(CosmosUuidForms.CanonicalLower);
             }
 
@@ -153,7 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             public void ASchemaWithNothingRecognisableIsNotAnError()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(
-                    Operand(List(Entry("parks", """{ "properties": { "a": { "minimum": 3 } } }"""))));
+                    Operand(List(Entry("parks", """{ "properties": { "a": { "maxLength": 3 } } }"""))));
 
                 declared[0].Facts.Should().BeEmpty(
                     "an unreadable schema loses pushdowns; it must never be a reason a container stops working");

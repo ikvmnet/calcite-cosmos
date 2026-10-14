@@ -29,9 +29,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <para>
     /// <b>What is read is deliberately narrow.</b> An equality, a disequality, a set membership and a
-    /// definedness — the shapes a guard is written in. A range tells the theory nothing it can use,
-    /// because no claim in the model is about an interval. Anything unrecognised is skipped, which
-    /// loses facts and can only lose pushdowns.
+    /// definedness — the shapes a guard is written in — and a range through a numeric cast, which
+    /// bounds a number. Anything unrecognised is skipped, which loses facts and can only lose pushdowns.
+    /// </para>
+    /// <para>
+    /// <b>A comparison says its path is there.</b> Over an absent path a comparison is undefined at the
+    /// service and unknown in process, and a filter keeps no row for either, so every row the predicate
+    /// keeps has the path. That is stated beside the comparison, and it is what turns two claims no one
+    /// value satisfies into a contradiction: without it, a declared enum and a query's value outside it
+    /// prove only that the path is absent, which a document satisfies by not having it.
     /// </para>
     /// </remarks>
     public static class CosmosFactExtractor
@@ -112,13 +118,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             switch (call.getKind().name())
             {
                 case nameof(SqlKind.__Enum.EQUALS) when call.getOperands().size() == 2:
-                    if (TryComparison(call, fields, rootAlias, out var path, out var value))
-                        facts.Add(new JsonFact(path!.Value, new JsonClaim.EqualTo(value)));
+                    if (TryComparison(call, fields, rootAlias, out var path, out var value, out var exact))
+                    {
+                        // Text another scalar renders as too proves which documents match and not what
+                        // they hold: a stored 5 and a stored "5" both read '5'.
+                        if (exact)
+                            facts.Add(new JsonFact(path!.Value, new JsonClaim.EqualTo(value)));
+                        facts.Add(new JsonFact(path!.Value, new JsonClaim.Present()));
+                    }
+                    else
+                    {
+                        ReadWindow(call, fields, rootAlias, facts);
+                    }
+                    break;
+
+                case nameof(SqlKind.__Enum.GREATER_THAN) or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL)
+                    or nameof(SqlKind.__Enum.LESS_THAN) or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL) when call.getOperands().size() == 2:
+                    if (ReadWindow(call, fields, rootAlias, facts) == false)
+                        ReadRange(call, fields, rootAlias, facts);
                     break;
 
                 case nameof(SqlKind.__Enum.NOT_EQUALS) when call.getOperands().size() == 2:
-                    if (TryComparison(call, fields, rootAlias, out var excludedPath, out var excluded))
+                    // A disequality with text holds of the value whatever else renders as it: a stored
+                    // "5" reads '5', and is excluded.
+                    if (TryComparison(call, fields, rootAlias, out var excludedPath, out var excluded, out _))
+                    {
                         facts.Add(new JsonFact(excludedPath!.Value, new JsonClaim.NotEqualTo(excluded)));
+                        facts.Add(new JsonFact(excludedPath!.Value, new JsonClaim.Present()));
+                    }
                     break;
 
                 // A value that is not null is a value the path has. The converse does not hold — a
@@ -132,7 +159,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // exactly when every branch is an equality on one path.
                 case nameof(SqlKind.__Enum.OR):
                     if (TryDomain(call, fields, rootAlias, out var domainPath, out var domain))
-                        facts.Add(new JsonFact(domainPath!.Value, new JsonClaim.OneOf(domain!)));
+                    {
+                        if (domain is not null)
+                            facts.Add(new JsonFact(domainPath!.Value, new JsonClaim.OneOf(domain)));
+                        facts.Add(new JsonFact(domainPath!.Value, new JsonClaim.Present()));
+                    }
                     break;
 
                 default:
@@ -147,13 +178,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Reads a comparison between a container-rooted path and a constant, either way round.
         /// </summary>
-        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value)
+        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value) =>
+            TryComparison(call, fields, rootAlias, out path, out value, out _);
+
+        /// <summary>
+        /// Reads a comparison between a container-rooted path and a constant, either way round, and
+        /// whether an equality between the two says what the path holds.
+        /// </summary>
+        /// <remarks>
+        /// <b>A comparison over a rendering is a comparison of text.</b> <c>JSON_VALUE</c> reads a stored
+        /// number 5 as the text <c>5</c>, so <c>JSON_VALUE(…) = '5'</c> keeps a document storing the
+        /// number as well as one storing the string. Reading it as the string <c>"5"</c> would be a fact
+        /// false of the first, and beside a declared integer a contradiction that drops it (F2). So an
+        /// equality over a rendering is exact only where no other scalar renders as its text —
+        /// <see cref="CosmosRexTranslator.IsUnambiguousTextFor"/>, the test the cast spelling passes
+        /// before it is unwrapped.
+        /// </remarks>
+        /// <param name="call">The comparison.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="path">On success, the document path.</param>
+        /// <param name="value">On success, the value the literal carries.</param>
+        /// <param name="exact">On success, whether the path holding the value is what equality means.</param>
+        /// <returns><c>true</c> where the two sides were a path and a constant.</returns>
+        internal static bool TryComparison(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value, out bool exact)
         {
             var left = (RexNode)call.getOperands().get(0);
             var right = (RexNode)call.getOperands().get(1);
 
-            return TrySide(left, right, fields, rootAlias, out path, out value)
-                || TrySide(right, left, fields, rootAlias, out path, out value);
+            return TrySide(left, right, fields, rootAlias, out path, out value, out exact)
+                || TrySide(right, left, fields, rootAlias, out path, out value, out exact);
         }
 
         /// <summary>
@@ -165,11 +219,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="path">On success, the document path.</param>
         /// <param name="value">On success, the value the literal carries.</param>
+        /// <param name="exact">On success, whether equality with the value says what the path holds.</param>
         /// <returns><c>true</c> where the two sides were as expected.</returns>
-        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value)
+        static bool TrySide(RexNode pathNode, RexNode valueNode, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out JsonScalar value, out bool exact)
         {
             path = null;
             value = JsonScalar.Null;
+            exact = false;
 
             // A comparison with a promoted VARIANT key coerces its literal to CAST(… AS VARIANT); the
             // box carries the value the fact is about. See CosmosRexTranslator.StripVariantCoercion.
@@ -202,7 +258,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             path = resolved;
+            exact = CosmosRexTranslator.IsTextJsonValue(pathNode) == false
+                || value.ToClrValue() is not string text
+                || CosmosRexTranslator.IsUnambiguousTextFor(pathNode, text);
             return true;
+        }
+
+        /// <summary>
+        /// Reads a comparison through a numeric cast as the window it puts the raw value in, or answers
+        /// <c>false</c> where it is not one.
+        /// </summary>
+        /// <remarks>
+        /// The window binds numbers only — the cast converts a stored string too, so <c>&gt; 500</c> keeps
+        /// a document storing <c>"600"</c> — and a bound says exactly that. See
+        /// <see cref="CosmosNumericWindow"/> for why each side holds.
+        /// </remarks>
+        static bool ReadWindow(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
+        {
+            if (CosmosNumericWindow.TryRead(call, out var window) == false)
+                return false;
+
+            if (TryPath(window.Value, fields, rootAlias) is not JsonDocumentPath path)
+                return false;
+
+            facts.Add(new JsonFact(path, new JsonClaim.Present()));
+
+            if (window.Above is java.math.BigDecimal above && TryDecimal(above) is decimal lower)
+                facts.Add(new JsonFact(path, new JsonClaim.LowerBound(lower, Exclusive: true)));
+
+            if (window.Below is java.math.BigDecimal below && TryDecimal(below) is decimal upper)
+                facts.Add(new JsonFact(path, new JsonClaim.UpperBound(upper, Exclusive: true)));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Reads an order comparison between a path and a constant as what it says of every row it keeps:
+        /// that the path is there.
+        /// </summary>
+        /// <remarks>
+        /// Not a bound. Through a numeric cast the bound is the window's, which was measured; over a path
+        /// read as some other type the comparison is made after a conversion or between values whose
+        /// ordering across types is Calcite's, and neither has been measured to keep the stored number on
+        /// the comparison's side of the constant.
+        /// </remarks>
+        static void ReadRange(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
+        {
+            if (TryComparison(call, fields, rootAlias, out var path, out _, out _))
+                facts.Add(new JsonFact(path!.Value, new JsonClaim.Present()));
+        }
+
+        /// <summary>
+        /// Converts a bound to a decimal, or answers <c>null</c> where no decimal holds it exactly: a bound
+        /// rounded toward the side it binds would claim more than the comparison does.
+        /// </summary>
+        static decimal? TryDecimal(java.math.BigDecimal bound)
+        {
+            var text = bound.toPlainString();
+            if (decimal.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) == false)
+                return null;
+
+            return new java.math.BigDecimal(value.ToString(System.Globalization.CultureInfo.InvariantCulture)).compareTo(bound) == 0 ? value : null;
         }
 
         /// <summary>
@@ -211,7 +327,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <remarks>
         /// One path, because a disjunction over two of them constrains neither: <c>a = 1 OR b = 2</c>
         /// leaves a row free to satisfy either. Duplicates collapse, <c>IN ('a', 'a')</c> naming one
-        /// value.
+        /// value. Where a branch compares text another scalar renders as, the path is there and the
+        /// domain is not known, and the domain is <c>null</c>.
         /// </remarks>
         static bool TryDomain(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, out JsonDocumentPath? path, out IReadOnlyList<JsonScalar>? domain)
         {
@@ -219,6 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             domain = null;
 
             var values = new List<JsonScalar>();
+            var known = true;
 
             for (var i = 0; i < call.getOperands().size(); i++)
             {
@@ -227,8 +345,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     branch.getOperands().size() != 2)
                     return false;
 
-                if (TryComparison(branch, fields, rootAlias, out var branchPath, out var value) == false)
+                if (TryComparison(branch, fields, rootAlias, out var branchPath, out var value, out var exact) == false)
                     return false;
+
+                known &= exact;
 
                 if (path is null)
                     path = branchPath;
@@ -239,7 +359,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     values.Add(value);
             }
 
-            domain = values;
+            domain = known ? values : null;
             return path is not null && values.Count > 0;
         }
 
