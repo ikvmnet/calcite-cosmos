@@ -72,6 +72,19 @@ namespace Apache.Calcite.Cosmos.Facts
                 // A consumer's claim answers for itself. See JsonClaim.Extension.
                 (JsonClaim.Extension a, var b) => a.Entails(b),
 
+                // A bound binds numbers only. A stricter bound settles a looser one, a value or a domain
+                // settles one every number in it satisfies, and a claim that the path holds no number
+                // settles every bound: what is a string or a number of at least 0 is, if a number, at
+                // least 0.
+                (JsonClaim.LowerBound a, JsonClaim.LowerBound b) => a.Value > b.Value || a.Value == b.Value && (a.Exclusive || b.Exclusive == false),
+                (JsonClaim.UpperBound a, JsonClaim.UpperBound b) => a.Value < b.Value || a.Value == b.Value && (a.Exclusive || b.Exclusive == false),
+                (JsonClaim.EqualTo a, JsonClaim.LowerBound b) => Satisfies(a.Value, b.Admits),
+                (JsonClaim.EqualTo a, JsonClaim.UpperBound b) => Satisfies(a.Value, b.Admits),
+                (JsonClaim.OneOf a, JsonClaim.LowerBound b) => a.Values.Count > 0 && AllSatisfy(a.Values, b.Admits),
+                (JsonClaim.OneOf a, JsonClaim.UpperBound b) => a.Values.Count > 0 && AllSatisfy(a.Values, b.Admits),
+                (JsonClaim.OfType a, JsonClaim.LowerBound or JsonClaim.UpperBound) => a.Type is not (JsonType.Number or JsonType.Integer),
+                (JsonClaim.Represents, JsonClaim.LowerBound or JsonClaim.UpperBound) => true,
+
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how
                 // the strings are written and nothing about whether one is there (#175). Without
@@ -89,6 +102,28 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 _ => false,
             };
+        }
+
+        /// <summary>
+        /// Determines whether a value satisfies a bound: a number the bound admits, or no number at all.
+        /// </summary>
+        /// <remarks>
+        /// A number held approximately is refused, its place against a bound not being read.
+        /// </remarks>
+        static bool Satisfies(JsonScalar value, Func<decimal, bool> admits) => value.ToClrValue() switch
+        {
+            decimal number => admits(number),
+            double => false,
+            _ => true,
+        };
+
+        static bool AllSatisfy(IReadOnlyList<JsonScalar> values, Func<decimal, bool> admits)
+        {
+            foreach (var value in values)
+                if (Satisfies(value, admits) == false)
+                    return false;
+
+            return true;
         }
 
         /// <summary>

@@ -156,7 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             public void ASchemaWithNothingRecognisableIsNotAnError()
             {
                 var declared = CosmosSchemaFactory.ReadContainerDeclarations(
-                    Operand(List(Entry("parks", """{ "properties": { "a": { "minimum": 3 } } }"""))));
+                    Operand(List(Entry("parks", """{ "properties": { "a": { "maxLength": 3 } } }"""))));
 
                 declared[0].Facts.Should().BeEmpty(
                     "an unreadable schema loses pushdowns; it must never be a reason a container stops working");

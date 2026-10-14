@@ -1676,16 +1676,30 @@ of record is in its repository, as
 - **Gaps closed**, each with a control, in `CosmosDeclaredFactPlanningTests.Gaps.cs`:
   - gap 1, `kind IN (…)`, by a query split;
   - gap 2, a disequality narrowing a domain;
-  - gap 3, an `anyOf` of enums, by one `(OneOf, OneOf)` row in `JsonFact.Entails`, the meet's.
+  - gap 3, an `anyOf` of enums, by one `(OneOf, OneOf)` row in `JsonFact.Entails`, the meet's;
+  - gap 4, a range beyond a declared `maximum`, and gap 5, a range outside an integer `enum`. `JsonSchemaFacts`
+    reads `minimum`, `maximum` and both spellings of their exclusive forms as `LowerBound` and `UpperBound` claims,
+    which bind numbers only. The extractor reads a comparison through a numeric cast as the window
+    `CosmosNumericWindow` gives, the one the split rule pushes.
+- **F10's window, asked of every comparison.** The window states a side only where the cast's saturation limit
+  fails the comparison, where it used to ask that of an equality alone. No literal reaches the window with a
+  bound beyond the opposite limit today: Calcite widens the cast to compare one, and the window does not read
+  through the widening. `AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead.
 
 **The gate is the adapter suite and the theory's soundness oracle**, not agreement with Horn. Horn's known wrong
 answers (F2–F4) are not the specification. The oracle covers stored forms, extension claims and numbers no decimal
 holds. Three bugs planted in what was added were each caught by it.
 
 **What is left, roughly in order of value.**
-- **Gaps 4 and 5: a range read off a predicate** — *medium.* The theory has bounds, but nothing feeds them. The
-  extractor reads no `<` or `>`, the adapter's claims have no bound, and `JsonSchemaFacts` reads no `minimum`. The
-  plan's §2.8 says how a numeric-cast comparison becomes a window, and its F10 is a saturation hazard to test first.
+- **A bound from a comparison on a typed path** — *small, once measured.* `c.price > 500` over a promoted
+  `VARIANT`, or `JSON_VALUE(… RETURNING INTEGER) > 500`, states only that the path is there. A bound needs the
+  comparison to keep the stored number on its side of the constant. That is unmeasured for `RETURNING`'s
+  conversion, which may round or saturate, and for Calcite's ordering of two `VARIANT`s of different numeric
+  types.
+- **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
+  theory's rows have no bound atom yet.
+- **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
+  rest, and the adapter has no claim for them, so the reader states none.
 - **Gap 1 spelled per kind** — *medium.* `(type = 'park' AND …) OR (type = 'map' AND …)` wants a derivation per
   disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only.
 - **The schema reader emits splits rather than a meet** — *large.* A hidden discriminator per undiscriminated

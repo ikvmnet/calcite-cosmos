@@ -121,6 +121,20 @@ with one           WHERE @p0, bound to false — one round trip that reads no do
 
 The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
 
+A range does the same against a bound or an enum, read through a numeric cast:
+
+```sql
+-- "n": { "type": "integer", "maximum": 100 }
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500
+
+-- "n": { "enum": [1, 2, 3] }
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 30
+```
+
+Both keep nothing. A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast
+converts a stored string too — `> 500` keeps a document storing `"600"`. So without `"type": "integer"`
+the first query is left as it is: a string there is not ruled out.
+
 **What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
 and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does
 not mention `status` is unaffected, and one asking for a `status` keeps nothing.
@@ -232,6 +246,7 @@ property above the `oneOf`.
 | `properties` | facts about each property's value **if it is present** — never that it is present |
 | `required` | presence, for children of an object that is itself present |
 | `const`, `enum` | the value, or its domain (scalars only) |
+| `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | a bound on the value **if it is a number**; the exclusive forms as numbers (2019-09 on) or as flags beside `minimum` and `maximum` (Draft 4, OpenAPI 3.0) |
 | `pattern` | a stored form, for the recognised spellings (14.3) |
 | `format` | nothing |
 | `allOf` | every branch |
@@ -243,7 +258,7 @@ property above the `oneOf`.
 | `not` | a single property's `const` or `enum`; otherwise nothing |
 | OpenAPI `discriminator` with `mapping` | which branch each discriminator value selects |
 | `$ref`, `$defs`, `definitions` | followed by JSON Pointer or by anchor (`$anchor`, or `"$id": "#name"` before 2019-09), including inside bundles with nested `$id`s; sibling keywords beside a `$ref` are ignored |
-| `additionalProperties`, `patternProperties`, `propertyNames`, `items`, `prefixItems`, `contains`, `minimum`, `maxLength`, … | nothing |
+| `additionalProperties`, `patternProperties`, `propertyNames`, `items`, `prefixItems`, `contains`, `minLength`, `maxLength`, `multipleOf`, … | nothing |
 
 **References are resolved within the schema and nowhere else.** A `$ref` to another document is not
 fetched — nothing in the model causes a network call — and fails to resolve.
@@ -290,7 +305,7 @@ nothing, and an unreadable schema changes nothing.
 - It does **not** validate documents on write.
 - It says nothing about **pairs** of documents — whether a value is unique. That is a constraint
   (Chapter 16).
-- It does **not** yet state facts about array elements (`items`), numeric ranges (`minimum`), or
+- It does **not** yet state facts about array elements (`items`), string lengths (`maxLength`), or
   decimals stored as strings.
 
 ---

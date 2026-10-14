@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -99,6 +100,16 @@ namespace Apache.Calcite.Cosmos.Facts
                         || scope.TryGet(r.Types.Of(p), out var others) && others.Contains(TypeOf(value)) == false;
                 }
 
+                case JsonClaim.LowerBound lower:
+                    return NoNumber(scope, r, p)
+                        || scope.TryGet(r.Lo.Of(p), out var lo) && Bound.StricterLower(lo, new Bound(lower.Value, lower.Exclusive)) == lo
+                        || scope.TryGet(r.Dom.Of(p), out var above) && above.Count > 0 && above.All(v => TryNumberOf(v, out var x) ? lower.Admits(x) : IsNumber(v) == false);
+
+                case JsonClaim.UpperBound upper:
+                    return NoNumber(scope, r, p)
+                        || scope.TryGet(r.Hi.Of(p), out var hi) && Bound.StricterUpper(hi, new Bound(upper.Value, upper.Exclusive)) == hi
+                        || scope.TryGet(r.Dom.Of(p), out var below) && below.Count > 0 && below.All(v => TryNumberOf(v, out var x) ? upper.Admits(x) : IsNumber(v) == false);
+
                 case JsonClaim.Represents represents:
                     return _vocabulary!.TryForm(represents.Form, out var form) && scope.Check(r.Form.Of(p, form));
 
@@ -182,6 +193,12 @@ namespace Apache.Calcite.Cosmos.Facts
 
             if (scope.TryGet(r.Dom.Of(p), out var dom) && Decode(dom) is { } values)
                 claims.Add(values.Count == 1 ? new JsonClaim.EqualTo(values[0]) : new JsonClaim.OneOf(values));
+
+            if (scope.TryGet(r.Lo.Of(p), out var lo))
+                claims.Add(new JsonClaim.LowerBound(lo.Value, lo.Open));
+
+            if (scope.TryGet(r.Hi.Of(p), out var hi))
+                claims.Add(new JsonClaim.UpperBound(hi.Value, hi.Open));
 
             foreach (var (form, token) in _vocabulary!.Forms)
                 if (scope.Check(r.Form.Of(p, token)))
@@ -296,6 +313,12 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         static Term<JPath> Term(JsonDocumentPath path, JsonRules rules) => JsonFactEncoding.Path(path).ToTerm(rules);
+
+        /// <summary>
+        /// Determines whether a path holds no number, which satisfies every bound.
+        /// </summary>
+        static bool NoNumber(Scope scope, JsonRules r, Term<JPath> p) =>
+            scope.TryGet(r.Types.Of(p), out var types) && types.Contains(IntegerType) == false && types.Contains(FractionType) == false;
 
         /// <summary>
         /// Determines whether a set of types, less a null, is one scalar kind: strings, numbers, or booleans.

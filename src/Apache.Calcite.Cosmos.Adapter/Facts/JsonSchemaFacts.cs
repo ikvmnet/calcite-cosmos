@@ -105,6 +105,11 @@ namespace Apache.Calcite.Cosmos.Facts
             if (ReadEnum(node) is IReadOnlyList<JsonScalar> domain)
                 State(new JsonClaim.OneOf(domain));
 
+            // A bound constrains a number and is vacuous for anything else, which is what a bound claim
+            // says, so it is read beside no type and without one.
+            foreach (var bound in ReadBounds(node))
+                State(bound);
+
             // A pattern constrains a string and is vacuous for anything else, so one written beside no
             // declared type says nothing: a document storing the number 30 at that path conforms to it.
             // Reading it as a stored form anyway would claim the value is a string -- Represents entails
@@ -652,6 +657,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 JsonClaim.NotEqualTo { Value.IsNull: true } => null,
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
+
+                // A bound binds a number and holds of a null already.
+                JsonClaim.LowerBound bound => bound,
+                JsonClaim.UpperBound bound => bound,
                 _ => null,
             };
 
@@ -989,6 +998,37 @@ namespace Apache.Calcite.Cosmos.Facts
             "null" => JsonType.Null,
             _ => null,
         };
+
+        /// <summary>
+        /// Reads <c>minimum</c>, <c>maximum</c> and their exclusive forms as bounds.
+        /// </summary>
+        /// <remarks>
+        /// <c>exclusiveMinimum</c> is a number of its own from 2019-09, and before that a flag making
+        /// <c>minimum</c> exclusive; OpenAPI 3.0 writes the flag and 3.1 the number. Both are read, and
+        /// where both a <c>minimum</c> and a numeric <c>exclusiveMinimum</c> are given, both are bounds and
+        /// the stricter is what binds. A bound no decimal holds is not read.
+        /// </remarks>
+        /// <param name="node">The schema node.</param>
+        /// <returns>The bounds, which may be none.</returns>
+        static IEnumerable<JsonClaim> ReadBounds(JsonNode node)
+        {
+            if (Number(node, "minimum") is decimal minimum)
+                yield return new JsonClaim.LowerBound(minimum, node.Get("exclusiveMinimum").Boolean() == true);
+
+            if (Number(node, "exclusiveMinimum") is decimal above)
+                yield return new JsonClaim.LowerBound(above, Exclusive: true);
+
+            if (Number(node, "maximum") is decimal maximum)
+                yield return new JsonClaim.UpperBound(maximum, node.Get("exclusiveMaximum").Boolean() == true);
+
+            if (Number(node, "exclusiveMaximum") is decimal below)
+                yield return new JsonClaim.UpperBound(below, Exclusive: true);
+
+            static decimal? Number(JsonNode node, string keyword) =>
+                node.TryMember(keyword, out var member) && member is JsonValue && TryLiteral(member, out var value) && value.ToClrValue() is decimal number
+                    ? number
+                    : null;
+        }
 
         /// <summary>
         /// Reads an <c>enum</c> as a domain of scalars.

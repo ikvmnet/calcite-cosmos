@@ -893,6 +893,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// <c>minimum</c> and <c>maximum</c> bound a number, in 2019-09's spelling of the exclusive forms and in
+        /// Draft 4's, which OpenAPI 3.0 writes.
+        /// </summary>
+        [Fact]
+        public void ABoundIsReadInEitherSpelling()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+
+            var numbered = Compile("""{ "properties": { "n": { "minimum": 1, "exclusiveMaximum": 10 } } }""").Derive(null);
+            numbered.Knows(new JsonFact(n, new JsonClaim.LowerBound(1))).Should().BeTrue();
+            numbered.Knows(new JsonFact(n, new JsonClaim.LowerBound(1, Exclusive: true))).Should().BeFalse("1 itself is admitted");
+            numbered.Knows(new JsonFact(n, new JsonClaim.UpperBound(10, Exclusive: true))).Should().BeTrue();
+            numbered.Knows(new JsonFact(n, new JsonClaim.Present())).Should().BeFalse("a bound says nothing of whether there is a number");
+
+            var flagged = Compile("""{ "properties": { "n": { "minimum": 1, "exclusiveMinimum": true, "maximum": 10 } } }""").Derive(null);
+            flagged.Knows(new JsonFact(n, new JsonClaim.LowerBound(1, Exclusive: true))).Should().BeTrue();
+            flagged.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue();
+            flagged.Knows(new JsonFact(n, new JsonClaim.UpperBound(10, Exclusive: true))).Should().BeFalse("the flag beside minimum is about minimum");
+        }
+
+        /// <summary>
+        /// A bound binds numbers only, so a union of a string and a bounded number is bounded, and a union of two
+        /// bounds is bounded on each side both state.
+        /// </summary>
+        [Fact]
+        public void AUnionMeetsOnTheBoundsEveryBranchSatisfies()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+
+            var stringOrNumber = Compile("""{ "properties": { "n": { "anyOf": [ { "type": "string" }, { "type": "number", "minimum": 0 } ] } } }""").Derive(null);
+            stringOrNumber.Knows(new JsonFact(n, new JsonClaim.LowerBound(0))).Should().BeTrue("a string is no number, and the number is at least 0");
+
+            var two = Compile("""{ "properties": { "n": { "anyOf": [ { "minimum": 0 }, { "minimum": 5, "maximum": 10 } ] } } }""").Derive(null);
+            two.Knows(new JsonFact(n, new JsonClaim.LowerBound(0))).Should().BeTrue();
+            two.Knows(new JsonFact(n, new JsonClaim.LowerBound(5))).Should().BeFalse("the first branch admits 1");
+            two.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeFalse("and 11");
+
+            var nullable = Compile("""{ "properties": { "n": { "anyOf": [ { "type": "null" }, { "type": "integer", "maximum": 10 } ] } } }""").Derive(null);
+            nullable.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue("a null is no number for the bound to refuse");
+            nullable.Knows(new JsonFact(n, new JsonClaim.OfType(JsonType.Integer, OrNull: true))).Should().BeTrue();
+        }
+
+        /// <summary>
         /// An OpenAPI discriminator, which is how a generated document writes a multi-type container:
         /// the branches are bare references that repeat no <c>const</c>, and a mapping says which
         /// value selects which.

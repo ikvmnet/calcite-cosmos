@@ -302,8 +302,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A stored value far past what the target can hold converts to the limit — measured,
         /// <c>toInt(1e30)</c> is <c>2147483647</c> — so <c>= 2147483647</c> is true of a document
         /// storing <c>1e30</c>, and a window around the limit would exclude exactly that document. It
-        /// did, and the differential corpus caught it as a lost row. Only equality is affected: the
-        /// inequalities already admit everything past the limit.
+        /// did, and the differential corpus caught it as a lost row.
         /// </remarks>
         [Fact]
         public void AComparisonAtTheSaturationLimitDoesNotBoundThatSide()
@@ -314,6 +313,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("(c.price > @p0)");
             query.Sql.Should().NotContain("@p1");
             query.Parameters.Select(p => p.Value?.ToString()).Should().Equal("2147483646");
+        }
+
+        /// <summary>
+        /// An inequality the limit itself satisfies does not bound that side either. F10.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>&gt; -3000000000</c> is true of the lower limit, so of every stored value converting to it, a
+        /// stored <c>-1e30</c> among them — and a window above <c>-3000000001</c> would refuse that document.
+        /// The equality was the one comparison asked about the limit; the question is the same for each.
+        /// </para>
+        /// <para>
+        /// <b>Pinned rather than reached.</b> A constant beyond the target's range is wider than the target, so
+        /// Calcite widens the cast to compare it — <c>CAST(CAST(… AS INTEGER) AS BIGINT) &gt; -3000000000</c>
+        /// — and the window does not read through a cast of a cast. Only <c>IS_DEFINED</c> is pushed, which
+        /// is sound. <see cref="Adapter.Metadata.CosmosNumericWindow"/> asks the limit of every comparison
+        /// all the same, so a spelling that does reach it is answered rightly.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("> -3000000000", "c.price > @")]
+        [InlineData(">= -3000000000", "c.price > @")]
+        [InlineData("< 3000000000", "c.price < @")]
+        [InlineData("<= 3000000000", "c.price < @")]
+        public void AnInequalityTheLimitSatisfiesDoesNotBoundThatSide(string comparison, string bound)
+        {
+            var sql = Query(FindCosmos(PlanToAsync(
+                $"SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) {comparison}"))).Sql;
+
+            sql.Should().NotContain(bound, "a stored value beyond the limit converts to it and is kept: " + sql);
         }
 
         /// <summary>

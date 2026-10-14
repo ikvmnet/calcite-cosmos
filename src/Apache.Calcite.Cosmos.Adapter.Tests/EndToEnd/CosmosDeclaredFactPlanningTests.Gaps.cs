@@ -6,12 +6,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
     /// <summary>
     /// The plans the theory of JSON gets right where a Horn closure could not: a disjunction reasoned about by cases,
-    /// a disequality narrowing a domain, and a union of enums. Each beside the control that shows the declaration, and
-    /// not the query, is what moved it.
+    /// a disequality narrowing a domain, a union of enums, and a range against a bound or an enum. Each beside the
+    /// control that shows the declaration, and not the query, is what moved it.
     /// </summary>
     /// <remarks>
-    /// Numbered as the integration plan numbers its gaps. Gaps 4 and 5, a bound against a comparison, need a range to be
-    /// read off a predicate, which the extractor does not do yet; see <c>TODO.md</c>.
+    /// Numbered as the integration plan numbers its gaps.
     /// </remarks>
     public partial class CosmosDeclaredFactPlanningTests
     {
@@ -104,6 +103,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var archived = PlanToCosmos(string.Format(Status, "archived"), container, out _);
             PlanText(archived).Should().NotContain("condition=[false]", "one branch admits it: " + PlanText(archived));
+        }
+
+        const string N = """CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER)""";
+
+        static string Where(string condition) => $"""SELECT c."DOC" FROM items AS c WHERE {condition}""";
+
+        /// <summary>
+        /// Gap 4: a range beyond a declared bound keeps no number, so over a path declared an integer it keeps
+        /// no document.
+        /// </summary>
+        /// <remarks>
+        /// The cast puts the raw value above 499, the declaration below 100. Bounds bind numbers, so crossing them
+        /// says the path holds no number — and with nothing but an integer declared, nothing at all, which the
+        /// comparison's own presence contradicts. Declared without a type it says less: a stored <c>"600"</c>
+        /// passes the cast, and is no number for a bound to refuse.
+        /// </remarks>
+        [Fact]
+        public void ARangeBeyondADeclaredBoundKeepsNoNumber()
+        {
+            var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
+
+            var beyond = PlanToCosmos(Where($"{N} > 500"), integer, out _);
+            PlanText(beyond).Should().Contain("condition=[false]", "no integer is above 499 and at most 100: " + PlanText(beyond));
+
+            var within = PlanToCosmos(Where($"{N} > 50"), integer, out _);
+            PlanText(within).Should().NotContain("condition=[false]", "an integer of 60 is both: " + PlanText(within));
+
+            var untyped = Declaring("""{ "type": "object", "properties": { "n": { "maximum": 100 } } }""");
+            var strings = PlanToCosmos(Where($"{N} > 500"), untyped, out _);
+            PlanText(strings).Should().NotContain("condition=[false]", "a stored \"600\" passes the cast: " + PlanText(strings));
+        }
+
+        /// <summary>
+        /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, where a closure rechecked it over
+        /// every document in process.
+        /// </summary>
+        [Fact]
+        public void ARangeOutsideAnEnumKeepsNothing()
+        {
+            var enumerated = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
+
+            foreach (var outside in new[] { $"{N} > 499 AND {N} < 501", $"{N} = 30" })
+            {
+                var best = PlanToCosmos(Where(outside), enumerated, out _);
+                PlanText(best).Should().Contain("condition=[false]", $"no member of the enum satisfies {outside}: " + PlanText(best));
+            }
+
+            foreach (var inside in new[] { $"{N} = 2", $"{N} > 1" })
+            {
+                var best = PlanToCosmos(Where(inside), enumerated, out _);
+                PlanText(best).Should().NotContain("condition=[false]", $"a member satisfies {inside}: " + PlanText(best));
+            }
+
+            var mixed = Declaring("""{ "type": "object", "properties": { "n": { "enum": ["600", 1] } } }""");
+            var string600 = PlanToCosmos(Where($"{N} > 500"), mixed, out _);
+            PlanText(string600).Should().NotContain("condition=[false]", "the string \"600\" passes the cast: " + PlanText(string600));
         }
 
         /// <summary>

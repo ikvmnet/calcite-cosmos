@@ -438,6 +438,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 answers[i].Should().Be(i % kinds.Length == 0 ? EqualityOnly : null, $"question {i}");
         }
 
+        /// <summary>
+        /// A bound binds numbers. Bounds that cross leave the path no number, which only a path known to hold a
+        /// number contradicts.
+        /// </summary>
+        [Fact]
+        public void CrossedBoundsLeaveNoNumber()
+        {
+            var above = new JsonFact(At, new JsonClaim.LowerBound(499, Exclusive: true));
+            var below = new JsonFact(At, new JsonClaim.UpperBound(100));
+
+            var set = JsonFactTheory.Empty.Derive(new[] { above, below, Present(At) });
+            set.IsContradictory.Should().BeFalse("a string is no number for either bound to refuse");
+            set.Knows(new JsonFact(At, new JsonClaim.NotEqualTo(5L))).Should().BeTrue("no number is there, 5 least of all");
+
+            JsonFactTheory.Empty.Derive(new[] { above, below, Present(At), new JsonFact(At, new JsonClaim.OfType(JsonType.Integer)) })
+                .IsContradictory.Should().BeTrue("and an integer there is a number");
+        }
+
+        /// <summary>
+        /// A bound is known from a stricter one, from a domain every number of which it admits, and from a path that
+        /// holds no number.
+        /// </summary>
+        [Fact]
+        public void ABoundIsKnownFromWhatSettlesIt()
+        {
+            JsonFactSet With(JsonClaim claim) => JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, claim) });
+
+            With(new JsonClaim.LowerBound(5)).Knows(new JsonFact(At, new JsonClaim.LowerBound(3))).Should().BeTrue();
+            With(new JsonClaim.LowerBound(5)).Knows(new JsonFact(At, new JsonClaim.LowerBound(5, Exclusive: true))).Should().BeFalse();
+            With(new JsonClaim.OneOf(new JsonScalar[] { 4L, 6L, "x" })).Knows(new JsonFact(At, new JsonClaim.LowerBound(3))).Should().BeTrue("a string binds no bound");
+            With(new JsonClaim.OneOf(new JsonScalar[] { 4L, 6L })).Knows(new JsonFact(At, new JsonClaim.UpperBound(5))).Should().BeFalse();
+            With(new JsonClaim.OfType(JsonType.String)).Knows(new JsonFact(At, new JsonClaim.LowerBound(1000))).Should().BeTrue("a string is no number");
+        }
+
         static JsonFact Present(JsonDocumentPath path) => new(path, new JsonClaim.Present());
 
         /// <summary>

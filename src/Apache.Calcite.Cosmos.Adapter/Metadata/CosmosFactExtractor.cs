@@ -29,8 +29,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <para>
     /// <b>What is read is deliberately narrow.</b> An equality, a disequality, a set membership and a
-    /// definedness — the shapes a guard is written in. Anything unrecognised is skipped, which loses
-    /// facts and can only lose pushdowns.
+    /// definedness — the shapes a guard is written in — and a range through a numeric cast, which
+    /// bounds a number. Anything unrecognised is skipped, which loses facts and can only lose pushdowns.
     /// </para>
     /// <para>
     /// <b>A comparison says its path is there.</b> Over an absent path a comparison is undefined at the
@@ -126,6 +126,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             facts.Add(new JsonFact(path!.Value, new JsonClaim.EqualTo(value)));
                         facts.Add(new JsonFact(path!.Value, new JsonClaim.Present()));
                     }
+                    else
+                    {
+                        ReadWindow(call, fields, rootAlias, facts);
+                    }
+                    break;
+
+                case nameof(SqlKind.__Enum.GREATER_THAN) or nameof(SqlKind.__Enum.GREATER_THAN_OR_EQUAL)
+                    or nameof(SqlKind.__Enum.LESS_THAN) or nameof(SqlKind.__Enum.LESS_THAN_OR_EQUAL) when call.getOperands().size() == 2:
+                    if (ReadWindow(call, fields, rootAlias, facts) == false)
+                        ReadRange(call, fields, rootAlias, facts);
                     break;
 
                 case nameof(SqlKind.__Enum.NOT_EQUALS) when call.getOperands().size() == 2:
@@ -252,6 +262,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 || value.ToClrValue() is not string text
                 || CosmosRexTranslator.IsUnambiguousTextFor(pathNode, text);
             return true;
+        }
+
+        /// <summary>
+        /// Reads a comparison through a numeric cast as the window it puts the raw value in, or answers
+        /// <c>false</c> where it is not one.
+        /// </summary>
+        /// <remarks>
+        /// The window binds numbers only — the cast converts a stored string too, so <c>&gt; 500</c> keeps
+        /// a document storing <c>"600"</c> — and a bound says exactly that. See
+        /// <see cref="CosmosNumericWindow"/> for why each side holds.
+        /// </remarks>
+        static bool ReadWindow(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
+        {
+            if (CosmosNumericWindow.TryRead(call, out var window) == false)
+                return false;
+
+            if (TryPath(window.Value, fields, rootAlias) is not JsonDocumentPath path)
+                return false;
+
+            facts.Add(new JsonFact(path, new JsonClaim.Present()));
+
+            if (window.Above is java.math.BigDecimal above && TryDecimal(above) is decimal lower)
+                facts.Add(new JsonFact(path, new JsonClaim.LowerBound(lower, Exclusive: true)));
+
+            if (window.Below is java.math.BigDecimal below && TryDecimal(below) is decimal upper)
+                facts.Add(new JsonFact(path, new JsonClaim.UpperBound(upper, Exclusive: true)));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Reads an order comparison between a path and a constant as what it says of every row it keeps:
+        /// that the path is there.
+        /// </summary>
+        /// <remarks>
+        /// Not a bound. Through a numeric cast the bound is the window's, which was measured; over a path
+        /// read as some other type the comparison is made after a conversion or between values whose
+        /// ordering across types is Calcite's, and neither has been measured to keep the stored number on
+        /// the comparison's side of the constant.
+        /// </remarks>
+        static void ReadRange(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
+        {
+            if (TryComparison(call, fields, rootAlias, out var path, out _, out _))
+                facts.Add(new JsonFact(path!.Value, new JsonClaim.Present()));
+        }
+
+        /// <summary>
+        /// Converts a bound to a decimal, or answers <c>null</c> where no decimal holds it exactly: a bound
+        /// rounded toward the side it binds would claim more than the comparison does.
+        /// </summary>
+        static decimal? TryDecimal(java.math.BigDecimal bound)
+        {
+            var text = bound.toPlainString();
+            if (decimal.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) == false)
+                return null;
+
+            return new java.math.BigDecimal(value.ToString(System.Globalization.CultureInfo.InvariantCulture)).compareTo(bound) == 0 ? value : null;
         }
 
         /// <summary>

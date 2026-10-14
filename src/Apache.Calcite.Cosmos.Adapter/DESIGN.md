@@ -661,6 +661,17 @@ presence is what turns `status = 'deleted'` against a declared `enum` into a con
 proof that `status` is absent. It is also why an `IS_DEFINED` guard beside a comparison on the same path is
 deleted.
 
+**A range supplies a bound, and binds only numbers.** A comparison through a numeric cast puts the raw
+value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the extractor states that
+window as two bound claims beside the presence (`CosmosNumericWindow`, the one the split rule pushes). A
+bound binds numbers only, because the cast converts a stored string too: `> 500` keeps `"600"`. So a range
+beyond a declared `maximum` leaves the path no number, which contradicts the presence only where the
+declaration leaves it nothing else, a `type: integer` (gap 4, `ARangeBeyondADeclaredBoundKeepsNoNumber`).
+A range no member of an integer `enum` lies in empties the domain (gap 5, `ARangeOutsideAnEnumKeepsNothing`).
+Any other order comparison states only the presence. Over a typed path the comparison follows a
+conversion, or Calcite's ordering of a `VARIANT` across types, and neither has been measured to keep the
+stored number on its side of the constant.
+
 #### A conditional rule is a row
 
 A schema's conditional statements — a `oneOf` branch under its discriminator, an `if`/`then` — are held as
@@ -823,7 +834,8 @@ like an assertion about a document is often an assertion about a document **if s
 | `$defs`, `definitions` | a place to keep schemas | nothing — they constrain no path |
 | `additionalProperties`, `patternProperties`, `propertyNames` | constrain paths that cannot be named here | nothing |
 | `items`, `prefixItems`, `contains` | constrain elements | nothing |
-| `minimum`, `maxLength`, … | bounds | nothing — no claim is about an interval |
+| `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | bounds on a number | a bound, binding numbers only; Draft 4's flag beside `minimum` and 2019-09's number alike |
+| `minLength`, `maxLength`, `multipleOf`, … | other bounds | nothing yet — the theory has them, and no claim states them |
 
 An OpenAPI `discriminator` is read alongside a branch's own `const`, and the two rest on different
 ground. A branch that pins the property refutes every other branch, and `oneOf` does the rest. A
@@ -1753,7 +1765,12 @@ is a claim about it and nothing else:
 Saturation is the row that had to be found rather than reasoned about. `CAST(x AS INTEGER) =
 2147483647` is true of a document storing `1e30`, so a window around the limit excludes exactly the
 document that matches — and the corpus caught it as a lost row before the bound stopped stating that
-side. Only equality is affected; the inequalities already admit everything past the limit.
+side. The same is true of any comparison the limit itself satisfies: `> -3000000000` keeps a stored
+`-1e30`, which converts to the lower limit. So `CosmosNumericWindow` states a side only where the limit
+fails the comparison. No literal reaches it that way today — a constant beyond the target's range is
+wider than it, and Calcite widens the cast to compare them, which the window does not read through — and
+`AnInequalityTheLimitSatisfiesDoesNotBoundThatSide` pins what is pushed instead. The fact extractor reads
+the same window as a bound, so the two cannot come to disagree about it.
 
 `CAST` and `SAFE_CAST` are treated alike, and the difference between them is why the sieve has to admit
 rather than exclude: a value that will not convert raises under one and yields null under the other,

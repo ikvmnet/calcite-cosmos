@@ -301,20 +301,20 @@ the last 256 sets' contexts.
   - a fact about every item reaches each item, each item's property, and items of items;
   - an array holds no value its items cannot be;
   - `items: false`;
-  - the integration plan's gaps 4 and 5;
+  - the integration plan's gaps 4 and 5, which the adapter's plans now show too;
   - a query context reading through a frozen schema context.
 
 The adapter's own tests ask the same questions through `JsonFactTheory`: `JsonFactTheoryTests`, `JsonSchemaFactsTests`,
-and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1–3 and F3 should produce.
+and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1–5, F2 and F3 should produce.
 
 ## What is not here yet
 
 **For the adapter to use more of it**
-- **The schema reader has to state these facts.** `JsonSchemaFacts` does not read `items`, `prefixItems`,
-  `minItems`, `maxItems`, `minimum` and its relatives, `minLength`, `maxLength` or `additionalProperties`.
-  `JsonDocumentPath` has no element segment, and the adapter's claims have no bound.
-- **The extractor has to read a range.** Gaps 4 and 5 are closed here and not in a plan, because a predicate's
-  `n > 500` reaches the theory as nothing.
+- **The schema reader has to state these facts.** `JsonSchemaFacts` reads `minimum`, `maximum` and their exclusive
+  forms as bounds, and does not read `items`, `prefixItems`, `minItems`, `maxItems`, `minLength`, `maxLength`,
+  `multipleOf` or `additionalProperties`. `JsonDocumentPath` has no element segment.
+- **The extractor reads a range only through a numeric cast,** whose window was measured. A comparison on a typed
+  path states the presence alone.
 - **The rewriter could ask `Decide`,** where it asks `Knows` of a context.
 - **The schema compiler has to emit conditional rules and discriminators directly.** That means a hidden
   discriminator for each undiscriminated `anyOf`, at which point `JsonSchemaFacts.Meet` and `JsonFact.Entails` go.

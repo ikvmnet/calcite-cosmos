@@ -148,6 +148,51 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// The value at the path, where it is a number, is at least this, or above it where exclusive.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A bound binds numbers and nothing else</b>, as JSON Schema's <c>minimum</c> does: a string
+        /// at the path is no counterexample. That is also what a comparison through a numeric cast can
+        /// say, because the cast converts a stored string too — see
+        /// <c>CosmosNumericWindow</c>.
+        /// </para>
+        /// <para>
+        /// One claim per side rather than an interval, so that a union whose branches bound the same
+        /// path differently still meets on each side the branches agree on.
+        /// </para>
+        /// </remarks>
+        /// <param name="Value">The bound.</param>
+        /// <param name="Exclusive">Whether the bound itself is excluded.</param>
+        public sealed record LowerBound(decimal Value, bool Exclusive = false) : JsonClaim
+        {
+
+            /// <summary>
+            /// Determines whether a number satisfies the bound.
+            /// </summary>
+            public bool Admits(decimal number) => number > Value || number == Value && Exclusive == false;
+
+        }
+
+        /// <summary>
+        /// The value at the path, where it is a number, is at most this, or below it where exclusive.
+        /// </summary>
+        /// <remarks>
+        /// The upper side of <see cref="LowerBound"/>, and binding numbers only for the same reason.
+        /// </remarks>
+        /// <param name="Value">The bound.</param>
+        /// <param name="Exclusive">Whether the bound itself is excluded.</param>
+        public sealed record UpperBound(decimal Value, bool Exclusive = false) : JsonClaim
+        {
+
+            /// <summary>
+            /// Determines whether a number satisfies the bound.
+            /// </summary>
+            public bool Admits(decimal number) => number < Value || number == Value && Exclusive == false;
+
+        }
+
+        /// <summary>
         /// The value at the path, where it is a string, is spelled in the named form.
         /// </summary>
         /// <remarks>

@@ -18,7 +18,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <c>present</c>, <c>absent</c> and an extension's: the two vocabularies agree on that, which is what makes the
     /// translation one table rather than an argument. A type is a set of JSON Schema's members, <c>Number</c> being
     /// <c>{integer, fraction}</c> and <c>OrNull</c> adding <c>null</c>; a value or a domain is a set of tagged scalars;
-    /// a disequality is one.
+    /// a disequality is one; a bound is a bound, binding numbers in both.
     /// </para>
     /// <para>
     /// <b>A stored form and an extension are tokens.</b> The theory reads nothing of either beyond the one thing every
@@ -151,6 +151,14 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 case JsonClaim.NotEqualTo unequal:
                     yield return new Saturation.JsonFact.NotEqual(path, Value(unequal.Value));
+                    break;
+
+                case JsonClaim.LowerBound lower:
+                    yield return new Saturation.JsonFact.Lower(path, new Saturation.Bound(lower.Value, lower.Exclusive));
+                    break;
+
+                case JsonClaim.UpperBound upper:
+                    yield return new Saturation.JsonFact.Upper(path, new Saturation.Bound(upper.Value, upper.Exclusive));
                     break;
 
                 case JsonClaim.Represents represents:
