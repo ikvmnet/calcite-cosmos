@@ -99,10 +99,38 @@ for `layered` and `merged`, including first-call JIT, and 24–27 ms for `data`.
 - **Eggnog without contexts is a harness, not a planner.** A fresh graph per derivation re-plans the whole theory
   every time.
 
+## What Eggnog proves on small schemas that Horn does not
+
+Speed per derivation is only half the comparison: on small schemas, Horn is fast partly because it proves less.
+Two corpora show it on schemas of 8 and 14 compiled rules, and all three Eggnog encodings reach the same answers.
+On every corpus, Horn knows nothing Eggnog does not.
+
+| schema | query | Eggnog proves | Horn | what the plan gains |
+| --- | --- | --- | --- | --- |
+| `kind` required, `enum: [order, invoice]`; `order` declares `ref` a canonical UUID (gap 2) | `kind <> 'invoice'` | `kind = 'order'`, so `ref` is a canonical lowercase UUID | nothing: `Knows` asks one fact at a time | the UUID comparison is pushed as an indexed string equality, rather than run in process over every order |
+| `data` declared a string | `data.id = 'x'` | contradictory: a present `data.id` makes `data` a present object, and no string is one | nothing: no rule relates a path to its parent | no request at all |
+| `meta` declared an object | `meta.v = 'x'` | `meta` is present | nothing | an `IS_DEFINED(c.meta)` guard is deleted |
+
+The second and third rows are **the rules of JSON itself**, which live in the root:
+- a present property has a present object for its parent;
+- a path whose possible types have no member in common is **absent**;
+- a path both absent and present is a contradiction.
+
+`DESIGN.md` says that two type claims never exclude each other, and for Horn that is right. A type claim
+constrains a value only if one is there, and Horn has no atom for absence, so a string-or-object conflict could
+mean nothing to it. With a type lattice it means absence, which is a fact. It becomes a contradiction only beside
+presence.
+
+Both rows depend on the plan's F4 change, in which a comparison on an accessor proves that its path is present.
+`CosmosFactExtractor` does not do that yet, so the corpora state presence explicitly.
+
+These cost 35–175 µs per derivation, against Horn's 1–2 µs. Against that sits a round trip and its RU, or a scan
+read whole and filtered in process. A per-statement memo pays the cost once per statement, not once per question.
+
 ## What it does not cover
 
-- **Case splits.** No split is used. Every engine answers only what Horn answers, which is what parity checks.
-  Splits and lift are what Eggnog adds beyond Horn, and they want their own spike over this encoding.
+- **Case splits.** No split is used, so gap 1 and gap 3 are not here. Splits and lift are the largest thing
+  Eggnog adds beyond Horn, and they want their own spike over this encoding.
 - **Concurrency.** Everything runs on one thread.
 - **A cache across derivations.**
 - **The engine's own logging.** Its statistics in `RunReport` and its timing options are unused.

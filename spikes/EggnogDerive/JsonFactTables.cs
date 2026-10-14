@@ -79,7 +79,34 @@ namespace EggnogDerive
                 r.Where(Primitives.IsEmpty<string>().Of(t));
                 r.Then(graph.Contradiction.Of());
             });
+
+            // The rules of JSON itself, which Horn cannot state: it has no atom for absence, so it could
+            // only ignore two type claims that conflict.
+            Absent = graph.DefineRelation<string>("absent");
+            Json.DefineRule("a path of no possible type is absent", r =>
+            {
+                var (p, t) = r.Vars<string, ValueSet<string>>("p", "t");
+                r.When(t.Is(Types.Of(p)));
+                r.Where(Primitives.IsEmpty<string>().Of(t));
+                r.Then(Absent.Of(p));
+            });
+            Json.DefineRule("a path both absent and present", r =>
+            {
+                var p = r.Var<string>("p");
+                r.When(Absent.Of(p), Present.Of(p));
+                r.Then(graph.Contradiction.Of());
+            });
+            Json.DefineRule("a present property has a present object for a parent", r =>
+            {
+                var p = r.Var<string>("p");
+                r.When(Present.Of(p));
+                r.Where(p, x => x.LastIndexOf('.') > 1);
+                var parent = Compute.Of(p, x => x.Substring(0, x.LastIndexOf('.')));
+                r.Then(Present.Of(parent), Types.Of(parent).Is(ValueSet.Of("object")));
+            });
         }
+
+        public Relation<string> Absent { get; private set; } = null!;
 
         public EGraph Graph { get; }
 

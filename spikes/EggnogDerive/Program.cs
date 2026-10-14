@@ -70,9 +70,8 @@ dataGraph.Root.Freeze();
 Console.WriteLine($"data root (JSON rules, the rule interpreter, service facts), built and frozen once: {rootWatch.Elapsed.TotalMilliseconds:F1} ms");
 Console.WriteLine();
 
-foreach (var target in sizes)
+foreach (var corpus in sizes.SelectMany(target => target == 0 ? new[] { Corpus.Items(), Corpus.Gap2(), Corpus.Structure() } : new[] { Corpus.Synthetic(target) }))
 {
-    var corpus = target == 0 ? Corpus.Items() : Corpus.Synthetic(target);
 
     var compile = Stopwatch.StartNew();
     var schemaRules = JsonSchemaFacts.ReadFrom(JsonNode.Parse(corpus.Schema)!, Corpus.Recognisers);
@@ -210,7 +209,7 @@ int Answer(JsonFactTables t, Scope scope, Derivation query)
 (int Agree, int EggnogOnly, int HornOnly) Parity(Corpus corpus, List<JsonFactRule> rules, JsonFactTheory horn, JsonFactTables tables, Scope schema)
 {
     // Every head the theory can conclude, and every fact a query states, asked of both engines.
-    var probes = rules.Select(r => r.Head).Concat(corpus.Queries.SelectMany(q => q.Established)).Distinct().ToList();
+    var probes = rules.Select(r => r.Head).Concat(corpus.Queries.SelectMany(q => q.Established.Concat(q.Probes))).Distinct().ToList();
     if (probes.Count > 4_000)
         probes = probes.Where((_, i) => i % (probes.Count / 4_000 + 1) == 0).ToList();
 
@@ -227,7 +226,10 @@ int Answer(JsonFactTables t, Scope scope, Derivation query)
             if (set.IsContradictory == scope.IsContradictory)
                 agree++;
             else if (scope.IsContradictory)
+            {
                 eggnogOnly++;
+                Console.WriteLine($"   + Eggnog alone finds {query.Name} contradictory: no document satisfies it");
+            }
             else
                 hornOnly++;
 
@@ -241,7 +243,11 @@ int Answer(JsonFactTables t, Scope scope, Derivation query)
             if (h == e)
                 agree++;
             else if (e)
+            {
                 eggnogOnly++;
+                if (eggnogOnly <= 5)
+                    Console.WriteLine($"   + Eggnog alone knows {probe.Path} {probe.Claim} under {query.Name}");
+            }
             else
             {
                 hornOnly++;
@@ -293,6 +299,57 @@ namespace EggnogDerive
                 new Derivation("kind = 'B'", new[] { Fact("kind", new JsonClaim.EqualTo("B")) }, Probes()),
                 new Derivation("kind = 'C' (none)", new[] { Fact("kind", new JsonClaim.EqualTo("C")) }, Probes()),
             });
+
+        /// <summary>
+        /// Gap 2 of the integration plan: kind is required and one of order or invoice, and each kind declares
+        /// what ref holds. A query refusing one kind proves the other, which no single fact states.
+        /// </summary>
+        public static Corpus Gap2() => new(
+            "gap 2 (a domain less a refused value)",
+            $$"""
+            {
+              "required": ["kind"],
+              "properties": { "kind": { "enum": ["order", "invoice"] } },
+              "oneOf": [
+                { "properties": { "kind": { "const": "order" },
+                                  "ref": { "type": "string", "pattern": "{{Uuid}}" } } },
+                { "properties": { "kind": { "const": "invoice" },
+                                  "ref": { "type": "integer" } } }
+              ]
+            }
+            """,
+            new[]
+            {
+                new Derivation("outright", Array.Empty<JsonFact>(), Probes()),
+                new Derivation("kind = 'order'", new[] { Fact("kind", new JsonClaim.EqualTo("order")) }, Probes()),
+                new Derivation("kind <> 'invoice'", new[] { Fact("kind", new JsonClaim.NotEqualTo("invoice")) }, Probes()),
+            });
+
+        /// <summary>
+        /// The rules of JSON: data is declared a string, and the query asks about a property of it. An
+        /// accessor's comparison proves its path is there — what the plan's F4 adds to the extractor — so a
+        /// present data.id makes data a present object, which no string is.
+        /// </summary>
+        public static Corpus Structure() => new(
+            "JSON's own rules (data is a string)",
+            """
+            { "properties": { "data": { "type": "string" }, "meta": { "type": "object" } } }
+            """,
+            new[]
+            {
+                new Derivation("outright", Array.Empty<JsonFact>(), StructureProbes()),
+                new Derivation("data.id = 'x'", new[] { Fact2("data", "id", new JsonClaim.EqualTo("x")), Fact2("data", "id", new JsonClaim.Present()) }, StructureProbes()),
+                new Derivation("meta.v = 'x'", new[] { Fact2("meta", "v", new JsonClaim.EqualTo("x")), Fact2("meta", "v", new JsonClaim.Present()) }, StructureProbes()),
+            });
+
+        static JsonFact Fact2(string parent, string child, JsonClaim claim) => new(P(parent).Property(child), claim);
+
+        static JsonFact[] StructureProbes() => new[]
+        {
+            Fact("meta", new JsonClaim.Present()),
+            Fact("meta", new JsonClaim.OfType(JsonType.Object)),
+            Fact("data", new JsonClaim.Present()),
+        };
 
         static JsonFact[] Probes() => new[]
         {
