@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Apache.Calcite.Cosmos.Facts
@@ -1073,7 +1074,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// how a JSON null and a missing member are told apart. A number is read from its text as an
         /// exact <see cref="decimal"/> wherever one can hold it — a schema's <c>1.5</c> is then the
         /// <c>1.5</c> a query writes, and an integer too large for a <see cref="long"/> is not wrapped
-        /// into another number — and as a <see cref="double"/> only beyond a decimal's range.
+        /// into another number — and as a <see cref="double"/> only beyond a decimal's range. A literal
+        /// built in code reads as the same literal parsed.
         /// </remarks>
         static bool TryLiteral(JsonNode? node, out JsonScalar value)
         {
@@ -1085,19 +1087,27 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node is not JsonValue literal)
                 return false;
 
-            switch (literal.GetValueKind())
+            // A parsed literal is its text. One built in code holds the CLR value it was given and converts to that
+            // type alone -- an int maximum is no decimal, a Guid const no string -- so it is written out and read
+            // back, as the same literal parsed.
+            var text = literal.TryGetValue<JsonElement>(out var parsed) ? parsed : JsonSerializer.SerializeToElement(literal);
+
+            switch (text.ValueKind)
             {
-                case System.Text.Json.JsonValueKind.String:
-                    value = literal.GetValue<string>();
+                case JsonValueKind.String:
+                    value = text.GetString()!;
                     return true;
-                case System.Text.Json.JsonValueKind.True:
+                case JsonValueKind.True:
                     value = true;
                     return true;
-                case System.Text.Json.JsonValueKind.False:
+                case JsonValueKind.False:
                     value = false;
                     return true;
-                case System.Text.Json.JsonValueKind.Number:
-                    value = literal.TryGetValue<decimal>(out var exact) ? exact : literal.GetValue<double>();
+                case JsonValueKind.Number when text.TryGetDecimal(out var exact):
+                    value = exact;
+                    return true;
+                case JsonValueKind.Number:
+                    value = text.GetDouble();
                     return true;
                 default:
                     return false;

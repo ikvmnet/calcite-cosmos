@@ -936,6 +936,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// A schema built in code holds CLR numbers, and each converts to its own type alone: an <c>int</c> is no
+        /// decimal. It reads as the same schema parsed, where it used to throw out of the reader and lose the whole
+        /// declaration.
+        /// </summary>
+        [Fact]
+        public void NumbersBuiltInCodeReadAsTheSameNumbersParsed()
+        {
+            var n = JsonDocumentPath.Root.Property("n");
+            var x = JsonDocumentPath.Root.Property("x");
+            var status = JsonDocumentPath.Root.Property("status");
+
+            var built = new System.Text.Json.Nodes.JsonObject
+            {
+                ["properties"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["n"] = new System.Text.Json.Nodes.JsonObject { ["minimum"] = 1L, ["maximum"] = 10 },
+                    ["x"] = new System.Text.Json.Nodes.JsonObject { ["exclusiveMaximum"] = 2.5 },
+                    ["status"] = new System.Text.Json.Nodes.JsonObject { ["enum"] = new System.Text.Json.Nodes.JsonArray(1, 2, 3) },
+                },
+            };
+
+            var derived = new JsonFactTheory(CosmosSchemaRecognition.ReadFrom(built)).Derive(null);
+
+            derived.Knows(new JsonFact(n, new JsonClaim.LowerBound(1))).Should().BeTrue();
+            derived.Knows(new JsonFact(n, new JsonClaim.UpperBound(10))).Should().BeTrue();
+            derived.Knows(new JsonFact(x, new JsonClaim.UpperBound(2.5m, Exclusive: true))).Should().BeTrue();
+            derived.Knows(new JsonFact(status, new JsonClaim.OneOf(new JsonScalar[] { 1m, 2m, 3m }))).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// The same for a string: a <c>Guid</c> built in code is written as a string and is no string to convert to.
+        /// </summary>
+        [Fact]
+        public void AStringBuiltInCodeReadsAsTheSameStringParsed()
+        {
+            var id = JsonDocumentPath.Root.Property("id");
+            var guid = System.Guid.Parse("123e4567-e89b-12d3-a456-426614174000");
+
+            var built = new System.Text.Json.Nodes.JsonObject
+            {
+                ["properties"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = new System.Text.Json.Nodes.JsonObject { ["const"] = guid },
+                },
+            };
+
+            new JsonFactTheory(CosmosSchemaRecognition.ReadFrom(built)).Derive(null)
+                .Knows(new JsonFact(id, new JsonClaim.EqualTo(guid.ToString()))).Should().BeTrue();
+        }
+
+        /// <summary>
         /// An OpenAPI discriminator, which is how a generated document writes a multi-type container:
         /// the branches are bare references that repeat no <c>const</c>, and a mapping says which
         /// value selects which.
