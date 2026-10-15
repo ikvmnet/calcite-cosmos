@@ -2391,6 +2391,15 @@ renders as `'30'` and keeps; `CAST(CAST(label AS VARIANT) AS VARCHAR) LIKE '3%'`
 set and lost the array and the object. Each now asks of what is in the box, through
 `StripVariantCoercion`. Against unambiguous text the box changes nothing, and the equality pushes.
 
+**And the document an accessor reads through has to be a document.** `TryResolveJsonPath` took any base
+that resolved, a text `JSON_VALUE` among them, and its value is a rendering: Calcite parses the text as
+JSON before reading the path out of it, and the service has the value. Measured over `products`,
+`JSON_VALUE(JSON_VALUE(DOC, '$.name'), '$') IS NOT NULL` resolved to `c.name` and kept every document,
+where Calcite cannot parse `Trail Blazer` and answers null for each — and the case it means, a document
+stored inside a string, is the mirror: Calcite reads the nested property and the service's path is
+undefined. A scalar rendering is refused as a base. A plain `JSON_QUERY` stays one, its text being the
+fragment's, which parses back to the fragment the nested path addresses.
+
 #### A position belongs to a predicate
 
 The translator tracks whether an odd number of `NOT`s encloses what it writes, because a comparison

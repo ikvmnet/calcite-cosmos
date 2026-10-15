@@ -402,6 +402,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             path = null;
 
+            // The document an accessor addresses through has to be a document. A scalar rendering is
+            // text, which Calcite parses as JSON to read the path out of, and the service has the
+            // value: measured over products, `JSON_VALUE(JSON_VALUE(DOC, '$.name'), '$') IS NOT NULL`
+            // resolved to c.name and kept every document, where Calcite fails to parse
+            // `Trail Blazer` and answers null for each. A path stored as a JSON string is the case it
+            // means, and there the service's nested path is undefined where Calcite reads a value.
+            // The document column and a plain JSON_QUERY are what remain, the fragment's text parsing
+            // back to the fragment the nested path addresses.
+            if (IsScalarRendering(Operand(call, 0)))
+                return false;
+
             if (TryResolvePath(Operand(call, 0), out var basePath) == false || basePath is null)
                 return false;
 

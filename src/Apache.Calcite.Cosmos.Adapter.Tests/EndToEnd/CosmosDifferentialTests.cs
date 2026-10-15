@@ -940,6 +940,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c", false),                                                        // E10
             ("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM typed AS c", false),                                                 // E13
 
+            // An accessor addressing through a rendering (N), whose text Calcite parses as JSON and whose
+            // value the service holds. The last is the control: a JSON_QUERY's text is the fragment.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') IS NOT NULL", false),                  // N1
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') = 'Exact'", false),                       // N3
+            ("SELECT c.\"id\", JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') FROM typed AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(JSON_QUERY(c.\"DOC\", '$.metadata'), '$.sku') FROM products AS c", false),                           // N2
         ];
 
         /// <summary>

@@ -124,6 +124,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("(NOT IS_DEFINED(c.label) OR IS_NULL(c.label) OR NOT IS_PRIMITIVE(c.label))");
         }
 
+        /// <remarks>
+        /// The document an accessor addresses through has to be a document. A text accessor's value is the rendering,
+        /// which Calcite parses as JSON before reading the path out of it; the service has the value. Measured over
+        /// products, <c>JSON_VALUE(JSON_VALUE(DOC, '$.name'), '$') IS NOT NULL</c> resolved to <c>c.name</c> and kept
+        /// every document, where Calcite cannot parse <c>Trail Blazer</c> and answers null. A <c>JSON_QUERY</c> is the
+        /// fragment's text, which parses back to the fragment, and still addresses through.
+        /// </remarks>
+        [Fact]
+        public void AnAccessorDoesNotAddressThroughARendering()
+        {
+            var nested = Text("$", Text("$.name", Ref(2, SqlTypeName.VARCHAR)));
+
+            Translator().TryResolvePath(nested, out _).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, nested)).Should().BeFalse();
+
+            TranslatorOverARendering().TryResolvePath(Text("$.v", Ref(0, SqlTypeName.VARCHAR)), out _)
+                .Should().BeFalse("and nor through a field a projection bound to one");
+
+            var fragment = _rex.makeCall(
+                _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true),
+                SqlStdOperatorTable.JSON_QUERY,
+                Of(Ref(2, SqlTypeName.VARCHAR), Str("$.metadata")));
+
+            Translator().TryResolvePath(Text("$.sku", fragment), out var path).Should().BeTrue();
+            path!.ToString().Should().Be("c.metadata.sku");
+        }
+
     }
 
 }
