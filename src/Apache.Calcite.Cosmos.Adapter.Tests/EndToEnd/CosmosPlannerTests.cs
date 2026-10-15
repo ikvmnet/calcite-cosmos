@@ -3440,6 +3440,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A disjunction implies only the paths every branch needs, and a branch that is a negated
+        /// compound needs none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a disjunction branch by branch, and
+        /// where one branch has no weakening it gave the disjunction whole to the walk that collects the
+        /// paths a predicate needs — which descended into every branch and pushed <c>IS_DEFINED</c> of
+        /// each path it found. A disjunction is true where one branch is, so a document lacking the
+        /// other branches' paths belongs in the result.
+        /// </para>
+        /// <para>
+        /// The first two are the predicates ternary logic partitioning found, written as <c>NOT φ</c>.
+        /// Calcite's converter pushes the <c>NOT</c> down through the connectives above an <c>IN</c>, so
+        /// each arrives as a disjunction one of whose branches is <c>NOT (… AND …)</c>, which has no
+        /// weakening. Measured against the emulator, the first sent <c>WHERE (IS_DEFINED(c.tags) AND
+        /// IS_DEFINED(c.metadata.sku))</c> and kept none of the seven documents its negation is true of;
+        /// the second sent <c>WHERE (IS_DEFINED(c.tags[0]) AND IS_DEFINED(c.price))</c> and kept one.
+        /// The third is the shape written directly: it sent <c>WHERE IS_DEFINED(c.price)</c> and lost the
+        /// shoe with no price, for which the negated branch is true.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))")]
+        [InlineData("NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')")]
+        public void ADisjunctionWithANegatedCompoundBranchPushesNoPresence(string predicate)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var plan = Plan(best);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the negated branch is true where the paths the others read are absent: " + sql);
+            plan.Should().Contain("ClrCursorFilter", "the predicate is decided in process: " + plan);
+        }
+
+        /// <summary>
+        /// A compound read as a value implies only what every one of its operands needs.
+        /// </summary>
+        /// <remarks>
+        /// A comparison needs both of its operands, and a conjunction read as one of them is false where
+        /// either conjunct is, whatever the other reads. Measured against the emulator, the first pushed
+        /// <c>IS_DEFINED</c> of category, price and id and lost document 5, a shoe with no price whose
+        /// conjunction is false and whose id is '5'; the second pushed category and price, and lost
+        /// documents 5 and 7. What is left is the path the comparison's other side reads, which every
+        /// document has.
+        /// </remarks>
+        [Fact]
+        public void ACompoundReadAsAValueImpliesOnlyWhatEveryOperandNeeds()
+        {
+            var compared = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')")));
+
+            compared.Should().EndWith("WHERE IS_DEFINED(c.id)");
+
+            var negated = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE")));
+
+            negated.Should().NotContain("IS_DEFINED", "the conjunction is false where either conjunct is: " + negated);
+        }
+
+        /// <summary>
+        /// The paths every branch of a disjunction needs are still implied.
+        /// </summary>
+        /// <remarks>
+        /// The other side of the two above. A disjunction inside a branch implies the path both of its
+        /// own branches read, so the conjunction around it pushes that beside its other path.
+        /// </remarks>
+        [Fact]
+        public void APathEveryBranchNeedsIsStillImplied()
+        {
+            var sql = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Road Runner' AND (INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'X'))")));
+
+            sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)))");
+        }
+
+        /// <summary>
         /// A sort above a pushed aggregate stays in Calcite, and the aggregate still pushes.
         /// </summary>
         /// <remarks>

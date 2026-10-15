@@ -2719,6 +2719,23 @@ IS_DEFINED(c.name)` and lost the document with no category. They are one questio
 null tests, the truth tests and the `IS_*` family. A comparison that needs the guard declines over an
 operand that observes absence; the positive equality needs none and is untouched.
 
+**A disjunction implies what every branch implies, and no more.** The weakening pushes `IS_DEFINED` of
+the paths a conjunct cannot do without, and the walk that finds them treated every operator as needing
+every operand. A comparison, a function and arithmetic do, answering null for a null; a conjunction
+does where it must be true. But a disjunction is true where one branch is, whatever the others read,
+and a conjunction read as a value — compared with something — is false where one conjunct is. So
+`CosmosFilterSplitRule.CollectPaths` now unions only through the first kind, and takes what every
+operand needs through the second; a negated compound still needs nothing. The disjunction reached it
+whole wherever `TryWeakenDisjunction` gave up on a branch, and Calcite writes that shape unasked:
+`SqlToRelConverter` pushes a `NOT` down through the connectives above an `IN`, so ternary logic
+partitioning's `NOT ((tags IN (…) OR sku <> 'SPRINT') AND (price - 3 = 5 AND name || '!' > 'bikes'))`
+arrived as a disjunction with a `NOT (… AND …)` branch, which has no weakening, and pushed
+`IS_DEFINED(c.tags) AND IS_DEFINED(c.metadata.sku)` against a negation true of all seven products.
+Measured against the emulator, six statements lost rows that way — the two that partitioning found,
+the one recorded beside them, `price > 100 OR NOT (category = 'bikes' AND INITCAP(name) = 'Sprint')`
+written directly, and `(category = 'bikes' AND price > 100)` compared with `(id = '5')` and with
+`FALSE` — and they are in the corpus. That ends cause L; its `CASE` half is the paragraph above.
+
 #### A predicate's value is not its truth
 
 Every guard in the section above answers one question: is the predicate *true*. A `WHERE` keeps a row
@@ -4731,8 +4748,10 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   G does not appear: the literals rarely meet a quotient Calcite truncates. H to K are about point
   reads, lookups and `DISTINCT`, which a predicate never reaches. F reaches further than the case
   folds: `COALESCE(JSON_VALUE(…), 'none') = '120'` compares the raw number too, because the
-  rendering test reaches only the comparison's direct operands. `TODO.md` section 10 has L and M
-  with their witnesses.
+  rendering test reaches only the comparison's direct operands. `TODO.md` section 10 has M with its
+  witnesses. L closed in two halves, a `CASE` and then a disjunction, each under *A position belongs
+  to a predicate*: the second was the last of the 1,000 to fail over the fixes, two predicates whose
+  `NOT φ` arrived as a disjunction with a negated compound for a branch.
 
   **What it costs, and why.** On a workstation that other work held at full load throughout, two runs
   on main took 17.5 and 23.5 minutes. That was 16 to 21 minutes judging the 4,403 statements, and

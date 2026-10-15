@@ -1393,6 +1393,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846976E0", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 9007199254740991", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740992", false),
+
+            // The presence weakening through a disjunction (L), the half a CASE did not cover. A
+            // disjunction with a branch that has no weakening was weakened whole, to IS_DEFINED of every
+            // path any branch reads, and a branch is true without the others' paths. The first two are
+            // ternary logic partitioning's witnesses, the NOT φ it pushed: the converter pushes their NOT
+            // down through the connectives above the IN, and a branch NOT (… AND …) is what arrives.
+            // The third is the witness recorded beside them, the fourth the shape written directly. Then
+            // a conjunction compared as a value, which is false where one conjunct is. The last two are
+            // controls, a disjunction compared and a path both branches of an inner disjunction read,
+            // which agreed before.
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((JSON_VALUE(c.\"DOC\", '$.price') <> 'SPRINT' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) < 10) AND (c.\"$.category\" IN ('Sprint!', 'none') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) * 3E0) = 100E0))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Road Runner' AND (INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'X'))", false),
         ];
 
         /// <summary>

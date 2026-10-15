@@ -2098,20 +2098,20 @@ across documents* and *A join of a container to itself* is the record.
   1,000 predicates. Rerun it once the fixes for A to G are in. Whatever still fails is a defect,
   either one of those fixes missing a shape or a cause nobody has named. It found two causes the
   fixes do not target, each a wrong answer from ordinary SQL:
-  - **L: the presence weakening reads a `CASE`, or a disjunction, as needing every path it reads.**
-    `CosmosFilterSplitRule.TryWeaken` pushes `IS_DEFINED` of every path `CollectPaths` finds. A
-    `CASE` whose condition is unknown takes its `ELSE`, which need not read the path. The same holds
-    for a disjunction that `TryWeakenDisjunction` gave up on: the fallback weakens the whole `OR`,
-    and a branch that contributed no path can still be true. `CollectPaths` refuses a `NOT` over
-    `AND` or `OR` for this reason, and nothing else.
+  - **L: the presence weakening read a `CASE`, or a disjunction, as needing every path it reads** —
+    *fixed.* A `CASE` now observes absence, and `CollectPaths` takes only what every branch of a
+    disjunction needs, or every operand of a compound read as a value (`DESIGN.md`, *A position
+    belongs to a predicate*). The disjunction half was the last to fail over the fixes: two of the
+    1,000 predicates, each a `NOT φ` the converter had turned into a disjunction with a negated
+    compound for a branch. Those two and the second witness below are in the differential corpus.
     - `SELECT c."id" FROM typed AS c WHERE CASE WHEN CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE)
-      > 8E0 THEN c."$.category" = 'b' ELSE c."$.category" = 'a' END` should keep 4 and 5. It keeps
+      > 8E0 THEN c."$.category" = 'b' ELSE c."$.category" = 'a' END` should keep 4 and 5. It kept
       5, having sent `WHERE (IS_DEFINED(c.price) AND IS_DEFINED(c.category))`. Document 4 has no
       price.
     - `SELECT c."id" FROM products AS c WHERE NOT ((JSON_VALUE(c."DOC", '$.price') <> 'SPRINT' AND
       JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) < 10) AND (c."$.category" IN ('Sprint!',
       'none') OR (CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) * 3E0) = 100E0))` should keep 1,
-      2, 3 and 7. It keeps 1, 2 and 3, having sent `WHERE (IS_DEFINED(c.category) AND
+      2, 3 and 7. It kept 1, 2 and 3, having sent `WHERE (IS_DEFINED(c.category) AND
       IS_DEFINED(c.price))`. Document 7 has no category.
   - **M: the null guard over a `COALESCE` names the paths inside it.** `<>` is pushed as
     `IS_DEFINED(p) AND NOT IS_NULL(p) AND (… != @p1)`, and a negated comparison gains
