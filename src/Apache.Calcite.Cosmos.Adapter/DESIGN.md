@@ -1693,6 +1693,14 @@ an array or object with a bracket. `c.x = 'text'` selects exactly the same docum
 including for absent and null, which match under neither. So the cast is dropped there and only there
 — see `CosmosRexTranslator.TryTextCastOperand`.
 
+**Undecorated, as the projection's is.** A width is a second conversion on top of the rendering —
+`VARCHAR(3)` truncates and `CHAR(8)` pads, measured below — and the comparison side took the cast
+whatever its width, where the projection side had always refused one. Measured over `typed`,
+`CAST(label AS VARCHAR(3)) = 'bik'` was dropped to `c.label = 'bik'` and lost the stored `bikes`, which
+Calcite truncates and keeps; and because the fact and partition-key extractors read a value through the
+same recogniser, the same statement over `category` routed the read to a partition named `bik`, which
+holds nothing. `TryTextCastValue` now asks for a `VARCHAR` with no precision, and all three stop there.
+
 **The same cast over `JSON_VALUE` is the same cast.** A view over `DOC` writes
 `CAST(JSON_VALUE(doc, '$.x') AS VARCHAR)`, whose operand is not typed `ANY`: Calcite types a
 `JSON_VALUE` without `RETURNING` as `VARCHAR(2000)`. Measured against Calcite's own runtime, the

@@ -918,6 +918,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", c.\"id\" = '3' FROM products AS c", false),
             ("SELECT c.\"id\", CASE WHEN c.\"$.category\" <> 'bikes' THEN 'x' ELSE 'y' END FROM products AS c", false),
 
+            // A cast to text with a width (W), which truncates where the cast without one renders. Taken as
+            // the rendering it was dropped from the equality, and over the partition key it routed the read
+            // to a partition named for the truncated text; the last is the same beside a point read.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR(3)) = 'bik'", false),                     // W1
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR(3)) = 'bik'", false),                                 // W3
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(2)) = 'Ex'", false),                       // W4
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR(3)) = 'bik' AND c.\"id\" = '1'", false),
+
         ];
 
         /// <summary>

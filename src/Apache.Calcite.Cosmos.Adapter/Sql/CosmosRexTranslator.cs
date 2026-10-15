@@ -1570,8 +1570,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// rather than converts, and returns the value underneath.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
-        /// right, and what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not.
+        /// right, what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not, and
+        /// what the fact and partition-key extractors read a value through.
+        /// </para>
+        /// <para>
+        /// <b>Only an undecorated <c>VARCHAR</c></b>, which is what <see cref="TryRenderedTextOperand"/>
+        /// and <see cref="StripTextCoercion"/> already held to. A width is a second conversion on top
+        /// of the rendering: measured, <c>VARCHAR(3)</c> truncates and <c>CHAR(8)</c> pads, and a
+        /// <c>CHAR</c> always carries one, a bare <c>CHAR</c> being <c>CHAR(1)</c>. Taken as an identity
+        /// it was dropped from the equality — <c>CAST(label AS VARCHAR(3)) = 'bik'</c> pushed as
+        /// <c>c.label = 'bik'</c> and lost the document storing <c>bikes</c>, which Calcite truncates
+        /// and keeps — and the partition-key extractor routed the same statement over
+        /// <c>category</c> to a partition named <c>bik</c>, which holds nothing. Unlike the width on a
+        /// <c>RETURNING</c>, which the same measurement found no run time applying — see
+        /// <see cref="IsRenderedDocumentValue"/>.
+        /// </para>
         /// </remarks>
         internal static RexNode? TryTextCastValue(RexNode node)
         {
@@ -1585,8 +1600,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (call.getOperands().size() != 1)
                 return null;
 
-            var target = call.getType()?.getSqlTypeName();
-            if (target != SqlTypeName.VARCHAR && target != SqlTypeName.CHAR)
+            var type = call.getType();
+            if (type?.getSqlTypeName() != SqlTypeName.VARCHAR || type.getPrecision() != org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED)
                 return null;
 
             var operand = Operand(call, 0);

@@ -143,6 +143,11 @@ This is the spelling to use for numbers that are stored as numbers.
 string `'text'` when no other JSON value renders as that text — so the cast is dropped and the
 equality sent. This is what keeps a view's text columns filterable.
 
+Only a `VARCHAR` with no length. `CAST(x AS VARCHAR(3))` truncates and `CHAR(8)` pads, so
+`CAST(x AS VARCHAR(3)) = 'bik'` is true of a stored `'bikes'` and is evaluated in process; the service
+is sent only what it implies. The same holds for routing: a sized cast over the partition key does not
+route (8.5).
+
 ### `CAST` to a number: a bound, then a recheck
 
 `CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, `30.7` becomes
@@ -359,7 +364,7 @@ documents it has to read.
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
-| `CAST` to a sized or numeric type in a projection | it converts, and the service would not |
+| `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |

@@ -22,7 +22,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text, one leading and/or trailing `%` |
 | `CASE` | nested `? :` | |
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |
-| `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only |
+| `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only, in both: a length truncates |
 | `CAST(x AS <number>)` | a bound plus recheck in a filter; in process in a projection | Chapter 8 |
 | `CAST(x AS UUID)`, parse to `TIMESTAMP`/`DATE` | the path, where the container declares the stored form | Chapters 14, 15 |
 | `arr[n]` | `arr[n-1]` | SQL is one-based |

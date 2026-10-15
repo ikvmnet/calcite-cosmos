@@ -78,6 +78,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Translate(inequality).Should().Be("(IS_DEFINED(c.name) AND NOT IS_NULL(c.name) AND (c.name != @p0))", "and a WHERE reads truth alone");
         }
 
+        /// <remarks>
+        /// A width is a conversion on top of the rendering: <c>VARCHAR(3)</c> truncates and <c>CHAR(8)</c> pads.
+        /// Taken as an identity it was dropped from the equality, so <c>CAST(label AS VARCHAR(3)) = 'bik'</c> pushed
+        /// as <c>c.label = 'bik'</c> and lost the stored <c>bikes</c>, and the partition-key extractor routed the same
+        /// statement over the category to a partition named <c>bik</c>. Only the undecorated cast is the rendering.
+        /// </remarks>
+        [Fact]
+        public void ACastToTextWithAWidthIsNotTheRendering()
+        {
+            var label = Text("$.label", Ref(2, SqlTypeName.VARCHAR));
+
+            CosmosRexTranslator.TryTextCastValue(Cast(label, SqlTypeName.VARCHAR, 3)).Should().BeNull();
+            CosmosRexTranslator.TryTextCastValue(Cast(label, SqlTypeName.CHAR, 8)).Should().BeNull();
+            CosmosRexTranslator.TryTextCastValue(_rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true), SqlStdOperatorTable.CAST, Of(label)))
+                .Should().BeSameAs(label);
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, Cast(label, SqlTypeName.VARCHAR, 3), Str("bik"))).Should().BeFalse();
+        }
+
     }
 
 }
