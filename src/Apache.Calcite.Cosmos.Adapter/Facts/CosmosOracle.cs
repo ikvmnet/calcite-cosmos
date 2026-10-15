@@ -203,6 +203,12 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactTheory Theory => _theory;
 
         /// <summary>
+        /// Gets or sets, for a checker, the stratum a conjunct is handed to the renderer from in a round, given the round's:
+        /// the round's own where it is <c>null</c>, which is every oracle but one a test plants a fault in to be caught.
+        /// </summary>
+        internal Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? RenderedFrom { get; init; }
+
+        /// <summary>
         /// Admits a statement's conjuncts stratum by stratum, and returns the scope its questions are asked of.
         /// </summary>
         /// <remarks>
@@ -224,7 +230,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (statement is null)
                 throw new ArgumentNullException(nameof(statement));
 
-            return new CosmosStatementScope(Terms(statement), statement, renders);
+            return new CosmosStatementScope(Terms(statement), statement, renders, RenderedFrom);
         }
 
         /// <summary>
@@ -326,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly StatementTerms.Node _final;
         readonly List<StatementTerms.Node> _chain = new();
 
-        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders)
+        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
         {
             _terms = terms;
             Statement = statement;
@@ -343,10 +349,9 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 for (var round = 1; node.Contradictory == false; round++)
                 {
-                    var view = node.View;
                     var added = new List<int>();
                     for (var i = 0; i < count; i++)
-                        if (_round[i] == 0 && renders(i, view))
+                        if (_round[i] == 0 && renders(i, (renderedFrom?.Invoke(terms, node, statement.Conjuncts[i]) ?? node).View))
                             added.Add(i);
 
                     if (added.Count == 0)
@@ -465,6 +470,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Determines whether the facts a licence admits admit no document: whatever the question, nothing is kept.
         /// </summary>
         public bool IsContradictory(OracleLicence licence) => ScopeFor(licence).Contradictory;
+
+        /// <summary>
+        /// Returns the context a licence's questions are read from, and the rules it ran, for a checker that reads every row
+        /// of it rather than asking: the context is <c>null</c> where nothing is known, or nothing is kept.
+        /// </summary>
+        internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Scope, _terms.Rules);
 
         /// <summary>
         /// Decides a predicate given others assumed beside the declaration: "if these hold, does this?"
@@ -626,6 +637,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// terms; a question asked of it is answered in a child made for the question.
         /// </summary>
         public Node Root { get; }
+
+        /// <summary>
+        /// Gets the rules the contexts run, or <c>null</c> where the declaration could not be compiled.
+        /// </summary>
+        internal PredicateRules? Rules => _rules;
 
         /// <summary>
         /// Returns the child of a context that assumes these predicates beside what it holds, made the first time it is

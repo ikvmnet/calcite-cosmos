@@ -136,15 +136,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             DefineSplit();
             DefineDecide();
 
+            ScheduleWith(ByArm);
+        }
+
+        /// <summary>
+        /// Schedules the rules around a split over a junction's arms: <see cref="ByArm"/>, or, in a graph a checker owns, a
+        /// variant of it planted to be caught.
+        /// </summary>
+        /// <param name="arms">The split over arms.</param>
+        internal void ScheduleWith(SplitRule arms)
+        {
+            var json = Json;
+
             // A question pays for the rules of JSON, JSON Schema and what predicates establish on every iteration, and
             // for the verdicts once, after the facts have settled. Arms split before discriminators, two deep: a
             // disjunction spelled per kind lifts the kinds its arms name, and a discriminator then opens a case only for
             // each of those, where split together it opened one for every kind the declaration has. Within an arm both
             // may split again; within a discriminator's case only a discriminator, as JsonRules.QuerySaturation does.
             var settle = Schedule.Saturate(json.Json, json.JsonSchema, Analyse, Establish);
-            var inArm = Schedule.Saturate(settle, Schedule.Split(ByArm, settle), Schedule.Split(json.QuerySplit, settle));
+            var inArm = Schedule.Saturate(settle, Schedule.Split(arms, settle), Schedule.Split(json.QuerySplit, settle));
             var inDiscriminator = Schedule.Saturate(settle, Schedule.Split(json.QuerySplit, settle));
-            QuerySaturation = Schedule.Saturate(settle, Schedule.Split(ByArm, inArm), Schedule.Split(json.QuerySplit, inDiscriminator));
+            QuerySaturation = Schedule.Saturate(settle, Schedule.Split(arms, inArm), Schedule.Split(json.QuerySplit, inDiscriminator));
             Saturation = Schedule.Sequence(QuerySaturation, Schedule.Saturate(Decide));
 
             // A context that assumes nothing learns nothing a split could prove that its parent's split has not lifted:
@@ -254,16 +266,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// The rules of JSON, of JSON Schema, of analysis and of what predicates establish, saturated, with the theory's
         /// split on relevant discriminators and this split over arms, two deep.
         /// </summary>
-        public Schedule QuerySaturation { get; }
+        public Schedule QuerySaturation { get; private set; } = null!;
 
         /// <summary><see cref="QuerySaturation"/>, then the verdicts to saturation.</summary>
-        public Schedule Saturation { get; }
+        public Schedule Saturation { get; private set; } = null!;
 
         /// <summary>
         /// What a context that assumes nothing runs: the rules of JSON and of analysis over its new terms, without a
         /// split, then the verdicts. A question asked of a frozen context is answered in one.
         /// </summary>
-        public Schedule Answer { get; }
+        public Schedule Answer { get; private set; } = null!;
 
         void DefineAnalysis()
         {
