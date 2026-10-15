@@ -357,6 +357,32 @@ fails at implementation (K).
 `IS_PRIMITIVE` in the position that needs a guard. It is declined and weakened as before; pushing it
 is an addition the corpus would have to show agrees, not part of the repair.
 
+*Settled by the review of those fixes,* which swept their neighbours on the fixed branch and on `main`:
+a comparison read as a value rather than for its truth (projected, grouped by, or the operand of another
+comparison) is declined where Calcite types it nullable; a cast to text with a width is no longer taken
+as the rendering, by the comparison or by the fact and partition-key extractors; a rendering inside a
+`VARIANT` box is seen through by the comparison, `LIKE` and the null test; a grouping key or `DISTINCT`
+column read as text pushes only over a declared string; `+ - * %` in a decimal fraction is declined; a
+text `JSON_VALUE` is no longer a document an accessor addresses through; and a field bound to a typed
+accessor carries its type test. `DESIGN.md` records each. What that leaves, each a recovery rather than
+a repair:
+
+- **Grouping by text over a path nothing declares** — *medium*. A value has one rendering, so the
+  groups by value refine the groups by rendering: push the grouping by the guarded value, read each key
+  back as text, and finish by rendering in process, re-aggregating the partials the way
+  `CosmosAggregateSplitRule` finishes a grouping set. That would recover every `GROUP BY` and
+  `DISTINCT` over `JSON_VALUE` the decline costs, which in the differential corpus is seven statements.
+- **`COALESCE(JSON_VALUE(x), 'lit') = 'unambiguous'`** — *small*. The equality never reaches the case
+  where the fallback and a rendering could be confused, so with the accessor's null test it could push
+  exactly. Corpus cases over each JSON type in `typed` first.
+- **A comparison read as a value** — *small*. An ordering against a constant measured right — the
+  service's ordering across types is undefined over a null and reads back null — and the others could
+  be written under a ternary on their operands' null sets. Neither is worth a second rule until a
+  projected comparison is a shape someone writes.
+- **Integer overflow** — *a decision, recorded*. Pushed, and computed rather than wrapped; see
+  *Verified against the emulator* in `DESIGN.md`. A declared numeric range could prove an integer sum
+  fits, and let the adapter decline only the arithmetic that might not.
+
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say
 `JSON_QUERY` is `VARCHAR(2000)` whatever it is asked for and can never be an unnest source; that was

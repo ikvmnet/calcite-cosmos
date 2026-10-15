@@ -4228,6 +4228,15 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   rest belong to the point read, the lookup join and `DISTINCT`, and `TODO.md` carries them. The
   lesson is the one the subscript taught: sweep the shapes, do not wait for the reports.
 
+  A second review swept the neighbours of those fixes the same way — 147 statements, each run on the
+  fixed branch and on `main` — and found every fix holding and some thirty further statements wrong on
+  both, none of them new: a predicate read as a value, a cast to text with a width, a rendering grouped by
+  or inside a `VARIANT` box, arithmetic in a decimal fraction, integer overflow, and an accessor
+  reading through a rendering. All but the overflow were then fixed, and their statements are in the
+  corpus under the names that review gave them, beside the controls that say each shape still
+  pushes where it agrees; the overflow is a decision, recorded under *Verified against the
+  emulator*.
+
 ---
 
 ## Design Constraints

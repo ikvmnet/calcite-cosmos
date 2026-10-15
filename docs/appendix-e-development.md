@@ -82,7 +82,10 @@ that ran 31 ordinary statements one step from it found 21 that answered wrongly 
 none. Those statements are kept in it, named `P1` to `P27` after the review, beside what was found while
 fixing them. When adding a pushdown, add the statements that put every JSON type at the path it reads —
 the `typed` container holds one per document for that — and its negation, its null test, and the same
-expression inside a `CASE`.
+expression inside a `CASE`. Then read it as a value as well as a truth: selected, grouped by, and
+compared with `FALSE`, since a `WHERE` cannot tell false from unknown and a column can. A second
+review of the fixes, sweeping exactly those neighbours, found some thirty more; they are in the corpus
+under the names it gave them.
 
 ### Measurements
 
