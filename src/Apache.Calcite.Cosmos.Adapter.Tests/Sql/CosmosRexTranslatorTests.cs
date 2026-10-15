@@ -299,6 +299,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// A <c>CASE</c> under a negation has its arms written negated, its value being theirs, and its
+        /// conditions written in the positive position, because a condition selects an arm and SQL and
+        /// the service both take the next arm for one that is not true. The condition here was written
+        /// as though the <c>NOT</c> applied to it: the inequality unguarded, true over a null, so the
+        /// then arm was taken where SQL takes the else. Measured, it kept a document SQL discards.
+        /// </para>
+        /// <para>
+        /// The equality beside it the same way round: under the <c>NOT</c> it took the guard that makes
+        /// it true over a null, which selected the then arm for a null where SQL selects the else.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACaseConditionIsWrittenInThePositivePositionUnderANegation()
+        {
+            var condition = Call(SqlStdOperatorTable.NOT_EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+            var then = Call(SqlStdOperatorTable.EQUALS, Ref(1, SqlTypeName.INTEGER), Num(1));
+            var otherwise = Call(SqlStdOperatorTable.EQUALS, Ref(1, SqlTypeName.INTEGER), Num(6));
+
+            Translate(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.CASE, condition, then, otherwise)))
+                .Should().Be("(NOT ((IS_DEFINED(c.name) AND NOT IS_NULL(c.name) AND (c.name != @p0)) ? ((c.price = @p1) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price)) : ((c.price = @p2) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price))))");
+
+            var equality = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            Translate(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.CASE, equality, then, otherwise)))
+                .Should().StartWith("(NOT ((c.name = @p0) ? ");
+        }
+
+        /// <remarks>
         /// A conjunction under a negation has both arms written negated, which is what lets
         /// <c>NOT (x = 1 AND y = 2)</c> keep its row where <c>x</c> is null and <c>y</c> is not 2 --
         /// unknown AND false is false, and its negation is true. Guarding the negation as a whole

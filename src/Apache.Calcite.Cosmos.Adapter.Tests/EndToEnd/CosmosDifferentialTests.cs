@@ -828,6 +828,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", false),           // P6
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) = 5)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 5)", false),
+
+            // A CASE condition under a NOT (C). The condition selects an arm, so it is a positive
+            // position whatever encloses the CASE, and it was written in the NOT's: the inequality
+            // unguarded and the equality guarded the wrong way, each taking the then arm for the
+            // null category where SQL takes the else.
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)", false),  // P7
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" <> '6' END)", false),  // P9
         ];
 
         /// <summary>

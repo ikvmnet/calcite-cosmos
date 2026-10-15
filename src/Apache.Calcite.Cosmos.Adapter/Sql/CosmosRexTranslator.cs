@@ -1080,6 +1080,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // The position a NOT puts its operand in belongs to predicates, and only the connectives
+            // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
+            // here, once, rather than by each writer remembering to.
+            var position = _negated;
+
+            if (CarriesPosition(KindOf(call)) == false)
+                _negated = false;
+
+            try
+            {
+                WriteCallKind(builder, call);
+            }
+            finally
+            {
+                _negated = position;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a call passes the position it is written in on to its operands, or
+        /// reads it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A position is a property of a predicate, and only a connective has a predicate for an
+        /// operand.</b> <c>AND</c> and <c>OR</c> pass it to both arms and <c>NOT</c> flips it, which is
+        /// what lets the guard compose; a comparison and a truth test read it, and write their own
+        /// operands as values. A <c>CASE</c> passes it to its arms, whose value is its value, and not
+        /// to its conditions, which select an arm. SQL takes the next arm for any condition that is not
+        /// true, and so does the service — the differential corpus's <c>CASE WHEN category = 'bikes'
+        /// THEN 1 ELSE 0 END</c> answers 0 for the document with no category, whose condition is
+        /// undefined there — so a condition has to be true exactly where SQL's is, which is the
+        /// positive position whatever encloses the <c>CASE</c>.
+        /// </para>
+        /// <para>
+        /// <b>Everything else writes a value, and a value has no position.</b> This was the rule the
+        /// field's own remark stated, and only the comparison and the truth test kept it: a
+        /// <c>CASE</c> condition, the operand of <c>IS NULL</c> and a function's argument were each
+        /// written in the position of the <c>NOT</c> above them. Measured against the emulator,
+        /// <c>NOT (CASE WHEN category &lt;&gt; 'bikes' THEN …)</c> took the then arm for a null
+        /// category, its condition written unguarded as though negated, where SQL takes the else; so
+        /// did the same <c>CASE</c> over <c>=</c>, guarded the wrong way; and
+        /// <c>NOT COALESCE(category &lt;&gt; 'bikes', FALSE)</c> lost the null category.
+        /// </para>
+        /// </remarks>
+        static bool CarriesPosition(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.AND or SqlKind.__Enum.OR or SqlKind.__Enum.NOT or SqlKind.__Enum.CASE
+                or SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS
+                or SqlKind.__Enum.LESS_THAN or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN or SqlKind.__Enum.GREATER_THAN_OR_EQUAL
+                or SqlKind.__Enum.IS_TRUE or SqlKind.__Enum.IS_FALSE
+                or SqlKind.__Enum.IS_NOT_TRUE or SqlKind.__Enum.IS_NOT_FALSE;
+        }
+
+        /// <summary>
+        /// Writes a call by its kind, once the accessors have been taken out.
+        /// </summary>
+        void WriteCallKind(StringBuilder builder, RexCall call)
+        {
             switch (KindOf(call))
             {
                 case SqlKind.__Enum.EQUALS:
@@ -2595,7 +2655,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// See <see cref="WriteComparison"/>. The boolean connectives pass it through -- negating a
         /// conjunction negates the position of both its arms -- and everything else clears it, because
-        /// the position of a value is not the position of a predicate.
+        /// the position of a value is not the position of a predicate. Cleared in one place,
+        /// <see cref="WriteCallCore"/>, for every call <see cref="CarriesPosition"/> does not name.
         /// </remarks>
         bool _negated;
 
@@ -3647,18 +3708,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var depth = 0;
 
-            for (var i = 0; i + 1 < operands.size(); i += 2)
-            {
-                builder.Append('(');
-                Write(builder, (RexNode)operands.get(i));
-                builder.Append(" ? ");
-                Write(builder, (RexNode)operands.get(i + 1));
-                builder.Append(" : ");
-                depth++;
-            }
+            // The arms are in the position the CASE is in, and the conditions in the positive one --
+            // see CarriesPosition.
+            var position = _negated;
 
-            Write(builder, (RexNode)operands.get(operands.size() - 1));
-            builder.Append(')', depth);
+            try
+            {
+                for (var i = 0; i + 1 < operands.size(); i += 2)
+                {
+                    builder.Append('(');
+
+                    _negated = false;
+                    Write(builder, (RexNode)operands.get(i));
+                    _negated = position;
+
+                    builder.Append(" ? ");
+                    Write(builder, (RexNode)operands.get(i + 1));
+                    builder.Append(" : ");
+                    depth++;
+                }
+
+                Write(builder, (RexNode)operands.get(operands.size() - 1));
+                builder.Append(')', depth);
+            }
+            finally
+            {
+                _negated = position;
+            }
         }
 
         /// <summary>

@@ -2302,6 +2302,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.price)");
         }
 
+        /// <summary>
+        /// A <c>CASE</c> condition under a <c>NOT</c> is written in the positive position.
+        /// </summary>
+        /// <remarks>
+        /// The condition selects an arm, and both SQL and the service take the next arm for a condition
+        /// that is not true, so it has to be true exactly where SQL's is, whatever encloses the
+        /// <c>CASE</c>. It was written in the position of the <c>NOT</c> above it, the inequality
+        /// unguarded and so true over the null category: the then arm was taken where SQL takes the
+        /// else, and measured against the emulator the document was kept. The arms stay in the
+        /// <c>NOT</c>'s position, which is where their value is negated.
+        /// </remarks>
+        [Fact]
+        public void ACaseConditionUnderANegationIsWrittenPositively()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)"))
+                .Should().EndWith("WHERE (NOT ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? ((c.id = @p1) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id)) : ((c.id = @p2) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id))))");
+        }
+
         // ── The comparisons over a text accessor ──────────────────────────────────────
         //
         // JSON_VALUE read as text renders the value at the path and Calcite compares that rendering;
