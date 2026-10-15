@@ -77,6 +77,13 @@ with the adapter's rules, once with every pushdown disabled so Calcite evaluates
 — and both run against the same container. Equal rows, or a defect. Every new pushdown should bring its
 statements to the corpus.
 
+A corpus grown only from the defects already found says little about the ones not yet found: a review
+that ran 31 ordinary statements one step from it found 21 that answered wrongly while the corpus had
+none. Those statements are kept in it, named `P1` to `P27` after the review, beside what was found while
+fixing them. When adding a pushdown, add the statements that put every JSON type at the path it reads —
+the `typed` container holds one per document for that — and its negation, its null test, and the same
+expression inside a `CASE`.
+
 ### Measurements
 
 Tests under `Measurements/` assert what Calcite, IKVM or the service does — not what the adapter does.

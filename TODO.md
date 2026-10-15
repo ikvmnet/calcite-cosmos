@@ -343,6 +343,20 @@ accessor, which is the spelling every typed caller writes and which had been pus
 did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
 proof, and a sort still has no weakening to fall back on if one is found.
 
+*Settled by the soundness review's probes:* the operators *beneath* a comparison, and the null test.
+`UPPER(label) = 'TRUE'`, a concatenation, a length and a `CASE` arm each read the rendering as a value,
+and a string function is undefined at the service over the number the accessor renders as text; they
+are declined unless the container declares the path a string. `IS NULL` and a negated equality take the
+accessor's null set rather than the path's. `DESIGN.md` records both under *Expression translation*.
+Still open from the same probes, and outside the translator: a point read and a batch of them ignore
+`DISTINCT` (H); the lookup join compares a key's rendering against the raw value (I); `SELECT DISTINCT`
+binds its keys to paths where the aggregate binds null (J); and an `UNNEST` probe under a lookup join
+fails at implementation (K).
+
+`<>` over the accessor against unambiguous text could now push exactly, guarded by
+`IS_PRIMITIVE` in the position that needs a guard. It is declined and weakened as before; pushing it
+is an addition the corpus would have to show agrees, not part of the repair.
+
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say
 `JSON_QUERY` is `VARCHAR(2000)` whatever it is asked for and can never be an unnest source; that was

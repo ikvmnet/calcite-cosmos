@@ -2218,7 +2218,8 @@ what it needs — its column is the fragment *as text*, produced by the reading 
 and nested there is no reading to do it.
 
 **Scoped to a projection.** A filter compares the raw value the service holds on purpose, which is
-what `CosmosFilterSplitRule` and `WriteComparand` are built on and is not in question here.
+what `CosmosFilterSplitRule` and `WriteComparand` are built on — for the comparison itself. What an
+operator *beneath* a comparison makes of the value is the question below, and it is the same in both.
 
 **One exception, and a test found it rather than the reasoning.** A geography function's operand is an
 *address*, not a value: a stored geography is a GeoJSON object and
@@ -2226,6 +2227,45 @@ what `CosmosFilterSplitRule` and `WriteComparand` are built on and is not in que
 exactly the documents that have one and the pushdown would answer nothing.
 `ASortOverADistanceRendersTheExpression` failed the moment the guard went in, and `WriteCall` holds it
 back for that family.
+
+**The guard settles objects and arrays, and a value is more than that.** The last three rows above
+were rendered guarded after #131, and all three were still wrong for a number and a boolean — two
+answering null, the third failing the read. The accessor renders a stored `30` as the text `30` and a
+`true` as `true`; the guarded path hands the service the number and the boolean themselves, and the
+service's string functions are undefined over either. Measured against the emulator over the
+differential corpus's `typed` container, which holds one JSON type per document at `label`:
+
+| statement | Calcite | pushed |
+| --- | --- | --- |
+| `SELECT UPPER(label)` | `30`, `TRUE` | null, null |
+| `SELECT label \|\| '!'` | `30!`, `true!` | null, null |
+| `WHERE UPPER(label) = 'TRUE'` | document 3 | nothing |
+| `WHERE CHAR_LENGTH(label) = 2` | document 2 | nothing |
+| `WHERE CASE WHEN … THEN label ELSE 'z' END = '30'` | document 2 | nothing |
+| `SELECT COALESCE(label, 'none')` | `30`, `true` | the read failed: *Expected a JSON string* |
+
+The filter rows are the same gap from the other side. `WriteComparand` asks whether its *operands* are
+renderings, and the rendering was one call further down, so `UPPER(c.label) = @p0` went to the service
+whole.
+
+**So the question is asked of the edge, once.** `RequireRenderingsReadAsRenderings` walks the
+expression before anything is written and refuses a rendering wherever what reads it is not told it is
+reading one. Told are a comparison, which reasons about which documents a rendering matches; a null
+test, which asks only whether there is one; `LIKE`, which refuses a rendering subject on its own
+terms (#84 had taught it this and nothing else); a cast that names the raw value or that a stored
+boolean proves; and the geography, full text, vector and type-test functions, which take the path as
+an address. A cast that converts nothing hands its operand on to whatever encloses it. Everything else
+— a string function, arithmetic, the arm of a `CASE` — is refused, and a new operator is refused until
+it is told, which is the direction a mistake should fall in.
+
+**A string is its own rendering.** Where what is known of the container says the path holds a string or
+nothing, the value the service hands on is the text Calcite renders, and every operator agrees over
+it: over a declared string `UPPER(label)` projects and filters at the service exactly as it did. A
+plain `JSON_QUERY` never qualifies, being null for a string, and its equality is never exact either.
+Over a container that declares nothing this is a loss of pushdown by design, and the planner corpus's
+`Project.Arithmetic` left the wholly-pushed list for it: the arithmetic and the accessor still go
+down, and the fold is Calcite's. `CosmosDeclaredFactPlanningTests.Renderings` pins each declared case
+beside its undeclared control.
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -2250,19 +2290,27 @@ than a conversion — `WriteComparand` reads one to decide what an equality comp
 `CosmosFilterSplitRule` writes one to say the comparison is against the raw value — so stripping those
 would have quietly pushed equalities the filter side declines on purpose.
 
-The guard composes through it, and the expansion names the accessor three times, so it is written
-three times:
+The null test is the accessor's own null set, said over the path — see *What an accessor reads, stated
+once* — and the asserted branch carries the guard:
 
 ```
-SELECT VALUE { "a": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null))
-                      AND NOT IS_NULL((IS_PRIMITIVE(c.a) ? c.a : null)))
-                     ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) }
+SELECT VALUE { "a": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.tags))
+                     ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) }
 ```
 
-Verbose, and right in each case Calcite distinguishes: an absent path makes `IS_PRIMITIVE` undefined,
-so the ternary is undefined and `IS_DEFINED` is false; an object makes the ternary null, which
-`IS_NULL` catches; a JSON null is a primitive and is caught the same way; a scalar passes. All of
-them take the fallback exactly where `JSON_VALUE` answers null.
+It was written as the null test of the guarded value, three guards deep, which is right only by way of
+what the service does with a ternary whose condition is undefined — and the record has `IS_PRIMITIVE`
+over an absent path both false and undefined. Said over the path, `IS_DEFINED` answers the absent case
+before any type test is asked.
+
+**Over a text accessor nothing says holds a string, the coalesce no longer pushes whole**, because its
+branch hands the value out as a text column and the service sends a number as a number — measured, the
+read failed at the stored boolean. The split rule then pushes its pieces: the null test and the
+asserted branch, `CAST(JSON_VALUE(…)):VARCHAR(2000) NOT NULL`, each a column of its own, with the
+`CASE` above. A cast that differs only in nullability converts nothing, so `TranslateProjection` takes
+that column as the accessor's and reads it as text, and the coalesce runs in process over the values
+Calcite would have computed. The array coalesce and the one over a scalar `RETURNING` push whole, their
+branch being the value.
 
 #### An accessor over a literal is a constant
 
@@ -2284,6 +2332,91 @@ primitive, null otherwise. The path grammar is the one a document column is held
 descent or a filter is refused here as it is there, one grammar rather than two. The value is bound as
 a parameter in plain CLR form, so the service is sent the JSON the constant is and the column's own
 reading converts what comes back, exactly as for a path.
+
+#### What an accessor reads, stated once
+
+An accessor is null for more than an absent path and a JSON null, and what more depends on which
+accessor it is. `CosmosRexTranslator.ReadingTests` says it, as the service's type tests whose
+disjunction is true exactly where the reading answers a value:
+
+| reading | null where the path is absent, null, or | test |
+| --- | --- | --- |
+| `JSON_VALUE` read as text, or a field bound to one | an object or an array | `IS_PRIMITIVE` |
+| `JSON_VALUE` with a numeric or boolean `RETURNING` | any other type | `IS_NUMBER`, `IS_BOOL` |
+| `JSON_QUERY` with an array `RETURNING` | anything but an array | `IS_ARRAY` |
+| `JSON_QUERY`, plain, or a field bound to one | any scalar | `IS_OBJECT OR IS_ARRAY` |
+| the raw value — a promoted column, a field typed as itself, an accessor re-typed `ANY` | — | none |
+
+A typed `RETURNING` over another type is an error that SQL:2016 answers null for and Calcite raises
+over (ikvmnet/calcite-dotnet#120), so the test of the type is never a row the engine answers
+differently. Three writers read the line, and before this each stated it or did not for itself:
+
+- **The projection's guard**, `(test ? p : null)`, which was right all along — #131 put it on every
+  nested accessor.
+- **The null test.** `IS NOT NULL` over an accessor was `IS_DEFINED(p) AND NOT IS_NULL(p)`, the path's
+  null set and not the accessor's. Measured against the emulator, `JSON_VALUE(DOC, '$.metadata') IS NOT
+  NULL` kept the product whose `metadata` is an object, which Calcite does not return; over `typed`'s
+  `label`, `IS NOT NULL` gained the array and the object and `IS NULL` lost them, through a view's
+  column and inside a `COALESCE` as well. A planner test pinned the wrong rendering as right. It is now
+  `IS_DEFINED(p) AND NOT IS_NULL(p) AND IS_PRIMITIVE(p)`, and its complement for `IS NULL`.
+- **The guard a comparison takes where SQL's unknown has to be restored.** Under a `NOT` the comparison
+  has to be true wherever SQL's is unknown, so that the negation discards the row, and the guard named
+  the absent path and the null alone. Over an object the service's `=` is false and its negation
+  true: `NOT (label = 'bikes')` kept the array and the object, directly and under a negated `AND` and
+  `OR`. A typed `RETURNING` had the same gap, its `!=` restricted to the type in the positive position
+  and its `=` not under a `NOT`. The guard now adds `OR NOT test` per path, read from the operand that
+  named it, so a field cast to `ANY` — the raw value, named on purpose — keeps the path's null set.
+
+**Written so that it does not matter what the service says of a type test over an absent path.** The
+record has `IS_PRIMITIVE` there both false and undefined, and which it is has not been settled here. In
+every form above `IS_DEFINED`, which was measured, decides the absent case first: `NOT IS_DEFINED(p) OR
+…` is true and `IS_DEFINED(p) AND …` false whatever follows, so a type test is only ever asked of a
+value that is there.
+
+#### A position belongs to a predicate
+
+The translator tracks whether an odd number of `NOT`s encloses what it writes, because a comparison
+needs its guard in one position or the other — see *Residual type problems*. The position passes
+through the connectives and nothing else, and the field's own remark said so; only the comparison and
+the truth test cleared it. `WriteCallCore` now clears it once, for every call `CarriesPosition` does not
+name, and three things change with it.
+
+**A `CASE` passes it to its arms and not to its conditions.** An arm's value is the `CASE`'s value, so
+under a `NOT` it is negated with it. A condition selects an arm, and SQL and the service both take the
+next arm for a condition that is not true — the corpus's `CASE WHEN category = 'bikes' THEN 1 ELSE 0
+END` answers 0 at the service for the document with no category, whose condition is undefined there —
+so a condition has to be true exactly where SQL's is, which is the positive position whatever encloses
+it. Written in the `NOT`'s position, `NOT (CASE WHEN category <> 'bikes' THEN … ELSE … END)` left the
+inequality unguarded, true over the null category, and took the then arm where SQL takes the else.
+
+**`IS NULL` over a predicate is declined.** It asks where the predicate is unknown, and there is
+nothing at the service to ask: written positively, a comparison is guarded to be false wherever SQL's
+is unknown, which leaves the test nothing to find, and written bare the service's `!=` is true over a
+null. Measured, `(category <> 'bikes') IS NULL` kept neither the null category nor the absent one, and
+`NOT COALESCE(category <> 'bikes', FALSE)` — whose expansion is such a test — lost the null one. A
+stored boolean is a value and is tested as one.
+
+**A `CASE` observes absence.** Its else arm answers where a path it reads is absent, so it does not
+follow its paths into unknown — and two things assumed it did. The guard a comparison takes tests the
+paths the comparison reads, which says SQL's comparison is unknown exactly where one of them is null:
+`NOT (COALESCE(label, 'none') = 'x')` and `COALESCE(label, 'none') <> 'x'` each lost the null label and
+the absent one. And the split rule weakens a conjunct it cannot push to `IS_DEFINED` of its paths:
+`CASE WHEN category = 'bikes' THEN INITCAP(name) ELSE 'z' END = 'z'` became `IS_DEFINED(c.category) AND
+IS_DEFINED(c.name)` and lost the document with no category. They are one question, and
+`CosmosRexTranslator.ObservesAbsence` answers it for both: a `CASE`, `COALESCE` and `NULLIF` beside the
+null tests, the truth tests and the `IS_*` family. A comparison that needs the guard declines over an
+operand that observes absence; the positive equality needs none and is untouched.
+
+#### A quotient is a double at the service
+
+The service divides in doubles. SQL divides in the type of its operands, and Calcite truncates an
+integer quotient toward zero. Measured over `products`, whose prices are integers, `price / 2 = 2` lost
+the document priced 5 — 2 in process, 2.5 at the service — and `price / 3` projected failed the read at
+`113.33333333333333`, which is not the integer the plan declared. A division pushes only where Calcite
+types the quotient approximate. `TRUNC(a / b)` is the obvious rendering, and it would have to be shown
+to agree on negatives, past what a double holds and through the reader, for each integer type; it is
+declined instead, which costs the division and nothing else. `CosmosAggregate.CanImplement` made the
+same call for `AVG`, which an integer argument sends to `SUM` and `COUNT` with the division above.
 
 ### A projection that cannot be pushed is not a wall
 
@@ -3183,10 +3316,13 @@ assembled at run time is declined for all of them at once.
 scalar's text and null for an object or an array. Pushed as the bare path it returns the raw value,
 which the reader refuses where the plan declared `VARCHAR` — a number is not a string — so the
 statement threw for data the in-process plan renders as `30`. `IS_PRIMITIVE` is exactly SQL/JSON's
-line, true of a string, a number, a boolean and a JSON null and false of an object, an array and an
-absent property, so `(IS_PRIMITIVE(p) ? p : null)` with the `Text` reading means at the service what
-the function means in process, for every JSON type. A filter needs no guard: a comparison against an
-object is false at the service and null in process, and both drop the row.
+line, true of a string, a number, a boolean and a JSON null and false of an object and an array, so
+`(IS_PRIMITIVE(p) ? p : null)` with the `Text` reading means at the service what the function means
+in process, for every JSON type; over an absent property the record has it both false and undefined,
+and either way the column reads null. A filter's comparison needs no guard in the positive position: a
+comparison against an object is false at the service and null in process, and both drop the row.
+Everywhere that difference shows — a `NOT`, an `IS NULL` — it takes the accessor's null set; see
+*What an accessor reads, stated once*.
 
 **The gates that admit a document value ask for one, not for a type.** Three of them — the text cast
 and the numeric cast in a comparison, and the rendering in a projection — must spell *is this a value
@@ -3346,7 +3482,10 @@ incorrect plan, not a slow one.
     position is tracked and a guard emitted in whichever one needs it — see
     `CosmosRexTranslator.WriteComparison`. Tracking the position rather than guarding the negation is
     what makes it compose: `NOT (x = 1 AND y = 2)` keeps its row where `x` is null and `y` is not 2,
-    and a guard around the whole negation discarded it.
+    and a guard around the whole negation discarded it. Two things the guard rests on were learned
+    later and are under *Expression translation*: an accessor is null for more than the path is
+    (*What an accessor reads, stated once*), and the position belongs to the connectives' operands
+    and to nothing else (*A position belongs to a predicate*).
   - **A grouping key.** The service groups an absent property apart from a present-and-null one, and
     SQL has one `NULL`. The key is therefore grouped and projected as `IS_DEFINED(p) ? p : null`,
     which is SQL's reading of both — except for `id`, `_ts` and `_etag`, which the service guarantees
@@ -3948,6 +4087,15 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
 - **The corpus leans into the semantics that have bitten**: null against absent, `NOT` over both,
   grouping by a key some documents lack, `LIKE`'s shapes, and the aggregate forms. It needs the
   emulator and reports inconclusive without one, like every test that needs a service.
+- **Zero divergences said less than it looked.** A soundness review ran 31 statements one step from
+  the corpus through this same harness, against the emulator, and 21 answered wrong rows or values;
+  two more failed. None was exotic: `IS NOT NULL` over an accessor, a `NOT` over a text equality, a
+  `CASE` under a `NOT`, `UPPER` over a mixed-type path, an integer division. The corpus had never asked
+  them, because it was grown by hand from the defects already found. The translator's share, and the
+  point reads that agreed, are kept in the corpus, named `P1` to `P27` as the review named them, beside
+  the statements found while fixing them — so the oracle checks every one of them from now on. The
+  rest belong to the point read, the lookup join and `DISTINCT`, and `TODO.md` carries them. The
+  lesson is the one the subscript taught: sweep the shapes, do not wait for the reports.
 
 ---
 
@@ -4172,6 +4320,13 @@ and the argument case-insensitively, character for character, over ASCII. The re
 flag and says no more; the rewrite is confined to ASCII text so that nothing outside it is assumed,
 and the differential corpus is where the assumption would be caught — it has not yet run against an
 account with the rewrite in place.
+
+**What a type test says of an absent path.** The record disagrees with itself: one remark in the
+translator has `IS_PRIMITIVE` false there, this document had it undefined, and the operator table says
+only `IS_DEFINED` was measured. So no rendering depends on it. Every null test and guard that asks a
+type test names the absent case with `IS_DEFINED` first — see *What an accessor reads, stated once* —
+and the projection's `(IS_PRIMITIVE(p) ? p : null)` reads null either way. When it is measured it
+belongs here as a fact, and nothing should have to change.
 
 ---
 

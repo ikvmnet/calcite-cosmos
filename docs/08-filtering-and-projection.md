@@ -38,9 +38,10 @@ is sent, and the disjunction is rechecked in process.
 | --- | --- |
 | `=`, `<>`, `<`, `<=`, `>`, `>=` | the same operators (`<>` as `!=`) — subject to 8.3 |
 | `AND`, `OR`, `NOT` | the same, with guards that keep SQL's three-valued logic (8.4) |
-| `+`, `-`, `*`, `/`, `%`, unary `-` | the same |
-| `x IS NULL` | `(NOT IS_DEFINED(x) OR IS_NULL(x))` |
-| `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))` |
+| `+`, `-`, `*`, `%`, unary `-` | the same |
+| `/` | the same, where Calcite computes the quotient as a `DOUBLE`; an integer or `DECIMAL` division runs in process |
+| `x IS NULL` | `(NOT IS_DEFINED(x) OR IS_NULL(x))`, and over an accessor whatever else it reads as null (8.4) |
+| `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))`, likewise |
 | `x IN (a, b, c)`, `x BETWEEN a AND b` | equivalent comparisons — measured to cost exactly what the native forms cost |
 | `x LIKE 'abc%'` | `STARTSWITH(x, 'abc')` |
 | `x LIKE '%abc%'`, other patterns | Cosmos `LIKE` |
@@ -109,6 +110,22 @@ does all the work; the recheck is cheap. **If the container declares that the pa
 (Chapter 14), there is no second type to disagree about, the comparison is sent exactly, and nothing
 is rechecked — which also lets a row limit travel with it.
 
+**A function over `JSON_VALUE` runs in process unless the path is declared a string.** `UPPER`,
+`LOWER`, `||`, `CHAR_LENGTH`, `SUBSTRING` and the rest read the *text*, so `UPPER(JSON_VALUE(…))` is
+`'TRUE'` for a stored boolean and `'30'` for a stored number. The service's string functions are
+undefined over a number or a boolean, so the two would disagree for exactly those documents. The same
+goes for a `CASE` or `COALESCE` that passes the value on. The property itself is still extracted at
+the service, and only the function runs in process:
+
+```sql
+WHERE UPPER(JSON_VALUE(c."DOC", '$.status')) = 'OPEN'
+→ Cosmos:     … WHERE IS_DEFINED(c.status)
+  In process: UPPER(status) = 'OPEN'
+```
+
+Declaring the path a string (Chapter 14) sends the whole comparison: `WHERE (UPPER(c.status) = @p0)`.
+`UPPER(…) LIKE '%ABC%'` keeps its own rewrite (8.2), restricted to the strings and rechecked.
+
 ### `RETURNING`: exact
 
 A comparison through a typed accessor compares the stored value directly, and is exact:
@@ -159,6 +176,28 @@ Cosmos's comparisons are two-valued — `!=` against a null is true — and the 
 the statement means what SQL means, in either polarity. `NOT (x = 1 AND y = 2)` keeps a row where `x`
 is null and `y` is not 2, exactly as SQL does. You do not need to write anything for this; it is
 mentioned so that the guards in a generated statement are not a surprise.
+
+**Null means what the accessor reads as null.** `JSON_VALUE` is null for an object or an array as well
+as for a missing property and a JSON null, `JSON_QUERY` is null for anything that is not an object or
+an array, and a `RETURNING INTEGER` accessor is null for anything that is not a number. So `IS NULL`,
+`IS NOT NULL` and the guard under a `NOT` carry the accessor's own test:
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.metadata') IS NOT NULL
+→ WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_PRIMITIVE(c.metadata))
+
+WHERE NOT (JSON_VALUE(c."DOC", '$.label') = 'bikes')
+→ WHERE (NOT ((c.label = @p0) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label) OR NOT IS_PRIMITIVE(c.label)))
+```
+
+A `CASE` condition is evaluated as SQL selects an arm, whatever `NOT` encloses the `CASE`.
+
+Two shapes have no guard that would make them right, and run in process instead. `IS NULL` over a
+comparison — `(x <> 'a') IS NULL`, or `COALESCE(x <> 'a', FALSE)`, which expands to one — asks where
+the comparison is unknown, and the service has no unknown to find. And a comparison under a `NOT`, or
+an inequality, over a `CASE` or `COALESCE` — `NOT (COALESCE(x, 'none') = 'a')` — would be guarded on
+`x`, which the `COALESCE` does not follow into null. A comparison over one that needs no guard, such as
+a plain equality, is sent as before.
 
 `IS TRUE`, `IS FALSE`, `IS NOT TRUE` and `IS NOT FALSE` reach the service over a boolean column —
 `CAST(JSON_VALUE(…) AS BOOLEAN)` — where the container's schema says the path holds a boolean
@@ -239,6 +278,16 @@ process — the document is not shipped to supply one value.
 is read, by the same code Calcite would have used in process. The result is identical and the
 projection still pushes.
 
+**A function over `JSON_VALUE`, or a `COALESCE` or `CASE` passing one out, is computed in process
+unless the path is declared a string** (8.3). The property is still extracted at the service and
+rendered as text on the way back, so the document is not shipped:
+
+```sql
+SELECT UPPER(JSON_VALUE(c."DOC", '$.name')) AS "name" FROM "products" AS c
+→ Cosmos:     SELECT VALUE { "$f0": (IS_PRIMITIVE(c.name) ? c.name : null) } FROM products c
+  In process: UPPER($f0)
+```
+
 **A projection that would read as nothing is declined while planning.** A column of a SQL type the
 reader has no conversion for — an `INTERVAL`, an unsigned integer, a time with a time zone — is never
 sent: it is computed in process instead. Nothing reachable produces one today; the check exists so a
@@ -294,6 +343,10 @@ documents it has to read.
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection | it converts, and the service would not |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
+| a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
+| an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
+| `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
+| a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |
 | an array literal, `ARRAY['x', 'y']` | not rendered yet — so functions taking one stay in process too |
 | a relational join, `UNION`, `INTERSECT`, `EXCEPT` | no Cosmos equivalent (Chapter 12) |

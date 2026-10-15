@@ -879,6 +879,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 FROM products AS c", false),                 // P15
             ("SELECT c.\"id\", (0 - JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)) / 3 FROM products AS c", false),
             ("SELECT c.\"id\", c.\"_ts\" / CAST(2 AS DOUBLE) FROM products AS c", false),
+
+            // An equality over a view's JSON_QUERY column. The fragment's text against text is never
+            // the raw comparison -- the service's object equals no string, and the stored string
+            // 'bikes' is one JSON_QUERY answers null for -- and the filter rule pushed it as though it
+            // were the accessor's, which the implementor then refused: the plan failed where Calcite
+            // answers no rows.
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_QUERY(c.\"DOC\", '$.label') AS \"L\" FROM typed AS c) AS p WHERE p.\"L\" = 'bikes'", false),
+
+            // DISTINCT under a point read, single and batched. All three agreed when the review ran
+            // them, and are kept beside the batch it found duplicating a row: a key whose two
+            // documents share a value, which a ReadMany returns once per document.
+            ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),                     // P17
+            ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),                             // P20
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.category') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),  // P21
         ];
 
         /// <summary>

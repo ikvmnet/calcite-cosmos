@@ -13,9 +13,10 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | --- | --- | --- |
 | `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8 |
 | `AND` `OR` `NOT` | `AND` `OR` `NOT` | with null guards |
-| `+` `-` `*` `/` `%`, unary `-` | the same | |
-| `\|\|` | `CONCAT` | |
-| `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | |
+| `+` `-` `*` `%`, unary `-` | the same | |
+| `/` | `/` | a `DOUBLE` quotient only; an integer or `DECIMAL` division stays in process |
+| `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
+| `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |
 | `IN (…)`, `NOT IN (…)`, `BETWEEN` | comparisons | same cost as the native forms |
 | `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, literal pattern only |
 | `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text, one leading and/or trailing `%` |
@@ -31,6 +32,9 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `SIMILAR TO`, `REGEXP_LIKE` | — | in process; use `REGEXMATCH` for Cosmos regular expressions |
 
 ## B.2 String functions
+
+Over `JSON_VALUE`, each of these pushes only where the container declares the path a string: the
+function reads the text, which for a stored number or boolean is not what the service has (Chapter 8).
 
 | SQL | Cosmos | notes |
 | --- | --- | --- |
