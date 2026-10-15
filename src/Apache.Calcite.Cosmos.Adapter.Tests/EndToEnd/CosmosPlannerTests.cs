@@ -3571,6 +3571,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A disjunction inside a conjunction inside a disjunction implies only what every one of its
+        /// branches needs, however a host's rules have rewritten the negations around it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Review's probe, written as a double negation. A host that reduces expressions folds the
+        /// <c>NOT (NOT …)</c> away, and before bbb7a61 the walk then read the inner disjunction as
+        /// needing every branch: measured against the emulator, it pushed <c>IS_DEFINED</c> of the
+        /// name, the category and the sku, and kept two of the five documents it is true of. The
+        /// category and the sku are each read by one branch only, so what the branch needs is the name.
+        /// </para>
+        /// <para>
+        /// Pinned both ways: as written, through the host's rules this harness registers, and folded,
+        /// which is the form the reducing rule hands the split rule.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", true)]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", false)]
+        public void ADisjunctionInsideAConjunctionInsideADisjunctionNeedsOnlyItsCommonPaths(string inner, bool hostRewrites)
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND " + inner + ")",
+                hostRewrites);
+
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.price > @p0) OR IS_DEFINED(c.name))");
+        }
+
+        /// <summary>
         /// A null test Calcite has folded into a <c>SEARCH</c> is still a null test, and is not
         /// weakened.
         /// </summary>

@@ -1457,6 +1457,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' OR (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", false),
+
+            // Negations the disjunction fix closed beyond its own witnesses, as review wrote them, each
+            // losing rows as written before bbb7a61: a disjunction with a negated conjunction for a
+            // branch under a conjunct, which pushed the price and lost the shoe without one; a
+            // conjunction cast to text, which pushed the category and the sku and kept none of three;
+            // and the partitioning witness's shape with an IN holding a function, which kept none of
+            // three.
+            ("SELECT c.\"id\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST((c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') AS VARCHAR) = 'FALSE'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" IN ('bikes', INITCAP(JSON_VALUE(c.\"DOC\", '$.name'))) OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'B-2') AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A'))", false),
         ];
 
         /// <summary>
