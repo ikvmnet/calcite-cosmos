@@ -3477,6 +3477,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // A predicate's unknown is not a value the service can test for. Written as an operand it
+            // is written positively, and the positive form of a comparison is guarded to be false
+            // wherever SQL's is unknown -- which is what makes it right in a WHERE and what leaves
+            // nothing for IS NULL to find. Measured against the emulator,
+            // `(category <> 'bikes') IS NULL` kept neither the null category nor the absent one,
+            // both of which SQL keeps, and `(category = 'bikes') IS NOT NULL` kept the null one,
+            // the service's equality being false there. Unguarded it would be no better: the
+            // service's `!=` is true over a null. A stored boolean is a value, and is tested as one
+            // -- see TryStoredBoolean.
+            if (value is RexCall predicate && value.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN && TryStoredBoolean(predicate) is null)
+                throw new CosmosTranslationException("IS NULL over a predicate asks where it is unknown, and the service's comparisons are two-valued over a null where SQL's are not, so there is nothing at the service to test.");
+
             var operand = new StringBuilder();
             Write(operand, value);
             var text = operand.ToString();

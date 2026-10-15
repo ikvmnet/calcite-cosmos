@@ -2320,6 +2320,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 .Should().EndWith("WHERE (NOT ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? ((c.id = @p1) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id)) : ((c.id = @p2) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id))))");
         }
 
+        /// <summary>
+        /// <c>IS NULL</c> over a predicate stays in process, and so does the <c>COALESCE</c> that
+        /// expands to one.
+        /// </summary>
+        /// <remarks>
+        /// <c>COALESCE(p, FALSE)</c> is <c>CASE WHEN p IS NOT NULL THEN p ELSE FALSE END</c>, and the
+        /// service has no way to ask where <c>p</c> is unknown: its comparisons are two-valued over a
+        /// null where SQL's are not. Measured against the emulator,
+        /// <c>NOT COALESCE(category &lt;&gt; 'bikes', FALSE)</c> lost the document whose category is
+        /// null. Nothing restricts the read in its place, the predicate observing absence.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAPredicateStaysInProcess()
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE NOT COALESCE(c.\"$.category\" <> 'bikes', FALSE)");
+
+            Plan(best).Should().Contain("ClrCursorFilter", "the predicate is Calcite's to answer: " + Plan(best));
+            Render(FindCosmos(best)).Should().NotContain("WHERE", "and nothing it implies is pushed in its place: " + Render(FindCosmos(best)));
+        }
+
         // ── The comparisons over a text accessor ──────────────────────────────────────
         //
         // JSON_VALUE read as text renders the value at the path and Calcite compares that rendering;

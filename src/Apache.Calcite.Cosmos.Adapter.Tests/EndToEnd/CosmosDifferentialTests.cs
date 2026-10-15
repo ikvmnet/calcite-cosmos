@@ -835,6 +835,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // null category where SQL takes the else.
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)", false),  // P7
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" <> '6' END)", false),  // P9
+
+            // IS NULL over a predicate (D), which asks where it is unknown. The comparison written
+            // positively is false there, so nothing is left to find; COALESCE(p, FALSE) expands to one.
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') IS NULL", false),                  // P18
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" = 'bikes') IS NULL)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT COALESCE(c.\"$.category\" <> 'bikes', FALSE)", false),        // P8
         ];
 
         /// <summary>

@@ -363,6 +363,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("(IS_DEFINED(c.name) AND NOT IS_NULL(c.name))");
         }
 
+        /// <remarks>
+        /// <c>IS NULL</c> over a predicate asks where it is unknown, and nothing at the service says.
+        /// The comparison written positively is guarded to be false wherever SQL's is unknown, which
+        /// leaves the test nothing to find, and written bare its <c>!=</c> is true over a null.
+        /// Measured, <c>(category &lt;&gt; 'bikes') IS NULL</c> kept neither the null category nor the
+        /// absent one. So it is declined, and Calcite answers it.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAPredicateIsDeclined()
+        {
+            var inequality = Call(SqlStdOperatorTable.NOT_EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+            var equality = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NULL, inequality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, equality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.IS_NULL, equality))).Should().BeFalse();
+        }
+
         [Fact]
         public void LikeRenders()
         {
