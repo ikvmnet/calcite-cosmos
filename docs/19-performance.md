@@ -16,8 +16,8 @@ In rough order of how much they matter:
    the cheapest query. Keep the predicate to exactly those two equalities and the select list to
    document paths (Chapter 8).
 3. **Keep filters at the service.** Prefer predicates that render exactly (Chapter 8): comparisons on
-   `id`, `_ts`, `RETURNING` accessors, declared string paths. A predicate that does not render costs a
-   read of everything the rest of the predicate matches.
+   `id`, `_ts`, `RETURNING` accessors other than `DECIMAL`, declared string paths. A predicate that does
+   not render costs a read of everything the rest of the predicate matches.
 4. **Keep sorts and limits at the service.** Set `DefaultNullCollation = "LOW"`, sort on paths, and add
    composite indexes for multi-key sorts (Chapter 9). A bounded page that pushes reads a page; one that
    does not reads every matching document.

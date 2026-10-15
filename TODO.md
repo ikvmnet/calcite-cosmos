@@ -333,7 +333,9 @@ rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the numb
 comparison Calcite makes. The same disjunction serves the cast form. *Settled by measurement:*
 `RETURNING` a non-text type converts nothing in Calcite — it asserts the Java class and throws on
 disagreement — so a comparison through one pushes exactly,
-as it did, and needs no bound; `DESIGN.md` records the measurement. *Settled by the same measurement:* the
+as it did, and needs no bound; `DESIGN.md` records the measurement. **Except `DECIMAL`, which that
+measurement never put a string under:** it parses, and is now read as the cast it is (below).
+*Settled by the same measurement:* the
 other operators over the bare text accessor — `<>`, the ordering comparisons and `LIKE` — diverged in
 both directions over the `typed` container, and are now declined and weakened to the case the two
 agree on, `NOT IS_STRING(x) OR <comparison>`. The string case is exact, the rendering being the
@@ -342,6 +344,86 @@ accessor, which is the spelling every typed caller writes and which had been pus
 `DESIGN.md` records it under *Projecting a cast to text*. `ORDER BY` was measured alongside them and
 did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
 proof, and a sort still has no weakening to fall back on if one is found.
+
+*Settled by the soundness review's probes:* the operators *beneath* a comparison, and the null test.
+`UPPER(label) = 'TRUE'`, a concatenation, a length and a `CASE` arm each read the rendering as a value,
+and a string function is undefined at the service over the number the accessor renders as text; they
+are declined unless the container declares the path a string. `IS NULL` and a negated equality take the
+accessor's null set rather than the path's. `DESIGN.md` records both under *Expression translation*.
+Still open from the same probes, and outside the translator: a point read and a batch of them ignore
+`DISTINCT` (H); the lookup join compares a key's rendering against the raw value (I); `SELECT DISTINCT`
+binds its keys to paths where the aggregate binds null (J); and an `UNNEST` probe under a lookup join
+fails at implementation (K).
+
+`<>` over the accessor against unambiguous text could now push exactly, guarded by
+`IS_PRIMITIVE` in the position that needs a guard. It is declined and weakened as before; pushing it
+is an addition the corpus would have to show agrees, not part of the repair.
+
+*Settled by the review of those fixes,* which swept their neighbours on the fixed branch and on `main`:
+a comparison read as a value rather than for its truth (projected, grouped by, or the operand of another
+comparison) is declined where Calcite types it nullable; a cast to text with a width is no longer taken
+as the rendering, by the comparison or by the fact and partition-key extractors; a rendering inside a
+`VARIANT` box is seen through by the comparison, `LIKE` and the null test; a grouping key or `DISTINCT`
+column read as text pushes only over a declared string; `+ - * %` in a decimal fraction is declined; a
+text `JSON_VALUE` is no longer a document an accessor addresses through; and a field bound to a typed
+accessor carries its type test. `DESIGN.md` records each. What that leaves, each a recovery rather than
+a repair:
+
+- **Grouping by text over a path nothing declares** — *medium*. A value has one rendering, so the
+  groups by value refine the groups by rendering: push the grouping by the guarded value, read each key
+  back as text, and finish by rendering in process, re-aggregating the partials the way
+  `CosmosAggregateSplitRule` finishes a grouping set. That would recover every `GROUP BY` and
+  `DISTINCT` over `JSON_VALUE` the decline costs, which in the differential corpus is seven statements.
+- **`COALESCE(JSON_VALUE(x), 'lit') = 'unambiguous'`** — *small*. The equality never reaches the case
+  where the fallback and a rendering could be confused, so with the accessor's null test it could push
+  exactly. Corpus cases over each JSON type in `typed` first.
+- **A comparison read as a value** — *small*. An ordering against a constant measured right — the
+  service's ordering across types is undefined over a null and reads back null — and the others could
+  be written under a ternary on their operands' null sets. Neither is worth a second rule until a
+  projected comparison is a shape someone writes.
+- **Integer overflow** — *a decision, recorded*. Pushed, and computed rather than wrapped; see
+  *Verified against the emulator* in `DESIGN.md`. A declared numeric range could prove an integer sum
+  fits, and let the adapter decline only the arithmetic that might not.
+
+*Settled after that review,* by the review of the predicate oracle's gate: `RETURNING DECIMAL` parses a
+stored string — `"2"`, `" 2 "` and `"2.0"` are each 2 to it — where every other numeric and boolean
+`RETURNING` asserts its class (`CalciteJsonValueMeasurementTests`). It was written as the path, losing
+the strings at the service, and read by the fact extractor as the path holding the number, which over a
+declared string rewrote the filter to `FALSE`. It now addresses no path, and a comparison through it
+pushes the window a cast to a number pushes. The corpus gained a declared container and twenty
+statements, fourteen of which answered differently before. What that leaves:
+
+- **`RETURNING DECIMAL` over a path declared an integer** — *small*. The parse of a whole number is the
+  number, and the service keeps a stored integer exact at any size (*Verified against the emulator*), so
+  over a declaration that admits nothing else the accessor is the value at the path and could be written
+  as one: a column, a sort key, a grouping key, an exact comparison. A path declared `number` is not
+  enough — a stored `0.1` parses to the double's binary expansion, which `= 0.1` under `DECIMAL(10, 1)`
+  is false of, and the projected value carries it. The gate needs the facts, which `IsJsonAccessor` does
+  not have, so it is a reading beside the refusal rather than a hole in it. Measured over `declared`'s
+  `n` first. The same reading would make the clause a second spelling of the numeric-string lowering
+  (`CosmosFactRewriter.NumericAccessorOf`), which reads only the cast.
+- **`<>`, a negated equality, `IS NOT NULL`, and a literal with more digits than the clause** —
+  *small*. They push nothing, not even the `IS_DEFINED` every comparison implies, because
+  `CosmosFilterSplitRule.CollectPaths` finds no path in an accessor that addresses none. The last is
+  `RETURNING DECIMAL(10, 2) = 2.255`, where Calcite casts the value up to `DECIMAL(11, 3)` and the window
+  does not read through a cast to `DECIMAL`, so the container is read whole. Seeing through the parse to
+  the rendering there, as the window does, would recover all four.
+
+*Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
+literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
+bound loosened by one around 2^60 came back as 2^60 and `RETURNING BIGINT = 2^60 + 1` matched 2^60.
+`CosmosRexTranslator.TryGetExactNumberValue` now sends a whole number a double does not hold as a `long`,
+and a cast to `DOUBLE` reads no window from 2^52, where a stored integer and the literal each round by
+half a unit. A literal cast down to a `DECIMAL` its whole digits do not fit raises in Calcite on every row,
+and no window is read from it, where one answered nothing and a declared maximum rewrote it to `FALSE`.
+`declared` gained `v` and sixteen statements, ten of which answered differently before. What that leaves:
+
+- **A double's window past 2^52** — *small*. It states nothing there, which is sound. Loosening each side
+  by the double's unit in the last place at the bound, rather than by one, would recover it.
+- **A number no value serves** — *small, and rare*. A literal a hair from a whole number,
+  `2.9999999999999999`, or a whole number beyond a `long` the double does not hold, is declined, and a
+  bound of one is not stated; a parameter's value of one fails the execution. Sending the nearest double
+  on the side the comparison allows would serve a bound, though not an equality.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say
@@ -1691,11 +1773,12 @@ answers (F2–F4) are not the specification. The oracle covers stored forms, ext
 holds. Three bugs planted in what was added were each caught by it.
 
 **What is left, roughly in order of value.**
-- **A bound from a comparison on a typed path** — *small, once measured.* `c.price > 500` over a promoted
+- **A bound from a comparison on a typed path** — *small, half measured.* `c.price > 500` over a promoted
   `VARIANT`, or `JSON_VALUE(… RETURNING INTEGER) > 500`, states only that the path is there. A bound needs the
-  comparison to keep the stored number on its side of the constant. That is unmeasured for `RETURNING`'s
-  conversion, which may round or saturate, and for Calcite's ordering of two `VARIANT`s of different numeric
-  types.
+  comparison to keep the stored number on its side of the constant. For a `RETURNING` that asserts it is now
+  measured: it converts nothing, so a row it keeps holds a number on the comparison's side of the literal
+  (`EachNumericOrBooleanReturningAssertsItsClassButDecimal`). `DECIMAL` parses, and states its window already.
+  Calcite's ordering of two `VARIANT`s of different numeric types is still unmeasured.
 - **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the

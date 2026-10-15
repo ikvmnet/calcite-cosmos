@@ -81,7 +81,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 ## Behaviours that are correct but surprising
 
 - `JSON_VALUE` returns text, so `= '30'` matches the number 30 (Chapter 7).
-- `RETURNING` asserts a type rather than converting to it (Chapter 7).
+- `RETURNING` asserts a type rather than converting to it — except `DECIMAL`, which parses a stored
+  string, and is computed in process for that reason (Chapter 7).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).
 - Out-of-domain arithmetic (`SQRT(-1)`) fails the whole Cosmos statement rather than one row (Chapter 8).
 - A Cosmos query is not a snapshot: a long, paged read can see writes made while it runs. That is the

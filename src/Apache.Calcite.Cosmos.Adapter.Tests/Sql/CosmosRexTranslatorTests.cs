@@ -191,6 +191,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters[0].Value.Should().Be(1.5d);
         }
 
+        /// <summary>
+        /// An exact number is sent as a value the service compares as that number: a decimal where its double is it, or
+        /// is no whole number; a long where its double is another whole number; and nothing where neither serves.
+        /// </summary>
+        /// <remarks>
+        /// The service reads a decimal as a double and compares it with a stored integer exactly, so a decimal is wrong
+        /// only where its double is a whole number other than the literal — 2^53 + 1 reads as 2^53, and
+        /// <c>1.9999999999999999</c> as 2, either matching a document holding that. Measured against the emulator in the
+        /// differential corpus, over <c>declared</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData("30")]
+        [InlineData("0.1")]
+        [InlineData("2.5")]
+        [InlineData("9007199254740992")]
+        [InlineData("1152921504606846976")]
+        [InlineData("10000000000000000000")]
+        public void AnExactNumberItsDoubleServesIsSentAsADecimal(string number)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<decimal>()
+                .Which.Should().Be(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        [Theory]
+        [InlineData("9007199254740993", 9007199254740993L)]
+        [InlineData("1152921504606846977", 1152921504606846977L)]
+        [InlineData("-1152921504606846975", -1152921504606846975L)]
+        public void AWholeNumberItsDoubleMisreadsIsSentAsALong(string number, long exact)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<long>().Which.Should().Be(exact);
+
+            var t = Translator();
+            t.Translate(_rex.makeExactLiteral(new java.math.BigDecimal(number)));
+            _parameters.Parameters[0].Value.Should().BeOfType<long>().Which.Should().Be(exact);
+        }
+
+        [Theory]
+        [InlineData("1.9999999999999999")]
+        [InlineData("-2.9999999999999999")]
+        [InlineData("10000000000000000001")]
+        public void ANumberNoValueServesIsNotSent(string number)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeNull();
+            CanTranslate(Translator(), _rex.makeExactLiteral(new java.math.BigDecimal(number))).Should().BeFalse();
+        }
+
         /// <remarks>
         /// Cosmos has no date type and nothing declares whether a container stores dates as ISO
         /// strings or epoch numbers, so a temporal literal must not be guessed.
@@ -241,6 +287,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// Calcite divides in the type of its operands, truncating an integer quotient toward zero,
+        /// and the service divides in doubles. Measured, <c>price / 2 = 2</c> over an integer price
+        /// lost the document priced 5, and the same quotient projected failed the read as a fraction
+        /// where the plan declared an integer. Only an approximate quotient is the same at both ends.
+        /// </remarks>
+        [Fact]
+        public void OnlyAnApproximateQuotientRenders()
+        {
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.INTEGER), Num(2))).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.DECIMAL), Num(2))).Should().BeFalse();
+
+            Translate(Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.DOUBLE), _rex.makeApproxLiteral(new java.math.BigDecimal("2.0"))))
+                .Should().Be("(c.price / @p0)");
+        }
+
+        /// <remarks>
         /// Under the negation the equality has to be <em>true</em> over a null, so that the <c>NOT</c>
         /// above makes it false and the row is discarded -- which is what SQL's unknown does in either
         /// position. The service's equality over a null is false, so <c>NOT</c> alone would have kept
@@ -256,6 +318,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// Over a rendering the comparison is unknown wherever the rendering is null, and that is more
+        /// than an absent path and a JSON null: <c>JSON_VALUE</c> is null for an object and an array,
+        /// where the service's equality is false and its negation true. Measured over the typed
+        /// container, <c>NOT (label = 'bikes')</c> kept the array and the object, which Calcite does
+        /// not. So the guard the negated position takes is the reading's null set, which is what
+        /// <c>NOT IS_PRIMITIVE</c> adds.
+        /// </para>
+        /// <para>
+        /// The same comparison against the raw value, the cast to <c>ANY</c> naming it on purpose,
+        /// takes the path's null set alone: the raw object is a value the service compares, and it
+        /// is the value the comparison is about.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void NotOverAComparisonOfARenderingGuardsItsReadingsNullSet()
+        {
+            var inner = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, inner))
+                .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name) OR NOT IS_PRIMITIVE(c.name)))");
+
+            var raw = Call(SqlStdOperatorTable.EQUALS, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes"));
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, raw))
+                .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name)))");
+        }
+
+        /// <remarks>
         /// Two negations return the position to where it started, so the comparison is written plainly
         /// again. A guard applied to every negation rather than to the position made this keep both the
         /// null-valued document and the absent one, and the corpus said so.
@@ -267,6 +358,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var once = Call(SqlStdOperatorTable.NOT, inner);
 
             Translate(Call(SqlStdOperatorTable.NOT, once)).Should().Be("(NOT (NOT (c.name = @p0)))");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A <c>CASE</c> under a negation has its arms written negated, its value being theirs, and its
+        /// conditions written in the positive position, because a condition selects an arm and SQL and
+        /// the service both take the next arm for one that is not true. The condition here was written
+        /// as though the <c>NOT</c> applied to it: the inequality unguarded, true over a null, so the
+        /// then arm was taken where SQL takes the else. Measured, it kept a document SQL discards.
+        /// </para>
+        /// <para>
+        /// The equality beside it the same way round: under the <c>NOT</c> it took the guard that makes
+        /// it true over a null, which selected the then arm for a null where SQL selects the else.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACaseConditionIsWrittenInThePositivePositionUnderANegation()
+        {
+            var condition = Call(SqlStdOperatorTable.NOT_EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+            var then = Call(SqlStdOperatorTable.EQUALS, Ref(1, SqlTypeName.INTEGER), Num(1));
+            var otherwise = Call(SqlStdOperatorTable.EQUALS, Ref(1, SqlTypeName.INTEGER), Num(6));
+
+            Translate(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.CASE, condition, then, otherwise)))
+                .Should().Be("(NOT ((IS_DEFINED(c.name) AND NOT IS_NULL(c.name) AND (c.name != @p0)) ? ((c.price = @p1) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price)) : ((c.price = @p2) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price))))");
+
+            var equality = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            Translate(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.CASE, equality, then, otherwise)))
+                .Should().StartWith("(NOT ((c.name = @p0) ? ");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// The guard says SQL's comparison is unknown exactly where a path it reads is null, and through
+        /// a <c>CASE</c> that is not so: <c>CASE WHEN name = 'a' THEN 1 ELSE 0 END</c> is 0 where
+        /// <c>name</c> is absent, and its comparison is false there, not unknown. Guarded, the negated
+        /// equality was true over the absent path and the <c>NOT</c> discarded a row SQL keeps; the
+        /// guarded inequality was false there and discarded it too. So a comparison that needs the
+        /// guard declines over an expression that observes absence.
+        /// </para>
+        /// <para>
+        /// The equality in the positive position needs no guard and is untouched, which is the shape
+        /// the corpus has always carried.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AGuardedComparisonOverACaseIsDeclined()
+        {
+            var selected = Call(SqlStdOperatorTable.CASE,
+                Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("a")), Num(1), Num(0));
+
+            var equality = Call(SqlStdOperatorTable.EQUALS, selected, Num(1));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, equality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT_EQUALS, selected, Num(1))).Should().BeFalse();
+
+            Translate(equality).Should().Be("(((c.name = @p0) ? @p1 : @p2) = @p3)");
         }
 
         /// <remarks>
@@ -288,6 +436,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// A function over a rendering reads the rendering's text in Calcite and the stored value at
+        /// the service, which differ for a number and a boolean: <c>UPPER</c> of the text <c>true</c>
+        /// is <c>TRUE</c>, and of the boolean is undefined. Where nothing says the path holds a string
+        /// the function is declined, in a comparison as much as alone — the comparison asks of its own
+        /// operands whether they are renderings, and the rendering was one call further down.
+        /// </para>
+        /// <para>
+        /// The raw value, named by the cast to <c>ANY</c>, is the value and is not refused: that is the
+        /// spelling the split rule writes under a case fold, guarded to the strings.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFunctionOverARenderingIsDeclined()
+        {
+            var fold = Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR));
+
+            CanTranslate(TranslatorOverARendering(), fold).Should().BeFalse();
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.EQUALS, fold, Str("TRUE"))).Should().BeFalse();
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.CHAR_LENGTH, Ref(0, SqlTypeName.VARCHAR))).Should().BeFalse();
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))))
+                .Should().Be("UPPER(c.name)");
+
+            Translate(fold).Should().Be("UPPER(c.name)", "and a field read as its own type is not a rendering");
+        }
+
+        /// <remarks>
         /// SQL has one null; Cosmos distinguishes absent from present-and-null. Both states must
         /// be tested or a filter would miss documents that simply lack the property.
         /// </remarks>
@@ -303,6 +479,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             Translate(Call(SqlStdOperatorTable.IS_NOT_NULL, Ref(0, SqlTypeName.VARCHAR)))
                 .Should().Be("(IS_DEFINED(c.name) AND NOT IS_NULL(c.name))");
+        }
+
+        /// <remarks>
+        /// <c>IS NULL</c> over a predicate asks where it is unknown, and nothing at the service says.
+        /// The comparison written positively is guarded to be false wherever SQL's is unknown, which
+        /// leaves the test nothing to find, and written bare its <c>!=</c> is true over a null.
+        /// Measured, <c>(category &lt;&gt; 'bikes') IS NULL</c> kept neither the null category nor the
+        /// absent one. So it is declined, and Calcite answers it.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAPredicateIsDeclined()
+        {
+            var inequality = Call(SqlStdOperatorTable.NOT_EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+            var equality = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NULL, inequality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, equality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.IS_NULL, equality))).Should().BeFalse();
         }
 
         [Fact]

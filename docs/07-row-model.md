@@ -129,13 +129,26 @@ FROM "products" AS c
 WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 ```
 
-`RETURNING` types the result: `INTEGER`, `BIGINT`, `DOUBLE`, `DECIMAL`, `BOOLEAN`, and so on. It is
-the standard way to give a document property a SQL type, it works inside a view, and it pushes down —
-the service compares and returns the stored value directly.
+`RETURNING` types the result: `INTEGER`, `BIGINT`, `DOUBLE`, `BOOLEAN`, and so on. It is the standard
+way to give a document property a SQL type, it works inside a view, and it pushes down — the service
+compares and returns the stored value directly. `DECIMAL` is the exception, below.
 
 Know what it does and does not do. **`RETURNING` asserts the type; it does not convert.** In Calcite,
 `RETURNING INTEGER` over a stored `30` gives 30, but over `"30"`, `30.7` or `true` it fails rather
-than converting. So:
+than converting. The type it checks for is the one the JSON reader builds, which is narrower than it
+looks:
+
+| `RETURNING` | answers for a stored | fails for |
+| --- | --- | --- |
+| `INTEGER` | whole number in an `INTEGER`'s range | anything else — a string, a fraction, a larger number |
+| `BIGINT` | whole number *beyond* that range | anything else — including `30` |
+| `DOUBLE`, `FLOAT` | number written with a point or an exponent, `30.0` | anything else — including `30` |
+| `SMALLINT`, `TINYINT`, `REAL` | nothing | every value |
+| `BOOLEAN` | `true`, `false` | anything else — including the string `"true"` |
+| `DECIMAL` | any number, **and a string that spells one** — `"30"`, `" 30 "` | a string that does not, a boolean |
+
+A `NULL ON ERROR` clause does not catch any of these failures. A JSON `null`, an object, an array and
+a missing property give `NULL` under every one. So:
 
 - Use it where the documents really hold that type. `RETURNING INTEGER` over a property holding
   numbers is exactly right.
@@ -145,6 +158,14 @@ than converting. So:
 - To *convert* a string to a number, use `CAST(JSON_VALUE(…) AS INTEGER)`. That converts, which the
   service cannot reproduce, so the cast itself runs in process (Chapter 8 shows how much of the
   predicate around it still pushes).
+- **`RETURNING DECIMAL` converts too, and is treated as that cast.** It reads a stored `"2"`, `" 2 "`
+  or `"2.0"` as the number 2, which the service cannot reproduce, so a column, sort, grouping or
+  partition key over it is computed in process; a comparison through it sends the service a bound
+  around the number and rechecks the comparison (Chapter 8). It is not the stored value even over
+  numbers: a stored `0.1` is the double's exact binary value, so `RETURNING DECIMAL(10, 1) = 0.1` is
+  false of it. And under plain `DECIMAL` the literal it is compared with is truncated to a whole
+  number: `= 2.5` is true of a stored 2. Where the documents hold whole numbers, `RETURNING INTEGER` is
+  the spelling that pushes.
 - `RETURNING TIMESTAMP` expects the property to hold a **number of epoch milliseconds**, not an
   ISO-8601 string. For instants stored as text, see Chapter 15.
 
@@ -245,7 +266,7 @@ Prefer these spellings in views:
   cast to a *sized* type (`VARCHAR(50)`, `CHAR(8)`) truncates or pads, which the service cannot
   reproduce either.
 - **Numbers and booleans**: `RETURNING`, where the documents hold that type. A `CAST` converts, which
-  keeps the column in process — and a sort on it with it.
+  keeps the column in process — and a sort on it with it. So does `RETURNING DECIMAL`, which parses.
 - **Arrays**: `JSON_QUERY … RETURNING <type> ARRAY`.
 - **Fallbacks**: `COALESCE(JSON_VALUE(…), …)`, not a `DEFAULT … ON EMPTY` clause, which keeps the
   column in process.

@@ -111,6 +111,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             }
         }
 
+        /// <summary>
+        /// Determines whether a grouping key groups at the service as it groups in Calcite.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A rendering groups by its text, and the service by the value it renders.</b> A key
+        /// read as text is a <c>JSON_VALUE</c>, or a field bound to one, whose column is the value's
+        /// rendering — see <see cref="CosmosReading.Text"/> — while the expression it is grouped by at
+        /// the service is the guarded path, which holds the value itself. Where a path holds the
+        /// number <c>30</c> in one document and the string <c>"30"</c> in another, Calcite's groups
+        /// are one and the service's are two. Measured against the emulator over the typed container,
+        /// whose price is both: <c>GROUP BY JSON_VALUE(DOC, '$.price')</c> returned <c>"30"</c> twice,
+        /// <c>SELECT DISTINCT</c> the same, and <c>COUNT(DISTINCT …)</c>, which Calcite expands into a
+        /// grouping beneath the count, answered 6 where Calcite answers 5. The translator refuses a
+        /// rendering read as a value for the same reason; a grouping key is one, read here rather
+        /// than there.
+        /// </para>
+        /// <para>
+        /// <b>A string is its own rendering</b>, so a path the container declares a string, or
+        /// nothing at all, groups the same at both ends — the declaration outright, as
+        /// <see cref="GroupingKey"/> reads it, since a key is not a predicate and proves nothing. A
+        /// fragment read as JSON text never does: its text is a serialisation the service does not
+        /// group by. A key read as its own type is the value, and groups as it always did.
+        /// </para>
+        /// </remarks>
+        /// <param name="path">The path the key binds to.</param>
+        /// <param name="reading">How the key is read back.</param>
+        /// <param name="facts">What the container declares outright.</param>
+        /// <returns><c>true</c> where the key may be grouped by at the service.</returns>
+        internal static bool GroupsAsCalciteDoes(CosmosPath? path, CosmosReading reading, JsonFactSet facts)
+        {
+            switch (reading)
+            {
+                case CosmosReading.Text:
+                    return path is not null
+                        && Metadata.CosmosDocumentPaths.From(path) is JsonDocumentPath document
+                        && facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+
+                case CosmosReading.JsonText:
+                    return false;
+
+                default:
+                    return true;
+            }
+        }
+
         static bool IsApproximateNumeric(RelDataType rowType, int ordinal)
         {
             var fields = rowType.getFieldList();
@@ -242,6 +288,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 readings[output] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
 
+                // And the guarded accessor still groups the value rather than its text.
+                if (GroupsAsCalciteDoes(fields[index], readings[output], implementor.Container.Facts.Derive(null)) == false)
+                    throw new CosmosTranslationException("A grouping key read as text groups by the rendering in Calcite and by the value at the service, which differ wherever the path holds something other than a string.");
+
                 implementor.Query.AddGroupBy(key);
                 implementor.Query.SelectProperty((string)names.get(output++), key);
             }
@@ -311,6 +361,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 var expression = index < rendered.Count ? rendered[index] : null;
 
                 readings[i] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
+
+                // A DISTINCT is a grouping, and de-duplicates a rendering by the value too.
+                if (GroupsAsCalciteDoes(path, readings[i], implementor.Container.Facts.Derive(null)) == false)
+                    throw new CosmosTranslationException("A DISTINCT over a column read as text de-duplicates the rendering in Calcite and the value at the service, which differ wherever the path holds something other than a string.");
 
                 implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, implementor.Container.Facts.Derive(null), expression));
 

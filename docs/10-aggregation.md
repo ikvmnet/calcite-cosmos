@@ -7,9 +7,9 @@ chapter describes which aggregates push and why some do not.
 ## 10.1 What pushes
 
 ```sql
-SELECT JSON_VALUE(c."DOC", '$.category') AS "category", COUNT(*) AS "n"
+SELECT c."$.category" AS "category", COUNT(*) AS "n"
 FROM "products" AS c
-GROUP BY JSON_VALUE(c."DOC", '$.category')
+GROUP BY c."$.category"
 → SELECT (IS_DEFINED(c.category) ? c.category : null) AS "category", COUNT(1) AS "n"
   FROM products c GROUP BY (IS_DEFINED(c.category) ? c.category : null)
 ```
@@ -19,8 +19,10 @@ GROUP BY JSON_VALUE(c."DOC", '$.category')
 | `COUNT(*)` | always |
 | `COUNT(x)` | where `x` cannot be null (Calcite then rewrites it to `COUNT(*)`) |
 | `SUM(x)`, `MIN(x)`, `MAX(x)`, `AVG(x)` | only where `x` cannot be null |
-| `COUNT(DISTINCT x)` | the de-duplication pushes as a `GROUP BY x`; the count finishes in process over one row per value |
+| `COUNT(DISTINCT x)` | the de-duplication pushes as a `GROUP BY x`, where `x` would push as a key; the count finishes in process over one row per value |
 | `SELECT DISTINCT …` | as Cosmos `SELECT DISTINCT` |
+| a grouping key or `DISTINCT` column of `JSON_VALUE` read as text | where the path is declared a string (Chapter 14); in process otherwise (10.6) |
+| a grouping key that is a comparison, or arithmetic with a decimal fraction | in process over the values it reads (Chapter 8) |
 | `GROUP BY ROLLUP (…)`, `CUBE`, `GROUPING SETS` | the finest grouping pushes; the roll-up finishes in process |
 | `HAVING` on a grouping key | moved below the grouping, as a `WHERE` |
 | `HAVING` on an aggregated value | in process, over one row per group |
@@ -75,8 +77,8 @@ FROM "products" AS c
 GROUP BY ROLLUP (JSON_VALUE(c."DOC", '$.category'), JSON_VALUE(c."DOC", '$.brand'))
 ```
 
-Cosmos returns one row per category and brand; the per-category subtotals and the grand total are
-computed from those. A partial `COUNT` is finished by summing; `SUM`, `MIN` and `MAX` finish as
+Cosmos returns one row per category and brand — where both paths are declared strings, being text
+keys (10.6) — and the per-category subtotals and the grand total are computed from those. A partial `COUNT` is finished by summing; `SUM`, `MIN` and `MAX` finish as
 themselves; `AVG` is decomposed into `SUM` and `COUNT` so it can be finished correctly.
 
 ## 10.5 `DISTINCT`
@@ -90,6 +92,27 @@ can be answered whole by the service — subject to the sorting rules of Chapter
 
 Cosmos does not support continuation for `GROUP BY` and `DISTINCT` results, so such a statement is
 always read to the end once started.
+
+## 10.6 Grouping by text
+
+`JSON_VALUE` reads a property as text (Chapter 7), and SQL groups what it reads: a stored number `30`
+and a stored string `"30"` are both the text `'30'`, one group. Cosmos groups the value, and they are
+two. So a grouping key or a `DISTINCT` column that is `JSON_VALUE` read as text groups at the service
+only where the container declares the path a string (Chapter 14), and otherwise groups in process —
+the property is still extracted at the service, so the documents are not shipped whole:
+
+```sql
+SELECT JSON_VALUE(c."DOC", '$.status') AS "status", COUNT(*) AS "n"
+FROM "orders" AS c GROUP BY JSON_VALUE(c."DOC", '$.status')
+→ undeclared:  SELECT VALUE { "status": (IS_PRIMITIVE(c.status) ? c.status : null) } FROM orders c
+               -- grouped and counted in process
+  declared:    SELECT (IS_PRIMITIVE(c.status) ? c.status : null) AS "status", COUNT(1) AS "n"
+               FROM orders c GROUP BY (IS_PRIMITIVE(c.status) ? c.status : null)
+```
+
+A typed accessor — `JSON_VALUE(… RETURNING INTEGER)` — and a promoted column are the value rather than
+its text, and group at the service either way. `RETURNING DECIMAL` is not the value: it parses `"2"` and
+`" 2 "` to one number the service holds as two strings, so a grouping by it is Calcite's (Chapter 7).
 
 ---
 

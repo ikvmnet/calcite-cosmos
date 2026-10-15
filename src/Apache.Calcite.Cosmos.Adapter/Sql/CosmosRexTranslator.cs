@@ -289,8 +289,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// This is the single gate every consumer of a path goes through — a projection, a filter, a
         /// partition key, a traversal — so refusing a spelling here refuses it everywhere, which is why
-        /// <see cref="IsArrayReturningJsonValue"/> is asked at this level rather than at any one of
-        /// them.
+        /// <see cref="IsArrayReturningJsonValue"/> and <see cref="IsParsingJsonValue"/> are asked at
+        /// this level rather than at any one of them.
         /// </para>
         /// </remarks>
         static bool IsJsonAccessor(RexCall call)
@@ -301,6 +301,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // it substitutes for is Calcite's to say -- measured, not the ones the standard names.
                 // See IsPlainJsonValue.
                 if (IsPlainJsonValue(call) == false)
+                    return false;
+
+                // A RETURNING that parses is a conversion of what the path holds and not the value, so
+                // it addresses no path in any clause either -- see IsParsingJsonValue.
+                if (IsParsingJsonValue(call))
                     return false;
 
                 // An array RETURNING on JSON_VALUE is not a construct SQL defines, so it addresses no
@@ -351,6 +356,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> parses the
+        /// value it reads rather than asserting its type — <c>DECIMAL</c>, of any precision and scale.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every other numeric or boolean <c>RETURNING</c> asserts, and this one converts.</b>
+        /// Measured against Calcite's runtime
+        /// (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>):
+        /// the others cast the value the JSON reader built to one Java class and raise on any other, so
+        /// <c>INTEGER</c> answers a stored <c>30</c> and raises on <c>"30"</c>, on <c>30.0</c> and on a
+        /// whole number past its range; <c>BIGINT</c> answers only a whole number past an
+        /// <c>INTEGER</c>'s, <c>DOUBLE</c> and <c>FLOAT</c> only a number written with a point or an
+        /// exponent, <c>SMALLINT</c>, <c>TINYINT</c> and <c>REAL</c> nothing at all, and <c>BOOLEAN</c>
+        /// only a stored boolean. <c>DECIMAL</c> reads a stored number as its exact value and a stored
+        /// string as the number its trimmed text parses as, so <c>"2"</c>, <c>" 2 "</c> and
+        /// <c>"2.0"</c> are each 2 to it; it raises only on what does not parse, a boolean and
+        /// <c>"x"</c> among them, and no <c>ON ERROR</c> clause catches that.
+        /// </para>
+        /// <para>
+        /// <b>So it is not the value at the path, and the service has nothing that is.</b> Written as
+        /// the path, <c>= 2</c> pushed as <c>c.body = 2</c> lost every document storing <c>"2"</c>;
+        /// read as the value it was, the fact extractor took the same equality to say the path holds
+        /// the number 2, and over a path the container declares a string rewrote the filter to
+        /// <c>FALSE</c>. Even over numbers alone the value is not the service's: a fraction is the
+        /// double's exact binary expansion, so a stored <c>0.1</c> under <c>RETURNING DECIMAL(10, 1)</c>
+        /// is not equal to <c>0.1</c> and is greater than it, where the service's doubles are equal.
+        /// And the literal it is compared with is cast to the comparison's scale, which against the
+        /// default <c>DECIMAL(19, 0)</c> truncates it: <c>= 2.5</c> keeps a stored 2.
+        /// </para>
+        /// <para>
+        /// <b>It is the cast of the rendering, written as a clause</b>, and is read as one:
+        /// <see cref="TryNumericCastOperand(RexNode, RexBuilder)"/> takes it, so a comparison through it
+        /// pushes the window it puts a stored number in and is rechecked above, exactly as
+        /// <c>CAST(JSON_VALUE(…) AS INTEGER)</c> is. Refused as a path
+        /// everywhere else — <see cref="IsJsonAccessor"/> — so a projection, a sort key, a grouping key,
+        /// a partition key and a fact all stay where Calcite computes them.
+        /// </para>
+        /// </remarks>
+        internal static bool IsParsingJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            return call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL;
+        }
+
+        /// <summary>
         /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses
         /// an array in the document rather than parsing one out of a string.
         /// </summary>
@@ -395,12 +447,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Nothing is done with them here: the type they declare is what the plan already says the
         /// column is, and the reading takes the service at its word — a declaration that disagrees with
         /// the document fails in materialisation rather than answering wrongly, which is the whole
-        /// reason the clause is worth trusting.
+        /// reason the clause is worth trusting. That holds of a clause that asserts its type, and
+        /// <c>DECIMAL</c> does not: it parses a stored string, so a document storing <c>"2"</c> agrees
+        /// with it in process and disagrees with the path. <see cref="IsJsonAccessor"/> refuses it
+        /// before this is asked — see <see cref="IsParsingJsonValue"/>.
         /// </para>
         /// </remarks>
         bool TryResolveJsonPath(RexCall call, out CosmosPath? path)
         {
             path = null;
+
+            // The document an accessor addresses through has to be a document. A scalar rendering is
+            // text, which Calcite parses as JSON to read the path out of, and the service has the
+            // value: measured over products, `JSON_VALUE(JSON_VALUE(DOC, '$.name'), '$') IS NOT NULL`
+            // resolved to c.name and kept every document, where Calcite fails to parse
+            // `Trail Blazer` and answers null for each. A path stored as a JSON string is the case it
+            // means, and there the service's nested path is undefined where Calcite reads a value.
+            // The document column and a plain JSON_QUERY are what remain, the fragment's text parsing
+            // back to the fragment the nested path addresses.
+            if (IsScalarRendering(Operand(call, 0)))
+                return false;
 
             if (TryResolvePath(Operand(call, 0), out var basePath) == false || basePath is null)
                 return false;
@@ -489,13 +555,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Translates <paramref name="node"/>.
+        /// Translates <paramref name="node"/> as a predicate, whose truth alone is read.
         /// </summary>
+        /// <remarks>
+        /// What a <c>WHERE</c> is, and a join condition and a traversal's filter: a row is kept where
+        /// the predicate is true, and false and unknown both discard it. That is what lets a comparison
+        /// written here be false where SQL's is unknown — see <see cref="WriteComparison"/>. Anything
+        /// whose value is read rather than its truth — a column, a sort key, an argument — goes through
+        /// <see cref="TranslateValue"/> instead.
+        /// </remarks>
         /// <param name="node">The expression to translate.</param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="node"/> is <c>null</c>.</exception>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node)
+        public string Translate(RexNode node) => TranslateAs(node, value: false);
+
+        /// <summary>
+        /// Translates <paramref name="node"/> as a value, whose SQL null has to survive.
+        /// </summary>
+        /// <remarks>
+        /// A projected column, and anything else whose value is read. A predicate written here is held
+        /// to more than one in a <c>WHERE</c> is: unknown and false are different values, and a
+        /// comparison that answers one where SQL answers the other is declined — see
+        /// <see cref="_value"/>.
+        /// </remarks>
+        /// <param name="node">The expression to translate.</param>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="node"/> is <c>null</c>.</exception>
+        /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
+        public string TranslateValue(RexNode node) => TranslateAs(node, value: true);
+
+        /// <inheritdoc cref="TranslateValue(RexNode)" />
+        /// <param name="node">The expression to translate.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the expression was translated; otherwise <c>false</c>.</returns>
+        public bool TryTranslateValue(RexNode node, out string? expression)
+        {
+            try
+            {
+                expression = TranslateValue(node);
+                return true;
+            }
+            catch (CosmosTranslationException)
+            {
+                expression = null;
+                return false;
+            }
+        }
+
+        string TranslateAs(RexNode node, bool value)
         {
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
@@ -504,9 +612,187 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // first keeps range and IN predicates pushable instead of uniformly declined.
             var expanded = RexUtil.expandSearch(_rexBuilder, null, node);
 
-            var builder = new StringBuilder();
-            Write(builder, expanded);
-            return builder.ToString();
+            RequireRenderingsReadAsRenderings(expanded, permitted: true);
+
+            var saved = _value;
+            _value = value;
+
+            try
+            {
+                var builder = new StringBuilder();
+                Write(builder, expanded);
+                return builder.ToString();
+            }
+            finally
+            {
+                _value = saved;
+            }
+        }
+
+        /// <summary>
+        /// Refuses an expression that hands the rendering of a path to an operator as a value, where
+        /// the path is not known to hold a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A rendering is text, and the service has the value it renders.</b> <c>JSON_VALUE</c>
+        /// read as text turns a stored number into <c>30</c> and a boolean into <c>true</c>; the path,
+        /// guarded or not, hands the service the number and the boolean themselves. Wherever the value
+        /// is used as a value — upper-cased, concatenated, measured, passed out through a
+        /// <c>CASE</c> — the two answer differently: the service's string functions are undefined
+        /// over a number, and a column the plan typed text comes back holding one. Measured against
+        /// the emulator over the typed container, <c>UPPER(label)</c> and <c>label || '!'</c>
+        /// projected null for the number and the boolean where Calcite projects <c>30</c> and
+        /// <c>TRUE</c>; <c>UPPER(label) = 'TRUE'</c>, <c>UPPER(label) = '30'</c>,
+        /// <c>CHAR_LENGTH(label) = 2</c> and <c>label || 'x' = '30x'</c> each lost the document
+        /// Calcite keeps; and a <c>COALESCE</c> or a <c>CASE</c> passing the accessor out as a column
+        /// failed the read at the boolean.
+        /// </para>
+        /// <para>
+        /// <b>Where a rendering may be read, it is read as one.</b> A comparison reasons about which
+        /// documents a rendering matches — see <see cref="WriteComparand"/> — and a null test asks only
+        /// whether there is one — see <see cref="WriteIsNull"/>. <c>LIKE</c> refuses its rendering
+        /// subject on its own terms. A cast that names the raw value, or that a stored boolean proves,
+        /// says what it reads. The geography, full text, vector and type-test functions take the path
+        /// as an address. Nothing else is told it is reading a rendering, so nothing else may, and a
+        /// new operator is refused until it is.
+        /// </para>
+        /// <para>
+        /// <b>A string is its own rendering.</b> Where what is known of the container says the path
+        /// holds a string or nothing at all, the value the service hands on is the text Calcite
+        /// renders, and every operator agrees over it. Not a <c>JSON_QUERY</c>, which renders the
+        /// fragment and is null for a string: no fact makes its text the value.
+        /// </para>
+        /// <para>
+        /// Asked once, of the whole expression, before anything is written, because the question is
+        /// about the edge between an operator and its operand and not about either alone — and asking
+        /// it in every writer is how <c>WriteLike</c> came to know it and nothing else did.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <param name="permitted">Whether what encloses the expression reads a rendering as one.</param>
+        /// <exception cref="CosmosTranslationException">A rendering is read as a value.</exception>
+        void RequireRenderingsReadAsRenderings(RexNode node, bool permitted)
+        {
+            if (IsRendering(node))
+            {
+                if (permitted == false && IsStringRendering(node) == false)
+                    throw new CosmosTranslationException("JSON_VALUE read as text is the rendering of the value at the path, and an operator over it reads the text: the service hands the operator the value, which renders differently wherever the path does not hold a string.");
+
+                return;
+            }
+
+            if (node is not RexCall call)
+                return;
+
+            // An address rather than a value: an ITEM chain, an accessor with a scalar or array
+            // RETURNING, an array read out of one.
+            if (TryResolvePath(call, out _))
+                return;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                RequireRenderingsReadAsRenderings(Operand(call, i), ReadsRenderings(call, i, permitted));
+        }
+
+        /// <summary>
+        /// Determines whether an expression is the rendering of a document value as text: a
+        /// <c>JSON_VALUE</c> or a plain <c>JSON_QUERY</c> read as text, or a field bound to one.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IsTextRendering"/> without the array <c>RETURNING</c> of <c>JSON_QUERY</c>, which
+        /// is the array and not its text.
+        /// </remarks>
+        bool IsRendering(RexNode node)
+        {
+            if (IsCollectionJsonQuery(node))
+                return false;
+
+            return IsTextRendering(node);
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a scalar rendering of a path what is known of the
+        /// container says holds a string, where it holds anything.
+        /// </summary>
+        bool IsStringRendering(RexNode node)
+        {
+            if (IsScalarRendering(node) == false)
+                return false;
+
+            if (TryResolvePath(node, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+                return false;
+
+            // OrNull, because a JSON null renders nothing on either side: the accessor answers SQL
+            // null for it, and the service's string functions are undefined over it.
+            return _facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+        }
+
+        /// <summary>
+        /// Determines whether an expression renders a scalar: a <c>JSON_VALUE</c> read as text, or a
+        /// field bound to one.
+        /// </summary>
+        /// <remarks>
+        /// The renderings a fact about the stored value can make exact. A plain <c>JSON_QUERY</c> is a
+        /// rendering too, of the fragment, and is null for every scalar — so a path the container
+        /// declares a string is the one path it never renders, and a comparison over it never selects
+        /// the documents the raw comparison does.
+        /// </remarks>
+        bool IsScalarRendering(RexNode node)
+        {
+            return IsTextJsonValue(node)
+                || node is RexInputRef reference
+                    && IsCharacter(reference)
+                    && reference.getIndex() >= 0
+                    && reference.getIndex() < _readings.Count
+                    && _readings[reference.getIndex()] is CosmosReading.Text;
+        }
+
+        /// <summary>
+        /// Determines whether an operator reads its operand, if that is a rendering, as one.
+        /// </summary>
+        /// <param name="call">The operator.</param>
+        /// <param name="ordinal">The operand.</param>
+        /// <param name="permitted">Whether what encloses the operator does, for an operator that hands its operand on unchanged.</param>
+        bool ReadsRenderings(RexCall call, int ordinal, bool permitted)
+        {
+            switch (KindOf(call))
+            {
+                case SqlKind.__Enum.EQUALS:
+                case SqlKind.__Enum.NOT_EQUALS:
+                case SqlKind.__Enum.LESS_THAN:
+                case SqlKind.__Enum.LESS_THAN_OR_EQUAL:
+                case SqlKind.__Enum.GREATER_THAN:
+                case SqlKind.__Enum.GREATER_THAN_OR_EQUAL:
+                case SqlKind.__Enum.IS_NULL:
+                case SqlKind.__Enum.IS_NOT_NULL:
+                case SqlKind.__Enum.LIKE:
+                    return true;
+
+                case SqlKind.__Enum.CAST:
+                case SqlKind.__Enum.SAFE_CAST:
+                    // A marker says what it reads, and so does a cast a stored boolean proves. Any other
+                    // cast hands its operand on to whatever encloses it, to be judged there: one that
+                    // converts is refused by WriteCast, and one that boxes, asserts or renders hands
+                    // the value through. That includes the box Calcite's coercion puts around a side
+                    // of a comparison with a VARIANT, which the comparison sees through to the
+                    // rendering underneath (WriteComparand), and the cast to text an equality drops,
+                    // which is the rendering itself and declares no width (TryTextCastValue).
+                    if (IsRawValueMarker(call) || TryStoredBoolean(call) is not null)
+                        return true;
+
+                    return permitted;
+            }
+
+            var name = call.getOperator().getName();
+
+            return GeographyFunctions.Contains(name)
+                || CosmosOperators.IsAbsenceObserving(call.getOperator())
+                || name is "VECTORDISTANCE"
+                    or "FULLTEXTCONTAINS" or "FULLTEXTCONTAINSALL" or "FULLTEXTCONTAINSANY" or "FULLTEXTSCORE"
+                    or "CLR_FT_CONTAINS" or "CLR_FT_CONTAINS_ALL" or "CLR_FT_CONTAINS_ANY" or "CLR_FT_SCORE";
         }
 
         void Write(StringBuilder builder, RexNode node)
@@ -582,9 +868,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Converts a Calcite literal into the CLR value to bind.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Temporal literals are refused. Cosmos JSON has no date or time type — dates are ISO
         /// strings or epoch numbers by application convention, and nothing in the container
         /// declares which. Guessing an encoding would silently return wrong rows.
+        /// </para>
+        /// <para>
+        /// So is an exact number the service would read as another whole number — see
+        /// <see cref="TryGetExactNumberValue"/>.
+        /// </para>
         /// </remarks>
         internal static object? GetLiteralValue(RexLiteral literal)
         {
@@ -614,7 +906,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             if (type == SqlTypeName.DECIMAL)
-                return BigDecimalConverter.ToDecimal((java.math.BigDecimal)literal.getValue());
+                return TryGetExactNumberValue((java.math.BigDecimal)literal.getValue())
+                    ?? throw new CosmosTranslationException($"No value the service can be sent compares there as the number {literal.getValue()}.");
 
             if (type == SqlTypeName.FLOAT || type == SqlTypeName.REAL || type == SqlTypeName.DOUBLE)
             {
@@ -636,6 +929,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return Client.CosmosJson.ToGeoJsonValue(geometry);
 
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
+        }
+
+        /// <summary>
+        /// Converts an exact number into the CLR value the service compares as that number, or answers
+        /// <c>null</c> where there is none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A decimal reaches the service as a double.</b> The SDK writes one with a point, and the
+        /// service reads a number written with one as a double. It keeps a stored integer as the integer
+        /// it is, and compares a double with it exactly. Measured against the emulator over the
+        /// differential corpus's <c>declared</c>, whose <c>v</c> holds 2^53, 2^53 + 1, 2^60 and 2^60 + 1:
+        /// <c>RETURNING BIGINT = 1152921504606846977</c>, sent as a decimal, matched the document holding
+        /// 2^60 and not the one holding the literal, and <c>= 9007199254740993</c> matched 2^53. A double
+        /// that is the number is exact against either: <c>&gt; 1152921504606846976</c> keeps 2^60 + 1, and
+        /// <c>= 9007199254740992</c> keeps 2^53 alone.
+        /// </para>
+        /// <para>
+        /// <b>So a decimal stays wherever its double is right, and only the rest changes.</b> A double
+        /// that is not the number lies within half a unit in its last place of it, and no stored value
+        /// lies between the two but that double itself. Through a typed accessor Calcite tells that
+        /// double from the number only where it is whole: <c>RETURNING DOUBLE</c> rounds the literal as
+        /// the service does, and an integer is read exactly. So the decimal is wrong exactly where its
+        /// double is a whole number other than the number — an integer beyond 2^53 a double does not
+        /// hold, and a fraction a hair from a whole number, <c>2.9999999999999999</c>, which reads as 3.
+        /// A whole one is sent as a long, which the service keeps as the integer it is. A fraction, and
+        /// a whole number beyond a long, are sent as nothing, and the caller declines.
+        /// </para>
+        /// <para>
+        /// The window a cast's comparison pushes asks this of each side, for the same reason:
+        /// <see cref="Metadata.CosmosNumericWindow"/>. Loosened by one beyond 2^53, a bound sent as a
+        /// double came back as the number it was loosened from, and excluded the document holding it.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The number.</param>
+        /// <returns>A <see cref="decimal"/> or a <see cref="long"/>, or <c>null</c>.</returns>
+        internal static object? TryGetExactNumberValue(java.math.BigDecimal value)
+        {
+            var approximate = value.doubleValue();
+
+            if (double.IsInfinity(approximate))
+                return null;
+
+            try
+            {
+                if (Math.Floor(approximate) != approximate || new java.math.BigDecimal(approximate).compareTo(value) == 0)
+                    return BigDecimalConverter.ToDecimal(value);
+
+                return value.longValueExact();
+            }
+            catch (Exception e) when (e is java.lang.ArithmeticException or OverflowException)
+            {
+                // A fraction or a number beyond a long, which longValueExact refuses; or one beyond a decimal.
+                return null;
+            }
         }
 
         /// <summary>
@@ -687,24 +1035,200 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         void WriteGuardedAccessor(StringBuilder builder, RexCall call, string rendered)
         {
-            if (IsCollectionJsonQuery(call))
-            {
-                builder.Append('(').Append(CosmosOperators.IsArray.getName()).Append('(').Append(rendered)
-                    .Append(") ? ").Append(rendered).Append(" : null)");
-                return;
-            }
-
-            if (IsPlainJsonQuery(call))
+            if (IsPlainJsonQuery(call) && IsCollectionJsonQuery(call) == false)
                 throw new CosmosTranslationException("A JSON_QUERY inside an expression is the fragment as text, which the service has no way to produce -- the enclosing operator would run over the value instead. JSON_QUERY renders as a column of its own, where the reading writes the text.");
 
-            if (IsTextJsonValue(call))
+            if (IsCollectionJsonQuery(call) || IsTextJsonValue(call))
             {
-                builder.Append('(').Append(CosmosOperators.IsPrimitive.getName()).Append('(').Append(rendered)
-                    .Append(") ? ").Append(rendered).Append(" : null)");
+                builder.Append(Guarded(ReadingTests(call)!, rendered));
                 return;
             }
 
             builder.Append(rendered);
+        }
+
+        /// <summary>
+        /// The service's type tests, any one of which is true exactly where a reading of a path
+        /// answers a value, for a reading that answers null for more than an absent path and a JSON
+        /// null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What an accessor reads at a path is not what the path holds, and this is the one place
+        /// that says how.</b> <c>JSON_VALUE</c> answers SQL null unless the value is a scalar — an
+        /// object and an array read as null as surely as an absent path does — and a plain
+        /// <c>JSON_QUERY</c> is its mirror, answering only for an object or an array. A typed
+        /// <c>RETURNING</c> narrows the scalar to the type it names: SQL:2016 makes any other value
+        /// an error that <c>NULL ON ERROR</c> answers null for, and Calcite raises there instead
+        /// (ikvmnet/calcite-dotnet#120), so a value of another type is never one the engine answers
+        /// a value for — it raises, and so does a stored integer under <c>RETURNING DOUBLE</c>,
+        /// which the test admits (see <see cref="TypeTestOf"/>). A field a projection
+        /// bound to an accessor reads as that accessor: its reading says which rendering, and its type
+        /// which <c>RETURNING</c>.
+        /// </para>
+        /// <para>
+        /// <b>Every writer that needs the line reads it from here</b>: the guard a projected accessor
+        /// carries (<see cref="WriteGuardedAccessor"/>, <see cref="TryJsonValueProjection"/> and its
+        /// siblings), the null test (<see cref="WriteIsNull"/>), and the guard a comparison takes in
+        /// the position where SQL's unknown has to be restored (<see cref="WriteComparison"/>). Each
+        /// of those used to state it, or not, for itself, and the null test and the negated equality
+        /// were the two that did not: <c>IS NOT NULL</c> over an accessor at an object kept the
+        /// document, and <c>NOT (… = 'bikes')</c> kept the object and the array.
+        /// </para>
+        /// <para>
+        /// <c>null</c> for the raw value — a promoted column, a field typed as itself, an accessor the
+        /// split rule re-typed <c>ANY</c> — which is null only where the path is absent or holds null,
+        /// and which the null test and the guard already say in full.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">An expression that resolves to a path.</param>
+        /// <returns>The tests, or <c>null</c> where the expression is the raw value.</returns>
+        IReadOnlyList<SqlFunction>? ReadingTests(RexNode node)
+        {
+            if (IsCollectionJsonQuery(node))
+                return ArrayReading;
+
+            if (IsPlainJsonQuery(node))
+                return FragmentReading;
+
+            if (IsTextJsonValue(node))
+                return ScalarReading;
+
+            if (node is RexCall call && call.getOperator().getName() == "JSON_VALUE")
+            {
+                // Typed ANY by the split rule to name the raw value at the path rather than the
+                // reading -- see IsDocumentValueType -- and the raw value is what that comparison is.
+                if (IsDocumentValueType(call.getType()?.getSqlTypeName()))
+                    return null;
+
+                return TypeTestOf(call.getType()) is SqlFunction test ? new[] { test } : ScalarReading;
+            }
+
+            if (node is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < _readings.Count)
+            {
+                return _readings[reference.getIndex()] switch
+                {
+                    CosmosReading.Text when IsCharacter(reference) => ScalarReading,
+                    CosmosReading.JsonText when IsCharacter(reference) => FragmentReading,
+
+                    // A field a projection bound to a typed accessor is read as the type it names, and
+                    // answers null where that accessor does: for every value of another type. The
+                    // binding records the path and that the reading is typed, and the field's type is
+                    // the accessor's -- RETURNING is what types the call -- so the test is the one
+                    // TypeTestOf gives the accessor itself. Without it, IS NOT NULL over the field kept
+                    // an object, and the guard under a NOT kept the object too, wherever a host left
+                    // the filter above the projection rather than transposing it through. Nullable
+                    // only: every other typed field bound to a path is the service's id, _ts or _etag,
+                    // which is never null and has nothing to test, or a promoted VARIANT column, which
+                    // is the raw value and has no test to give.
+                    CosmosReading.Typed when reference.getType()?.isNullable() == true && TypeTestOf(reference.getType()) is SqlFunction typed => new[] { typed },
+                    _ => null,
+                };
+            }
+
+            return null;
+        }
+
+        static readonly SqlFunction[] ScalarReading = [CosmosOperators.IsPrimitive];
+        static readonly SqlFunction[] ArrayReading = [CosmosOperators.IsArray];
+        static readonly SqlFunction[] FragmentReading = [CosmosOperators.IsObject, CosmosOperators.IsArray];
+
+        /// <summary>
+        /// The service's type test for the type a scalar <c>RETURNING</c> names, or <c>null</c>
+        /// where it names none the service has a test for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>JSON_VALUE(doc, '$.v' RETURNING INTEGER)</c> is a typed extraction, not a rendering: it
+        /// participates only where the value is of that type. Calcite does not enforce that — it casts
+        /// what it extracted and throws when the cast fails, outside the <c>ON ERROR</c> handling that
+        /// would otherwise answer null. The type test is that restriction written where the service can
+        /// apply it.
+        /// </para>
+        /// <para>
+        /// By the call's type, not its operand count: <c>RETURNING</c> names the type of the call and
+        /// adds no operand, so a bare accessor and a <c>RETURNING INTEGER</c> one differ only in what
+        /// they are typed as. A character <c>RETURNING</c> is a rendering and is read as one; see
+        /// <see cref="IsTextJsonValue"/>. And so by a field's type too, where a projection bound the
+        /// field to such an accessor — the field is typed what the call is.
+        /// </para>
+        /// <para>
+        /// <b>Not a conversion either.</b> <c>RETURNING DOUBLE</c> over a stored integer is a number,
+        /// and <c>IS_NUMBER</c> admits it, where Calcite raises rather than widening: measured,
+        /// <c>JSON_VALUE(DOC, '$.price' RETURNING DOUBLE) / 2</c> over products fails in process with
+        /// an <c>Integer</c> that cannot be cast to a <c>Double</c>. The same assertion
+        /// ikvmnet/calcite-dotnet#120 records for a string, met by a number of another numeric type,
+        /// so over integer data such a statement has no oracle to agree with, and the pushed one
+        /// answers.
+        /// </para>
+        /// <para>
+        /// <b>Not <c>DECIMAL</c></b>, which parses rather than asserts: it answers for a stored string
+        /// that spells a number too, so no type test is where it answers, and <c>IS_NUMBER</c> lost
+        /// exactly those documents. It addresses no path — <see cref="IsParsingJsonValue"/> — so
+        /// neither the accessor nor a field bound to one reaches here.
+        /// </para>
+        /// </remarks>
+        static SqlFunction? TypeTestOf(org.apache.calcite.rel.type.RelDataType? type)
+        {
+            switch (type?.getSqlTypeName()?.getName())
+            {
+                case nameof(SqlTypeName.TINYINT):
+                case nameof(SqlTypeName.SMALLINT):
+                case nameof(SqlTypeName.INTEGER):
+                case nameof(SqlTypeName.BIGINT):
+                case nameof(SqlTypeName.FLOAT):
+                case nameof(SqlTypeName.REAL):
+                case nameof(SqlTypeName.DOUBLE):
+                    return CosmosOperators.IsNumber;
+
+                case nameof(SqlTypeName.BOOLEAN):
+                    return CosmosOperators.IsBool;
+
+                // Reached by a field and not by an accessor: a JSON_QUERY whose RETURNING names an
+                // array is answered by ArrayReading first, and the same RETURNING on JSON_VALUE
+                // addresses no path (IsArrayReturningJsonValue).
+                case nameof(SqlTypeName.ARRAY):
+                case nameof(SqlTypeName.MULTISET):
+                    return CosmosOperators.IsArray;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Writes the disjunction of a reading's tests over a path, bare.
+        /// </summary>
+        static string AnyOf(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            var text = new StringBuilder();
+
+            for (var i = 0; i < tests.Count; i++)
+            {
+                if (i > 0)
+                    text.Append(" OR ");
+
+                text.Append(tests[i].getName()).Append('(').Append(path).Append(')');
+            }
+
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// Writes the disjunction of a reading's tests over a path as one operand of a connective.
+        /// </summary>
+        static string AnyOfOperand(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            return tests.Count == 1 ? AnyOf(tests, path) : "(" + AnyOf(tests, path) + ")";
+        }
+
+        /// <summary>
+        /// Writes a path as the value a reading answers: the value where a test admits it, null
+        /// everywhere else.
+        /// </summary>
+        static string Guarded(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            return $"({AnyOf(tests, path)} ? {path} : null)";
         }
 
         /// <summary>
@@ -940,6 +1464,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return;
             }
 
+            // Said here rather than left to the function table, which would call JSON_VALUE unsupported:
+            // it is the conversion the clause names that has no Cosmos form, and the bound it implies
+            // still pushes -- see IsParsingJsonValue.
+            if (IsParsingJsonValue(call))
+                throw new CosmosTranslationException(
+                    "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine. A comparison through it pushes the bound it implies, as a cast to a number does.");
+
+            // The position a NOT puts its operand in belongs to predicates, and only the connectives
+            // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
+            // here, once, rather than by each writer remembering to. And an operand of anything else
+            // is read for its value, so a predicate written there is in a value's place -- see _value.
+            var position = _negated;
+            var value = _value;
+
+            if (CarriesPosition(KindOf(call)) == false)
+            {
+                _negated = false;
+                _value = true;
+            }
+
+            try
+            {
+                WriteCallKind(builder, call);
+            }
+            finally
+            {
+                _negated = position;
+                _value = value;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a call passes the position it is written in on to its operands, or
+        /// reads it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A position is a property of a predicate, and only a connective has a predicate for an
+        /// operand.</b> <c>AND</c> and <c>OR</c> pass it to both arms and <c>NOT</c> flips it, which is
+        /// what lets the guard compose; a comparison and a truth test read it, and write their own
+        /// operands as values. A <c>CASE</c> passes it to its arms, whose value is its value, and not
+        /// to its conditions, which select an arm. SQL takes the next arm for any condition that is not
+        /// true, and so does the service — the differential corpus's <c>CASE WHEN category = 'bikes'
+        /// THEN 1 ELSE 0 END</c> answers 0 for the document with no category, whose condition is
+        /// undefined there — so a condition has to be true exactly where SQL's is, which is the
+        /// positive position whatever encloses the <c>CASE</c>.
+        /// </para>
+        /// <para>
+        /// <b>Everything else writes a value, and a value has no position.</b> This was the rule the
+        /// field's own remark stated, and only the comparison and the truth test kept it: a
+        /// <c>CASE</c> condition, the operand of <c>IS NULL</c> and a function's argument were each
+        /// written in the position of the <c>NOT</c> above them. Measured against the emulator,
+        /// <c>NOT (CASE WHEN category &lt;&gt; 'bikes' THEN …)</c> took the then arm for a null
+        /// category, its condition written unguarded as though negated, where SQL takes the else; so
+        /// did the same <c>CASE</c> over <c>=</c>, guarded the wrong way; and
+        /// <c>NOT COALESCE(category &lt;&gt; 'bikes', FALSE)</c> lost the null category.
+        /// </para>
+        /// </remarks>
+        static bool CarriesPosition(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.AND or SqlKind.__Enum.OR or SqlKind.__Enum.NOT or SqlKind.__Enum.CASE
+                or SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS
+                or SqlKind.__Enum.LESS_THAN or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN or SqlKind.__Enum.GREATER_THAN_OR_EQUAL
+                or SqlKind.__Enum.IS_TRUE or SqlKind.__Enum.IS_FALSE
+                or SqlKind.__Enum.IS_NOT_TRUE or SqlKind.__Enum.IS_NOT_FALSE;
+        }
+
+        /// <summary>
+        /// Writes a call by its kind, once the accessors have been taken out.
+        /// </summary>
+        void WriteCallKind(StringBuilder builder, RexCall call)
+        {
             switch (KindOf(call))
             {
                 case SqlKind.__Enum.EQUALS:
@@ -967,18 +1564,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteChain(builder, call, "OR");
                     break;
                 case SqlKind.__Enum.PLUS:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "+");
                     break;
                 case SqlKind.__Enum.MINUS:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "-");
                     break;
                 case SqlKind.__Enum.TIMES:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "*");
                     break;
                 case SqlKind.__Enum.DIVIDE:
+                    RequireApproximateQuotient(call);
                     WriteBinary(builder, call, "/");
                     break;
                 case SqlKind.__Enum.MOD:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "%");
                     break;
                 case SqlKind.__Enum.NOT:
@@ -1040,6 +1642,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteNamedFunction(builder, call);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Refuses a division Calcite does not compute in doubles.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service divides in doubles, and SQL divides in the type of its operands.</b> Calcite
+        /// types <c>INTEGER / INTEGER</c> an integer and truncates toward zero, as Java does, where
+        /// the service answers the fraction. Measured against the emulator over products, whose prices
+        /// are integers: <c>JSON_VALUE(DOC, '$.price' RETURNING INTEGER) / 2 = 2</c> lost the document
+        /// priced 5, which Calcite divides to 2 and the service to 2.5; and the same quotient
+        /// projected failed the read, <c>113.33333333333333</c> not being a whole number to read as
+        /// the <c>INTEGER</c> the plan declared. A <c>DECIMAL</c> quotient has a scale of its own and
+        /// a rounding the service does not perform either.
+        /// </para>
+        /// <para>
+        /// <b>Refused rather than rendered.</b> <c>TRUNC(a / b)</c> is the obvious rendering and would
+        /// have to be shown to agree on negatives, on a quotient past the precision a double carries,
+        /// and on what the reader makes of the result, for every integer type; none of that has been
+        /// measured, and declining costs only the division, which Calcite computes over what the
+        /// service sends. <see cref="Rel.CosmosAggregate.CanImplement"/> made the same call for
+        /// <c>AVG</c>, which an integer argument sends to <c>SUM</c> and <c>COUNT</c> with the division
+        /// done above.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The division.</param>
+        /// <exception cref="CosmosTranslationException">Calcite types the quotient anything but approximate.</exception>
+        static void RequireApproximateQuotient(RexCall call)
+        {
+            var type = call.getType()?.getSqlTypeName();
+
+            if (type is null || SqlTypeName.APPROX_TYPES.contains(type) == false)
+                throw new CosmosTranslationException($"A division typed '{call.getType()}' is computed in that type by Calcite -- an integer one truncates -- and in doubles by the service, so only an approximate quotient is the same at both ends.");
+        }
+
+        /// <summary>
+        /// Refuses a sum, difference, product or remainder Calcite computes exactly in decimal
+        /// fractions.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The division's neighbours, for the division's reason.</b> Calcite types an integer
+        /// times <c>1.1</c> a <c>DECIMAL</c> with a scale, and computes it exactly; the service
+        /// computes it in doubles, where <c>1.1</c> is not <c>1.1</c>. Measured against the emulator
+        /// over products: <c>price * 1.1 = 374</c> lost the document priced 340, the service's product
+        /// being <c>374.00000000000006</c>; <c>price * 0.07 = 0.35</c> and <c>price + 0.1 + 0.2 =
+        /// 10.3</c> each lost theirs; projected, <c>price * 0.7</c> answered
+        /// <c>237.99999999999997</c> where Calcite answers <c>238.0</c>, a grouping key by the product
+        /// came back as <c>374.00000000000006</c>, and a <c>SUM</c> over it drifted in its last place.
+        /// A remainder by <c>0.3</c> lost two documents the same way.
+        /// </para>
+        /// <para>
+        /// <b>A scale of zero is an integer, and stays.</b> Integer arithmetic is exact in doubles
+        /// up to 2^53, so an integer sum is the service's sum wherever it fits — and an approximate
+        /// result is the service's arithmetic outright. Where an integer one does not fit, Calcite and
+        /// the service part for another reason: Calcite wraps, as Java does, where SQL raises and the
+        /// service computes the value. That is recorded in <c>DESIGN.md</c> as a decision, beside
+        /// out-of-domain arithmetic, rather than declined.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The arithmetic.</param>
+        /// <exception cref="CosmosTranslationException">Calcite types the result a decimal fraction.</exception>
+        static void RequireNoFraction(RexCall call)
+        {
+            var type = call.getType();
+
+            if (type?.getSqlTypeName() == SqlTypeName.DECIMAL && type.getScale() > 0)
+                throw new CosmosTranslationException($"Arithmetic typed '{type}' is computed exactly in decimal by Calcite and in doubles by the service, which do not agree on a fraction.");
         }
 
         void WriteBinary(StringBuilder builder, RexCall call, string op)
@@ -1114,8 +1785,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// rather than converts, and returns the value underneath.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
-        /// right, and what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not.
+        /// right, what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not, and
+        /// what the fact and partition-key extractors read a value through.
+        /// </para>
+        /// <para>
+        /// <b>Only an undecorated <c>VARCHAR</c></b>, which is what <see cref="TryRenderedTextOperand"/>
+        /// and <see cref="StripTextCoercion"/> already held to. A width is a second conversion on top
+        /// of the rendering: measured, <c>VARCHAR(3)</c> truncates and <c>CHAR(8)</c> pads, and a
+        /// <c>CHAR</c> always carries one, a bare <c>CHAR</c> being <c>CHAR(1)</c>. Taken as an identity
+        /// it was dropped from the equality — <c>CAST(label AS VARCHAR(3)) = 'bik'</c> pushed as
+        /// <c>c.label = 'bik'</c> and lost the document storing <c>bikes</c>, which Calcite truncates
+        /// and keeps — and the partition-key extractor routed the same statement over
+        /// <c>category</c> to a partition named <c>bik</c>, which holds nothing. Unlike the width on a
+        /// <c>RETURNING</c>, which the same measurement found no run time applying — see
+        /// <see cref="IsRenderedDocumentValue"/>.
+        /// </para>
         /// </remarks>
         internal static RexNode? TryTextCastValue(RexNode node)
         {
@@ -1129,8 +1815,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (call.getOperands().size() != 1)
                 return null;
 
-            var target = call.getType()?.getSqlTypeName();
-            if (target != SqlTypeName.VARCHAR && target != SqlTypeName.CHAR)
+            var type = call.getType();
+            if (type?.getSqlTypeName() != SqlTypeName.VARCHAR || type.getPrecision() != org.apache.calcite.rel.type.RelDataType.PRECISION_NOT_SPECIFIED)
                 return null;
 
             var operand = Operand(call, 0);
@@ -1287,7 +1973,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (_container is null || _container.Facts.IsEmpty)
                 return false;
 
-            if (IsTextRendering(node) == false)
+            if (IsScalarRendering(node) == false)
                 return false;
 
             if (TryResolvePath(node, out var path) == false || path is null)
@@ -1308,7 +1994,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         bool IsDeclaredString(RexNode node)
         {
-            if (IsTextRendering(node) == false)
+            // A scalar rendering only: a JSON_QUERY is null for a string, so the fact that makes the
+            // accessor's text the value makes the fragment's nothing -- see IsScalarRendering.
+            if (IsScalarRendering(node) == false)
                 return false;
 
             if (TryResolvePath(node, out var path) == false || path is null)
@@ -1388,6 +2076,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// under it, exactly as they read the bare literal an <c>ANY</c>-typed column left uncoerced.
         /// Only the single-operand cast whose sole effect is the <c>VARIANT</c> retyping; anything else
         /// is returned unchanged.
+        /// <para>
+        /// The validator boxes the accessor too, where the promoted column is the other side, and the
+        /// box hides nothing about what is inside it: a rendering boxed is a rendering. So the
+        /// comparison, <c>LIKE</c> and the null test ask their questions beneath it — see
+        /// <see cref="WriteComparand"/>.
+        /// </para>
         /// </remarks>
         internal static RexNode StripVariantCoercion(RexNode node)
         {
@@ -1432,56 +2126,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return node;
         }
 
-        /// <summary>
-        /// The service's type test for the type a <c>RETURNING</c> names, or <c>null</c> where the
-        /// comparison is not through one.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <c>JSON_VALUE(doc, '$.v' RETURNING INTEGER)</c> is a typed extraction, not a rendering: it
-        /// participates only where the value is of that type. Calcite does not enforce that — it casts
-        /// what it extracted and throws when the cast fails, outside the <c>ON ERROR</c> handling that
-        /// would otherwise answer null. The type test is that restriction written where the service can
-        /// apply it.
-        /// </para>
-        /// <para>
-        /// A character <c>RETURNING</c> is deliberately absent. The bare accessor is already a
-        /// rendering and is handled as one, and an explicit <c>RETURNING VARCHAR</c> carries more than
-        /// two operands, so neither reaches here.
-        /// </para>
-        /// </remarks>
-        static string? TryTypeTestForReturning(RexCall call)
-        {
-            for (var i = 0; i < call.getOperands().size(); i++)
-            {
-                if ((RexNode)call.getOperands().get(i) is not RexCall operand)
-                    continue;
-
-                // By the call's type, not its operand count: RETURNING names the type of the call
-                // and adds no operand, so a bare accessor and a RETURNING INTEGER one differ only
-                // in what they are typed as.
-                if (operand.getOperator().getName() != "JSON_VALUE")
-                    continue;
-
-                switch (operand.getType()?.getSqlTypeName()?.getName())
-                {
-                    case nameof(SqlTypeName.TINYINT):
-                    case nameof(SqlTypeName.SMALLINT):
-                    case nameof(SqlTypeName.INTEGER):
-                    case nameof(SqlTypeName.BIGINT):
-                    case nameof(SqlTypeName.FLOAT):
-                    case nameof(SqlTypeName.REAL):
-                    case nameof(SqlTypeName.DOUBLE):
-                    case nameof(SqlTypeName.DECIMAL):
-                        return CosmosOperators.IsNumber.getName();
-
-                    case nameof(SqlTypeName.BOOLEAN):
-                        return CosmosOperators.IsBool.getName();
-                }
-            }
-
-            return null;
-        }
 
         /// <summary>
         /// Determines whether an expression is a <c>JSON_VALUE</c> read as text, which is what the
@@ -1831,10 +2475,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // is rendered as the accessor it is.
             node = StripRedundantTextCast(node);
 
+            // A cast that differs from its operand only in nullability converts nothing either -- see
+            // IsNullabilityAssertion -- and over an accessor its column is the accessor's, read as the
+            // accessor is. The split rule hands one up as a column of its own: the asserted branch of
+            // a COALESCE whose CASE stays in process. Read as the declared VARCHAR it failed at a
+            // stored number, which the accessor renders as text.
+            if (node is RexCall assertion && IsNullabilityAssertion(assertion) && Operand(assertion, 0) is RexCall asserted && IsJsonAccessor(asserted))
+                node = asserted;
+
             if (TryRenderedTextOperand(node) is RexNode operand)
             {
                 reading = CosmosReading.Text;
-                return Translate(operand);
+                return TranslateValue(operand);
             }
 
             // CLR_ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
@@ -1925,7 +2577,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             try
             {
-                return Translate(node);
+                return TranslateValue(node);
             }
             finally
             {
@@ -2003,8 +2655,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Metadata.CosmosUuidForms.IsUuid(representation) == false)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ScalarReading, path.ToString());
             return true;
         }
 
@@ -2128,8 +2779,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Client.CosmosJson.CanRead(node.getType()) == false)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ScalarReading, path.ToString());
             return true;
         }
 
@@ -2152,9 +2802,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// object or an array renders as nothing: SQL/JSON answers null there rather than writing one
         /// out, which is the whole difference between <c>JSON_VALUE</c> and <c>JSON_QUERY</c>.
         /// <c>IS_PRIMITIVE</c> is exactly that distinction — true of a string, a number, a boolean and
-        /// a JSON null, false of an object, an array and an absent property — so
-        /// <c>IIF(IS_PRIMITIVE(p), p, null)</c> means at the service what the function means here, for
-        /// every JSON type.
+        /// a JSON null, false of an object and an array — so <c>IIF(IS_PRIMITIVE(p), p, null)</c> means
+        /// at the service what the function means here, for every JSON type. Over an absent property
+        /// the record has it both false and undefined; either way the ternary does not answer the
+        /// value, and the column reads null, which is what the function answers there.
         /// </para>
         /// <para>
         /// <c>JSON_QUERY</c> is the other half and is <em>not</em> handled: it answers the JSON text of
@@ -2184,8 +2835,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2245,8 +2895,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2295,8 +2944,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsObject.getName()}({rendered}) OR {CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2396,31 +3044,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Recognises <c>CAST(&lt;document value&gt; AS &lt;number&gt;)</c> whose conversion stays within
-        /// one of the stored value, and returns the value underneath.
+        /// one of the stored value, and returns the value underneath — or <c>JSON_VALUE(… RETURNING
+        /// DECIMAL)</c>, which is that conversion written as a clause, and returns the rendering it
+        /// converts.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <b>Not for translation.</b> Nothing renders a numeric cast: Calcite converts the stored
         /// value and the service compares it as it stands, so the two select different documents and
         /// the operator is declined. What this is for is <see cref="Rel.Convert.CosmosFilterSplitRule"/>,
         /// which pushes a restriction the predicate <em>implies</em> and rechecks the predicate itself
         /// above — a bound on the raw value is such a restriction, and the cast is what says the value
         /// is being read as a number at all.
+        /// </para>
+        /// <para>
+        /// <b>A parsing <c>RETURNING</c> is the same question</b>, and was read as the stored value
+        /// instead — see <see cref="IsParsingJsonValue"/>. It has no operand to return, the clause
+        /// adding none, so the value it converts is written out: the same call typed as the bare
+        /// accessor is, which is the rendering a cast to a number reads and which the translator writes
+        /// as the path where the bound compares it with a number. Built rather than found, hence the
+        /// builder.
+        /// </para>
         /// </remarks>
-        internal static RexNode? TryNumericCastOperand(RexNode node) => TryNumericCastOperand(node, out _);
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _, out _);
 
-        /// <inheritdoc cref="TryNumericCastOperand(RexNode)" />
+        /// <inheritdoc cref="TryNumericCastOperand(RexNode, RexBuilder)" />
         /// <param name="node">The expression to inspect.</param>
+        /// <param name="rexBuilder">Builds the rendering a parsing <c>RETURNING</c> converts.</param>
         /// <param name="saturates">
         /// On success, the range the conversion saturates to, or <c>null</c> where it does not
         /// saturate. A comparison against one of these two values matches every stored value beyond it,
         /// which a bound must not exclude.
         /// </param>
-        internal static RexNode? TryNumericCastOperand(RexNode node, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates)
+        /// <param name="roundsFrom">
+        /// On success, the magnitude from which the conversion may move a value by a whole unit, or
+        /// <c>null</c> where it never does. A window around a bound that far out holds nothing.
+        /// </param>
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates, out java.math.BigDecimal? roundsFrom)
         {
             saturates = null;
+            roundsFrom = null;
 
             if (node is not RexCall call)
                 return null;
+
+            // RETURNING DECIMAL parses what the path holds -- a stored number as its exact value, a
+            // stored string as the number its text spells -- so a stored number it compares lies within
+            // one of the literal as surely as under the cast: where the comparison casts the literal down
+            // to the clause's type it is truncated toward zero, and the value is not (measured: `= 2.5`
+            // keeps a stored 2, and `> 2` a stored 2.4). It never saturates, so no side is spared. The
+            // clause applies no precision of its own -- a stored 12345 under RETURNING DECIMAL(5, 1) is
+            // 12345 -- but the comparison may: a literal with more digits casts the value up instead,
+            // CAST(...):DECIMAL(11, 1) against 12345, which checks the precision and which this does not
+            // read through; and a literal whose whole digits the clause's type cannot hold raises when
+            // cast down to it, which CosmosNumericWindow refuses to read. A behaviour clause substitutes a
+            // value the path does not hold, and is not this.
+            if (IsParsingJsonValue(call))
+            {
+                if (IsPlainJsonValue(call) == false)
+                    return null;
+
+                var types = rexBuilder.getTypeFactory();
+                var text = types.createTypeWithNullability(types.createSqlType(SqlTypeName.VARCHAR, 2000), true);
+                return rexBuilder.makeCall(text, call.getOperator(), call.getOperands());
+            }
 
             var kind = KindOf(call);
             if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)
@@ -2433,9 +3120,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // what a caller can state a bound from. Measured against Calcite's own runtime, and four
             // plausible members are absent because measuring them is what ruled them out:
             //
-            //   INTEGER, BIGINT  truncate toward zero and saturate at the limits -- within one, except
-            //                    at the limits, which the caller handles.
-            //   DOUBLE           identity for a stored number.
+            //   INTEGER, BIGINT  over a raw value, truncate toward zero and saturate at the limits --
+            //                    within one, except at the limits, which the caller handles. Over
+            //                    JSON_VALUE's rendering, Java's integer parse of the text: a whole number
+            //                    lands exactly, and a point, an exponent or a whole number beyond the
+            //                    type raises (ACastOfTheAccessorToANumberParsesTheRendering). A bound only
+            //                    excludes what raises, which is the recorded divergence.
+            //   DOUBLE           identity for a stored number, and the double's parse of its rendering,
+            //                    below 2^52. From there half a unit in the last place reaches a half, and
+            //                    the stored value and the literal each round to a double: a whole unit
+            //                    apart, they can land on one, and = 2^60 keeps a stored 2^60 + 1 (the
+            //                    differential corpus, over declared). The caller states nothing there.
             //   SMALLINT, TINYINT  do not saturate, they wrap: toShort(1e30) is -1 and toByte(1e30) is
             //                    255, which bear no relation to the stored value at all.
             //   FLOAT, REAL      round to float precision: float(1e30) differs from 1e30 by 1.5e22.
@@ -2454,6 +3149,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 saturates = (new java.math.BigDecimal(int.MinValue), new java.math.BigDecimal(int.MaxValue));
             else if (target == SqlTypeName.BIGINT)
                 saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
+            else
+                roundsFrom = new java.math.BigDecimal(1L << 52);
 
             return operand;
         }
@@ -2504,22 +3201,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes a null test.
-        /// </summary>
-        /// <remarks>
-        /// Cosmos distinguishes an absent property (<c>undefined</c>) from one present with a null
-        /// value, whereas SQL has only <c>NULL</c>. Both Cosmos states must therefore be tested,
-        /// or a filter on a property that is simply missing from a document would not match.
-        /// </remarks>
-        /// <summary>
         /// Whether an odd number of <c>NOT</c>s encloses what is being written.
         /// </summary>
         /// <remarks>
         /// See <see cref="WriteComparison"/>. The boolean connectives pass it through -- negating a
         /// conjunction negates the position of both its arms -- and everything else clears it, because
-        /// the position of a value is not the position of a predicate.
+        /// the position of a value is not the position of a predicate. Cleared in one place,
+        /// <see cref="WriteCallCore"/>, for every call <see cref="CarriesPosition"/> does not name.
         /// </remarks>
         bool _negated;
+
+        /// <summary>
+        /// Whether what is being written is read for its value, where SQL's unknown is a null that has
+        /// to come back, rather than for its truth alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A predicate's truth and its value are two questions, and every guard here answers the
+        /// first.</b> A comparison in a <c>WHERE</c> is written to be false where SQL's is unknown,
+        /// because a row is discarded for either — see <see cref="WriteComparison"/> — and the
+        /// service's own equality is false over a JSON null where SQL's is unknown, which needs no
+        /// guard for the same reason. Read as a value, false and unknown are different answers.
+        /// Measured against the emulator over products, whose category is null in one document and
+        /// absent in another: <c>(category &lt;&gt; 'bikes') = FALSE</c>, and the same <c>IN
+        /// (FALSE)</c>, kept both, the guarded inequality being false over them where SQL's is
+        /// unknown; <c>(category = 'bikes') = FALSE</c> kept the null one; and <c>category =
+        /// 'bikes'</c> projected, or grouped by, answered false for the null category where SQL
+        /// answers null.
+        /// </para>
+        /// <para>
+        /// <b>Where it is set.</b> At the top of <see cref="TranslateValue"/>, which a projection
+        /// goes through, and for every operand of an operator that reads its operands as values —
+        /// a comparison, a function, a cast, arithmetic. The connectives pass it on, as they pass the
+        /// <c>NOT</c>'s position on, and a <c>CASE</c> passes it to its arms and clears it for its
+        /// conditions, which select an arm by their truth. <see cref="Translate(RexNode)"/> starts
+        /// without it: a <c>WHERE</c>, a join condition and a traversal's filter read truth alone.
+        /// </para>
+        /// <para>
+        /// <b>What it declines.</b> A comparison Calcite types nullable, which is the one whose SQL
+        /// value can be unknown: none of its renderings answer null exactly where SQL does, and
+        /// rendering one that did would be a new thing to measure. Typed <c>NOT NULL</c> — the
+        /// comparison of an <c>id</c>, a <c>_ts</c> or a literal — it is two-valued at both ends and
+        /// is written as before. A truth test over a stored boolean is written in its two-valued form
+        /// — see <see cref="WriteTruthTest"/>. <c>IS NULL</c> is two-valued as written, and
+        /// <c>IS NULL</c> over a predicate is declined on its own account.
+        /// </para>
+        /// </remarks>
+        bool _value;
 
         /// <summary>
         /// Writes <c>NOT</c>, flipping the position its operand is written in.
@@ -2582,11 +3310,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireOperandCount(call, 2);
 
             var negated = _negated;
+            var value = _value;
             var notEquals = KindOf(call) == SqlKind.__Enum.NOT_EQUALS;
+
+            // Read for its value, a comparison SQL can answer unknown for is declined: every form
+            // written below is false somewhere SQL's is unknown, which a WHERE cannot tell apart and a
+            // column, a grouping key or an enclosing comparison can. See _value.
+            if (value && call.getType()?.isNullable() != false)
+                throw new CosmosTranslationException("A comparison read as a value is unknown where an operand is null, and the service's comparisons answer false there -- the guard that makes them right in a WHERE is what makes them wrong as a value.");
 
             // Operands are values, and a value has no position. Cleared so that a comparison nested
             // inside one is not written as though the NOT above applied to it.
             _negated = false;
+            _value = true;
 
             try
             {
@@ -2598,7 +3334,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return;
                 }
 
-                var paths = new List<string>();
+                var paths = new List<(string Path, IReadOnlyList<SqlFunction>? Tests)>();
                 CollectGuardPaths(call, paths);
 
                 if (paths.Count == 0)
@@ -2607,35 +3343,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return;
                 }
 
+                // The guard says SQL's comparison is unknown exactly where a path it reads is null,
+                // which holds through an operator that answers null for a null and through nothing
+                // else. A CASE does not -- COALESCE(label, 'none') is 'none' where label is absent --
+                // and neither does a null or type test, so over one the guard would decide rows the
+                // comparison does not. Measured over the typed container, NOT (COALESCE(label,
+                // 'none') = 'x') and COALESCE(label, 'none') <> 'x' each lost the null label and the
+                // absent one, which SQL keeps. See ObservesAbsence.
+                if (ObservesAbsence(Operand(call, 0)) || ObservesAbsence(Operand(call, 1)))
+                    throw new CosmosTranslationException("A comparison over an expression that answers a value where a path it reads is absent has no guard to restore SQL's unknown in this position: the guard would test the path, and the expression does not follow it.");
+
                 builder.Append('(');
 
                 if (negated)
                 {
-                    // True over a null, so that the NOT above discards the row.
+                    // True wherever SQL's comparison is unknown, so that the NOT above discards the
+                    // row: where an operand is null, which for an accessor is wherever its reading
+                    // answers null -- see ReadingTests. Over an object the service's `c.label = 'bikes'`
+                    // is false, its negation true, and the row was kept where JSON_VALUE's null keeps
+                    // nothing; measured over the typed container, NOT (label = 'bikes') gained the
+                    // array and the object. The same for a RETURNING, whose `=` had no type test under
+                    // a NOT where its `!=` had one in the positive position.
                     WriteComparand(builder, call, op);
 
-                    foreach (var path in paths)
+                    foreach (var (path, tests) in paths)
+                    {
                         builder.Append(" OR IS_NULL(").Append(path).Append(") OR NOT IS_DEFINED(").Append(path).Append(')');
+
+                        if (tests is not null)
+                            builder.Append(" OR NOT ").Append(AnyOfOperand(tests, path));
+                    }
                 }
                 else
                 {
-                    // False over a null, which discards the row here.
-                    foreach (var path in paths)
+                    // False wherever SQL's comparison is unknown, which discards the row here.
+                    foreach (var (path, _) in paths)
                         builder.Append("IS_DEFINED(").Append(path).Append(") AND NOT IS_NULL(").Append(path).Append(") AND ");
 
-                    // An inequality through a typed accessor restricts to the type it names, and it
-                    // is the only comparison that has to. Measured against a real account: the
-                    // service's ordering comparisons are *undefined* across JSON types, so
-                    // `c.v > 10` already returns no string and no boolean and a type test changes
-                    // nothing; `!=` is the exception and answers true for every value of another
-                    // type. Calcite would have thrown on those documents -- RETURNING asserts the
-                    // type rather than converting it, ikvmnet/calcite-dotnet#120 -- and SQL:2016
+                    // And where the reading answers null for more than that. The one comparison that
+                    // reaches here is the inequality, and through a typed accessor this is the test of
+                    // the type it names. Measured against a real account: the service's ordering
+                    // comparisons are *undefined* across JSON types, so `c.v > 10` already returns no
+                    // string and no boolean; `!=` is the exception and answers true for every value of
+                    // another type. Calcite would have thrown on those documents -- RETURNING asserts
+                    // the type rather than converting it, ikvmnet/calcite-dotnet#120 -- and SQL:2016
                     // says they are an error condition answering null, which no comparison keeps.
                     // Restricting is therefore what the standard asks for, and closer to it than
                     // either the engine or the unrestricted pushdown.
-                    if (notEquals && TryTypeTestForReturning(call) is string test)
-                        foreach (var path in paths)
-                            builder.Append(test).Append('(').Append(path).Append(") AND ");
+                    foreach (var (path, tests) in paths)
+                        if (tests is not null)
+                            builder.Append(AnyOfOperand(tests, path)).Append(" AND ");
 
                     WriteComparand(builder, call, op);
                 }
@@ -2645,6 +3402,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = negated;
+                _value = value;
             }
         }
 
@@ -2682,7 +3440,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // transposing the filter through the projection replaces the reference with the
             // projection's expression and the type that said it goes with it, where a cast is a call
             // of its own and survives. Rendered as the path, which is what the cast names.
-            if (call.getOperands().size() == 1 && call.getType()?.getSqlTypeName() == SqlTypeName.ANY && IsTextRendering(Operand(call, 0)))
+            if (IsRawValueMarker(call))
             {
                 Write(builder, Operand(call, 0));
                 return;
@@ -2729,10 +3487,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // CosmosRexTranslatorTests.EqualityThroughACastOverATypedColumnKeepsTheCast and
             // CosmosRexTranslatorTests.Casts.ACastToAnExactTypeIsDeclined, both of which failed to
             // the broader test.
-            if (call.getOperands().size() == 1
-                && call.getType()?.isNullable() == false
-                && Operand(call, 0).getType()?.isNullable() == true
-                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType()))
+            if (IsNullabilityAssertion(call))
             {
                 Write(builder, Operand(call, 0));
                 return;
@@ -2797,23 +3552,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryUuidParameter(left) is org.apache.calcite.rex.RexDynamicParam uuidOnLeft && TryWriteStoredUuidParameter(builder, right, uuidOnLeft, Reverse(op)))
                 return;
 
+            // What each side is beneath the box Calcite's coercion puts around it where the other side
+            // is a VARIANT. The box carries the value unchanged, and WriteCast writes it as the value
+            // underneath -- so a rendering inside one is still a rendering, and the tests below are
+            // asked of it. Asked of the box, they saw no rendering: measured over the typed container,
+            // `label = CAST('30' AS VARIANT)` pushed as `c.label = '30'` and lost the stored number 30,
+            // which Calcite renders as '30' and keeps. Which is also the shape of an accessor compared
+            // with a promoted column, the validator boxing the accessor.
+            var leftValue = StripVariantCoercion(left);
+            var rightValue = StripVariantCoercion(right);
+
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
                     left = unwrappedLeft;
                 else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
-                else if ((IsTextRendering(left) && IsUnambiguousTextEquality(left, right) == false
-                    || IsTextRendering(right) && IsUnambiguousTextEquality(right, left) == false)
+                else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
+                    || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
                     // Unless the container itself says the path holds a string and nothing else, in
                     // which case the rendering *is* the stored value and the comparand need not be
                     // inspected at all -- which is what lets a parameter through.
-                    && (IsDeclaredStringOutright(left) || IsDeclaredStringOutright(right)) == false)
+                    && (IsDeclaredStringOutright(leftValue) || IsDeclaredStringOutright(rightValue)) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
-                && (IsTextRendering(left) && IsCharacter(right) || IsTextRendering(right) && IsCharacter(left))
-                && (IsDeclaredString(left) || IsDeclaredString(right)) == false)
+                && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
+                && (IsDeclaredString(leftValue) || IsDeclaredString(rightValue)) == false)
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,
@@ -3028,6 +3793,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether the other side of an ordering comparison with a rendering makes it a
+        /// comparison Calcite decides by the rendering's text.
+        /// </summary>
+        /// <remarks>
+        /// Text, as <see cref="IsCharacter"/> says; and a document value, typed <c>VARIANT</c> or
+        /// <c>ANY</c>, which the validator compares a rendering with by boxing the rendering — the
+        /// text in the box, where the service has the raw value at the path. A number is neither, for
+        /// the reason <see cref="IsCharacter"/> gives.
+        /// </remarks>
+        static bool IsTextComparand(RexNode node)
+        {
+            return IsCharacter(node) || IsDocumentValueType(node.getType()?.getSqlTypeName());
+        }
+
+        /// <summary>
         /// Determines whether a kind is one of the ordering comparisons, or the inequality.
         /// </summary>
         /// <remarks>
@@ -3056,6 +3836,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (accessor is RexCall call && (IsTextJsonValue(call) ? IsPlainJsonValue(call) : call.getOperands().size() == 2) == false)
                 return false;
 
+            // The fragment's text against text: the service compares the object as it stands, which
+            // equals no string, and the stored string the literal spells, which JSON_QUERY answers
+            // null for. No literal makes the two select the same documents.
+            if (IsTextRendering(accessor) && IsScalarRendering(accessor) == false)
+                return false;
+
             if (other is not RexLiteral literal)
                 return false;
 
@@ -3070,15 +3856,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Collects the rendered paths an expression reads, the largest that resolves winning.
+        /// Collects the rendered paths an expression reads, the largest that resolves winning, each
+        /// with the tests its reading answers a value under.
         /// </summary>
-        void CollectGuardPaths(RexNode node, List<string> paths)
+        /// <remarks>
+        /// The reading is the one the expression names, so a text rendering cast to <c>ANY</c> — the
+        /// raw value, named on purpose; see <see cref="WriteCast"/> — collects its path with none.
+        /// </remarks>
+        void CollectGuardPaths(RexNode node, List<(string Path, IReadOnlyList<SqlFunction>? Tests)> paths)
         {
+            var raw = false;
+
+            if (node is RexCall marker && IsRawValueMarker(marker))
+            {
+                node = Operand(marker, 0);
+                raw = true;
+            }
+
             if (TryResolvePath(node, out var path) && path is not null)
             {
-                var text = path.ToString();
-                if (paths.Contains(text) == false)
-                    paths.Add(text);
+                var entry = (path.ToString(), raw ? null : ReadingTests(node));
+                if (paths.Contains(entry) == false)
+                    paths.Add(entry);
 
                 return;
             }
@@ -3088,6 +3887,110 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 CollectGuardPaths(Operand(call, i), paths);
+        }
+
+        /// <summary>
+        /// Determines whether an expression can answer something other than unknown where a path it
+        /// reads is absent.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two consumers, one question.</b> The split rule asks it to decide whether a branch
+        /// implies the paths it reads are defined, and pushes <c>IS_DEFINED</c> of each where it
+        /// does — see <see cref="Rel.Convert.CosmosFilterSplitRule"/>. The guard a comparison takes
+        /// asks it to decide whether SQL's comparison is unknown exactly where those paths are null —
+        /// see <see cref="WriteComparison"/>. Both are the claim that the expression follows its
+        /// paths into unknown, and an expression that observes absence is the one it is false of.
+        /// </para>
+        /// <para>
+        /// Measured against a real account, a comparison on an absent property is <em>undefined</em>
+        /// rather than false, and <c>NOT undefined</c> is not true either, so neither
+        /// <c>c.price &gt; 5</c> nor <c>NOT (c.price &gt; 5)</c> matches a document without a
+        /// <c>price</c>. The <c>IS_*</c> family is different: each returns a real boolean for an absent
+        /// path, so <c>NOT IS_DEFINED(c.price)</c> is genuinely true there. Only <c>IS_DEFINED</c> was
+        /// measured; the rest are refused with it. SQL's own null and truth tests observe absence
+        /// too, being true or false where their operand is unknown.
+        /// </para>
+        /// <para>
+        /// <b>And a <c>CASE</c>, which was missing.</b> An unknown condition takes the next arm, and
+        /// an arm is a value whatever the paths the others read: <c>COALESCE(x, 'none')</c> is
+        /// <c>'none'</c> where <c>x</c> is absent, and <c>CASE WHEN category = 'bikes' THEN … ELSE 'z'
+        /// END = 'z'</c> is true there. Measured against the emulator, the split rule weakened that
+        /// predicate to <c>IS_DEFINED(c.category) AND IS_DEFINED(c.name)</c> and lost the document
+        /// with no category; and a guard written over a coalesce lost the documents whose path was
+        /// null or absent. <c>COALESCE</c> and <c>NULLIF</c> are named beside it for a caller that
+        /// builds them unexpanded.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns><c>true</c> where the expression can tell an absent path from an unknown.</returns>
+        internal static bool ObservesAbsence(RexNode node)
+        {
+            if (node is not RexCall call)
+                return false;
+
+            if (CosmosOperators.IsAbsenceObserving(call.getOperator()))
+                return true;
+
+            switch (call.getKind()?.name())
+            {
+                case nameof(SqlKind.IS_NULL):
+                case nameof(SqlKind.IS_NOT_NULL):
+                case nameof(SqlKind.IS_TRUE):
+                case nameof(SqlKind.IS_NOT_TRUE):
+                case nameof(SqlKind.IS_FALSE):
+                case nameof(SqlKind.IS_NOT_FALSE):
+                case nameof(SqlKind.IS_UNKNOWN):
+                case nameof(SqlKind.IS_DISTINCT_FROM):
+                case nameof(SqlKind.IS_NOT_DISTINCT_FROM):
+                case nameof(SqlKind.CASE):
+                case nameof(SqlKind.COALESCE):
+                case nameof(SqlKind.NULLIF):
+                    return true;
+            }
+
+            var operands = call.getOperands();
+            for (var i = 0; i < operands.size(); i++)
+                if (ObservesAbsence((RexNode)operands.get(i)))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether a cast differs from its operand only in nullability: a nullable operand
+        /// cast to the same type not null, which is Calcite asserting what a null test has proved.
+        /// </summary>
+        /// <remarks>
+        /// The direction matters, and so does everything else matching: see <see cref="WriteCast"/>,
+        /// which writes one as its operand, for the two tests that caught a broader version.
+        /// </remarks>
+        static bool IsNullabilityAssertion(RexCall call)
+        {
+            var kind = KindOf(call);
+
+            return (kind == SqlKind.__Enum.CAST || kind == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && call.getType()?.isNullable() == false
+                && Operand(call, 0).getType()?.isNullable() == true
+                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType());
+        }
+
+        /// <summary>
+        /// Determines whether a call is the cast that names the raw value at a path over its rendering.
+        /// </summary>
+        /// <remarks>
+        /// The first branch of <see cref="WriteCast"/>, asked as a question so that what reads a path
+        /// through one knows it is reading the value the service holds.
+        /// </remarks>
+        bool IsRawValueMarker(RexCall call)
+        {
+            var kind = KindOf(call);
+
+            return (kind == SqlKind.__Enum.CAST || kind == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && call.getType()?.getSqlTypeName() == SqlTypeName.ANY
+                && IsTextRendering(Operand(call, 0));
         }
 
         /// <summary>
@@ -3189,6 +4092,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// difference would show.
         /// </para>
         /// <para>
+        /// <b>And read as a value, where it shows too.</b> A projected <c>x IS TRUE</c> written bare
+        /// would come back null over an absent path, the undefined leaving the property out of the
+        /// row, where SQL answers false. The form a <c>NOT</c> takes is two-valued by construction —
+        /// false where the path is absent, and the comparison's own false over a null and over the
+        /// other boolean — so it is the form a value takes as well. See <see cref="_value"/>.
+        /// </para>
+        /// <para>
         /// <b>Over a stored boolean and nothing else.</b> Every other operand is declined, as the whole
         /// family was before: over an arbitrary expression the service's undefined can arise in places
         /// a test like this cannot see, and the shapes that reach here have only the one, at the path.
@@ -3207,9 +4117,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException($"'{call.getOperator().getName()}' is written only over a path the container declares a boolean: over anything else the service's undefined does not follow SQL's unknown.");
 
             var position = _negated;
+            var value = _value;
 
             // The operand is a value, and a value has no position.
             _negated = false;
+            _value = true;
 
             try
             {
@@ -3221,7 +4133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 if (negated)
                     builder.Append("(NOT IS_DEFINED(").Append(path).Append(") OR (NOT ").Append(comparison).Append("))");
-                else if (position)
+                else if (position || value)
                     builder.Append("(IS_DEFINED(").Append(path).Append(") AND ").Append(comparison).Append(')');
                 else
                     builder.Append(comparison);
@@ -3229,15 +4141,93 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = position;
+                _value = value;
             }
         }
 
+        /// <summary>
+        /// Writes <c>IS NULL</c> and <c>IS NOT NULL</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos distinguishes an absent property (<c>undefined</c>) from one present with a null
+        /// value, whereas SQL has only <c>NULL</c>. Both Cosmos states must therefore be tested, or a
+        /// filter on a property that is simply missing from a document would not match.
+        /// </para>
+        /// <para>
+        /// <b>Over an accessor that is not the whole of it.</b> <c>JSON_VALUE</c> is null for an object
+        /// and an array as well, and <c>JSON_QUERY</c> for every scalar — see
+        /// <see cref="ReadingTests"/> — so over a path one of them reads, the test is the reading's
+        /// null set and not the path's. Measured against the emulator before this was written,
+        /// <c>JSON_VALUE(DOC, '$.metadata') IS NOT NULL</c> kept the document whose <c>metadata</c> is
+        /// an object, which Calcite does not, and <c>IS NULL</c> over the mixed-type <c>label</c> lost
+        /// the array and the object.
+        /// </para>
+        /// <para>
+        /// <b>Written so that it does not matter what the service says of a type test over an absent
+        /// path.</b> The record disagrees with itself there — false in one place, undefined in another
+        /// — and the absent case is named by <c>IS_DEFINED</c>, which was measured, ahead of the type
+        /// test in both forms: <c>NOT IS_DEFINED(p) OR …</c> is true and <c>IS_DEFINED(p) AND …</c>
+        /// false whatever follows, so the test is only ever asked of a value that is there.
+        /// </para>
+        /// <para>
+        /// Over the path itself rather than over the guarded value a projection writes for the
+        /// accessor, so that the filter and the projection say it in one spelling — and because the
+        /// guarded value is only right here by way of how the service answers a ternary over an
+        /// undefined condition, which is another thing the record does not settle.
+        /// </para>
+        /// </remarks>
         void WriteIsNull(StringBuilder builder, RexCall call, bool negated)
         {
             RequireOperandCount(call, 1);
 
+            // Beneath the VARIANT box, which is null exactly where what it boxes is, and which hid the
+            // accessor's reading from the test: measured over the typed container,
+            // `CAST(label AS VARIANT) IS NULL` was written over the path's null set alone and lost
+            // the array and the object, which JSON_VALUE answers null for.
+            var value = StripVariantCoercion(Operand(call, 0));
+
+            if (TryResolvePath(value, out var path) && path is not null)
+            {
+                if (value is RexCall accessor && IsJsonAccessor(accessor))
+                    RequireTheEngineCouldRead(accessor, path);
+
+                var rendered = path.ToString();
+                var tests = ReadingTests(value);
+
+                if (negated)
+                {
+                    builder.Append("(IS_DEFINED(").Append(rendered).Append(") AND NOT IS_NULL(").Append(rendered).Append(')');
+
+                    if (tests is not null)
+                        builder.Append(" AND ").Append(AnyOfOperand(tests, rendered));
+                }
+                else
+                {
+                    builder.Append("(NOT IS_DEFINED(").Append(rendered).Append(") OR IS_NULL(").Append(rendered).Append(')');
+
+                    if (tests is not null)
+                        builder.Append(" OR NOT ").Append(AnyOfOperand(tests, rendered));
+                }
+
+                builder.Append(')');
+                return;
+            }
+
+            // A predicate's unknown is not a value the service can test for. Written as an operand it
+            // is written positively, and the positive form of a comparison is guarded to be false
+            // wherever SQL's is unknown -- which is what makes it right in a WHERE and what leaves
+            // nothing for IS NULL to find. Measured against the emulator,
+            // `(category <> 'bikes') IS NULL` kept neither the null category nor the absent one,
+            // both of which SQL keeps, and `(category = 'bikes') IS NOT NULL` kept the null one,
+            // the service's equality being false there. Unguarded it would be no better: the
+            // service's `!=` is true over a null. A stored boolean is a value, and is tested as one
+            // -- see TryStoredBoolean.
+            if (value is RexCall predicate && value.getType()?.getSqlTypeName() == SqlTypeName.BOOLEAN && TryStoredBoolean(predicate) is null)
+                throw new CosmosTranslationException("IS NULL over a predicate asks where it is unknown, and the service's comparisons are two-valued over a null where SQL's are not, so there is nothing at the service to test.");
+
             var operand = new StringBuilder();
-            Write(operand, Operand(call, 0));
+            Write(operand, value);
             var text = operand.ToString();
 
             if (negated)
@@ -3285,7 +4275,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // pattern where the value is a string. Through a case fold as well: `UPPER(label)` is
             // `30` in Calcite, having folded the rendering, and undefined at the service, so
             // `UPPER(label) LIKE '3%'` has the same gap and takes the same guard.
-            if (IsTextRendering(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsTextRendering(folded))
+            //
+            // And through the coercions the subject is unwrapped from before it is written. A
+            // rendering boxed as a VARIANT and cast back to text is the same rendering, and
+            // StripTextCoercion then WriteCast's VARIANT branch took it down to the bare path:
+            // measured, `CAST(CAST(label AS VARIANT) AS VARCHAR) LIKE '3%'` pushed as
+            // STARTSWITH(c.label, '3') and lost the stored 30.
+            if (IsRenderingBeneathCoercion(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsRenderingBeneathCoercion(folded))
                 throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, and the service's string functions are undefined over a value that is not a string.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
@@ -3314,6 +4310,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             WriteBinary(builder, StripTextCoercion(Operand(call, 0)), Operand(call, 1), "LIKE");
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a rendering, or one boxed as a <c>VARIANT</c> and cast
+        /// back to text — the two coercions a string operator's subject is unwrapped from before it is
+        /// written.
+        /// </summary>
+        bool IsRenderingBeneathCoercion(RexNode node)
+        {
+            return IsTextRendering(node) || IsTextRendering(StripVariantCoercion(StripTextCoercion(node)));
         }
 
         /// <summary>
@@ -3467,18 +4473,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var depth = 0;
 
-            for (var i = 0; i + 1 < operands.size(); i += 2)
-            {
-                builder.Append('(');
-                Write(builder, (RexNode)operands.get(i));
-                builder.Append(" ? ");
-                Write(builder, (RexNode)operands.get(i + 1));
-                builder.Append(" : ");
-                depth++;
-            }
+            // The arms are in the position the CASE is in, and the conditions in the positive one --
+            // see CarriesPosition. A condition's truth alone selects an arm, however the CASE's own
+            // value is read, so it is a predicate where the arms may be values -- see _value.
+            var position = _negated;
+            var value = _value;
 
-            Write(builder, (RexNode)operands.get(operands.size() - 1));
-            builder.Append(')', depth);
+            try
+            {
+                for (var i = 0; i + 1 < operands.size(); i += 2)
+                {
+                    builder.Append('(');
+
+                    _negated = false;
+                    _value = false;
+                    Write(builder, (RexNode)operands.get(i));
+                    _negated = position;
+                    _value = value;
+
+                    builder.Append(" ? ");
+                    Write(builder, (RexNode)operands.get(i + 1));
+                    builder.Append(" : ");
+                    depth++;
+                }
+
+                Write(builder, (RexNode)operands.get(operands.size() - 1));
+                builder.Append(')', depth);
+            }
+            finally
+            {
+                _negated = position;
+                _value = value;
+            }
         }
 
         /// <summary>
