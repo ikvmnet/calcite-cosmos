@@ -3441,7 +3441,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A disjunction implies only the paths every branch needs, and a branch that is a negated
-        /// compound needs none.
+        /// conjunction of these needs none.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -3535,6 +3535,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))")));
 
             sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND IS_DEFINED(c.category)))");
+        }
+
+        /// <summary>
+        /// A negated compound, or one compared with <c>TRUE</c> or <c>FALSE</c>, is read for its truth or
+        /// for its falsity, and implies what that needs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A disjunction is false only where every branch is, so false it needs what any branch does; a
+        /// conjunction is true only where every conjunct is. A <c>NOT</c> swaps the two, and so does a
+        /// comparison with <c>FALSE</c>. Each of these pushed nothing before: a negated compound needed
+        /// nothing, and a compared one only what its operands need as values, which for a compound is
+        /// the little every operand needs. Each now pushes both paths, and each agrees with Calcite on
+        /// the emulator, as the differential corpus says.
+        /// </para>
+        /// <para>
+        /// The last is the conjunction's falsity, which is what every conjunct needs to be false: both
+        /// read the name, so the name is needed and nothing else.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = FALSE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> TRUE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)", "WHERE ((c.price > @p0) OR (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku)))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", "WHERE ((c.price > @p0) OR IS_DEFINED(c.name))")]
+        public void ACompoundIsReadForItsTruthOrItsFalsity(string predicate, string where)
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate)));
+
+            sql.Should().EndWith(where);
         }
 
         /// <summary>

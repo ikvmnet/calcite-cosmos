@@ -1446,6 +1446,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // promoted column and through the document. Matched by the path rather than the
             // expression, the weakening now implies it, and the restriction it adds keeps every row.
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))", false),
+
+            // A predicate read for its falsity: a negated disjunction needs every branch's paths, a
+            // doubly negated conjunction every conjunct's, a compound compared with TRUE or FALSE is the
+            // compound read either way, and a negated conjunction only what every conjunct needs to be
+            // false. Each pushed nothing before and now pushes those paths, and each keeps every row.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' OR (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", false),
         ];
 
         /// <summary>

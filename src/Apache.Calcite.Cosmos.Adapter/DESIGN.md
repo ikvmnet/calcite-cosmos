@@ -2725,7 +2725,8 @@ every operand. A comparison, arithmetic and most functions do, answering null fo
 does where it must be true. But a disjunction is true where one branch is, whatever the others read,
 and a conjunction read as a value — compared with something — is false where one conjunct is. So
 `CosmosFilterSplitRule.CollectPaths` now unions only through the first kind, and takes what every
-operand needs through the second; a negated compound still needs nothing. The disjunction reached it
+operand needs through the second; a negated compound needed nothing (until the falsity reading,
+below). The disjunction reached it
 whole wherever `TryWeakenDisjunction` gave up on a branch, and Calcite writes that shape unasked:
 `SqlToRelConverter` pushes a `NOT` down through the connectives above an `IN`, so ternary logic
 partitioning's `NOT ((tags IN (…) OR sku <> 'SPRINT') AND (price - 3 = 5 AND name || '!' > 'bikes'))`
@@ -2779,6 +2780,26 @@ Two *conjuncts* weakened to one path through different spellings still push it t
 gate's predicates sends `IS_DEFINED(c.price) AND IS_DEFINED(c.price)` — which is harmless and is left:
 what is already below is recognised by expression, and dropping a weakening for matching another
 spelling is a change to the guard against pushing one under itself for ever (#210), not to this walk.
+
+**A predicate is read for its truth, its falsity or its value.** The walk had two readings, the paths a
+predicate needs to be true and those it needs to be anything but null, and two shapes fell between
+them. A negated compound needed nothing at all, because `NOT (a AND b)` is true where `a` alone is
+false. And a compound compared with a boolean literal was read as a value, which for a compound is
+what every operand needs. Both were sound and both declined restrictions that hold: measured over
+`products`, `price > 100 OR NOT ((category = 'shoes' OR INITCAP(sku) = 'B-2') <> FALSE)`, whose second
+branch is true only where both disjuncts are false, pushed nothing where the category and the sku are
+each needed. The third reading is falsity, the dual of truth: a conjunction is false where one conjunct
+is, so false it needs what every conjunct needs to be false; a disjunction is false where every branch
+is, so false it needs what any branch does. A `NOT` swaps truth and falsity and keeps a value a value,
+and `x = TRUE` and `x <> FALSE` are `x` while `x = FALSE` and `x <> TRUE` are `NOT x`, read either way.
+`NOT (a AND b)` still needs nothing, `a` false and `b` false having nothing in common, so the witnesses
+above stand. Every reading needs at least what the value reading does — a predicate that is true or
+false is not null — so the change only adds: `NOT (a OR b)` now needs both, `NOT NOT (a AND b)` both,
+and `(a AND b) = TRUE` both. The refusal of `NOT (a OR b)`, which the comment beside it admitted cost
+a weakening and never a row, goes with it. Planned before and after, 62 of the partition run's
+statements and 3 of the corpus's push more than they did and none less — what any of them pushed
+before is still there, with `IS_DEFINED` terms beside it — and the gate's 1,000 predicates pass over
+the change, as does the corpus with a statement for each shape.
 
 #### A predicate's value is not its truth
 

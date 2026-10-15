@@ -499,7 +499,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// false, and <c>NOT undefined</c> is not true either — so neither <c>c.price &gt; 5</c> nor
         /// <c>NOT (c.price &gt; 5)</c> matches a document without a <c>price</c>, and both therefore
         /// imply the path is defined. Polarity does not come into it for a single comparison, which
-        /// was the guess and was wrong. It does come into it for a negated <em>compound</em>: see
+        /// was the guess and was wrong. It does come into it for a negated <em>conjunction</em>: see
         /// <see cref="CollectPaths"/>, where a sibling that is merely false makes the negation true
         /// and the paths on the other side imply nothing at all.
         /// </para>
@@ -528,8 +528,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static bool ObservesAbsence(RexNode node) => CosmosRexTranslator.ObservesAbsence(node);
 
         /// <summary>
+        /// What <see cref="CollectPaths"/> asks of an expression: the paths it cannot do without where
+        /// it is true, where it is false, or where it is anything but null.
+        /// </summary>
+        enum Reading
+        {
+
+            /// <summary>Where it is true: a predicate in its own position.</summary>
+            Truth,
+
+            /// <summary>Where it is false: a predicate under a <c>NOT</c>.</summary>
+            Falsity,
+
+            /// <summary>Where it is not null: an operand of anything but a connective.</summary>
+            Value,
+
+        }
+
+        /// <summary>
+        /// The reading of a predicate's operand under a <c>NOT</c>: true where it is false, false where
+        /// it is true, and null exactly where it is.
+        /// </summary>
+        static Reading Negated(Reading reading) => reading switch
+        {
+            Reading.Truth => Reading.Falsity,
+            Reading.Falsity => Reading.Truth,
+            _ => Reading.Value,
+        };
+
+        /// <summary>
         /// Collects the document paths an expression cannot do without: those that must be defined
-        /// wherever it is true, or, read as a value, wherever it is not null.
+        /// wherever it is true, wherever it is false, or, read as a value, wherever it is not null.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -564,6 +593,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// three paths, and the shoe with no price, whose conjunction is false, was lost.</description></item>
         /// </list>
         /// <para>
+        /// <b>Falsity is the third reading, and it is the dual of truth.</b> A conjunction is false
+        /// where one conjunct is, so false it needs only what every conjunct needs to be false; a
+        /// disjunction is false where every branch is, so false it needs what any branch does. A
+        /// <c>NOT</c> swaps the two, and a predicate compared with <c>TRUE</c> or <c>FALSE</c> is that
+        /// predicate read for its truth or its falsity rather than as a value. Before, a negated
+        /// compound needed nothing and a compared one only what its operands needed as values, which
+        /// declined sound restrictions — measured over products, <c>price &gt; 100 OR NOT ((category =
+        /// 'shoes' OR INITCAP(sku) = 'B-2') &lt;&gt; FALSE)</c>, whose second branch is true only where
+        /// both disjuncts are false, pushed nothing, where the category and the sku are both needed.
+        /// Every reading needs at least what the value does, so this only ever adds what is sound.
+        /// </para>
+        /// <para>
         /// A disjunction's common paths are still implied, so <c>x = 1 OR x &gt; 5</c> under a
         /// connective keeps <c>IS_DEFINED(x)</c>; where a branch implies nothing, nor does the
         /// disjunction.
@@ -576,13 +617,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
-        /// <param name="value">Whether it is read for its value, as an operand of something other than
-        /// a connective, rather than for its truth.</param>
+        /// <param name="reading">Whether it is read for its truth, its falsity or its value.</param>
         /// <param name="translator">Resolves the paths.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <returns>The paths, each once, in the order they are first read: each as the path it
         /// resolves to, by which two are the same, and as the first expression read at it.</returns>
-        static List<(string Path, RexNode Node)> CollectPaths(RexNode node, bool value, CosmosRexTranslator translator, string rootAlias)
+        static List<(string Path, RexNode Node)> CollectPaths(RexNode node, Reading reading, CosmosRexTranslator translator, string rootAlias)
         {
             if (translator.TryResolvePath(node, out var path) && path is not null)
             {
@@ -597,43 +637,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             switch (KindOf(call))
             {
-                // Every conjunct is true where the conjunction is.
-                case SqlKind.__Enum.AND when value == false:
-                    return Union(operands, value: false, translator, rootAlias);
+                // Every conjunct is true where the conjunction is, and every branch false where the
+                // disjunction is.
+                case SqlKind.__Enum.AND when reading == Reading.Truth:
+                case SqlKind.__Enum.OR when reading == Reading.Falsity:
+                    return Union(operands, reading, translator, rootAlias);
 
-                // One operand settles it: a branch true, or read as a value, a conjunct false or a
-                // branch true.
+                // One operand settles it: a branch true or a conjunct false, and read as a value,
+                // either.
                 case SqlKind.__Enum.AND:
                 case SqlKind.__Enum.OR:
-                    return Common(operands, value, translator, rootAlias);
+                    return Common(operands, reading, translator, rootAlias);
 
-                // A negated compound implies nothing about the paths inside it, and this is where that
-                // has to be said. `NOT (a > 1)` does imply the path is defined -- an absent property
-                // makes the comparison undefined and `NOT undefined` is not true either, which is the
-                // measurement above. `NOT (a = 1 AND b > 1)` does not: where `a = 1` is false the
+                // A negation is true where its operand is false, and that is all a negated compound
+                // implies. `NOT (a > 1)` implies the path is defined -- an absent property makes the
+                // comparison undefined and `NOT undefined` is not true either, which is the measurement
+                // above. `NOT (a = 1 AND b > 1)` implies neither path: where `a = 1` is false the
                 // conjunction is false whatever `b` does, so the negation is *true* and a document with
-                // no `b` belongs in the result. Pushing `IS_DEFINED(b)` deletes it.
+                // no `b` belongs in the result. Pushing `IS_DEFINED(b)` deletes it. A conjunction's
+                // falsity is what every conjunct's falsity needs, which here is nothing.
                 //
                 // Measured as a wrong answer rather than reasoned into: the differential oracle caught
                 // `NOT (c.category = 'bikes' AND CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) > 50)`
                 // returning three rows where Calcite returns five.
                 //
-                // A disjunction under the negation does need every branch, each having to be false; it
-                // is refused with the conjunction all the same, which declines a weakening and never
-                // a row. Read as a value the NOT is strict, and its operand is read as one too.
+                // A disjunction under the negation does need every branch, each having to be false, and
+                // its falsity says so. Read as a value the NOT is strict, and its operand is read as one
+                // too.
                 case SqlKind.__Enum.NOT when operands.size() == 1:
-                    var operand = (RexNode)operands.get(0);
-                    if (value == false && operand is RexCall inner && KindOf(inner) is SqlKind.__Enum.AND or SqlKind.__Enum.OR)
-                        return new();
+                    return CollectPaths((RexNode)operands.get(0), Negated(reading), translator, rootAlias);
 
-                    return CollectPaths(operand, value, translator, rootAlias);
+                // A predicate compared with TRUE or FALSE is true where the predicate is, or where it is
+                // false, and null exactly where it is null -- so it is read as the predicate, for its
+                // truth or its falsity. Read as a value instead it needed only what its operands need as
+                // values, which for a compound is what every operand needs, and declined the rest.
+                case SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS when TryComparedWithBoolean(call, out var predicate, out var same):
+                    return CollectPaths(predicate, same ? reading : Negated(reading), translator, rootAlias);
 
                 // Anything else needs every operand, each as a value, only where it is null for a null
                 // one. One that answers a value over a null -- CONCAT_WS skipping it, an ARRAY holding
                 // it -- is true or not null with the path absent, and implies nothing.
                 default:
                     return IsNullWhereAnOperandIs(call)
-                        ? Union(operands, value: true, translator, rootAlias)
+                        ? Union(operands, Reading.Value, translator, rootAlias)
                         : new();
             }
         }
@@ -711,13 +757,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// same <c>IS_DEFINED</c>, and the first read is the one kept.
         /// </para>
         /// </remarks>
-        static List<(string Path, RexNode Node)> Union(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
+        static List<(string Path, RexNode Node)> Union(java.util.List operands, Reading reading, CosmosRexTranslator translator, string rootAlias)
         {
             var paths = new List<(string Path, RexNode Node)>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
             for (var i = 0; i < operands.size(); i++)
-                foreach (var path in CollectPaths((RexNode)operands.get(i), value, translator, rootAlias))
+                foreach (var path in CollectPaths((RexNode)operands.get(i), reading, translator, rootAlias))
                     if (seen.Add(path.Path))
                         paths.Add(path);
 
@@ -733,20 +779,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// JSON_VALUE(c."DOC", '$.category') = 'shoes'</c> needs the category in both branches, and
         /// matched by expression it needed nothing.
         /// </remarks>
-        static List<(string Path, RexNode Node)> Common(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
+        static List<(string Path, RexNode Node)> Common(java.util.List operands, Reading reading, CosmosRexTranslator translator, string rootAlias)
         {
             if (operands.size() == 0)
                 return new();
 
-            var common = CollectPaths((RexNode)operands.get(0), value, translator, rootAlias);
+            var common = CollectPaths((RexNode)operands.get(0), reading, translator, rootAlias);
 
             for (var i = 1; i < operands.size() && common.Count > 0; i++)
             {
-                var needed = new HashSet<string>(CollectPaths((RexNode)operands.get(i), value, translator, rootAlias).Select(p => p.Path), StringComparer.Ordinal);
+                var needed = new HashSet<string>(CollectPaths((RexNode)operands.get(i), reading, translator, rootAlias).Select(p => p.Path), StringComparer.Ordinal);
                 common = common.Where(p => needed.Contains(p.Path)).ToList();
             }
 
             return common;
+        }
+
+        /// <summary>
+        /// Determines whether a comparison is a predicate compared with <c>TRUE</c> or <c>FALSE</c>,
+        /// and whether it is true where that predicate is or where it is false.
+        /// </summary>
+        /// <param name="call">An <c>=</c> or a <c>&lt;&gt;</c>.</param>
+        /// <param name="predicate">The side that is not the literal.</param>
+        /// <param name="same">Whether the comparison is true where the predicate is: <c>= TRUE</c> and
+        /// <c>&lt;&gt; FALSE</c>.</param>
+        static bool TryComparedWithBoolean(RexCall call, out RexNode predicate, out bool same)
+        {
+            predicate = null!;
+            same = false;
+
+            if (call.getOperands().size() != 2)
+                return false;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            java.lang.Boolean? literal;
+            if (right is RexLiteral r && r.getValue() is java.lang.Boolean onRight && left is not RexLiteral)
+            {
+                literal = onRight;
+                predicate = left;
+            }
+            else if (left is RexLiteral l && l.getValue() is java.lang.Boolean onLeft && right is not RexLiteral)
+            {
+                literal = onLeft;
+                predicate = right;
+            }
+            else
+            {
+                return false;
+            }
+
+            same = (KindOf(call) == SqlKind.__Enum.EQUALS) == literal.booleanValue();
+            return true;
         }
 
         /// <summary>
@@ -777,7 +862,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (TryTextComparisonWeakening(node, translator, rexBuilder, rootAlias) is RexNode weakened)
                 return weakened;
 
-            var paths = CollectPaths(node, value: false, translator, rootAlias);
+            var paths = CollectPaths(node, Reading.Truth, translator, rootAlias);
 
             if (paths.Count == 0)
                 return null;
