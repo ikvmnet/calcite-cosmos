@@ -274,12 +274,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ARunThatDoesNotCompleteKnowsNothingMore()
         {
-            var oracle = new CosmosOracle(Theory(), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            // A conditional rule, so that the stratum is the engine's to open rather than the overlay's to read.
+            var oracle = new CosmosOracle(Theory(When(Kind, "z", X, Present)), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var scope = oracle.Admit(new PredicateStatement(new[] { Eq(Text(A), "x"), IsNotNull(Text(Kind)) }), (i, facts) => true);
 
             scope.Complete.Should().BeFalse();
             Knows(scope.Facts(OracleLicence.Select), A, Value("x")).Should().BeFalse();
-            scope.Decide(Eq(Text(A), "x"), OracleLicence.Select).Should().Be(Truth.Unknown);
+            scope.Decide(IsNotNull(Text(A)), OracleLicence.Select).Should().Be(Truth.Unknown, "nothing is read of a run that did not finish");
+            scope.Decide(Eq(Text(A), "x"), OracleLicence.Select).Should().Be(Truth.Always,
+                "what a stratum assumes holds of every row it admits, read off the assumption and not the run");
+        }
+
+        /// <summary>
+        /// A predicate a scope assumes, or a conjunction of what it assumes, is always true there however its run ends:
+        /// the question a weakening beneath asks, whose answer must never be no for want of a run, or the same weakening
+        /// is pushed under itself for ever.
+        /// </summary>
+        [Fact]
+        public void WhatAScopeAssumesIsAlwaysTrueThereHoweverItsRunEnds()
+        {
+            var oracle = new CosmosOracle(Theory(When(Kind, "z", X, Present)), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var weakening = And(Opaque(0), Opaque(1));
+            var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
+
+            scope.Decide(3, OracleLicence.Redundant(3)).Should().Be(Truth.Always);
+            scope.Decide(And(Opaque(0), Opaque(2)), OracleLicence.Redundant(3)).Should().NotBe(Truth.Always, "opaque#2 is not assumed");
         }
 
         [Fact]
@@ -291,12 +310,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.Reports.Should().OnlyContain(r => r.StopReason == RunStopReason.Completed);
         }
 
+        /// <summary>
+        /// The planner's oracle reasons in the graphs its declaration compiles into, so a declaration compiles once whoever
+        /// asks it; a test's reasons in graphs of its own.
+        /// </summary>
         [Fact]
-        public void TheOracleReasonsInGraphsApartFromThePlanners()
+        public void ThePlannersOracleReasonsInThePlannersGraphs()
         {
             var theory = Theory(Outright(Kind, Present));
-            CosmosOracle.For(theory).Theory.Generations.Should().NotBeSameAs(theory.Generations);
+            CosmosOracle.For(theory).Theory.Should().BeSameAs(theory);
             CosmosOracle.For(theory).Should().BeSameAs(CosmosOracle.For(theory));
+            Oracle(theory).Theory.Generations.Should().NotBeSameAs(theory.Generations);
+        }
+
+        /// <summary>
+        /// Every conjunct, for a strengthening; and an arm of a <c>CASE</c>, its siblings and its conditions, never its own
+        /// conjunct.
+        /// </summary>
+        [Fact]
+        public void TheRowsAFilterKeepsAndTheArmOfACase()
+        {
+            var theory = Theory(Outright(Kind, Enum("a", "b")));
+            var scope = Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "a"), Eq(Text(A), "x") }));
+
+            scope.AssumedIn(OracleLicence.Kept).Should().Equal(0, 1);
+            Knows(scope.Facts(OracleLicence.Kept), Kind, Value("a")).Should().BeTrue();
+
+            var arm = OracleLicence.Arm(1, new[] { Eq(Text(X), "y") });
+            scope.AssumedIn(arm).Should().Equal(0);
+            Knows(scope.Facts(arm), Kind, Value("a")).Should().BeTrue("a sibling holds wherever the arm's conjunct is decided");
+            Knows(scope.Facts(arm), X, Value("y")).Should().BeTrue("the condition holds wherever the arm is read");
+            Knows(scope.Facts(arm), A, Present).Should().BeFalse("the conjunct the arm is part of is not its own licence");
+
+            Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Kept).Should().BeTrue();
         }
 
     }

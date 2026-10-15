@@ -383,6 +383,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 return new SqlPredicate.Compare(Op(random), reading, Parameter(random, reading));
             if (roll < 10)
                 return new SqlPredicate.In(reading, ValueSet.From(Enumerable.Range(0, 1 + random.Next(3)).Select(_ => Literal(random, declaration, path, reading).Value)));
+            if (roll == 19)
+                return new SqlPredicate.IsDefined(new SqlValue.Raw(path));
 
             return new SqlPredicate.Compare(Op(random), reading, Literal(random, declaration, path, reading));
         }

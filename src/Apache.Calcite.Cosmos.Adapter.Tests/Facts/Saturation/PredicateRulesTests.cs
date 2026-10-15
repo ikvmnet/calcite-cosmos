@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new Eggnog.ConstructorHandle[] { rules.Text, rules.Raw, rules.Typed, rules.Cast, rules.Literal, rules.Parameter, rules.Compare, rules.In, rules.IsNull, rules.And, rules.Or, rules.Not, rules.Opaque }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(44);
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(45);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
         }
 

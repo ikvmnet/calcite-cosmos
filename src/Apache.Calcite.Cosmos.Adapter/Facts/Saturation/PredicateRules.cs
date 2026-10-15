@@ -19,8 +19,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     }
 
     /// <summary>
-    /// A SQL predicate over a row: a class of <c>compare</c>, <c>in</c>, <c>is null</c>, <c>and</c>, <c>or</c>,
-    /// <c>not</c> and <c>opaque</c> terms.
+    /// A SQL predicate over a row: a class of <c>compare</c>, <c>in</c>, <c>is null</c>, <c>is defined</c>, <c>and</c>,
+    /// <c>or</c>, <c>not</c> and <c>opaque</c> terms.
     /// </summary>
     internal readonly record struct Pred(ClassId Id) : ISort<Pred>
     {
@@ -110,6 +110,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Compare = graph.DefineConstructor<string, Val, Val, Pred>("compare", options: term);
             In = graph.DefineConstructor<Val, ValueSet<string>, Pred>("in", options: term);
             IsNull = graph.DefineConstructor<Val, Pred>("is null", options: term);
+            IsDefined = graph.DefineConstructor<Val, Pred>("is defined", options: term);
             And = graph.DefineConstructor<Pred, Pred, Pred>("and", options: term);
             Or = graph.DefineConstructor<Pred, Pred, Pred>("or", options: term);
             Not = graph.DefineConstructor<Pred, Pred>("not", options: term);
@@ -195,6 +196,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary><c>IS NULL</c>.</summary>
         public Constructor<Val, Pred> IsNull { get; }
+
+        /// <summary><c>IS_DEFINED</c> of the path the value reads.</summary>
+        public Constructor<Val, Pred> IsDefined { get; }
 
         /// <summary>A conjunction, right-nested in digest order: there is no rule of commutativity.</summary>
         public Constructor<Pred, Pred, Pred> And { get; }
@@ -334,6 +338,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var k = r.Var<string>("k");
                 r.When(e.Is(IsNull.Of(v)), Reads.Of(v, p, k));
                 r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsNull)));
+            });
+            Analyse.DefineRule("a definedness test is an atom of what it reads", r =>
+            {
+                var (e, v, p) = r.Vars<Pred, Val, JPath>("e", "v", "p");
+                var k = r.Var<string>("k");
+                r.When(e.Is(IsDefined.Of(v)), Reads.Of(v, p, k));
+                r.Then(Atom.Of(e, p, Compute.Of(k, PredicateAtom.IsDefined)));
             });
         }
 

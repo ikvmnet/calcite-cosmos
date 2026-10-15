@@ -134,6 +134,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 licences.Add(($"deleting conjunct {i}", OracleLicence.DeleteConjunct(i), Enumerable.Range(0, conjuncts.Count).Where(j => j != i).ToArray()));
             }
 
+            // Every conjunct, for a strengthening; and an arm of a CASE inside one, read under a condition the trial
+            // draws, which holds of the documents its siblings keep and the condition does.
+            licences.Add(("every conjunct", OracleLicence.Kept, Enumerable.Range(0, conjuncts.Count).ToArray()));
+
+            var arm = random.Next(conjuncts.Count);
+            var condition = questions[random.Next(questions.Length)];
+            var siblings = Enumerable.Range(0, conjuncts.Count).Where(j => j != arm).ToArray();
+            check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }),
+                Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray(), siblings);
+
             var pins = conjuncts.Select(Pin).OfType<JsonDocumentPath>().Distinct().ToArray();
             if (pins.Length > 0)
                 licences.Add(("a point read", OracleLicence.PointRead(pins), Enumerable.Range(0, conjuncts.Count).Where(j => Pin(conjuncts[j]) is not null).ToArray()));

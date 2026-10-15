@@ -210,6 +210,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _ => F,
                     };
 
+                // The service's test of the document, which the in-process body reads too: a null is defined.
+                case SqlPredicate.IsDefined d:
+                    return At(document, d.Value.PathRead!.Value) is null ? F : T;
+
                 default:
                     throw new NotSupportedException(predicate.GetType().Name);
             }

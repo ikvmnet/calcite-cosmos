@@ -41,7 +41,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// the comparison opaque rather than guessed at.
     /// </para>
     /// <para>
-    /// Shadow only: nothing in the planner calls this.
+    /// <b>What a statement asks of later is read the same way.</b> A <c>CASE</c> condition a rewrite descends to, or a
+    /// weakening asked about beside the conjuncts beneath, is read by the <see cref="Loading"/> that read the statement,
+    /// so that what is opaque is numbered alike and a condition spelled as a conjunct is the conjunct's term.
     /// </para>
     /// </remarks>
     internal static class CosmosPredicateLoader
@@ -61,22 +63,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (fields is null)
                 throw new ArgumentNullException(nameof(fields));
 
-            var conjuncts = new List<SqlPredicate>();
-            var sources = new List<object?>();
+            var loading = new Loading(fields, readings ?? Array.Empty<CosmosReading>(), rootAlias);
+            var conjuncts = new List<RexNode>();
 
             if (condition is not null)
             {
-                var loading = new Loading(fields, readings ?? Array.Empty<CosmosReading>(), rootAlias);
                 var list = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
                 for (var i = 0; i < list.size(); i++)
-                {
-                    var conjunct = (RexNode)list.get(i);
-                    conjuncts.Add(loading.Predicate(Expand(conjunct)));
-                    sources.Add(conjunct);
-                }
+                    conjuncts.Add((RexNode)list.get(i));
             }
 
-            return new PredicateStatement(conjuncts, sources, mentions);
+            return loading.Statement(conjuncts, mentions);
         }
 
         /// <summary>
@@ -128,15 +125,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// One condition being read: the binding, and the numbering of what is opaque.
+        /// One binding being read: the paths its fields address, how each is read, and the numbering of what is opaque,
+        /// shared by everything read through it.
         /// </summary>
-        sealed class Loading
+        internal sealed class Loading
         {
 
             readonly CosmosRexTranslator _paths;
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
             readonly Dictionary<string, long> _opaque = new(StringComparer.Ordinal);
+            readonly object _lock = new();
 
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
             {
@@ -147,7 +146,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 _rootAlias = rootAlias;
             }
 
-            public SqlPredicate Predicate(RexNode node)
+            /// <summary>
+            /// Reads conjuncts as a statement: one IR conjunct each, beside the node it was read from.
+            /// </summary>
+            public PredicateStatement Statement(IReadOnlyList<RexNode> conjuncts, IEnumerable<JsonDocumentPath>? mentions = null) =>
+                new(conjuncts.Select(Read).ToArray(), conjuncts.Cast<object?>().ToArray(), mentions);
+
+            /// <summary>
+            /// Reads one predicate — a conjunct, a <c>CASE</c> condition, a weakening — into the IR, a <c>SEARCH</c>
+            /// expanded as translation expands it.
+            /// </summary>
+            public SqlPredicate Read(RexNode node)
+            {
+                lock (_lock)
+                    return Predicate(Expand(node));
+            }
+
+            SqlPredicate Predicate(RexNode node)
             {
                 if (node is not RexCall call)
                     return Opaque(node);
@@ -186,6 +201,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     case nameof(SqlKind.__Enum.IS_NOT_NULL) when operands.size() == 1:
                         return Value((RexNode)operands.get(0)) is SqlValue present && present.PathRead is not null
                             ? new SqlPredicate.Not(new SqlPredicate.IsNull(present))
+                            : Opaque(node);
+
+                    // The service's test of the document, which a weakening writes and a caller may: what it asks is the
+                    // path's whatever reads it, so it is read of the raw value. A cast is no accessor the in-process body
+                    // can take apart, and is not read.
+                    case var _ when ReferenceEquals(call.getOperator(), CosmosOperators.IsDefined) && operands.size() == 1:
+                        return Value((RexNode)operands.get(0)) is { PathRead: JsonDocumentPath defined } read && read is not SqlValue.Cast
+                            ? new SqlPredicate.IsDefined(new SqlValue.Raw(defined))
                             : Opaque(node);
 
                     default:

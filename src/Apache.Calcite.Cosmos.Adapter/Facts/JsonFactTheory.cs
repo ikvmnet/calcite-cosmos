@@ -67,6 +67,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly List<JsonGuardedRule> _guarded = new();
         readonly List<JsonPathSpec> _paths = new();
         readonly List<JsonDocumentPath> _statedPaths = new();
+        readonly HashSet<JsonDocumentPath> _mentionedPaths = new();
         readonly bool _splits;
         readonly object _compiling = new();
         Compiled? _compiled;
@@ -110,6 +111,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 var heads = new List<Saturation.JsonFact>(JsonFactEncoding.Statement(rule.Head, _vocabulary, register: true));
                 if (heads.Count == 0)
                     continue;
+
+                _mentionedPaths.Add(rule.Head.Path);
+                foreach (var atom in rule.Body)
+                    _mentionedPaths.Add(atom.Path);
 
                 foreach (var head in heads)
                     paths.Add(head.Path);
@@ -187,6 +192,12 @@ namespace Apache.Calcite.Cosmos.Facts
         public IReadOnlyList<JsonFactRule> Rules => _rules;
 
         /// <summary>
+        /// Gets every path a rule states something of or is conditional on: where nothing a filter reads lies within or
+        /// above one of them, the declaration says nothing of what it reads.
+        /// </summary>
+        internal IReadOnlyCollection<JsonDocumentPath> MentionedPaths => _mentionedPaths;
+
+        /// <summary>
         /// Gets whether the container declares nothing.
         /// </summary>
         public bool IsEmpty => _rules.Length == 0;
@@ -230,7 +241,9 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactDeclaration? Declaration()
         {
             var compiled = Compile();
-            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary) : null;
+            return compiled.Schema is Scope schema && compiled.Outright.Tables is JsonFactTables outright
+                ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary, _conditional == false ? new JsonFactUnconditional(_statedPaths, outright) : null)
+                : null;
         }
 
         /// <summary>
@@ -450,6 +463,18 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <param name="Generation">The generation, whose graph the context belongs to.</param>
     /// <param name="Context">The declaration's context, frozen.</param>
     /// <param name="Vocabulary">The tokens of the declaration's forms and extensions.</param>
-    internal sealed record JsonFactDeclaration(JsonFactGenerations.Generation Generation, Scope Context, JsonFactVocabulary Vocabulary);
+    /// <param name="Unconditional">
+    /// Where no rule of the declaration is conditional, what <see cref="JsonFactOverlay"/> reads beside what a filter
+    /// establishes without the engine; <c>null</c> where one is.
+    /// </param>
+    internal sealed record JsonFactDeclaration(JsonFactGenerations.Generation Generation, Scope Context, JsonFactVocabulary Vocabulary, JsonFactUnconditional? Unconditional = null);
+
+    /// <summary>
+    /// What a declaration with no conditional rule states, as the overlay reads it: the paths it states a fact about, and
+    /// the tables of its own context.
+    /// </summary>
+    /// <param name="Stated">Every path the declaration states a fact about.</param>
+    /// <param name="Outright">The tables of the declaration's context.</param>
+    internal sealed record JsonFactUnconditional(IReadOnlyList<JsonDocumentPath> Stated, JsonFactTables Outright);
 
 }

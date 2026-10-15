@@ -161,6 +161,109 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// A predicate oracle's stratum read off the overlay, over generated statements, answers as the engine's context for
+        /// the same stratum does, on every path the statement reads; and knows no less anywhere else.
+        /// </summary>
+        /// <remarks>
+        /// The overlay reads each conjunct as <c>PredicateAtom.Kept</c> does and meets them path by path; the engine reads
+        /// the same atoms through the analysis rules and meets them in the theory's tables. This holds the two readings to
+        /// each other. Beneath a path that holds no object the overlay says absent where the engine, not told of the path,
+        /// knows nothing — so elsewhere it is held only to knowing at least as much.
+        /// </remarks>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AStratumReadOffTheOverlayAnswersAsItsContextDoes(bool stated)
+        {
+            var theory = stated ? Stated : Undeclared;
+            var random = new Random(20261015);
+            var overlaid = 0;
+
+            for (var i = 0; i < 600; i++)
+            {
+                var conjuncts = Enumerable.Range(0, random.Next(1, 4)).Select(_ => Conjunct(random)).ToArray();
+                var scope = OracleFixture.Oracle(theory).Admit(new PredicateStatement(conjuncts), (_, _) => true);
+                var fast = scope.Facts(OracleLicence.Select);
+                if (fast.Tables is not JsonFactOverlay)
+                    continue;
+
+                overlaid++;
+
+                var described = string.Join(" ; ", conjuncts.Select(c => c.Digest));
+                var (context, rules) = scope.ContextFor(OracleLicence.Select);
+                context.Should().NotBeNull($"the overlay is never contradictory, and nor is the engine under {described}");
+                var engine = new JsonFactSet(new JsonScopeTables(rules!.Json, context!, owned: false), fast.Vocabulary);
+
+                fast.IsContradictory.Should().BeFalse(described);
+                engine.IsContradictory.Should().BeFalse(described);
+
+                var read = conjuncts.SelectMany(c => c.Paths).ToHashSet();
+                foreach (var path in Paths.Append(JsonDocumentPath.Root).Concat(read).Distinct())
+                {
+                    foreach (var claim in Questions())
+                    {
+                        var known = engine.Knows(Fact(path, claim));
+                        if (read.Contains(path))
+                            fast.Knows(Fact(path, claim)).Should().Be(known, $"Knows({path}, {Describe(claim)}) under {described}");
+                        else if (known)
+                            fast.Knows(Fact(path, claim)).Should().BeTrue($"Knows({path}, {Describe(claim)}) under {described}, which the engine knows");
+                    }
+                }
+            }
+
+            overlaid.Should().BeGreaterThan(150, "or the comparison says little about the overlay");
+        }
+
+        /// <summary>
+        /// A verdict asked of a stratum read off the overlay is read off the engine's context for it, opened then.
+        /// </summary>
+        [Fact]
+        public void AVerdictOfAStratumReadOffTheOverlayIsTheEngines()
+        {
+            var equal = new SqlPredicate.Compare("=", new SqlValue.Raw(A), SqlValue.Of("s"));
+            var within = new SqlPredicate.In(new SqlValue.Raw(A), Eggnog.ValueSet.Of(SqlValue.Of("s").Value, SqlValue.Of("t").Value));
+            var scope = OracleFixture.Oracle(Undeclared).Admit(new PredicateStatement(new SqlPredicate[] { equal, within }), (i, _) => i == 0);
+
+            scope.Facts(OracleLicence.RenderConjunct(1)).Tables.Should().BeOfType<JsonFactOverlay>();
+            scope.Decide(1, OracleLicence.RenderConjunct(1)).Should().Be(Apache.Calcite.Cosmos.Facts.Saturation.Truth.Always, "a = 's' is what the stratum assumes");
+        }
+
+        static readonly JsonDocumentPath[] Read = { A, B, Ax, MetaX, Id };
+
+        static readonly SqlValue.Literal[] Literals =
+        {
+            SqlValue.Of("s"), SqlValue.Of("30"), SqlValue.Of("true"), SqlValue.Of(30m), SqlValue.Of(2.5m), SqlValue.Of(true),
+        };
+
+        /// <summary>
+        /// A conjunct of one atom over a path, or its negation: a comparison with a literal or a parameter, a membership, a
+        /// null test or a definedness test, through any reading.
+        /// </summary>
+        static SqlPredicate Conjunct(Random random)
+        {
+            var path = Read[random.Next(Read.Length)];
+            SqlValue reading = random.Next(8) switch
+            {
+                < 3 => new SqlValue.Text(path),
+                < 5 => new SqlValue.Raw(path),
+                5 => new SqlValue.Typed(path, new[] { "INTEGER", "DOUBLE", "DECIMAL", "BOOLEAN" }[random.Next(4)]),
+                6 => new SqlValue.Cast(new[] { "INTEGER", "DOUBLE" }[random.Next(2)], new SqlValue.Text(path)),
+                _ => new SqlValue.Cast("VARCHAR", new SqlValue.Raw(path)),
+            };
+
+            SqlPredicate atom = random.Next(10) switch
+            {
+                0 => new SqlPredicate.IsNull(reading),
+                1 => new SqlPredicate.IsDefined(new SqlValue.Raw(path)),
+                2 => new SqlPredicate.In(reading, Eggnog.ValueSet.From(Enumerable.Range(0, 2).Select(_ => Literals[random.Next(Literals.Length)].Value))),
+                3 => new SqlPredicate.Compare("=", reading, new SqlValue.Parameter(0, "VARCHAR")),
+                _ => new SqlPredicate.Compare(new[] { "=", "<>", "<", ">=" }[random.Next(4)], reading, Literals[random.Next(Literals.Length)]),
+            };
+
+            return random.Next(4) == 0 ? new SqlPredicate.Not(atom) : atom;
+        }
+
+        /// <summary>
         /// One to four paths, most with a presence, most with one claim beside it and some with two, now and then one the
         /// gate refuses.
         /// </summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -41,6 +42,12 @@ namespace Apache.Calcite.Cosmos.Facts
     /// answer. The engine is told of the paths beneath what was established, so that it proves them absent as the
     /// overlay does. A query that names no such path leaves the engine knowing less of them than the overlay, never
     /// more.
+    /// </para>
+    /// <para>
+    /// <b>Two ways in.</b> Facts, as a test or <see cref="JsonFactTheory.Derive"/> states them; and what a predicate
+    /// oracle's stratum assumes, read path by path as <c>PredicateAtom.Kept</c> reads each conjunct and met — a meet that
+    /// is the theory's own lattice (<see cref="PathValues"/>), so that one path may carry several claims. The gate is the
+    /// same for both, and so is the engine it is checked against.
     /// </para>
     /// </remarks>
     internal sealed class JsonFactOverlay : JsonFactTables
@@ -137,6 +144,79 @@ namespace Apache.Calcite.Cosmos.Facts
                 }
             }
 
+            return Open(entries, stated, outright);
+        }
+
+        /// <summary>
+        /// Returns tables reading what each path may hold, as a stratum's assumed predicates say it, beside
+        /// <paramref name="outright"/>; or <c>null</c> where the engine could derive something they would not.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Already met, so one path may say several things: a rendering's preimage is types and a domain, an inequality
+        /// over text is types and a value excluded. What the rules of JSON add to them on one path is written here, and
+        /// nothing else is: <see cref="PathValues"/>' normal form keeps a domain within its types and bounds and folds its
+        /// exclusions in; a domain is of its own types; a value excluded that is a JSON null leaves every other type; and
+        /// types of booleans or of null alone are a domain of their values.
+        /// </para>
+        /// <para>
+        /// Refused where the rules would say more: two bounds, which may cross or close on a few integers; more than one
+        /// value excluded beside no domain; and nothing possible, or only absence. Each is the engine's to say.
+        /// </para>
+        /// </remarks>
+        /// <param name="established">What each path the stratum's predicates read may hold.</param>
+        /// <param name="stated">Every path the declaration states a fact about.</param>
+        /// <param name="outright">The tables of the declaration's own context.</param>
+        /// <returns>The tables, or <c>null</c>.</returns>
+        public static JsonFactOverlay? TryOpen(IReadOnlyDictionary<JsonDocumentPath, PathValues> established, IReadOnlyList<JsonDocumentPath> stated, JsonFactTables outright)
+        {
+            var entries = new Dictionary<JsonDocumentPath, Entry>();
+
+            foreach (var (path, values) in established)
+            {
+                if (path.IsRoot || values.Excluded.Count > 1 || values.Lower is not null && values.Upper is not null)
+                    return null;
+
+                var ne = values.Excluded.Count == 1 ? values.Excluded.First() : null;
+                var types = values.Types;
+                var dom = values.Values;
+
+                if (ne == NullValue)
+                    types = types.Remove(NullType);
+
+                if (dom is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(BooleanType)))
+                    dom = ValueSet.Of(Of(true), Of(false));
+                else if (dom is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(NullType)))
+                    dom = ValueSet.Of(NullValue);
+
+                if (dom is not null)
+                {
+                    dom = ValueSet.From(dom.Where(v => v != ne && values.Admits(v)));
+                    types = ValueSet.From(Intersect(TypesOf(dom), types));
+                }
+
+                if (types.Count == 0 || dom is { Count: 0 })
+                    return null;
+
+                entries[path] = new Entry
+                {
+                    Present = values.IsPresent,
+                    Types = types.Count < AllTypes.Count ? types : null,
+                    Dom = dom,
+                    Ne = ne,
+                    Lo = values.Lower,
+                    Hi = values.Upper,
+                };
+            }
+
+            return Open(entries, stated, outright);
+        }
+
+        /// <summary>
+        /// The gate both ways in share: no path the root, beneath another or meeting one the declaration states.
+        /// </summary>
+        static JsonFactOverlay? Open(Dictionary<JsonDocumentPath, Entry> entries, IReadOnlyList<JsonDocumentPath> stated, JsonFactTables outright)
+        {
             foreach (var path in entries.Keys)
             {
                 foreach (var other in entries.Keys)

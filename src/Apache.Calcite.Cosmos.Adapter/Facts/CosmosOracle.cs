@@ -25,6 +25,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>Whether a conjunct says nothing its siblings do not: every sibling, never itself (L3).</summary>
         Redundant,
 
+        /// <summary>
+        /// What holds of every row the filter keeps, which a strengthening may read — the filter made <c>FALSE</c> where
+        /// nothing satisfies it: every conjunct, admitted or not.
+        /// </summary>
+        Kept,
+
+        /// <summary>
+        /// Inside the arm of a <c>CASE</c> in a conjunct: every sibling, and the conditions the arm is read under, never
+        /// the conjunct itself.
+        /// </summary>
+        Arm,
+
         /// <summary>What a point read may rely on, which applies no predicate: the pins alone.</summary>
         PointRead,
 
@@ -50,9 +62,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// question may be answered from by this, and nothing else, so no caller chooses facts.
     /// </summary>
     /// <param name="Question">What the question is for.</param>
-    /// <param name="Conjunct">The conjunct a render, deletion or redundancy question is about, by its index in the statement.</param>
+    /// <param name="Conjunct">The conjunct a render, deletion, redundancy or arm question is about, by its index in the statement.</param>
     /// <param name="Pins">The paths a point read is keyed on.</param>
-    internal readonly record struct OracleLicence(OracleQuestion Question, int Conjunct, IReadOnlyList<JsonDocumentPath>? Pins)
+    /// <param name="Given">The conditions an arm of a <c>CASE</c> is read under.</param>
+    internal readonly record struct OracleLicence(OracleQuestion Question, int Conjunct, IReadOnlyList<JsonDocumentPath>? Pins, IReadOnlyList<SqlPredicate>? Given = null)
     {
 
         /// <summary>Whether a conjunct renders: from the stratum before the one that admitted it.</summary>
@@ -63,6 +76,20 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>Whether a conjunct is redundant: from every sibling, never from itself.</summary>
         public static OracleLicence Redundant(int conjunct) => new(OracleQuestion.Redundant, conjunct, null);
+
+        /// <summary>What holds of every row the filter keeps: every conjunct, for a strengthening.</summary>
+        public static OracleLicence Kept { get; } = new(OracleQuestion.Kept, -1, null);
+
+        /// <summary>
+        /// What the arm of a <c>CASE</c> inside a conjunct may lean on: the siblings, and the conditions it is read under.
+        /// </summary>
+        /// <remarks>
+        /// The arm is read only where its conditions hold, and the conjunct it is part of is decided only where the siblings
+        /// do; so a rewrite of the arm on facts that hold there changes the filter on no row it keeps. The conjunct's own
+        /// facts are not among them, for the reason a deletion's are not.
+        /// </remarks>
+        public static OracleLicence Arm(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
+            new(OracleQuestion.Arm, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));
 
         /// <summary>What a point read keyed on these paths may rely on: the conjuncts that pin them, and no other.</summary>
         public static OracleLicence PointRead(IReadOnlyList<JsonDocumentPath> pins) => new(OracleQuestion.PointRead, -1, pins ?? throw new ArgumentNullException(nameof(pins)));
@@ -100,6 +127,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>The verdict of facts no document satisfies.</summary>
         public static OracleVerdict Contradicted { get; } = new(true, false, false, true);
 
+        /// <summary>The verdict of a predicate true of every document.</summary>
+        public static OracleVerdict Always { get; } = new(false, true, false, false);
+
         /// <summary>
         /// Gets the verdict as a planner reads it: a predicate that keeps every row, one that keeps none, or neither.
         /// </summary>
@@ -109,8 +139,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
     /// <summary>
     /// The predicate oracle: a container's declaration, asked what a filter's conjuncts say of its documents and what its
-    /// documents say of a predicate, each question answered from the facts its licence admits. In shadow: nothing the
-    /// planner runs calls it.
+    /// documents say of a predicate, each question answered from the facts its licence admits. Every fact the planner
+    /// reads off a filter is read here, through <c>CosmosFilterStatement</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -145,8 +175,14 @@ namespace Apache.Calcite.Cosmos.Facts
     /// there holds of the fewer documents below. A contradiction is no failure: it is the answer that nothing is kept.
     /// </para>
     /// <para>
-    /// <b>Its own graphs, by default.</b> A theory is bound to the oracle's own generations, apart from those the planner
-    /// reasons in, so that asking the oracle defines nothing in a graph a plan reads. A test may share the planner's.
+    /// <b>In the planner's graphs.</b> <see cref="For"/> reasons in the generations the declaration compiles into, so a
+    /// declaration compiles once whoever asks: the oracle, and the clauses that still read the declaration directly. A
+    /// test makes an oracle in graphs of its own, so that no test reads another's memo.
+    /// </para>
+    /// <para>
+    /// <b>Not every stratum needs the engine.</b> Over a declaration with no conditional rule, a stratum whose
+    /// conjuncts touch nothing it states is read off <see cref="JsonFactOverlay"/>, as <see cref="JsonFactTheory.Derive"/>
+    /// has always read such a query; the engine's context is opened only if a verdict is asked of it.
     /// </para>
     /// <para>
     /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader</c> reads one off a
@@ -178,12 +214,13 @@ namespace Apache.Calcite.Cosmos.Facts
         JsonFactGenerations.Generation? _generation;
 
         /// <summary>
-        /// Returns the oracle of a declaration, the same one each time it is asked of the same theory.
+        /// Returns the oracle of a declaration, the same one each time it is asked of the same theory, reasoning in the
+        /// generations the theory compiles into.
         /// </summary>
         /// <param name="theory">The declaration: a container's <c>Facts</c>.</param>
         /// <returns>The oracle.</returns>
         public static CosmosOracle For(JsonFactTheory theory) =>
-            Oracles.GetValue(theory ?? throw new ArgumentNullException(nameof(theory)), t => new CosmosOracle(t, null));
+            Oracles.GetValue(theory ?? throw new ArgumentNullException(nameof(theory)), t => new CosmosOracle(t, t.Generations));
 
         /// <summary>
         /// Initializes a new instance.
@@ -201,6 +238,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Gets the theory the oracle reasons with, bound to its generations.
         /// </summary>
         internal JsonFactTheory Theory => _theory;
+
+        /// <summary>
+        /// Gets what the declaration states of every document (L0): what routing reads, and what a consumer that names no
+        /// statement may lean on. It holds whatever a query keeps, so no licence is needed to read it.
+        /// </summary>
+        public JsonFactSet Declared => _theory.Derive(null);
 
         /// <summary>
         /// Gets or sets, for a checker, the stratum a conjunct is handed to the renderer from in a round, given the round's:
@@ -310,6 +353,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// the conjunct; the last stratum for one never admitted, whose facts are its siblings' and never its own</description></item>
     /// <item><term><see cref="OracleQuestion.DeleteConjunct"/>, <see cref="OracleQuestion.Redundant"/></term><description>every
     /// conjunct but this one, admitted or not: the rows the rest of the filter keeps</description></item>
+    /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
+    /// filter keeps, which only a strengthening may read</description></item>
+    /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
+    /// arm of a <c>CASE</c> inside it is read under</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
     /// other: a point read applies no predicate</description></item>
     /// <item><term><see cref="OracleQuestion.Select"/>, <see cref="OracleQuestion.OrderBy"/>,
@@ -424,8 +471,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     all.Where(i => _round[i] > 0 && _round[i] < _round[licence.Conjunct]).ToArray(),
                 OracleQuestion.RenderConjunct or OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy =>
                     all.Where(i => _round[i] > 0 && _chain.Count > _round[i] && _chain[_round[i]].Complete).ToArray(),
-                OracleQuestion.DeleteConjunct or OracleQuestion.Redundant =>
+                OracleQuestion.DeleteConjunct or OracleQuestion.Redundant or OracleQuestion.Arm =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
+                OracleQuestion.Kept =>
+                    all.ToArray(),
                 OracleQuestion.PointRead =>
                     all.Where(i => Pins(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
                 _ => Array.Empty<int>(),
@@ -475,7 +524,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns the context a licence's questions are read from, and the rules it ran, for a checker that reads every row
         /// of it rather than asking: the context is <c>null</c> where nothing is known, or nothing is kept.
         /// </summary>
-        internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Scope, _terms.Rules);
+        internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Engine.Scope, _terms.Rules);
 
         /// <summary>
         /// Decides a predicate given others assumed beside the declaration: "if these hold, does this?"
@@ -500,13 +549,19 @@ namespace Apache.Calcite.Cosmos.Facts
         /// In digest order, ties by index, each asked against the conjuncts still kept: so two duplicates do not delete
         /// each other, the second being asked once the first is gone.
         /// </remarks>
-        public IReadOnlyList<int> RedundantConjuncts()
+        public IReadOnlyList<int> RedundantConjuncts() => RedundantConjuncts(Enumerable.Range(0, Statement.Conjuncts.Count));
+
+        /// <summary>
+        /// Returns those of some conjuncts that may be deleted, removing one at a time; the rest are kept unasked.
+        /// </summary>
+        /// <param name="candidates">The conjuncts to ask about, which a caller knows to be the only ones anything could decide.</param>
+        public IReadOnlyList<int> RedundantConjuncts(IEnumerable<int> candidates)
         {
             var conjuncts = Statement.Conjuncts;
             var kept = Enumerable.Range(0, conjuncts.Count).ToList();
             var removed = new List<int>();
 
-            foreach (var i in Enumerable.Range(0, conjuncts.Count).OrderBy(i => conjuncts[i].ToString(), StringComparer.Ordinal).ThenBy(i => i))
+            foreach (var i in candidates.Select(Check).Distinct().OrderBy(i => conjuncts[i].Digest, StringComparer.Ordinal).ThenBy(i => i))
             {
                 var siblings = kept.Where(j => j != i).Select(j => conjuncts[j]);
                 if (_terms.Judge(_terms.Child(_terms.Root, siblings), conjuncts[i]).Truth == Truth.Always)
@@ -534,6 +589,15 @@ namespace Apache.Calcite.Cosmos.Facts
                     var conjunct = Check(licence.Conjunct);
                     return _terms.Child(_terms.Root, Statement.Conjuncts.Where((_, i) => i != conjunct));
                 }
+
+                case OracleQuestion.Arm:
+                {
+                    var conjunct = Check(licence.Conjunct);
+                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where((_, i) => i != conjunct).Concat(licence.Given ?? Array.Empty<SqlPredicate>()));
+                }
+
+                case OracleQuestion.Kept:
+                    return _terms.Child(_terms.Root, Statement.Conjuncts);
 
                 case OracleQuestion.PointRead:
                     return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => Pins(c, licence.Pins!)));
@@ -597,6 +661,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly RunOptions _run = Default;
         readonly PredicateRules? _rules;
         readonly JsonFactVocabulary? _vocabulary;
+        readonly JsonFactUnconditional? _unconditional;
         readonly HashSet<string> _held = new(StringComparer.Ordinal);
         readonly Dictionary<string, Node> _children = new(StringComparer.Ordinal);
         readonly Dictionary<string, OracleVerdict> _answers = new(StringComparer.Ordinal);
@@ -611,12 +676,13 @@ namespace Apache.Calcite.Cosmos.Facts
             _run = options ?? Default;
             _contexts = declaration.Generation.Contexts;
             _vocabulary = declaration.Vocabulary;
+            _unconditional = declaration.Unconditional;
             _rules = PredicateRules.Of(_contexts);
             _statement = statement;
 
             foreach (var conjunct in statement.Conjuncts)
                 foreach (var term in conjunct.Subterms)
-                    _held.Add(term.ToString());
+                    _held.Add(term.Digest);
 
             Root = new Node(this, declaration.Context, null, "", complete: true, holdsTerms: false, contradictory: false, report: null);
         }
@@ -647,13 +713,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns the child of a context that assumes these predicates beside what it holds, made the first time it is
         /// asked for. It holds the statement's terms and their verdicts, whatever it assumes.
         /// </summary>
+        /// <remarks>
+        /// Read off <see cref="JsonFactOverlay"/> where the declaration has no conditional rule, every predicate assumed
+        /// down to the root says what it says of one path at a time, and none meets what the declaration states: there
+        /// the engine would derive nothing the overlay does not hold. Its context is opened only if it is asked a verdict.
+        /// </remarks>
         public Node Child(Node parent, IEnumerable<SqlPredicate> assumed)
         {
             var distinct = new Dictionary<string, SqlPredicate>(StringComparer.Ordinal);
             foreach (var predicate in assumed)
-                distinct.TryAdd(predicate.ToString(), predicate);
+                distinct.TryAdd(predicate.Digest, predicate);
 
-            if (distinct.Count == 0 || parent.Scope is null || _rules is null)
+            if (distinct.Count == 0 || parent.KnowsNothing || _rules is null)
                 return parent;
 
             var key = parent.Key + "/" + string.Join(" & ", distinct.Keys.OrderBy(k => k, StringComparer.Ordinal));
@@ -663,14 +734,128 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (_children.TryGetValue(key, out var child) == false)
                 {
                     var predicates = distinct.Values.ToArray();
-                    var made = _statement.Conjuncts.Concat(predicates).ToArray();
-                    var paths = _statement.Paths.Concat(predicates.SelectMany(p => p.Paths)).Distinct().ToArray();
-                    child = Open(parent, key, assumed: predicates, made: made, paths: paths, holdsTerms: true);
+                    child = Overlaid(parent, key, predicates) ?? Opened(parent.Engine, key, predicates);
                     _children[key] = child;
                 }
 
                 return child;
             }
+        }
+
+        /// <summary>
+        /// Opens the engine's context for a child: the statement's terms and the predicates it assumes, made beneath the
+        /// parent's context, and run.
+        /// </summary>
+        Node Opened(Node parent, string key, IReadOnlyList<SqlPredicate> predicates)
+        {
+            var made = _statement.Conjuncts.Concat(predicates).ToArray();
+            var paths = _statement.Paths.Concat(predicates.SelectMany(p => p.Paths)).Distinct().ToArray();
+            return Open(parent, key, assumed: predicates, made: made, paths: paths, holdsTerms: true);
+        }
+
+        /// <summary>
+        /// Returns a child read off the overlay, or <c>null</c> where the engine is needed: see <see cref="Child"/>.
+        /// </summary>
+        Node? Overlaid(Node parent, string key, IReadOnlyList<SqlPredicate> predicates)
+        {
+            if (_unconditional is null || (ReferenceEquals(parent, Root) == false && parent.Overlay is null))
+                return null;
+
+            var assumed = parent.Assumed.Concat(predicates).ToArray();
+            if (Established(assumed) is not { } established)
+                return null;
+
+            if (JsonFactOverlay.TryOpen(established, _unconditional.Stated, _unconditional.Outright) is not JsonFactOverlay overlay)
+                return null;
+
+            return new Node(this, parent, key, assumed, predicates, overlay);
+        }
+
+        /// <summary>
+        /// Returns what assumed predicates say of each path they read, one path at a time, as <see cref="PredicateAtom.Kept"/>
+        /// reads each atom and the paths' lattice meets them; or <c>null</c> where one says something only the engine can
+        /// read: a disjunction that holds or a conjunction that fails, whose arms are cases, or a predicate assumed both
+        /// true and false.
+        /// </summary>
+        /// <remarks>
+        /// The engine's own reading is <see cref="PredicateRules"/>' analysis and establishing rules, and
+        /// <c>JsonFactOverlayTests</c> holds the two to each other on generated statements.
+        /// </remarks>
+        internal static Dictionary<JsonDocumentPath, PathValues>? Established(IEnumerable<SqlPredicate> assumed)
+        {
+            var paths = new Dictionary<JsonDocumentPath, PathValues>();
+            var truths = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+            bool Holds(SqlPredicate predicate, bool truth)
+            {
+                if (truths.TryGetValue(predicate.Digest, out var held))
+                    return held == truth;
+
+                truths[predicate.Digest] = truth;
+
+                switch (predicate)
+                {
+                    case SqlPredicate.Not n:
+                        return Holds(n.Operand, truth == false);
+
+                    case SqlPredicate.And a when truth:
+                        return a.Arms.All(arm => Holds(arm, true));
+
+                    case SqlPredicate.Or o when truth == false:
+                        return o.Arms.All(arm => Holds(arm, false));
+
+                    case SqlPredicate.And or SqlPredicate.Or:
+                        return false;
+
+                    default:
+                        if (AtomOf(predicate) is not var (path, atom))
+                            return true;
+
+                        var kept = atom.Kept(truth);
+                        if (kept == PathValues.Anything)
+                            return true;
+
+                        paths[path] = paths.TryGetValue(path, out var known) ? PathValues.Meet(known, kept) : kept;
+                        return true;
+                }
+            }
+
+            foreach (var predicate in assumed)
+                if (Holds(predicate, true) == false)
+                    return null;
+
+            return paths;
+        }
+
+        /// <summary>
+        /// Reads a predicate as the atom the analysis rules read it as: the path its value reads, how, and the test made of
+        /// it; or <c>null</c> where it is no atom.
+        /// </summary>
+        static (JsonDocumentPath Path, PredicateAtom Atom)? AtomOf(SqlPredicate predicate)
+        {
+            static string? Reader(SqlValue value) => value switch
+            {
+                SqlValue.Text => PredicateAtom.TextReader,
+                SqlValue.Raw => PredicateAtom.RawReader,
+                SqlValue.Typed t => PredicateAtom.TypedReader(t.Type),
+                SqlValue.Cast c => Reader(c.Value) is string inner ? PredicateAtom.CastReader(c.Target, inner) : null,
+                _ => null,
+            };
+
+            return predicate switch
+            {
+                SqlPredicate.Compare { Left: var v, Right: SqlValue.Literal l } c when v.PathRead is { } p && Reader(v) is string k =>
+                    (p, PredicateAtom.Compare(k, c.Op, l.Value)),
+                SqlPredicate.Compare { Left: var v, Right: SqlValue.Parameter } c when v.PathRead is { } p && Reader(v) is string k =>
+                    (p, PredicateAtom.CompareParameter(k, c.Op)),
+                SqlPredicate.In i when i.Value.PathRead is { } p && Reader(i.Value) is string k =>
+                    (p, PredicateAtom.In(k, i.Points)),
+                SqlPredicate.IsNull n when n.Value.PathRead is { } p && Reader(n.Value) is string k =>
+                    (p, PredicateAtom.IsNull(k)),
+                SqlPredicate.IsDefined d when d.Value.PathRead is { } p && Reader(d.Value) is string k =>
+                    (p, PredicateAtom.IsDefined(k)),
+                _ => null,
+            };
         }
 
         /// <summary>
@@ -682,10 +867,22 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node.Contradictory)
                 return OracleVerdict.Contradicted;
 
+            // What a context assumes holds of every row it admits, and so does a conjunction of what it assumes: read off
+            // the assumptions themselves, so that the answer rests on no run the engine might not finish. It is the
+            // question a weakening beneath asks, whose answer no must never be for want of a run.
+            if (node.Assumes(predicate))
+                return OracleVerdict.Always;
+
+            // A verdict is the engine's to read, so a stratum read off the overlay opens its context now.
+            node = node.Engine;
+
+            if (node.Contradictory)
+                return OracleVerdict.Contradicted;
+
             if (node.Scope is null || _rules is null)
                 return OracleVerdict.Unknown;
 
-            var digest = predicate.ToString();
+            var digest = predicate.Digest;
             if (node.HoldsTerms && _held.Contains(digest))
                 return Read(node.Scope, predicate);
 
@@ -781,14 +978,14 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (contradictory == false && report.StopReason != RunStopReason.Completed)
                 {
                     scope.Dispose();
-                    return Unknowing(parent, key, report);
+                    return Unknowing(parent, key, report, assumed);
                 }
 
                 if (contradictory)
                 {
                     // Nothing is read of a context that keeps nothing; it is released at once.
                     scope.Dispose();
-                    return new Node(this, null, parent, key, complete: true, holdsTerms: false, contradictory: true, report: report);
+                    return new Node(this, null, parent, key, complete: true, holdsTerms: false, contradictory: true, report: report, assumed);
                 }
 
                 if (keep)
@@ -797,17 +994,17 @@ namespace Apache.Calcite.Cosmos.Facts
                     _lease.Add(scope);
                 }
 
-                return new Node(this, scope, parent, key, complete: true, holdsTerms: holdsTerms, contradictory: false, report: report);
+                return new Node(this, scope, parent, key, complete: true, holdsTerms: holdsTerms, contradictory: false, report: report, assumed);
             }
             catch (Exception e) when (JsonFactTheory.IsEngineFailure(e))
             {
                 scope?.Dispose();
-                return Unknowing(parent, key, null);
+                return Unknowing(parent, key, null, assumed);
             }
         }
 
-        Node Unknowing(Node parent, string key, RunReport? report) =>
-            new(this, parent.Scope, parent, key, complete: false, holdsTerms: parent.HoldsTerms, contradictory: parent.Contradictory, report: report);
+        Node Unknowing(Node parent, string key, RunReport? report, IReadOnlyList<SqlPredicate> assumed) =>
+            new(this, parent.Scope, parent, key, complete: false, holdsTerms: parent.HoldsTerms, contradictory: parent.Contradictory, report: report, assumed);
 
         /// <summary>
         /// Builds a predicate's term, and states beside it the arms of every junction in it.
@@ -835,6 +1032,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 }
                 case SqlPredicate.IsNull n:
                     return r.IsNull.Of(Value(n.Value));
+                case SqlPredicate.IsDefined d:
+                    return r.IsDefined.Of(Value(d.Value));
                 case SqlPredicate.Not n:
                     return r.Not.Of(Term(n.Operand, bookkeeping));
                 case SqlPredicate.Opaque o:
@@ -903,15 +1102,18 @@ namespace Apache.Calcite.Cosmos.Facts
         Term<JPath> Path(JsonDocumentPath path) => JsonFactEncoding.Path(path).ToTerm(_rules!.Json);
 
         /// <summary>
-        /// One context of the tree, or where its run did not complete, the one above it read in its place.
+        /// One context of the tree, or where its run did not complete, the one above it read in its place; or a stratum
+        /// read off the overlay, whose context is opened only when a verdict is asked of it.
         /// </summary>
         internal sealed class Node
         {
 
             readonly StatementTerms _owner;
+            readonly IReadOnlyList<SqlPredicate>? _own;
+            Node? _engine;
             JsonFactSet? _view;
 
-            public Node(StatementTerms owner, Scope? scope, Node? parent, string key, bool complete, bool holdsTerms, bool contradictory, RunReport? report)
+            public Node(StatementTerms owner, Scope? scope, Node? parent, string key, bool complete, bool holdsTerms, bool contradictory, RunReport? report, IReadOnlyList<SqlPredicate>? own = null)
             {
                 _owner = owner;
                 Scope = scope;
@@ -921,10 +1123,77 @@ namespace Apache.Calcite.Cosmos.Facts
                 HoldsTerms = holdsTerms;
                 Contradictory = contradictory;
                 Report = report;
+                Assumed = Array.Empty<SqlPredicate>();
+                Holding = Hold(parent, own);
             }
 
-            /// <summary>The context read, or <c>null</c> where nothing is known or nothing is kept.</summary>
+            /// <summary>
+            /// A stratum read off the overlay: it assumes <paramref name="assumed"/> in all, <paramref name="own"/> beyond
+            /// its parent.
+            /// </summary>
+            public Node(StatementTerms owner, Node parent, string key, IReadOnlyList<SqlPredicate> assumed, IReadOnlyList<SqlPredicate> own, JsonFactOverlay overlay)
+            {
+                _owner = owner;
+                _own = own;
+                Parent = parent;
+                Key = key;
+                Complete = true;
+                HoldsTerms = true;
+                Assumed = assumed;
+                Overlay = overlay;
+                Holding = Hold(parent, own);
+            }
+
+            /// <summary>The digests of every predicate the node assumes, down to the root.</summary>
+            public IReadOnlySet<string> Holding { get; }
+
+            /// <summary>
+            /// Determines whether the node assumes a predicate, or a conjunction of predicates it assumes.
+            /// </summary>
+            public bool Assumes(SqlPredicate predicate) =>
+                Holding.Contains(predicate.Digest) || predicate is SqlPredicate.And and && Holding.Count > 0 && and.Arms.All(Assumes);
+
+            static IReadOnlySet<string> Hold(Node? parent, IReadOnlyList<SqlPredicate>? own)
+            {
+                if (own is null || own.Count == 0)
+                    return parent?.Holding ?? Nothing;
+
+                var holding = new HashSet<string>(parent?.Holding ?? Nothing, StringComparer.Ordinal);
+                foreach (var predicate in own)
+                    holding.Add(predicate.Digest);
+
+                return holding;
+            }
+
+            static readonly IReadOnlySet<string> Nothing = new HashSet<string>();
+
+            /// <summary>The context read, or <c>null</c> where nothing is known or nothing is kept, or the node is read off the overlay.</summary>
             public Scope? Scope { get; }
+
+            /// <summary>The overlay a stratum is read off, or <c>null</c> where it is the engine's.</summary>
+            public JsonFactOverlay? Overlay { get; }
+
+            /// <summary>Every predicate a stratum read off the overlay assumes, down to the root; none for the engine's.</summary>
+            public IReadOnlyList<SqlPredicate> Assumed { get; }
+
+            /// <summary>Whether the node knows nothing at all: no context, and no overlay.</summary>
+            public bool KnowsNothing => Scope is null && Overlay is null;
+
+            /// <summary>
+            /// Gets the node whose context a verdict is read from: itself, or for one read off the overlay, the engine's
+            /// context for what it assumes, opened the first time it is asked for.
+            /// </summary>
+            public Node Engine
+            {
+                get
+                {
+                    if (Overlay is null)
+                        return this;
+
+                    lock (_owner._lock)
+                        return _engine ??= _owner.Opened(Parent!.Engine, Key, _own!);
+                }
+            }
 
             public Node? Parent { get; }
 
@@ -950,6 +1219,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
         JsonFactSet ViewOf(Node node)
         {
+            if (node.Overlay is JsonFactOverlay overlay)
+                return new JsonFactSet(overlay, _vocabulary);
+
             if (node.Contradictory)
                 return new JsonFactSet(Contradiction.Tables, _vocabulary);
 

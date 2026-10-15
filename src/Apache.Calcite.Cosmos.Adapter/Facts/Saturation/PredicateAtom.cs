@@ -71,7 +71,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// </para>
     /// </remarks>
     /// <param name="Reader">How the value is read: <c>text</c>, <c>raw</c>, <c>typed:T</c> or <c>cast:T:r</c>.</param>
-    /// <param name="Test">What is asked: a comparison operator, <c>in</c>, or <c>is null</c>.</param>
+    /// <param name="Test">What is asked: a comparison operator, <c>in</c>, <c>is null</c>, or <c>is defined</c>.</param>
     /// <param name="Operand">The literal compared with, in <see cref="JsonValues"/>' spelling; <c>null</c> for a parameter and a null test.</param>
     /// <param name="Points">The literals of an <c>in</c>.</param>
     /// <param name="Parameter">Whether the value is compared with a parameter, whose value is not known.</param>
@@ -86,6 +86,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string GreaterOrEqual = ">=";
         public const string InTest = "in";
         public const string NullTest = "is null";
+        public const string DefinedTest = "is defined";
 
         public const string TextReader = "text";
         public const string RawReader = "raw";
@@ -107,6 +108,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>A null test.</summary>
         public static PredicateAtom IsNull(string reader) => new(reader, NullTest, null, null, false);
+
+        /// <summary>
+        /// <c>IS_DEFINED</c> of the path the reader reads: what it asks is the document's, so it means one thing whatever
+        /// the reading (<c>Service.IsDefined</c>, and the in-process body reads the document too).
+        /// </summary>
+        public static PredicateAtom IsDefined(string reader) => new(reader, DefinedTest, null, null, false);
 
         /// <summary>Whether a string names a comparison operator.</summary>
         public static bool IsComparison(string op) => op is Equal or NotEqual or Less or LessOrEqual or Greater or GreaterOrEqual;
@@ -148,6 +155,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <returns>An over-approximation of those documents.</returns>
         public PathValues Kept(bool truth)
         {
+            // True where the path is there, a null included, and false only where it is not.
+            if (Test == DefinedTest)
+                return truth ? PathValues.AnythingThere : PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind));
+
             if (Reads is not Reading reading)
                 return PathValues.Anything;
 
@@ -203,6 +214,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>The truth values the atom may take on one kind of document.</summary>
         internal Truths On(State state)
         {
+            if (Test == DefinedTest)
+                return state is State.Absent ? Truths.False : state is State.Unknown ? Truths.True | Truths.False : Truths.True;
+
             if (Reads is not Reading reading || state is State.Unknown)
                 return Truths.Any;
 

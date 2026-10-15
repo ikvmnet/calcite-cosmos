@@ -126,9 +126,38 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>Anything the loader does not read is <see cref="Opaque"/></b>, numbered within its statement: a term that proves
     /// nothing and decides nothing, and whose only use is to be counted among a statement's conjuncts.
     /// </para>
+    /// <para>
+    /// <b>Its digest is written once.</b> What the oracle remembers a predicate by is its digest, and a planner asks of the
+    /// same predicate many times — a merged view's filter stands again inside each of its <c>CASE</c> columns — so the
+    /// digest is spelled the first time it is asked and kept beside the predicate, outside its equality.
+    /// </para>
     /// </remarks>
     internal abstract record SqlPredicate
     {
+
+        string? _digest;
+
+        /// <summary>
+        /// Gets the predicate's digest, which is its spelling: equal predicates have equal digests, and are one term.
+        /// </summary>
+        public string Digest => _digest ??= Spell();
+
+        /// <summary>
+        /// Spells the predicate, once: see <see cref="Digest"/>.
+        /// </summary>
+        protected abstract string Spell();
+
+        /// <inheritdoc />
+        public sealed override string ToString() => Digest;
+
+        /// <summary>
+        /// Compares the kind of predicate alone: each kind compares its own fields, and the digest kept beside them is
+        /// not one of them.
+        /// </summary>
+        public virtual bool Equals(SqlPredicate? other) => other is not null && EqualityContract == other.EqualityContract;
+
+        /// <inheritdoc />
+        public override int GetHashCode() => EqualityContract.GetHashCode();
 
         /// <summary>A comparison: a value that reads a path, an operator, and a literal or a parameter.</summary>
         public sealed record Compare(string Op, SqlValue Left, SqlValue Right) : SqlPredicate
@@ -144,20 +173,29 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <summary>The operator that means the same with its operands the other way round.</summary>
             public static string Mirror(string op) => Saturation.PredicateAtom.Mirror(op);
 
-            public override string ToString() => "(" + Left + " " + Op + " " + Right + ")";
+            protected override string Spell() => "(" + Left + " " + Op + " " + Right + ")";
 
         }
 
         /// <summary>A membership: <c>IN</c>, expanded out of a <c>SEARCH</c> and read back as one test.</summary>
         public sealed record In(SqlValue Value, ValueSet<string> Points) : SqlPredicate
         {
-            public override string ToString() => "(" + Value + " in [" + string.Join(", ", Points.Select(SqlValue.Quote)) + "])";
+            protected override string Spell() => "(" + Value + " in [" + string.Join(", ", Points.Select(SqlValue.Quote)) + "])";
         }
 
         /// <summary><c>IS NULL</c>, which is never UNKNOWN.</summary>
         public sealed record IsNull(SqlValue Value) : SqlPredicate
         {
-            public override string ToString() => "(" + Value + " is null)";
+            protected override string Spell() => "(" + Value + " is null)";
+        }
+
+        /// <summary>
+        /// <c>IS_DEFINED</c> of the path a value reads: true where the path is there, a JSON null included, false where it
+        /// is not, and never UNKNOWN. What it asks is the document's whatever the reading, so the loader names the raw value.
+        /// </summary>
+        public sealed record IsDefined(SqlValue Value) : SqlPredicate
+        {
+            protected override string Spell() => "(" + Value + " is defined)";
         }
 
         /// <summary>A conjunction of two or more arms, in digest order.</summary>
@@ -165,9 +203,9 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             public bool Equals(And? other) => other is not null && Arms.SequenceEqual(other.Arms);
 
-            public override int GetHashCode() => ToString().GetHashCode(StringComparison.Ordinal);
+            public override int GetHashCode() => Digest.GetHashCode(StringComparison.Ordinal);
 
-            public override string ToString() => "and(" + string.Join(", ", Arms) + ")";
+            protected override string Spell() => "and(" + string.Join(", ", Arms) + ")";
         }
 
         /// <summary>A disjunction of two or more arms, in digest order.</summary>
@@ -175,21 +213,21 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             public bool Equals(Or? other) => other is not null && Arms.SequenceEqual(other.Arms);
 
-            public override int GetHashCode() => ToString().GetHashCode(StringComparison.Ordinal);
+            public override int GetHashCode() => Digest.GetHashCode(StringComparison.Ordinal);
 
-            public override string ToString() => "or(" + string.Join(", ", Arms) + ")";
+            protected override string Spell() => "or(" + string.Join(", ", Arms) + ")";
         }
 
         /// <summary>A negation.</summary>
         public sealed record Not(SqlPredicate Operand) : SqlPredicate
         {
-            public override string ToString() => "not(" + Operand + ")";
+            protected override string Spell() => "not(" + Operand + ")";
         }
 
         /// <summary>A predicate the loader does not read, numbered within its statement.</summary>
         public sealed record Opaque(long Id) : SqlPredicate
         {
-            public override string ToString() => "opaque#" + Id;
+            protected override string Spell() => "opaque#" + Id;
         }
 
         /// <summary>
@@ -218,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     continue;
                 }
 
-                flat.TryAdd(arm.ToString(), arm);
+                flat.TryAdd(arm.Digest, arm);
             }
 
             if (flat.Count == 0)
@@ -259,6 +297,7 @@ namespace Apache.Calcite.Cosmos.Facts
             Compare c => new[] { c.Left.PathRead, c.Right.PathRead },
             In i => new[] { i.Value.PathRead },
             IsNull n => new[] { n.Value.PathRead },
+            IsDefined d => new[] { d.Value.PathRead },
             _ => Array.Empty<JsonDocumentPath?>(),
         }).OfType<JsonDocumentPath>().Distinct();
 
@@ -293,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Facts
             Conjuncts = conjuncts.ToArray();
             Sources = sources?.ToArray() ?? new object?[conjuncts.Count];
             Paths = Conjuncts.SelectMany(c => c.Paths).Concat(mentions ?? Array.Empty<JsonDocumentPath>()).Distinct().ToArray();
-            Digest = string.Join(" & ", Conjuncts.Select(c => c.ToString()).OrderBy(d => d, StringComparer.Ordinal))
+            Digest = string.Join(" & ", Conjuncts.Select(c => c.Digest).OrderBy(d => d, StringComparer.Ordinal))
                 + " @ " + string.Join(" ", Paths.Select(SqlValue.Spell).OrderBy(p => p, StringComparer.Ordinal));
         }
 
