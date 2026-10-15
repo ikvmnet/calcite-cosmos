@@ -343,23 +343,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // And whether the predicate is only that, plus an id — the shape a point read answers for
             // about 1 RU rather than the 2.3 a query costs at best. Offered here; whether it is taken
             // depends on what the rest of the statement asks for, which the implementor decides.
-            if (implementor.PointReadCandidate is null &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var pointReadId))
-                implementor.PointReadCandidate = pointReadId;
+            //
+            // Only by a filter whose predicate is the whole WHERE. The extractor reads this filter's
+            // condition and a read applies none of the statement's, so a conjunct another filter
+            // beneath has already written is one it never saw: a view's WHERE, queried by partition
+            // key and id from outside, returned the document the view excludes (review probe H6c,
+            // measured on the emulator). The other order, a filter conjoining onto the one that
+            // offered, is withdrawn at Build, which compares the WHERE the statement ends with to
+            // the one the read was offered for.
+            var whole = string.IsNullOrEmpty(implementor.Query.Where);
+            string? pointReadId = null;
+            IReadOnlyList<string>? pointReadIds = null;
+
+            if (whole &&
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var id))
+                pointReadId = id;
 
             // Or a set of ids — the same shape for several documents, which ReadManyItemsAsync
             // answers charged as point reads. Asked second: a single id is the single read's.
-            else if (implementor.PointReadCandidate is null && implementor.PointReadSetCandidate is null &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var pointReadIds))
-                implementor.PointReadSetCandidate = pointReadIds;
+            else if (whole &&
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var ids))
+                pointReadIds = ids;
 
             var condition = implementor.TranslateCondition(getCondition());
 
-            // Stacked filters are normally merged by the planner, but conjoin defensively rather
-            // than silently discarding one.
-            implementor.Query.Where = string.IsNullOrEmpty(implementor.Query.Where)
+            // Stacked filters are normally merged by the planner, but not always — a filter that
+            // reached the service from a view and one written above it are two — so conjoin rather
+            // than discard one.
+            implementor.Query.Where = whole
                 ? condition
                 : $"({implementor.Query.Where} AND {condition})";
+
+            if (pointReadId is not null || pointReadIds is not null)
+            {
+                implementor.PointReadCandidate = pointReadId;
+                implementor.PointReadSetCandidate = pointReadIds;
+                implementor.PointReadPredicate = implementor.Query.Where;
+            }
         }
 
     }

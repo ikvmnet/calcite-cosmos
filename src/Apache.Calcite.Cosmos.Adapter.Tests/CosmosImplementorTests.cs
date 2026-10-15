@@ -307,6 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             "TOP",
             "OFFSET/LIMIT",
             "JOIN",
+            "WHERE",
         ];
 
         static void Write(CosmosQueryBuilder query, string clause)
@@ -321,6 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 case "TOP": query.Top = 1; break;
                 case "OFFSET/LIMIT": query.Fetch = 1; break;
                 case "JOIN": query.AddUnnest("t0", "c.tags"); break;
+                case "WHERE": query.Where = query.Where is null ? "(c.price > 200)" : $"({query.Where} AND (c.price > 200))"; break;
             }
         }
 
@@ -344,7 +346,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// A read returns a row per document, and every one of these asks for something else: a row
         /// per value, per group, per element, or a subset in an order. <c>DISTINCT</c> was missing
         /// from both lists, and over two documents sharing a value the batch returned the value twice
-        /// (soundness probe P22c).
+        /// (soundness probe P22c). A <c>WHERE</c> the pinning filter did not write is a subset the
+        /// read ignores, which a view queried by partition key and <c>id</c> reached (review probe
+        /// H6c).
         /// </remarks>
         [Theory]
         [MemberData(nameof(ClausesBeyondThePredicate))]

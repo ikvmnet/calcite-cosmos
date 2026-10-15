@@ -441,6 +441,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <remarks>
         /// <para>
+        /// The same residual, written by a second filter rather than beside the pinning equalities —
+        /// a view's <c>WHERE</c> queried from outside by partition key and <c>id</c>. The planner
+        /// keeps the two filters apart and both reach the service, conjoined into one
+        /// <c>WHERE</c>; the extractor read only the outer one, so the read was offered and returned
+        /// the document the view excludes (review probe H6c, measured on the emulator).
+        /// </para>
+        /// <para>
+        /// Both orders, and both reads: the view's filter beneath the pinning one, and a filter above
+        /// the pinning one, which conjoins after the read was offered (H5b).
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"$.category\" AS \"cat\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) IS NULL) AS t WHERE t.\"cat\" = 'shoes' AND t.\"id\" = '3'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"$.category\" AS \"cat\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 200) AS t WHERE t.\"cat\" = 'bikes' AND t.\"id\" IN ('1', '2')")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')) AS t WHERE t.\"p\" > 200")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1') AS t WHERE t.\"_ts\" > 5")]
+        public void AFilterStackedOnThePinningOneWithdrawsTheReads(string sql)
+        {
+            var best = PlanToCosmos(sql);
+            var query = Query(best);
+
+            Plan(best).Split("CosmosFilter").Length.Should().Be(3, "the shape under test is two filters reaching the service: " + Plan(best));
+            query.PointReadId.Should().BeNull("the WHERE carries a conjunct the pinning filter did not write: " + query.Sql);
+            query.PointReadIds.Should().BeNull("the WHERE carries a conjunct the pinning filter did not write: " + query.Sql);
+            query.PartitionKeyIsComplete.Should().BeTrue("the partition key still routes the query");
+        }
+
+        /// <remarks>
+        /// <para>
         /// A batch returns a row per document and <c>DISTINCT</c> a row per value, so two documents
         /// sharing a <c>_ts</c> came back as two identical rows — soundness probe P22c, measured on
         /// the emulator. <c>_ts</c> is the case that reached it: the service writes it on every

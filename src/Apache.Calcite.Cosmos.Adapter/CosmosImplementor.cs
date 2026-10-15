@@ -43,8 +43,8 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// A point read costs about 1 RU where the same fetch as a query costs 2.3 at best and goes through
     /// the query engine. It applies no predicate and returns the document rather than a projection, so
     /// it is offered only where the statement asks for nothing a read cannot answer — a
-    /// <c>DISTINCT</c>, an ordering, a page, a grouping, an aggregate or a traversal; see
-    /// <see cref="CosmosImplementor.Build"/>, and
+    /// <c>DISTINCT</c>, an ordering, a page, a grouping, an aggregate, a traversal, or a conjunct
+    /// the pinning filter did not write; see <see cref="CosmosImplementor.Build"/>, and
     /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> for the predicate condition.
     /// </para>
     /// </param>
@@ -1041,6 +1041,18 @@ namespace Apache.Calcite.Cosmos.Adapter
         public IReadOnlyList<string>? PointReadSetCandidate { get; set; }
 
         /// <summary>
+        /// Gets or sets the <c>WHERE</c> the statement carried when a filter offered
+        /// <see cref="PointReadCandidate"/> or <see cref="PointReadSetCandidate"/>, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// What the candidate was extracted from is one filter's condition; what a read must answer
+        /// is the statement's whole <c>WHERE</c>. The filter offers only where its condition is all
+        /// of it, and records the text here, so a filter conjoining afterwards is a <c>WHERE</c>
+        /// that no longer matches and withdraws the read at <see cref="Build"/>.
+        /// </remarks>
+        public string? PointReadPredicate { get; set; }
+
+        /// <summary>
         /// Returns the <c>id</c>s to read as a batch, under exactly the conditions
         /// <see cref="PointReadId"/> applies to a single one: every clause beyond the pinned
         /// predicate rules the reads out, a batch of blind reads being no less blind.
@@ -1096,13 +1108,25 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// converter, but a read withdrawn there by accident is the defect above.
         /// </para>
         /// <para>
+        /// <b>The predicate is the statement's, not the filter's.</b> The extractor reads the
+        /// condition of the filter that offers the read, and that condition was taken to be the whole
+        /// <c>WHERE</c>. It is not where a view's <c>WHERE</c> is queried from outside by partition
+        /// key and <c>id</c>: two filters reach the service and conjoin into one <c>WHERE</c>, and the
+        /// read ignores half of it. Measured on the emulator, a view excluding every document with a
+        /// price returned the one it excluded (review probe H6c), and the other order, a filter above
+        /// the one that offered, returned both documents of a batch where the query returned one
+        /// (H5b). So the read stands only where the <c>WHERE</c> is still the one it was offered
+        /// for — see <see cref="PointReadPredicate"/>.
+        /// </para>
+        /// <para>
         /// The projection is the exception — the converter can read paths out of the document itself —
         /// and it is checked there rather than here, because only the converter knows whether every
-        /// output field is a path.
+        /// output field is a path, rendered as one and read as the query would read it.
         /// </para>
         /// </remarks>
         bool ReadsAnswerTheStatement() =>
-            _query.Distinct == false
+            string.Equals(_query.Where, PointReadPredicate, StringComparison.Ordinal)
+            && _query.Distinct == false
             && _query.FlatProjection == false
             && _query.HasGroupBy == false
             && _query.HasOrderBy == false

@@ -3591,6 +3591,19 @@ or a partition key path, and all of them must be pinned. `CosmosPartitionKeyExtr
 question in the direction its name does not suggest: `Collect` records what a predicate pins and
 ignores the rest, and `CoversExactly` asks whether there *is* a rest.
 
+**A predicate is the statement's, and a filter holds only part of one.** The extractor is asked
+of one `CosmosFilter`'s condition, and a statement can carry two: a view's `WHERE`, queried from
+outside by partition key and `id`, reaches the service as a filter beneath the pinning one, and
+the planner does not merge them. Both conjoin into the `WHERE`, and the read was offered on the
+outer one's say alone — a soft-delete view returned the document it excludes (review probe H6c,
+measured on the emulator), and a filter above the pinning one returned both documents of a batch
+where the query returned one (H5b). So a filter offers a read only where its condition is the
+whole `WHERE` so far, and records that text (`PointReadPredicate`); `ReadsAnswerTheStatement`
+withdraws the read wherever the `WHERE` the statement ends with is not the one it was offered for.
+The comparison is the invariant rather than a list of who else writes a `WHERE`: the lookup join's
+restriction is a writer too, and the comparison withdraws that read as well as the restriction's own
+nulling of it does.
+
 The rest of the statement rules it out just as firmly. A read returns one document, whole, so an
 ordering, a row limit, a grouping, an aggregate, an array traversal and a `DISTINCT` each describe
 something a document is not. `CosmosImplementor.Build` withholds the read for any of them, and the

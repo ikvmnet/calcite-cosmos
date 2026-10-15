@@ -211,6 +211,11 @@ read applies no predicate. The planner also considers reading the document and a
 condition in process, and chooses between that and the query by what each costs for the container's
 document size: a point read wins for small documents and loses for very large ones.
 
+The predicate that counts is the whole statement's, wherever it was written. A view's own `WHERE`
+and the `id` and partition key equalities written against the view are one predicate to the
+service, and a lookup through the view is not read blind any more than the conjunction written out
+by hand would be.
+
 **A set of ids.** `WHERE c."id" IN ('a', 'b') AND c."$.category" = 'bikes'`, with nothing else, can be
 answered with `ReadMany` — one request for the set. The planner prices it against the query. The same
 clauses stop it as stop a single read; `ReadMany` returns a row per document, so a `SELECT DISTINCT`
