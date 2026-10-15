@@ -1522,6 +1522,25 @@ that matter:
 
 A sort *without* a restriction commutes with a filter, so that pairing stays available.
 
+**Which clauses a subtree has written is half of what a rule decides on; what its output binds is the
+other half, and a `DISTINCT` is where the two halves were encoded twice.** A `DISTINCT` is a projection
+of its own keys, and over a key some documents lack it projects `IS_DEFINED(p) ? p : null` — SQL's one
+null for the service's absent and null (see `CosmosAggregate.GroupingKey`). That value is not the path:
+the service will not order by a select-list alias, and the path sorts an absent property somewhere the
+projected null does not. So `EmitDistinct` binds such a key to nothing, and binds the path only where
+the container says it is always present. `TryBindOutput` bound the input's path regardless, so
+`CosmosSortRule` converted a sort over `SELECT DISTINCT JSON_VALUE(…, '$.price' …) … ORDER BY 1 NULLS
+FIRST`, and `CosmosSort.Implement` refused it with "the sort keys do not resolve to document paths" —
+after the planner had chosen the plan, so the query failed rather than sorting in process (soundness
+probe P16). Each half was right about its own encoding. Both now ask
+`CosmosAggregate.DistinctKeyBinding`, and the walk finds the container on the way down, at the scan,
+because the answer depends on what the container declares.
+
+The walk may know *less* than implementation and never more: where it binds nothing a rule declines,
+which is always correct, and where it names a path implementation does not bind a rule fires and
+implementation throws. `CosmosRelTests.BindsNoMoreThanItsImplementation` holds every shape the walk
+knows to that.
+
 **A predicate over the traversed element is a `WHERE`, and reaching it takes two rules.** A query
 writes such a predicate above the correlate, where `CosmosUnnestRule` cannot see it and the element
 has no document path a filter above the traversal could name — so it stayed outside the statement and

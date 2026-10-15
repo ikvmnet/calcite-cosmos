@@ -86,7 +86,9 @@ normalisation as a grouping key. `COUNT(DISTINCT x)` becomes a grouping on `x` a
 per distinct value crosses the network — and the count is taken in process.
 
 Unlike `GROUP BY`, `DISTINCT` *can* share a statement with an `ORDER BY`, so a distinct, sorted query
-can be answered whole by the service — subject to the sorting rules of Chapter 9.
+can be answered whole by the service — subject to the sorting rules of Chapter 9, and only where the
+key is always present. A normalised key is no longer the property, so a sort on it runs in process
+(Chapter 9.4).
 
 Cosmos does not support continuation for `GROUP BY` and `DISTINCT` results, so such a statement is
 always read to the end once started.

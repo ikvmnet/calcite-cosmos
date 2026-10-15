@@ -506,10 +506,27 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written)
         {
+            return TryBindOutput(node, out fields, out readings, out ordering, out written, out _);
+        }
+
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each output field is read back.</param>
+        /// <param name="ordering">On success, per ordinal, the path a sort may order by where the ordinal binds to none.</param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        /// <param name="container">
+        /// On success, the container the subtree reads — the scan's, found on the same walk. What a node
+        /// binds can depend on what the container says always holds, as a <c>DISTINCT</c>'s does, and
+        /// the walk has to ask the question the node asks or it is a second encoding of the answer. See
+        /// <see cref="Rel.CosmosAggregate.DistinctKeyBinding"/>.
+        /// </param>
+        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
             written = CosmosClauses.None;
+            container = null;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
@@ -522,21 +539,22 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case null:
                     return false;
 
-                case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable:
+                case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table:
                     fields = BindFields(scan.getRowType());
                     readings = BindReadings(scan.getRowType());
                     ordering = new CosmosOrdering[fields.Count];
+                    container = table.Container;
                     return true;
 
                 // Neither changes the shape of a row, so neither changes what addresses it. A sort
                 // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written);
+                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container);
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -549,13 +567,16 @@ namespace Apache.Calcite.Cosmos.Adapter
                 }
 
                 // An aggregate that computes nothing is a DISTINCT, and a distinct's output is the
-                // grouping keys themselves — still document paths, because nothing was computed. So
-                // an operator above one can address them, which is what lets a sort join a DISTINCT
-                // in the same statement. An aggregate with calls binds nothing: its output is
-                // computed and Cosmos can name none of it.
+                // grouping keys themselves — still document paths where nothing was computed. So an
+                // operator above one can address them, which is what lets a sort join a DISTINCT in
+                // the same statement. But a key some documents lack is grouped as IS_DEFINED(p) ? p :
+                // null, which is not the path, and binds nothing — asked here of the same function
+                // CosmosAggregate.EmitDistinct binds by, since a rule converting on a path the node
+                // then refuses is a plan that fails after the planner has chosen it. An aggregate with
+                // calls binds nothing at all: its output is computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -569,7 +590,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     for (var i = 0; i < paths.Length && i < keys.size(); i++)
                     {
                         var index = ((java.lang.Integer)keys.get(i)).intValue();
-                        paths[i] = index >= 0 && index < input.Count ? input[index] : null;
+                        paths[i] = CosmosAggregate.DistinctKeyBinding(index >= 0 && index < input.Count ? input[index] : null, container);
                         reads[i] = index >= 0 && index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
                     }
 
@@ -581,7 +602,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -636,7 +657,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // left unbound rather than named.
                 case Correlate correlate:
                 {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out _, out written) == false)
+                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out _, out written, out container) == false)
                         return false;
 
                     var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];

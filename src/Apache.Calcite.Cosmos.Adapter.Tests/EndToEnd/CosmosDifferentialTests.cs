@@ -604,6 +604,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.category') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
             ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),
 
+            // A sort over a DISTINCT of a path some documents lack (soundness probe P16). The distinct
+            // groups the key as IS_DEFINED(p) ? p : null and binds nothing above it; the rule used to
+            // read the path regardless, convert the sort, and leave implementation to refuse it. The
+            // placements are the ones the service's own order would honour, so nothing but the binding
+            // declines them. The filter is the binding's other reader, which the planner moves beneath
+            // the distinct; it agreed before and is here to keep agreeing.
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c ORDER BY 1 DESC NULLS LAST", true),
+            ("SELECT d.\"p\" FROM (SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS d WHERE d.\"p\" > 10", false),
+
 
             // ── A sweep over the surfaces that carried no statement at all ─────────
             //

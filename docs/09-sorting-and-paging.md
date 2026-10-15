@@ -120,6 +120,11 @@ A Cosmos statement has one `ORDER BY`, and some clauses cannot be combined with 
 - **An array traversal's element.** Azure rejects `ORDER BY t` over `JOIN t IN c.tags`, though the
   emulator accepts it; a sort on an unnested element runs in process.
 - **A `VARIANT` key**, as above.
+- **A `SELECT DISTINCT` of a property some documents lack.** A distinct and a sort share a statement
+  where the key is always present: `id`, `_ts`, `_etag`, or a property the container's schema
+  requires (Chapter 14). Anywhere else the distinct folds a missing property and a `null` into SQL's
+  one null (Chapter 10.5), so the value it returns is no longer the property, and the sort runs in
+  process over the distinct rows — one per value, so cheaply. The distinct itself still pushes.
 
 ## 9.5 Paging: `OFFSET` and `FETCH`
 
@@ -171,7 +176,8 @@ rather than relying on a filter.
 2. Is every key a document path — `JSON_VALUE`, `id`, `_ts`, `_etag` — and not a cast, function or
    the promoted partition key column?
 3. Two or more keys? Does the container have a composite index matching their order and directions?
-4. Is the query grouped, ranked, or sorting on an unnested element?
+4. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a
+   property some documents lack?
 5. Is there a filter under the sort that runs in process? A sort can only push if everything beneath
    it does; check the plan with `EXPLAIN PLAN FOR` (Chapter 20).
 

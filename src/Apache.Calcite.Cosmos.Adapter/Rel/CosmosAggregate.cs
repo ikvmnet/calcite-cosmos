@@ -314,10 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, implementor.Container.Facts.Derive(null), expression));
 
-                // Bound to the path only where the projected value is that path. A normalised key is a
-                // computed column: the service will not order by a select-list alias, and the path
-                // underneath sorts an absent property somewhere the projected null does not.
-                projected[i] = IsAlwaysPresent(path, implementor.Container.Facts.Derive(null)) ? path : null;
+                projected[i] = DistinctKeyBinding(path, implementor.Container);
             }
 
             implementor.Query.Distinct = true;
@@ -326,6 +323,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Fields = projected;
             implementor.Readings = readings;
         }
+
+        /// <summary>
+        /// The path a <c>DISTINCT</c>'s key binds to for the operators above it, or <c>null</c> where
+        /// it binds none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Bound to the path only where the projected value is that path. A normalised key — see
+        /// <see cref="GroupingKey"/> — is a computed column: the service will not order by a
+        /// select-list alias, and the path underneath sorts an absent property somewhere the projected
+        /// null does not. A path the container says is always present is never normalised, so it is
+        /// still the path.
+        /// </para>
+        /// <para>
+        /// <b>One answer, asked by two callers.</b> <see cref="EmitDistinct"/> binds by it, and
+        /// <see cref="CosmosImplementor.TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)"/>
+        /// derives by it what every rule above a <c>DISTINCT</c> decides on. The walk used to bind the
+        /// input's path regardless, so <see cref="Convert.CosmosSortRule"/> converted a sort over a
+        /// <c>DISTINCT</c> of a path some documents lack and <see cref="CosmosSort.Implement"/> refused
+        /// it — after the planner had committed to the plan, so the query failed rather than sorting
+        /// in process (soundness probe P16). Each was right about its own encoding; there were two.
+        /// </para>
+        /// </remarks>
+        /// <param name="key">The path the grouping key resolves to beneath the aggregate, if any.</param>
+        /// <param name="container">The container, whose unconditional facts say what is always present.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        internal static CosmosPath? DistinctKeyBinding(CosmosPath? key, CosmosContainerMetadata? container) =>
+            key is not null && container is not null && IsAlwaysPresent(key, container.Facts.Derive(null)) ? key : null;
 
         /// <summary>
         /// The expression a grouping key is grouped and projected by.

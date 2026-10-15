@@ -1125,7 +1125,12 @@ the distribution the gate is sized for.
   columns. It does not reach an unpromoted document path, and not for want of a type — such a path
   projects as an accessor call rather than as a reference, and `RelMdPredicates` carries a predicate
   through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
-  a total order over JSON types*, and section 7 below, whose case this sharpens.
+  a total order over JSON types*, and section 7 below, whose case this sharpens. Over a `DISTINCT`
+  the placement is not the only gate: a key some documents lack is normalised and binds nothing, so
+  its sort stays in process under any placement, and only a declared `required` reaches it. Whether
+  `ORDER BY c.p` beside `SELECT DISTINCT VALUE { "p": IS_DEFINED(c.p) ? c.p : null }` orders the rows
+  the way the projected key would is unmeasured, and would be the way to recover it (`DESIGN.md`
+  under *Plan order is not clause order*).
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.

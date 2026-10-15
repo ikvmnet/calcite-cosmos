@@ -762,6 +762,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Be("SELECT DISTINCT VALUE { \"_ts\": c._ts } FROM products c ORDER BY c._ts ASC");
         }
 
+        /// <remarks>
+        /// <para>
+        /// The other half: a <c>DISTINCT</c> of a path some documents lack keeps its sort in process,
+        /// and the distinct itself still pushes. The key is grouped as <c>IS_DEFINED(p) ? p : null</c>,
+        /// SQL's one null for the service's absent and null, so the projected value is not the path and
+        /// the distinct binds nothing a sort could name.
+        /// </para>
+        /// <para>
+        /// The rule used to decide on a binding that named the path, convert the sort, and leave
+        /// implementation to refuse it — soundness probe P16, which failed with "the sort keys do not
+        /// resolve to document paths" once the planner had already chosen the plan. <c>NULLS FIRST</c>
+        /// is what reaches it: under Calcite's default placement a nullable key is declined anyway.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ASortOverADistinctOfAPathSomeDocumentsLackStaysAbove()
+        {
+            var best = PlanToAsync("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c ORDER BY 1 NULLS FIRST");
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrCursorSort", "the sort has no path to name: " + plan);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().StartWith("SELECT DISTINCT VALUE { \"p\": (IS_DEFINED(c.price) ? c.price : null) } FROM products c");
+            sql.Should().NotContain("ORDER BY");
+        }
+
+        /// <remarks>
+        /// A filter over the same distinct is the binding's other reader, and the node behind it
+        /// translates against the distinct's. Not a witness of the drift the test above is: the planner
+        /// moves this filter beneath the distinct, and it rendered before the two encodings were one.
+        /// Held here so that wherever the filter is left, the plan renders.
+        /// </remarks>
+        [Fact]
+        public void AFilterOverADistinctOfAPathSomeDocumentsLackStillRenders()
+        {
+            var best = PlanToAsync("SELECT d.\"p\" FROM (SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS d WHERE d.\"p\" > 10");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().StartWith("SELECT DISTINCT VALUE { \"p\": (IS_DEFINED(c.price) ? c.price : null) } FROM products c");
+        }
+
         // ── The planner declines rather than guessing ─────────────────────────────
 
         /// <remarks>
