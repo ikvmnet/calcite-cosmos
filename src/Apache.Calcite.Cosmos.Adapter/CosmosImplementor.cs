@@ -518,9 +518,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// On success, the container the subtree reads — the scan's, found on the same walk. What a node
         /// binds can depend on what the container says always holds, as a <c>DISTINCT</c>'s does, and
         /// the walk has to ask the question the node asks or it is a second encoding of the answer. See
-        /// <see cref="Rel.CosmosAggregate.DistinctKeyBinding"/>.
+        /// <see cref="Rel.CosmosAggregate.DistinctKeyBinding"/>. The lookup join asks for it for the
+        /// same reason: whether its key's path holds a string is a question about this container, and
+        /// a second walk to find it is a second answer to which container that is.
         /// </param>
-        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        internal static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
@@ -654,24 +656,48 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 // An array traversal is a correlated join whose right side contributes the element. The
                 // element has no container-rooted path, and the service will not order by one, so it is
-                // left unbound rather than named.
-                case Correlate correlate:
-                    return TryBindTraversal(correlate.getLeft(), correlate.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
-
-                // The same traversal once converted, which is a SingleRel and not a Correlate. A rule
-                // asks of the logical subtree and finds the case above; the lookup join asks again of
-                // the converted one when it is implemented, and found no case here at all — so a rule
-                // that had fired threw "The lookup key can no longer be restricted." after the planner
-                // had chosen the plan (soundness review, cause K). Bound as the logical form is, the
-                // element included: CosmosUnnest.Implement binds it to its alias, and leaving it unbound
-                // here is the walk knowing less, which declines and never fails (TODO.md, section 5).
-                case CosmosUnnest unnest:
-                    return TryBindTraversal(unnest.getInput(), unnest.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
-
+                // left unbound rather than named. Either form, through TraversedInput: the converted one
+                // had no case here, so a rule that had fired on the logical form threw "The lookup key
+                // can no longer be restricted." after the planner had chosen the plan (soundness review,
+                // cause K). The element is left unbound in both: CosmosUnnest.Implement binds it to its
+                // alias, and the walk knowing less declines and never fails (TODO.md, section 5).
                 default:
+                    if (TraversedInput(node) is RelNode traversed)
+                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
+
                     return false;
             }
         }
+
+        /// <summary>
+        /// Returns the input whose documents an array traversal traverses, or <c>null</c> where the
+        /// node is not a traversal.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A traversal has two forms, and every walk through one has to know both.</b> A rule sees the
+        /// <c>Correlate</c> Calcite builds; implementation sees the <see cref="CosmosUnnest"/> the rule
+        /// converted it to, which is a <c>SingleRel</c> and not a <c>Correlate</c>. A walk that knows
+        /// one answers for the logical subtree and declines the converted one, and where a question is
+        /// asked of both — the lookup join asks it of the rule's subtree and again in
+        /// <c>CosmosLookupJoin.Prepare</c> — a rule that fired is a plan that fails to implement.
+        /// </para>
+        /// <para>
+        /// That happened twice. The binding walk knew only the <c>Correlate</c> (soundness review,
+        /// cause K); fixed there alone, the lookup join rule's own walks — the container a key's
+        /// facts are read from, and the cast a <c>UUID</c> key is restricted through — still knew only
+        /// the <c>Correlate</c>, and a text key over a declared string or a <c>UUID</c> key through a
+        /// traversal failed the same way. So the question is asked here, once, and every walk asks it.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The node.</param>
+        /// <returns>The traversed input, or <c>null</c>.</returns>
+        internal static RelNode? TraversedInput(RelNode? node) => node switch
+        {
+            Correlate correlate => correlate.getLeft(),
+            CosmosUnnest unnest => unnest.getInput(),
+            _ => null,
+        };
 
         /// <summary>
         /// Binds an array traversal's output: the input's fields as they were, then the element,

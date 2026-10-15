@@ -124,8 +124,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// guard for every document the restriction reaches.
         /// </para>
         /// <para>
-        /// Asked of the logical subtree by the rule and of the converted one by the join, which are the
-        /// same shape: a projection over filters over the scan.
+        /// <b>Asked of the logical subtree by the rule and of the converted one by the join, and the two
+        /// must answer alike</b>, or a rule that fired is a plan <c>Prepare</c> refuses after the planner
+        /// chose it. They are the same shape — a projection over filters, perhaps over a traversal, over
+        /// the scan — in different node types, and a traversal is where they differed: the converted one
+        /// is a <see cref="CosmosUnnest"/> rather than a <c>Correlate</c>. So every walk here sees through
+        /// both forms by <see cref="CosmosImplementor.TraversedInput"/>, and the container whose facts
+        /// decide a text or <c>UUID</c> key is the one the binding walk itself reached, rather than one a
+        /// second walk found.
         /// </para>
         /// </remarks>
         /// <param name="probe">The probe subtree.</param>
@@ -136,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             key = default;
 
-            if (CosmosImplementor.TryBindOutput(probe, out var fields, out var readings, out _) == false)
+            if (CosmosImplementor.TryBindOutput(probe, out var fields, out var readings, out _, out _, out var container) == false || container is null)
                 return false;
 
             if (ordinal < 0 || ordinal >= fields.Count)
@@ -149,17 +155,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (IsBindableKey(type) == false)
                     return false;
 
-                if (IsRestrictedAsStored(probe, ordinal, fields, readings) == false)
+                if (IsRestrictedAsStored(probe, ordinal, fields, readings, container) == false)
                     return false;
 
                 key = new ProbeKey(null, null);
                 return true;
             }
 
-            if (IsUuid(type) == false || FindTable(probe) is not CosmosTable table)
+            if (IsUuid(type) == false)
                 return false;
 
-            if (TryUuidPath(probe, ordinal, table, probe.getCluster().getRexBuilder(), CosmosPlanMembers.NewSeen()) is not (CosmosPath path, CosmosRepresentation representation))
+            if (TryUuidPath(probe, ordinal, container, probe.getCluster().getRexBuilder(), CosmosPlanMembers.NewSeen()) is not (CosmosPath path, CosmosRepresentation representation))
                 return false;
 
             key = new ProbeKey(path, representation);
@@ -212,27 +218,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="ordinal">The key's ordinal in the subtree's row.</param>
         /// <param name="fields">The subtree's binding.</param>
         /// <param name="readings">How each of the subtree's columns is read.</param>
+        /// <param name="container">The container the subtree reads, found by the walk that bound it.</param>
         /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
-        static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings)
+        static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container)
         {
             var reading = ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
 
             if (reading == CosmosReading.Typed)
                 return true;
 
-            if (reading != CosmosReading.Text || FindTable(probe) is not CosmosTable table)
+            if (reading != CosmosReading.Text)
                 return false;
 
-            var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, table.Container, readings);
+            var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, container, readings);
 
             return translator.IsDeclaredStringOutright(RexInputRef.of(ordinal, probe.getRowType()));
         }
 
         /// <summary>
-        /// Finds the stored path and form of a <c>UUID</c> key column, reading through filters and
-        /// references down to the projection that casts it.
+        /// Finds the stored path and form of a <c>UUID</c> key column, reading through filters,
+        /// traversals and references down to the projection that casts it.
         /// </summary>
-        static (CosmosPath, CosmosRepresentation)? TryUuidPath(RelNode node, int ordinal, CosmosTable table, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        /// <remarks>
+        /// A traversal passes its input's columns through at their own ordinals and appends the
+        /// element, which is no document path and so no key; it is seen through in either form, as the
+        /// binding walk sees through it.
+        /// </remarks>
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(RelNode node, int ordinal, CosmosContainerMetadata container, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
         {
             foreach (var member in CosmosPlanMembers.Of(node))
             {
@@ -241,8 +253,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 var found = member switch
                 {
-                    Filter filter => TryUuidPath(filter.getInput(), ordinal, table, rexBuilder, seen),
-                    Project project => TryUuidPath(project, ordinal, table, rexBuilder, seen),
+                    Filter filter => TryUuidPath(filter.getInput(), ordinal, container, rexBuilder, seen),
+                    Project project => TryUuidPath(project, ordinal, container, rexBuilder, seen),
+                    _ when CosmosImplementor.TraversedInput(member) is RelNode traversed && ordinal < traversed.getRowType().getFieldCount()
+                        => TryUuidPath(traversed, ordinal, container, rexBuilder, seen),
                     _ => null,
                 };
 
@@ -253,7 +267,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             return null;
         }
 
-        static (CosmosPath, CosmosRepresentation)? TryUuidPath(Project project, int ordinal, CosmosTable table, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
+        static (CosmosPath, CosmosRepresentation)? TryUuidPath(Project project, int ordinal, CosmosContainerMetadata container, RexBuilder rexBuilder, System.Collections.Generic.HashSet<RelNode> seen)
         {
             if (ordinal >= project.getProjects().size())
                 return null;
@@ -261,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var expression = (RexNode)project.getProjects().get(ordinal);
 
             if (expression is RexInputRef reference)
-                return TryUuidPath(project.getInput(), reference.getIndex(), table, rexBuilder, seen);
+                return TryUuidPath(project.getInput(), reference.getIndex(), container, rexBuilder, seen);
 
             if (expression is not RexCall cast || cast.getKind() != SqlKind.CAST || cast.getOperands().size() != 1 || IsUuid(cast.getType()) == false)
                 return null;
@@ -273,14 +287,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _) == false)
                 return null;
 
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, table.Container);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
             if (translator.TryResolvePath(text, out var path) == false || path is null)
                 return null;
 
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath stored)
                 return null;
 
-            if (table.Container.Facts.Derive(null).RepresentationOf(stored) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
+            if (container.Facts.Derive(null).RepresentationOf(stored) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
                 return null;
 
             return (path, representation);
@@ -323,7 +337,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable,
                     Filter filter => IsRestrictable(filter.getInput(), seen),
                     Project project => IsRestrictable(project.getInput(), seen),
-                    Correlate correlate => IsRestrictable(correlate.getLeft(), seen),
+                    _ when CosmosImplementor.TraversedInput(member) is RelNode traversed => IsRestrictable(traversed, seen),
                     _ => false,
                 };
 
@@ -362,7 +376,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
                     Filter filter => FindTable(filter.getInput(), seen),
                     Project project => FindTable(project.getInput(), seen),
-                    Correlate correlate => FindTable(correlate.getLeft(), seen),
+                    _ when CosmosImplementor.TraversedInput(member) is RelNode traversed => FindTable(traversed, seen),
                     _ => null,
                 };
 

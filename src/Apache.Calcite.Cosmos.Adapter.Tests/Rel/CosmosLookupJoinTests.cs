@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         CalciteSchema _rootSchema = null!;
         JavaTypeFactoryImpl _typeFactory = null!;
 
-        void Given(string[] orders, string[] products)
+        void Given(string[] orders, string[] products, CosmosContainerMetadata? declared = null)
         {
             _typeFactory = new JavaTypeFactoryImpl();
 
@@ -116,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _productsExecutor = new StubExecutor(products);
 
             _orders = new CosmosTable(Orders, _ordersExecutor);
-            _products = new CosmosTable(Products, _productsExecutor);
+            _products = new CosmosTable(declared ?? Products, _productsExecutor);
 
             _rootSchema = CalciteSchema.createRootSchema(false);
             _rootSchema.add("orders", _orders);
@@ -124,6 +124,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         RelNode Plan(string sql)
+        {
+            var logical = PlanLogical(sql);
+            var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+
+            foreach (var rule in CosmosRules.GetRules(_orders.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in CosmosRules.GetRules(_products.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in ClrCursorRules.Rules())
+                planner.addRule(rule);
+
+            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
+            planner.setRoot(planner.changeTraits(logical, desired));
+
+            return ToCalc(planner.findBestExp());
+        }
+
+        RelNode PlanLogical(string sql)
         {
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -139,22 +159,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(_typeFactory));
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
-            var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
-
-            foreach (var rule in CosmosRules.GetRules(_orders.Convention))
-                planner.addRule(rule);
-
-            foreach (var rule in CosmosRules.GetRules(_products.Convention))
-                planner.addRule(rule);
-
-            foreach (var rule in ClrCursorRules.Rules())
-                planner.addRule(rule);
-
-
-            var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
-            planner.setRoot(planner.changeTraits(logical, desired));
-
-            return ToCalc(planner.findBestExp());
+            return converter.convertQuery(validator.validate(parsed), false, true).project();
         }
 
         /// <summary>
@@ -481,6 +486,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var statement = _productsExecutor.Executed[0];
             statement.Sql.Should().Contain("JOIN t0 IN c.tags");
             statement.Sql.Should().Contain($"c.id IN ({CosmosLookupJoin.KeyPrefix}0, ");
+        }
+
+        /// <summary>
+        /// A container declaring <c>label</c> a string: the text key over it is the stored value.
+        /// </summary>
+        static readonly CosmosContainerMetadata Labelled = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+            { "type": "object", "properties": { "label": { "type": "string" } } }
+            """)!));
+
+        /// <summary>
+        /// A container declaring <c>data.id</c> a canonical UUID: one spelling per value.
+        /// </summary>
+        static readonly CosmosContainerMetadata Parks = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+            { "type": "object",
+              "properties": {
+                "data": { "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } } } } }
+            """)!));
+
+        /// <summary>
+        /// A key whose restriction depends on what the container declares, over a traversal: a text
+        /// key over a declared string, and a <c>UUID</c> key over a declared form.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Cause K, a second time.</b> The binding walk learned the converted traversal, and the
+        /// lookup join rule's own walks did not: the container whose facts decide a text key, and the
+        /// cast a <c>UUID</c> key is restricted through, were found by walks that knew the
+        /// <c>Correlate</c> and not the <see cref="CosmosUnnest"/>. So the rule fired on the logical
+        /// subtree and <c>Prepare</c> threw "The lookup key can no longer be restricted." on the
+        /// converted one (review of the K fix, reproduced on the stub executor). A key on
+        /// <c>id</c>, which needs neither, is the case the first fix covered.
+        /// </para>
+        /// <para>
+        /// The rows are canned in the shape the pushed statement returns; what is asserted is that the
+        /// plan implements and restricts, and that the rule and the node answer the key alike.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("text", "SELECT v.k, p.\"id\" FROM (VALUES ('x'), ('y')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.k = p.\"Label\"", "c.label IN ")]
+        [InlineData("uuid", "SELECT o.\"id\", p.\"Id\" FROM (SELECT CAST(JSON_VALUE(o.\"DOC\", '$.parkId') AS UUID) AS \"ParkId\", o.\"id\" FROM orders AS o) AS o JOIN (SELECT CAST(JSON_VALUE(c.\"DOC\", '$.data.id') AS UUID) AS \"Id\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON o.\"ParkId\" = p.\"Id\"", "c.data.id IN ")]
+        public async Task ADeclaredKeyOverATraversalIsRestrictedAsTheRuleDecided(string kind, string sql, string restriction)
+        {
+            const string uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
+
+            if (kind == "text")
+                Given(
+                    orders: System.Array.Empty<string>(),
+                    products: new[] { """{"id":"1","Label":"x"}""", """{"id":"1","Label":"x"}""" },
+                    declared: Labelled);
+            else
+                Given(
+                    orders: new[] { """{"$f0":"o1","$f1":"0F8FAD5B-D9CB-469F-A165-70867728950E","id":"o1","ParkId":"0F8FAD5B-D9CB-469F-A165-70867728950E"}""" },
+                    products: new[] { $$"""{"Id":"{{uuid}}"}""", $$"""{"Id":"{{uuid}}"}""" },
+                    declared: Parks);
+
+            var plan = Plan(sql);
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+            text.Should().Contain("CosmosUnnest", "and traversed at the service: " + text);
+
+            // The rule asked the logical subtree; Prepare asks the converted one. Both must say the key
+            // is restricted, and restricted the same way.
+            var logical = Find<org.apache.calcite.rel.core.Join>(PlanLogical(sql))!;
+            var probe = ((java.lang.Integer)logical.analyzeCondition().rightKeys.get(0)).intValue();
+            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(logical.getRight(), probe, out var ruleKey).Should().BeTrue("the rule restricts the logical subtree");
+
+            var lookup = Find<CosmosLookupJoin>(plan)!;
+            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(lookup.getRight(), lookup.ProbeKey, out var nodeKey).Should().BeTrue("the node restricts the converted one: " + RelOptUtil.toString(lookup.getRight()));
+            nodeKey.Should().Be(ruleKey);
+
+            var rows = await Execute(plan);
+            rows.Should().HaveCount(2, "one row per element of the one document the key names");
+
+            var statement = _productsExecutor.Executed.Should().ContainSingle().Which;
+            statement.Sql.Should().Contain("JOIN t0 IN c.tags");
+            statement.Sql.Should().Contain(restriction + "(" + CosmosLookupJoin.KeyPrefix + "0, ");
+        }
+
+        /// <summary>
+        /// Finds the first node of a type in a tree, looking through a Volcano subset to the node it
+        /// was built from, or <c>null</c> where there is none.
+        /// </summary>
+        static T? Find<T>(RelNode node) where T : class
+        {
+            if (node is RelSubset subset)
+                node = subset.getOriginal() ?? subset.getBest();
+
+            if (node is T found)
+                return found;
+
+            var inputs = node.getInputs();
+            for (var i = 0; i < inputs.size(); i++)
+                if (Find<T>((RelNode)inputs.get(i)) is T inner)
+                    return inner;
+
+            return null;
         }
 
     }

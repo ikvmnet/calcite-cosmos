@@ -1538,8 +1538,22 @@ because the answer depends on what the container declares.
 
 The walk may know *less* than implementation and never more: where it binds nothing a rule declines,
 which is always correct, and where it names a path implementation does not bind a rule fires and
-implementation throws. `CosmosRelTests.BindsNoMoreThanItsImplementation` holds every shape the walk
-knows to that.
+implementation throws. `CosmosRelTests.TheWalkBindsNoMoreThanImplementation` holds every shape the
+walk knows to that.
+
+**The same holds of every walk a rule decides on and a node asks again, and the binding walk is not
+the only one.** A walk that knows the logical form of a node and not its converted form answers for
+the rule and declines for the node — and where the node asks at implementation, declining is a
+throw. An array traversal is the node with two forms, the `Correlate` a rule sees and the
+`CosmosUnnest` implementation sees. The binding walk learned the second (cause K), and the lookup join
+rule's own walks did not: the container a text key's declaration is read from, and the cast a
+`UUID` key is restricted through, were found by walks that knew only the `Correlate`, so a text key
+over a declared string and a `UUID` key through a traversal still planned a lookup `Prepare` then
+refused (review of the K fix, reproduced on the stub executor). Every walk now sees through a
+traversal by `CosmosImplementor.TraversedInput`, and `TryProbeKey` takes the container from the
+binding walk itself rather than from a second walk that could reach a different answer.
+`CosmosLookupJoinTests.ADeclaredKeyOverATraversalIsRestrictedAsTheRuleDecided` asks `TryProbeKey` of
+the logical and the converted subtree and holds the two answers equal.
 
 **A predicate over the traversed element is a `WHERE`, and reaching it takes two rules.** A query
 writes such a predicate above the correlate, where `CosmosUnnestRule` cannot see it and the element
@@ -3958,7 +3972,11 @@ But the key is asked about twice: by the rule, of the logical subtree, where the
 `Prepare` threw "The lookup key can no longer be restricted." once the planner had chosen the plan
 (soundness review, cause K: found in the code, then reproduced on the emulator by a lookup from
 `VALUES` onto a view over `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))`). Both forms now bind through
-`TryBindTraversal`, the element unbound in each; a key on the element is declined, as it was.
+`TryBindTraversal`, the element unbound in each; a key on the element is declined, as it was. That
+fixed the key on `id`, which needs nothing but the binding. A key that needs the container — text over
+a declared string, or a `UUID` over a declared form — went through the rule's own walks, which knew only
+the `Correlate`, and failed the same way; see *Plan order is not clause order* for why every walk now
+asks `TraversedInput`.
 
 **"When the near side is small" is the cost model's to say, and stays so.** The issue asked for the lookup
 where the near side is bounded; the join is chosen where it is cheaper, which for a page of 25 against a
