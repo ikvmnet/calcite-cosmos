@@ -3519,6 +3519,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A path every branch reads is implied however each branch spells it.
+        /// </summary>
+        /// <remarks>
+        /// The inner disjunction reads the category in both branches, once as the promoted column and
+        /// once through the document. Matched by expression the two were different paths, the
+        /// disjunction needed neither, and the weakening pushed <c>IS_DEFINED(c.name)</c> alone — sound,
+        /// and less than it could. Matched by the path each resolves to, the category is needed too.
+        /// </remarks>
+        [Fact]
+        public void APathEveryBranchNeedsIsImpliedHoweverEachSpellsIt()
+        {
+            var sql = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))")));
+
+            sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND IS_DEFINED(c.category)))");
+        }
+
+        /// <summary>
         /// A null test Calcite has folded into a <c>SEARCH</c> is still a null test, and is not
         /// weakened.
         /// </summary>

@@ -1441,6 +1441,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (CONCAT_WS('-', JSON_VALUE(c.\"DOC\", '$.name'), JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'Road Runner-B-2')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE CARDINALITY(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1", false),
             ("SELECT c.\"id\" FROM products AS c WHERE ARRAY_CONTAINS(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'x'], 'x')", false),
+
+            // A path every branch of a disjunction reads, spelled two ways: the category as the
+            // promoted column and through the document. Matched by the path rather than the
+            // expression, the weakening now implies it, and the restriction it adds keeps every row.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))", false),
         ];
 
         /// <summary>

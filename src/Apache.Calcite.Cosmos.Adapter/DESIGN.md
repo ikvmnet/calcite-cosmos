@@ -2768,6 +2768,18 @@ declines `CONCAT_WS`, the constructors and `ARRAY_CONTAINS` alike. Across the di
 planner corpus and the gate's 1,000 predicates in all three partitions, planned before and after, the
 weakening changed for those statements alone.
 
+**What every branch needs is matched by path, not by spelling.** One path has several spellings — the
+promoted column `c."$.category"` and `JSON_VALUE(c."DOC", '$.category')`, a typed accessor and a text
+one — and the walk told paths apart by expression, so a disjunction reading the category one way in each
+branch needed it in neither: `price > 300 OR (INITCAP(name) <> 'Zzz' AND (c."$.category" = 'bikes' OR
+JSON_VALUE(c."DOC", '$.category') = 'shoes'))` pushed `(c.price > @p0) OR IS_DEFINED(c.name)`. Sound, and
+less than it could. The walk now keys each path on what it resolves to and keeps the first expression
+read there, which renders the same `IS_DEFINED`; the statement pushes the category too, and agrees.
+Two *conjuncts* weakened to one path through different spellings still push it twice — one of the
+gate's predicates sends `IS_DEFINED(c.price) AND IS_DEFINED(c.price)` — which is harmless and is left:
+what is already below is recognised by expression, and dropping a weakening for matching another
+spelling is a change to the guard against pushing one under itself for ever (#210), not to this walk.
+
 #### A predicate's value is not its truth
 
 Every guard in the section above answers one question: is the predicate *true*. A `WHERE` keeps a row

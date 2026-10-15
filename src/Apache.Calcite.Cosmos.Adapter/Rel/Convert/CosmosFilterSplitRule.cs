@@ -580,14 +580,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// a connective, rather than for its truth.</param>
         /// <param name="translator">Resolves the paths.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
-        /// <returns>The paths, each once, in the order they are first read.</returns>
-        static List<RexNode> CollectPaths(RexNode node, bool value, CosmosRexTranslator translator, string rootAlias)
+        /// <returns>The paths, each once, in the order they are first read: each as the path it
+        /// resolves to, by which two are the same, and as the first expression read at it.</returns>
+        static List<(string Path, RexNode Node)> CollectPaths(RexNode node, bool value, CosmosRexTranslator translator, string rootAlias)
         {
             if (translator.TryResolvePath(node, out var path) && path is not null)
-                return path.ToString() == rootAlias ? new List<RexNode>() : new List<RexNode> { node };
+            {
+                var text = path.ToString();
+                return text == rootAlias ? new() : new() { (text, node) };
+            }
 
             if (node is not RexCall call)
-                return new List<RexNode>();
+                return new();
 
             var operands = call.getOperands();
 
@@ -620,7 +624,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 case SqlKind.__Enum.NOT when operands.size() == 1:
                     var operand = (RexNode)operands.get(0);
                     if (value == false && operand is RexCall inner && KindOf(inner) is SqlKind.__Enum.AND or SqlKind.__Enum.OR)
-                        return new List<RexNode>();
+                        return new();
 
                     return CollectPaths(operand, value, translator, rootAlias);
 
@@ -630,7 +634,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 default:
                     return IsNullWhereAnOperandIs(call)
                         ? Union(operands, value: true, translator, rootAlias)
-                        : new List<RexNode>();
+                        : new();
             }
         }
 
@@ -696,14 +700,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// The paths any of the operands needs, which is what an operator needing all of them needs.
         /// </summary>
-        static List<RexNode> Union(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
+        /// <remarks>
+        /// <para>
+        /// <b>A path is told apart by the path it resolves to, never by the expression that reads it.</b>
+        /// One path has several spellings — the promoted column <c>c."$.category"</c> and
+        /// <c>JSON_VALUE(c."DOC", '$.category')</c>, a typed accessor and a text one — and each is a
+        /// different expression with the same thing to say about the document. Told apart by the
+        /// expression, a path read two ways was implied twice here, and found in neither branch by
+        /// <see cref="Common"/>, which then declined a sound restriction. Either spelling renders the
+        /// same <c>IS_DEFINED</c>, and the first read is the one kept.
+        /// </para>
+        /// </remarks>
+        static List<(string Path, RexNode Node)> Union(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
         {
-            var paths = new List<RexNode>();
+            var paths = new List<(string Path, RexNode Node)>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
             for (var i = 0; i < operands.size(); i++)
                 foreach (var path in CollectPaths((RexNode)operands.get(i), value, translator, rootAlias))
-                    if (seen.Add(path.toString()))
+                    if (seen.Add(path.Path))
                         paths.Add(path);
 
             return paths;
@@ -713,17 +728,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// The paths every one of the operands needs, which is what an operator any one of them can
         /// settle needs.
         /// </summary>
-        static List<RexNode> Common(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
+        /// <remarks>
+        /// By the path, as <see cref="Union"/> says: <c>c."$.category" = 'bikes' OR
+        /// JSON_VALUE(c."DOC", '$.category') = 'shoes'</c> needs the category in both branches, and
+        /// matched by expression it needed nothing.
+        /// </remarks>
+        static List<(string Path, RexNode Node)> Common(java.util.List operands, bool value, CosmosRexTranslator translator, string rootAlias)
         {
             if (operands.size() == 0)
-                return new List<RexNode>();
+                return new();
 
             var common = CollectPaths((RexNode)operands.get(0), value, translator, rootAlias);
 
             for (var i = 1; i < operands.size() && common.Count > 0; i++)
             {
-                var needed = new HashSet<string>(CollectPaths((RexNode)operands.get(i), value, translator, rootAlias).Select(p => p.toString()), StringComparer.Ordinal);
-                common = common.Where(p => needed.Contains(p.toString())).ToList();
+                var needed = new HashSet<string>(CollectPaths((RexNode)operands.get(i), value, translator, rootAlias).Select(p => p.Path), StringComparer.Ordinal);
+                common = common.Where(p => needed.Contains(p.Path)).ToList();
             }
 
             return common;
@@ -763,7 +783,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             var terms = new java.util.ArrayList();
-            foreach (var path in paths)
+            foreach (var (_, path) in paths)
                 terms.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { path }));
 
             return RexUtil.composeConjunction(rexBuilder, terms);
