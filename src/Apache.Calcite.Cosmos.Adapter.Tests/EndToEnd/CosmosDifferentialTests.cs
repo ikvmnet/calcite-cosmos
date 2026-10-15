@@ -101,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
-                { "type": "object", "properties": { "t": { "type": ["string", "null"] } } }
+                { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" } } }
                 """)));
 
         /// <summary>
@@ -153,6 +153,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The documents of <see cref="Ordering"/>: <c>t</c> a string, null or absent, as declared;
         /// <c>f</c> arrays and objects, which the service orders other than as their text; and
         /// <c>n</c> integer arrays, which it orders other than as SQL compares them.
+        /// <para>
+        /// The last five are strings on either side of the line where code point order and UTF-16 order
+        /// part, as ids and as the declared <c>s</c> and <c>u</c>: U+E000, U+FF21, U+FF20 and U+FFFD sort
+        /// below U+1F600 by code point and above it by UTF-16 code unit, a supplementary character being
+        /// encoded from <c>0xD800</c>. Written as escapes so that the source says which characters they
+        /// are.
+        /// </para>
         /// </summary>
         static readonly string[] OrderingDocuments =
         [
@@ -164,6 +171,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"6","category":"o","f":[1,2],"n":[1,2]}""",
             """{"id":"7","category":"o","t":"a_b","f":[]}""",
             """{"id":"8","category":"o","t":"Trail blazer","f":{}}""",
+            """{"id":"a","category":"o","s":"a","u":"b"}""",
+            """{"id":"\uE000","category":"o","s":"\uE000","u":"\uD83D\uDE00"}""",
+            """{"id":"\uFF21","category":"o","s":"\uFF21","u":"\uFF20"}""",
+            """{"id":"\uD83D\uDE00","category":"o","s":"\uD83D\uDE00","u":"a"}""",
+            """{"id":"\uFFFD","category":"o","s":"\uFFFD","u":"\uFFFD"}""",
         ];
 
         static CosmosClient? _client;
@@ -953,10 +965,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Empty, and that is the point of keeping it.</b> Repairing the oracle put five statements
-        /// here — negation over a null-valued property, grouping and dedup over one, and an
-        /// <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each has since been fixed
-        /// and promoted into the corpus. What remains is the mechanism.
+        /// <b>Empty for a long time, and that was the point of keeping it.</b> Repairing the oracle put
+        /// five statements here — negation over a null-valued property, grouping and dedup over one, and
+        /// an <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each was fixed and
+        /// promoted into the corpus. What it holds now is one open defect, the order of strings beyond
+        /// the BMP, witnessed four ways.
         /// </para>
         /// <para>
         /// A statement belongs here only while it is an open defect with a witness, never as a
@@ -967,6 +980,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         static readonly (string Sql, bool Ordered, string Reason)[] Divergences =
         [
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true,
+                "The service orders strings by code point and Calcite by UTF-16 code unit, measured on the vnext-preview emulator: U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process, a supplementary character being encoded from 0xD800; below the surrogates the two orders are one. Whatever order the service computes is its own -- a sort, a range comparison, a MAX -- over id as over a declared string. Open: TODO.md section 4, DESIGN.md under Ordering a sort key the way it reads."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true,
+                "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false,
+                "The same order in a comparison, which a declared string pushes exactly: U+E000 < U+1F600 is true at the service and false in process. As the id above."),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false,
+                "The same order in an aggregate over a column that cannot be null: the service's MAX is U+1F600 and Calcite's U+FFFD. As the id above."),
         ];
 
         /// <summary>

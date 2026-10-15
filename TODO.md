@@ -1171,6 +1171,19 @@ the distribution the gate is sized for.
   and every other document, rendered and sorted in process, merged with the first by text. The page
   bounds the first statement and not the second, so it buys back a path that is nearly always a
   string and that nobody declared, and the cost model would have to know the second half's size.
+- **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
+  to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
+  does, and the service by code point, so the two part where a character above U+FFFF meets one
+  between U+E000 and U+FFFF — private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
+  Measured on the vnext-preview emulator, and witnessed four ways in `CosmosDifferentialTests`'
+  divergences: `ORDER BY c.id`, a sort over a declared string, a comparison between two declared
+  strings, and `MAX(c.id)` (`DESIGN.md` under *Ordering a sort key the way it reads*). Everything the
+  service orders strings for is exposed, the keyset page on `id` that chapter 9 recommends among them,
+  which is why declining is not the cheap answer it usually is here. Closing it is two pieces: a
+  `pattern` that keeps a path to one side of the line — an ASCII identifier, a UUID — read as a
+  licence, the way `PreservesOrder` licenses a stored form; and string order declined everywhere no
+  licence reaches, `id` included, unless the connection says its strings stay in the BMP. Measure
+  Azure before choosing: the emulator is a reimplementation and may not order as the service does.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.

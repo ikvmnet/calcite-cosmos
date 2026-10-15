@@ -328,6 +328,15 @@ distinguishes them: `B` before `a`, `a-b` before `a_b`, and `0000000A-…` befor
 collation is not quietly reordering what the argument rests on — and this half of it was never about
 the sign bit, which is why it survives the change above intact.
 
+**Code point, which `StringComparer.Ordinal` is not beyond the BMP — measured since.** Ordinal
+comparison in .NET, like Java's `String.compareTo` and so Calcite's in-process sort, compares UTF-16
+code units, and the two orders part where a supplementary character, encoded from `0xD800`, meets one
+between U+E000 and U+FFFF. On the vnext-preview emulator `ORDER BY` put U+E000, U+FF21 and U+FFFD
+before U+10000, U+1F600 and U+10FFFF, where Calcite put them after: code point order, or UTF-8 byte
+order, which is the same thing. Nothing a UUID pattern admits is above `z`, so nothing here is touched
+by it; what is touched is every sort of free text the service performs, `id` included — see *Ordering a
+sort key the way it reads*.
+
 **And the pattern is read as a shape rather than matched against a table.** The rows above were
 generated across four axes — case, first-digit confinement, version nibble, variant nibble — and the
 product was eighty patterns. It was the wrong shape for the problem, because the axes a UUID pattern
@@ -2331,6 +2340,15 @@ service still sends, and a page over an undeclared text key reads the container.
 recovers it. Nothing in one statement can, the service refusing an `ORDER BY` item that is not a path
 (error 2206, above), so the rendering cannot be written as the key; `TODO.md` section 4 records the two
 statements that could.
+
+**A declared string is then ordered by code point, which is SQL's order only below the surrogates.**
+With the reading settled, a sort over a declared string compares strings at the service — by code
+point, measured on the vnext-preview emulator, where Calcite compares UTF-16 code units as Java does.
+The two part where a character above U+FFFF meets one between U+E000 and U+FFFF: the service put
+U+E000, U+FF21 and U+FFFD below U+1F600, and Calcite above it. The reading has nothing to do with it,
+and declining the declared sort would not cure it: `ORDER BY c.id`, a comparison pushed exactly between
+two declared strings, and `MAX(c.id)` part the same way. All four are the differential suite's recorded
+divergences, an open defect rather than a decision (`TODO.md` section 4).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 

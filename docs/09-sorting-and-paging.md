@@ -135,6 +135,12 @@ number or a boolean is better read with `RETURNING`, which sorts at the service 
 (`JSON_QUERY … RETURNING … ARRAY`). The service orders objects and arrays by rules of its own — `[]`
 after `[1, 5]`, `{"b":1}` before `{"a":2}` — which are not the order of their text or of SQL's arrays.
 
+**Strings outside the Basic Multilingual Plane.** The service orders strings by code point, and
+Calcite by UTF-16 code unit. The two agree everywhere except where a character above U+FFFF — an
+emoji, say — meets one between U+E000 and U+FFFF, such as a fullwidth letter or U+FFFD: the service
+puts the second first, Calcite the first. A sort the service performs, on `id` as much as on a declared
+string, returns the service's order. Measured on the emulator, and an open defect (Chapter 23).
+
 Through a view, the adapter can move a sort and its row limit beneath a projection it cannot push, so
 that the page is still taken at the service and the projection computed over it. That works whenever
 the sort keys are plain columns of the view; it does not make a cast column orderable — as text, `10`
