@@ -494,6 +494,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // rule decides; and the bike with two tags is two rows, the one with none is none.
             ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.k = p.\"id\"", false),
 
+            // A lookup on a number or a boolean (review probes I4, I12 and I13). The keys reached the
+            // batch in Java's boxes, which the SDK wrote as objects, and the service matched nothing:
+            // each returned no rows where the in-process join returned them. Integer keys against an
+            // integer column, a DOUBLE and a BIGINT against it, a _ts read by one statement and looked
+            // up by another, a boolean through a filtering view, and a _ts through a traversal (K9).
+            ("SELECT t.\"id\" FROM (VALUES (120), (80)) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
+            ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS DOUBLE)), (CAST(80.5 AS DOUBLE))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
+            ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS BIGINT)), (CAST(80 AS BIGINT))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
+            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN products AS p ON v.\"ts\" = p.\"_ts\"", false),
+            ("SELECT p.\"id\" FROM (VALUES (TRUE)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING BOOLEAN) AS \"b\" FROM typed AS c WHERE c.\"id\" = '3') AS p ON v.k = p.\"b\"", false),
+            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN (SELECT c.\"id\", c.\"_ts\" AS \"ts\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.\"ts\" = p.\"ts\"", false),
+
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
             // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
             // column, which is the path and not a rendering, it renders directly. The mixed-type

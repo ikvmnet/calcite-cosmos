@@ -3935,6 +3935,19 @@ The document column and a `JSON_QUERY` column are declined outright. A guarded r
 sound, and would fetch every non-string document on every batch at a price the cost model cannot see,
 so it waits on a measurement.
 
+**A number or a boolean is a key only once it is out of Java's box.** `CosmosLookup.Normalize` is what
+a key is compared as, on both sides, and what a batch binds — and it reduced the CLR's numbers to a
+`double` while passing Java's through. Java's are the ordinary case: a container row is read into the
+boxes Calcite holds values in, so an `INTEGER` key is a `java.lang.Integer`, and a build side Calcite
+computed carries the same. Bound as that box, the SDK wrote an object the service matched nothing
+against: measured on the emulator, `c.price IN (@k0)` found the bike bound to a CLR `120` and nothing
+bound to a `java.lang.Integer` 120, and a lookup on a numeric key, on a `_ts` read by another statement,
+on a boolean and on a `_ts` through a traversal each returned no rows where the in-process join returned
+them (review probes I4, I12, I13 and K9). In process the box equalled only a key of its own width, so
+even rows fetched would not have paired across an `INTEGER` and a `BIGINT`. Every `java.lang.Number` is
+now a `double` and a `java.lang.Boolean` a `bool`, the forms `CosmosQueries` binds a statement's own
+parameters as. The rule always admitted these keys; it was the batch that could not carry them.
+
 **A traversal on the probe side is restricted per document, and the binding walk has to know both of
 its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it
 names a property of the document, so it keeps or drops a document with every one of its elements —

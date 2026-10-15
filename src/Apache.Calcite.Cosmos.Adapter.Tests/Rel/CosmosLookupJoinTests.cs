@@ -396,6 +396,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _productsExecutor.Executed.Should().BeEmpty();
         }
 
+        /// <remarks>
+        /// A numeric key reaches the batch in the box Calcite holds it in — a container row is read as
+        /// a <see cref="java.lang.Integer"/> — and was bound as that box, which the SDK writes as an
+        /// object the service matches nothing against; nor did it equal the build side's key of
+        /// another width in process. Measured on the emulator, this join returned no rows where the
+        /// in-process join returned two (review probe I4). The keys go down as numbers now, and the
+        /// rows fetched are paired.
+        /// </remarks>
+        [Fact]
+        public async Task ANumericKeyIsBoundAsANumberAndPairsWhatItFetched()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"1","p":120}""",
+                    """{"id":"3","p":80}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (120), (80)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS t ON v.k = t.\"p\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "1", "3" });
+
+            var keys = Keys(_productsExecutor.Executed.Should().ContainSingle().Which);
+            keys.Should().AllBeOfType<double>("a key is bound as the number it is, which the SDK writes as a JSON number");
+            keys.Distinct().Should().BeEquivalentTo(new object?[] { 120d, 80d });
+        }
+
         // ── Over a traversal ──────────────────────────────────────────────────────
 
         /// <summary>
