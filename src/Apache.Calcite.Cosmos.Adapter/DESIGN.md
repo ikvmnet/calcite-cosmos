@@ -3945,6 +3945,33 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   the corpus rather than sit there looking settled. Nothing belongs there as a decision. A statement
   with no oracle at all — the array traversal, whose unpushed form has no implementation in the
   CLR convention — is listed separately with the reason, and is at least required to run.
+- **Decision, and the owner's to confirm: the error refinement order.** A comparison needs to know
+  what a pushed plan may do where one side raises, and the adapter had answered that three ways
+  without saying so. #162 treated rows where Calcite raises as a defect, and withdrew the temporal
+  rewrites that produced them. The `RETURNING` statement under `WithoutAnOracle` keeps the opposite:
+  the pushed statement answers where the engine throws, deliberately. And `SQRT(-1)` is pushed
+  although the service fails the statement where Calcite answers NaN, so the corpus left it out by
+  name. The rule adopted:
+
+  - **A Calcite error refines to anything.** Where the engine raises, a pushdown may answer rows,
+    or fail in its turn.
+  - **A failure of the pushdown is never acceptable where Calcite answers,** except the service
+    failing a statement that names a declared out-of-domain function: `ASIN`, `ACOS`, `SQRT` and
+    `LN`, the four measured by `OutOfDomainArithmeticFailsTheQuery`. A plan that cannot be
+    implemented, or a row the reader refuses, is the adapter's failure and never excepted.
+
+  `CosmosDifferentialTests.Refines` applies it, and nothing else in the harness decides it. The
+  corpus is stricter on one side, on purpose. A corpus statement whose oracle raises compares
+  nothing, so it is reported and belongs in `WithoutAnOracle`. That list in turn requires its oracle
+  still to raise, so a repaired engine moves the statement back.
+
+  **What it costs.** The order permits what #162 forbade, so the differential can no longer see a
+  regression of #162. That guard is held by `CalciteTemporalReadingMeasurementTests`, which pins the
+  table `CosmosTemporalForms.EngineReads` is, and by the rewriter's own tests, not by the oracle. The
+  code may always be stricter than the order: #162 is a choice of fidelity, and the order only says
+  what a comparison accepts. If the
+  owner wants rows where Calcite raises to remain a defect, the first bullet becomes "a Calcite
+  error refines only to an error", and the `RETURNING` statement becomes a recorded divergence.
 - **The corpus leans into the semantics that have bitten**: null against absent, `NOT` over both,
   grouping by a key some documents lack, `LIKE`'s shapes, and the aggregate forms. It needs the
   emulator and reports inconclusive without one, like every test that needs a service.

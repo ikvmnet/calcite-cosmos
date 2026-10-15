@@ -408,44 +408,132 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// What one plan of a statement did: the rows it answered, canonical and in the order they
+        /// came, or what it raised instead.
+        /// </summary>
+        readonly record struct Outcome(List<string>? Rows, Exception? Raised);
+
+        /// <summary>
+        /// Plans and executes a statement one way, and keeps a failure as an answer rather than
+        /// letting it escape.
+        /// </summary>
+        static async Task<Outcome> Attempt(string sql, bool pushdown)
+        {
+            try { return new Outcome((await Run(sql, pushdown)).Select(Canonical).ToList(), null); }
+            catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
+        }
+
+        /// <summary>
+        /// The functions whose argument outside their domain makes the service fail the whole
+        /// statement where Calcite answers NaN for the row — measured in
+        /// <c>CosmosQueryExecutorTests.OutOfDomainArithmeticFailsTheQuery</c>, and pushed anyway by
+        /// decision; see <c>DESIGN.md</c>. Named as SQL spells them: <c>LN</c> is the service's
+        /// <c>LOG</c>.
+        /// </summary>
+        /// <remarks>
+        /// A declared list and not a pattern: a service error is acceptable only where it was measured
+        /// and chosen, and nothing else earns the exception by resembling these.
+        /// </remarks>
+        static readonly string[] OutOfDomainFunctions = ["ASIN", "ACOS", "SQRT", "LN"];
+
+        /// <summary>
+        /// Decides whether a pushed plan's outcome refines the oracle's, and describes why not, or
+        /// returns <c>null</c> where it does. <b>The error refinement order lives here and nowhere
+        /// else</b>; see <c>DESIGN.md</c> under <em>Differential testing</em>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A Calcite error refines to anything.</b> Where the engine raises, the pushdown may answer
+        /// rows or fail in its turn. That is what licenses the <c>RETURNING</c> statement in
+        /// <see cref="WithoutAnOracle"/>: the engine asserts a type the standard says it should
+        /// convert to, and the pushed statement answers what the standard says.
+        /// </para>
+        /// <para>
+        /// <b>A failure of the pushdown is never acceptable where Calcite answers</b>, with one
+        /// exception: the service failing a statement that names one of
+        /// <see cref="OutOfDomainFunctions"/>. It must be the service's failure — a plan that cannot
+        /// be implemented, or a row the reader cannot read, is the adapter's, and is a defect whatever
+        /// the statement names.
+        /// </para>
+        /// <para>
+        /// Which side failed is part of the answer, not an incidental detail of the message: a pushdown
+        /// that throws where the oracle returns rows is a different defect from one that returns the
+        /// wrong rows, and the two were indistinguishable while both were reported as "failed to run".
+        /// </para>
+        /// </remarks>
+        static string? Refines(string sql, bool ordered, Outcome oracle, Outcome pushed)
+        {
+            if (oracle.Raised is not null)
+                return null;
+
+            if (pushed.Raised is Exception raised)
+            {
+                if (IsServiceFailure(raised) && NamesAnOutOfDomainFunction(sql))
+                    return null;
+
+                return $"{sql}\n  the pushdown failed to run: {raised.Message}\n  oracle: [{string.Join("; ", oracle.Rows!)}]";
+            }
+
+            var expected = oracle.Rows!.ToList();
+            var actual = pushed.Rows!.ToList();
+
+            if (ordered == false)
+            {
+                expected.Sort(StringComparer.Ordinal);
+                actual.Sort(StringComparer.Ordinal);
+            }
+
+            if (actual.SequenceEqual(expected))
+                return null;
+
+            return $"{sql}\n  pushed: [{string.Join("; ", actual)}]\n  oracle: [{string.Join("; ", expected)}]";
+        }
+
+        /// <summary>
+        /// Determines whether a failure is the service refusing the statement, rather than the adapter
+        /// failing to plan, implement or read it.
+        /// </summary>
+        static bool IsServiceFailure(Exception e)
+        {
+            for (var inner = e; inner is not null; inner = inner.InnerException)
+                if (inner is CosmosException)
+                    return true;
+
+            return false;
+        }
+
+        static bool NamesAnOutOfDomainFunction(string sql)
+        {
+            return OutOfDomainFunctions.Any(name => System.Text.RegularExpressions.Regex.IsMatch(sql, $@"\b{name}\s*\(", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        }
+
+        /// <summary>
         /// Runs one statement both ways and describes the difference, or returns <c>null</c> where
         /// there is none.
         /// </summary>
         /// <remarks>
-        /// Which side failed is part of the answer, not an incidental detail of the message: a pushdown
-        /// that throws where the oracle returns rows is a different defect from one that returns the
-        /// wrong rows, and the two were indistinguishable while both were reported as "failed to run".
+        /// Stricter than <see cref="Refines"/> in one respect, and deliberately: an oracle that raises
+        /// is reported here rather than accepted. Every outcome refines a Calcite error, so a corpus
+        /// statement whose oracle raises compares nothing at all, and belongs in
+        /// <see cref="WithoutAnOracle"/> with the reason rather than in a list that claims a comparison.
         /// </remarks>
         static async Task<string?> Compare(string sql, bool ordered)
         {
-            List<string> pushed;
-            List<string> oracle;
+            var oracle = await Attempt(sql, pushdown: false);
+            if (oracle.Raised is Exception e)
+                return $"{sql}\n  the oracle failed to run, so this compares nothing: {e.Message}";
 
-            try { oracle = (await Run(sql, pushdown: false)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the oracle failed to run: {e.Message}"; }
-
-            try { pushed = (await Run(sql, pushdown: true)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the pushdown failed to run: {e.Message}\n  oracle: [{string.Join("; ", oracle)}]"; }
-
-            if (ordered == false)
-            {
-                pushed.Sort(StringComparer.Ordinal);
-                oracle.Sort(StringComparer.Ordinal);
-            }
-
-            if (pushed.SequenceEqual(oracle))
-                return null;
-
-            return $"{sql}\n  pushed: [{string.Join("; ", pushed)}]\n  oracle: [{string.Join("; ", oracle)}]";
+            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true));
         }
 
         /// <summary>
         /// The corpus. Ordered statements compare as sequences; the rest as multisets.
         /// </summary>
         /// <remarks>
-        /// Excluded by name, with the recorded reason: out-of-domain arithmetic (<c>SQRT(-1)</c> and
-        /// kin), which is pushed deliberately and diverges deliberately — the service fails the
-        /// query where Calcite yields NaN; see <c>DESIGN.md</c>.
+        /// Out-of-domain arithmetic (<c>SQRT(-1)</c> and kin) is pushed deliberately and diverges
+        /// deliberately — the service fails the query where Calcite yields NaN; see <c>DESIGN.md</c>.
+        /// It used to be excluded by name. It is judged now, by <see cref="Refines"/>, which accepts
+        /// exactly that failure and no other.
         /// </remarks>
         static readonly (string Sql, bool Ordered)[] Corpus =
         [
@@ -602,6 +690,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') + 1 > 100", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') + 1 > 100)", false),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.price') + 1 FROM products AS c", false),
+
+            // Out of domain for three of the prices: Calcite answers NaN for those rows, and the
+            // service fails the statement. The one service failure the refinement order accepts.
+            ("SELECT SQRT(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) - 100) FROM products AS c", false),
 
             // Conjunction and disjunction mixing a known-true arm with an unknown one.
             ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 OR c.\"$.category\" = 'shoes'", false),
@@ -889,9 +981,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Runs what cannot be compared, so that it is at least known to answer.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Weaker than the corpus by a long way, and the strongest thing available while the oracle
         /// cannot be built for these — see <see cref="WithoutAnOracle"/>. It still catches a pushdown
         /// that stops running at all.
+        /// </para>
+        /// <para>
+        /// Stricter than <see cref="Refines"/>, which accepts any outcome here, a failure included,
+        /// since Calcite raises — so requiring an answer is this list's own standard. And the oracle
+        /// is run too, because its raising is the only thing that licenses the list: a statement whose
+        /// oracle has started answering belongs in the corpus, which is how a repaired engine is
+        /// noticed, as a closed divergence is.
+        /// </para>
         /// </remarks>
         [Fact]
         public async Task EveryStatementWithoutAnOracleStillRuns()
@@ -903,14 +1004,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             foreach (var (sql, reason) in WithoutAnOracle)
             {
-                try
-                {
-                    await Run(sql, pushdown: true);
-                }
-                catch (Exception e) when (e is not SkipException)
-                {
+                var oracle = await Attempt(sql, pushdown: false);
+                var pushed = await Attempt(sql, pushdown: true);
+
+                if (oracle.Raised is null)
+                    failures.Add($"{sql}\n  no oracle because: {reason}\n  but the oracle answered, so it belongs in the corpus: [{string.Join("; ", oracle.Rows!)}]");
+                else if (pushed.Raised is Exception e)
                     failures.Add($"{sql}\n  no oracle because: {reason}\n  and the pushdown failed to run: {e.Message}");
-                }
             }
 
             failures.Should().BeEmpty("a statement with no oracle must at least answer:\n" + string.Join("\n", failures));
