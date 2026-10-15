@@ -340,7 +340,7 @@ questions, each an over-approximation: what a row on which the atom takes a trut
 (`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
 on is no truth value: it is no row a predicate keeps, and it supports no verdict.
 
-**The rules**, 42 of them and a split.
+**The rules**, 44 of them and a split.
 - **Analysis** (8): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
   parameter, a membership and a null test are each an atom of what they read.
 - **What a predicate taking a truth value establishes** (12):
@@ -354,9 +354,11 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
     because nothing the planner states needed it; it is what lets a declared string meet a preimage.
 - **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
   before discriminators.
-- **Decide** (22), run once the facts have settled:
+- **Decide** (24), run once the facts have settled:
   - what a path an atom reads may hold, narrowed by presence, types, a domain, a disequality and either bound (7);
   - an atom is always true, always false or never true where `Over` says so (3);
+  - a predicate that holds with a truth value on every row has that verdict, whatever its atoms mean (2): an opaque
+    predicate given is one decided, which is the question a weakening already beneath a filter asks;
   - twelve connectives in Kleene's logic. What is always false is never true; nothing reads never-true beneath a
     `NOT`, because UNKNOWN is not FALSE there.
 

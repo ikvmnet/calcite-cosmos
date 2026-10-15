@@ -523,6 +523,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(NeverTrue.Of(e));
             });
 
+            // What a context assumes it has decided, whatever its atoms can be said to mean: an opaque predicate, or an
+            // equality of two numbers no atom calls equal across numeric types, holds on every row a context assuming it
+            // admits. Read where the verdicts are, after the splits: what holds inside a case is the case's choice, and
+            // is never lifted to be read here.
+            Decide.DefineRule("a predicate that holds true of every row is always true", r =>
+            {
+                var e = r.Var<Pred>("e");
+                r.When(Holds.Of(e, true));
+                r.Then(AlwaysTrue.Of(e));
+            });
+            Decide.DefineRule("a predicate that holds false of every row is always false", r =>
+            {
+                var e = r.Var<Pred>("e");
+                r.When(Holds.Of(e, false));
+                r.Then(AlwaysFalse.Of(e));
+            });
+
             // The connectives, in Kleene's logic. FALSE is never UNKNOWN, so what is always false is never true; the
             // converse does not hold, and nothing here reads NeverTrue beneath a NOT.
             Decide.DefineRule("what is always false is never true", r =>

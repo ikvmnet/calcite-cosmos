@@ -210,6 +210,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.RedundantConjuncts().Should().Equal(0);
         }
 
+        /// <summary>
+        /// A predicate given is a predicate decided, whatever the atoms in it can be said to mean: an opaque one, and an
+        /// equality of two numbers the oracle declines to call equal across numeric types.
+        /// </summary>
+        /// <remarks>
+        /// The split rule's test of a weakening already beneath a filter is this question, and what it asks about is
+        /// almost always opaque — a definedness test beside a type test. Unanswered, a planner reading the oracle pushes
+        /// the same weakening under itself for ever, which is what <c>AlreadyBelow</c> was written against.
+        /// </remarks>
+        [Fact]
+        public void APredicateGivenIsDecidedWhateverItsAtomsMean()
+        {
+            var raw = Eq(Raw(X), 30m);
+            var scope = Declared(Theory(), Opaque(0), Opaque(0), raw);
+
+            scope.IsRedundant(Opaque(0), new[] { Opaque(0) }).Should().BeTrue("what is given holds of every row");
+            scope.IsRedundant(raw, new[] { raw }).Should().BeTrue();
+            scope.DecideGiven(Not(Opaque(0)), new[] { Opaque(0) }).Should().Be(Truth.Never, "and its negation of none");
+            scope.DecideGiven(Opaque(1), new[] { Opaque(0) }).Should().Be(Truth.Unknown, "another opaque predicate is another predicate");
+            scope.RedundantConjuncts().Should().Equal(0);
+            scope.Decide(0, OracleLicence.DeleteConjunct(0)).Should().Be(Truth.Always, "its duplicate is a sibling");
+            scope.Decide(2, OracleLicence.DeleteConjunct(2)).Should().Be(Truth.Unknown, "and nothing licenses a conjunct's deletion by itself");
+        }
+
         [Fact]
         public void AConjunctItsSiblingsImplyIsRedundant()
         {

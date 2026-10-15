@@ -1933,7 +1933,7 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
   the text accessor, the raw value, `RETURNING`, the numeric cast and the cast to text as readings of their own;
   comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `AND`, `OR`, `NOT`; everything else opaque.
-- **`PredicateRules`**, 42 rules and a split beside `JsonRules`: analysis, what a predicate taking a truth value
+- **`PredicateRules`**, 44 rules and a split beside `JsonRules`: analysis, what a predicate taking a truth value
   establishes (the rendering preimage and the numeric window among it), the split over a junction's arms, and the
   verdicts with twelve connectives. Every constructor is unextractable.
 - **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata a conjunct is admitted in, the

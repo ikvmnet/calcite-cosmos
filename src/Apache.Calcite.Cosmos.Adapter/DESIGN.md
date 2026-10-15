@@ -887,6 +887,13 @@ presence, types, a domain, disequalities and bounds — so that three rules deci
 shape and per table. These give tautology the shapes `IsAlwaysTrue` lacks: an `IN` covering an enum, a `<>` outside
 one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy.
 
+**What a context assumes, it has decided.** A predicate holding with a truth value on every row a context admits has
+that verdict there, whatever its atoms can be said to mean. Without the two rules that say so, a predicate given was
+decided only where its atoms decided it, so an opaque one — a definedness test beside a type test, which is what the
+split rule pushes as a weakening — was never redundant beside itself, and a planner asking the oracle whether a
+weakening is already beneath a filter would push it under itself for ever. Two opaque duplicates were both kept. The
+verdicts are read after the splits, and what holds inside a case is never lifted to be read there.
+
 #### Which facts may justify what
 
 The soundness review's statement of the criterion, which the planner approximates per site:
