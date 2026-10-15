@@ -278,16 +278,26 @@ is not run as a query at all. It is a point read — `ReadItem`, about 1 RU, no 
 the 2.3 RU or more a query costs at best:
 
 ```sql
-SELECT c."DOC" FROM "products" AS c
+SELECT c."id", c."_ts" FROM "products" AS c
 WHERE c."id" = 'bike-1' AND c."$.category" = 'bikes'
 → ReadItem("bike-1", partition "bikes")
 ```
 
 A point read returns a whole document, so anything that is not a document stops it: an `ORDER BY`, a
-row limit, a `GROUP BY`, an `UNNEST`, or a computed column in the select list. Selecting columns that
-are document paths is fine — they are taken out of the document after it is read. Compare the
-promoted columns (`"id"` and the partition key column) for a point read; a cast or a `JSON_VALUE` over
-the partition key still routes, but is not used to recover a read.
+row limit, a `GROUP BY` or an aggregate, a `SELECT DISTINCT`, an `UNNEST`, or a computed column in the
+select list. Selecting columns that are the stored value at a path is fine — the promoted columns and
+the service's own are taken out of the document after it is read. Compare the promoted columns
+(`"id"` and the partition key column) for a point read; a cast or a `JSON_VALUE` over the partition key
+still routes, but is not used to recover a read.
+
+**`DOC` and `*` are queries.** The document column is the JSON the service sent, and the service
+does not send a document the same way twice: measured on the emulator, a read returned it in the
+order it was written and with a `_self` property, and a query reordered and without one. A read
+would make `DOC` a different string
+according to whether the statement named an `id`, so selecting it runs the lookup as a query, still
+routed to one partition. So does any `JSON_VALUE` or `JSON_QUERY`, with `RETURNING` or without: each
+is read through a guard the document alone does not carry — `IS_NUMBER(c.price) ? c.price : null` for
+`RETURNING INTEGER`, which reads an object there as null (Chapter 7).
 
 **A point read with something more.** `WHERE id = 'x' AND pk = 'y' AND deletedAt IS NULL` — the
 shape of every by-id lookup through a soft-delete view — cannot be a point read as written, since a
@@ -295,8 +305,15 @@ read applies no predicate. The planner also considers reading the document and a
 condition in process, and chooses between that and the query by what each costs for the container's
 document size: a point read wins for small documents and loses for very large ones.
 
+The predicate that counts is the whole statement's, wherever it was written. A view's own `WHERE`
+and the `id` and partition key equalities written against the view are one predicate to the
+service, and a lookup through the view is not read blind any more than the conjunction written out
+by hand would be.
+
 **A set of ids.** `WHERE c."id" IN ('a', 'b') AND c."$.category" = 'bikes'`, with nothing else, can be
-answered with `ReadMany` — one request for the set. The planner prices it against the query.
+answered with `ReadMany` — one request for the set. The planner prices it against the query. The same
+clauses stop it as stop a single read; `ReadMany` returns a row per document, so a `SELECT DISTINCT`
+over the set runs as a query, which returns a row per value.
 
 ## 8.6 Projections
 
@@ -305,7 +322,7 @@ A select list becomes a Cosmos object constructor, and the service returns only 
 ```sql
 SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name", JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) * 2 AS "double"
 FROM "products" AS c
-→ SELECT VALUE { "id": c.id, "name": (IS_PRIMITIVE(c.name) ? c.name : null), "double": (c.price * @p0) } FROM products c
+→ SELECT VALUE { "id": c.id, "name": (IS_PRIMITIVE(c.name) ? c.name : null), "double": ((IS_NUMBER(c.price) ? c.price : null) * @p0) } FROM products c
 ```
 
 Selecting only what you need matters more here than in a relational database. A Cosmos document

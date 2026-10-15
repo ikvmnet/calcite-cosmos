@@ -30,12 +30,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the case that matters: <c>AGGREGATE_EXPAND_DISTINCT_AGGREGATES</c> produces exactly that
         /// shape, and only the inner half is Cosmos's to take.
         /// </remarks>
-        static bool IsSupported(CosmosConvention convention, Aggregate aggregate)
+        static bool IsSupported(Aggregate aggregate)
         {
             if (aggregate.getGroupType() != Aggregate.Group.SIMPLE)
                 return false;
 
-            return CanPush(aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList(), convention.Container);
+            return CanPush(aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList());
         }
 
         /// <summary>
@@ -43,9 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// rendered faithfully. Shared with <see cref="CosmosAggregateSplitRule"/>, which asks the
         /// question of the bottom half it would create rather than of a node that exists.
         /// </summary>
-        internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls, Metadata.CosmosContainerMetadata container)
+        internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _, out var written, out var container) == false)
                 return false;
 
             // Binding passes through a sort and a DISTINCT, an aggregate cannot.
@@ -64,19 +64,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct)) != 0)
                 return false;
 
-            // A key the input reads as text groups by its rendering in Calcite and by the value at the
-            // service -- see CosmosAggregate.GroupsAsCalciteDoes, which implementation asks too.
-            var declared = container.Facts.Derive(null);
+            // Whether each key groups as its column reads is asked of the walk's own binding, readings
+            // and container -- what the node asks of the implementor the same walk built. See
+            // CosmosAggregate.GroupsAsTheColumnReads.
+            var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
 
             var groupKeys = groupSet.asList();
             for (var i = 0; i < groupKeys.size(); i++)
             {
-                var index = ((java.lang.Integer)groupKeys.get(i)).intValue();
+                var key = (java.lang.Integer)groupKeys.get(i);
 
-                if (Resolves(fields, (java.lang.Integer)groupKeys.get(i)) == false)
-                    return false;
-
-                if (CosmosAggregate.GroupsAsCalciteDoes(fields[index], index < readings.Count ? readings[index] : CosmosReading.Typed, declared) == false)
+                if (Resolves(fields, key) == false || CosmosAggregate.GroupsAsTheColumnReads(translator, readings, input.getRowType(), key.intValue()) == false)
                     return false;
             }
 
@@ -111,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosAggregateRule Create(CosmosConvention convention)
         {
             return (CosmosAggregateRule)Config.INSTANCE
-                .withConversion(typeof(Aggregate), new DelegatePredicate<Aggregate>(a => IsSupported(convention, a)), Convention.NONE, convention, "CosmosAggregateRule")
+                .withConversion(typeof(Aggregate), new DelegatePredicate<Aggregate>(IsSupported), Convention.NONE, convention, "CosmosAggregateRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosAggregateRule>(c => new CosmosAggregateRule(c)))
                 .toRule(typeof(CosmosAggregateRule));
         }

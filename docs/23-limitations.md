@@ -21,6 +21,9 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Relational joins, `UNION`, `INTERSECT`, `EXCEPT`** | Always in process. A join against a container can be a lookup join or a self-join merge (Chapter 12). *Cosmos.* |
 | **Sorting with nulls last ascending / first descending** | In process. Cosmos has one null placement. *Cosmos.* |
 | **Sorting on the promoted partition key column** | Declined; sort on `JSON_VALUE` of the path. *Calcite has no order for `VARIANT`.* |
+| **Sorting on `JSON_VALUE` as text over a path no schema declares a string** | In process. *The service orders the stored value, by JSON type and numbers by value; SQL orders the text.* |
+| **Sorting on a `JSON_QUERY`, `DOC` or array column** | In process. *The service orders objects and arrays by rules of its own.* |
+| **Strings with characters above U+FFFF** | A sort or range comparison the service performs follows its code point order, which differs from Calcite's UTF-16 order where such a character meets one in U+E000–U+FFFF. An open defect. *Cosmos and Calcite.* |
 | **Multi-key sorts** | Need a matching composite index. *Cosmos.* |
 | **Sorting on a computed expression** | In process, except a geodesic distance. *Cosmos.* |
 | **`GROUP BY` with `ORDER BY`** | The groups are sorted in process. *Cosmos.* |
@@ -83,6 +86,12 @@ deliberate choice, or work not done yet. The open work is tracked in
 - `JSON_VALUE` returns text, so `= '30'` matches the number 30 (Chapter 7).
 - `RETURNING` asserts a type rather than converting to it — except `DECIMAL`, which parses a stored
   string, and is computed in process for that reason (Chapter 7).
+- A `RETURNING` column over a value of another type is null; Calcite answers null for an object or an
+  array but fails for a string or a boolean, and the adapter answers null for those too, as SQL says
+  (Chapter 7).
+- A sort on a `JSON_VALUE` column reaches the service only where the container's schema declares the
+  type it reads — a string, or the `RETURNING` type — because the service orders the stored value and
+  places an object or an array after every number, where the column is null (Chapter 9).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).
 - Out-of-domain arithmetic (`SQRT(-1)`) fails the whole Cosmos statement rather than one row (Chapter 8).
 - A Cosmos query is not a snapshot: a long, paged read can see writes made while it runs. That is the

@@ -503,7 +503,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// path, so each is Calcite's.
         /// </para>
         /// <para>
-        /// The control is <c>RETURNING INTEGER</c>, which asserts its type and is written as the path as before.
+        /// The control is <c>RETURNING INTEGER</c>, which asserts its type and is written as the path, through its type's
+        /// test — see <see cref="AScalarReturningAccessorIsGuardedByItsTypesTest"/>.
         /// </para>
         /// </remarks>
         [Fact]
@@ -526,7 +527,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
 
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c")))
-                .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": c.price } FROM products c", "an asserted type is the value at the path");
+                .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c", "an asserted type is the value at the path, where it is of that type");
         }
 
         /// <remarks>
@@ -596,6 +597,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(PlanToCosmos("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b') AND c.\"_ts\" > 5"));
 
             query.PointReadIds.Should().BeNull();
+            query.PartitionKeyValues.Should().Equal("bikes");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// The same residual, written by a second filter rather than beside the pinning equalities —
+        /// a view's <c>WHERE</c> queried from outside by partition key and <c>id</c>. The planner
+        /// keeps the two filters apart and both reach the service, conjoined into one
+        /// <c>WHERE</c>; the extractor read only the outer one, so the read was offered and returned
+        /// the document the view excludes (review probe H6c, measured on the emulator).
+        /// </para>
+        /// <para>
+        /// Both orders, and both reads: the view's filter beneath the pinning one, and a filter above
+        /// the pinning one, which conjoins after the read was offered (H5b).
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"$.category\" AS \"cat\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) IS NULL) AS t WHERE t.\"cat\" = 'shoes' AND t.\"id\" = '3'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"$.category\" AS \"cat\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 200) AS t WHERE t.\"cat\" = 'bikes' AND t.\"id\" IN ('1', '2')")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')) AS t WHERE t.\"p\" > 200")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1') AS t WHERE t.\"_ts\" > 5")]
+        public void AFilterStackedOnThePinningOneWithdrawsTheReads(string sql)
+        {
+            var best = PlanToCosmos(sql);
+            var query = Query(best);
+
+            Plan(best).Split("CosmosFilter").Length.Should().Be(3, "the shape under test is two filters reaching the service: " + Plan(best));
+            query.PointReadId.Should().BeNull("the WHERE carries a conjunct the pinning filter did not write: " + query.Sql);
+            query.PointReadIds.Should().BeNull("the WHERE carries a conjunct the pinning filter did not write: " + query.Sql);
+            query.PartitionKeyIsComplete.Should().BeTrue("the partition key still routes the query");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A batch returns a row per document and <c>DISTINCT</c> a row per value, so two documents
+        /// sharing a <c>_ts</c> came back as two identical rows — soundness probe P22c, measured on
+        /// the emulator. <c>_ts</c> is the case that reached it: the service writes it on every
+        /// document, so the distinct binds the path and the converter could read it out of each
+        /// document, and nothing else withdrew the read.
+        /// </para>
+        /// <para>
+        /// The statement keeps the partition key it pinned and runs as the query it already is.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ADistinctWithdrawsTheBatchOfPointReads()
+        {
+            var query = Query(PlanToCosmos("SELECT DISTINCT c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b')"));
+
+            query.Sql.Should().StartWith("SELECT DISTINCT VALUE { \"_ts\": c._ts } FROM products c WHERE ");
+            query.PointReadIds.Should().BeNull();
+            query.PointReadId.Should().BeNull();
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
@@ -899,6 +952,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             sql.Should().Be("SELECT DISTINCT VALUE { \"_ts\": c._ts } FROM products c ORDER BY c._ts ASC");
         }
 
+        /// <remarks>
+        /// <para>
+        /// The other half: a <c>DISTINCT</c> of a path some documents lack keeps its sort in process,
+        /// and the distinct itself still pushes. The key is grouped through the accessor's guard,
+        /// <c>IS_NUMBER(p) ? p : null</c>, SQL's one null for the service's absent and null and for a
+        /// value of another type, so the projected value is not the path and the distinct binds nothing
+        /// a sort could name. (It was <c>IS_DEFINED(p) ? p : null</c> while the accessor was written
+        /// bare, and grouped an object as itself; see <c>AScalarReturningAccessorIsGuardedByItsTypesTest</c>.)
+        /// </para>
+        /// <para>
+        /// The rule used to decide on a binding that named the path, convert the sort, and leave
+        /// implementation to refuse it — soundness probe P16, which failed with "the sort keys do not
+        /// resolve to document paths" once the planner had already chosen the plan. <c>NULLS FIRST</c>
+        /// is what reaches it: under Calcite's default placement a nullable key is declined anyway.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ASortOverADistinctOfAPathSomeDocumentsLackStaysAbove()
+        {
+            var best = PlanToAsync("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c ORDER BY 1 NULLS FIRST");
+            var plan = Plan(best);
+
+            plan.Should().Contain("ClrCursorSort", "the sort has no path to name: " + plan);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().StartWith("SELECT DISTINCT VALUE { \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
+            sql.Should().NotContain("ORDER BY");
+        }
+
+        /// <remarks>
+        /// A filter over the same distinct is the binding's other reader, and the node behind it
+        /// translates against the distinct's. Not a witness of the drift the test above is: the planner
+        /// moves this filter beneath the distinct, and it rendered before the two encodings were one.
+        /// Held here so that wherever the filter is left, the plan renders.
+        /// </remarks>
+        [Fact]
+        public void AFilterOverADistinctOfAPathSomeDocumentsLackStillRenders()
+        {
+            var best = PlanToAsync("SELECT d.\"p\" FROM (SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS d WHERE d.\"p\" > 10");
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().StartWith("SELECT DISTINCT VALUE { \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
+        }
+
         // ── The planner declines rather than guessing ─────────────────────────────
 
         /// <summary>
@@ -927,10 +1026,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(FindCosmos(filtered)).Should().NotContain(" / ", "the quotient is Calcite's: " + Render(FindCosmos(filtered)));
 
             var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 AS \"third\" FROM products AS c");
-            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": c.price } FROM products c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
 
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / CAST(3 AS DOUBLE) AS \"third\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"third\": (c.price / @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"third\": ((IS_NUMBER(c.price) ? c.price : null) / @p0) } FROM products c");
         }
 
         /// <summary>
@@ -950,10 +1049,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Render(FindCosmos(filtered)).Should().NotContain(" * ", "the product is Calcite's: " + Render(FindCosmos(filtered)));
 
             var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 0.1 AS \"p\" FROM products AS c");
-            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": c.price } FROM products c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
 
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 2 AS \"p\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"p\": (c.price * @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"p\": ((IS_NUMBER(c.price) ? c.price : null) * @p0) } FROM products c");
         }
 
         /// <summary>
@@ -1712,35 +1811,144 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>DISTINCT</c> over a text accessor stays in process where nothing says the path holds a
-        /// string, and the projection beneath it keeps the guard.
+        /// A <c>DISTINCT</c> or a grouping over an accessor read as text, of a path nothing declares,
+        /// is computed in process over the guarded column the service still sends.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The distinct rebuilds the select list from the binding, which is the path, and the path
-        /// holds the raw value where the column carries text. Emitting the path returned a number for
-        /// a column declared <c>VARCHAR</c> — which the reader refuses rather than coerces, so the
-        /// statement failed outright: <em>Expected a JSON string, got Number</em>. Found by the
-        /// differential oracle rather than here: the fault was in what came back rather than in the
-        /// plan.
+        /// The service groups the stored value and SQL groups the rendering, and the guard keeps JSON's
+        /// types apart where the rendering does not: a stored <c>30</c> and a stored <c>"30"</c> are two
+        /// groups at the service and one value, <c>'30'</c>, in SQL. Measured on the emulator (review
+        /// probes J1, J2 and J13), the distinct returned <c>'30'</c> twice, the grouping two groups of
+        /// one where SQL has one of two, and <c>COUNT(DISTINCT …)</c> counted one more than SQL.
         /// </para>
         /// <para>
-        /// <b>The guard was not enough.</b> The guarded path de-duplicates the value and Calcite the
-        /// rendering, which part where a path holds <c>30</c> in one document and <c>"30"</c> in
-        /// another: measured over the typed container, the pushed <c>DISTINCT</c> returned
-        /// <c>"30"</c> twice. So over a container that declares nothing the distinct is Calcite's,
-        /// over the guarded column the service sends. A declared string pushes it —
-        /// <c>CosmosDeclaredFactPlanningTests.AGroupingOverAnAccessorPushesWhereThePathHoldsAString</c>.
+        /// This test used to pin that the pushed distinct kept the guard, which it must where it pushes
+        /// at all: the distinct rebuilt the select list from the binding, which is the path, and
+        /// emitting the path returned a number for a column declared <c>VARCHAR</c> — which the reader
+        /// refuses rather than coerces, so the statement failed outright, <em>Expected a JSON string,
+        /// got Number</em>, found by the differential oracle. <c>CosmosDeclaredFactPlanningTests</c>
+        /// holds the guarded key over a path declared a string, the one place it now pushes. Here the
+        /// guard is still the projection's, beneath the aggregate.
         /// </para>
         /// </remarks>
-        [Fact]
-        public void ADistinctOverAnUndeclaredAccessorStaysAboveTheGuardedColumn()
+        [Theory]
+        [InlineData("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price'), COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price')")]
+        [InlineData("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM products AS c")]
+        public void AGroupingOverATextAccessorOfAnUndeclaredPathStaysAbove(string sql)
         {
-            var best = PlanToAsync("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
+            var best = PlanToAsync(sql);
             var plan = Plan(best);
 
-            plan.Should().Contain("ClrCursorAggregate", "the distinct is Calcite's over a path that may hold a number and a string: " + plan);
-            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"EXPR$0\": (IS_PRIMITIVE(c.price) ? c.price : null) } FROM products c");
+            plan.Should().NotContain("CosmosAggregate", "the service would group what SQL calls one value as two: " + plan);
+            Render(FindCosmos(best)).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)", "the column still goes down, guarded");
+        }
+
+        /// <summary>
+        /// A <c>DISTINCT</c> or a grouping over a typed accessor reaches the service over a path nothing
+        /// declares, keyed by the accessor's guard.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The guard is the type's own test, null wherever the column is — an object, an array, an
+        /// absent path — so grouping by it puts rows together exactly where SQL does. Before it the key
+        /// was <c>IS_DEFINED(p) ? p : null</c>, which grouped an object as itself and sent it back for
+        /// the integer the plan declared: measured on the emulator over the differential suite's typed
+        /// container, the <c>DISTINCT</c> and the <c>GROUP BY</c> failed the read where SQL answers.
+        /// </para>
+        /// <para>
+        /// A sort over the same column stays above —
+        /// <see cref="ASortOverAColumnThatIsNotTheStoredValueStaysAbove"/> — because the service orders
+        /// only a path, and the path is not the column; a grouping is given the column's own key.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) FROM products AS c", "SELECT DISTINCT")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", "GROUP BY (IS_NUMBER(c.price) ? c.price : null)")]
+        public void AGroupingOverATypedAccessorPushesKeyedByItsGuard(string sql, string clause)
+        {
+            var best = PlanToAsync(sql);
+            var plan = Plan(best);
+
+            plan.Should().Contain("CosmosAggregate", "the grouping reaches the service: " + plan);
+
+            var statement = Render(FindCosmos(best));
+            statement.Should().Contain(clause, statement);
+            statement.Should().Contain("(IS_NUMBER(c.price) ? c.price : null)", "keyed by the guarded accessor: " + statement);
+        }
+
+        /// <summary>
+        /// A sort keyed by a column that is not the value the service holds at its path — an accessor
+        /// read as text over a path nothing declares, a typed accessor over a path nothing declares
+        /// its type, a <c>JSON_QUERY</c> fragment, the document, an array — is computed in process,
+        /// under the placement the service's own order would honour.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The service orders the path and SQL orders the column. The accessor binds the path beneath
+        /// it, and the sort never asked how the column was read, so it pushed <c>ORDER BY c.label</c>
+        /// and the service ordered the stored values — by JSON type, numbers by value — where SQL orders
+        /// their text. Measured on the emulator over the differential suite's typed container: the
+        /// label came back <c>[null, null, 'true', '30', 'bikes', 'huge', 'shoes', null, null]</c>
+        /// against SQL's <c>[null ×4, '30', 'bikes', 'huge', 'shoes', 'true']</c>. The fragment, the
+        /// document and an array are the same disagreement over objects and arrays, measured too.
+        /// </para>
+        /// <para>
+        /// A typed accessor is the same disagreement over the documents it reads null for: an object
+        /// and an array sort after every scalar at the service and read null in the column, so under a
+        /// page of three <c>RETURNING INTEGER</c> came back <c>[null, null, 30]</c> where SQL answers
+        /// three nulls, and <c>RETURNING BOOLEAN</c> <c>[null, null, true]</c>.
+        /// </para>
+        /// <para>
+        /// An explicit placement, because without one the null placement declines every row here first
+        /// and the test would say nothing. <c>CosmosDeclaredFactPlanningTests</c> holds the other side,
+        /// a text key over a path declared a string and a typed key over a path declared its type,
+        /// which still push.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.name') DESC NULLS LAST")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.name' RETURNING VARCHAR) FROM products AS c ORDER BY 1 NULLS FIRST FETCH NEXT 10 ROWS ONLY")]
+        [InlineData("SELECT p.\"n\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c) AS p ORDER BY p.\"n\" NULLS FIRST")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) FROM products AS c ORDER BY 1 NULLS FIRST FETCH NEXT 3 ROWS ONLY")]
+        [InlineData("SELECT p.\"p\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS p ORDER BY p.\"p\" DESC NULLS LAST")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) DESC NULLS LAST OFFSET 2 ROWS")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.flag' RETURNING BOOLEAN) FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT JSON_QUERY(c.\"DOC\", '$.metadata') FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY c.\"DOC\"")]
+        [InlineData("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) FROM products AS c ORDER BY 1 NULLS FIRST")]
+        public void ASortOverAColumnThatIsNotTheStoredValueStaysAbove(string sql)
+        {
+            var best = PlanToAsync(sql);
+            var plan = Plan(best);
+
+            plan.Should().NotContain("CosmosSort", "the service would order the stored values where SQL orders the column: " + plan);
+            Render(FindCosmos(best)).Should().NotContain("ORDER BY", plan);
+        }
+
+        /// <summary>
+        /// A sort keyed by a column that is the stored value whatever the container declares still
+        /// reaches the service: the service's own <c>id</c> and <c>_ts</c>.
+        /// </summary>
+        /// <remarks>
+        /// Typed and bound to a path, as an accessor with a <c>RETURNING</c> is, and asked nothing of
+        /// the container because neither can be null — so neither is an accessor's reading, which
+        /// answers null for a value of another type. A <c>RETURNING</c> key pushes where the container
+        /// declares its type; <c>CosmosDeclaredFactPlanningTests</c> holds that.
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY", "ORDER BY c.id ASC OFFSET 0 LIMIT 5")]
+        [InlineData("SELECT c.\"id\", c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\" DESC", "ORDER BY c._ts DESC")]
+        public void ASortOverAColumnReadAsDeclaredStillPushes(string sql, string clause)
+        {
+            var best = PlanToAsync(sql);
+
+            Plan(best).Should().Contain("CosmosSort", Plan(best));
+            Render(FindCosmos(best)).Should().Contain(clause);
         }
 
         /// <summary>
@@ -1868,7 +2076,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var sql = Render(FindCosmos(best));
 
-            sql.Should().Contain("IS_NUMBER(c.a)) ? c.a : @p0)",
+            sql.Should().Contain("IS_NUMBER(c.a)) ? (IS_NUMBER(c.a) ? c.a : null) : @p0)",
                 "the coalesce goes down whole, not the accessor out of it: " + sql);
 
             Plan(best).Should().Contain("CAST($0)", "leaving one column for the cast to read: " + Plan(best));
@@ -2177,28 +2385,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A scalar <c>RETURNING</c> carries no guard into the coalesce, as it carries none alone.
+        /// A scalar <c>RETURNING</c> carries its type's guard into the coalesce, as it carries it alone.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The bare path is what a declared scalar renders as — see
-        /// <see cref="AScalarReturningAccessorIsRenderedAsTheBarePath"/> — and the reason is the same nested: a document
-        /// whose value is the wrong shape fails the read either way, and the plan declared the type.
-        /// Worth pinning beside the two guarded forms so the difference is deliberate rather than
-        /// discovered.
+        /// The third guarded form beside the two above — see
+        /// <see cref="AScalarReturningAccessorIsGuardedByItsTypesTest"/>. It used to be the bare path, on
+        /// the reading that a document of the wrong type fails the read either way, and here that
+        /// reading was furthest from true: over an object at <c>$.n</c> Calcite's accessor answers null
+        /// and the coalesce answers <c>0</c>, where the bare path handed the object to the reader as
+        /// the integer the plan declared. Guarded, the object is null at the service too and the
+        /// fallback is taken.
         /// </para>
         /// <para>
-        /// The null test is another matter, because it decides which branch is taken. The accessor is
-        /// null wherever the value is not of the type it names — an object, which Calcite answers null
-        /// for, and another scalar, which SQL:2016 answers null for and Calcite raises over — so the
-        /// fallback is taken there, rather than the object being handed to a column typed a number.
+        /// The null test decides which branch is taken, and reads the same null set from the same
+        /// place as the guard. The accessor is null wherever the value is not of the type it names — an
+        /// object, which Calcite answers null for, and another scalar, which SQL:2016 answers null for
+        /// and Calcite raises over — so the test is over the path and the type's test, as the array
+        /// form's above is over the path and <c>IS_ARRAY</c>.
         /// </para>
         /// </remarks>
         [Fact]
-        public void ACoalesceOverAScalarReturningIsTheBarePath()
+        public void ACoalesceOverAScalarReturningReadsThroughItsGuard()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n) AND IS_NUMBER(c.n)) ? c.n : @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n) AND IS_NUMBER(c.n)) ? (IS_NUMBER(c.n) ? c.n : null) : @p0) } FROM products c");
         }
 
         /// <summary>
@@ -2536,31 +2747,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>RETURNING</c> that names a scalar type is rendered as the bare path and read as that
-        /// type.
+        /// A <c>RETURNING</c> that names a scalar type is rendered through its type's test and read as
+        /// that type.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The text guard applied to these too, and it carried a second reading with it: the column
+        /// The text guard applied to these once, and it carried a second reading with it: the column
         /// was read back as text into a plan that had declared a number, which the row builder then
         /// could not hand over — <em>Unable to cast System.String to java.lang.Integer</em>. The same
-        /// one-line mistake as the array case, and it goes with it.
+        /// one-line mistake as the array case, and it went with it.
         /// </para>
         /// <para>
-        /// Bare rather than guarded, because <c>RETURNING</c> asserts rather than converts: the
-        /// service sends what the path holds and <c>CosmosJson</c> reads it as the declared type,
-        /// refusing a document that contradicts the clause instead of answering wrongly — which is
-        /// the whole reason the clause is worth trusting.
+        /// Then bare, on the reading that <c>RETURNING</c> asserts, so that a document contradicting
+        /// the clause fails the read as it fails Calcite. It does not, for an object or an array:
+        /// Calcite's accessor answers null for both under the default <c>NULL ON ERROR</c>
+        /// (<c>CalciteJsonValueMeasurementTests</c>), and the bare path handed them to the reader,
+        /// which refused them — measured on the emulator over the differential suite's typed
+        /// container, where a projection, a grouping, a <c>DISTINCT</c> and a <c>COUNT</c> over such a
+        /// path failed while the query answered. So the guard is the type's own test, the line the
+        /// accessor draws; a scalar of another type reads null too, which is SQL:2016's answer where
+        /// Calcite raises (ikvmnet/calcite-dotnet#120).
+        /// </para>
+        /// <para>
+        /// <c>DECIMAL</c> is not among them: it parses a stored string spelling a number, so no type
+        /// test is where it answers, and it addresses no path at all — see
+        /// <see cref="NothingElseOverADecimalReturningIsPushed"/>.
         /// </para>
         /// </remarks>
         [Fact]
-        public void AScalarReturningAccessorIsRenderedAsTheBarePath()
+        public void AScalarReturningAccessorIsGuardedByItsTypesTest()
         {
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"n\": c.n } FROM products c");
+                .Should().Be("SELECT VALUE { \"n\": (IS_NUMBER(c.n) ? c.n : null) } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"n\": (IS_NUMBER(c.n) ? c.n : null) } FROM products c");
 
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) AS \"b\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"b\": c.b } FROM products c");
+                .Should().Be("SELECT VALUE { \"b\": (IS_BOOL(c.b) ? c.b : null) } FROM products c");
         }
 
         /// <summary>

@@ -88,10 +88,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="rexBuilder">Used when translating expressions.</param>
         /// <returns>
         /// The statement, its bound parameters and any partition key a filter pinned; the path each
-        /// output field addresses; and how each is to be read back.
+        /// output field addresses; how each is to be read back; and what the projection rendered for
+        /// each, where that is not the path.
         /// </returns>
         /// <exception cref="CosmosTranslationException">The subtree has no Cosmos SQL equivalent.</exception>
-        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateQuery(RelNode input, RexBuilder rexBuilder)
+        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings, IReadOnlyList<string?> Rendered) GenerateQuery(RelNode input, RexBuilder rexBuilder)
         {
             if (input.getConvention() is not CosmosConvention convention)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
@@ -104,10 +105,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // by. After EnsureProjection the statement projects them, and the query path reads by name.
             var fields = implementor.Fields;
             var readings = implementor.Readings;
+            var rendered = implementor.RenderedExpressions;
 
             EnsureProjection(implementor, input.getRowType());
 
-            return (implementor.Build(), fields, readings);
+            return (implementor.Build(), fields, readings, rendered);
         }
 
         /// <summary>
@@ -398,26 +400,72 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Builds the delegate that reads one row out of a whole document.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The point read's counterpart to <see cref="RowBuilder"/>. A read returns the document rather
         /// than the object the statement would have constructed, so a field is reached by walking the
-        /// path it addresses instead of by naming a property — <c>DOC</c> being the empty path, which
-        /// is the document itself.
+        /// path it addresses instead of by naming a property.
+        /// </para>
+        /// <para>
+        /// <b>Only a field the query would have read as the path's own value, as its declared
+        /// type.</b> This used to take every field that way, and three kinds of field are not:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>
+        /// <b>A field the projection rendered as something other than the path.</b> A guarded accessor
+        /// renders <c>IS_PRIMITIVE(c.p) ? c.p : null</c>, null over an object the path holds, and a
+        /// <c>JSON_QUERY</c> the complementary guard; the value at the path is not the value the column
+        /// carries. Reproducing each guard here would be a second encoding of what the translator
+        /// decided.
+        /// </description></item>
+        /// <item><description>
+        /// <b>A field read as text or as a fragment</b>, which only such a rendering produces. Read as
+        /// the declared <c>VARCHAR</c> it refused the number, the boolean or the object at the path, and
+        /// the statement failed where the query answered (review probes H4, H4h and H4f, measured on
+        /// the emulator).
+        /// </description></item>
+        /// <item><description>
+        /// <b>The document column.</b> It is the JSON the service sent, and the service does not send
+        /// a document the same way twice: measured on the emulator, <c>ReadItem</c> returned it in the
+        /// order it was written, indented differently, and with a <c>_self</c> the query leaves out,
+        /// while the query returned it reordered and without one; <c>ReadMany</c> differed from the
+        /// query in its indentation. A read would make <c>DOC</c> a different string according to
+        /// whether the statement pinned an <c>id</c>. Before this, it failed instead: <c>SELECT *</c>
+        /// by partition key and <c>id</c> read <c>DOC</c> as <c>VARCHAR</c> and threw "Expected a
+        /// JSON string, got Object" (review probe H4l).
+        /// </description></item>
+        /// </list>
+        /// <para>
+        /// Each withdraws the read, as a computed field does, and the statement runs as the query it
+        /// already is.
+        /// </para>
         /// </remarks>
         /// <param name="physType">The physical type of the rows.</param>
         /// <param name="rowType">The logical row type.</param>
         /// <param name="fields">The path each output field addresses.</param>
-        /// <returns>The lambda, or <c>null</c> where a field addresses nothing and a read cannot serve.</returns>
-        public static LambdaExpression? DocumentRowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosPath?> fields)
+        /// <param name="readings">
+        /// How the query reads each output field back; see <see cref="RowBuilder"/>. A list shorter
+        /// than the row type leaves the remaining ordinals <see cref="CosmosReading.Typed"/>.
+        /// </param>
+        /// <param name="rendered">
+        /// What the projection rendered for each output field, where that is not the path; see
+        /// <see cref="CosmosImplementor.RenderedExpressions"/>.
+        /// </param>
+        /// <returns>The lambda, or <c>null</c> where a read cannot produce some field and cannot serve.</returns>
+        public static LambdaExpression? DocumentRowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, IReadOnlyList<string?> rendered)
         {
-            // A read produces every field by its declared type, so there is no reading to exempt one.
-            CosmosImplementor.RequireReadableRow(rowType);
-
             var row = Expression.Parameter(typeof(JsonElement), "document");
             var typeFields = rowType.getFieldList();
             var fieldCount = typeFields.size();
 
             if (fields.Count < fieldCount)
                 return null;
+
+            for (var i = 0; i < fieldCount; i++)
+                if (ReadingOf(readings, i) != CosmosReading.Typed || (i < rendered.Count && rendered[i] is not null))
+                    return null;
+
+            // Every field is read by its declared type, so there is no reading to exempt one.
+            CosmosImplementor.RequireReadableRow(rowType);
 
             var values = new Expression[fieldCount];
 

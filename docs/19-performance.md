@@ -18,9 +18,9 @@ In rough order of how much they matter:
 3. **Keep filters at the service.** Prefer predicates that render exactly (Chapter 8): comparisons on
    `id`, `_ts`, `RETURNING` accessors other than `DECIMAL`, declared string paths. A predicate that does
    not render costs a read of everything the rest of the predicate matches.
-4. **Keep sorts and limits at the service.** Set `DefaultNullCollation = "LOW"`, sort on paths, and add
-   composite indexes for multi-key sorts (Chapter 9). A bounded page that pushes reads a page; one that
-   does not reads every matching document.
+4. **Keep sorts and limits at the service.** Set `DefaultNullCollation = "LOW"`, sort on paths whose
+   type the schema declares, and add composite indexes for multi-key sorts (Chapter 9). A bounded page
+   that pushes reads a page; one that does not reads every matching document.
 5. **Select only what you need.** A document comes back whole unless the statement names properties.
    Avoid `SELECT *` and selecting `DOC` in hot paths.
 6. **Let joins fetch by key.** A join against a container is cheap when it can be a lookup join

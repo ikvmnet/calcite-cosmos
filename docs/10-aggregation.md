@@ -77,18 +77,22 @@ FROM "products" AS c
 GROUP BY ROLLUP (JSON_VALUE(c."DOC", '$.category'), JSON_VALUE(c."DOC", '$.brand'))
 ```
 
-Cosmos returns one row per category and brand — where both paths are declared strings, being text
-keys (10.6) — and the per-category subtotals and the grand total are computed from those. A partial `COUNT` is finished by summing; `SUM`, `MIN` and `MAX` finish as
-themselves; `AVG` is decomposed into `SUM` and `COUNT` so it can be finished correctly.
+Over a container whose schema declares `category` and `brand` strings, being text keys (10.6), Cosmos
+returns one row per category and brand; the per-category subtotals and the grand total are computed
+from those. A partial `COUNT` is finished by summing; `SUM`, `MIN` and `MAX` finish as themselves;
+`AVG` is decomposed into `SUM` and `COUNT` so it can be finished correctly.
 
 ## 10.5 `DISTINCT`
 
 `SELECT DISTINCT` pushes as Cosmos `SELECT DISTINCT` over the selected paths, with the same null
-normalisation as a grouping key. `COUNT(DISTINCT x)` becomes a grouping on `x` at the service — one row
-per distinct value crosses the network — and the count is taken in process.
+normalisation as a grouping key, and under the same rule for a key read as text (10.6).
+`COUNT(DISTINCT x)` becomes a grouping on `x` at the service — one row per distinct value crosses the
+network — and the count is taken in process.
 
 Unlike `GROUP BY`, `DISTINCT` *can* share a statement with an `ORDER BY`, so a distinct, sorted query
-can be answered whole by the service — subject to the sorting rules of Chapter 9.
+can be answered whole by the service — subject to the sorting rules of Chapter 9, and only where the
+key is always present. A normalised key is no longer the property, so a sort on it runs in process
+(Chapter 9.4).
 
 Cosmos does not support continuation for `GROUP BY` and `DISTINCT` results, so such a statement is
 always read to the end once started.
@@ -97,9 +101,12 @@ always read to the end once started.
 
 `JSON_VALUE` reads a property as text (Chapter 7), and SQL groups what it reads: a stored number `30`
 and a stored string `"30"` are both the text `'30'`, one group. Cosmos groups the value, and they are
-two. So a grouping key or a `DISTINCT` column that is `JSON_VALUE` read as text groups at the service
-only where the container declares the path a string (Chapter 14), and otherwise groups in process —
-the property is still extracted at the service, so the documents are not shipped whole:
+two — pushed, `SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')` returned `'30'` twice, a grouping
+counted two groups of one, and `COUNT(DISTINCT …)` one too many. So a grouping key or a `DISTINCT`
+column that is `JSON_VALUE` read as text groups at the service only where the container's schema
+declares the path a string (`"type": "string"`, Chapter 14), where there is no second type to keep
+apart, and otherwise groups in process — the property is still extracted at the service, so the
+documents are not shipped whole:
 
 ```sql
 SELECT JSON_VALUE(c."DOC", '$.status') AS "status", COUNT(*) AS "n"
@@ -110,8 +117,10 @@ FROM "orders" AS c GROUP BY JSON_VALUE(c."DOC", '$.status')
                FROM orders c GROUP BY (IS_PRIMITIVE(c.status) ? c.status : null)
 ```
 
-A typed accessor — `JSON_VALUE(… RETURNING INTEGER)` — and a promoted column are the value rather than
-its text, and group at the service either way. `RETURNING DECIMAL` is not the value: it parses `"2"` and
+A key read as its declared type is the value rather than its text, and groups at the service either
+way: a promoted column, `id`, `_ts`, or a `JSON_VALUE` with `RETURNING` a number or a boolean — grouped
+by its type's test, `IS_NUMBER(p) ? p : null`, so a document holding an object or an array there lands
+in the null group, as it does in SQL. `RETURNING DECIMAL` is not the value: it parses `"2"` and
 `" 2 "` to one number the service holds as two strings, so a grouping by it is Calcite's (Chapter 7).
 
 ---

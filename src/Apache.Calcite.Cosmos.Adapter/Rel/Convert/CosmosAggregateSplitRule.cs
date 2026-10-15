@@ -116,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindTable(aggregate.getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
-            if (CosmosAggregateRule.CanPush(aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList(), _convention.Container) == false)
+            if (CosmosAggregateRule.CanPush(aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList()) == false)
                 return false;
 
             var calls = aggregate.getAggCallList();

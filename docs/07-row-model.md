@@ -65,7 +65,8 @@ concrete type is learned per row. In practice:
   runs against one partition, and with `c."id" = …` beside it becomes a point read (Chapter 8).
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
-  process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`.
+  process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
+  service where the container's schema declares the path a string (Chapter 9).
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **To read a typed value**, select the path rather than the column: `JSON_VALUE(c."DOC",
@@ -152,9 +153,15 @@ a missing property give `NULL` under every one. So:
 
 - Use it where the documents really hold that type. `RETURNING INTEGER` over a property holding
   numbers is exactly right.
-- If a document disagrees, a projected value fails to read with a `CosmosMaterializationException`
-  ("Expected a JSON number…" or similar) rather than coming back as something else. That is
-  deliberate: a row type that bends to the data would be a suggestion, not a type.
+- If a document holds another JSON type, the column is null. The adapter reads the property through
+  the type's own test — `IS_NUMBER`, `IS_BOOL` — so an object or an array reads null as it does in
+  Calcite, and so does a string or a boolean under `RETURNING INTEGER`, which is what SQL says
+  (`NULL ON ERROR` is the default) where Calcite fails instead (Chapter 23).
+- A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
+  `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
+  that bends to the data would be a suggestion, not a type.
+- A sort on a `RETURNING` column reaches the service only where the container's schema declares the
+  property that type (Chapter 9).
 - To *convert* a string to a number, use `CAST(JSON_VALUE(…) AS INTEGER)`. That converts, which the
   service cannot reproduce, so the cast itself runs in process (Chapter 8 shows how much of the
   predicate around it still pushes).
@@ -257,7 +264,10 @@ FROM "products" AS p
 
 (as DDL where your connection accepts it, or the same `SELECT` as a model view — Chapter 4). Every
 column pushes down: a query over the view reads only the properties it selects and filters at the
-service, and — with `DefaultNullCollation = "LOW"` — sorts and pages there too.
+service, and — with `DefaultNullCollation = "LOW"` — sorts and pages there too. A text column such as
+`"Category"` reads whatever the document holds as text, so sorting on it, grouping on it, or joining
+another container to it by key, reaches the service only where the container's schema declares the
+path a string (Chapters 9, 10, 12 and 14).
 
 Prefer these spellings in views:
 
