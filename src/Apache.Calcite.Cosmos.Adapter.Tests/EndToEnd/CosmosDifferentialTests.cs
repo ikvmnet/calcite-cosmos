@@ -579,6 +579,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT c.\"$.category\", c.\"id\" FROM products AS c", false),
             ("SELECT DISTINCT c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\"", true),
 
+            // DISTINCT under a batch of point reads, which return a row per document where DISTINCT
+            // wants one per value (soundness probe P22c). Over _ts because the service writes it on
+            // every document, so the distinct binds the path and nothing else withdrew the read.
+            // The two bikes share a _ts whenever they were seeded within the same second, which
+            // seven documents almost always are; where they were not, the two sides agree on two
+            // rows and the statement says nothing, rather than failing. The planner tests pin the
+            // withdrawal itself.
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$._ts' RETURNING INTEGER) FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT DISTINCT c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.category') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),
+
 
             // ── A sweep over the surfaces that carried no statement at all ─────────
             //
@@ -822,6 +835,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) <> 30",
                 "Calcite throws rather than answering: RETURNING asserts the type instead of converting to it, and the ON ERROR clause that SQL:2016 says governs the mismatch is not consulted -- ikvmnet/calcite-dotnet#120. The typed container stores a string at this path, so the oracle cannot run. The pushdown restricts to the type the RETURNING names, which excludes exactly the documents that would have thrown and which the standard says answer null and are therefore excluded anyway. A deliberate divergence: the pushed statement succeeds where the engine fails."),
+
+            // Soundness probes P22 and P22b, the DISTINCT under a batch of point reads with a wider
+            // RETURNING. Not WithStatedRows: the rows are the service's own timestamps, which are
+            // not known until the documents are written, and how many there are depends on whether
+            // the two were written in the same second. P22c in the corpus is the same statement with
+            // an oracle.
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$._ts' RETURNING BIGINT) FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')",
+                "Calcite throws rather than answering: RETURNING BIGINT asserts java.lang.Long, and a stored _ts that fits an int is read as java.lang.Integer -- InvalidCastException, the RETURNING assertion of ikvmnet/calcite-dotnet#120 over a value of the right kind and a narrower width. The pushdown reads the number as the BIGINT the plan declares."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$._ts' RETURNING BIGINT) FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')",
+                "As the DISTINCT above, which is this statement with the de-duplication taken away: the oracle throws the same InvalidCastException. Here the batch of point reads is the right access path, a row per document being what the statement asks for."),
 
         ];
 

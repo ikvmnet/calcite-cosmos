@@ -3573,8 +3573,19 @@ question in the direction its name does not suggest: `Collect` records what a pr
 ignores the rest, and `CoversExactly` asks whether there *is* a rest.
 
 The rest of the statement rules it out just as firmly. A read returns one document, whole, so an
-ordering, a row limit, a grouping and an array traversal each describe something a document is not.
-`CosmosImplementor.Build` withholds the read for any of them.
+ordering, a row limit, a grouping, an aggregate, an array traversal and a `DISTINCT` each describe
+something a document is not. `CosmosImplementor.Build` withholds the read for any of them, and the
+batch of reads (`PointReadIds`, answered by `ReadMany`) for the same list, asked once in
+`ReadsAnswerTheStatement`.
+
+**`DISTINCT` was missing from that list, in both its copies, and the batch is where it showed.** A
+batch returns one row per document and `DISTINCT` one per value, so
+`SELECT DISTINCT c._ts … WHERE pk = 'bikes' AND id IN ('1', '2')` returned the same timestamp twice —
+soundness probe P22c, measured on the emulator. It reached only a value present on every document:
+`DISTINCT` binds its key to the path only there, and only a path lets the converter read the value
+out of a document. Anywhere else the key was computed, and the
+converter withdrew the read — by accident, which is the reason the list now names the clause rather
+than leaning on that.
 
 **The projection is the interesting one.** A read returns the document; the statement would have
 returned `SELECT VALUE { … }`. Two row shapes again — and this time the answer is not to force one,

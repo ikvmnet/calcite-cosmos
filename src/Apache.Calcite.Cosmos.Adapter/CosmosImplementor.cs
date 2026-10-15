@@ -42,8 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <para>
     /// A point read costs about 1 RU where the same fetch as a query costs 2.3 at best and goes through
     /// the query engine. It applies no predicate and returns the document rather than a projection, so
-    /// it is offered only where the statement asks for nothing a read cannot answer — see
-    /// <see cref="CosmosImplementor.Build"/> for what that excludes, and
+    /// it is offered only where the statement asks for nothing a read cannot answer — a
+    /// <c>DISTINCT</c>, an ordering, a page, a grouping, an aggregate or a traversal; see
+    /// <see cref="CosmosImplementor.Build"/>, and
     /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> for the predicate condition.
     /// </para>
     /// </param>
@@ -998,10 +999,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         IReadOnlyList<string>? PointReadIds()
         {
-            if (PointReadSetCandidate is null)
-                return null;
-
-            if (_query.HasGroupBy || _query.HasOrderBy || _query.HasOrderByRank || _query.HasRowLimit || _query.HasUnnest)
+            if (PointReadSetCandidate is null || ReadsAnswerTheStatement() == false)
                 return null;
 
             return PointReadSetCandidate;
@@ -1012,23 +1010,57 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// a point read cannot answer.
         /// </summary>
         /// <remarks>
-        /// A point read returns one document, whole and unfiltered. So every clause beyond the pinned
-        /// predicate rules it out: a projection is computed by the query engine, a row limit and an
-        /// ordering describe a result set rather than a document, a grouping aggregates one, and an
-        /// array traversal returns a row per element rather than a row per document. The projection is
-        /// the exception — the converter can read paths out of the document itself — and it is checked
-        /// there rather than here, because only the converter knows whether every output field is a path.
+        /// See <see cref="ReadsAnswerTheStatement"/> for what that excludes.
         /// </remarks>
         string? PointReadId()
         {
-            if (PointReadCandidate is null)
-                return null;
-
-            if (_query.HasGroupBy || _query.HasOrderBy || _query.HasOrderByRank || _query.HasRowLimit || _query.HasUnnest)
+            if (PointReadCandidate is null || ReadsAnswerTheStatement() == false)
                 return null;
 
             return PointReadCandidate;
         }
+
+        /// <summary>
+        /// Determines whether reading the pinned documents, one row each, answers what the statement
+        /// asks.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A point read returns one document, whole and unfiltered, and a batch of them one row per
+        /// document. So every clause beyond the pinned predicate rules them out: a row limit and an
+        /// ordering describe a result set rather than a document, a grouping or an aggregate collapses
+        /// one, an array traversal returns a row per element rather than a row per document, and
+        /// <c>DISTINCT</c> returns one row per <em>value</em>.
+        /// </para>
+        /// <para>
+        /// <b>The single and the batch read ask the same question, so they ask it here.</b> They used
+        /// to list the clauses twice, and both lists missed <c>DISTINCT</c>. Over two documents
+        /// sharing a value, <c>SELECT DISTINCT … WHERE pk = … AND id IN ('1', '2')</c> came back as
+        /// two identical rows, measured on the emulator: the value was a path present on every
+        /// document, so the distinct bound it and the converter could read it out of each document,
+        /// which is exactly the case where nothing else stopped the read. A distinct of a path some
+        /// documents lack computes its key, and that withdrew the read by accident.
+        /// </para>
+        /// <para>
+        /// An aggregate is named by what it writes. One with calls is the only writer of a flat
+        /// select list, and a whole-set <c>COUNT</c> writes no <c>GROUP BY</c>, so the flat list is
+        /// what says one is there. Its outputs bind nothing, which already withdraws the read at the
+        /// converter, but a read withdrawn there by accident is the defect above.
+        /// </para>
+        /// <para>
+        /// The projection is the exception — the converter can read paths out of the document itself —
+        /// and it is checked there rather than here, because only the converter knows whether every
+        /// output field is a path.
+        /// </para>
+        /// </remarks>
+        bool ReadsAnswerTheStatement() =>
+            _query.Distinct == false
+            && _query.FlatProjection == false
+            && _query.HasGroupBy == false
+            && _query.HasOrderBy == false
+            && _query.HasOrderByRank == false
+            && _query.HasRowLimit == false
+            && _query.HasUnnest == false;
 
         /// <summary>
         /// Returns the most rows the statement can return, or <c>null</c> where it is unbounded.

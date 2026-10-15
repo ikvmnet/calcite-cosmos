@@ -291,6 +291,78 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Build().MaxItemCount.Should().BeNull();
         }
 
+        // ── What a blind read can answer ──────────────────────────────────────────
+
+        /// <summary>
+        /// Each clause a statement can carry beyond its predicate and its projection, written into the
+        /// builder the way the node that owns it writes it.
+        /// </summary>
+        public static TheoryData<string> ClausesBeyondThePredicate() =>
+        [
+            "DISTINCT",
+            "aggregate",
+            "GROUP BY",
+            "ORDER BY",
+            "ORDER BY RANK",
+            "TOP",
+            "OFFSET/LIMIT",
+            "JOIN",
+        ];
+
+        static void Write(CosmosQueryBuilder query, string clause)
+        {
+            switch (clause)
+            {
+                case "DISTINCT": query.Distinct = true; break;
+                case "aggregate": query.FlatProjection = true; query.SelectProperty("n", "COUNT(1)"); break;
+                case "GROUP BY": query.AddGroupBy("c._ts"); break;
+                case "ORDER BY": query.AddOrderBy("c._ts", descending: false); break;
+                case "ORDER BY RANK": query.RankBy = "FullTextScore(c.name, 'a')"; break;
+                case "TOP": query.Top = 1; break;
+                case "OFFSET/LIMIT": query.Fetch = 1; break;
+                case "JOIN": query.AddUnnest("t0", "c.tags"); break;
+            }
+        }
+
+        /// <remarks>
+        /// The pinned predicate alone, which both reads answer: what the clauses below are measured
+        /// against.
+        /// </remarks>
+        [Fact]
+        public void APinnedPredicateAloneIsRead()
+        {
+            var single = Implementor();
+            single.PointReadCandidate = "1";
+            single.Build().PointReadId.Should().Be("1");
+
+            var batch = Implementor();
+            batch.PointReadSetCandidate = new[] { "1", "2" };
+            batch.Build().PointReadIds.Should().Equal("1", "2");
+        }
+
+        /// <remarks>
+        /// A read returns a row per document, and every one of these asks for something else: a row
+        /// per value, per group, per element, or a subset in an order. <c>DISTINCT</c> was missing
+        /// from both lists, and over two documents sharing a value the batch returned the value twice
+        /// (soundness probe P22c).
+        /// </remarks>
+        [Theory]
+        [MemberData(nameof(ClausesBeyondThePredicate))]
+        public void AClauseBeyondThePredicateWithdrawsBothReads(string clause)
+        {
+            var single = Implementor();
+            single.PointReadCandidate = "1";
+            Write(single.Query, clause);
+
+            single.Build().PointReadId.Should().BeNull("a point read cannot answer a statement carrying {0}", clause);
+
+            var batch = Implementor();
+            batch.PointReadSetCandidate = new[] { "1", "2" };
+            Write(batch.Query, clause);
+
+            batch.Build().PointReadIds.Should().BeNull("a batch of point reads cannot answer a statement carrying {0}", clause);
+        }
+
     }
 
 }

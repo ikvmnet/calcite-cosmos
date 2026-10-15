@@ -199,7 +199,8 @@ WHERE c."id" = 'bike-1' AND c."$.category" = 'bikes'
 ```
 
 A point read returns a whole document, so anything that is not a document stops it: an `ORDER BY`, a
-row limit, a `GROUP BY`, an `UNNEST`, or a computed column in the select list. Selecting columns that
+row limit, a `GROUP BY` or an aggregate, a `SELECT DISTINCT`, an `UNNEST`, or a computed column in the
+select list. Selecting columns that
 are document paths is fine — they are taken out of the document after it is read. Compare the
 promoted columns (`"id"` and the partition key column) for a point read; a cast or a `JSON_VALUE` over
 the partition key still routes, but is not used to recover a read.
@@ -211,7 +212,9 @@ condition in process, and chooses between that and the query by what each costs 
 document size: a point read wins for small documents and loses for very large ones.
 
 **A set of ids.** `WHERE c."id" IN ('a', 'b') AND c."$.category" = 'bikes'`, with nothing else, can be
-answered with `ReadMany` — one request for the set. The planner prices it against the query.
+answered with `ReadMany` — one request for the set. The planner prices it against the query. The same
+clauses stop it as stop a single read; `ReadMany` returns a row per document, so a `SELECT DISTINCT`
+over the set runs as a query, which returns a row per value.
 
 ## 8.6 Projections
 

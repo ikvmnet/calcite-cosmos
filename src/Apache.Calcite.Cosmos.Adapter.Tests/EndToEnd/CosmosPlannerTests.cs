@@ -439,6 +439,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
+        /// <remarks>
+        /// <para>
+        /// A batch returns a row per document and <c>DISTINCT</c> a row per value, so two documents
+        /// sharing a <c>_ts</c> came back as two identical rows — soundness probe P22c, measured on
+        /// the emulator. <c>_ts</c> is the case that reached it: the service writes it on every
+        /// document, so the distinct binds the path and the converter could read it out of each
+        /// document, and nothing else withdrew the read.
+        /// </para>
+        /// <para>
+        /// The statement keeps the partition key it pinned and runs as the query it already is.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ADistinctWithdrawsTheBatchOfPointReads()
+        {
+            var query = Query(PlanToCosmos("SELECT DISTINCT c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('a', 'b')"));
+
+            query.Sql.Should().StartWith("SELECT DISTINCT VALUE { \"_ts\": c._ts } FROM products c WHERE ");
+            query.PointReadIds.Should().BeNull();
+            query.PointReadId.Should().BeNull();
+            query.PartitionKeyValues.Should().Equal("bikes");
+        }
+
         [Fact]
         public void PredicateOnANonPartitionKeyRecoversNothing()
         {
