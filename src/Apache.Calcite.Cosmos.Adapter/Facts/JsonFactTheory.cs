@@ -223,6 +223,17 @@ namespace Apache.Calcite.Cosmos.Facts
             Compile().Open(Distinct(established), mentioned);
 
         /// <summary>
+        /// Returns this declaration compiled into the current generation, for a reasoner that asks more of it than
+        /// <see cref="Derive"/> does: the predicate oracle, which puts contexts of its own beneath it.
+        /// </summary>
+        /// <returns>The compiled declaration, or <c>null</c> where the engine could not compile it, which states nothing.</returns>
+        internal JsonFactDeclaration? Declaration()
+        {
+            var compiled = Compile();
+            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary) : null;
+        }
+
+        /// <summary>
         /// Determines whether an exception is one the engine raises for a context it could not answer for, which loses
         /// facts rather than failing a plan.
         /// </summary>
@@ -300,6 +311,11 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             public JsonFactGenerations.Generation Generation { get; }
+
+            /// <summary>
+            /// Gets the declaration's frozen context, or <c>null</c> where the engine could not compile it.
+            /// </summary>
+            public Scope? Schema => _schema;
 
             /// <summary>
             /// Gets what holds of every document, whatever a query proved.
@@ -426,5 +442,14 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
     }
+
+    /// <summary>
+    /// A declaration compiled into one generation: its frozen context, and the vocabulary its forms and extensions are
+    /// written in.
+    /// </summary>
+    /// <param name="Generation">The generation, whose graph the context belongs to.</param>
+    /// <param name="Context">The declaration's context, frozen.</param>
+    /// <param name="Vocabulary">The tokens of the declaration's forms and extensions.</param>
+    internal sealed record JsonFactDeclaration(JsonFactGenerations.Generation Generation, Scope Context, JsonFactVocabulary Vocabulary);
 
 }

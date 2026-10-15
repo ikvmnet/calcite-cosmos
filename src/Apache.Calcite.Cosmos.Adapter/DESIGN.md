@@ -811,6 +811,229 @@ runs alternating the two on one workstation, where the engine had taken about tw
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
 is invented.
 
+#### Predicates as facts: the oracle, in shadow
+
+The planner reads a filter's facts through a dozen sites, each deciding for itself which conjuncts to read and what
+they prove: `CosmosFactExtractor`'s dispatch, the split rule's `Establish`, the rewriter's tautology test, the
+translator's choice between outright and established facts. A defect in that family has usually been the same
+knowledge reaching one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement, built in
+shadow: nothing the planner runs calls it, and it exists to be measured against what the planner decides.
+
+**Eggnog decides what is true; the host decides what is written and what is legal; Volcano decides which plan.**
+The oracle loads a filter's conjuncts into the theory of JSON as terms, beside `JsonRules` in the same graph
+(`PredicateRules`), and answers with values: a verdict, a fact about a path, whether anything is left. It never
+answers with a term. Whether a conjunct renders is asked of today's translator, handed a `JsonFactSet` of the facts
+that question may use, and the translator's answer is the host's.
+
+**A reading is a constructor, not a SQL type used as a tag.** `CosmosPredicateLoader` decodes Calcite's types once,
+into the typed IR's predicate subset (`SqlValue`, `SqlPredicate`):
+
+- `text(p)` is `JSON_VALUE` read as text, SQL null for an absent path, a null, an object and an array;
+- `raw(p)` is the value the service holds: a promoted `VARIANT` column, the accessor the split rule re-types `ANY`;
+- `typed(p, T)` is a `RETURNING`, which asserts its type and raises on anything else — but for `DECIMAL`, which
+  parses the rendering, a stored string of digits among what it reads, and is compared with a literal cast to its
+  scale of zero, so that `= 2.5` keeps a stored 2 and not a stored 2.5;
+- `cast(T, v)` is a numeric cast, or the cast to text over a raw value, which renders an object and an array too.
+
+Comparisons with a literal or a parameter, `IN` (a `SEARCH` expanded and read back as one membership),
+`IS [NOT] NULL`, `AND`, `OR` and `NOT` are read. Everything else is `opaque`, which proves nothing and decides nothing.
+
+**What an atom means is written once.** `PredicateAtom` is a reading, a test and an operand, and it answers two
+questions. `Kept` is what a row on which the atom takes a truth value can hold at its path, which is what an assumed
+predicate establishes. `Over` is which truth values the documents a path's knowledge admits can give it, which is
+what a verdict is read from. Both over-approximate, in opposite directions of safety, and a property test holds them
+to each other on every reading, test and kind of stored value. No rule names a reading or an operator: the rules read
+atoms, and the table of what a stored value does under each reading is the one place a measured axiom lives.
+
+**The rendering preimage.** `JSON_VALUE(…) = '30'` keeps a document storing the string and one storing the number,
+so it establishes both — `{string|30, integer|30}` — and nothing narrower. A declared `type: string` then leaves the
+string alone, which is the deletion of the stored-number disjunct `TODO.md` records as open. It took one rule the
+theory of JSON never needed: a domain keeps only values of a type its path may hold. The planner never states a
+domain beside a narrower type; a preimage does.
+
+**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.0`, and a numeric cast on
+a string it cannot parse. Such a row is no row a predicate keeps, so it constrains nothing an assumed predicate
+establishes — the asymmetry *Reading a value back* records for `RETURNING`, the caller's declaration held rather than
+checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
+a pushdown may do is not settled.
+
+An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
+INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
+truncated or held it at the limit. The theory spells `30` and `30.0` alike, so a number there may always raise, and
+nothing is decided of one; a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
+every rendering, and of a cast of the raw value, and not of this. The first table said otherwise, and the population-D
+checker found it.
+
+**A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
+a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
+or a conjunction that fails, splits: one case per arm, each assuming its arm takes the value, and what every live
+case proves is lifted. The cases cover the context, because a row a disjunction keeps is kept by some arm. That is
+gap 1 spelled per kind: `(kind = 'order' AND …) OR (kind = 'invoice' AND …)` proves what both kinds declare.
+
+Arms split before discriminators. Split together, the discriminator `kind` opened a case for each of the sixty
+kinds a declaration had beside the two arms, 0.8 s a statement; split after the arms, it opens one for each kind they
+lifted, and the statement costs 60 ms.
+
+**A context mentions what it assumes**, as a query's context mentions what it established, so a split opens only
+on a discriminator something there narrows. A first version mentioned every path the statement read in a context
+holding its terms and nothing else, and split thirty-two ways on a discriminator nothing had narrowed yet: 1,171
+iterations and 0.7 s a statement, against 19 iterations without.
+
+**Three verdicts, and twelve connectives.** `always true`, `always false` and `never true`, in Kleene's logic.
+`always false` and `never true` are kept apart because UNKNOWN is not FALSE under `NOT`: a comparison over an absent
+path keeps no row, and neither does its negation. What is always false is never true; nothing reads never-true
+beneath a `NOT`. An atom's verdict reads one value per path — `possible(p)`, what the path may hold, gathered from
+presence, types, a domain, disequalities and bounds — so that three rules decide every atom rather than one rule per
+shape and per table. These give tautology the shapes `IsAlwaysTrue` lacks: an `IN` covering an enum, a `<>` outside
+one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy.
+
+#### Which facts may justify what
+
+The soundness review's statement of the criterion, which the planner approximates per site:
+
+- facts from siblings or from the declaration may justify any rewrite;
+- a conjunct's own facts may justify only a strengthening, and the oracle never offers them;
+- a deletion or a weakening needs facts from outside the conjunct;
+- a consumer that is not a filter needs facts that hold of every row it touches.
+
+**The strata.** A conjunct is admitted in the first stratum that renders it, and its own facts enter only the
+stratum below. So nothing a conjunct establishes is ever among the facts it was rendered from, to any depth, and two
+conjuncts cannot license each other: the later one was rendered from the earlier one's facts, never the reverse.
+#117 had a conjunct certify its own exactness from a fact its own rendering established; in the strata it cannot be
+written, and `TheSelfCertificationOf117CannotBeDerived` shows each way it could have been. The first stratum is the
+declaration; today's `Establish` hands its unaided pass nothing at all.
+
+**The licence table**, in one place (`CosmosStatementScope.ScopeFor`), so that no call site chooses facts:
+
+| the question | the facts it may use |
+| --- | --- |
+| whether a conjunct renders | the stratum before the one that admitted it; for one never admitted, the last stratum, which holds its siblings and never itself (L2) |
+| whether a conjunct can be deleted, or is redundant | every other conjunct, admitted or not (L3) |
+| what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate |
+| a projection, a sort, a grouping | the last stratum: every admitted conjunct, applied before the clause reads a row (L1) |
+| a residual, a route | the declaration (L0) |
+
+**Redundancy is asked one conjunct at a time**, in digest order, each against the conjuncts still kept, so two
+duplicates do not delete each other. "If I add X, is Y irrelevant?" is `DecideGiven(Y, X)`: Y always true where X
+holds.
+
+The planner's own choices, described under *A guard exists to admit what a fact would have excluded* and *What makes
+a split sound*, still decide every plan. The table is what they would be replaced by, and the shadow harness the
+next stage builds compares the two at each site.
+
+#### What the oracle promises, and what it costs
+
+**It returns values, never a term to execute.** Every constructor `PredicateRules` defines is unextractable, and
+`NothingIsExtractableAndTheRulesStayWithinTheirBudget` holds it so.
+
+**The only unions are path unions and congruence.** No predicate rule unions two predicates or two values: an
+implication is a verdict in a scope, never a merge of classes, which is the trap a filter-truth equivalence becomes
+under hash-consing. The only unions in the graph are `JsonRules`', of paths.
+
+**A run that does not complete knows nothing it did not know before.** A context whose run stops on a limit, or that
+the engine cannot open, is released, and the stratum it would have been reads the one above it, whose facts hold of
+the fewer documents below. A contradiction is no failure: it is the answer that nothing is kept.
+
+**Its own graphs.** A theory is bound to the oracle's own generations, apart from those the planner reasons in, and
+`PredicateRules` is defined in a graph only when the oracle first asks of it. Asking the oracle defines nothing in a
+graph a plan reads.
+
+**One tree of contexts per statement**, remembered by a digest that ignores the conjuncts' order, beneath the
+declaration's frozen context. The strata and the leave-one-out children each hold the statement's terms and their
+verdicts. A question about a predicate a context does not hold is answered in a child made for it that assumes
+nothing, and so splits on nothing: the context above has lifted what a split there proves. Asked in a child of a
+split stratum with the split allowed, the same question cost 45 ms where it now costs about 5.
+
+**What it costs**, measured by `CosmosOracleMeasureTests` at `MeasureTests`' sizes, in a Debug build on a busy
+workstation, beside the planner's own `Derive` of what the same statements establish:
+
+| | 5,069 conditional facts | 47,502 conditional facts |
+| --- | --- | --- |
+| a new statement, `kind = 'k0'` | 7.4 ms (`Derive` 3.8) | 12.4 ms (`Derive` 8.8) |
+| a new statement, `kind IN` two kinds | 15.6 ms (`Derive` 10.6) | 24.6 ms (`Derive` 24.2) |
+| a new statement, one kind per arm of an `OR` | 51 ms | 57 ms |
+| a new statement no document satisfies | 1.2 ms | 1.3 ms |
+| a deletion's question, of a statement already asked | 5.1 ms | 9.9 ms |
+| a predicate the statement does not hold | 0.7 ms | 0.6 ms |
+
+The figures are p50s; the p95s are two to four times them, and the machine was shared. A new statement costs between
+what the planner's `Derive` of the same facts costs and about twice it, because a stratum also runs the verdicts and
+is frozen; what `Derive` cannot do at all — the disjunction per kind — costs a split per arm. A question of a
+statement already asked costs about a millisecond. Stage 1's gate asks p50 within 2 ms and p95 within 11 ms per
+distinct question: a new statement is outside it, a question of an existing one inside, and what each costs once
+Eggnog's idle rules allocate nothing is the measurement still owed.
+
+#### How the oracle is checked: population D
+
+`SoundnessTests` states facts true of one document and checks that what follows is true of the same document. That
+is the right test of a theory of facts, and blind to the mistake a theory of predicates makes most: a conjunct
+licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
+never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
+discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
+declaration**, not from the filter. A random filter over its paths is admitted with a random renderer, and every
+scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
+the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
+
+**The ground truth is an evaluator of the IR, and it is not `PredicateAtom`.** `IrEval` takes a predicate to TRUE,
+FALSE, UNKNOWN, or a raise, written from what Calcite was measured to do, and a checker that read the table would
+only agree with it. It is held to Calcite's runtime itself (`IrEvalCalciteTests`): one statement per random predicate,
+`CASE WHEN p THEN 'T' WHEN NOT p THEN 'F' ELSE 'U' END` over two hundred documents in a `VALUES`, and the documents it
+says raise asked one at a time. The raw readings cannot be asked that way — a `VARIANT` is what the adapter's reader
+makes of the service's JSON, and no expression over a JSON literal produces one — so where nothing was measured the
+evaluator draws from what the table admits, a coin per question tossed once a trial. That tests the reasoning over
+the table and not the table, which only a measurement can.
+
+**What is checked.** Every fact of JSON a context holds, read row by row from its tables; every claim and
+disequality its fact set answers a consumer; every verdict, of every term of every conjunct and of predicates the
+statement does not hold; every `holds`, verdict and `possible` row; the facts each conjunct was handed to render
+from, on the documents the conjuncts admitted before it keep; and that a conjunct called redundant drops no row the
+rest keep. Two checks look at every declared document, kept or not, because what they check is a property of a term:
+each `atom` row's meaning — the truth value the evaluator gives is among those `Over` names, and the document is among
+those `Kept` admits for it — and C5, every e-node of the predicate, value and path sorts evaluated over its
+children's representatives against its class's. Where nothing was ever unioned every class has one node and C5 has
+nothing to compare; it is the only check that sees a union, and it is there for the day one is written.
+
+**A raise is held at the atoms, not at the verdicts.** The connectives' rules do not model a raise, and whether an
+answer may stand where Calcite fails is the refinement order still to settle; so a verdict is checked on the rows
+Calcite answers, and the connectives decide first, as Calcite may: a conjunction with a FALSE arm is FALSE whatever
+the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so.
+
+**What it found**: two rows of the table that contradicted Calcite. An integer cast of the accessor is a parse of the
+rendering, which raises on a stored `30.0`, and the table converted the number; `RETURNING DECIMAL` parses the
+rendering, a string of digits included, and the table asserted a number. Both are fixed, and measured in
+`CalciteJsonValueMeasurementTests`. Holding the evaluator to Calcite found two things the measurements had not
+written down, and the evaluator follows both: the null test of a cast is simplified to its operand's where it stands
+alone, so the parse that would raise is never made — beside other conjuncts it sometimes is, and those rows are left
+out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
+compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
+
+**What it is worth is what it catches.** `PlantedBugTests` plants seven faults, each in a graph of its own — a rule
+added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
+scheduled without its guard; the renderer handed the wrong stratum — and requires each caught within the trials a run
+pays for:
+
+| planted | caught in trial | by |
+| --- | --- | --- |
+| a too-wide preimage: an equality with text decided true where the path holds only its preimage | 54 | a verdict |
+| establishing from a weakening: a disjunction that holds read as each arm holding | 6 | a `holds` row |
+| never-true read beneath `NOT` | 3 | a verdict |
+| the arm split without its `holds` guard | 0 | a contradiction |
+| an axiom row contradicting the measurement: `IS NULL` of the accessor false of an object | 18 | a fact |
+| a stratum handing a conjunct its own facts | 0 | the strata |
+| a union of a conjunction with its other arm where one arm is always true | 60 | C5 |
+
+The three seams the plants go through are internal and set by nothing else: `PredicateRules.ScheduleWith` schedules
+the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stratum a conjunct is handed, and
+`CosmosStatementScope.ContextFor` gives a checker the context a licence reads, to read every row of it.
+
+**What it costs**, in a Debug build on a shared workstation: 200 trials a run, which take 27 to 41 seconds, 110 to
+150 ms a trial at the median and 350 to 560 at the 95th percentile; the plants another minute, most of it the two
+caught latest; and the comparison with Calcite 24 predicates, 54 statements and 3,135 answers in 21 to 34 seconds. The
+long runs are explicit (`-explicit only`), for a change to the rules, the table or the strata, or a Calcite or IKVM
+upgrade: 5,000 trials took 19 minutes — 3.1 million facts, 261,250 verdicts of which 145,317 decided something, 20,048
+atoms and 149,789 e-nodes over 320,000 documents, and nothing false — and 400 predicates against Calcite four to six,
+54,141 answers and 491 raises, and no disagreement.
+
 #### A schema is one source of facts, and not the only one
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,
@@ -4059,6 +4282,10 @@ src/
       JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
       JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
       Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal
+                                        PredicateRules.cs, PredicateAtom.cs, PathValues.cs: the predicate rules,
+                                        what an atom means, and what a path may hold, for the oracle
+      SqlPredicate.cs               ✔ The typed IR's predicate subset: readings, atoms, connectives, a statement
+      CosmosOracle.cs               ✔ The predicate oracle, in shadow: strata, the licence table, the questions
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
@@ -4068,6 +4295,7 @@ src/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
       CosmosContainerMetadataReader.cs ✔ ContainerProperties → CosmosContainerMetadata
+      CosmosPredicateLoader.cs        ✔ A filter → the IR, for the oracle; today's translator as its renderer
     Rel/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔

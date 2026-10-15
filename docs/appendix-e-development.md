@@ -129,11 +129,31 @@ was measured and the test that pins it, and a test checks every named test still
 measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
 Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
 
+### Generated soundness checks
+
+Some tests draw their cases at random from a fixed seed, and run a CI-sized number of them with every
+run of the suite: `SoundnessTests` for the theory of JSON, `PredicateSoundnessTests` for the predicate
+oracle checked on documents drawn from random declarations, `PlantedBugTests` for the faults that
+checker must catch, and `IrEvalCalciteTests` for the evaluator it checks against, held to Calcite. Each
+has a long run, marked explicit, for a change to the rules they cover or a Calcite or IKVM upgrade:
+
+```sh
+Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation.PredicateSoundnessTests.NothingTheOracleSaysIsFalseOfADeclaredDocumentOverALongRun \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation.IrEvalCalciteTests.TheEvaluatorAgreesWithCalciteOverALongRun
+```
+
+A failure prints the trial's seed, its declaration and its filter; `PopulationD.Run(seed)` replays one
+trial alone.
+
 ## E.6 Where the reasoning lives
 
 - [`DESIGN.md`](../src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) — why each decision was made, and what
   the service was measured to do.
 - [`TODO.md`](../TODO.md) — what is left, sized and reasoned.
+- [`Facts/Saturation/README.md`](../src/Apache.Calcite.Cosmos.Adapter/Facts/Saturation/README.md) — the
+  catalogue of the theory a container's declared facts are reasoned in, and of the predicate rules the
+  oracle beside it uses. The oracle runs in shadow: nothing a plan does depends on it yet.
 
 ---
 

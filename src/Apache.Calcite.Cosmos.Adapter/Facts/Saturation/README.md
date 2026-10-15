@@ -307,6 +307,81 @@ the last 256 sets' contexts.
 The adapter's own tests ask the same questions through `JsonFactTheory`: `JsonFactTheoryTests`, `JsonSchemaFactsTests`,
 and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1–5, F2 and F3 should produce.
 
+## Predicates, for the oracle
+
+`PredicateRules` is defined beside `JsonRules` in the same graph, for the predicate oracle (`Facts/CosmosOracle.cs`),
+which nothing in the planner calls yet. It is defined in a generation's graph the first time the oracle asks, and the
+oracle reasons in generations of its own, so a graph the planner reads never holds it. `DESIGN.md`, under *Predicates
+as facts* and the two sections after it, is the record.
+
+**Vocabulary.** Two sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute.
+
+| term | means |
+| --- | --- |
+| `text(p)` | `JSON_VALUE(DOC, p)` read as text: a scalar's rendering, SQL null for anything else |
+| `raw(p)` | the value the service holds: a promoted `VARIANT` column, the accessor re-typed `ANY`, `id` |
+| `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
+| `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
+| `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
+| `compare(op, v, w)`, `in(v, S)`, `is null(v)` | the atoms |
+| `and`, `or`, `not`, `opaque(n)` | the connectives, right-nested in digest order; what the loader does not read |
+
+| table | means |
+| --- | --- |
+| `holds(e, t)` | the predicate takes truth value `t` on every row the context admits; never lifted |
+| `arms(e, t)`, `arm(e, t, i, a)` | the numbered arms of a junction that decide it at `t`; stated by the host |
+| `point(e, s)` | a literal an atom compares with; stated by the host |
+| `reads(v, p, k)`, `atom(e, p, a)` | analyses of terms alone: the path a value reads and how, and the atom a test is |
+| `possible(p)` | what a path an atom reads may hold, gathered into one value (`PathValues`) |
+| `always true(e)`, `always false(e)`, `never true(e)` | the verdicts |
+
+**What an atom means is `PredicateAtom`'s, in one place**, and no rule names a reading or an operator. It answers two
+questions, each an over-approximation: what a row on which the atom takes a truth value can hold at its path
+(`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
+on is no truth value: it is no row a predicate keeps, and it supports no verdict.
+
+**The rules**, 42 of them and a split.
+- **Analysis** (8): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
+  parameter, a membership and a null test are each an atom of what they read.
+- **What a predicate taking a truth value establishes** (12):
+  - a conjunction that holds holds on both sides, and a disjunction that fails fails on both;
+  - a negation takes the other truth value of its operand;
+  - the arm a case chose takes the junction's truth value;
+  - a predicate is not both true and false of a row;
+  - an atom says what `Kept` says of its path: that it is there, its types, its values, its bounds, and which of
+    its points it does not hold. The rendering preimage is here: `= '30'` keeps the string and the number;
+  - a domain an atom's path holds keeps only values of a type the path may hold. The rules of JSON leave this out,
+    because nothing the planner states needed it; it is what lets a declared string meet a preimage.
+- **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
+  before discriminators.
+- **Decide** (22), run once the facts have settled:
+  - what a path an atom reads may hold, narrowed by presence, types, a domain, a disequality and either bound (7);
+  - an atom is always true, always false or never true where `Over` says so (3);
+  - twelve connectives in Kleene's logic. What is always false is never true; nothing reads never-true beneath a
+    `NOT`, because UNKNOWN is not FALSE there.
+
+**Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
+then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the
+verdicts.
+
+**What is checked**, in the adapter's tests:
+- `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
+  lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
+- `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
+- `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, and an incomplete run;
+- `CosmosPredicateLoaderTests`: the loader, and #117 through today's translator;
+- `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
+- `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
+  their paths, and 64 documents drawn from each declaration and not from its filter. Every fact a context holds, row
+  by row; every claim and verdict each licence's scope answers; every `holds`, verdict and `possible` row; every
+  `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
+  each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
+- `PlantedBugTests`: seven faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
+  never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the measurement, a
+  stratum handing a conjunct its own facts, and a union of two predicates — each caught within a run's trials;
+- `IrEvalCalciteTests`: the evaluator those are checked against, held to Calcite's runtime over the readings that
+  were measured. The raw readings are drawn from what the table admits, and nothing holds those rows to Calcite yet.
+
 ## What is not here yet
 
 **For the adapter to use more of it**
@@ -330,8 +405,8 @@ and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1�
 **Reasoning still to add**
 - **The converse of inheritance:** what every individual element is proven to be, every element is. This holds
   only once the length fixes which elements exist.
-- **A disjunction in the query.** A split on `OR` between predicates over different paths: the integration plan's
-  per-kind spelling, `(type = 'park' AND …) OR (type = 'map' AND …)`.
+- **A disjunction in the query, for the planner.** The oracle splits on an `OR`'s arms (`PredicateRules.ByArm`); the
+  planner's `Derive` still reads only conjunctions.
 - **Rules that could be cheaper:**
   - several rules match only paths that are rarely touched;
   - Eggnog's roadmap lists demand-indexed rules;
