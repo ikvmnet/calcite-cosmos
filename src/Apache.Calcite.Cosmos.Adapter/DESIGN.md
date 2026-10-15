@@ -2260,6 +2260,24 @@ exactly the documents that have one and the pushdown would answer nothing.
 `ASortOverADistanceRendersTheExpression` failed the moment the guard went in, and `WriteCall` holds it
 back for that family.
 
+**A guard keeps the value, not the rendering, and a grouping is where that shows.** The guard makes
+the service answer null where `JSON_VALUE` does, and passes every scalar through as itself; the text
+the column carries is the reader's rendering of it. So an operator that *compares* the guarded value
+at the service compares raw JSON, and over a path holding more than one type that is a different
+equality from the rendering's: a stored `30` and a stored `"30"` are two values there and one, `'30'`,
+in SQL. The filter translator refuses `JSON_VALUE(…) = ?` over an undeclared path for this reason, and
+the lookup join a text key; a `GROUP BY` or `DISTINCT` keyed by the guarded accessor was the third
+reader, and nothing asked it. Measured on the emulator over the typed container (review probes J1, J2,
+J13 and J14), `SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')` returned `'30'` twice, the grouping
+counted two groups of one where SQL has one of two, and `COUNT(DISTINCT …)`, whose inner half is that
+distinct, counted six where SQL counts five. `CosmosAggregateRule.CanPush` now asks of each grouping
+key what the other two ask: a key read as its declared type groups as it reads, a key read as text
+only where `IsDeclaredStringOutright` holds of its path, and a `JSON_QUERY` fragment not at all — its
+text is a serialisation, and whether the service holds two objects equal exactly where their compact
+texts are equal, in key order and number spelling, is unmeasured. The document column groups nothing
+either way, no two documents being equal. The grouping then runs in process over the column the
+service still sends guarded.
+
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
 A `COALESCE` over pushable expressions took the whole projection in process and shipped `DOC` to

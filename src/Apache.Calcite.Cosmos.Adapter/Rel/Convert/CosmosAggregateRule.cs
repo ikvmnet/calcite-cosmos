@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _, out var written, out var container) == false)
                 return false;
 
             // Binding passes through a sort and a DISTINCT, an aggregate cannot.
@@ -66,8 +66,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var groupKeys = groupSet.asList();
             for (var i = 0; i < groupKeys.size(); i++)
-                if (Resolves(fields, (java.lang.Integer)groupKeys.get(i)) == false)
+            {
+                var key = (java.lang.Integer)groupKeys.get(i);
+
+                if (Resolves(fields, key) == false || GroupsAsTheColumnReads(input, fields, readings, container, key.intValue()) == false)
                     return false;
+            }
 
             var inputRowType = input.getRowType();
 
@@ -90,6 +94,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var index = ordinal.intValue();
             return index >= 0 && index < fields.Count && fields[index] is not null;
+        }
+
+        /// <summary>
+        /// Determines whether grouping by the value the service holds at a key's path puts two rows in
+        /// one group exactly where the column, as it is read back, says they are equal.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service groups the stored value; SQL groups the column.</b> A column read as its
+        /// declared type is the stored value, and the two agree. A <c>JSON_VALUE</c> read as text is a
+        /// rendering of it, and the guard the grouping key carries keeps JSON's types apart where the
+        /// rendering does not: a stored <c>30</c> and a stored <c>"30"</c> are two groups at the service
+        /// and one value, <c>'30'</c>, in SQL. Measured on the emulator over the typed container (review
+        /// probes J1, J2 and J13), <c>SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')</c> returned
+        /// <c>'30'</c> twice, its <c>GROUP BY</c> with <c>COUNT(*)</c> two groups of one where SQL has
+        /// one of two, and <c>COUNT(DISTINCT …)</c> — whose inner half is this distinct — counted six
+        /// where SQL counts five. The lookup join's key and the filter translator's comparison are the
+        /// same rendering, and both already refuse it; this is the third reader of the reading.
+        /// </para>
+        /// <para>
+        /// The exception is theirs too, asked of the same method: a container that declares the path a
+        /// string outright, where the rendering is the stored value and a second JSON type cannot be
+        /// there to be kept apart. A <c>JSON_QUERY</c> fragment has no such exception — its text is a
+        /// serialisation, and whether the service holds two objects equal exactly where their compact
+        /// texts are equal, in key order and number spelling, is not measured — so it is declined. The
+        /// document column groups nothing either way: no two documents are equal, their <c>_rid</c>
+        /// alone telling them apart.
+        /// </para>
+        /// <para>
+        /// Declining costs the grouping and nothing else: it runs in process over what the projection
+        /// beneath still sends.
+        /// </para>
+        /// </remarks>
+        static bool GroupsAsTheColumnReads(RelNode input, System.Collections.Generic.IReadOnlyList<Sql.CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, Metadata.CosmosContainerMetadata? container, int ordinal)
+        {
+            var reading = ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
+
+            if (reading is CosmosReading.Typed or CosmosReading.Json)
+                return true;
+
+            if (reading != CosmosReading.Text || container is null)
+                return false;
+
+            var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
+
+            return translator.IsDeclaredStringOutright(org.apache.calcite.rex.RexInputRef.of(ordinal, input.getRowType()));
         }
 
         /// <summary>

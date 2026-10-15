@@ -659,6 +659,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c ORDER BY 1 DESC NULLS LAST", true),
             ("SELECT d.\"p\" FROM (SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS d WHERE d.\"p\" > 10", false),
 
+            // A DISTINCT or a grouping over the text accessor, over the typed container, whose price
+            // is 30 in one document and "30" in another (review probes J1, J2, J13 and J14). The
+            // service grouped the stored values, keeping the two apart, where SQL groups the rendering
+            // '30': the distinct returned it twice, the grouping two groups of one, COUNT(DISTINCT)
+            // one too many, and the distinct under a pinned id pair, once a batch of reads, twice.
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price'), COUNT(*) FROM typed AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price')", false),
+            ("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM typed AS c", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c WHERE c.\"$.category\" = 'a' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c", false),
+
 
             // ── A sweep over the surfaces that carried no statement at all ─────────
             //

@@ -1608,6 +1608,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A declared type lets a <c>DISTINCT</c> or a grouping over the text accessor reach the
+        /// service, and it keeps the guard the projection rendered.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The service groups the stored value and SQL the rendering, so over an undeclared path a
+        /// stored <c>30</c> and <c>"30"</c> are two groups at the service and one in SQL —
+        /// <c>CosmosPlannerTests.AGroupingOverATextAccessorOfAnUndeclaredPathStaysAbove</c> holds that
+        /// side in process. A path the container declares a string holds no second type to keep apart,
+        /// and the rendering is the value: the lookup join's and the filter's exception, asked of the
+        /// same method.
+        /// </para>
+        /// <para>
+        /// Pushed, the key is the guarded accessor and not the path. Emitting the path returned the raw
+        /// value for a column declared <c>VARCHAR</c>, which the reader refuses — found by the
+        /// differential oracle, a number at the path failing the statement outright.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT DISTINCT JSON_VALUE(c."DOC", '$.t') FROM items AS c""", "SELECT DISTINCT")]
+        [InlineData("""SELECT JSON_VALUE(c."DOC", '$.t'), COUNT(*) FROM items AS c GROUP BY JSON_VALUE(c."DOC", '$.t')""", "GROUP BY (IS_PRIMITIVE(c.t) ? c.t : null)")]
+        public void ADeclaredTypeLetsAGroupingOverTheTextAccessorPush(string sql, string clause)
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": "string" } } }""");
+            var best = PlanToCosmos(sql, container, out _);
+
+            PlanText(best).Should().Contain("CosmosAggregate", "the grouping reaches the service: " + PlanText(best));
+
+            var statement = Query(FindCosmos(best), container).Sql;
+            statement.Should().Contain(clause, statement);
+            statement.Should().Contain("(IS_PRIMITIVE(c.t) ? c.t : null)", "keyed by the guarded accessor: " + statement);
+        }
+
+        /// <summary>
         /// Without the declaration the same comparison is weakened, exactly as it was.
         /// </summary>
         /// <remarks>

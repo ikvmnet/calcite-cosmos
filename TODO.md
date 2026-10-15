@@ -1152,6 +1152,15 @@ the distribution the gate is sized for.
   `ORDER BY c.p` beside `SELECT DISTINCT VALUE { "p": IS_DEFINED(c.p) ? c.p : null }` orders the rows
   the way the projected key would is unmeasured, and would be the way to recover it (`DESIGN.md`
   under *Plan order is not clause order*).
+- **A grouping or `DISTINCT` over a text accessor of an undeclared path** — *small, and needs a
+  measurement.* It runs in process now: the service groups the stored values and SQL the rendering,
+  so a stored `30` and `"30"` were two groups of what SQL calls one (review probes J1, J2 and J13;
+  `DESIGN.md` under *An accessor keeps its guard wherever it is written*). A container declaring the
+  path a string still pushes. Recovering the rest means grouping at the service on a key that renders
+  as the reader does — something like `IS_STRING(p) ? p : ToString(p)` under the guard — and that is
+  only sound where the service's `ToString` spells every number and boolean as Java's `toString`
+  does, which `1e30` (`1.0E30` in process) already suggests it does not. Measure the spellings
+  before writing it; a string-only path that nobody declared is the case it would buy back.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.

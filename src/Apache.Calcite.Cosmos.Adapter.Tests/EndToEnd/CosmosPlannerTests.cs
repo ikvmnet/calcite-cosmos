@@ -1559,26 +1559,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>DISTINCT</c> over an accessor keeps the guard the projection beneath it rendered.
+        /// A <c>DISTINCT</c> or a grouping over an accessor read as text, of a path nothing declares,
+        /// is computed in process over the guarded column the service still sends.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The distinct rebuilds the select list from the binding, which is the path, and the path
-        /// holds the raw value where the column carries text. Emitting the path returned a number for
-        /// a column declared <c>VARCHAR</c> — which the reader refuses rather than coerces, so the
-        /// statement failed outright: <em>Expected a JSON string, got Number</em>.
+        /// The service groups the stored value and SQL groups the rendering, and the guard keeps JSON's
+        /// types apart where the rendering does not: a stored <c>30</c> and a stored <c>"30"</c> are two
+        /// groups at the service and one value, <c>'30'</c>, in SQL. Measured on the emulator (review
+        /// probes J1, J2 and J13), the distinct returned <c>'30'</c> twice, the grouping two groups of
+        /// one where SQL has one of two, and <c>COUNT(DISTINCT …)</c> counted one more than SQL.
         /// </para>
         /// <para>
-        /// Found by the differential oracle rather than here, which is why this test exists: the
-        /// offline suite could not see it, the fault being in what came back rather than in the plan.
+        /// This test used to pin that the pushed distinct kept the guard, which it must where it pushes
+        /// at all — <c>CosmosDeclaredFactPlanningTests</c> holds that over a path declared a string, the
+        /// one place it now does. Here the guard is still the projection's, beneath the aggregate.
         /// </para>
         /// </remarks>
-        [Fact]
-        public void ADistinctOverAnAccessorKeepsTheGuard()
+        [Theory]
+        [InlineData("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price'), COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price')")]
+        [InlineData("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM products AS c")]
+        public void AGroupingOverATextAccessorOfAnUndeclaredPathStaysAbove(string sql)
         {
-            var best = PlanToCosmos("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
+            var best = PlanToAsync(sql);
+            var plan = Plan(best);
 
-            Render(best).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)");
+            plan.Should().NotContain("CosmosAggregate", "the service would group what SQL calls one value as two: " + plan);
+            Render(FindCosmos(best)).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)", "the column still goes down, guarded");
         }
 
         /// <summary>
