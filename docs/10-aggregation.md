@@ -111,7 +111,8 @@ FROM "orders" AS c GROUP BY JSON_VALUE(c."DOC", '$.status')
 ```
 
 A typed accessor — `JSON_VALUE(… RETURNING INTEGER)` — and a promoted column are the value rather than
-its text, and group at the service either way.
+its text, and group at the service either way. `RETURNING DECIMAL` is not the value: it parses `"2"` and
+`" 2 "` to one number the service holds as two strings, so a grouping by it is Calcite's (Chapter 7).
 
 ---
 

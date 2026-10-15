@@ -96,7 +96,8 @@ be mapped to a document path"*. So:
 - **A sort on a computed expression runs in process.** That includes a sort on a view column that is
   a `CAST`, a function call or a concatenation.
 - **A sort on a column that *is* a path pushes**: `JSON_VALUE(…)`, `JSON_VALUE(… RETURNING …)`, `id`,
-  `_ts`, `_etag`.
+  `_ts`, `_etag`. Not `RETURNING DECIMAL`, which parses a stored string and so orders `"10"` after `"9"`
+  where the service orders the strings (Chapter 7).
 - **The promoted partition key column cannot be a sort key.** It is `VARIANT` (Chapter 7), and Calcite
   has no order for `VARIANT` values. Sort on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **One exception:** a geodesic distance. `ORDER BY CLR_ST_GEOG_DISTANCE(…)` pushes, because the

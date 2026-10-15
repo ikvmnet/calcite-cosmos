@@ -668,9 +668,13 @@ bound binds numbers only, because the cast converts a stored string too: `> 500`
 beyond a declared `maximum` leaves the path no number, which contradicts the presence only where the
 declaration leaves it nothing else, a `type: integer` (gap 4, `ARangeBeyondADeclaredBoundKeepsNoNumber`).
 A range no member of an integer `enum` lies in empties the domain (gap 5, `ARangeOutsideAnEnumKeepsNothing`).
-Any other order comparison states only the presence. Over a typed path the comparison follows a
-conversion, or Calcite's ordering of a `VARIANT` across types, and neither has been measured to keep the
-stored number on its side of the constant.
+`RETURNING DECIMAL` is such a cast written as a clause, and an equality through it is a window too and
+not a value: it parses a stored `"2"` as 2, so read as `EqualTo 2` it contradicted a declared string and
+the filter was rewritten to `FALSE` (`ADecimalReturningIsNoClaimThatThePathHoldsANumber`).
+Any other order comparison states only the presence. Over a promoted `VARIANT` it follows Calcite's
+ordering across types, which has not been measured to keep the stored number on its side of the
+constant. Over a `RETURNING` that asserts it now has been — the clause converts nothing — and the bound
+it would state is in `TODO.md`.
 
 #### A conditional rule is a row
 
@@ -1791,6 +1795,7 @@ is a claim about it and nothing else:
 | `SMALLINT`, `TINYINT` | **wraps** — `-1` and `255` | no: unrelated to the stored value |
 | `FLOAT`, `REAL` | rounds to float precision, 1.5e22 away | no: further than a unit |
 | `DECIMAL` | raises, where it does not fit the precision | no: excluding the document would turn a failing query into a passing one |
+| `JSON_VALUE(… RETURNING DECIMAL)` | its exact value, at any precision | yes: the clause is this cast without the precision check — see *The document column* |
 
 Saturation is the row that had to be found rather than reasoned about. `CAST(x AS INTEGER) =
 2147483647` is true of a document storing `1e30`, so a window around the limit excludes exactly the
@@ -1985,6 +1990,7 @@ all. The declared type is what tells them apart, and it is the same test
 | --- | --- | --- |
 | `JSON_VALUE`, `VARCHAR` or `CHAR` — the bare accessor | `IIF(IS_PRIMITIVE(p), p, null)` | `Text`, the rendering |
 | `JSON_VALUE`, anything else — `RETURNING INTEGER`, … | `p` | `Typed`, the declared type |
+| `JSON_VALUE`, `DECIMAL` | *refused* — the clause parses a string; see *The document column* | — |
 | `JSON_VALUE`, `ARRAY` or `MULTISET` | *refused* — the column is left in process | — |
 | `JSON_VALUE` with a behaviour clause other than `NULL` | *refused* — the column is left in process | — |
 | `JSON_QUERY`, `VARCHAR` — the plain accessor | `IIF(IS_OBJECT(p) OR IS_ARRAY(p), p, null)` | `JsonText`, re-serialised compactly |
@@ -2357,7 +2363,7 @@ disjunction is true exactly where the reading answers a value:
 | reading | null where the path is absent, null, or | test |
 | --- | --- | --- |
 | `JSON_VALUE` read as text, or a field bound to one | an object or an array | `IS_PRIMITIVE` |
-| `JSON_VALUE` with a numeric or boolean `RETURNING`, or a field bound to one | any other type | `IS_NUMBER`, `IS_BOOL` |
+| `JSON_VALUE` with a numeric or boolean `RETURNING` but `DECIMAL`, or a field bound to one | any other type | `IS_NUMBER`, `IS_BOOL` |
 | `JSON_QUERY` with an array `RETURNING`, or a field bound to one | anything but an array | `IS_ARRAY` |
 | `JSON_QUERY`, plain, or a field bound to one | any scalar | `IS_OBJECT OR IS_ARRAY` |
 | the raw value — a promoted column, the service's own columns, an accessor re-typed `ANY` | — | none |
@@ -2366,8 +2372,9 @@ A typed `RETURNING` over another type is an error that SQL:2016 answers null for
 over (ikvmnet/calcite-dotnet#120), so the test of the type never admits a row the engine answers a
 value for. It is not a conversion either: `RETURNING DOUBLE` over a stored integer raises in process
 too, an `Integer` that cannot be cast to a `Double`, while `IS_NUMBER` admits the row. Over integer
-data such a statement has no oracle at all. Three writers read the line, and before this each stated it
-or did not for itself:
+data such a statement has no oracle at all. `RETURNING DECIMAL` has no row, and had `IS_NUMBER`: it
+parses a stored string too, so no type test is where it answers, and it addresses no path — see *The
+document column*. Three writers read the line, and before this each stated it or did not for itself:
 
 - **The projection's guard**, `(test ? p : null)`, which was right all along — #131 put it on every
   nested accessor.
@@ -3500,16 +3507,51 @@ reads each element as the declared component type and carries a JSON null throug
 which is the same reading.
 
 That is also what Calcite does with it in process, and it is worth knowing how literally. Measured
-against Calcite's runtime, `RETURNING` a type other than text performs no conversion at all: the
-scalar is cast to the declared Java class and anything else throws. `RETURNING INTEGER` returns a
-stored `30` and throws on `30.7`, on `"30"`, on `true` and on `3000000000`, which parses as a long;
-`RETURNING DOUBLE` returns `30.0` and throws on `30`, which parses as an integer, and `RETURNING
-BIGINT` throws on `30` for the same reason; `NULL ON ERROR` does not catch any of it, and
-`DECIMAL(3, 1)` returns `30.75` unrounded. Only the text default converts. So a comparison through a
-numeric `RETURNING` pushes exactly, as it always has: for every document Calcite can evaluate, the
-declared type is the stored type and the service compares the same value. What the pushdown changes
-is the document Calcite would have thrown on, which the service excludes instead — the caller's
-declaration held rather than checked, the same asymmetry the reading side already accepts.
+against Calcite's runtime, `RETURNING` a numeric or boolean type other than `DECIMAL` performs no
+conversion at all: the scalar is cast to the Java class the JSON reader would have built for the type,
+and anything else throws. `RETURNING INTEGER` returns a stored `30` and throws on `30.7`, on `"30"`, on
+`true` and on `3000000000`, which parses as a long; `RETURNING DOUBLE` and `FLOAT` return `30.0` and
+throw on `30`, which parses as an integer, and `RETURNING BIGINT` throws on `30` for the same reason;
+`SMALLINT`, `TINYINT` and `REAL` name classes the reader never builds and throw on every scalar;
+`BOOLEAN` throws on `"true"`; and `NULL ON ERROR` does not catch any of it
+(`CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal`). So a
+comparison through an asserting `RETURNING` pushes exactly, as it always has: for every document Calcite
+can evaluate, the declared type is the stored type and the service compares the same value. What the
+pushdown changes is the document Calcite would have thrown on, which the service excludes instead —
+the caller's declaration held rather than checked, the same asymmetry the reading side already accepts.
+
+**`DECIMAL` converts, and this paragraph used to say it did not.** It was measured only over numbers,
+where `DECIMAL(3, 1)` returning `30.75` unrounded looked like the same assertion. It is a parse: a
+stored number is converted to its exact value, a stored string to the number its trimmed text spells,
+so `"2"`, `" 2 "` and `"2.0"` are each 2 to it, and only what does not parse raises — a boolean, `"x"`,
+`""` — again past `ON ERROR`. Two more things separate it from the stored value even over numbers. A
+fraction is the reader's double converted exactly, so a stored `0.1` under `RETURNING DECIMAL(10, 1)`
+is not equal to `0.1` and is greater than it, where the service's doubles are equal. And the literal
+it is compared with is cast to the comparison's type, which against the default `DECIMAL(19, 0)`
+truncates it toward zero: `= 2.5` keeps a stored 2, and `= -2.5` a stored -2. Measured, first by the
+predicate oracle's checker and then here
+(`CalciteJsonValueMeasurementTests.ReturningDecimalParsesTheRendering` and
+`ReturningDecimalReadsAStoredFractionExactlyAndTruncatesItsLiteral`).
+
+Written as the path it was wrong three ways. The translator sent `= 2` as `c.body = 2`, which loses
+every document storing `"2"`, and the null test and the guard under a `NOT` took `IS_NUMBER` as its
+null set and lost them too. A column, and a sort or a grouping over one, was sent back as the stored
+string where the plan declared a number, and failed to read where Calcite answers the number the
+string spells. And `CosmosFactExtractor` read the equality as exact, the path holding the
+number 2, which beside a declared `"type": "string"` is a contradiction: the filter was rewritten to
+`FALSE`. Over a container declared so, holding `"2"`, `" 2 "`, `"3"` and `"2.0"`, `= 2` returned
+nothing where Calcite returns three documents, and `> 2` nothing where it returns one.
+
+So `CosmosRexTranslator.IsParsingJsonValue` names it, and `IsJsonAccessor` refuses it as the array
+`RETURNING` is refused: it addresses no path in any clause, so a column, a sort key, a grouping key, a
+partition key and a fact all stay where Calcite computes them. What it still implies is what a cast to
+a number implies — it *is* that cast, written as a clause — so `TryNumericCastOperand` reads it, and a
+comparison through it pushes the window `CosmosNumericWindow` states and is rechecked above:
+`IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))` for `= 2`. The fact
+extractor reads the same window, which binds numbers and says nothing a declared string contradicts.
+Over a path declared an integer the type test goes, and the service does all the narrowing. The clause
+adds no operand, so the value the window bounds is written out: the same call typed as the bare
+accessor, which is the rendering a cast reads.
 
 #### Promoted columns
 
@@ -4236,6 +4278,15 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   corpus under the names that review gave them, beside the controls that say each shape still
   pushes where it agrees; the overflow is a decision, recorded under *Verified against the
   emulator*.
+- **A declaration is a premise the corpus had never been given.** `products` and `typed` declare
+  nothing, so no statement asked what a declared fact lets the adapter conclude, and a conclusion
+  the operator does not license is a wrong answer only a declared container can show. The review of
+  the predicate oracle's gate found one: `RETURNING DECIMAL`, read as the stored number, rewrote a
+  filter over a declared string to `FALSE`. The third container, `declared`, says `body` is a string
+  and `n` an integer, and its documents keep to that — a container that broke its declaration would
+  test the caller's word rather than the reasoning. Twenty statements over `RETURNING DECIMAL` came
+  with it, there and over `typed` and `products`, and fourteen answered differently before the fix:
+  rows lost, and columns that failed to read.
 
 ---
 

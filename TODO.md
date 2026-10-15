@@ -333,7 +333,9 @@ rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the numb
 comparison Calcite makes. The same disjunction serves the cast form. *Settled by measurement:*
 `RETURNING` a non-text type converts nothing in Calcite — it asserts the Java class and throws on
 disagreement — so a comparison through one pushes exactly,
-as it did, and needs no bound; `DESIGN.md` records the measurement. *Settled by the same measurement:* the
+as it did, and needs no bound; `DESIGN.md` records the measurement. **Except `DECIMAL`, which that
+measurement never put a string under:** it parses, and is now read as the cast it is (below).
+*Settled by the same measurement:* the
 other operators over the bare text accessor — `<>`, the ordering comparisons and `LIKE` — diverged in
 both directions over the `typed` container, and are now declined and weakened to the case the two
 agree on, `NOT IS_STRING(x) OR <comparison>`. The string case is exact, the rendering being the
@@ -382,6 +384,26 @@ a repair:
 - **Integer overflow** — *a decision, recorded*. Pushed, and computed rather than wrapped; see
   *Verified against the emulator* in `DESIGN.md`. A declared numeric range could prove an integer sum
   fits, and let the adapter decline only the arithmetic that might not.
+
+*Settled after that review,* by the review of the predicate oracle's gate: `RETURNING DECIMAL` parses a
+stored string — `"2"`, `" 2 "` and `"2.0"` are each 2 to it — where every other numeric and boolean
+`RETURNING` asserts its class (`CalciteJsonValueMeasurementTests`). It was written as the path, losing
+the strings at the service, and read by the fact extractor as the path holding the number, which over a
+declared string rewrote the filter to `FALSE`. It now addresses no path, and a comparison through it
+pushes the window a cast to a number pushes. The corpus gained a declared container and twenty
+statements, fourteen of which answered differently before. What that leaves:
+
+- **`RETURNING DECIMAL` over a path declared an integer** — *small*. The parse of a whole number is the
+  number, exactly in doubles to 2^53, so over a declaration that admits nothing else the accessor is the
+  value at the path and could be written as one: a column, a sort key, a grouping key, an exact
+  comparison. A path declared `number` is not enough — a stored `0.1` parses to the double's binary
+  expansion, which `= 0.1` under `DECIMAL(10, 1)` is false of, and the projected value carries it. The
+  gate needs the facts, which `IsJsonAccessor` does not have, so it is a reading beside the refusal
+  rather than a hole in it. Measured over `declared`'s `n` first.
+- **`<>`, a negated equality and `IS NOT NULL` through it** — *small*. They push nothing, not even the
+  `IS_DEFINED` every comparison implies, because `CosmosFilterSplitRule.CollectPaths` finds no path in an
+  accessor that addresses none. Seeing through the parse to the rendering there, as the window does,
+  would recover it.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say
@@ -1731,11 +1753,12 @@ answers (F2–F4) are not the specification. The oracle covers stored forms, ext
 holds. Three bugs planted in what was added were each caught by it.
 
 **What is left, roughly in order of value.**
-- **A bound from a comparison on a typed path** — *small, once measured.* `c.price > 500` over a promoted
+- **A bound from a comparison on a typed path** — *small, half measured.* `c.price > 500` over a promoted
   `VARIANT`, or `JSON_VALUE(… RETURNING INTEGER) > 500`, states only that the path is there. A bound needs the
-  comparison to keep the stored number on its side of the constant. That is unmeasured for `RETURNING`'s
-  conversion, which may round or saturate, and for Calcite's ordering of two `VARIANT`s of different numeric
-  types.
+  comparison to keep the stored number on its side of the constant. For a `RETURNING` that asserts it is now
+  measured: it converts nothing, so a row it keeps holds a number on the comparison's side of the literal
+  (`EachNumericOrBooleanReturningAssertsItsClassButDecimal`). `DECIMAL` parses, and states its window already.
+  Calcite's ordering of two `VARIANT`s of different numeric types is still unmeasured.
 - **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the

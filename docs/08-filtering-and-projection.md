@@ -135,7 +135,9 @@ WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 → WHERE (c.price > @p0)
 ```
 
-This is the spelling to use for numbers that are stored as numbers.
+This is the spelling to use for numbers that are stored as numbers. **Except `RETURNING DECIMAL`**,
+which parses a stored string — `"2"` is 2 to it (Chapter 7) — and is handled as the cast to a number
+below: a bound is sent, and the comparison rechecked in process.
 
 ### `CAST` to text: exact
 
@@ -160,10 +162,21 @@ and rechecks the cast in process:
 ```
 
 Non-numbers pass through to the recheck, because Calcite converts a stored `"30"` too. For a property
-that really holds numbers, the service does nearly all the filtering. The bound is applied for casts
-to `INTEGER`, `BIGINT` and `DOUBLE`. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and `REAL`
-(which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
+that really holds numbers, the service does nearly all the filtering — and where the container
+declares the property an integer (Chapter 14), the type test is dropped and it does all of it. The
+bound is applied for casts to `INTEGER`, `BIGINT` and `DOUBLE`, and for `RETURNING DECIMAL`, which is
+the same conversion written as a clause. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and
+`REAL` (which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
 evaluated in process only.
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = 2
+→ WHERE IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))
+  In process: the comparison, which keeps "2", " 2 " and "2.0"
+```
+
+A declaration that the property is a string does not make that comparison false: the clause reads the
+string.
 
 If the values are numbers in the documents, prefer `RETURNING` to `CAST`: it is exact.
 
@@ -365,6 +378,7 @@ documents it has to read.
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
+| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the bound a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
@@ -387,7 +401,8 @@ with how `SQRT` always has been; if your data can produce such inputs, guard the
 `price * 100000000` is the true product. Calcite's `INTEGER` arithmetic wraps where SQL would raise,
 so the two disagree once a result passes about two billion: a filter keeps the rows the true product
 satisfies, and a selected product fails the statement, not being an `INTEGER`. If your data can get
-there, read the value `RETURNING BIGINT`, or make an operand a `DOUBLE` — `CAST(100000000 AS DOUBLE)`.
+there, make an operand a `DOUBLE` — `CAST(100000000 AS DOUBLE)`. Reading the value `RETURNING BIGINT`
+pushes the same way, but in process it fails for every value within an `INTEGER`'s range (Chapter 7).
 
 ---
 

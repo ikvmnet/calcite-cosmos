@@ -628,7 +628,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </code>
         /// <para>
         /// The window, and why each side holds, is <see cref="Metadata.CosmosNumericWindow"/>'s, which the
-        /// fact extractor reads too.
+        /// fact extractor reads too. <c>JSON_VALUE(… RETURNING DECIMAL)</c> takes it as well, being the same
+        /// conversion written as a clause — see <see cref="CosmosRexTranslator.IsParsingJsonValue"/>.
         /// </para>
         /// <para>
         /// <b>Why the type test is inverted.</b> Calcite converts a stored <em>string</em> too —
@@ -645,7 +646,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static RexNode? TryBoundNumericCast(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
         {
-            if (Metadata.CosmosNumericWindow.TryRead(node, out var window) == false)
+            if (Metadata.CosmosNumericWindow.TryRead(node, rexBuilder, out var window) == false)
                 return null;
 
             var value = window.Value;

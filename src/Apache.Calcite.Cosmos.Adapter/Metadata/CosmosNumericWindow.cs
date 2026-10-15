@@ -38,6 +38,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// wider than it, and Calcite widens the cast to compare them, which the window does not read through
     /// — so the question is asked of every comparison for the spelling that one day does.
     /// </para>
+    /// <para>
+    /// <b><c>RETURNING DECIMAL</c> is the same conversion written as a clause</b>, and was read as the stored
+    /// value instead: an equality through it said the path holds the literal, and over a path declared a
+    /// string the filter was rewritten to <c>FALSE</c>, where Calcite keeps every document storing
+    /// <c>"2"</c>, <c>" 2 "</c> or <c>"2.0"</c> for <c>= 2</c>. It parses what the path holds, a string
+    /// among it, so it puts a stored number in the same window and says nothing of a string — see
+    /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/>. The literal is cast to the comparison's scale,
+    /// which against the default <c>DECIMAL(19, 0)</c> truncates <c>2.5</c> to 2; that moves it by less than
+    /// one, and the window was loosened by one for exactly that kind of movement.
+    /// </para>
     /// </remarks>
     /// <param name="Value">The document value the cast converts.</param>
     /// <param name="Above">A number the raw value is greater than, or <c>null</c>.</param>
@@ -50,9 +60,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>false</c> where the comparison is not one or bounds neither side.
         /// </summary>
         /// <param name="node">The comparison.</param>
+        /// <param name="rexBuilder">Builds the rendering a parsing <c>RETURNING</c> converts, which has no node of its own.</param>
         /// <param name="window">On success, the window.</param>
         /// <returns><c>true</c> where a window was read.</returns>
-        public static bool TryRead(RexNode node, out CosmosNumericWindow window)
+        public static bool TryRead(RexNode node, RexBuilder rexBuilder, out CosmosNumericWindow window)
         {
             window = default;
 
@@ -69,9 +80,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             // The window is on the side the cast is, and a comparison read the other way round is the
             // mirrored operator.
-            if (CosmosRexTranslator.TryNumericCastOperand(left, out var saturates) is not RexNode value)
+            if (CosmosRexTranslator.TryNumericCastOperand(left, rexBuilder, out var saturates) is not RexNode value)
             {
-                if (CosmosRexTranslator.TryNumericCastOperand(right, out saturates) is not RexNode mirrored)
+                if (CosmosRexTranslator.TryNumericCastOperand(right, rexBuilder, out saturates) is not RexNode mirrored)
                     return false;
 
                 value = mirrored;

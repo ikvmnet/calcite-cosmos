@@ -369,6 +369,78 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        /// <summary>
+        /// A comparison through <c>RETURNING DECIMAL</c> pushes the bound a cast to a number pushes, and is
+        /// rechecked above.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The clause parses what the path holds — a stored <c>"30"</c> is 30 to it, measured — where every
+        /// other numeric <c>RETURNING</c> asserts. It was written as the path, so <c>= 30</c> pushed as
+        /// <c>c.price = 30</c> and lost the string. It is the cast written as a clause, and takes the cast's
+        /// window: non-numbers pass the type test to the recheck.
+        /// </para>
+        /// <para>
+        /// The literal is truncated to the comparison's scale, <c>= 30.5</c> keeping a stored 30, and the window is
+        /// read from the literal as written; the truncation moves it by less than the unit the window allows.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("= 30", "29", "31")]
+        [InlineData("> 30", "29", null)]
+        [InlineData("= 30.5", "29.5", "31.5")]
+        public void AComparisonThroughADecimalReturningPushesTheBoundACastPushes(string comparison, string above, string? below)
+        {
+            var best = PlanToAsync($"SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) {comparison}");
+            var query = Query(FindCosmos(best));
+
+            query.Sql.Should().Contain("IS_DEFINED(c.price)");
+            query.Sql.Should().Contain("(NOT IS_NUMBER(c.price)) OR", "a stored string that spells a number is the recheck's to decide: " + query.Sql);
+            query.Sql.Should().NotContain("c.price = @", "the comparison itself has no Cosmos form");
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal(below is null ? new[] { above } : new[] { above, below });
+
+            Plan(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + Plan(best));
+        }
+
+        /// <summary>
+        /// Nothing else written over <c>RETURNING DECIMAL</c> reaches the service: a column, a sort key, a grouping key,
+        /// an inequality, a null test, arithmetic.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each read the path for the parse. The column, and the grouping and the sort over it, sent back the stored string
+        /// where the plan declared a number, and the statement failed to read where Calcite answers the number the
+        /// string spells; the null test and the inequality took <c>IS_NUMBER</c> as the clause's null set and lost the
+        /// string. Measured against the emulator, in the differential corpus. A parsing <c>RETURNING</c> addresses no
+        /// path, so each is Calcite's.
+        /// </para>
+        /// <para>
+        /// The control is <c>RETURNING INTEGER</c>, which asserts its type and is written as the path as before.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void NothingElseOverADecimalReturningIsPushed()
+        {
+            const string Price = "JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL)";
+
+            foreach (var sql in new[]
+            {
+                $"SELECT c.\"id\", {Price} AS \"p\" FROM products AS c",
+                $"SELECT c.\"id\" FROM products AS c ORDER BY {Price}",
+                $"SELECT {Price} AS \"p\", COUNT(*) AS \"n\" FROM products AS c GROUP BY {Price}",
+                $"SELECT c.\"id\" FROM products AS c WHERE {Price} <> 30",
+                $"SELECT c.\"id\" FROM products AS c WHERE {Price} IS NOT NULL",
+                $"SELECT c.\"id\", {Price} * 2 AS \"p\" FROM products AS c",
+            })
+            {
+                var best = PlanToAsync(sql);
+                Render(FindCosmos(best)).Should().NotContain("c.price", "the parse is Calcite's: " + sql + "\n" + Plan(best));
+            }
+
+            Render(FindCosmos(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c")))
+                .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": c.price } FROM products c", "an asserted type is the value at the path");
+        }
+
         /// <remarks>
         /// Nothing is known about where converting to a date lands, so there is no bound to state — and
         /// the definedness the comparison implies is still worth pushing.

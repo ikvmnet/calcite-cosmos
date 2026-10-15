@@ -289,8 +289,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// This is the single gate every consumer of a path goes through — a projection, a filter, a
         /// partition key, a traversal — so refusing a spelling here refuses it everywhere, which is why
-        /// <see cref="IsArrayReturningJsonValue"/> is asked at this level rather than at any one of
-        /// them.
+        /// <see cref="IsArrayReturningJsonValue"/> and <see cref="IsParsingJsonValue"/> are asked at
+        /// this level rather than at any one of them.
         /// </para>
         /// </remarks>
         static bool IsJsonAccessor(RexCall call)
@@ -301,6 +301,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // it substitutes for is Calcite's to say -- measured, not the ones the standard names.
                 // See IsPlainJsonValue.
                 if (IsPlainJsonValue(call) == false)
+                    return false;
+
+                // A RETURNING that parses is a conversion of what the path holds and not the value, so
+                // it addresses no path in any clause either -- see IsParsingJsonValue.
+                if (IsParsingJsonValue(call))
                     return false;
 
                 // An array RETURNING on JSON_VALUE is not a construct SQL defines, so it addresses no
@@ -351,6 +356,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> parses the
+        /// value it reads rather than asserting its type — <c>DECIMAL</c>, of any precision and scale.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every other numeric or boolean <c>RETURNING</c> asserts, and this one converts.</b>
+        /// Measured against Calcite's runtime
+        /// (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>):
+        /// the others cast the value the JSON reader built to one Java class and raise on any other, so
+        /// <c>INTEGER</c> answers a stored <c>30</c> and raises on <c>"30"</c>, on <c>30.0</c> and on a
+        /// whole number past its range; <c>BIGINT</c> answers only a whole number past an
+        /// <c>INTEGER</c>'s, <c>DOUBLE</c> and <c>FLOAT</c> only a number written with a point or an
+        /// exponent, <c>SMALLINT</c>, <c>TINYINT</c> and <c>REAL</c> nothing at all, and <c>BOOLEAN</c>
+        /// only a stored boolean. <c>DECIMAL</c> reads a stored number as its exact value and a stored
+        /// string as the number its trimmed text parses as, so <c>"2"</c>, <c>" 2 "</c> and
+        /// <c>"2.0"</c> are each 2 to it; it raises only on what does not parse, a boolean and
+        /// <c>"x"</c> among them, and no <c>ON ERROR</c> clause catches that.
+        /// </para>
+        /// <para>
+        /// <b>So it is not the value at the path, and the service has nothing that is.</b> Written as
+        /// the path, <c>= 2</c> pushed as <c>c.body = 2</c> lost every document storing <c>"2"</c>;
+        /// read as the value it was, the fact extractor took the same equality to say the path holds
+        /// the number 2, and over a path the container declares a string rewrote the filter to
+        /// <c>FALSE</c>. Even over numbers alone the value is not the service's: a fraction is the
+        /// double's exact binary expansion, so a stored <c>0.1</c> under <c>RETURNING DECIMAL(10, 1)</c>
+        /// is not equal to <c>0.1</c> and is greater than it, where the service's doubles are equal.
+        /// And the literal it is compared with is cast to the comparison's scale, which against the
+        /// default <c>DECIMAL(19, 0)</c> truncates it: <c>= 2.5</c> keeps a stored 2.
+        /// </para>
+        /// <para>
+        /// <b>It is the cast of the rendering, written as a clause</b>, and is read as one:
+        /// <see cref="TryNumericCastOperand(RexNode, RexBuilder)"/> takes it, so a comparison through it
+        /// pushes the window it puts a stored number in and is rechecked above, exactly as
+        /// <c>CAST(JSON_VALUE(…) AS INTEGER)</c> is. Refused as a path
+        /// everywhere else — <see cref="IsJsonAccessor"/> — so a projection, a sort key, a grouping key,
+        /// a partition key and a fact all stay where Calcite computes them.
+        /// </para>
+        /// </remarks>
+        internal static bool IsParsingJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            return call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL;
+        }
+
+        /// <summary>
         /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses
         /// an array in the document rather than parsing one out of a string.
         /// </summary>
@@ -395,7 +447,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Nothing is done with them here: the type they declare is what the plan already says the
         /// column is, and the reading takes the service at its word — a declaration that disagrees with
         /// the document fails in materialisation rather than answering wrongly, which is the whole
-        /// reason the clause is worth trusting.
+        /// reason the clause is worth trusting. That holds of a clause that asserts its type, and
+        /// <c>DECIMAL</c> does not: it parses a stored string, so a document storing <c>"2"</c> agrees
+        /// with it in process and disagrees with the path. <see cref="IsJsonAccessor"/> refuses it
+        /// before this is asked — see <see cref="IsParsingJsonValue"/>.
         /// </para>
         /// </remarks>
         bool TryResolveJsonPath(RexCall call, out CosmosPath? path)
@@ -1044,6 +1099,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// so over integer data such a statement has no oracle to agree with, and the pushed one
         /// answers.
         /// </para>
+        /// <para>
+        /// <b>Not <c>DECIMAL</c></b>, which parses rather than asserts: it answers for a stored string
+        /// that spells a number too, so no type test is where it answers, and <c>IS_NUMBER</c> lost
+        /// exactly those documents. It addresses no path — <see cref="IsParsingJsonValue"/> — so
+        /// neither the accessor nor a field bound to one reaches here.
+        /// </para>
         /// </remarks>
         static SqlFunction? TypeTestOf(org.apache.calcite.rel.type.RelDataType? type)
         {
@@ -1056,7 +1117,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case nameof(SqlTypeName.FLOAT):
                 case nameof(SqlTypeName.REAL):
                 case nameof(SqlTypeName.DOUBLE):
-                case nameof(SqlTypeName.DECIMAL):
                     return CosmosOperators.IsNumber;
 
                 case nameof(SqlTypeName.BOOLEAN):
@@ -1341,6 +1401,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 return;
             }
+
+            // Said here rather than left to the function table, which would call JSON_VALUE unsupported:
+            // it is the conversion the clause names that has no Cosmos form, and the bound it implies
+            // still pushes -- see IsParsingJsonValue.
+            if (IsParsingJsonValue(call))
+                throw new CosmosTranslationException(
+                    "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine. A comparison through it pushes the bound it implies, as a cast to a number does.");
 
             // The position a NOT puts its operand in belongs to predicates, and only the connectives
             // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
@@ -2915,31 +2982,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Recognises <c>CAST(&lt;document value&gt; AS &lt;number&gt;)</c> whose conversion stays within
-        /// one of the stored value, and returns the value underneath.
+        /// one of the stored value, and returns the value underneath — or <c>JSON_VALUE(… RETURNING
+        /// DECIMAL)</c>, which is that conversion written as a clause, and returns the rendering it
+        /// converts.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <b>Not for translation.</b> Nothing renders a numeric cast: Calcite converts the stored
         /// value and the service compares it as it stands, so the two select different documents and
         /// the operator is declined. What this is for is <see cref="Rel.Convert.CosmosFilterSplitRule"/>,
         /// which pushes a restriction the predicate <em>implies</em> and rechecks the predicate itself
         /// above — a bound on the raw value is such a restriction, and the cast is what says the value
         /// is being read as a number at all.
+        /// </para>
+        /// <para>
+        /// <b>A parsing <c>RETURNING</c> is the same question</b>, and was read as the stored value
+        /// instead — see <see cref="IsParsingJsonValue"/>. It has no operand to return, the clause
+        /// adding none, so the value it converts is written out: the same call typed as the bare
+        /// accessor is, which is the rendering a cast to a number reads and which the translator writes
+        /// as the path where the bound compares it with a number. Built rather than found, hence the
+        /// builder.
+        /// </para>
         /// </remarks>
-        internal static RexNode? TryNumericCastOperand(RexNode node) => TryNumericCastOperand(node, out _);
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _);
 
-        /// <inheritdoc cref="TryNumericCastOperand(RexNode)" />
+        /// <inheritdoc cref="TryNumericCastOperand(RexNode, RexBuilder)" />
         /// <param name="node">The expression to inspect.</param>
+        /// <param name="rexBuilder">Builds the rendering a parsing <c>RETURNING</c> converts.</param>
         /// <param name="saturates">
         /// On success, the range the conversion saturates to, or <c>null</c> where it does not
         /// saturate. A comparison against one of these two values matches every stored value beyond it,
         /// which a bound must not exclude.
         /// </param>
-        internal static RexNode? TryNumericCastOperand(RexNode node, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates)
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates)
         {
             saturates = null;
 
             if (node is not RexCall call)
                 return null;
+
+            // RETURNING DECIMAL parses what the path holds -- a stored number as its exact value, a
+            // stored string as the number its text spells -- so a stored number it compares lies within
+            // one of the literal as surely as under the cast: the literal is cast to the comparison's
+            // scale, truncated toward zero, and the value is not (measured: `= 2.5` keeps a stored 2, and
+            // `> 2` a stored 2.4). It neither saturates nor raises on precision -- a stored 12345 under
+            // RETURNING DECIMAL(5, 1) is 12345 and equal to it -- so no side is spared. A behaviour clause
+            // substitutes a value the path does not hold, and is not this.
+            if (IsParsingJsonValue(call))
+            {
+                if (IsPlainJsonValue(call) == false)
+                    return null;
+
+                var types = rexBuilder.getTypeFactory();
+                var text = types.createTypeWithNullability(types.createSqlType(SqlTypeName.VARCHAR, 2000), true);
+                return rexBuilder.makeCall(text, call.getOperator(), call.getOperands());
+            }
 
             var kind = KindOf(call);
             if (kind != SqlKind.__Enum.CAST && kind != SqlKind.__Enum.SAFE_CAST)

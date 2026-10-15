@@ -202,6 +202,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().Be("(IS_DEFINED(c.price) AND NOT IS_NULL(c.price))", "a field nothing says was bound to an accessor is the raw value");
         }
 
+        RexNode Typed(string path, RexNode document, SqlTypeName type, int precision, int scale) => _rex.makeCall(
+            _types.createTypeWithNullability(_types.createSqlType(type, precision, scale), true),
+            SqlStdOperatorTable.JSON_VALUE,
+            Of(document, Str(path)));
+
+        /// <remarks>
+        /// <para>
+        /// <c>RETURNING DECIMAL</c> parses what the path holds, a stored <c>"2"</c> as 2, where every other numeric
+        /// <c>RETURNING</c> asserts. Written as the path, <c>= 2</c> pushed as <c>c.price = 2</c> and lost the string,
+        /// and <c>IS NOT NULL</c> and the guard under a <c>NOT</c> took <c>IS_NUMBER</c> as its null set and lost it
+        /// too. So it addresses no path, in any clause, and is left to the engine.
+        /// </para>
+        /// <para>
+        /// What a comparison through it still implies is the window a cast to a number puts a stored number in, and
+        /// the value it converts is the accessor read as text — the operand a cast would have had, written out because
+        /// the clause adds none.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ADecimalReturningAddressesNoPathAndIsReadAsACast()
+        {
+            var price = Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 19, 0);
+
+            CosmosRexTranslator.IsParsingJsonValue(price).Should().BeTrue();
+            Translator().TryResolvePath(price, out _).Should().BeFalse("a parse is not the value at the path");
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, price, Num(2))).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.EQUALS, price, Num(2)))).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.IS_NOT_NULL, price)).Should().BeFalse();
+            Translator().TryTranslateProjection(price, out _, out _).Should().BeFalse();
+
+            CosmosRexTranslator.TryNumericCastOperand(price, _rex).Should().Match<RexNode>(
+                rendering => CosmosRexTranslator.IsTextJsonValue(rendering), "the value it converts is the rendering");
+            Translator().TryResolvePath(CosmosRexTranslator.TryNumericCastOperand(price, _rex)!, out var path).Should().BeTrue();
+            path!.ToString().Should().Be("c.price");
+
+            CosmosRexTranslator.IsParsingJsonValue(Typed("$.price", Ref(2, SqlTypeName.VARCHAR), SqlTypeName.DECIMAL, 10, 2)).Should().BeTrue("at any scale");
+
+            // The control: a RETURNING that asserts is the value where Calcite answers one, and is written as the path.
+            var asserted = _rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.INTEGER), true), SqlStdOperatorTable.JSON_VALUE, Of(Ref(2, SqlTypeName.VARCHAR), Str("$.price")));
+
+            CosmosRexTranslator.IsParsingJsonValue(asserted).Should().BeFalse();
+            Translate(Call(SqlStdOperatorTable.EQUALS, asserted, Num(2))).Should().Be("(c.price = @p0)");
+            CosmosRexTranslator.TryNumericCastOperand(asserted, _rex).Should().BeNull("an asserted type is no conversion");
+        }
+
     }
 
 }

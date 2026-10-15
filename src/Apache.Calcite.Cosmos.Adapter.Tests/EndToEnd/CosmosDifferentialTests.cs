@@ -91,6 +91,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly CosmosContainerMetadata Typed = new("typed", new[] { "/category" });
 
         /// <summary>
+        /// A third container, and the only one with a declaration: <c>body</c> is a string and <c>n</c> an integer,
+        /// and every document keeps to that.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The other two declare nothing, so nothing in the corpus asked what a declaration lets the adapter
+        /// conclude, and a conclusion the clause does not license is a wrong answer only a declared container shows:
+        /// over this one, <c>JSON_VALUE(… RETURNING DECIMAL) = 2</c> was rewritten to <c>FALSE</c>, the equality read
+        /// as the path holding the number 2 and the declaration saying it holds a string.
+        /// </para>
+        /// <para>
+        /// The documents keep the declaration on purpose, unlike <c>typed</c>'s: a fact is the caller's word, and a
+        /// container that broke it would test the word rather than the reasoning. So every <c>body</c> is a string, and
+        /// most spell a number in a different way — <c>"2"</c>, <c>" 2 "</c>, <c>"2.0"</c> — which is what a parsing
+        /// <c>RETURNING</c> reads alike. None fails to parse, which would make the oracle raise.
+        /// </para>
+        /// </remarks>
+        static readonly CosmosContainerMetadata Declared = new CosmosContainerMetadata("declared", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" } } }""")!));
+
+        /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
         /// category and one with none, which land in different groups than either expects; names for
         /// the LIKE shapes; a nested object and arrays.
@@ -135,9 +157,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"9","category":"a","name":"Huge","price":9,"label":"huge","big":1e30}""",
         ];
 
+        /// <summary>
+        /// The documents the declared container holds: a string at <c>body</c> in all but one, which lacks it, and an
+        /// integer at <c>n</c>.
+        /// </summary>
+        static readonly string[] DeclaredDocuments =
+        [
+            """{"id":"1","category":"a","body":"2","n":1}""",
+            """{"id":"2","category":"a","body":" 2 ","n":2}""",
+            """{"id":"3","category":"a","body":"3","n":3}""",
+            """{"id":"4","category":"a","body":"2.0","n":2}""",
+            """{"id":"5","category":"b","body":"2.5","n":5}""",
+            """{"id":"6","category":"b"}""",
+        ];
+
         static CosmosClient? _client;
         static Container? _container;
         static Container? _typedContainer;
+        static Container? _declaredContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -164,6 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 _container = await Seed(database, "products", Documents, cts.Token);
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
+                _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
 
                 _client = client;
             }
@@ -174,6 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _client = null;
                 _container = null;
                 _typedContainer = null;
+                _declaredContainer = null;
             }
         }
 
@@ -209,6 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _client = null;
             _container = null;
             _typedContainer = null;
+            _declaredContainer = null;
         }
 
         sealed class TestDataContext : DataContext
@@ -241,10 +281,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var typeFactory = new JavaTypeFactoryImpl();
             var table = new CosmosTable(Products, new CosmosQueryExecutor(_container!));
             var typed = new CosmosTable(Typed, new CosmosQueryExecutor(_typedContainer!));
+            var declared = new CosmosTable(Declared, new CosmosQueryExecutor(_declaredContainer!));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
             rootSchema.add("typed", typed);
+            rootSchema.add("declared", declared);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -277,7 +319,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention })
+            foreach (var convention in new[] { table.Convention, typed.Convention, declared.Convention })
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -965,6 +1007,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') = 'Exact'", false),                       // N3
             ("SELECT c.\"id\", JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') FROM typed AS c", false),
             ("SELECT c.\"id\", JSON_VALUE(JSON_QUERY(c.\"DOC\", '$.metadata'), '$.sku') FROM products AS c", false),                           // N2
+
+
+            // ── RETURNING DECIMAL, which parses ──────────────────────────────────────
+            //
+            // Every other numeric RETURNING asserts its type and raises on anything else; DECIMAL parses what the path
+            // holds, a stored "2" as 2. Read as the path, and as a claim that the path holds the number, it lost the
+            // strings at the service and rewrote a filter over a declared string to FALSE. Found by the review of the
+            // predicate oracle's gate, whose two statements open this.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) > 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2.5", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL(10, 1)) = 2.5", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) <> 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) IN (2, 3)", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) AS \"B\" FROM declared AS c) AS p WHERE p.\"B\" = 2", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) FROM declared AS c", false),
+            ("SELECT c.\"id\" FROM declared AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL), c.\"id\"", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL), COUNT(*) FROM declared AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) = 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) > 2", false),
+
+            // The same over a container that declares nothing, where typed's price is the number 30 in one document and
+            // the string "30" in another; and over products', which holds only numbers, as the control.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) > 8", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) FROM typed AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) > 100", false),
+
+            // The controls: text over the declared string is the value, and pushes exactly; a RETURNING that asserts is
+            // the value wherever Calcite answers one.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') = '2'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) = 2", false),
         ];
 
         /// <summary>

@@ -85,7 +85,9 @@ the `typed` container holds one per document for that — and its negation, its 
 expression inside a `CASE`. Then read it as a value as well as a truth: selected, grouped by, and
 compared with `FALSE`, since a `WHERE` cannot tell false from unknown and a column can. A second
 review of the fixes, sweeping exactly those neighbours, found some thirty more; they are in the corpus
-under the names it gave them.
+under the names it gave them. Where a pushdown reads a declaration, add its statements over the
+`declared` container too, whose documents keep what it declares: a conclusion the operator does not
+license is wrong only where something is declared.
 
 ### Measurements
 

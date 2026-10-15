@@ -56,6 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 CosmosPath.Root("c").Property("ref"),    // 0
                 CosmosPath.Root("c").Property("kind"),   // 1
                 CosmosPath.Root("c").Property("body"),   // 2
+                CosmosPath.Root("c"),                    // 3 — the whole document
             };
         }
 
@@ -66,6 +67,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
         RexNode Ref(int index, SqlTypeName type) => _rex.makeInputRef(_types.createSqlType(type), index);
+
+        /// <summary>
+        /// <c>body</c> read as a number of the type it asserts: a field bound to <c>JSON_VALUE(… RETURNING DOUBLE)</c>,
+        /// whose rows hold a number at the path wherever Calcite answers one.
+        /// </summary>
+        /// <remarks>
+        /// <c>DOUBLE</c> and not <c>DECIMAL</c>, which these were written with: <c>RETURNING DECIMAL</c> parses a stored
+        /// string, so <c>= 2</c> through it keeps a document storing <c>"2"</c>, and a contradiction with a declared
+        /// string was the wrong answer it gave. It addresses no path now, so no field is bound to one — see
+        /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/> and
+        /// <see cref="ADecimalReturningIsNoClaimThatThePathHoldsANumber"/>.
+        /// </remarks>
+        RexNode Number() => Ref(2, SqlTypeName.DOUBLE);
 
         RexNode Uuid(string value) =>
             _rex.makeLiteral(java.util.UUID.fromString(value), _types.createSqlType(SqlTypeName.UUID), false);
@@ -628,7 +642,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var value = schema.Contains("1.5") ? "1.5" : "1.0";
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
-                Ref(2, SqlTypeName.DECIMAL),
+                Number(),
                 _rex.makeExactLiteral(new java.math.BigDecimal(value)));
 
             Rewrite(equality, schema).Should().NotBe("false", "the declared domain holds the value compared against");
@@ -654,7 +668,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void AWholeNumberIsANumberTheSchemaDeclares(string schema, string value)
         {
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
-                Ref(2, SqlTypeName.DECIMAL),
+                Number(),
                 _rex.makeExactLiteral(new java.math.BigDecimal(value)));
 
             Rewrite(equality, schema).Should().NotBe("false", "the declared type admits the value compared against");
@@ -670,10 +684,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void AValueOutsideTheDeclaredTypeIsAContradiction(string schema, string value)
         {
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
-                Ref(2, SqlTypeName.DECIMAL),
+                Number(),
                 _rex.makeExactLiteral(new java.math.BigDecimal(value)));
 
             Rewrite(equality, schema).Should().Be("false", "no document holds the value and satisfies the declaration");
+        }
+
+        /// <summary>
+        /// An equality through <c>RETURNING DECIMAL</c> says nothing a declared string contradicts, because the clause
+        /// parses the string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// It was read as exact, the path holding the number 2, and beside <c>"type": "string"</c> the rewriter answered
+        /// <c>FALSE</c>. Measured on the emulator over a container declared so, holding <c>"2"</c>, <c>" 2 "</c>,
+        /// <c>"3"</c> and <c>"2.0"</c>: the pushed plan returned nothing for <c>= 2</c>, and Calcite returns three
+        /// documents; nothing for <c>&gt; 2</c>, and Calcite returns <c>"3"</c>.
+        /// </para>
+        /// <para>
+        /// What it establishes is what a cast to a number does: the path is there, and a number there is within one of
+        /// the literal. Neither is a contradiction with a string. The control is <c>RETURNING DOUBLE</c>, which asserts,
+        /// and over a declared string keeps nothing Calcite would answer for.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ADecimalReturningIsNoClaimThatThePathHoldsANumber()
+        {
+            const string Strings = """{ "properties": { "body": { "type": "string" } } }""";
+
+            RexNode Accessor(SqlTypeName type) => _rex.makeCall(
+                _types.createTypeWithNullability(_types.createSqlType(type), true),
+                SqlStdOperatorTable.JSON_VALUE,
+                new java.util.ArrayList { Ref(3, SqlTypeName.VARCHAR), Str("$.body") });
+
+            foreach (var op in new[] { SqlStdOperatorTable.EQUALS, SqlStdOperatorTable.GREATER_THAN })
+            {
+                var parsed = _rex.makeCall(op, Accessor(SqlTypeName.DECIMAL), _rex.makeExactLiteral(new java.math.BigDecimal(2)));
+                Rewrite(parsed, Strings).Should().Be(parsed.ToString(), "a stored \"2\" is 2 to it, and nothing is rewritten");
+            }
+
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2))), Strings)
+                .Should().Be("false", "an asserted type is a claim, and the declaration contradicts it");
         }
 
 
