@@ -3306,7 +3306,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             else if (target == SqlTypeName.BIGINT)
                 saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
             else
-                roundsFrom = new java.math.BigDecimal(1L << 52);
+                roundsFrom = new java.math.BigDecimal(Apache.Calcite.Cosmos.Facts.Saturation.Renderings.DoubleUnitFrom);
 
             return operand;
         }

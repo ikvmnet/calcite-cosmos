@@ -226,20 +226,90 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             SqlPredicate? Comparison(RexCall call, string op)
             {
-                var left = Value((RexNode)call.getOperands().get(0));
-                var right = Value((RexNode)call.getOperands().get(1));
+                var a = (RexNode)call.getOperands().get(0);
+                var b = (RexNode)call.getOperands().get(1);
 
-                if (left is not null && right is not null)
-                {
-                    if (left.PathRead is not null && Compares(left, right))
-                        return new SqlPredicate.Compare(op, left, right);
+                if (Value(a) is { PathRead: not null } left && Comparand(b, left) is SqlValue right && Compares(left, right))
+                    return new SqlPredicate.Compare(op, left, right);
 
-                    if (right.PathRead is not null && Compares(right, left))
-                        return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), right, left);
-                }
+                if (Value(b) is { PathRead: not null } mirrored && Comparand(a, mirrored) is SqlValue other && Compares(mirrored, other))
+                    return new SqlPredicate.Compare(SqlPredicate.Compare.Mirror(op), mirrored, other);
 
                 return null;
             }
+
+            /// <summary>
+            /// Reads what a reading is compared with: a parameter, a literal, and against a conversion to a number the
+            /// constant <see cref="CosmosNumericWindow"/> reads there.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// <b>A number a conversion is compared with arrives cast</b> — <c>&lt;= 30.5</c> against a cast to
+            /// <c>DOUBLE</c> as <c>CAST(30.5:DECIMAL(3, 1)):DOUBLE</c>, and against <c>RETURNING DECIMAL</c> as the
+            /// literal cast to the clause's scale — and is read as the window reads it, in one place: a cast to a
+            /// number is the constant, except one to a <c>DECIMAL</c> its whole digits do not fit, which raises in
+            /// Calcite and is no constant at all. A cast that drops scale truncates the literal, which the conversion
+            /// <c>RETURNING DECIMAL</c> is, alone, reads as such (<c>PredicateAtom</c>); against any other reading a
+            /// truncated literal would be read as a number Calcite does not compare with, and is not read.
+            /// </para>
+            /// <para>
+            /// Anything else is a literal as written, or boxed for a <c>VARIANT</c> comparison.
+            /// </para>
+            /// </remarks>
+            SqlValue? Comparand(RexNode node, SqlValue reading)
+            {
+                if (node is RexDynamicParam)
+                    return Value(node);
+
+                var converts = reading is SqlValue.Cast { Target: "INTEGER" or "BIGINT" or "DOUBLE" } or SqlValue.Typed { Type: "DECIMAL" };
+                if (converts && node is RexCall && Constant(node, truncates: reading is SqlValue.Typed) is java.math.BigDecimal number)
+                    return Number(number);
+
+                return CosmosRexTranslator.StripVariantCoercion(node) is RexLiteral literal ? Literal(literal) : null;
+            }
+
+            /// <summary>
+            /// Reads a number through the casts around it to <c>DOUBLE</c> and to <c>DECIMAL</c>, or answers <c>null</c>:
+            /// where another cast converts it, where a <c>DECIMAL</c> drops its scale and <paramref name="truncates"/> is
+            /// clear, or where <see cref="CosmosNumericWindow"/> reads no constant.
+            /// </summary>
+            static java.math.BigDecimal? Constant(RexNode node, bool truncates)
+            {
+                for (var inner = node; inner is RexCall call; inner = (RexNode)call.getOperands().get(0))
+                {
+                    if (call.getKind().name() is not (nameof(SqlKind.__Enum.CAST) or nameof(SqlKind.__Enum.SAFE_CAST)) || call.getOperands().size() != 1)
+                        return null;
+
+                    var type = call.getType();
+                    if (type?.getSqlTypeName() == SqlTypeName.DOUBLE)
+                        continue;
+
+                    if (type?.getSqlTypeName() != SqlTypeName.DECIMAL)
+                        return null;
+
+                    if (truncates == false && Innermost(call) is RexLiteral { } literal && literal.getValue() is java.math.BigDecimal value && value.scale() > type.getScale())
+                        return null;
+                }
+
+                return CosmosNumericWindow.TryConstantNumber(node);
+            }
+
+            static RexNode Innermost(RexNode node)
+            {
+                while (node is RexCall call && call.getOperands().size() == 1)
+                    node = (RexNode)call.getOperands().get(0);
+
+                return node;
+            }
+
+            /// <summary>
+            /// The literal of a number, as the translator would send it: past 2^53, the whole number it is, and none where
+            /// no value the service compares as the number exists (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>).
+            /// </summary>
+            static SqlValue? Number(java.math.BigDecimal number) =>
+                CosmosRexTranslator.TryGetExactNumberValue(number) is object value && JsonScalar.TryFrom(value, out var scalar) && scalar.IsNull == false
+                    ? SqlValue.Of(scalar)
+                    : null;
 
             /// <summary>
             /// Determines whether a reading is compared with an operand of this kind: a parameter of any, and a literal of
@@ -282,6 +352,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     case RexInputRef reference:
                         return Field(reference);
+
+                    // RETURNING DECIMAL parses the rendering, and the translator reads it as the cast of the text it
+                    // converts (CosmosRexTranslator.IsParsingJsonValue); PredicateAtom's typed:DECIMAL is that parse.
+                    case RexCall call when CosmosRexTranslator.IsParsingJsonValue(call):
+                        return CosmosRexTranslator.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode rendered && Value(rendered) is SqlValue.Text text
+                            ? new SqlValue.Typed(text.Path, "DECIMAL")
+                            : null;
 
                     case RexCall call when call.getOperator().getName() == "JSON_VALUE":
                         return Accessor(call);
@@ -349,6 +426,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Reads a cast: the coercion Calcite puts around a literal, the split rule's <c>ANY</c> naming the raw value
             /// under a rendering, a numeric cast the translator recognises, and the cast to text over a raw value.
             /// </summary>
+            /// <remarks>
+            /// A numeric cast is the translator's to recognise (<see cref="CosmosRexTranslator.TryNumericCastOperand(RexNode, RexBuilder)"/>),
+            /// and what it does to a number is <c>PredicateAtom</c>'s to say, in one place each: a cast to <c>DOUBLE</c>
+            /// moving a stored integer by a unit from 2^52 among it. A number compared with one is read in
+            /// <see cref="Comparand"/>.
+            /// </remarks>
             SqlValue? Cast(RexCall call)
             {
                 var kind = call.getKind().name();
@@ -358,16 +441,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var operand = (RexNode)call.getOperands().get(0);
                 var target = call.getType()?.getSqlTypeName();
 
-                // A literal boxed for a VARIANT comparison, or widened to a double, is the literal.
+                // A literal boxed for a VARIANT comparison is the literal.
                 if (operand is RexLiteral literal)
-                    return target == SqlTypeName.VARIANT || target == SqlTypeName.DOUBLE || target == SqlTypeName.FLOAT || target == SqlTypeName.REAL
-                        ? Literal(literal)
-                        : null;
+                    return target == SqlTypeName.VARIANT ? Literal(literal) : null;
 
                 if (target == SqlTypeName.ANY)
                     return Value(operand) is { PathRead: JsonDocumentPath raw } inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Raw(raw) : null;
 
-                if (CosmosRexTranslator.TryNumericCastOperand(call) is RexNode converted)
+                if (CosmosRexTranslator.TryNumericCastOperand(call, RexBuilderHolder.Value) is RexNode converted)
                     return Value(converted) is SqlValue inner && inner is SqlValue.Text or SqlValue.Raw ? new SqlValue.Cast(target!.getName(), inner) : null;
 
                 if (CosmosRexTranslator.TryTextCastValue(call) is RexNode rendered)

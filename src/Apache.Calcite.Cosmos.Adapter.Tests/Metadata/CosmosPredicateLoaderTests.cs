@@ -129,6 +129,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             One(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.INTEGER), Num(30))).Should().Be(Eq(Typed(N, "INTEGER"), 30m));
         }
 
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> addresses no path — <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — and is read
+        /// through the cast of the text it is, <see cref="CosmosRexTranslator.TryNumericCastOperand(RexNode, RexBuilder)"/>:
+        /// the reading whose meaning is the parse (<c>typed:DECIMAL</c>), with the literal cast to its scale read as the
+        /// window reads it, and one its whole digits do not fit read as nothing.
+        /// </summary>
+        [Fact]
+        public void ADecimalReturningIsTheParseOfTheText()
+        {
+            One(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.DECIMAL), Num(2))).Should().Be(Eq(Typed(N, "DECIMAL"), 2m));
+
+            var truncated = _rex.makeCast(_types.createSqlType(SqlTypeName.DECIMAL, 19, 0), _rex.makeExactLiteral(new java.math.BigDecimal("2.5")));
+            One(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.DECIMAL), truncated)).Should().Be(Eq(Typed(N, "DECIMAL"), 2.5m),
+                "the literal Calcite truncates is within one of what it was, as the window reads it");
+
+            var overflowing = _rex.makeCast(_types.createSqlType(SqlTypeName.DECIMAL, 19, 18), Num(50));
+            One(Call(SqlStdOperatorTable.EQUALS, JsonValue("n", SqlTypeName.DECIMAL), overflowing)).Should().BeOfType<SqlPredicate.Opaque>(
+                "fifty has two whole digits and DECIMAL(19, 18) one: the cast raises, and there is no constant");
+        }
+
+        /// <summary>
+        /// A number compared with a cast to a number is read through the casts the window reads through — to
+        /// <c>DOUBLE</c> and to <c>DECIMAL</c> — and as the value the translator sends: past 2^53, the whole number it is.
+        /// A cast that drops scale is read only against <c>RETURNING DECIMAL</c>, whose reading knows the literal moves.
+        /// </summary>
+        [Fact]
+        public void ANumberComparedWithACastIsReadAsTheWindowReadsIt()
+        {
+            var widened = _rex.makeCast(Sql(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal("30.5")));
+            One(Call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, _rex.makeCast(Sql(SqlTypeName.DOUBLE), JsonValue("n")), widened))
+                .Should().Be(Cmp(Cast("DOUBLE", Text(N)), "<=", Lit(30.5m)));
+
+            var big = _rex.makeExactLiteral(new java.math.BigDecimal("1152921504606846977"));
+            One(Call(SqlStdOperatorTable.EQUALS, _rex.makeCast(Sql(SqlTypeName.BIGINT), JsonValue("n")), big))
+                .Should().Be(Cmp(Cast("BIGINT", Text(N)), "=", Lit(1152921504606846977m)));
+
+            var truncated = _rex.makeCast(_types.createSqlType(SqlTypeName.DECIMAL, 19, 0), _rex.makeExactLiteral(new java.math.BigDecimal("2.5")));
+            One(Call(SqlStdOperatorTable.EQUALS, _rex.makeCast(Sql(SqlTypeName.INTEGER), JsonValue("n")), truncated)).Should().BeOfType<SqlPredicate.Opaque>(
+                "a cast compares the 2 Calcite truncated to, which is not 2.5");
+        }
+
         [Fact]
         public void APromotedColumnIsTheRawValueAndItsLiteralTheBoxedOne()
         {

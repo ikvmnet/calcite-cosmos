@@ -199,6 +199,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             fraction.Kept(true).Lower.Should().Be(Bound.Above(1.5m), "the window holds whatever the literal is cast to");
         }
 
+        /// <summary>
+        /// A cast to <c>DOUBLE</c> rounds the stored number and the literal each to a double, which from 2^52 is a whole
+        /// unit wide: no window holds around such a bound, and two numbers a unit apart are one double past 2^53.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosNumericWindow</c> reads no window there either (<c>CosmosRexTranslator.TryNumericCastOperand</c>
+        /// reports where the conversion rounds from), measured as <c>= 2^60</c> keeping a stored 2^60 + 1.
+        /// </remarks>
+        [Fact]
+        public void ADoubleCastStatesNoWindowWhereADoublesUnitIsWhole()
+        {
+            const decimal Big = 1152921504606846976m;   // 2^60
+            var reader = PredicateAtom.CastReader("DOUBLE", Text);
+
+            var equal = PredicateAtom.Compare(reader, "=", Of(Big));
+            equal.Kept(true).Lower.Should().BeNull("a stored 2^60 + 1 rounds to the literal's double");
+            equal.Kept(true).Upper.Should().BeNull();
+            equal.Over(Holding(Of(Big + 1))).Should().HaveFlag(Truths.True, "2^60 + 1 is 2^60 as a double");
+
+            var range = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.Above(Big)));
+            PredicateAtom.Compare(reader, ">", Of(Big)).Over(range).Should().HaveFlag(Truths.False, "a number above 2^60 may be 2^60 as a double");
+            PredicateAtom.Compare(reader, "=", Of(Big)).NeverTrue(range).Should().BeFalse();
+
+            PredicateAtom.Compare(reader, "=", Of(30m)).Kept(true).Lower.Should().Be(Bound.Above(29m), "below 2^52 the window holds");
+        }
+
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> compares the number the rendering parses as, exactly: past 2^53, two numbers a unit apart
+        /// are not one, as they are to a double.
+        /// </summary>
+        [Fact]
+        public void ADecimalReturningComparesExactlyPastADouble()
+        {
+            const decimal Big = 1152921504606846976m;   // 2^60
+
+            PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(Big)).Over(Holding(Of(Big + 1))).Should().Be(Truths.False);
+            PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), "=", Of(Big)).Over(Holding(Of(Big + 1))).Should().Be(Truths.True);
+        }
+
         [Fact]
         public void AMembershipIsTheDisjunctionOfItsEqualities()
         {

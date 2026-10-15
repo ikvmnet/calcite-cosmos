@@ -718,6 +718,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 readonly (decimal Min, decimal Max)? _saturates;
 
                 /// <summary>
+                /// Where the conversion may move a stored number by a whole unit, beyond which no window holds: a double's,
+                /// from <see cref="Renderings.DoubleUnitFrom"/>.
+                /// </summary>
+                readonly decimal? _roundsFrom;
+
+                /// <summary>
                 /// What a stored number may do beside converting: raise, where the rendering is parsed as an integer.
                 /// </summary>
                 readonly Truths _parse;
@@ -732,6 +738,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         "BIGINT" => (long.MinValue, long.MaxValue),
                         _ => null,
                     };
+                    _roundsFrom = target == "DOUBLE" ? Renderings.DoubleUnitFrom : null;
                     _parse = overText && _saturates is not null ? R : Truths.None;
                 }
 
@@ -811,12 +818,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// <summary>
                 /// The window a TRUE comparison puts a stored number in: above one less than the bound, and below one more.
                 /// A side holds only where the cast's saturation limit fails the comparison, every stored number beyond a
-                /// limit converting to it.
+                /// limit converting to it; and neither holds around a bound a double's unit in the last place is whole at,
+                /// where the stored value and the literal each round by up to half of it (<c>CosmosNumericWindow</c>).
                 /// </summary>
                 (decimal? Above, decimal? Below) Window(string op, decimal bound)
                 {
                     decimal? above = null;
                     decimal? below = null;
+
+                    if (_roundsFrom is decimal rounds && Math.Abs(bound) >= rounds)
+                        return (null, null);
 
                     if (op is PredicateAtom.Equal or Greater or GreaterOrEqual && bound > decimal.MinValue + 1)
                         if (_saturates is not { } s || Satisfies(op, s.Min, bound) == false)
@@ -830,6 +841,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 }
 
                 /// <summary>Whether a stored number, converted, satisfies the comparison; <c>null</c> where it cannot be told.</summary>
+                /// <remarks>
+                /// A cast to <c>DOUBLE</c> compares two doubles, the stored number's and the literal's, which past 2^53 may be
+                /// one double for two numbers. <c>RETURNING DECIMAL</c> compares the number the rendering parses as, exactly,
+                /// with the literal; one past a decimal is not told.
+                /// </remarks>
                 bool? Holds(string op, string value, string literal)
                 {
                     if (TryNumberOf(value, out var exact))
@@ -840,8 +856,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             return TryNumberOf(literal, out var bound) ? Satisfies(op, converted, bound) : (bool?)null;
                         }
 
+                        if (_target == "DECIMAL")
+                            return TryNumberOf(literal, out var parsed) ? Satisfies(op, exact, parsed) : (bool?)null;
+
                         return Satisfies(op, (double)exact, Renderings.DoubleOf(literal));
                     }
+
+                    if (_target == "DECIMAL")
+                        return null;
 
                     if (ApproximateOf(value) is double approximate)
                     {
@@ -862,14 +884,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// </summary>
                 /// <remarks>
                 /// A conversion that truncates is monotone, so a range converts to the range between its converted ends,
-                /// read as closed. A conversion to a double is compared as Calcite compares doubles, where two decimals
-                /// may round to one, so its ends are read as closed too. Both read more than the conversion yields, which
-                /// is the safe side: a verdict is never reached that a narrower reading would refuse.
+                /// read as closed. A conversion to a double is monotone too, and rounds: the range converts to the doubles
+                /// of its ends, compared with the literal's double, every one read as closed, because past 2^53 two numbers
+                /// a unit apart may be one double. Both read more than the conversion yields, which is the safe side: a
+                /// verdict is never reached that a narrower reading would refuse.
                 /// </remarks>
                 Truths Range(string op, State.AnyNumber numbers, string literal)
                 {
                     if (TryNumberOf(literal, out var c) == false)
                         return Truths.Any;
+
+                    if (_roundsFrom is not null)
+                        return Doubles(op, numbers.Lower is Bound l ? (double)l.Value : null, numbers.Upper is Bound h ? (double)h.Value : null, (double)c);
 
                     decimal? low, high;
                     if (_saturates is { } s)
@@ -891,6 +917,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     {
                         PredicateAtom.Equal => (whole && SomeBelow(false) && SomeAbove(false) ? T : 0) | (low == c && high == c ? 0 : F),
                         NotEqual => (whole && SomeBelow(false) && SomeAbove(false) ? F : 0) | (low == c && high == c ? 0 : T),
+                        Less => (SomeBelow(true) ? T : 0) | (SomeAbove(false) ? F : 0),
+                        LessOrEqual => (SomeBelow(false) ? T : 0) | (SomeAbove(true) ? F : 0),
+                        Greater => (SomeAbove(true) ? T : 0) | (SomeBelow(false) ? F : 0),
+                        GreaterOrEqual => (SomeAbove(false) ? T : 0) | (SomeBelow(true) ? F : 0),
+                        _ => Truths.Any,
+                    };
+                }
+
+                /// <summary>
+                /// The truth values of a comparison between the doubles of a range, read as closed, and a literal's double.
+                /// </summary>
+                static Truths Doubles(string op, double? low, double? high, double c)
+                {
+                    bool SomeBelow(bool strict) => low is not double a || (strict ? a < c : a <= c);
+                    bool SomeAbove(bool strict) => high is not double b || (strict ? b > c : b >= c);
+
+                    return op switch
+                    {
+                        PredicateAtom.Equal => (SomeBelow(false) && SomeAbove(false) ? T : 0) | (low == c && high == c ? 0 : F),
+                        NotEqual => (SomeBelow(false) && SomeAbove(false) ? F : 0) | (low == c && high == c ? 0 : T),
                         Less => (SomeBelow(true) ? T : 0) | (SomeAbove(false) ? F : 0),
                         LessOrEqual => (SomeBelow(false) ? T : 0) | (SomeAbove(true) ? F : 0),
                         Greater => (SomeAbove(true) ? T : 0) | (SomeBelow(false) ? F : 0),
@@ -944,6 +990,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// </remarks>
     internal static class Renderings
     {
+
+        /// <summary>
+        /// The magnitude from which a double's unit in the last place is whole: 2^52.
+        /// </summary>
+        /// <remarks>
+        /// A cast to <c>DOUBLE</c> rounds a stored integer and the literal it is compared with by up to half of that unit
+        /// each, so from here two whole numbers a unit apart may compare equal — measured, <c>= 2^60</c> keeps a stored
+        /// 2^60 + 1 — and no window a unit wide holds around a bound. <c>CosmosRexTranslator.TryNumericCastOperand</c>
+        /// reports it as where the conversion rounds from; this is the one place it is written.
+        /// </remarks>
+        public const long DoubleUnitFrom = 1L << 52;
 
         /// <summary>
         /// Determines whether text is in the grammar a stored number renders in: digits, a point, an exponent, a sign.

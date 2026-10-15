@@ -196,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// its whole digits do not fit is refused.
         /// </para>
         /// </remarks>
-        static java.math.BigDecimal? TryConstantNumber(RexNode node)
+        internal static java.math.BigDecimal? TryConstantNumber(RexNode node)
         {
             var narrowest = int.MaxValue;
 
