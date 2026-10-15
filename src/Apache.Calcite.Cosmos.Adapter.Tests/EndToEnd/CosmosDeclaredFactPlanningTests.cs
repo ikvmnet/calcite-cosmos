@@ -1642,6 +1642,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A declared string lets a sort over the text accessor reach the service, and the column it
+        /// projects keeps the guard.
+        /// </summary>
+        /// <remarks>
+        /// The service orders the stored value and SQL the text, so over an undeclared path the two
+        /// orders part wherever a second JSON type is stored —
+        /// <c>CosmosPlannerTests.ASortOverAColumnThatIsNotTheStoredValueStaysAbove</c> holds that side
+        /// in process. A path declared a string, or null, holds no second type, and its text is its
+        /// value: the exception the filter, the lookup join and a grouping take, asked of the same
+        /// method. A null sorts first ascending at the service as the placement asks.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT JSON_VALUE(c."DOC", '$.t') FROM items AS c ORDER BY 1 NULLS FIRST""", "ORDER BY c.t ASC")]
+        [InlineData("""SELECT JSON_VALUE(c."DOC", '$.t') FROM items AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 10 ROWS ONLY""", "ORDER BY c.t DESC OFFSET 0 LIMIT 10")]
+        [InlineData("""SELECT p."T" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.t') AS "T" FROM items AS c) AS p ORDER BY p."T" NULLS FIRST""", "ORDER BY c.t ASC")]
+        public void ADeclaredStringLetsASortOverTheTextAccessorPush(string sql, string clause)
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": ["string", "null"] } } }""");
+            var best = PlanToCosmos(sql, container, out _);
+
+            PlanText(best).Should().Contain("CosmosSort", "the sort reaches the service: " + PlanText(best));
+
+            var statement = Query(FindCosmos(best), container).Sql;
+            statement.Should().Contain(clause, statement);
+            statement.Should().Contain("(IS_PRIMITIVE(c.t) ? c.t : null)", "the column is still the guarded accessor: " + statement);
+        }
+
+        /// <summary>
+        /// A declaration that leaves room for anything but a string leaves the sort in process.
+        /// </summary>
+        /// <remarks>
+        /// A number declared is the sharpest case: its text is digits, and <c>'10'</c> sorts before
+        /// <c>'9'</c> where the service orders the numbers. A string or a number is two types; an object
+        /// with no word about the path is none.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "type": "object", "properties": { "t": { "type": "integer" } } }""")]
+        [InlineData("""{ "type": "object", "properties": { "t": { "type": ["string", "number"] } } }""")]
+        [InlineData("""{ "type": "object", "properties": { "u": { "type": "string" } } }""")]
+        public void ASortOverTheTextAccessorOfAPathNotDeclaredAStringStaysAbove(string schema)
+        {
+            var container = Declaring(schema);
+            var best = PlanToCosmos("""SELECT JSON_VALUE(c."DOC", '$.t') FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
+
+            PlanText(best).Should().NotContain("CosmosSort", "the service would order the stored values: " + PlanText(best));
+        }
+
+        /// <summary>
         /// Without the declaration the same comparison is weakened, exactly as it was.
         /// </summary>
         /// <remarks>

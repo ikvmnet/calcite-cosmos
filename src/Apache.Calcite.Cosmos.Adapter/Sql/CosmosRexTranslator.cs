@@ -1282,7 +1282,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>The lookup join asks it too</b>, of a key column the probe side reads as text: its
         /// restriction is the raw <c>path IN (@k…)</c>, which is this equality against a parameter
-        /// once per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>.
+        /// once per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>. So do a grouping key and a sort
+        /// key, which group and order the path where SQL groups and orders the column — all three
+        /// through <see cref="IsReadAsStored"/>.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
@@ -1310,6 +1312,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// What the container declares outright, derived once per translator and only where asked.
         /// </summary>
         JsonFactSet? _declared;
+
+        /// <summary>
+        /// Determines whether a field, as it is read back, is the value the service holds at the path
+        /// it binds to.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Three operators act on the stored value in the field's place, and each has to ask.</b> A
+        /// field bound to a path lets an operator above it address the document — which is what the
+        /// binding is for, and which says nothing about whether the stored value and the column agree.
+        /// The lookup join restricts <c>path IN (@k…)</c> and matches the column; a grouping key groups
+        /// the path and SQL groups the column; a sort orders by the path and SQL orders the column. Each
+        /// is right exactly where the two are the same value, and that is a question about the field's
+        /// <see cref="CosmosReading"/>, asked here once so that the three cannot answer it three ways.
+        /// </para>
+        /// <para>
+        /// <b>Read as declared</b>, the column is the stored value. <b>Read as text</b>, it is a
+        /// rendering: a stored <c>30</c> and a stored <c>"30"</c> are one value as text and two at the
+        /// service, a stored <c>true</c> renders as <c>'true'</c> and sorts below every number there,
+        /// and a stored number sorts numerically where its digits sort as text. The exception is
+        /// <see cref="IsDeclaredStringOutright"/>'s, a container declaring the path a string and nothing
+        /// else, where the rendering is the value. <b>Read as JSON</b> — the document column, or a
+        /// <c>JSON_QUERY</c> fragment — it is a serialisation of an object or an array, which the service
+        /// orders by rules of its own, measured to differ from their text's order (<c>DESIGN.md</c>,
+        /// under <em>Ordering a sort key the way it reads</em>), and equates by rules nobody has
+        /// measured against their text's equality.
+        /// </para>
+        /// <para>
+        /// A caller with an exception of its own takes it before asking: a grouping by the document
+        /// column groups nothing, no two documents being equal — see
+        /// <c>CosmosAggregateRule.GroupsAsTheColumnReads</c> — and a sort refuses an array however it
+        /// is read, the service's order over arrays not being SQL's — see
+        /// <c>CosmosSort.TryResolveSortKeys</c>.
+        /// </para>
+        /// </remarks>
+        /// <param name="reference">The field.</param>
+        /// <returns><c>true</c> where an operator on the stored value is an operator on the column.</returns>
+        internal bool IsReadAsStored(RexInputRef reference)
+        {
+            var index = reference.getIndex();
+
+            return (index >= 0 && index < _readings.Count ? _readings[index] : CosmosReading.Typed) switch
+            {
+                CosmosReading.Typed => true,
+                CosmosReading.Text => IsDeclaredStringOutright(reference),
+                _ => false,
+            };
+        }
 
         bool IsDeclaredString(RexNode node)
         {

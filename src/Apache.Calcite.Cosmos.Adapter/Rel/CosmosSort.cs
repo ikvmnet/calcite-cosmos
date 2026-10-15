@@ -130,7 +130,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
         public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
-            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, null, null, out keys, out paths);
+            return TryResolveSortKeys(collation, fields, rowType, rootAlias, null, null, null, null, null, out keys, out paths);
+        }
+
+        /// <summary>
+        /// Reads, per ordinal, whether the column is the value the service holds at the path it binds
+        /// to, as it is read back.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service orders the path and SQL orders the column</b>, and the two are one order only
+        /// where they are one value. A <c>JSON_VALUE</c> read as text binds the path beneath it, so the
+        /// sort above it wrote <c>ORDER BY c.label</c> and the service ordered the raw values — by JSON
+        /// type first, numbers numerically — where SQL orders their renderings as text. Measured on the
+        /// emulator over the differential suite's typed container,
+        /// <c>SELECT JSON_VALUE(c."DOC", '$.label') FROM typed AS c ORDER BY 1 NULLS FIRST</c> came
+        /// back <c>[null, null, 'true', '30', 'bikes', 'huge', 'shoes', null, null]</c> where SQL
+        /// answers <c>[null ×4, '30', 'bikes', 'huge', 'shoes', 'true']</c>, the guarded object and
+        /// array reading null in the column and sorting last at the service; and over the price,
+        /// <c>'7', '8', '9', '9', '30', '30.7', '30'</c> where text puts <c>'30'</c> first. A
+        /// <c>JSON_QUERY</c> column and the document column are the same disagreement over objects
+        /// and arrays, which the service orders by rules of its own.
+        /// </para>
+        /// <para>
+        /// So the sort asks what the lookup join's restriction and a grouping key ask —
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, whose one exception for text is a path the
+        /// container declares a string outright — and the rule and the node each ask it of the binding
+        /// their own walk produced, so that the two cannot disagree.
+        /// </para>
+        /// </remarks>
+        /// <param name="translator">A translator over the input's binding, readings and container.</param>
+        /// <param name="rowType">The input's row type.</param>
+        /// <returns>Whether each ordinal is read as stored.</returns>
+        internal static IReadOnlyList<bool> StoredFields(CosmosRexTranslator translator, org.apache.calcite.rel.type.RelDataType rowType)
+        {
+            var stored = new bool[rowType.getFieldCount()];
+
+            for (var i = 0; i < stored.Length; i++)
+                stored[i] = translator.IsReadAsStored(RexInputRef.of(i, rowType));
+
+            return stored;
         }
 
         /// <summary>
@@ -156,10 +195,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <c>null</c> container declares nothing, and such a key is refused — see
         /// <see cref="OrderIsLexical"/>.
         /// </param>
+        /// <param name="orderingPaths">
+        /// Per ordinal, the path a computed column may be ordered by, or <c>null</c>. See
+        /// <see cref="CosmosImplementor.OrderingPaths"/>.
+        /// </param>
+        /// <param name="storedFields">
+        /// Per ordinal, whether the column is the value the service holds at its path — see
+        /// <see cref="StoredFields"/>. An ordinal that binds a path and is not is refused. <c>null</c>
+        /// takes every field to be read as declared; the rule and the node always pass it.
+        /// </param>
         /// <param name="keys">On success, the resolved keys in order.</param>
         /// <param name="paths">On success, the resolved paths in order.</param>
         /// <returns><c>true</c> if every key resolved; otherwise <c>false</c>.</returns>
-        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, Metadata.CosmosContainerMetadata? container, IReadOnlyList<CosmosPath?>? orderingPaths, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
+        public static bool TryResolveSortKeys(RelCollation collation, IReadOnlyList<CosmosPath?> fields, org.apache.calcite.rel.type.RelDataType rowType, string rootAlias, IReadOnlyList<int>? nonNullFields, IReadOnlyList<bool>? sortableFields, Metadata.CosmosContainerMetadata? container, IReadOnlyList<CosmosPath?>? orderingPaths, IReadOnlyList<bool>? storedFields, out IReadOnlyList<CosmosSortKey> keys, out IReadOnlyList<CosmosPath?> paths)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
@@ -225,15 +273,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
                     return false;
 
+                // The service orders the path and SQL the column, which is one order only where the
+                // column is the stored value. Asked only where the ordinal binds directly: a key reached
+                // through `ordered` is a conversion whose licence CosmosProject.IsOrderable decided, and
+                // a computed column binds no path to be read any way at all. See StoredFields.
+                if (fields[index] is not null && storedFields is not null && (index >= storedFields.Count || storedFields[index] == false))
+                    return false;
+
                 var type = ((org.apache.calcite.rel.type.RelDataTypeField)typeFields.get(index)).getType().getSqlTypeName();
 
                 // A promoted VARIANT column (a declared path; see CosmosTable.getRowType) is declined
                 // rather than pushed. Calcite cannot order one in process -- VariantValue is not
                 // Comparable and names no order across types -- so no oracle can measure a pushed sort,
                 // and the SQL standard defines no ordering for a variant to match. Declining leaves the
-                // adapter behaving as the engine does; a caller orders by JSON_VALUE over the path
-                // instead, which is text and sorts as text everywhere. See #165, and #163 for the type.
+                // adapter behaving as the engine does. A caller orders by JSON_VALUE over the path
+                // instead, which is text, and which orders at the service only where the container
+                // declares the path a string -- see StoredFields. See #165, and #163 for the type.
                 if (type == org.apache.calcite.sql.type.SqlTypeName.VARIANT)
+                    return false;
+
+                // Nor a collection, read as declared or not. The service orders arrays by a rule of its
+                // own that is not SQL's element-wise order -- measured on the emulator, [] sorted after
+                // [1, 5] and before [2] -- and the column is the list SQL compares, so the stored value
+                // being the column is not enough here.
+                if (type == org.apache.calcite.sql.type.SqlTypeName.ARRAY
+                    || type == org.apache.calcite.sql.type.SqlTypeName.MULTISET
+                    || type == org.apache.calcite.sql.type.SqlTypeName.MAP)
                     return false;
 
                 // Cosmos has no temporal type, so a key the plan types as one is a string at the
@@ -473,7 +538,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             for (var i = 0; i < sortable.Length; i++)
                 sortable[i] = implementor.SortableExpressions[i] is not null;
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, implementor.Container, implementor.OrderingPaths, out var keys, out var paths) == false)
+            var stored = StoredFields(implementor.CreateTranslator(), getInput().getRowType());
+
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, implementor.Container, implementor.OrderingPaths, stored, out var keys, out var paths) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to document paths.");
 
             if (implementor.Container.IsSortSupported(keys) == false)

@@ -38,11 +38,13 @@ Listing any container turns discovery off. List every container you want. Chapte
 **Sorted, paged queries read the whole container.**
 Almost always null placement. Set `DefaultNullCollation = "LOW"` on the connection, or write
 `NULLS FIRST` (ascending) / `DESC NULLS LAST`. Also check the key is a path and not a cast or the
-promoted partition key column, and that a multi-key sort has a matching composite index. Chapter 9's
-checklist.
+promoted partition key column; that a `JSON_VALUE` key without `RETURNING` is over a path the schema
+declares a string, since text over anything else sorts in process; and that a multi-key sort has a
+matching composite index. Chapter 9's checklist.
 
 **A sort on the partition key column runs in process.**
-That column is `VARIANT` and cannot be sorted. Sort on `JSON_VALUE(c."DOC", '$.<path>')`. Chapter 7.
+That column is `VARIANT` and cannot be sorted. Sort on `JSON_VALUE(c."DOC", '$.<path>')`, and declare
+the path a string in the container's schema for that sort to reach the service. Chapters 7 and 9.
 
 **A filter on a `JSON_VALUE` column shows `NOT IS_STRING(…) OR …` and a recheck.**
 That is the safe form of a text comparison (Chapter 8). If the property is always a string, declare

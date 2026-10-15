@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsSupported(CosmosConvention convention, Sort sort)
         {
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _, out var candidates, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out var written, out var container) == false)
                 return false;
 
             // A statement has one ORDER BY, and its OFFSET/LIMIT is applied after it rather than
@@ -78,7 +78,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(candidates), convention.Container, OrderingPaths(convention, candidates), out var keys, out _) == false)
+            // Whether each column is the value the service orders by is asked of the walk's own binding,
+            // readings and container -- what the node asks of the implementor the same walk built.
+            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
+            var stored = CosmosSort.StoredFields(translator, sort.getInput().getRowType());
+
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(candidates), convention.Container, OrderingPaths(convention, candidates), stored, out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);

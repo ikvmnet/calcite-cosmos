@@ -91,6 +91,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly CosmosContainerMetadata Typed = new("typed", new[] { "/category" });
 
         /// <summary>
+        /// A third container, for what a sort asks of a column: one that declares a path a string, and
+        /// holds arrays and objects at paths that declare nothing.
+        /// </summary>
+        /// <remarks>
+        /// Declared, where the other two declare nothing, because a declaration is what a text sort key
+        /// needs before the service may order it — and the other two must go on answering as a
+        /// container that says nothing does.
+        /// </remarks>
+        static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                { "type": "object", "properties": { "t": { "type": ["string", "null"] } } }
+                """)));
+
+        /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
         /// category and one with none, which land in different groups than either expects; names for
         /// the LIKE shapes; a nested object and arrays.
@@ -135,9 +149,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"9","category":"a","name":"Huge","price":9,"label":"huge","big":1e30}""",
         ];
 
+        /// <summary>
+        /// The documents of <see cref="Ordering"/>: <c>t</c> a string, null or absent, as declared;
+        /// <c>f</c> arrays and objects, which the service orders other than as their text; and
+        /// <c>n</c> integer arrays, which it orders other than as SQL compares them.
+        /// </summary>
+        static readonly string[] OrderingDocuments =
+        [
+            """{"id":"1","category":"o","t":"Trail","f":[2],"n":[2]}""",
+            """{"id":"2","category":"o","t":"apple","f":[10],"n":[10]}""",
+            """{"id":"3","category":"o","t":"Zebra","f":["a"],"n":[1,5]}""",
+            """{"id":"4","category":"o","t":"a-b","f":{"b":1},"n":[]}""",
+            """{"id":"5","category":"o","t":null,"f":{"a":2},"n":[1]}""",
+            """{"id":"6","category":"o","f":[1,2],"n":[1,2]}""",
+            """{"id":"7","category":"o","t":"a_b","f":[]}""",
+            """{"id":"8","category":"o","t":"Trail blazer","f":{}}""",
+        ];
+
         static CosmosClient? _client;
         static Container? _container;
         static Container? _typedContainer;
+        static Container? _orderingContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -164,6 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 _container = await Seed(database, "products", Documents, cts.Token);
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
+                _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
 
                 _client = client;
             }
@@ -174,6 +207,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _client = null;
                 _container = null;
                 _typedContainer = null;
+                _orderingContainer = null;
             }
         }
 
@@ -209,6 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _client = null;
             _container = null;
             _typedContainer = null;
+            _orderingContainer = null;
         }
 
         sealed class TestDataContext : DataContext
@@ -241,10 +276,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var typeFactory = new JavaTypeFactoryImpl();
             var table = new CosmosTable(Products, new CosmosQueryExecutor(_container!));
             var typed = new CosmosTable(Typed, new CosmosQueryExecutor(_typedContainer!));
+            var ordering = new CosmosTable(Ordering, new CosmosQueryExecutor(_orderingContainer!));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
             rootSchema.add("typed", typed);
+            rootSchema.add("ordering", ordering);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -277,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention })
+            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention })
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -461,6 +498,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') LIKE '3%'", false),
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c ORDER BY 2, c.\"id\"", true),
             ("SELECT c.\"id\" FROM typed AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.label'), c.\"id\"", true),
+
+            // The same accessor as a sort's only key, with the placement the service's own order gives,
+            // so that nothing but the reading decides whether it pushes. The sort bound the path and
+            // never asked how the column was read, so the service ordered the stored values -- by JSON
+            // type, numbers by value -- where SQL orders their text: the label came back [null, null,
+            // 'true', '30', 'bikes', 'huge', 'shoes', null, null] against [null x4, '30', 'bikes',
+            // 'huge', 'shoes', 'true'], and the price '7', '8', '9', '9', '30', '30.7', '30' where text
+            // puts '30' first. Both directions, the accessor named in the ORDER BY rather than by
+            // ordinal, and a view's column bound to it. The document column is the same question asked
+            // of a reading as JSON: the service orders the objects, and SQL their text.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c ORDER BY 1 DESC NULLS LAST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.price') DESC NULLS LAST", true),
+            ("SELECT p.\"Label\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p ORDER BY p.\"Label\" NULLS FIRST", true),
+            ("SELECT c.\"id\" FROM typed AS c ORDER BY c.\"DOC\"", true),
+
+            // And where it still pushes: a path the container declares a string or null, whose text is
+            // the stored value, in both directions and with a page. Beside it the fragments and the
+            // arrays, which never do -- the service put [] after [1, 5] and {"b":1} before {"a":2},
+            // neither of which is their text's order or SQL's.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT JSON_QUERY(c.\"DOC\", '$.f') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
 
             // The same operators over a view's column, which binds to the accessor's path and reads
             // as text -- the spelling that had pushed the raw comparison (#83). Each is the accessor
@@ -741,7 +803,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // cannot sort in process either — VariantValue is not Comparable and names no order across
             // types. So there is no ordering behaviour to compare, and none is claimed; a caller orders
             // by JSON_VALUE instead. See #165, and #163 for the type. Ordering by a rendered JSON_VALUE
-            // is text and sorts everywhere, so it stays.
+            // is text, which Calcite sorts in process and the service only over a declared string; this
+            // one has a second key and no composite index, so it stays in process either way.
             ("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.price'), c.\"id\"", true),
 
             // A view's shape: the projection casts, so it cannot be pushed, and the ordering and row

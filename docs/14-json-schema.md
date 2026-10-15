@@ -99,6 +99,12 @@ text (Chapter 8). Where the schema says the path holds a string, there is no sec
 over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can travel with it. A
 `type` declaration earns its keep on its own.
 
+The same declaration is what lets the text column be **sorted, grouped or joined on at the service**.
+Each of those acts on the stored value in the column's place — `ORDER BY c.carrier`, `GROUP BY` the
+path, a lookup restricting `c.carrier IN (…)` — and the stored value is the column's text only where
+nothing but a string can be there. Without the declaration the sort and the grouping run in process
+and the join reads the container whole (Chapters 9, 10 and 12).
+
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
 would otherwise send only for the recheck to discard. So does a path the query itself compares: a
 comparison keeps only documents that have the path, so `c.carrier = 'x'` beside a weakened comparison on

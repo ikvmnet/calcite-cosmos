@@ -114,13 +114,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// same rendering, and both already refuse it; this is the third reader of the reading.
         /// </para>
         /// <para>
-        /// The exception is theirs too, asked of the same method: a container that declares the path a
-        /// string outright, where the rendering is the stored value and a second JSON type cannot be
-        /// there to be kept apart. A <c>JSON_QUERY</c> fragment has no such exception — its text is a
-        /// serialisation, and whether the service holds two objects equal exactly where their compact
-        /// texts are equal, in key order and number spelling, is not measured — so it is declined. The
-        /// document column groups nothing either way: no two documents are equal, their <c>_rid</c>
-        /// alone telling them apart.
+        /// The exception is theirs too, and the question is theirs, asked of the same method —
+        /// <see cref="Sql.CosmosRexTranslator.IsReadAsStored"/>, which a sort key asks as well: a
+        /// container that declares the path a string outright, where the rendering is the stored value
+        /// and a second JSON type cannot be there to be kept apart. A <c>JSON_QUERY</c> fragment has no
+        /// such exception — its text is a serialisation, and whether the service holds two objects equal
+        /// exactly where their compact texts are equal, in key order and number spelling, is not
+        /// measured — so it is declined. The document column is the one exception of a grouping's own,
+        /// taken before asking: it groups nothing either way, no two documents being equal, their
+        /// <c>_rid</c> alone telling them apart.
         /// </para>
         /// <para>
         /// Declining costs the grouping and nothing else: it runs in process over what the projection
@@ -129,17 +131,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool GroupsAsTheColumnReads(RelNode input, System.Collections.Generic.IReadOnlyList<Sql.CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, Metadata.CosmosContainerMetadata? container, int ordinal)
         {
-            var reading = ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
-
-            if (reading is CosmosReading.Typed or CosmosReading.Json)
+            if (ordinal < readings.Count && readings[ordinal] == CosmosReading.Json)
                 return true;
-
-            if (reading != CosmosReading.Text || container is null)
-                return false;
 
             var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
 
-            return translator.IsDeclaredStringOutright(org.apache.calcite.rex.RexInputRef.of(ordinal, input.getRowType()));
+            return translator.IsReadAsStored(org.apache.calcite.rex.RexInputRef.of(ordinal, input.getRowType()));
         }
 
         /// <summary>

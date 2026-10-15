@@ -1481,7 +1481,7 @@ CQL is likewise SQL-shaped, and Calcite still hand-builds it rather than routing
 | `CosmosTableScan` | — | ✔ Terminal. One per container; nothing composes beneath it. |
 | `CosmosFilter` | `CosmosFilterRule` | ✔ Only when every `RexNode` is translatable. Refused above a projection, since `WHERE` precedes `SELECT`. |
 | `CosmosProject` | `CosmosProjectRule` | ✔ Renders as an object constructor. Rebinds field ordinals to the projected paths, or clears them when any projection is computed. Declined where the subtree has already chosen its `SELECT`: a statement has one, and there is no derived table to nest a second in. |
-| `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable. |
+| `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable; each key must be read as the value it orders by — a text accessor only over a declared string, and never a fragment, the document or an array (*Ordering a sort key the way it reads*). |
 | `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. Sits above a projection and adds the element to it. A predicate over the element is emitted beside it as a `CosmosFilter`. |
 | `CosmosAggregate` | `CosmosAggregateRule` | ✔ `COUNT(*)` always; `SUM`/`MIN`/`MAX`/`AVG` only over a non-nullable input. Blocked if a sort is present. Supersedes a path-only pruning projection. |
 
@@ -2277,6 +2277,60 @@ text is a serialisation, and whether the service holds two objects equal exactly
 texts are equal, in key order and number spelling, is unmeasured. The document column groups nothing
 either way, no two documents being equal. The grouping then runs in process over the column the
 service still sends guarded.
+
+#### Ordering a sort key the way it reads
+
+**A sort orders the path and SQL orders the column, and the binding says only the first.** A
+projection of `JSON_VALUE` read as text binds the path beneath it, so that an operator above can
+address the document. `CosmosSortRule` and `CosmosSort` resolved a key to that path and wrote
+`ORDER BY c.label` without asking how the column was read, and the service ordered the stored values —
+by JSON type first, numbers by value — where SQL orders their text. Measured on the emulator over the
+differential suite's typed container, whose `label` holds one document of each JSON type:
+
+| `ORDER BY 1 NULLS FIRST` over | pushed | SQL |
+| --- | --- | --- |
+| `JSON_VALUE(c."DOC", '$.label')` | `null, null, 'true', '30', 'bikes', 'huge', 'shoes', null, null` | `null ×4, '30', 'bikes', 'huge', 'shoes', 'true'` |
+| `JSON_VALUE(c."DOC", '$.price')` | `null, null, '7', '8', '9', '9', '30', '30.7', '30'` | `null, null, '30', '30', '30.7', '7', '8', '9', '9'` |
+
+The stored `true` sorts below every number at the service; the object and the array read null in the
+column — the guard — and sort above every scalar there. A view's column bound to the accessor did the
+same. It showed only where the null placement agrees — an explicit `NULLS FIRST` ascending or
+`DESC NULLS LAST`, or `defaultNullCollation=LOW` — which is the configuration the user manual tells
+every caller to use, and its table 9.1 advertised exactly this pushdown.
+
+**Every reading that is not the stored value fails the same way.** The document column, read as JSON,
+pushed `ORDER BY c` and came back in the service's order of the objects rather than their text's. A
+`JSON_QUERY` fragment pushed `ORDER BY c.f`, and the service put `[]` between `[1,2]` and `[2]`, and
+`{"b":1}` before `{"a":2}`. An array read as declared — `JSON_QUERY(… RETURNING INTEGER ARRAY)` — is the
+same question with SQL's element-wise order on the other side, and the service put `[]` after
+`[1, 5]`. All measured on the emulator, all declined now.
+
+**So the sort asks what the other three readers ask, and the question is asked once.** The filter
+translator refuses a comparison against the rendering over an undeclared path; the lookup join a text
+key, since its restriction is the raw `path IN (@k…)`; a grouping a text key, since the service groups
+the stored values. The last two each wrapped `IsDeclaredStringOutright` in a dispatch on the reading
+of their own, which differed only over the document column — the second encoding the rule against
+encodings is for. `CosmosRexTranslator.IsReadAsStored` is that dispatch: a field read as declared is
+the stored value; read as text, only where `IsDeclaredStringOutright` holds of its path, the container
+declaring it a string or null outright and nothing else; read as JSON, never. The lookup join and the
+grouping ask it now — the grouping taking its own exception for the document column first, no two
+documents being equal — and `CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
+readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
+`TryResolveSortKeys`, which both share, refuses a path-bound key that is not stored, and refuses an
+array, a multiset or a map beside the `VARIANT` it already refused, whatever their reading.
+
+**A `RETURNING` key is left alone, and for a reason rather than by default.** The typed accessor
+projects the bare path and the reader reads the declared type. A document holding some other type
+fails the read rather than sorting somewhere — and Calcite fails the same statement
+(ikvmnet/calcite-dotnet#120) — so among the rows that are answered at all the service's order, numbers
+by value and `false` before `true`, is SQL's. Measured: `JSON_VALUE(… '$.price' RETURNING INTEGER)`
+over the products container agreed, pushed.
+
+**Declining costs the sort and its row limit**: they run in process over the guarded column the
+service still sends, and a page over an undeclared text key reads the container. A declaration
+recovers it. Nothing in one statement can, the service refusing an `ORDER BY` item that is not a path
+(error 2206, above), so the rendering cannot be written as the key; `TODO.md` section 4 records the two
+statements that could.
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -3371,8 +3425,10 @@ service holds with the runtime type its JSON shape names (`VariantSqlValue.creat
 `Comparable` and names no order across types, and the SQL standard defines none for a variant — so
 Calcite cannot sort the column in process, no oracle can measure a pushed sort, and `CosmosSort`
 declines a sort keyed on a `VARIANT` column rather than push one on faith. A caller orders by
-`JSON_VALUE` over the path instead, which is text and sorts as text everywhere. This waits on an
-upstream Calcite decision about a canonical variant order; see #165.
+`JSON_VALUE` over the path instead, which is text and sorts as text in process — and at the service
+only where the container declares the path a string, the service ordering the stored value rather than
+its text (*Ordering a sort key the way it reads*). This waits on an upstream Calcite decision about a
+canonical variant order; see #165.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it

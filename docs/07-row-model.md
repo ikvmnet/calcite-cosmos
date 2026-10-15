@@ -65,7 +65,8 @@ concrete type is learned per row. In practice:
   runs against one partition, and with `c."id" = …` beside it becomes a point read (Chapter 8).
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
-  process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`.
+  process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
+  service where the container's schema declares the path a string (Chapter 9).
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **To read a typed value**, select the path rather than the column: `JSON_VALUE(c."DOC",
@@ -237,9 +238,9 @@ FROM "products" AS p
 (as DDL where your connection accepts it, or the same `SELECT` as a model view — Chapter 4). Every
 column pushes down: a query over the view reads only the properties it selects and filters at the
 service, and — with `DefaultNullCollation = "LOW"` — sorts and pages there too. A text column such as
-`"Category"` reads whatever the document holds as text, so grouping on it, or joining another
-container to it by key, reaches the service only where the container's schema declares the path a
-string (Chapters 10, 12 and 14).
+`"Category"` reads whatever the document holds as text, so sorting on it, grouping on it, or joining
+another container to it by key, reaches the service only where the container's schema declares the
+path a string (Chapters 9, 10, 12 and 14).
 
 Prefer these spellings in views:
 

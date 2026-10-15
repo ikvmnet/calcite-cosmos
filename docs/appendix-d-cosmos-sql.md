@@ -56,7 +56,8 @@ undefined  <  null  <  boolean  <  number  <  string  <  array  <  object
 ```
 
 `DESC` is the exact reverse. There is no `NULLS FIRST`/`NULLS LAST`. Strings compare by code point
-(ordinal), not by culture.
+(ordinal), not by culture. Arrays and objects are ordered among themselves by rules
+of the service's own, not by their text.
 
 An `ORDER BY` item must be a document path — an expression is rejected (*"ORDER BY item expression
 could not be mapped to a document path"*), with `ST_DISTANCE` the one exception. An `ORDER BY` on two or

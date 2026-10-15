@@ -1590,6 +1590,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A sort keyed by a column that is not the value the service holds at its path — an accessor
+        /// read as text over a path nothing declares, a <c>JSON_QUERY</c> fragment, the document, an
+        /// array — is computed in process, under the placement the service's own order would honour.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The service orders the path and SQL orders the column. The accessor binds the path beneath
+        /// it, and the sort never asked how the column was read, so it pushed <c>ORDER BY c.label</c>
+        /// and the service ordered the stored values — by JSON type, numbers by value — where SQL orders
+        /// their text. Measured on the emulator over the differential suite's typed container: the
+        /// label came back <c>[null, null, 'true', '30', 'bikes', 'huge', 'shoes', null, null]</c>
+        /// against SQL's <c>[null ×4, '30', 'bikes', 'huge', 'shoes', 'true']</c>. The fragment, the
+        /// document and an array are the same disagreement over objects and arrays, measured too.
+        /// </para>
+        /// <para>
+        /// An explicit placement, because without one the null placement declines every row here first
+        /// and the test would say nothing. <c>CosmosDeclaredFactPlanningTests</c> holds the other side,
+        /// a text key over a path declared a string, which still pushes.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.name') DESC NULLS LAST")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.name' RETURNING VARCHAR) FROM products AS c ORDER BY 1 NULLS FIRST FETCH NEXT 10 ROWS ONLY")]
+        [InlineData("SELECT p.\"n\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c) AS p ORDER BY p.\"n\" NULLS FIRST")]
+        [InlineData("SELECT JSON_QUERY(c.\"DOC\", '$.metadata') FROM products AS c ORDER BY 1 NULLS FIRST")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY c.\"DOC\"")]
+        [InlineData("SELECT JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY) FROM products AS c ORDER BY 1 NULLS FIRST")]
+        public void ASortOverAColumnThatIsNotTheStoredValueStaysAbove(string sql)
+        {
+            var best = PlanToAsync(sql);
+            var plan = Plan(best);
+
+            plan.Should().NotContain("CosmosSort", "the service would order the stored values where SQL orders the column: " + plan);
+            Render(FindCosmos(best)).Should().NotContain("ORDER BY", plan);
+        }
+
+        /// <summary>
+        /// A sort keyed by a column read as declared still reaches the service, with nothing declared
+        /// about the container: the column is the stored value.
+        /// </summary>
+        [Theory]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) FROM products AS c ORDER BY 1 NULLS FIRST", "ORDER BY c.price ASC")]
+        [InlineData("SELECT p.\"p\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c) AS p ORDER BY p.\"p\" DESC NULLS LAST", "ORDER BY c.price DESC")]
+        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY", "ORDER BY c.id ASC OFFSET 0 LIMIT 5")]
+        public void ASortOverAColumnReadAsDeclaredStillPushes(string sql, string clause)
+        {
+            var best = PlanToAsync(sql);
+
+            Plan(best).Should().Contain("CosmosSort", Plan(best));
+            Render(FindCosmos(best)).Should().Contain(clause);
+        }
+
+        /// <summary>
         /// An accessor whose <c>RETURNING</c> names an array type is guarded by <c>IS_ARRAY</c>, not
         /// by the text form's <c>IS_PRIMITIVE</c>.
         /// </summary>

@@ -21,6 +21,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Relational joins, `UNION`, `INTERSECT`, `EXCEPT`** | Always in process. A join against a container can be a lookup join or a self-join merge (Chapter 12). *Cosmos.* |
 | **Sorting with nulls last ascending / first descending** | In process. Cosmos has one null placement. *Cosmos.* |
 | **Sorting on the promoted partition key column** | Declined; sort on `JSON_VALUE` of the path. *Calcite has no order for `VARIANT`.* |
+| **Sorting on `JSON_VALUE` as text over a path no schema declares a string** | In process. *The service orders the stored value, by JSON type and numbers by value; SQL orders the text.* |
+| **Sorting on a `JSON_QUERY`, `DOC` or array column** | In process. *The service orders objects and arrays by rules of its own.* |
 | **Multi-key sorts** | Need a matching composite index. *Cosmos.* |
 | **Sorting on a computed expression** | In process, except a geodesic distance. *Cosmos.* |
 | **`GROUP BY` with `ORDER BY`** | The groups are sorted in process. *Cosmos.* |

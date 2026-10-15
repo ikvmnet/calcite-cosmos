@@ -169,7 +169,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// declined as a sort key. Calcite cannot order one in process — <c>VariantValue</c> is not
             /// Comparable and names no order across types — so a pushed sort over it has no oracle, and
             /// the SQL standard defines no ordering for a variant to match. A caller orders by
-            /// <c>JSON_VALUE</c> over the path instead, which is text. See #165.
+            /// <c>JSON_VALUE</c> over the path instead, which is text, and which the service orders only
+            /// where the path is declared a string — see <see cref="AKeyNotReadAsStoredIsRefused"/>.
+            /// See #165.
             /// </remarks>
             [Fact]
             public void AVariantColumnIsRefusedAsASortKey()
@@ -193,6 +195,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
                 // The VARIANT column is declined.
                 CosmosSort.TryResolveSortKeys(Collation((2, RelFieldCollation.Direction.ASCENDING)), fields, rowType, "c", out _, out _)
+                    .Should().BeFalse();
+            }
+
+            /// <remarks>
+            /// The service orders the path and SQL the column, which is one order only where the column
+            /// is the stored value — a text accessor over an undeclared path is not, and ordering by its
+            /// path ordered the stored values by JSON type where SQL orders their text. What the column
+            /// is comes in per ordinal, asked by the rule and the node of
+            /// <see cref="CosmosRexTranslator.IsReadAsStored"/>; this is only that the answer is obeyed,
+            /// and that one key failing it fails the collation.
+            /// </remarks>
+            [Fact]
+            public void AKeyNotReadAsStoredIsRefused()
+            {
+                var stored = new[] { false, false, true, true };
+
+                bool Resolve(params int[] ordinals)
+                {
+                    var collation = new (int, RelFieldCollation.Direction)[ordinals.Length];
+                    for (var i = 0; i < ordinals.Length; i++)
+                        collation[i] = (ordinals[i], RelFieldCollation.Direction.ASCENDING);
+
+                    return CosmosSort.TryResolveSortKeys(Collation(collation), Fields, RowType(), "c", null, null, null, null, stored, out _, out _);
+                }
+
+                Resolve(2).Should().BeTrue("the column is the stored value");
+                Resolve(1).Should().BeFalse("the column is a rendering of the stored value");
+                Resolve(0).Should().BeFalse("the column is the document's text");
+                Resolve(2, 1).Should().BeFalse("one key the service would order otherwise is the whole collation");
+            }
+
+            /// <remarks>
+            /// An array is refused however it is read: the service orders arrays by a rule of its own,
+            /// measured to put <c>[]</c> after <c>[1, 5]</c>, which is not SQL's element-wise order.
+            /// </remarks>
+            [Fact]
+            public void ACollectionIsRefusedAsASortKey()
+            {
+                var fields = new List<CosmosPath?>
+                {
+                    CosmosPath.Root("c"),                        // 0 — the document column
+                    CosmosPath.Root("c").Property("tags"),       // 1 — an array read as declared
+                };
+
+                var rowType = _types.builder()
+                    .add(CosmosImplementor.DocumentColumnName, _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true))
+                    .add("tags", _types.createTypeWithNullability(_types.createArrayType(_types.createSqlType(SqlTypeName.VARCHAR), -1), true))
+                    .build();
+
+                CosmosSort.TryResolveSortKeys(Collation((1, RelFieldCollation.Direction.ASCENDING)), fields, rowType, "c", null, null, null, null, new[] { true, true }, out _, out _)
                     .Should().BeFalse();
             }
 
@@ -255,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", out _, out _);
 
             bool Resolves(RelCollation collation, params int[] nonNullFields) =>
-                CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", nonNullFields, null, null, null, out _, out _);
+                CosmosSort.TryResolveSortKeys(collation, Fields, RowType(), "c", nonNullFields, null, null, null, null, out _, out _);
 
             // ── A placement the plan has already settled ──────────────────────────────
             //
@@ -312,8 +364,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 partial.add(new RelFieldCollation(1, RelFieldCollation.Direction.ASCENDING));
                 partial.add(new RelFieldCollation(2, RelFieldCollation.Direction.ASCENDING));
 
-                CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1 }, null, null, null, out _, out _).Should().BeFalse();
-                CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1, 2 }, null, null, null, out _, out _).Should().BeTrue();
+                CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1 }, null, null, null, null, out _, out _).Should().BeFalse();
+                CosmosSort.TryResolveSortKeys(RelCollations.of(partial), Fields, RowType(), "c", new[] { 1, 2 }, null, null, null, null, out _, out _).Should().BeTrue();
             }
 
             /// <remarks>

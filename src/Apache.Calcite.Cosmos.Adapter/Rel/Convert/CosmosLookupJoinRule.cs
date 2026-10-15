@@ -183,7 +183,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the build side's keys in process, by the key as the column reads it. So the fetch may bring
         /// back more than matches, and nothing else: a document the restriction leaves out is a row the
         /// join loses. Whether that can happen is decided by the column's reading, which the binding
-        /// derives beside the path for exactly this kind of question (#83).
+        /// derives beside the path for exactly this kind of question (#83), and the question is
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/> — the one a grouping key and a sort key ask.
         /// </para>
         /// <para>
         /// <b>A column read as declared</b> holds the stored value, so the raw comparison is the
@@ -222,17 +223,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
         static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container)
         {
-            var reading = ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
-
-            if (reading == CosmosReading.Typed)
-                return true;
-
-            if (reading != CosmosReading.Text)
-                return false;
-
             var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, container, readings);
 
-            return translator.IsDeclaredStringOutright(RexInputRef.of(ordinal, probe.getRowType()));
+            return translator.IsReadAsStored(RexInputRef.of(ordinal, probe.getRowType()));
         }
 
         /// <summary>

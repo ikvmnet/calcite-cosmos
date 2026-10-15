@@ -1161,6 +1161,16 @@ the distribution the gate is sized for.
   only sound where the service's `ToString` spells every number and boolean as Java's `toString`
   does, which `1e30` (`1.0E30` in process) already suggests it does not. Measure the spellings
   before writing it; a string-only path that nobody declared is the case it would buy back.
+- **A sort over a text accessor of an undeclared path** — *medium, and the shape is known.* It runs
+  in process now, with its row limit: the service orders the stored value, by JSON type and numbers
+  by value, and SQL the text, so over the typed container the label came back `'true'` before `'30'`
+  and the price `'7'` before `'30'` (`DESIGN.md` under *Ordering a sort key the way it reads*). A
+  container declaring the path a string still pushes. No single statement recovers the rest, since
+  the service orders by a path and nothing else. Two would, in the shape section 5 gives the null
+  placement: the strings, `WHERE IS_STRING(p) ORDER BY p` with the page, whose text is their value;
+  and every other document, rendered and sorted in process, merged with the first by text. The page
+  bounds the first statement and not the second, so it buys back a path that is nearly always a
+  string and that nobody declared, and the cost model would have to know the second half's size.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
