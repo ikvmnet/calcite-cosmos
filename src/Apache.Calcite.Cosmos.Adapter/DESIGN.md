@@ -3858,6 +3858,29 @@ one a confined form's sign class excludes — names no document, and is answered
 request. Both sides compare as a `Guid` once fetched, whichever of `UuidValue`, `java.util.UUID` or
 `Guid` carried them.
 
+**A key read as text is restricted only where the container says the path holds a string.** The
+restriction names the stored value, `path IN (@k0, …)`, and the join then matches the fetched rows to
+the build side's keys in process, by the key *as the column reads it*. So the fetch may return more
+than matches and never less, and whether it can return less is a question about the column's reading,
+which `TryBindOutput` derives beside its path. A column read as declared is the stored value. A
+`JSON_VALUE` read as text is its rendering, and the filter translator refuses `JSON_VALUE(…) = ?` over
+an undeclared path for exactly that reason: a stored `30` renders as `'30'` and Calcite matches it,
+while the service compares a number to a string and does not. The rule used to check the key's SQL
+type and discard its reading, and wrote the comparison the translator refuses. Measured on the
+emulator (soundness probes P23b and P24b), a view's text column joined to `VALUES ('30'), ('31')` lost
+the document storing `30`, and to `VALUES ('true'), ('huge')` the one storing `true`. The probes'
+first spelling agreed, and only because `VALUES` types its literals `CHAR` of the longest, so `'30'`
+beside `'bikes'` was the padded `'30   '`, which matched nothing on either side.
+
+`CosmosLookupJoinRule.IsRestrictedAsStored` asks the translator's own question,
+`IsDeclaredStringOutright`, and takes its one exception: a container that declares the path a string,
+outright and not under a guard, where the rendering is the value. The translator's other exception,
+text no number or boolean renders as, is a fact about a literal, and a batch's keys are parameters.
+The document column and a `JSON_QUERY` column are declined outright. A guarded restriction —
+`path IN (@k…) OR IS_NUMBER(path) OR IS_BOOL(path)`, rechecked by the join's own comparison — would be
+sound, and would fetch every non-string document on every batch at a price the cost model cannot see,
+so it waits on a measurement.
+
 **"When the near side is small" is the cost model's to say, and stays so.** The issue asked for the lookup
 where the near side is bounded; the join is chosen where it is cheaper, which for a page of 25 against a
 container is always, and for an unbounded near side against a small container is not. A hard gate on a

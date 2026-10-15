@@ -46,6 +46,12 @@ answer a full join would:
   after the fetch, and is not.
 - **The container's side of the key is a document path** — `p."id"`, or `JSON_VALUE(p."DOC", '$.x')` —
   so a `WHERE` can name it.
+- **And its value is the value stored there.** `JSON_VALUE` without `RETURNING` reads a value as
+  *text*: a stored number `30` is the key `'30'` and a stored `true` the key `'true'`. The fetch names
+  the stored value, `c.x IN (@k0, …)`, and the service does not find the number `30` among the strings,
+  so those rows would be lost. A text key therefore qualifies only where the container's schema
+  declares the path a string (`"type": "string"`, Chapter 14) — then the text is the stored value. Over
+  an undeclared path the join is the ordinary one. `p."id"` is always a string and always qualifies.
 - **Both keys are of a type a parameter can carry**: a string, a number or a boolean. The promoted
   partition key column is `VARIANT` and does not qualify — join on `JSON_VALUE(p."DOC", '$.category')`
   instead (Chapter 7).

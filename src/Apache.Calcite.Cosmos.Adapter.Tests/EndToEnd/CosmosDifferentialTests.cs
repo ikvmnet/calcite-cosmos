@@ -473,6 +473,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" = '30'", false),
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" = 'bikes'", false),
 
+            // The same rendering as a lookup join's key, where the batch's keys arrive as parameters
+            // and the restriction is the raw `c.label IN (@k…)` (soundness probes P23b and P24b). It
+            // lost the stored 30 to the key '30' and the stored true to 'true', so a text key over a
+            // path nothing declares a string is joined in process instead. The keys are of equal
+            // width on purpose: VALUES types a list of literals CHAR of the longest, and the padded
+            // '30   ' matches nothing on either side, which is what hid this the first time. The
+            // join on id is the control, a key read as stored, which still looks up.
+            ("SELECT t.\"id\" FROM (VALUES ('30'), ('31')) AS v(k) JOIN typed AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.label')", false),
+            ("SELECT t.\"id\" FROM (VALUES ('true'), ('huge')) AS v(k) JOIN typed AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.label')", false),
+            ("SELECT p.\"id\" FROM (VALUES ('30'), ('31')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p ON v.k = p.\"Label\"", false),
+            ("SELECT t.\"id\" FROM (VALUES ('1'), ('3')) AS v(k) JOIN typed AS t ON v.k = t.\"id\"", false),
+
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
             // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
             // column, which is the path and not a rendering, it renders directly. The mixed-type

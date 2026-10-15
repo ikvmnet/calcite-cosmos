@@ -57,6 +57,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// form: that path holds one spelling per value, so a key written in it names exactly the documents
     /// whose cast equals the key. See <see cref="TryProbeKey"/>.
     /// </description></item>
+    /// <item><description>
+    /// <b>A key whose column holds the stored value.</b> The restriction compares the raw value, and a
+    /// column reading a <c>JSON_VALUE</c> as text carries its rendering: a stored number matches the
+    /// key <c>'30'</c> in process and not at the service. Such a key is restricted only where the
+    /// container declares the path a string. See <see cref="IsRestrictedAsStored"/>.
+    /// </description></item>
     /// </list>
     /// </remarks>
     public class CosmosLookupJoinRule : ConverterRule
@@ -130,7 +136,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             key = default;
 
-            if (CosmosImplementor.TryBindOutput(probe, out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(probe, out var fields, out var readings, out _) == false)
                 return false;
 
             if (ordinal < 0 || ordinal >= fields.Count)
@@ -141,6 +147,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (fields[ordinal] is not null)
             {
                 if (IsBindableKey(type) == false)
+                    return false;
+
+                if (IsRestrictedAsStored(probe, ordinal, fields, readings) == false)
                     return false;
 
                 key = new ProbeKey(null, null);
@@ -155,6 +164,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             key = new ProbeKey(path, representation);
             return true;
+        }
+
+        /// <summary>
+        /// Determines whether restricting the stored value at a key column's path fetches every
+        /// document whose key, as the column reads it, a batch could match.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The restriction is on the raw value and the join compares the column.</b>
+        /// <c>GenerateLookupQuery</c> writes <c>path IN (@k…)</c>, and the fetched rows are matched to
+        /// the build side's keys in process, by the key as the column reads it. So the fetch may bring
+        /// back more than matches, and nothing else: a document the restriction leaves out is a row the
+        /// join loses. Whether that can happen is decided by the column's reading, which the binding
+        /// derives beside the path for exactly this kind of question (#83).
+        /// </para>
+        /// <para>
+        /// <b>A column read as declared</b> holds the stored value, so the raw comparison is the
+        /// column's comparison.
+        /// </para>
+        /// <para>
+        /// <b>A column read as text is a rendering</b>, and the filter translator already refuses this
+        /// comparison over one: a stored <c>30</c> renders as <c>'30'</c> and a stored <c>true</c> as
+        /// <c>'true'</c>, so Calcite matches them to those keys and the service, comparing a number to a
+        /// string, does not. Soundness probes P23b and P24b, measured on the emulator: a view's text
+        /// column joined to <c>VALUES ('30'), ('31')</c> lost the document storing 30, and to
+        /// <c>VALUES ('true'), ('huge')</c> lost the document storing <c>true</c>. The translator's
+        /// exception is the exception here, asked of the same method: a container that declares the
+        /// path a string and nothing else, outright, where the rendering <em>is</em> the stored value.
+        /// A key is a parameter, so the translator's other exception — text no other scalar renders
+        /// as — has no value to inspect and is not open to it.
+        /// </para>
+        /// <para>
+        /// <b>Anything else is declined</b>: the document column, whose text no stored value equals,
+        /// and a <c>JSON_QUERY</c> column, whose fragment no string parameter equals. Both are rows
+        /// the restriction would lose, and both are joins nobody writes.
+        /// </para>
+        /// <para>
+        /// Declining costs the lookup and nothing else: the join runs in process over the container
+        /// read whole, as every join did before the lookup existed. Guarding the restriction instead —
+        /// <c>path IN (@k…) OR IS_NUMBER(path) OR IS_BOOL(path)</c>, rechecked by the join's own key
+        /// comparison — would be sound too, and would fetch every non-string document on every batch,
+        /// which the cost model has no way to know; so it is left until a measurement says it pays.
+        /// </para>
+        /// </remarks>
+        /// <param name="probe">The probe subtree.</param>
+        /// <param name="ordinal">The key's ordinal in the subtree's row.</param>
+        /// <param name="fields">The subtree's binding.</param>
+        /// <param name="readings">How each of the subtree's columns is read.</param>
+        /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
+        static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings)
+        {
+            var reading = ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed;
+
+            if (reading == CosmosReading.Typed)
+                return true;
+
+            if (reading != CosmosReading.Text || FindTable(probe) is not CosmosTable table)
+                return false;
+
+            var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, table.Container, readings);
+
+            return translator.IsDeclaredStringOutright(RexInputRef.of(ordinal, probe.getRowType()));
         }
 
         /// <summary>

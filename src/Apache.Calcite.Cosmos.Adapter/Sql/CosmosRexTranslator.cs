@@ -1279,10 +1279,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>CosmosFactRewriter</c> and <c>CosmosPartitionKeyExtractor</c> apply wherever a fact
         /// licenses something the predicate cannot re-establish.
         /// </para>
+        /// <para>
+        /// <b>The lookup join asks it too</b>, of a key column the probe side reads as text: its
+        /// restriction is the raw <c>path IN (@k…)</c>, which is this equality against a parameter
+        /// once per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>.
+        /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <returns><c>true</c> where the container declares the path a string.</returns>
-        bool IsDeclaredStringOutright(RexNode node)
+        internal bool IsDeclaredStringOutright(RexNode node)
         {
             if (_container is null || _container.Facts.IsEmpty)
                 return false;

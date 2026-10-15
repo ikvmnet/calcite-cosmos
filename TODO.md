@@ -1943,6 +1943,13 @@ What the lookup join still declines, after #193 took left joins and `UUID` keys:
 - **Other converted keys** — *small each.* A `CAST(… AS INTEGER)` over a path declared integer, or an
   instant over a declared ISO shape, is restricted the same way: spell the key in the stored form. Only
   the `UUID` was asked for.
+- **A text key over a path not declared a string** — *small, and a measurement first.* Such a key is a
+  rendering, and the raw `path IN (@k…)` loses a stored number or boolean that renders as a key, so it
+  is declined (see `DESIGN.md` under *What the lookup join reaches*). Guarding the restriction —
+  `OR IS_NUMBER(path) OR IS_BOOL(path)`, rechecked by the join's key comparison — is sound and fetches
+  every non-string document per batch; spelling each key as the string and, where it reads as one, the
+  number and the boolean it renders from is tighter and needs Calcite's rendering of every number
+  pinned. Either wants the cost of a mixed-type container measured against reading it once.
 
 ### Sink abilities
 
