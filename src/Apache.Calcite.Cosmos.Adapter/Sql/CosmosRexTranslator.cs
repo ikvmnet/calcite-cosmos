@@ -2152,7 +2152,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// object or an array renders as nothing: SQL/JSON answers null there rather than writing one
         /// out, which is the whole difference between <c>JSON_VALUE</c> and <c>JSON_QUERY</c>.
         /// <c>IS_PRIMITIVE</c> is exactly that distinction — true of a string, a number, a boolean and
-        /// a JSON null, false of an object, an array and an absent property — so
+        /// a JSON null, false of an object, an array and an absent property, false rather than
+        /// undefined, measured in <c>CosmosJsonTypeMeasurementTests</c> — so
         /// <c>IIF(IS_PRIMITIVE(p), p, null)</c> means at the service what the function means here, for
         /// every JSON type.
         /// </para>

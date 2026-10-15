@@ -2259,10 +2259,17 @@ SELECT VALUE { "a": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null))
                      ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) }
 ```
 
-Verbose, and right in each case Calcite distinguishes: an absent path makes `IS_PRIMITIVE` undefined,
-so the ternary is undefined and `IS_DEFINED` is false; an object makes the ternary null, which
-`IS_NULL` catches; a JSON null is a primitive and is caught the same way; a scalar passes. All of
-them take the fallback exactly where `JSON_VALUE` answers null.
+Verbose, and right in each case Calcite distinguishes: an absent path and an object both make
+`IS_PRIMITIVE` false, so the ternary is null, which `IS_NULL` catches; a JSON null is a primitive and
+is caught the same way; a scalar passes. All of them take the fallback exactly where `JSON_VALUE`
+answers null.
+
+This paragraph used to say that an absent path makes `IS_PRIMITIVE` undefined, and the `IS_DEFINED`
+catches it. The translator said false. Measured on the emulator (`CosmosJsonTypeMeasurementTests`),
+it is false: the whole `IS_*` family answers a real boolean over an absent path, never undefined,
+and `IS_DEFINED` over the guard is true there. The rendering was right either way, since one
+conjunct or the other catches the case. Azure is owed the same measurement; `TODO.md` section 10
+records it.
 
 #### An accessor over a literal is a constant
 

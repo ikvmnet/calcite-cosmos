@@ -1893,6 +1893,14 @@ across documents* and *A join of a container to itself* is the record.
   either would have gone on skipping for ever. Both now measure the gap and report it, and the
   index-metrics pair already did. Any future gap belongs in that shape. *(Retained here as the rule
   rather than as a task.)*
+- **The `IS_*` family on Azure** — *small, and owed.* `CosmosJsonTypeMeasurementTests` pins what
+  `IS_PRIMITIVE`, `IS_STRING`, `IS_NUMBER`, `IS_BOOL`, `IS_NULL`, `IS_OBJECT`, `IS_ARRAY` and
+  `IS_DEFINED`, and `NOT` over each, answer over every JSON type and over an absent path. Every one
+  answers a real boolean, never undefined, and `IS_PRIMITIVE` is false over an absent path. That
+  settled the repository's two recorded answers in the translator's favour, and `DESIGN.md` was the
+  one corrected. Measured on the emulator (2026-10-15) and nowhere else. The answers are unlikely to
+  differ on Azure, but the emulator has differed before. Run the class with `COSMOS_TEST_ENDPOINT`
+  naming an account.
 - **A malformed response's failure mode** — *small.* A lookup-join stub returning raw documents
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed
