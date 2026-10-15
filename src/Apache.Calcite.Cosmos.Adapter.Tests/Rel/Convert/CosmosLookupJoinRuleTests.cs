@@ -54,10 +54,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                         "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" } } } } }
                 """)));
 
+        /// <summary>
+        /// A container whose schema says <c>label</c> holds a string and nothing else.
+        /// </summary>
+        static readonly CosmosContainerMetadata Labels = new CosmosContainerMetadata("labels", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                { "type": "object", "properties": { "label": { "type": "string" } } }
+                """)));
+
         CosmosTable _products = null!;
         CosmosTable _orders = null!;
         CosmosTable _archive = null!;
         CosmosTable _parks = null!;
+        CosmosTable _labels = null!;
 
         public CosmosLookupJoinRuleTests()
         {
@@ -65,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             _orders = new CosmosTable(Orders);
             _archive = new CosmosTable(Archive);
             _parks = new CosmosTable(Parks);
+            _labels = new CosmosTable(Labels);
         }
 
         RelNode PlanLogical(string sql, bool expand = false)
@@ -76,6 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             rootSchema.add("orders", _orders);
             rootSchema.add("archive", _archive);
             rootSchema.add("parks", _parks);
+            rootSchema.add("labels", _labels);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -131,6 +142,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 planner.addRule(rule);
 
             foreach (var rule in CosmosRules.GetRules(_parks.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in CosmosRules.GetRules(_labels.Convention))
                 planner.addRule(rule);
 
             foreach (var rule in ClrCursorRules.Rules())
@@ -306,7 +320,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 "a key with more than one spelling cannot be written as one:\n" + Text(plan));
         }
 
+        /// <summary>
+        /// A view's text column over <c>label</c>, joined on that column to a list of keys.
+        /// </summary>
+        /// <remarks>
+        /// The keys are a <c>VALUES</c> list rather than another container's <c>id</c>, and that is what
+        /// puts the key column itself on the probe side. The two sides of an equality are cast to one
+        /// type, and the cast lands on whichever is narrower: an unbounded <c>VARCHAR</c> <c>id</c>
+        /// leaves the probe side's key as <c>CAST(JSON_VALUE(…)):VARCHAR</c>, a computed column that was
+        /// never a lookup key, while a list of literals is the narrower side and takes the cast.
+        /// </remarks>
+        const string ByLabel = """
+            SELECT p."id"
+            FROM (VALUES ('30'), ('31')) AS v(k)
+            JOIN (SELECT c."id", JSON_VALUE(c."DOC", '$.label') AS "Label" FROM {0} AS c) AS p
+              ON v.k = p."Label"
+            """;
+
+        /// <summary>
+        /// A key read as text is restricted on the stored value where the container says that value is
+        /// a string, which makes the rendering the value.
+        /// </summary>
+        [Fact]
+        public void ATextKeyOverAPathDeclaredAStringIsALookup()
+        {
+            var plan = Plan(string.Format(ByLabel, "labels"));
+
+            var lookup = Find<CosmosLookupJoin>(plan);
+            lookup.Should().NotBeNull("the labels are fetched by the orders' keys:\n" + Text(plan));
+            lookup!.getRight().getConvention().Should().BeSameAs(_labels.Convention);
+        }
+
         // ── Not chosen, and each for a reason ─────────────────────────────────────
+
+        /// <summary>
+        /// A key read as text over a path nothing declares is a rendering, and the restriction compares
+        /// the raw value.
+        /// </summary>
+        /// <remarks>
+        /// The filter translator refuses <c>JSON_VALUE(…) = ?</c> over such a path for the same reason:
+        /// a stored <c>30</c> renders as <c>'30'</c> and Calcite matches it, and <c>c.label IN (@k0)</c>
+        /// with <c>@k0 = '30'</c> does not fetch it. Soundness probes P23b and P24b lost those rows on the
+        /// emulator; <c>CosmosDifferentialTests</c> carries both.
+        /// </remarks>
+        [Fact]
+        public void ATextKeyOverAnUndeclaredPathIsNotALookup()
+        {
+            var plan = Plan(string.Format(ByLabel, "products"));
+
+            FindAll<CosmosLookupJoin>(plan).Should().NotContain(j => ReferenceEquals(j.getRight().getConvention(), _products.Convention),
+                "a rendering cannot be restricted on the raw value:\n" + Text(plan));
+        }
+
+        /// <remarks>
+        /// <c>RETURNING VARCHAR</c> is the same rendering said explicitly, and is held to the same test.
+        /// </remarks>
+        [Fact]
+        public void AKeyReturningVarcharOverAnUndeclaredPathIsNotALookup()
+        {
+            var plan = Plan("""
+                SELECT p."id"
+                FROM (VALUES ('30'), ('31')) AS v(k)
+                JOIN (SELECT c."id", JSON_VALUE(c."DOC", '$.label' RETURNING VARCHAR(2000)) AS "Label" FROM products AS c) AS p
+                  ON v.k = p."Label"
+                """);
+
+            FindAll<CosmosLookupJoin>(plan).Should().NotContain(j => ReferenceEquals(j.getRight().getConvention(), _products.Convention),
+                "a rendering cannot be restricted on the raw value:\n" + Text(plan));
+        }
 
         /// <remarks>
         /// <c>TOP 5</c> of the container is not <c>TOP 5</c> of each batch. Running it per batch would

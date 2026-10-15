@@ -55,8 +55,11 @@ An object constructor omits a property whose value is undefined.
 undefined  <  null  <  boolean  <  number  <  string  <  array  <  object
 ```
 
-`DESC` is the exact reverse. There is no `NULLS FIRST`/`NULLS LAST`. Strings compare by code point
-(ordinal), not by culture.
+`DESC` is the exact reverse. There is no `NULLS FIRST`/`NULLS LAST`. Strings compare by code point,
+not by culture — which is not quite .NET's or Java's ordinal comparison, both of which compare UTF-16
+code units: the two part where a character above U+FFFF meets one in U+E000–U+FFFF, which the service
+sorts first and they sort last (Chapter 9.3). Arrays and objects are ordered among themselves by rules
+of the service's own, not by their text.
 
 An `ORDER BY` item must be a document path — an expression is rejected (*"ORDER BY item expression
 could not be mapped to a document path"*), with `ST_DISTANCE` the one exception. An `ORDER BY` on two or

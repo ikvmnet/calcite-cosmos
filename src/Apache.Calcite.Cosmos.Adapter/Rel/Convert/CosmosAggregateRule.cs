@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _, out var written, out var container) == false)
                 return false;
 
             // Binding passes through a sort and a DISTINCT, an aggregate cannot.
@@ -64,10 +64,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct)) != 0)
                 return false;
 
+            // Whether each key groups as its column reads is asked of the walk's own binding, readings
+            // and container -- what the node asks of the implementor the same walk built. See
+            // CosmosAggregate.GroupsAsTheColumnReads.
+            var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
+
             var groupKeys = groupSet.asList();
             for (var i = 0; i < groupKeys.size(); i++)
-                if (Resolves(fields, (java.lang.Integer)groupKeys.get(i)) == false)
+            {
+                var key = (java.lang.Integer)groupKeys.get(i);
+
+                if (Resolves(fields, key) == false || CosmosAggregate.GroupsAsTheColumnReads(translator, readings, input.getRowType(), key.intValue()) == false)
                     return false;
+            }
 
             var inputRowType = input.getRowType();
 

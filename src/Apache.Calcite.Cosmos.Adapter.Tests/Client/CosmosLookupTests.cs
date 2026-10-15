@@ -267,6 +267,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// Java's boxes reduce to the same forms as the CLR's, because they are what a row carries.
+        /// </summary>
+        /// <remarks>
+        /// A container row is read into Calcite's boxes, so an <c>INTEGER</c> key arrives as a
+        /// <see cref="java.lang.Integer"/>. Passed through, it equalled only a key of the same width,
+        /// and it was what the batch bound: the SDK serialised it as an object, and the service matched
+        /// nothing (review probes I4, I12 and I13, measured on the emulator).
+        /// </remarks>
+        [Fact]
+        public void NormalizeReducesJavasBoxesToTheClrForms()
+        {
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(7));
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(java.lang.Long.valueOf(7L)));
+            CosmosLookup.Normalize(java.lang.Short.valueOf((short)7)).Should().BeOfType<double>().Which.Should().Be(7d);
+            CosmosLookup.Normalize(java.lang.Double.valueOf(7.5d)).Should().Be(7.5d);
+            CosmosLookup.Normalize(new java.math.BigDecimal("7")).Should().Be(CosmosLookup.Normalize(7));
+            CosmosLookup.Normalize(java.lang.Boolean.TRUE).Should().Be(true);
+            CosmosLookup.Normalize(java.lang.Boolean.FALSE).Should().Be(CosmosLookup.Normalize(false));
+        }
+
+        /// <remarks>
+        /// What reaches the service is the normalised key, so a key read out of a row is bound as a
+        /// CLR number, which the SDK writes as a JSON number, and matches across the widths the two
+        /// sides read it as.
+        /// </remarks>
+        [Fact]
+        public async Task AJavaBoxedKeyIsBoundAsANumberAndMatchesAcrossWidths()
+        {
+            var executor = new RecordingExecutor("""{"n":7}""");
+
+            var rows = await Collect(CosmosLookup.Join<java.lang.Integer, java.lang.Long, string>(
+                Async(java.lang.Integer.valueOf(7)),
+                executor,
+                null!,
+                Query(),
+                "@k",
+                3,
+                b => b,
+                element => java.lang.Long.valueOf(element.GetProperty("n").GetInt64()),
+                p => p,
+                (b, p) => $"{b}/{p}"));
+
+            rows.Should().Equal("7/7");
+            Keys(executor.Executed[0]).Should().AllBeOfType<double>().And.Equal(7d, 7d, 7d);
+        }
+
+        /// <summary>
         /// A <c>UUID</c> is one value however it was boxed: Calcite's <c>UuidValue</c>, Java's own, or a
         /// <see cref="Guid"/>.
         /// </summary>

@@ -11,26 +11,30 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 
 | SQL | Cosmos SQL | notes |
 | --- | --- | --- |
-| `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8 |
+| `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8; selected, grouped by or compared with something, in process where it can be null |
 | `AND` `OR` `NOT` | `AND` `OR` `NOT` | with null guards |
-| `+` `-` `*` `/` `%`, unary `-` | the same | |
-| `\|\|` | `CONCAT` | |
-| `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | |
+| `+` `-` `*` `%`, unary `-` | the same | not with a decimal fraction (`price * 1.1`), which Calcite computes exactly and Cosmos in doubles; integer overflow is computed rather than wrapped (Chapter 8) |
+| `/` | `/` | a `DOUBLE` quotient only; an integer or `DECIMAL` division stays in process |
+| `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
+| `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |
 | `IN (…)`, `NOT IN (…)`, `BETWEEN` | comparisons | same cost as the native forms |
 | `LIKE` | `STARTSWITH` for a prefix; Cosmos `LIKE` otherwise | no brackets, no `ESCAPE`, literal pattern only |
 | `UPPER(x) LIKE` / `LOWER(x) LIKE` | `CONTAINS`, `STARTSWITH`, `ENDSWITH` with the case-insensitive flag | ASCII text, one leading and/or trailing `%` |
 | `CASE` | nested `? :` | |
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |
-| `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only |
+| `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only, in both: a length truncates |
 | `CAST(x AS <number>)` | a bound plus recheck in a filter; in process in a projection | Chapter 8 |
 | `CAST(x AS UUID)`, parse to `TIMESTAMP`/`DATE` | the path, where the container declares the stored form | Chapters 14, 15 |
 | `arr[n]` | `arr[n-1]` | SQL is one-based |
 | `x MEMBER OF arr` | `ARRAY_CONTAINS(arr, x)` | |
-| `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise |
+| `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise. Selected, `IS TRUE` is sent as `IS_DEFINED(x) AND x = true`, false where `x` is missing |
 | `IS DISTINCT FROM` | — | in process |
 | `SIMILAR TO`, `REGEXP_LIKE` | — | in process; use `REGEXMATCH` for Cosmos regular expressions |
 
 ## B.2 String functions
+
+Over `JSON_VALUE`, each of these pushes only where the container declares the path a string: the
+function reads the text, which for a stored number or boolean is not what the service has (Chapter 8).
 
 | SQL | Cosmos | notes |
 | --- | --- | --- |

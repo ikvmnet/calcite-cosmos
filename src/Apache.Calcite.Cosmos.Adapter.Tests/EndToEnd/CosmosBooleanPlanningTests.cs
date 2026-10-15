@@ -260,6 +260,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 .And.NotContain("ClrCursorCalc");
         }
 
+        /// <summary>
+        /// Projected, a truth test is two-valued, as SQL's is.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Written bare, <c>c.flag = true</c> is undefined over an absent flag, and the service leaves the
+        /// property out of the row, which reads back null where SQL's <c>IS TRUE</c> answers false. The
+        /// form the test takes under a <c>NOT</c> names the absent path and is two-valued by
+        /// construction, and a value takes it for the same reason.
+        /// </para>
+        /// <para>
+        /// The stored boolean is written as the guarded accessor here, as it is projected alone, and the
+        /// form holds over it: the guard answers null or nothing where the path is absent or holds an
+        /// object, and the comparison with <c>true</c> is false over either, whatever the service says
+        /// of a type test over an absent path.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AProjectedTruthTestIsTwoValued()
+        {
+            var container = Container(Unconditional);
+            var best = PlanToCosmos($"""SELECT {Flag} IS TRUE AS t FROM items AS c""", container);
+
+            var implementor = new CosmosImplementor(best.getCluster().getRexBuilder(), container);
+            implementor.Visit(FindCosmos(best));
+
+            implementor.Build().Sql.Should().Be("SELECT VALUE { \"t\": (IS_DEFINED((IS_PRIMITIVE(c.flag) ? c.flag : null)) AND ((IS_PRIMITIVE(c.flag) ? c.flag : null) = @p0)) } FROM items c");
+            RelOptUtil.toString(best).Should().NotContain("ClrCursorProject", "the test is not left in process")
+                .And.NotContain("ClrCursorCalc");
+        }
+
     }
 
 }

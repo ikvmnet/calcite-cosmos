@@ -49,6 +49,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// JSON has one numeric type — so it loses nothing the service was preserving.
         /// </para>
         /// <para>
+        /// <b>Java's boxes as well as the CLR's, and the Java ones are the ordinary case.</b> A
+        /// container row is read into the boxes Calcite holds values in — <see cref="CosmosJson"/>
+        /// reads an <c>INTEGER</c> as a <see cref="java.lang.Integer"/> — and a build side computed
+        /// by Calcite carries them too. Passed through untouched, a <see cref="java.lang.Integer"/>
+        /// equalled only another of the same width, so <c>7</c> read as <c>INTEGER</c> missed
+        /// <c>7</c> read as <c>BIGINT</c>; and the normalised key is also what <see cref="Bind"/>
+        /// binds, where the SDK serialised the box as an object rather than a number and the service
+        /// matched nothing. Measured on the emulator, <c>c.price IN (@k0)</c> bound to a CLR
+        /// <c>120</c> found the bike and bound to a <see cref="java.lang.Integer"/> 120 found nothing,
+        /// and a lookup on a numeric key, a <c>_ts</c> and a boolean returned no rows where the
+        /// in-process join returned them (review probes I4, I12 and I13). Unboxed here, a key is a
+        /// CLR <see cref="double"/>, <see cref="bool"/> or <see cref="string"/> on both sides and on
+        /// the wire — the same values <c>CosmosQueries</c> binds a statement's parameters as.
+        /// </para>
+        /// <para>
         /// A <c>UUID</c> is compared as a <see cref="Guid"/>. Calcite boxes one as
         /// <c>UuidValue</c>, and a host may hand one over as a <c>java.util.UUID</c>; either is the same
         /// value, and a <see cref="Guid"/> is what <see cref="Metadata.CosmosUuidForms.Render"/> spells in
@@ -66,6 +81,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 string or bool or Guid => key,
                 sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
                     => Convert.ToDouble(key, CultureInfo.InvariantCulture),
+                java.lang.Boolean flag => flag.booleanValue(),
+                java.lang.Number number => number.doubleValue(),
                 org.apache.calcite.util.UuidValue uuid => Guid.Parse(uuid.toString()),
                 java.util.UUID uuid => Guid.Parse(uuid.toString()),
                 _ => key,

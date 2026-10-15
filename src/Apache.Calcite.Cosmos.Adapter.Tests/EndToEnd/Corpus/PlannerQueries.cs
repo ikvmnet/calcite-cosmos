@@ -697,7 +697,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             "Filter.UnindexedPath",
             "Project.OverFilterAndSort",
             "Project.RelationalView",
-            "Project.Arithmetic",
+            // Not Project.Arithmetic, which was listed until UPPER over an accessor stopped pushing over
+            // a path nothing declares a string: the service's UPPER is undefined over the number the
+            // accessor renders as text. The arithmetic and the accessor still go down; the fold is
+            // Calcite's.
             "Aggregate.GroupBy",
             "Aggregate.GroupByHavingOnKey",
             "Sort.OffsetPage",

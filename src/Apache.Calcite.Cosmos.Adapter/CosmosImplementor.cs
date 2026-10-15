@@ -42,8 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <para>
     /// A point read costs about 1 RU where the same fetch as a query costs 2.3 at best and goes through
     /// the query engine. It applies no predicate and returns the document rather than a projection, so
-    /// it is offered only where the statement asks for nothing a read cannot answer — see
-    /// <see cref="CosmosImplementor.Build"/> for what that excludes, and
+    /// it is offered only where the statement asks for nothing a read cannot answer — a
+    /// <c>DISTINCT</c>, an ordering, a page, a grouping, an aggregate, a traversal, or a conjunct
+    /// the pinning filter did not write; see <see cref="CosmosImplementor.Build"/>, and
     /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> for the predicate condition.
     /// </para>
     /// </param>
@@ -505,10 +506,29 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written)
         {
+            return TryBindOutput(node, out fields, out readings, out ordering, out written, out _);
+        }
+
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each output field is read back.</param>
+        /// <param name="ordering">On success, per ordinal, the path a sort may order by where the ordinal binds to none.</param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        /// <param name="container">
+        /// On success, the container the subtree reads — the scan's, found on the same walk. What a node
+        /// binds can depend on what the container says always holds, as a <c>DISTINCT</c>'s does, and
+        /// the walk has to ask the question the node asks or it is a second encoding of the answer. See
+        /// <see cref="Rel.CosmosAggregate.DistinctKeyBinding"/>. The lookup join asks for it for the
+        /// same reason: whether its key's path holds a string is a question about this container, and
+        /// a second walk to find it is a second answer to which container that is.
+        /// </param>
+        internal static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
             written = CosmosClauses.None;
+            container = null;
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
@@ -521,21 +541,22 @@ namespace Apache.Calcite.Cosmos.Adapter
                 case null:
                     return false;
 
-                case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable:
+                case TableScan scan when scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table:
                     fields = BindFields(scan.getRowType());
                     readings = BindReadings(scan.getRowType());
                     ordering = new CosmosOrdering[fields.Count];
+                    container = table.Container;
                     return true;
 
                 // Neither changes the shape of a row, so neither changes what addresses it. A sort
                 // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written);
+                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container);
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -548,13 +569,16 @@ namespace Apache.Calcite.Cosmos.Adapter
                 }
 
                 // An aggregate that computes nothing is a DISTINCT, and a distinct's output is the
-                // grouping keys themselves — still document paths, because nothing was computed. So
-                // an operator above one can address them, which is what lets a sort join a DISTINCT
-                // in the same statement. An aggregate with calls binds nothing: its output is
-                // computed and Cosmos can name none of it.
+                // grouping keys themselves — still document paths where nothing was computed. So an
+                // operator above one can address them, which is what lets a sort join a DISTINCT in
+                // the same statement. But a key some documents lack is grouped as IS_DEFINED(p) ? p :
+                // null, which is not the path, and binds nothing — asked here of the same function
+                // CosmosAggregate.EmitDistinct binds by, since a rule converting on a path the node
+                // then refuses is a plan that fails after the planner has chosen it. An aggregate with
+                // calls binds nothing at all: its output is computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -568,7 +592,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     for (var i = 0; i < paths.Length && i < keys.size(); i++)
                     {
                         var index = ((java.lang.Integer)keys.get(i)).intValue();
-                        paths[i] = index >= 0 && index < input.Count ? input[index] : null;
+                        paths[i] = CosmosAggregate.DistinctKeyBinding(index >= 0 && index < input.Count ? input[index] : null, container);
                         reads[i] = index >= 0 && index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
                     }
 
@@ -580,7 +604,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -632,29 +656,80 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 // An array traversal is a correlated join whose right side contributes the element. The
                 // element has no container-rooted path, and the service will not order by one, so it is
-                // left unbound rather than named.
-                case Correlate correlate:
-                {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out _, out written) == false)
-                        return false;
-
-                    var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];
-                    var reads = new CosmosReading[paths.Length];
-                    for (var i = 0; i < paths.Length; i++)
-                    {
-                        paths[i] = i < left.Count ? left[i] : null;
-                        reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
-                    }
-
-                    fields = paths;
-                    readings = reads;
-                    ordering = new CosmosOrdering[paths.Length];
-                    return true;
-                }
-
+                // left unbound rather than named. Either form, through TraversedInput: the converted one
+                // had no case here, so a rule that had fired on the logical form threw "The lookup key
+                // can no longer be restricted." after the planner had chosen the plan (soundness review,
+                // cause K). The element is left unbound in both: CosmosUnnest.Implement binds it to its
+                // alias, and the walk knowing less declines and never fails (TODO.md, section 5).
                 default:
+                    if (TraversedInput(node) is RelNode traversed)
+                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
+
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Returns the input whose documents an array traversal traverses, or <c>null</c> where the
+        /// node is not a traversal.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A traversal has two forms, and every walk through one has to know both.</b> A rule sees the
+        /// <c>Correlate</c> Calcite builds; implementation sees the <see cref="CosmosUnnest"/> the rule
+        /// converted it to, which is a <c>SingleRel</c> and not a <c>Correlate</c>. A walk that knows
+        /// one answers for the logical subtree and declines the converted one, and where a question is
+        /// asked of both — the lookup join asks it of the rule's subtree and again in
+        /// <c>CosmosLookupJoin.Prepare</c> — a rule that fired is a plan that fails to implement.
+        /// </para>
+        /// <para>
+        /// That happened twice. The binding walk knew only the <c>Correlate</c> (soundness review,
+        /// cause K); fixed there alone, the lookup join rule's own walks — the container a key's
+        /// facts are read from, and the cast a <c>UUID</c> key is restricted through — still knew only
+        /// the <c>Correlate</c>, and a text key over a declared string or a <c>UUID</c> key through a
+        /// traversal failed the same way. So the question is asked here, once, and every walk asks it.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The node.</param>
+        /// <returns>The traversed input, or <c>null</c>.</returns>
+        internal static RelNode? TraversedInput(RelNode? node) => node switch
+        {
+            Correlate correlate => correlate.getLeft(),
+            CosmosUnnest unnest => unnest.getInput(),
+            _ => null,
+        };
+
+        /// <summary>
+        /// Binds an array traversal's output: the input's fields as they were, then the element,
+        /// unbound.
+        /// </summary>
+        /// <remarks>
+        /// One method for the two forms a traversal takes — the <c>Correlate</c> a rule sees and the
+        /// <see cref="CosmosUnnest"/> implementation sees — so that they cannot bind differently. A
+        /// traversal writes no clause of its own: it completes a projection beneath it rather than
+        /// starting one.
+        /// </remarks>
+        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        {
+            fields = Array.Empty<CosmosPath?>();
+            readings = Array.Empty<CosmosReading>();
+            ordering = Array.Empty<CosmosOrdering>();
+
+            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container) == false)
+                return false;
+
+            var paths = new CosmosPath?[fieldCount];
+            var reads = new CosmosReading[paths.Length];
+            for (var i = 0; i < paths.Length; i++)
+            {
+                paths[i] = i < left.Count ? left[i] : null;
+                reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
+            }
+
+            fields = paths;
+            readings = reads;
+            ordering = new CosmosOrdering[paths.Length];
+            return true;
         }
 
         readonly RexBuilder _rexBuilder;
@@ -992,16 +1067,25 @@ namespace Apache.Calcite.Cosmos.Adapter
         public IReadOnlyList<string>? PointReadSetCandidate { get; set; }
 
         /// <summary>
+        /// Gets or sets the <c>WHERE</c> the statement carried when a filter offered
+        /// <see cref="PointReadCandidate"/> or <see cref="PointReadSetCandidate"/>, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// What the candidate was extracted from is one filter's condition; what a read must answer
+        /// is the statement's whole <c>WHERE</c>. The filter offers only where its condition is all
+        /// of it, and records the text here, so a filter conjoining afterwards is a <c>WHERE</c>
+        /// that no longer matches and withdraws the read at <see cref="Build"/>.
+        /// </remarks>
+        public string? PointReadPredicate { get; set; }
+
+        /// <summary>
         /// Returns the <c>id</c>s to read as a batch, under exactly the conditions
         /// <see cref="PointReadId"/> applies to a single one: every clause beyond the pinned
         /// predicate rules the reads out, a batch of blind reads being no less blind.
         /// </summary>
         IReadOnlyList<string>? PointReadIds()
         {
-            if (PointReadSetCandidate is null)
-                return null;
-
-            if (_query.HasGroupBy || _query.HasOrderBy || _query.HasOrderByRank || _query.HasRowLimit || _query.HasUnnest)
+            if (PointReadSetCandidate is null || ReadsAnswerTheStatement() == false)
                 return null;
 
             return PointReadSetCandidate;
@@ -1012,23 +1096,71 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// a point read cannot answer.
         /// </summary>
         /// <remarks>
-        /// A point read returns one document, whole and unfiltered. So every clause beyond the pinned
-        /// predicate rules it out: a projection is computed by the query engine, a row limit and an
-        /// ordering describe a result set rather than a document, a grouping aggregates one, and an
-        /// array traversal returns a row per element rather than a row per document. The projection is
-        /// the exception — the converter can read paths out of the document itself — and it is checked
-        /// there rather than here, because only the converter knows whether every output field is a path.
+        /// See <see cref="ReadsAnswerTheStatement"/> for what that excludes.
         /// </remarks>
         string? PointReadId()
         {
-            if (PointReadCandidate is null)
-                return null;
-
-            if (_query.HasGroupBy || _query.HasOrderBy || _query.HasOrderByRank || _query.HasRowLimit || _query.HasUnnest)
+            if (PointReadCandidate is null || ReadsAnswerTheStatement() == false)
                 return null;
 
             return PointReadCandidate;
         }
+
+        /// <summary>
+        /// Determines whether reading the pinned documents, one row each, answers what the statement
+        /// asks.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A point read returns one document, whole and unfiltered, and a batch of them one row per
+        /// document. So every clause beyond the pinned predicate rules them out: a row limit and an
+        /// ordering describe a result set rather than a document, a grouping or an aggregate collapses
+        /// one, an array traversal returns a row per element rather than a row per document, and
+        /// <c>DISTINCT</c> returns one row per <em>value</em>.
+        /// </para>
+        /// <para>
+        /// <b>The single and the batch read ask the same question, so they ask it here.</b> They used
+        /// to list the clauses twice, and both lists missed <c>DISTINCT</c>. Over two documents
+        /// sharing a value, <c>SELECT DISTINCT … WHERE pk = … AND id IN ('1', '2')</c> came back as
+        /// two identical rows, measured on the emulator: the value was a path present on every
+        /// document, so the distinct bound it and the converter could read it out of each document,
+        /// which is exactly the case where nothing else stopped the read. A distinct of a path some
+        /// documents lack computes its key, and that withdrew the read by accident.
+        /// </para>
+        /// <para>
+        /// An aggregate is named by what it writes. One with calls is the only writer of a flat
+        /// select list, and a whole-set <c>COUNT</c> writes no <c>GROUP BY</c>, so the flat list is
+        /// what says one is there. Its outputs bind nothing, which already withdraws the read at the
+        /// converter, but a read withdrawn there by accident is the defect above.
+        /// </para>
+        /// <para>
+        /// <b>The predicate is the statement's, not the filter's.</b> The extractor reads the
+        /// condition of the filter that offers the read, and that condition was taken to be the whole
+        /// <c>WHERE</c>. It is not where a view's <c>WHERE</c> is queried from outside by partition
+        /// key and <c>id</c>: two filters reach the service and conjoin into one <c>WHERE</c>, and the
+        /// read ignores half of it. Measured on the emulator, a view excluding every document with a
+        /// price returned the one it excluded (review probe H6c), and the other order, a filter above
+        /// the one that offered, returned both documents of a batch where the query returned one
+        /// (H5b). So the read stands only where the <c>WHERE</c> is still the one it was offered
+        /// for — see <see cref="PointReadPredicate"/>.
+        /// </para>
+        /// <para>
+        /// The projection is the exception — the converter can read paths out of the document itself —
+        /// and it is checked there rather than here, because only the converter knows whether every
+        /// output field is a path, rendered as one and read as its declared type. See
+        /// <c>CosmosConverters.DocumentRowBuilder</c> for the fields that are not, the document column
+        /// among them.
+        /// </para>
+        /// </remarks>
+        bool ReadsAnswerTheStatement() =>
+            string.Equals(_query.Where, PointReadPredicate, StringComparison.Ordinal)
+            && _query.Distinct == false
+            && _query.FlatProjection == false
+            && _query.HasGroupBy == false
+            && _query.HasOrderBy == false
+            && _query.HasOrderByRank == false
+            && _query.HasRowLimit == false
+            && _query.HasUnnest == false;
 
         /// <summary>
         /// Returns the most rows the statement can return, or <c>null</c> where it is unbounded.

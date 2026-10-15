@@ -1011,7 +1011,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Only the cast, and only over the text. <c>RETURNING INTEGER</c> is not a second spelling
         /// here the way <c>RETURNING VARCHAR</c> is for a UUID: <c>RETURNING</c> asserts the extracted
         /// type rather than converting to it, and a path holding a string never extracts as a number,
-        /// so the clause fails at run time rather than naming this shape.
+        /// so the clause fails at run time rather than naming this shape. Except <c>DECIMAL</c>, which
+        /// parses a stored string as the cast does and is a second spelling in principle; it addresses
+        /// no path — <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — and reading it here is a
+        /// recovery <c>TODO.md</c> records rather than a shape this misses.
         /// </para>
         /// <para>
         /// The approximate types are absent deliberately. A stored spelling maps to one

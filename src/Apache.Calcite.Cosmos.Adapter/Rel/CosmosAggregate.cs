@@ -111,6 +111,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             }
         }
 
+        /// <summary>
+        /// Determines whether grouping by the key the service is given puts two rows in one group
+        /// exactly where the column, as it is read back, says they are equal.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service groups the key the projection wrote; SQL groups the column.</b> A column read
+        /// as its declared type groups as the column reads. Where it is the stored value the key is the
+        /// path; where a <c>RETURNING</c> asserted a type, the key is the guard the projection writes it
+        /// through, null for every value of another type exactly as the column is — see
+        /// <c>CosmosRexTranslator.ReadingTests</c>. Before that guard the key was the path, and a
+        /// grouping or a <c>DISTINCT</c> over a path holding an object sent the object back for a
+        /// column declared a number, which the reader refused. <c>RETURNING DECIMAL</c>, which parses
+        /// rather than asserting, addresses no path at all — see
+        /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — so no key is bound to one.
+        /// </para>
+        /// <para>
+        /// <b>A rendering groups by its text, and the service by the value it renders.</b> A key read
+        /// as text is a <c>JSON_VALUE</c>, or a field bound to one, whose column is the value's
+        /// rendering — see <see cref="CosmosReading.Text"/> — while the expression it is grouped by at
+        /// the service is the guarded path, which holds the value itself: a stored <c>30</c> and a
+        /// stored <c>"30"</c> are two groups at the service and one value, <c>'30'</c>, in SQL.
+        /// Measured on the emulator over the typed container, whose price is both (review probes J1,
+        /// J2 and J13): <c>SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')</c> returned <c>'30'</c>
+        /// twice, its <c>GROUP BY</c> with <c>COUNT(*)</c> two groups of one where SQL has one of two,
+        /// and <c>COUNT(DISTINCT …)</c> — which Calcite expands into a grouping beneath the count —
+        /// counted six where SQL counts five. The translator refuses a rendering read as a value for
+        /// the same reason, and the lookup join's key is the same rendering; a grouping key is the
+        /// third reader of the reading.
+        /// </para>
+        /// <para>
+        /// The exception is theirs too, and the question is theirs, asked of the same method —
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, which a sort key asks as well: a container
+        /// that declares the path a string outright, where the rendering is the stored value and a
+        /// second JSON type cannot be there to be kept apart. Outright, as <see cref="GroupingKey"/>
+        /// reads the declaration, since a key is not a predicate and proves nothing. A
+        /// <c>JSON_QUERY</c> fragment has no such exception — its text is a serialisation, and whether
+        /// the service holds two objects equal exactly where their compact texts are equal, in key
+        /// order and number spelling, is not measured — so it is declined. The two readings a grouping
+        /// takes before asking are its own: the declared one, whose key is the column as above where
+        /// the method asks whether the <em>path</em> is, and the document column, which groups nothing
+        /// either way, no two documents being equal, their <c>_rid</c> alone telling them apart.
+        /// </para>
+        /// <para>
+        /// <b>Asked by the rule and by implementation</b>, each of the binding its own walk produced —
+        /// <see cref="Convert.CosmosAggregateRule"/> of <c>TryBindOutput</c>'s, and
+        /// <see cref="Implement"/> and <see cref="EmitDistinct"/> of the implementor's — so that the
+        /// two cannot disagree. Declined in the rule, it costs the grouping and nothing else: it runs
+        /// in process over what the projection beneath still sends.
+        /// </para>
+        /// </remarks>
+        /// <param name="translator">A translator over the input's binding, readings and container.</param>
+        /// <param name="readings">How each of the input's fields is read back.</param>
+        /// <param name="rowType">The input's row type.</param>
+        /// <param name="ordinal">The key.</param>
+        /// <returns><c>true</c> where the key may be grouped by at the service.</returns>
+        internal static bool GroupsAsTheColumnReads(CosmosRexTranslator translator, IReadOnlyList<CosmosReading> readings, RelDataType rowType, int ordinal)
+        {
+            if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) is CosmosReading.Typed or CosmosReading.Json)
+                return true;
+
+            return translator.IsReadAsStored(org.apache.calcite.rex.RexInputRef.of(ordinal, rowType));
+        }
+
         static bool IsApproximateNumeric(RelDataType rowType, int ordinal)
         {
             var fields = rowType.getFieldList();
@@ -224,6 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
+            var translator = implementor.CreateTranslator();
             var output = 0;
 
             // Calcite orders an aggregate's output as the grouping keys followed by the calls.
@@ -241,6 +306,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 var key = GroupingKey(fields[index]!, implementor.Container.Facts.Derive(null), expression);
 
                 readings[output] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
+
+                // And the guarded accessor still groups the value rather than its text.
+                if (GroupsAsTheColumnReads(translator, inputReadings, getInput().getRowType(), index) == false)
+                    throw new CosmosTranslationException("A grouping key read as text groups by the rendering in Calcite and by the value at the service, which differ wherever the path holds something other than a string.");
 
                 implementor.Query.AddGroupBy(key);
                 implementor.Query.SelectProperty((string)names.get(output++), key);
@@ -292,6 +361,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
+            var translator = implementor.CreateTranslator();
 
             var groupKeys = getGroupSet().asList();
             var projected = new CosmosPath?[names.size()];
@@ -312,12 +382,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 readings[i] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
 
+                // A DISTINCT is a grouping, and de-duplicates a rendering by the value too.
+                if (GroupsAsTheColumnReads(translator, inputReadings, getInput().getRowType(), index) == false)
+                    throw new CosmosTranslationException("A DISTINCT over a column read as text de-duplicates the rendering in Calcite and the value at the service, which differ wherever the path holds something other than a string.");
+
                 implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, implementor.Container.Facts.Derive(null), expression));
 
-                // Bound to the path only where the projected value is that path. A normalised key is a
-                // computed column: the service will not order by a select-list alias, and the path
-                // underneath sorts an absent property somewhere the projected null does not.
-                projected[i] = IsAlwaysPresent(path, implementor.Container.Facts.Derive(null)) ? path : null;
+                projected[i] = DistinctKeyBinding(path, implementor.Container);
             }
 
             implementor.Query.Distinct = true;
@@ -326,6 +397,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Fields = projected;
             implementor.Readings = readings;
         }
+
+        /// <summary>
+        /// The path a <c>DISTINCT</c>'s key binds to for the operators above it, or <c>null</c> where
+        /// it binds none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Bound to the path only where the projected value is that path. A normalised key — see
+        /// <see cref="GroupingKey"/> — is a computed column: the service will not order by a
+        /// select-list alias, and the path underneath sorts an absent property somewhere the projected
+        /// null does not. A path the container says is always present is never normalised, so it is
+        /// still the path.
+        /// </para>
+        /// <para>
+        /// <b>One answer, asked by two callers.</b> <see cref="EmitDistinct"/> binds by it, and
+        /// <see cref="CosmosImplementor.TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)"/>
+        /// derives by it what every rule above a <c>DISTINCT</c> decides on. The walk used to bind the
+        /// input's path regardless, so <see cref="Convert.CosmosSortRule"/> converted a sort over a
+        /// <c>DISTINCT</c> of a path some documents lack and <see cref="CosmosSort.Implement"/> refused
+        /// it — after the planner had committed to the plan, so the query failed rather than sorting
+        /// in process (soundness probe P16). Each was right about its own encoding; there were two.
+        /// </para>
+        /// </remarks>
+        /// <param name="key">The path the grouping key resolves to beneath the aggregate, if any.</param>
+        /// <param name="container">The container, whose unconditional facts say what is always present.</param>
+        /// <returns>The path, or <c>null</c>.</returns>
+        internal static CosmosPath? DistinctKeyBinding(CosmosPath? key, CosmosContainerMetadata? container) =>
+            key is not null && container is not null && IsAlwaysPresent(key, container.Facts.Derive(null)) ? key : null;
 
         /// <summary>
         /// The expression a grouping key is grouped and projected by.

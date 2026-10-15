@@ -46,9 +46,20 @@ answer a full join would:
   after the fetch, and is not.
 - **The container's side of the key is a document path** — `p."id"`, or `JSON_VALUE(p."DOC", '$.x')` —
   so a `WHERE` can name it.
+- **And its value is the value stored there.** `JSON_VALUE` without `RETURNING` reads a value as
+  *text*: a stored number `30` is the key `'30'` and a stored `true` the key `'true'`. The fetch names
+  the stored value, `c.x IN (@k0, …)`, and the service does not find the number `30` among the strings,
+  so those rows would be lost. A text key therefore qualifies only where the container's schema
+  declares the path a string (`"type": "string"`, Chapter 14) — then the text is the stored value. Over
+  an undeclared path the join is the ordinary one. `p."id"` is always a string and always qualifies.
 - **Both keys are of a type a parameter can carry**: a string, a number or a boolean. The promoted
-  partition key column is `VARIANT` and does not qualify — join on `JSON_VALUE(p."DOC", '$.category')`
-  instead (Chapter 7).
+  partition key column is `VARIANT` and does not qualify (Chapter 7), and `JSON_VALUE(p."DOC",
+  '$.category')` is the text key of the rule above, so it qualifies only where the container's schema
+  declares `category` a string (Chapter 14). To keep a lookup on the partition key, declare it; without
+  a declaration the join reads the container. A typed accessor over a number or a boolean —
+  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — qualifies as it is: the keys are sent as numbers,
+  which match the stored numbers and nothing else, and a document holding anything else reads null
+  there and matches no key.
 - **Or both keys are `UUID`s, and the container's side is `CAST(JSON_VALUE(p."DOC", '$.x') AS UUID)`
   over a path the container's schema gives a UUID format** (Chapter 14). The path then holds one
   spelling per value, so each key is sent in that spelling — `c.x IN ('3f2a…', …)` — and matches exactly
@@ -56,7 +67,10 @@ answer a full join would:
   one spelling finds both, so the join is the ordinary one.
 - **Nothing above the container's scan that a restriction would change the meaning of.** A filter,
   projection or traversal is fine; a `LIMIT`, sort or grouping on the container side is not, because
-  "the first five products" is not "the first five products of each batch".
+  "the first five products" is not "the first five products of each batch". Over a traversal
+  (`UNNEST`, Chapter 11) the key must be a property of the document rather than the element, and the
+  container side must select document properties only: the restriction keeps or drops a document with
+  all of its elements, and an element has no path a restriction, or a pushed projection, could name.
 
 Anything else is joined by reading both sides, with the container side still filtered by whatever
 predicates of its own push down.

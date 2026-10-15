@@ -207,6 +207,41 @@ costs anything, and the measurement is cheap given the harness that exists.
 Queries execute through `GetItemQueryStreamIterator`, with a pinned `id` and complete partition key
 recovered as a point read. The SDK's other cheap routes are unused.
 
+### The document column through a point read — *small, needs a decision*
+
+`SELECT *` or `DOC` by partition key and `id` runs as a query, routed to one partition, rather than as
+the 1 RU read its predicate allows. It used to take the read and fail, reading `DOC` as `VARCHAR`
+(review probe H4l). Serving it from the read is not a matter of reading it as JSON instead: measured
+on the emulator, `ReadItem` returns the document in the order it was written, at another indentation
+and with `_self`, where the query reorders it and leaves `_self` out; `ReadMany` differs from the
+query in indentation. `DOC` is the service's bytes by design, so the read would make it a different
+string depending on whether the statement pinned an `id`. Recovering the read means deciding `DOC` is
+a JSON value — re-serialised to one canonical text on every route, with the system properties
+settled — which changes what every `SELECT *` returns. Measure against a real account first: whether
+a query there carries `_self` and the written order is the first question.
+
+### A typed accessor through a point read — *small*
+
+A pinned `id` and partition key whose projection includes `JSON_VALUE(… RETURNING INTEGER)`, or any
+typed accessor with a type's test — not a date or a time, which stays bare, nor `DECIMAL`, which
+addresses no path — runs as the routed query rather than as the read. The column is written
+through its type's guard, `IS_NUMBER(p) ? p : null`, so that an object at the path reads null as
+Calcite reads it; read out of the document, the same object failed the read as the integer the plan
+declared (the typed container's `label`, by `id` and by a batch; `DESIGN.md` under *Not every
+statement is a query*). Its rendering is no longer the path, so `DocumentRowBuilder` withdraws the
+read, as it does for the text accessor. Keeping the read means applying the type's test to the read's
+document before the reader sees the value — `CosmosFunctionBodies.IsNumber` and `IsBool` are those
+tests in process — which the converter would have to be told per column, the rendering being Cosmos
+SQL text it cannot evaluate.
+
+### A read is priced where the converter withdraws it — *small*
+
+`CosmosFilter.RequestUnits` prices a filter as a point read from its own condition, and the read is
+withdrawn after planning wherever the statement rules it out: a computed or guarded column, the
+document column, or a second filter conjoining into the `WHERE`. The rows are right either way; the
+planner compares a route it will not take. Asking the walk whether the filter's input wrote a `WHERE`,
+and whether the projection above reads every column as its path, would price what runs.
+
 ### The sample against SQL Server — *small*
 
 Apache.Calcite 2.0.0-pre.3 fixed the ADO.NET adapter against SQL Server
@@ -333,7 +368,9 @@ rule pushes what it implies — `c.x = '30' OR c.x = 30`, the string or the numb
 comparison Calcite makes. The same disjunction serves the cast form. *Settled by measurement:*
 `RETURNING` a non-text type converts nothing in Calcite — it asserts the Java class and throws on
 disagreement — so a comparison through one pushes exactly,
-as it did, and needs no bound; `DESIGN.md` records the measurement. *Settled by the same measurement:* the
+as it did, and needs no bound; `DESIGN.md` records the measurement. **Except `DECIMAL`, which that
+measurement never put a string under:** it parses, and is now read as the cast it is (below).
+*Settled by the same measurement:* the
 other operators over the bare text accessor — `<>`, the ordering comparisons and `LIKE` — diverged in
 both directions over the `typed` container, and are now declined and weakened to the case the two
 agree on, `NOT IS_STRING(x) OR <comparison>`. The string case is exact, the rendering being the
@@ -342,6 +379,82 @@ accessor, which is the spelling every typed caller writes and which had been pus
 `DESIGN.md` records it under *Projecting a cast to text*. `ORDER BY` was measured alongside them and
 did not diverge, so nothing was done to it — which is a statement about that corpus rather than a
 proof, and a sort still has no weakening to fall back on if one is found.
+
+*Settled by the soundness review's probes:* the operators *beneath* a comparison, and the null test.
+`UPPER(label) = 'TRUE'`, a concatenation, a length and a `CASE` arm each read the rendering as a value,
+and a string function is undefined at the service over the number the accessor renders as text; they
+are declined unless the container declares the path a string. `IS NULL` and a negated equality take the
+accessor's null set rather than the path's. `DESIGN.md` records both under *Expression translation*.
+Still open from the same probes, and outside the translator: a point read and a batch of them ignore
+`DISTINCT` (H); the lookup join compares a key's rendering against the raw value (I); `SELECT DISTINCT`
+binds its keys to paths where the aggregate binds null (J); and an `UNNEST` probe under a lookup join
+fails at implementation (K).
+
+`<>` over the accessor against unambiguous text could now push exactly, guarded by
+`IS_PRIMITIVE` in the position that needs a guard. It is declined and weakened as before; pushing it
+is an addition the corpus would have to show agrees, not part of the repair.
+
+*Settled by the review of those fixes,* which swept their neighbours on the fixed branch and on `main`:
+a comparison read as a value rather than for its truth (projected, grouped by, or the operand of another
+comparison) is declined where Calcite types it nullable; a cast to text with a width is no longer taken
+as the rendering, by the comparison or by the fact and partition-key extractors; a rendering inside a
+`VARIANT` box is seen through by the comparison, `LIKE` and the null test; a grouping key or `DISTINCT`
+column read as text pushes only over a declared string; `+ - * %` in a decimal fraction is declined; a
+text `JSON_VALUE` is no longer a document an accessor addresses through; and a field bound to a typed
+accessor carries its type test. `DESIGN.md` records each. What that leaves, each a recovery rather than
+a repair:
+
+- **Grouping by text over a path nothing declares** — *medium*. Section 4 carries it, beside the sort.
+- **`COALESCE(JSON_VALUE(x), 'lit') = 'unambiguous'`** — *small*. The equality never reaches the case
+  where the fallback and a rendering could be confused, so with the accessor's null test it could push
+  exactly. Corpus cases over each JSON type in `typed` first.
+- **A comparison read as a value** — *small*. An ordering against a constant measured right — the
+  service's ordering across types is undefined over a null and reads back null — and the others could
+  be written under a ternary on their operands' null sets. Neither is worth a second rule until a
+  projected comparison is a shape someone writes.
+- **Integer overflow** — *a decision, recorded*. Pushed, and computed rather than wrapped; see
+  *Verified against the emulator* in `DESIGN.md`. A declared numeric range could prove an integer sum
+  fits, and let the adapter decline only the arithmetic that might not.
+
+*Settled after that review,* by the review of the predicate oracle's gate: `RETURNING DECIMAL` parses a
+stored string — `"2"`, `" 2 "` and `"2.0"` are each 2 to it — where every other numeric and boolean
+`RETURNING` asserts its class (`CalciteJsonValueMeasurementTests`). It was written as the path, losing
+the strings at the service, and read by the fact extractor as the path holding the number, which over a
+declared string rewrote the filter to `FALSE`. It now addresses no path, and a comparison through it
+pushes the window a cast to a number pushes. The corpus gained a declared container and twenty
+statements, fourteen of which answered differently before. What that leaves:
+
+- **`RETURNING DECIMAL` over a path declared an integer** — *small*. The parse of a whole number is the
+  number, and the service keeps a stored integer exact at any size (*Verified against the emulator*), so
+  over a declaration that admits nothing else the accessor is the value at the path and could be written
+  as one: a column, a sort key, a grouping key, an exact comparison. A path declared `number` is not
+  enough — a stored `0.1` parses to the double's binary expansion, which `= 0.1` under `DECIMAL(10, 1)`
+  is false of, and the projected value carries it. The gate needs the facts, which `IsJsonAccessor` does
+  not have, so it is a reading beside the refusal rather than a hole in it. Measured over `declared`'s
+  `n` first. The same reading would make the clause a second spelling of the numeric-string lowering
+  (`CosmosFactRewriter.NumericAccessorOf`), which reads only the cast.
+- **`<>`, a negated equality, `IS NOT NULL`, and a literal with more digits than the clause** —
+  *small*. They push nothing, not even the `IS_DEFINED` every comparison implies, because
+  `CosmosFilterSplitRule.CollectPaths` finds no path in an accessor that addresses none. The last is
+  `RETURNING DECIMAL(10, 2) = 2.255`, where Calcite casts the value up to `DECIMAL(11, 3)` and the window
+  does not read through a cast to `DECIMAL`, so the container is read whole. Seeing through the parse to
+  the rendering there, as the window does, would recover all four.
+
+*Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
+literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
+bound loosened by one around 2^60 came back as 2^60 and `RETURNING BIGINT = 2^60 + 1` matched 2^60.
+`CosmosRexTranslator.TryGetExactNumberValue` now sends a whole number a double does not hold as a `long`,
+and a cast to `DOUBLE` reads no window from 2^52, where a stored integer and the literal each round by
+half a unit. A literal cast down to a `DECIMAL` its whole digits do not fit raises in Calcite on every row,
+and no window is read from it, where one answered nothing and a declared maximum rewrote it to `FALSE`.
+`declared` gained `v` and sixteen statements, ten of which answered differently before. What that leaves:
+
+- **A double's window past 2^52** — *small*. It states nothing there, which is sound. Loosening each side
+  by the double's unit in the last place at the bound, rather than by one, would recover it.
+- **A number no value serves** — *small, and rare*. A literal a hair from a whole number,
+  `2.9999999999999999`, or a whole number beyond a `long` the double does not hold, is declined, and a
+  bound of one is not stated; a parameter's value of one fails the execution. Sending the nearest double
+  on the side the comparison allows would serve a bound, though not an equality.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say
@@ -1125,7 +1238,68 @@ the distribution the gate is sized for.
   columns. It does not reach an unpromoted document path, and not for want of a type — such a path
   projects as an accessor call rather than as a reference, and `RelMdPredicates` carries a predicate
   through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
-  a total order over JSON types*, and section 7 below, whose case this sharpens.
+  a total order over JSON types*, and section 7 below, whose case this sharpens. Over a `DISTINCT`
+  the placement is not the only gate: a key some documents lack is normalised and binds nothing, so
+  its sort stays in process under any placement, and only a declared `required` reaches it. Whether
+  `ORDER BY c.p` beside `SELECT DISTINCT VALUE { "p": IS_DEFINED(c.p) ? c.p : null }` orders the rows
+  the way the projected key would is unmeasured, and would be the way to recover it (`DESIGN.md`
+  under *Plan order is not clause order*).
+- **A grouping or `DISTINCT` over a text accessor of an undeclared path** — *medium, and the shape
+  is known.* It runs in process now: the service groups the stored values and SQL the rendering, so a
+  stored `30` and `"30"` were two groups of what SQL calls one (review probes J1, J2 and J13;
+  `DESIGN.md` under *An accessor keeps its guard wherever it is written*). A container declaring the
+  path a string still pushes. A value has one rendering, so the groups by value refine the groups by
+  rendering: push the grouping by the guarded value, read each key back as text, and finish by
+  rendering in process, re-aggregating the partials the way `CosmosAggregateSplitRule` finishes a
+  grouping set. That would recover every `GROUP BY` and `DISTINCT` over `JSON_VALUE` the decline
+  costs, seven statements of the differential corpus when it was counted. The other way back, a key
+  at the service that renders as the reader does — something like `IS_STRING(p) ? p : ToString(p)`
+  under the guard — is only sound where the service's `ToString` spells every number and boolean as
+  Java's `toString` does, which `1e30` (`1.0E30` in process) already suggests it does not; measure
+  the spellings before writing that one.
+- **A sort over a text accessor of an undeclared path** — *medium, and the shape is known.* It runs
+  in process now, with its row limit: the service orders the stored value, by JSON type and numbers
+  by value, and SQL the text, so over the typed container the label came back `'true'` before `'30'`
+  and the price `'7'` before `'30'` (`DESIGN.md` under *Ordering a sort key the way it reads*). A
+  container declaring the path a string still pushes. No single statement recovers the rest, since
+  the service orders by a path and nothing else. Two would, in the shape section 5 gives the null
+  placement: the strings, `WHERE IS_STRING(p) ORDER BY p` with the page, whose text is their value;
+  and every other document, rendered and sorted in process, merged with the first by text. The page
+  bounds the first statement and not the second, so it buys back a path that is nearly always a
+  string and that nobody declared, and the cost model would have to know the second half's size.
+- **A sort over a typed accessor of a path not declared its type** — *small, and the shape is
+  known.* It runs in process now, with its row limit: `JSON_VALUE(… RETURNING INTEGER)` reads null
+  for an object and an array, and the service sorts both after every number, so a page over the
+  typed container's `label` came back `[null, null, 30]` where SQL answers three nulls
+  (`DESIGN.md` under *Ordering a sort key the way it reads*). A container declaring the path the type
+  still pushes. Easier than the text case, because every value of another type reads one null: the
+  numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
+  order, placed before or after them as the placement says. The cost model would have to know the
+  second half's size, as there.
+- **A sort over a key a filter beneath it already confines** — *small, a pushdown not taken.*
+  `WHERE JSON_VALUE(c."DOC", '$.label') IN ('bikes', 'shoes', 'huge') ORDER BY 1` keeps the sort in
+  process, though the filter reaches the service exactly — unambiguous text matches a stored string
+  and nothing else — so every row the sort sees holds a string at the path and the service's order is
+  SQL's. Before the sort asked how its key was read it pushed, and agreed. `IsReadAsStored` asks the
+  declaration alone, `Derive(null)`, for the reason `IsDeclaredStringOutright` gives: a fact the
+  query proved certifies the conjunct it came from. A sibling filter is not that conjunct, and the
+  remarks there say the ordering may use it. Recovering it means handing the sort the facts a filter
+  *pushed beneath it* entails — only those that reached the service exactly, so not a weakening's,
+  which keeps the comparison above — and asking them for the type, which reaches a typed key under
+  `IS NOT NULL` or a range too. The planner corpus has no such statement.
+- **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
+  to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
+  does, and the service by code point, so the two part where a character above U+FFFF meets one
+  between U+E000 and U+FFFF — private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
+  Measured on the vnext-preview emulator, and witnessed four ways in `CosmosDifferentialTests`'
+  divergences: `ORDER BY c.id`, a sort over a declared string, a comparison between two declared
+  strings, and `MAX(c.id)` (`DESIGN.md` under *Ordering a sort key the way it reads*). Everything the
+  service orders strings for is exposed, the keyset page on `id` that chapter 9 recommends among them,
+  which is why declining is not the cheap answer it usually is here. Closing it is two pieces: a
+  `pattern` that keeps a path to one side of the line — an ASCII identifier, a UUID — read as a
+  licence, the way `PreservesOrder` licenses a stored form; and string order declined everywhere no
+  licence reaches, `id` included, unless the connection says its strings stay in the BMP. Measure
+  Azure before choosing: the emulator is a reimplementation and may not order as the service does.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
@@ -1252,7 +1426,10 @@ old wording did not allow for.
   stops the one-line change is that the same binding would let `CosmosAggregateRule` group by the
   element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
   t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
-  cannot answer. Measure it against an account before binding it.
+  cannot answer. Measure it against an account before binding it. The change is now one place for
+  both forms a traversal takes — `TryBindTraversal`, which the logical `Correlate` and the converted
+  `CosmosUnnest` share since the lookup join's implementation-time walk found no case for the second.
+  A lookup whose container side projects the element is the other consumer it would unblock.
 - **Tuple indexes** — *small, and unclaimed.* The one indexing-policy declaration
   `CosmosContainerMetadataReader` still does not read. Nothing consults it yet, which is why it was
   left where the full text and vector paths were not.
@@ -1691,11 +1868,12 @@ answers (F2–F4) are not the specification. The oracle covers stored forms, ext
 holds. Three bugs planted in what was added were each caught by it.
 
 **What is left, roughly in order of value.**
-- **A bound from a comparison on a typed path** — *small, once measured.* `c.price > 500` over a promoted
+- **A bound from a comparison on a typed path** — *small, half measured.* `c.price > 500` over a promoted
   `VARIANT`, or `JSON_VALUE(… RETURNING INTEGER) > 500`, states only that the path is there. A bound needs the
-  comparison to keep the stored number on its side of the constant. That is unmeasured for `RETURNING`'s
-  conversion, which may round or saturate, and for Calcite's ordering of two `VARIANT`s of different numeric
-  types.
+  comparison to keep the stored number on its side of the constant. For a `RETURNING` that asserts it is now
+  measured: it converts nothing, so a row it keeps holds a number on the comparison's side of the literal
+  (`EachNumericOrBooleanReturningAssertsItsClassButDecimal`). `DECIMAL` parses, and states its window already.
+  Calcite's ordering of two `VARIANT`s of different numeric types is still unmeasured.
 - **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
@@ -2006,6 +2184,13 @@ What the lookup join still declines, after #193 took left joins and `UUID` keys:
 - **Other converted keys** — *small each.* A `CAST(… AS INTEGER)` over a path declared integer, or an
   instant over a declared ISO shape, is restricted the same way: spell the key in the stored form. Only
   the `UUID` was asked for.
+- **A text key over a path not declared a string** — *small, and a measurement first.* Such a key is a
+  rendering, and the raw `path IN (@k…)` loses a stored number or boolean that renders as a key, so it
+  is declined (see `DESIGN.md` under *What the lookup join reaches*). Guarding the restriction —
+  `OR IS_NUMBER(path) OR IS_BOOL(path)`, rechecked by the join's key comparison — is sound and fetches
+  every non-string document per batch; spelling each key as the string and, where it reads as one, the
+  number and the boolean it renders from is tighter and needs Calcite's rendering of every number
+  pinned. Either wants the cost of a mixed-type container measured against reading it once.
 
 ### Sink abilities
 
