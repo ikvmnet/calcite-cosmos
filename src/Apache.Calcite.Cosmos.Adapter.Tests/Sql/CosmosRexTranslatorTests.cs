@@ -241,6 +241,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// Calcite divides in the type of its operands, truncating an integer quotient toward zero,
+        /// and the service divides in doubles. Measured, <c>price / 2 = 2</c> over an integer price
+        /// lost the document priced 5, and the same quotient projected failed the read as a fraction
+        /// where the plan declared an integer. Only an approximate quotient is the same at both ends.
+        /// </remarks>
+        [Fact]
+        public void OnlyAnApproximateQuotientRenders()
+        {
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.INTEGER), Num(2))).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.DECIMAL), Num(2))).Should().BeFalse();
+
+            Translate(Call(SqlStdOperatorTable.DIVIDE, Ref(1, SqlTypeName.DOUBLE), _rex.makeApproxLiteral(new java.math.BigDecimal("2.0"))))
+                .Should().Be("(c.price / @p0)");
+        }
+
+        /// <remarks>
         /// Under the negation the equality has to be <em>true</em> over a null, so that the <c>NOT</c>
         /// above makes it false and the row is discarded -- which is what SQL's unknown does in either
         /// position. The service's equality over a null is false, so <c>NOT</c> alone would have kept

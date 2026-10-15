@@ -870,6 +870,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END FROM typed AS c", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = '30'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = 'z'", false),
+
+            // Division (G): Calcite truncates an integer quotient toward zero, and the service answers
+            // the fraction, which an integer column then cannot be read as. Filtered, projected, and
+            // over a negative dividend, where truncation and flooring part; the last is the control,
+            // a quotient Calcite computes in doubles.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 2", false),       // P14
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 FROM products AS c", false),                 // P15
+            ("SELECT c.\"id\", (0 - JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)) / 3 FROM products AS c", false),
+            ("SELECT c.\"id\", c.\"_ts\" / CAST(2 AS DOUBLE) FROM products AS c", false),
         ];
 
         /// <summary>

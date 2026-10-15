@@ -1339,6 +1339,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteBinary(builder, call, "*");
                     break;
                 case SqlKind.__Enum.DIVIDE:
+                    RequireApproximateQuotient(call);
                     WriteBinary(builder, call, "/");
                     break;
                 case SqlKind.__Enum.MOD:
@@ -1403,6 +1404,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteNamedFunction(builder, call);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Refuses a division Calcite does not compute in doubles.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The service divides in doubles, and SQL divides in the type of its operands.</b> Calcite
+        /// types <c>INTEGER / INTEGER</c> an integer and truncates toward zero, as Java does, where
+        /// the service answers the fraction. Measured against the emulator over products, whose prices
+        /// are integers: <c>JSON_VALUE(DOC, '$.price' RETURNING INTEGER) / 2 = 2</c> lost the document
+        /// priced 5, which Calcite divides to 2 and the service to 2.5; and the same quotient
+        /// projected failed the read, <c>113.33333333333333</c> not being a whole number to read as
+        /// the <c>INTEGER</c> the plan declared. A <c>DECIMAL</c> quotient has a scale of its own and
+        /// a rounding the service does not perform either.
+        /// </para>
+        /// <para>
+        /// <b>Refused rather than rendered.</b> <c>TRUNC(a / b)</c> is the obvious rendering and would
+        /// have to be shown to agree on negatives, on a quotient past the precision a double carries,
+        /// and on what the reader makes of the result, for every integer type; none of that has been
+        /// measured, and declining costs only the division, which Calcite computes over what the
+        /// service sends. <see cref="Rel.CosmosAggregate.CanImplement"/> made the same call for
+        /// <c>AVG</c>, which an integer argument sends to <c>SUM</c> and <c>COUNT</c> with the division
+        /// done above.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The division.</param>
+        /// <exception cref="CosmosTranslationException">Calcite types the quotient anything but approximate.</exception>
+        static void RequireApproximateQuotient(RexCall call)
+        {
+            var type = call.getType()?.getSqlTypeName();
+
+            if (type is null || SqlTypeName.APPROX_TYPES.contains(type) == false)
+                throw new CosmosTranslationException($"A division typed '{call.getType()}' is computed in that type by Calcite -- an integer one truncates -- and in doubles by the service, so only an approximate quotient is the same at both ends.");
         }
 
         void WriteBinary(StringBuilder builder, RexCall call, string op)

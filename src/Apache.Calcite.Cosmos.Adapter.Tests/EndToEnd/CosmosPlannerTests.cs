@@ -741,6 +741,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         // ── The planner declines rather than guessing ─────────────────────────────
 
+        /// <summary>
+        /// An integer division stays in process, and the accessor beneath it is what goes down.
+        /// </summary>
+        /// <remarks>
+        /// Calcite truncates an integer quotient toward zero and the service answers the fraction.
+        /// Measured against the emulator, <c>price / 2 = 2</c> lost the document priced 5, and
+        /// <c>price / 3</c> projected failed the read at <c>113.33333333333333</c>, which is not the
+        /// integer the plan declared. A quotient Calcite computes in doubles is the service's
+        /// quotient, and pushes.
+        /// </remarks>
+        [Fact]
+        public void AnIntegerDivisionIsNotPushedDown()
+        {
+            var filtered = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 2");
+            Render(FindCosmos(filtered)).Should().NotContain(" / ", "the quotient is Calcite's: " + Render(FindCosmos(filtered)));
+
+            var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 AS \"third\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": c.price } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) / 3 AS \"third\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"third\": (c.price / @p0) } FROM products c");
+        }
+
         /// <remarks>
         /// Measured on the emulator, Cosmos <c>COUNT(x)</c> counts a JSON null where SQL excludes
         /// it, so the two disagree on any nullable column.
