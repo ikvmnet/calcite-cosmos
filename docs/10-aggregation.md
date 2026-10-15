@@ -22,6 +22,7 @@ GROUP BY c."$.category"
 | `COUNT(DISTINCT x)` | the de-duplication pushes as a `GROUP BY x`, where `x` would push as a key; the count finishes in process over one row per value |
 | `SELECT DISTINCT …` | as Cosmos `SELECT DISTINCT` |
 | a grouping key or `DISTINCT` column of `JSON_VALUE` read as text | where the path is declared a string (Chapter 14); in process otherwise (10.6) |
+| a grouping key that is a comparison, or arithmetic with a decimal fraction | in process over the values it reads (Chapter 8) |
 | `GROUP BY ROLLUP (…)`, `CUBE`, `GROUPING SETS` | the finest grouping pushes; the roll-up finishes in process |
 | `HAVING` on a grouping key | moved below the grouping, as a `WHERE` |
 | `HAVING` on an aggregated value | in process, over one row per group |

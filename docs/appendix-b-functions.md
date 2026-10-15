@@ -13,7 +13,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | --- | --- | --- |
 | `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8; selected, grouped by or compared with something, in process where it can be null |
 | `AND` `OR` `NOT` | `AND` `OR` `NOT` | with null guards |
-| `+` `-` `*` `%`, unary `-` | the same | |
+| `+` `-` `*` `%`, unary `-` | the same | not with a decimal fraction (`price * 1.1`), which Calcite computes exactly and Cosmos in doubles; integer overflow is computed rather than wrapped (Chapter 8) |
 | `/` | `/` | a `DOUBLE` quotient only; an integer or `DECIMAL` division stays in process |
 | `\|\|` | `CONCAT` | over `JSON_VALUE`, only where the path is declared a string |
 | `IS NULL` / `IS NOT NULL` | `NOT IS_DEFINED(x) OR IS_NULL(x)` / `IS_DEFINED(x) AND NOT IS_NULL(x)` | over an accessor, plus its own test, e.g. `IS_PRIMITIVE`; over a comparison, in process (Chapter 8) |

@@ -1435,12 +1435,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteChain(builder, call, "OR");
                     break;
                 case SqlKind.__Enum.PLUS:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "+");
                     break;
                 case SqlKind.__Enum.MINUS:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "-");
                     break;
                 case SqlKind.__Enum.TIMES:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "*");
                     break;
                 case SqlKind.__Enum.DIVIDE:
@@ -1448,6 +1451,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     WriteBinary(builder, call, "/");
                     break;
                 case SqlKind.__Enum.MOD:
+                    RequireNoFraction(call);
                     WriteBinary(builder, call, "%");
                     break;
                 case SqlKind.__Enum.NOT:
@@ -1543,6 +1547,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (type is null || SqlTypeName.APPROX_TYPES.contains(type) == false)
                 throw new CosmosTranslationException($"A division typed '{call.getType()}' is computed in that type by Calcite -- an integer one truncates -- and in doubles by the service, so only an approximate quotient is the same at both ends.");
+        }
+
+        /// <summary>
+        /// Refuses a sum, difference, product or remainder Calcite computes exactly in decimal
+        /// fractions.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The division's neighbours, for the division's reason.</b> Calcite types an integer
+        /// times <c>1.1</c> a <c>DECIMAL</c> with a scale, and computes it exactly; the service
+        /// computes it in doubles, where <c>1.1</c> is not <c>1.1</c>. Measured against the emulator
+        /// over products: <c>price * 1.1 = 374</c> lost the document priced 340, the service's product
+        /// being <c>374.00000000000006</c>; <c>price * 0.07 = 0.35</c> and <c>price + 0.1 + 0.2 =
+        /// 10.3</c> each lost theirs; projected, <c>price * 0.7</c> answered
+        /// <c>237.99999999999997</c> where Calcite answers <c>238.0</c>, a grouping key by the product
+        /// came back as <c>374.00000000000006</c>, and a <c>SUM</c> over it drifted in its last place.
+        /// A remainder by <c>0.3</c> lost two documents the same way.
+        /// </para>
+        /// <para>
+        /// <b>A scale of zero is an integer, and stays.</b> Integer arithmetic is exact in doubles
+        /// up to 2^53, so an integer sum is the service's sum wherever it fits — and an approximate
+        /// result is the service's arithmetic outright. Where an integer one does not fit, Calcite and
+        /// the service part for another reason: Calcite wraps, as Java does, where SQL raises and the
+        /// service computes the value. That is recorded in <c>DESIGN.md</c> as a decision, beside
+        /// out-of-domain arithmetic, rather than declined.
+        /// </para>
+        /// </remarks>
+        /// <param name="call">The arithmetic.</param>
+        /// <exception cref="CosmosTranslationException">Calcite types the result a decimal fraction.</exception>
+        static void RequireNoFraction(RexCall call)
+        {
+            var type = call.getType();
+
+            if (type?.getSqlTypeName() == SqlTypeName.DECIMAL && type.getScale() > 0)
+                throw new CosmosTranslationException($"Arithmetic typed '{type}' is computed exactly in decimal by Calcite and in doubles by the service, which do not agree on a fraction.");
         }
 
         void WriteBinary(StringBuilder builder, RexCall call, string op)

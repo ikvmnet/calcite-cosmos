@@ -152,6 +152,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// Calcite computes a sum, difference, product or remainder it types a decimal fraction exactly, and the
+        /// service in doubles. Measured over products, <c>price * 1.1 = 374</c> lost the document priced 340, whose
+        /// product the service makes <c>374.00000000000006</c>. A scale of zero is an integer, exact in doubles, and an
+        /// approximate result is the service's arithmetic outright.
+        /// </remarks>
+        [Fact]
+        public void ArithmeticInADecimalFractionIsDeclined()
+        {
+            var tenth = _rex.makeExactLiteral(new java.math.BigDecimal("1.1"));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.MULTIPLY, Ref(1, SqlTypeName.INTEGER), tenth)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.PLUS, Ref(1, SqlTypeName.INTEGER), tenth)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.MINUS, Ref(1, SqlTypeName.INTEGER), tenth)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.MOD, Ref(1, SqlTypeName.INTEGER), tenth)).Should().BeFalse();
+
+            Translate(Call(SqlStdOperatorTable.MULTIPLY, Ref(1, SqlTypeName.INTEGER), Num(2))).Should().Be("(c.price * @p0)");
+            Translate(Call(SqlStdOperatorTable.PLUS, Ref(1, SqlTypeName.DOUBLE), _rex.makeApproxLiteral(new java.math.BigDecimal("1.1"))))
+                .Should().Be("(c.price + @p0)");
+        }
+
+        /// <remarks>
         /// <para>
         /// A field a projection bound to <c>JSON_VALUE(… RETURNING INTEGER)</c> is read as an integer, and is null
         /// wherever the accessor is: for an object, an array, and every value that is not a number. Its reading said

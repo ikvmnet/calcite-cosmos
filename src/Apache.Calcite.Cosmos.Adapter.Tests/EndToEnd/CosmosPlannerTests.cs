@@ -745,11 +745,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// An integer division stays in process, and the accessor beneath it is what goes down.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Calcite truncates an integer quotient toward zero and the service answers the fraction.
         /// Measured against the emulator, <c>price / 2 = 2</c> lost the document priced 5, and
         /// <c>price / 3</c> projected failed the read at <c>113.33333333333333</c>, which is not the
         /// integer the plan declared. A quotient Calcite computes in doubles is the service's
         /// quotient, and pushes.
+        /// </para>
+        /// <para>
+        /// The control divides the integer accessor by a double, so that Calcite widens the integer
+        /// it reads and the differential corpus can say the two agree. <c>RETURNING DOUBLE</c> would
+        /// have been the obvious spelling and cannot be checked: over a stored integer Calcite raises
+        /// rather than widening, the assertion ikvmnet/calcite-dotnet#120 records, so there is no
+        /// oracle to agree with.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AnIntegerDivisionIsNotPushedDown()
@@ -760,8 +769,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 AS \"third\" FROM products AS c");
             Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": c.price } FROM products c");
 
-            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) / 3 AS \"third\" FROM products AS c"))
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / CAST(3 AS DOUBLE) AS \"third\" FROM products AS c"))
                 .Should().Be("SELECT VALUE { \"third\": (c.price / @p0) } FROM products c");
+        }
+
+        /// <summary>
+        /// A sum, difference, product or remainder Calcite types a decimal fraction stays in process.
+        /// </summary>
+        /// <remarks>
+        /// Calcite computes <c>price * 1.1</c> exactly, in <c>DECIMAL</c>, and the service in doubles,
+        /// where <c>1.1</c> is not <c>1.1</c>. Measured against the emulator, <c>price * 1.1 = 374</c>
+        /// lost the document priced 340, whose product the service makes <c>374.00000000000006</c>,
+        /// and the product projected came back the same way. An integer product is exact in doubles,
+        /// and pushes.
+        /// </remarks>
+        [Fact]
+        public void ArithmeticInDecimalFractionsIsNotPushedDown()
+        {
+            var filtered = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 = 374");
+            Render(FindCosmos(filtered)).Should().NotContain(" * ", "the product is Calcite's: " + Render(FindCosmos(filtered)));
+
+            var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 0.1 AS \"p\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": c.price } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 2 AS \"p\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"p\": (c.price * @p0) } FROM products c");
         }
 
         /// <summary>

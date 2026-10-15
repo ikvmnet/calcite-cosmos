@@ -368,6 +368,7 @@ documents it has to read.
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
+| `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
 | `GROUP BY` or `DISTINCT` over `JSON_VALUE`, where the path is not declared a string | Calcite groups the text, the service the value — `30` and `"30"` are one group or two (Chapter 10) |
 | `JSON_VALUE` or `JSON_QUERY` over the result of `JSON_VALUE` | Calcite parses the text as a document; the service has the value |
@@ -381,6 +382,12 @@ documents it has to read.
 **Out-of-domain arithmetic fails the whole statement.** `SQRT(-1)`, `ASIN(2)` and `ACOS(2)` make Cosmos
 reject the query, where Calcite would produce `NaN` for that row. They are pushed anyway, consistently
 with how `SQRT` always has been; if your data can produce such inputs, guard them in the query.
+
+**Integer overflow is computed, not wrapped.** Cosmos does arithmetic in doubles, so
+`price * 100000000` is the true product. Calcite's `INTEGER` arithmetic wraps where SQL would raise,
+so the two disagree once a result passes about two billion: a filter keeps the rows the true product
+satisfies, and a selected product fails the statement, not being an `INTEGER`. If your data can get
+there, read the value `RETURNING BIGINT`, or make an operand a `DOUBLE` — `CAST(100000000 AS DOUBLE)`.
 
 ---
 

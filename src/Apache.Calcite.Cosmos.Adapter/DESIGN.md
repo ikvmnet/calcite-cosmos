@@ -1225,6 +1225,13 @@ as NaN, so pushing any of them down trades a row of NaN for a failed statement �
 lets the adapter check first. They are pushed anyway, `SQRT` and `LOG` always having been, and this
 is recorded so that the consistency is a decision rather than an oversight.
 
+**Integer overflow is computed, not wrapped.** The service's arithmetic is in doubles, so
+`price * 100000000` is the product, where Calcite's `INTEGER` arithmetic wraps as Java's does and SQL
+raises. A filter over it keeps rows the engine does not, and a projection of it fails the read, the
+product not being the `INTEGER` the plan declared. Pushed anyway, for the reasons under *A quotient is
+a double at the service*, and recorded here beside out-of-domain arithmetic for the same reason that
+is.
+
 **Ordering is a total order over JSON types.** Ascending:
 
 ```
@@ -2498,6 +2505,33 @@ types the quotient approximate. `TRUNC(a / b)` is the obvious rendering, and it 
 to agree on negatives, past what a double holds and through the reader, for each integer type; it is
 declined instead, which costs the division and nothing else. `CosmosAggregate.CanImplement` made the
 same call for `AVG`, which an integer argument sends to `SUM` and `COUNT` with the division above.
+
+The control the planner test and the corpus carry divides the integer accessor by a double, which
+Calcite widens. `RETURNING DOUBLE` was the first spelling, and over these prices it has no oracle:
+Calcite raises over a stored integer rather than widening it — see *What an accessor reads, stated
+once* — so the agreement it claimed was never measured.
+
+**A decimal fraction is the quotient's neighbour.** Calcite types an integer times `1.1` a `DECIMAL`
+with a scale and computes it exactly; the service computes it in doubles, where `1.1` is not `1.1`.
+Measured over `products`: `price * 1.1 = 374` lost the document priced 340, whose product the service
+makes `374.00000000000006`; `price * 0.07 = 0.35` and `price + 0.1 + 0.2 = 10.3` lost theirs;
+projected, `price * 0.7` was `237.99999999999997` against Calcite's `238.0`, a grouping key by the
+product came back as `374.00000000000006`, a `SUM` over it drifted in its last place, and a remainder by
+`0.3` lost two documents. `RequireNoFraction` declines `+`, `-`, `*` and `%` where Calcite types the
+result a `DECIMAL` with a non-zero scale. A scale of zero is an integer, exact in doubles to 2^53, and
+an approximate result is the service's arithmetic outright, so both push as before.
+
+**Integer overflow is pushed, and that is a decision.** Calcite's integer arithmetic wraps, as Java's
+does: over `products`, `price * 100000000 > 0` keeps the two prices whose product fits and drops the
+three whose product wraps negative, where the service computes the products and keeps all five;
+projected, the service's product is not an `INTEGER` and the read fails. SQL raises for both — an integer result outside its type is a data
+exception — so the engine's answer is no more SQL's than the service's, and of the two the failed read
+is the one the standard gives. Declining would take every integer sum, difference and product, which
+are the arithmetic this pushes most, to protect an answer the standard does not give, over data that
+has to exceed two billion to reach it; a declared range could prove a sum fits, and nothing reads one
+for that yet. So it is recorded beside out-of-domain arithmetic under *Verified against the emulator*,
+and kept out of the differential corpus by name, as that is. A `BIGINT` past 2^53 is the same question
+asked of a double's precision rather than its range, and is answered the same way.
 
 ### A projection that cannot be pushed is not a wall
 

@@ -445,7 +445,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// Excluded by name, with the recorded reason: out-of-domain arithmetic (<c>SQRT(-1)</c> and
         /// kin), which is pushed deliberately and diverges deliberately — the service fails the
-        /// query where Calcite yields NaN; see <c>DESIGN.md</c>.
+        /// query where Calcite yields NaN; and integer overflow (<c>price * 100000000</c>), pushed
+        /// deliberately too — Calcite wraps, where SQL raises and the service computes the value, so
+        /// a filter keeps the true product and a projected one fails the read. See <c>DESIGN.md</c>.
         /// </remarks>
         static readonly (string Sql, bool Ordered)[] Corpus =
         [
@@ -894,6 +896,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),                             // P20
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.category') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),  // P21
 
+            // A control for the quotient: the integer accessor over a double divisor, which Calcite widens
+            // and divides in doubles. RETURNING DOUBLE would be the obvious spelling and has no oracle over
+            // these prices -- Calcite raises over a stored integer rather than widening it.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / CAST(3 AS DOUBLE) FROM products AS c", false),
+
 
             // ── The probes of the review of the fixes, kept ──────────────────────────
             //
@@ -939,6 +946,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT JSON_VALUE(c.\"DOC\", '$.price'), COUNT(*) FROM typed AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price')", false),            // E9
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c", false),                                                        // E10
             ("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM typed AS c", false),                                                 // E13
+
+            // Arithmetic in a decimal fraction (G), which Calcite computes exactly and the service in
+            // doubles. Filtered, projected, grouped by and summed; the remainder by 0.3 was found beside them.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 = 374", false),               // G4
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 FROM products AS c", false),                           // G5
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 0.07 = 0.35", false),             // G6
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 0.7 FROM products AS c", false),                           // G15
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 0.1 + 0.2 = 10.3", false),        // G20
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1, COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1", false), // G26
+            ("SELECT SUM(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1) FROM products AS c", false),                                // G27
+            ("SELECT c.\"id\" FROM products AS c WHERE MOD(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0.3) = 0.2", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 2 > 100", false),
 
             // An accessor addressing through a rendering (N), whose text Calcite parses as JSON and whose
             // value the service holds. The last is the control: a JSON_QUERY's text is the fragment.
