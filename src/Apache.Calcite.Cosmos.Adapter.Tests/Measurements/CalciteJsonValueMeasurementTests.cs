@@ -437,6 +437,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// A comparison through <c>RETURNING DECIMAL</c> casts the wider side: the value up where the literal has more
+        /// digits than the clause, and the literal down where the two together would pass nineteen. Either cast checks
+        /// the precision, and raises where it does not fit.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The clause applies no precision of its own — a stored 12345 under <c>DECIMAL(5, 1)</c> is 12345 — but
+        /// <c>= 12345</c> casts it to <c>DECIMAL(11, 1)</c>, which a stored 2^60 does not fit. And
+        /// <c>DECIMAL(19, 18) = 50</c> casts 50 to a type with one whole digit, which raises whatever is stored, where
+        /// <c>= 5</c> fits and compares. Against plain <c>DECIMAL</c> every literal is cast down, and truncated:
+        /// <c>2.9999999999999999</c> is 2.
+        /// </para>
+        /// <para>
+        /// Found by the review of the <c>RETURNING DECIMAL</c> fix. <c>CosmosNumericWindow</c> reads no window through
+        /// the value's cast, and none from a literal whose cast raises.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AComparisonThroughReturningDecimalCastsTheWiderSide()
+        {
+            (string? Value, string Declared, string? Runtime, string? Threw) Compared(string json, string type, string comparison) =>
+                Ask($"CASE WHEN JSON_VALUE({Document(json)}, '$.v' RETURNING {type}) {comparison} THEN 'T' ELSE 'F' END");
+
+            Compared("12345", "DECIMAL(5, 1)", "= 12345").Value.Should().Be("T", "the clause does not apply its precision");
+            Compared("1152921504606846976", "DECIMAL(5, 1)", "= 12345").Threw.Should().NotBeNull("the value cast up to DECIMAL(11, 1) does not fit");
+
+            Compared("5", "DECIMAL(19, 18)", "= 5").Value.Should().Be("T", "5 fits one whole digit");
+            Compared("50", "DECIMAL(19, 18)", "= 50").Threw.Should().NotBeNull("the literal cast down to DECIMAL(19, 18) does not");
+            Compared("5", "DECIMAL(19, 18)", "= 50").Threw.Should().NotBeNull("whatever is stored");
+
+            Compared("2", "DECIMAL", "= 2.9999999999999999").Value.Should().Be("T", "truncated to the clause's scale, however near the next");
+        }
+
+        /// <summary>
+        /// A cast of the accessor to a number is a parse of its rendering, not a conversion of the number stored: Java's
+        /// integer parse for <c>INTEGER</c> and <c>BIGINT</c>, and its double parse for <c>DOUBLE</c>, each over the text
+        /// trimmed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
+        /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
+        /// at the limit (<c>CosmosRexTranslator.TryNumericCastOperand</c>). A double's parse reads every rendering of a
+        /// number. A string spelling a number is parsed as one, and anything else raises.
+        /// </para>
+        /// <para>
+        /// Taken from <c>feature/predicate-oracle-checker</c> (0d9f109, "Read an integer cast of the accessor as Calcite
+        /// does: a parse that raises"), whose population-D checker found it, with the test unchanged. The window a
+        /// comparison through the cast pushes still holds: a whole number lands exactly, and what raises is a document
+        /// the statement fails on.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACastOfTheAccessorToANumberParsesTheRendering()
+        {
+            Ask($"CAST(JSON_VALUE({Document("30")}, '$.v') AS INTEGER)").Value.Should().Be("30");
+            Ask($"CAST(JSON_VALUE({Document("\" 30 \"")}, '$.v') AS INTEGER)").Value.Should().Be("30", "a string is trimmed and parsed");
+            Ask($"CAST(JSON_VALUE({Document("2147483648")}, '$.v') AS BIGINT)").Value.Should().Be("2147483648");
+
+            foreach (var json in new[] { "30.0", "2.5", "1e30", "2147483648", "true", "\"x\"" })
+                Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS INTEGER)").Threw.Should().NotBeNull(
+                    $"an integer's parse refuses the rendering of {json}, where a cast of the number would not");
+
+            Ask($"CAST(JSON_VALUE({Document("30.0")}, '$.v') AS BIGINT)").Threw.Should().NotBeNull("and so does a long's");
+
+            foreach (var json in new[] { "30", "30.0", "2.5", "1e30", "\"1e30\"" })
+                Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS DOUBLE)").Threw.Should().BeNull($"a double's parse reads {json}");
+
+            Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS DOUBLE)").Threw.Should().NotBeNull("a boolean's rendering is no number");
+            Ask($"CAST(JSON_VALUE({Document("null")}, '$.v') AS INTEGER)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "a JSON null renders as SQL null, which casts to null");
+        }
+
+        /// <summary>
         /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and the
         /// adapter implements the construct rather than reproducing it.
         /// </summary>

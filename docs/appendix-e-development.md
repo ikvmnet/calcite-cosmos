@@ -87,7 +87,9 @@ compared with `FALSE`, since a `WHERE` cannot tell false from unknown and a colu
 review of the fixes, sweeping exactly those neighbours, found some thirty more; they are in the corpus
 under the names it gave them. Where a pushdown reads a declaration, add its statements over the
 `declared` container too, whose documents keep what it declares: a conclusion the operator does not
-license is wrong only where something is declared.
+license is wrong only where something is declared. Where it sends a number, ask it past 2^53 as well,
+over `declared`'s `v`, which holds integers a double does not: a bound loosened by one, or a literal,
+that the service reads as a double comes back as another number.
 
 ### Measurements
 

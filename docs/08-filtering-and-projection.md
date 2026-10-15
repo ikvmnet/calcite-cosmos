@@ -152,10 +152,11 @@ route (8.5).
 
 ### `CAST` to a number: a bound, then a recheck
 
-`CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, `30.7` becomes
-30 — and the service cannot reproduce a conversion. But the comparison still *implies* something the
-service can check: every document it keeps has a raw value above 9. So the adapter sends that bound
-and rechecks the cast in process:
+`CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, and `30.7`,
+whose text is no integer, fails the statement (cast to `DOUBLE` to read it) — and the service cannot
+reproduce a conversion. But the comparison still *implies* something the service can check: every
+document it keeps has a raw value above 9. So the adapter sends that bound and rechecks the cast in
+process:
 
 ```
 → WHERE IS_DEFINED(c.price) AND (NOT IS_NUMBER(c.price) OR c.price > 9)
@@ -167,7 +168,16 @@ declares the property an integer (Chapter 14), the type test is dropped and it d
 bound is applied for casts to `INTEGER`, `BIGINT` and `DOUBLE`, and for `RETURNING DECIMAL`, which is
 the same conversion written as a clause. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and
 `REAL` (which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
-evaluated in process only.
+evaluated in process only. So is a cast to `DOUBLE` compared with a number beyond 2^52
+(4,503,599,627,370,496), where a double no longer holds a unit: `= 2^60` is true of a stored
+2^60 + 1.
+
+`RETURNING DECIMAL` sends the bound where Calcite compares the literal at the clause's type, which
+under plain `DECIMAL` it always does, truncating the literal to a whole number. Where the literal's
+type is the wider — `RETURNING DECIMAL(10, 2) = 2.255`, or `RETURNING DECIMAL(5, 1) = 12345`, an
+`INTEGER` literal — Calcite casts the value up instead, and the comparison runs in process whole.
+Where the clause cannot hold the literal — `RETURNING DECIMAL(19, 18) = 50` — Calcite raises on every
+row, and so does the statement.
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = 2
@@ -353,6 +363,14 @@ A parameter is sent as a Cosmos parameter, exactly as a literal of the same type
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
 prepared statement serves every page.
 
+**A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
+as a double, and keeps a stored integer exact. So a whole number beyond 2^53
+(9,007,199,254,740,992) that a double does not hold — `1152921504606846977` — is sent as a 64-bit
+integer, which compares exactly; sent with a point, it would match the document holding
+`1152921504606846976` instead. A number no value Cosmos reads is — a fraction a hair from a whole number,
+`2.9999999999999999`, which a double reads as 3 — is compared in process if it is a literal, and fails
+the statement if it is a parameter's value.
+
 **A parameter compared with `JSON_VALUE` is sent in its weakened form.** Whether a text comparison
 can be exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and a parameter's value
 is not known when the statement is planned. So the comparison is sent as `NOT IS_STRING(…) OR …` and
@@ -379,6 +397,7 @@ documents it has to read.
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the bound a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |

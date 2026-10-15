@@ -83,6 +83,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             bound.Parameters[0].Value.Should().Be(7L);
         }
 
+        /// <summary>
+        /// An exact number arriving late binds as a literal of it would: a decimal where its double serves, a long where
+        /// the double would be another whole number, and nothing where neither is the number.
+        /// </summary>
+        /// <remarks>
+        /// The service reads a decimal as a double, and 2^60 + 1 sent as one matched the document holding 2^60 —
+        /// <c>CosmosRexTranslator.TryGetExactNumberValue</c>. The plan was made to send the value, so one no value serves
+        /// fails the execution rather than being sent as a number it is not.
+        /// </remarks>
+        [Fact]
+        public void AnExactNumberBindsAsALiteralOfItWould()
+        {
+            CosmosQuery Bind(string number) => CosmosQueries.Bind(
+                Query(new CosmosParameter("@p0", new CosmosDynamicValue(0))),
+                new Context(("?0", new java.math.BigDecimal(number))));
+
+            Bind("2.5").Parameters[0].Value.Should().BeOfType<decimal>().Which.Should().Be(2.5m);
+            Bind("1152921504606846977").Parameters[0].Value.Should().BeOfType<long>().Which.Should().Be(1152921504606846977L);
+
+            FluentActions.Invoking(() => Bind("1.9999999999999999")).Should().Throw<CosmosExecutionException>();
+        }
+
         // -- A geography ---------------------------------------------------------------------------
 
         /// <summary>

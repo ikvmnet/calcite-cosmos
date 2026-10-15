@@ -868,9 +868,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Converts a Calcite literal into the CLR value to bind.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Temporal literals are refused. Cosmos JSON has no date or time type — dates are ISO
         /// strings or epoch numbers by application convention, and nothing in the container
         /// declares which. Guessing an encoding would silently return wrong rows.
+        /// </para>
+        /// <para>
+        /// So is an exact number the service would read as another whole number — see
+        /// <see cref="TryGetExactNumberValue"/>.
+        /// </para>
         /// </remarks>
         internal static object? GetLiteralValue(RexLiteral literal)
         {
@@ -900,7 +906,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             if (type == SqlTypeName.DECIMAL)
-                return BigDecimalConverter.ToDecimal((java.math.BigDecimal)literal.getValue());
+                return TryGetExactNumberValue((java.math.BigDecimal)literal.getValue())
+                    ?? throw new CosmosTranslationException($"No value the service can be sent compares there as the number {literal.getValue()}.");
 
             if (type == SqlTypeName.FLOAT || type == SqlTypeName.REAL || type == SqlTypeName.DOUBLE)
             {
@@ -922,6 +929,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return Client.CosmosJson.ToGeoJsonValue(geometry);
 
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
+        }
+
+        /// <summary>
+        /// Converts an exact number into the CLR value the service compares as that number, or answers
+        /// <c>null</c> where there is none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A decimal reaches the service as a double.</b> The SDK writes one with a point, and the
+        /// service reads a number written with one as a double. It keeps a stored integer as the integer
+        /// it is, and compares a double with it exactly. Measured against the emulator over the
+        /// differential corpus's <c>declared</c>, whose <c>v</c> holds 2^53, 2^53 + 1, 2^60 and 2^60 + 1:
+        /// <c>RETURNING BIGINT = 1152921504606846977</c>, sent as a decimal, matched the document holding
+        /// 2^60 and not the one holding the literal, and <c>= 9007199254740993</c> matched 2^53. A double
+        /// that is the number is exact against either: <c>&gt; 1152921504606846976</c> keeps 2^60 + 1, and
+        /// <c>= 9007199254740992</c> keeps 2^53 alone.
+        /// </para>
+        /// <para>
+        /// <b>So a decimal stays wherever its double is right, and only the rest changes.</b> A double
+        /// that is not the number lies within half a unit in its last place of it, and no stored value
+        /// lies between the two but that double itself. Through a typed accessor Calcite tells that
+        /// double from the number only where it is whole: <c>RETURNING DOUBLE</c> rounds the literal as
+        /// the service does, and an integer is read exactly. So the decimal is wrong exactly where its
+        /// double is a whole number other than the number — an integer beyond 2^53 a double does not
+        /// hold, and a fraction a hair from a whole number, <c>2.9999999999999999</c>, which reads as 3.
+        /// A whole one is sent as a long, which the service keeps as the integer it is. A fraction, and
+        /// a whole number beyond a long, are sent as nothing, and the caller declines.
+        /// </para>
+        /// <para>
+        /// The window a cast's comparison pushes asks this of each side, for the same reason:
+        /// <see cref="Metadata.CosmosNumericWindow"/>. Loosened by one beyond 2^53, a bound sent as a
+        /// double came back as the number it was loosened from, and excluded the document holding it.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The number.</param>
+        /// <returns>A <see cref="decimal"/> or a <see cref="long"/>, or <c>null</c>.</returns>
+        internal static object? TryGetExactNumberValue(java.math.BigDecimal value)
+        {
+            var approximate = value.doubleValue();
+
+            if (double.IsInfinity(approximate))
+                return null;
+
+            try
+            {
+                if (Math.Floor(approximate) != approximate || new java.math.BigDecimal(approximate).compareTo(value) == 0)
+                    return BigDecimalConverter.ToDecimal(value);
+
+                return value.longValueExact();
+            }
+            catch (Exception e) when (e is java.lang.ArithmeticException or OverflowException)
+            {
+                // A fraction or a number beyond a long, which longValueExact refuses; or one beyond a decimal.
+                return null;
+            }
         }
 
         /// <summary>
@@ -3004,7 +3066,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// builder.
         /// </para>
         /// </remarks>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _);
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder) => TryNumericCastOperand(node, rexBuilder, out _, out _);
 
         /// <inheritdoc cref="TryNumericCastOperand(RexNode, RexBuilder)" />
         /// <param name="node">The expression to inspect.</param>
@@ -3014,20 +3076,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// saturate. A comparison against one of these two values matches every stored value beyond it,
         /// which a bound must not exclude.
         /// </param>
-        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates)
+        /// <param name="roundsFrom">
+        /// On success, the magnitude from which the conversion may move a value by a whole unit, or
+        /// <c>null</c> where it never does. A window around a bound that far out holds nothing.
+        /// </param>
+        internal static RexNode? TryNumericCastOperand(RexNode node, RexBuilder rexBuilder, out (java.math.BigDecimal Min, java.math.BigDecimal Max)? saturates, out java.math.BigDecimal? roundsFrom)
         {
             saturates = null;
+            roundsFrom = null;
 
             if (node is not RexCall call)
                 return null;
 
             // RETURNING DECIMAL parses what the path holds -- a stored number as its exact value, a
             // stored string as the number its text spells -- so a stored number it compares lies within
-            // one of the literal as surely as under the cast: the literal is cast to the comparison's
-            // scale, truncated toward zero, and the value is not (measured: `= 2.5` keeps a stored 2, and
-            // `> 2` a stored 2.4). It neither saturates nor raises on precision -- a stored 12345 under
-            // RETURNING DECIMAL(5, 1) is 12345 and equal to it -- so no side is spared. A behaviour clause
-            // substitutes a value the path does not hold, and is not this.
+            // one of the literal as surely as under the cast: where the comparison casts the literal down
+            // to the clause's type it is truncated toward zero, and the value is not (measured: `= 2.5`
+            // keeps a stored 2, and `> 2` a stored 2.4). It never saturates, so no side is spared. The
+            // clause applies no precision of its own -- a stored 12345 under RETURNING DECIMAL(5, 1) is
+            // 12345 -- but the comparison may: a literal with more digits casts the value up instead,
+            // CAST(...):DECIMAL(11, 1) against 12345, which checks the precision and which this does not
+            // read through; and a literal whose whole digits the clause's type cannot hold raises when
+            // cast down to it, which CosmosNumericWindow refuses to read. A behaviour clause substitutes a
+            // value the path does not hold, and is not this.
             if (IsParsingJsonValue(call))
             {
                 if (IsPlainJsonValue(call) == false)
@@ -3049,9 +3120,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // what a caller can state a bound from. Measured against Calcite's own runtime, and four
             // plausible members are absent because measuring them is what ruled them out:
             //
-            //   INTEGER, BIGINT  truncate toward zero and saturate at the limits -- within one, except
-            //                    at the limits, which the caller handles.
-            //   DOUBLE           identity for a stored number.
+            //   INTEGER, BIGINT  over a raw value, truncate toward zero and saturate at the limits --
+            //                    within one, except at the limits, which the caller handles. Over
+            //                    JSON_VALUE's rendering, Java's integer parse of the text: a whole number
+            //                    lands exactly, and a point, an exponent or a whole number beyond the
+            //                    type raises (ACastOfTheAccessorToANumberParsesTheRendering). A bound only
+            //                    excludes what raises, which is the recorded divergence.
+            //   DOUBLE           identity for a stored number, and the double's parse of its rendering,
+            //                    below 2^52. From there half a unit in the last place reaches a half, and
+            //                    the stored value and the literal each round to a double: a whole unit
+            //                    apart, they can land on one, and = 2^60 keeps a stored 2^60 + 1 (the
+            //                    differential corpus, over declared). The caller states nothing there.
             //   SMALLINT, TINYINT  do not saturate, they wrap: toShort(1e30) is -1 and toByte(1e30) is
             //                    255, which bear no relation to the stored value at all.
             //   FLOAT, REAL      round to float precision: float(1e30) differs from 1e30 by 1.5e22.
@@ -3070,6 +3149,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 saturates = (new java.math.BigDecimal(int.MinValue), new java.math.BigDecimal(int.MaxValue));
             else if (target == SqlTypeName.BIGINT)
                 saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
+            else
+                roundsFrom = new java.math.BigDecimal(1L << 52);
 
             return operand;
         }

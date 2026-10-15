@@ -394,16 +394,36 @@ pushes the window a cast to a number pushes. The corpus gained a declared contai
 statements, fourteen of which answered differently before. What that leaves:
 
 - **`RETURNING DECIMAL` over a path declared an integer** — *small*. The parse of a whole number is the
-  number, exactly in doubles to 2^53, so over a declaration that admits nothing else the accessor is the
-  value at the path and could be written as one: a column, a sort key, a grouping key, an exact
-  comparison. A path declared `number` is not enough — a stored `0.1` parses to the double's binary
-  expansion, which `= 0.1` under `DECIMAL(10, 1)` is false of, and the projected value carries it. The
-  gate needs the facts, which `IsJsonAccessor` does not have, so it is a reading beside the refusal
-  rather than a hole in it. Measured over `declared`'s `n` first.
-- **`<>`, a negated equality and `IS NOT NULL` through it** — *small*. They push nothing, not even the
-  `IS_DEFINED` every comparison implies, because `CosmosFilterSplitRule.CollectPaths` finds no path in an
-  accessor that addresses none. Seeing through the parse to the rendering there, as the window does,
-  would recover it.
+  number, and the service keeps a stored integer exact at any size (*Verified against the emulator*), so
+  over a declaration that admits nothing else the accessor is the value at the path and could be written
+  as one: a column, a sort key, a grouping key, an exact comparison. A path declared `number` is not
+  enough — a stored `0.1` parses to the double's binary expansion, which `= 0.1` under `DECIMAL(10, 1)`
+  is false of, and the projected value carries it. The gate needs the facts, which `IsJsonAccessor` does
+  not have, so it is a reading beside the refusal rather than a hole in it. Measured over `declared`'s
+  `n` first. The same reading would make the clause a second spelling of the numeric-string lowering
+  (`CosmosFactRewriter.NumericAccessorOf`), which reads only the cast.
+- **`<>`, a negated equality, `IS NOT NULL`, and a literal with more digits than the clause** —
+  *small*. They push nothing, not even the `IS_DEFINED` every comparison implies, because
+  `CosmosFilterSplitRule.CollectPaths` finds no path in an accessor that addresses none. The last is
+  `RETURNING DECIMAL(10, 2) = 2.255`, where Calcite casts the value up to `DECIMAL(11, 3)` and the window
+  does not read through a cast to `DECIMAL`, so the container is read whole. Seeing through the parse to
+  the rendering there, as the window does, would recover all four.
+
+*Settled after that,* by the review of the fix: the window was wrong past 2^53, and so was every exact
+literal. The service reads a number sent with a point as a double, and keeps a stored integer exact, so a
+bound loosened by one around 2^60 came back as 2^60 and `RETURNING BIGINT = 2^60 + 1` matched 2^60.
+`CosmosRexTranslator.TryGetExactNumberValue` now sends a whole number a double does not hold as a `long`,
+and a cast to `DOUBLE` reads no window from 2^52, where a stored integer and the literal each round by
+half a unit. A literal cast down to a `DECIMAL` its whole digits do not fit raises in Calcite on every row,
+and no window is read from it, where one answered nothing and a declared maximum rewrote it to `FALSE`.
+`declared` gained `v` and sixteen statements, ten of which answered differently before. What that leaves:
+
+- **A double's window past 2^52** — *small*. It states nothing there, which is sound. Loosening each side
+  by the double's unit in the last place at the bound, rather than by one, would recover it.
+- **A number no value serves** — *small, and rare*. A literal a hair from a whole number,
+  `2.9999999999999999`, or a whole number beyond a `long` the double does not hold, is declined, and a
+  bound of one is not stated; a parameter's value of one fails the execution. Sending the nearest double
+  on the side the comparison allows would serve a bound, though not an equality.
 
 Two things the measurement settled that are worth keeping. `UNNEST` needs `RETURNING <type> ARRAY`,
 which is what names an array type — **and either accessor may carry it.** This entry used to say

@@ -81,6 +81,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A literal cast down to a <c>DECIMAL</c> its whole digits do not fit raises in Calcite on every row, and the
+        /// window it would have stated is no fact: over a path declared at most 10, <c>&gt; 50</c> is not rewritten to
+        /// <c>FALSE</c>.
+        /// </summary>
+        /// <remarks>
+        /// The comparison's common type would pass nineteen digits, so Calcite casts the literal to the clause's type,
+        /// <c>CAST(50):DECIMAL(19, 18)</c>, which has one whole digit. Read as 50, the window said the path holds a number
+        /// above 49, which the maximum contradicts, and the statement answered nothing where the engine raises whatever
+        /// the data. Found by the review of the <c>RETURNING DECIMAL</c> fix.
+        /// </remarks>
+        [Fact]
+        public void ALiteralCastDownToADecimalItDoesNotFitIsNoFact()
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "body": { "type": "integer", "maximum": 10 } } }""");
+            var best = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL(19, 18)) > 50""", container, out _);
+
+            PlanText(best).Should().NotContain("condition=[false]", "the engine raises rather than answering nothing: " + PlanText(best));
+            Query(FindCosmos(best), container).Sql.Should().NotContain("c.body >", "and no bound is read from the literal");
+
+            var fits = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL(19, 18)) > 5""", container, out _);
+            Query(FindCosmos(fits), container).Sql.Should().Contain("c.body > @p0", "a literal the type holds still bounds");
+        }
+
+        /// <summary>
         /// The control: a <c>RETURNING</c> that asserts its type is a claim about what the path holds, and a declared
         /// string contradicts it.
         /// </summary>

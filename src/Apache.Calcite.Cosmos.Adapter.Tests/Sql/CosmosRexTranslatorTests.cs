@@ -191,6 +191,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             _parameters.Parameters[0].Value.Should().Be(1.5d);
         }
 
+        /// <summary>
+        /// An exact number is sent as a value the service compares as that number: a decimal where its double is it, or
+        /// is no whole number; a long where its double is another whole number; and nothing where neither serves.
+        /// </summary>
+        /// <remarks>
+        /// The service reads a decimal as a double and compares it with a stored integer exactly, so a decimal is wrong
+        /// only where its double is a whole number other than the literal — 2^53 + 1 reads as 2^53, and
+        /// <c>1.9999999999999999</c> as 2, either matching a document holding that. Measured against the emulator in the
+        /// differential corpus, over <c>declared</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData("30")]
+        [InlineData("0.1")]
+        [InlineData("2.5")]
+        [InlineData("9007199254740992")]
+        [InlineData("1152921504606846976")]
+        [InlineData("10000000000000000000")]
+        public void AnExactNumberItsDoubleServesIsSentAsADecimal(string number)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<decimal>()
+                .Which.Should().Be(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        [Theory]
+        [InlineData("9007199254740993", 9007199254740993L)]
+        [InlineData("1152921504606846977", 1152921504606846977L)]
+        [InlineData("-1152921504606846975", -1152921504606846975L)]
+        public void AWholeNumberItsDoubleMisreadsIsSentAsALong(string number, long exact)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeOfType<long>().Which.Should().Be(exact);
+
+            var t = Translator();
+            t.Translate(_rex.makeExactLiteral(new java.math.BigDecimal(number)));
+            _parameters.Parameters[0].Value.Should().BeOfType<long>().Which.Should().Be(exact);
+        }
+
+        [Theory]
+        [InlineData("1.9999999999999999")]
+        [InlineData("-2.9999999999999999")]
+        [InlineData("10000000000000000001")]
+        public void ANumberNoValueServesIsNotSent(string number)
+        {
+            CosmosRexTranslator.TryGetExactNumberValue(new java.math.BigDecimal(number)).Should().BeNull();
+            CanTranslate(Translator(), _rex.makeExactLiteral(new java.math.BigDecimal(number))).Should().BeFalse();
+        }
+
         /// <remarks>
         /// Cosmos has no date type and nothing declares whether a container stores dates as ISO
         /// strings or epoch numbers, so a temporal literal must not be guessed.

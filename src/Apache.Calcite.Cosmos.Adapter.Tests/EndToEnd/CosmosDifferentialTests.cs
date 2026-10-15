@@ -107,10 +107,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// most spell a number in a different way — <c>"2"</c>, <c>" 2 "</c>, <c>"2.0"</c> — which is what a parsing
         /// <c>RETURNING</c> reads alike. None fails to parse, which would make the oracle raise.
         /// </para>
+        /// <para>
+        /// <c>v</c> is an integer too, and holds the four that tell a double from the number: 2^53, 2^53 + 1, 2^60 and
+        /// 2^60 + 1. The service keeps each as the integer it is, and reads a number it is sent with a point as a
+        /// double, which holds the first and third and not the others; a whole unit is nothing to a double there, and
+        /// a bound loosened by one comes back as the number it was loosened from. Every one lies beyond an
+        /// <c>INTEGER</c>'s range, so <c>RETURNING BIGINT</c> answers each rather than raising.
+        /// </para>
         /// </remarks>
         static readonly CosmosContainerMetadata Declared = new CosmosContainerMetadata("declared", new[] { "/category" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
-                """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" } } }""")!));
+                """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }""")!));
 
         /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
@@ -158,15 +165,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// The documents the declared container holds: a string at <c>body</c> in all but one, which lacks it, and an
-        /// integer at <c>n</c>.
+        /// The documents the declared container holds: a string at <c>body</c> in all but one, which lacks it, an
+        /// integer at <c>n</c>, and in the first four an integer at <c>v</c> a double does not always hold.
         /// </summary>
         static readonly string[] DeclaredDocuments =
         [
-            """{"id":"1","category":"a","body":"2","n":1}""",
-            """{"id":"2","category":"a","body":" 2 ","n":2}""",
-            """{"id":"3","category":"a","body":"3","n":3}""",
-            """{"id":"4","category":"a","body":"2.0","n":2}""",
+            """{"id":"1","category":"a","body":"2","n":1,"v":9007199254740992}""",
+            """{"id":"2","category":"a","body":" 2 ","n":2,"v":9007199254740993}""",
+            """{"id":"3","category":"a","body":"3","n":3,"v":1152921504606846976}""",
+            """{"id":"4","category":"a","body":"2.0","n":2,"v":1152921504606846977}""",
             """{"id":"5","category":"b","body":"2.5","n":5}""",
             """{"id":"6","category":"b"}""",
         ];
@@ -1041,6 +1048,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // the value wherever Calcite answers one.
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') = '2'", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) = 2", false),
+
+
+            // ── A number the service reads as a double ───────────────────────────────
+            //
+            // An exact literal was sent with a point, and the service reads it as a double; declared's v holds 2^53,
+            // 2^53 + 1, 2^60 and 2^60 + 1 as the integers they are. Found by the review of the RETURNING DECIMAL fix.
+            //
+            // The window around a cast's comparison, loosened by one, where one is nothing to a double: 2^60 - 1 came
+            // back as 2^60 and excluded it. A cast to DOUBLE beside them, which rounds a stored integer from 2^52. And
+            // the window around a literal a hair below a whole number: RETURNING DECIMAL truncates 2.9999999999999999
+            // to 2, and the bound below it, 1.9999999999999999, came back as 2 and excluded the stored 2.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) = 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 9007199254740993", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS BIGINT) = 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS BIGINT) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS DOUBLE) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) = 2.9999999999999999", false),
+
+            // An exact comparison against a literal the double does not hold, which came back as its neighbour and
+            // matched the document holding that; and one the double does hold, past 2^53, where how the service orders
+            // a stored integer against a double is not measured. The last is an approximate literal, which Calcite
+            // compares in doubles and the service with the integer as it is. The first of the controls pushes.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846977", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740993", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) IN (1152921504606846977, 9007199254740993)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846976E0", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 9007199254740991", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740992", false),
         ];
 
         /// <summary>

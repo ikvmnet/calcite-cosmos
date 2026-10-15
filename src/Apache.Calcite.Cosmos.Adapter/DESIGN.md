@@ -1236,6 +1236,27 @@ product not being the `INTEGER` the plan declared. Pushed anyway, for the reason
 a double at the service*, and recorded here beside out-of-domain arithmetic for the same reason that
 is.
 
+**A number sent with a point is read as a double, and a stored integer is kept as one.** The SDK writes
+a `decimal` parameter with a point, and every exact literal was bound as one, so every exact literal
+reached the service as a double; a document's integer stays the integer it is, and the service compares
+the two exactly. Measured over the differential corpus's `declared`, whose `v` holds 2^53, 2^53 + 1,
+2^60 and 2^60 + 1: `RETURNING BIGINT = 1152921504606846977` matched the document holding 2^60 and not
+the one holding the literal, `= 9007199254740993` matched 2^53, and an `IN` of the two matched both
+wrong ones. A double that is the number is exact against a stored integer: `> 1152921504606846976`
+keeps 2^60 + 1, and `= 9007199254740992` keeps 2^53 alone. The bounds a cast's comparison pushes fared
+the same (*Casts over document values*): loosened by one around 2^60, each came back as 2^60, and the
+window kept nothing.
+
+Nothing stored lies between a number and the nearest double but that double, and through a typed
+accessor Calcite tells that double from the number only where it is whole — `RETURNING DOUBLE` rounds
+the literal as the service does, and an integer is read exactly. So a decimal is wrong exactly where its double is a whole number
+other than the number: an integer beyond 2^53 a double does not hold, and a fraction a hair from a whole
+number, `2.9999999999999999`, which reads as 3. `CosmosRexTranslator.TryGetExactNumberValue` sends a
+decimal everywhere else, a `long` for a whole number there, and nothing for the fraction or for a whole
+number beyond a `long` — the literal is declined, and a bound not stated. A parameter's value arriving
+with the execution binds the same way, and fails the execution where nothing serves, the plan having
+been made to send it. Ten statements in the corpus answered wrongly before.
+
 **Ordering is a total order over JSON types.** Ascending:
 
 ```
@@ -1791,11 +1812,29 @@ is a claim about it and nothing else:
 | target | `1e30` converts to | bound |
 | --- | --- | --- |
 | `INTEGER`, `BIGINT` | saturates at the limit — `2147483647` | yes, except at the limit itself |
-| `DOUBLE` | identity | yes |
+| `DOUBLE` | identity | yes, below 2^52 |
 | `SMALLINT`, `TINYINT` | **wraps** — `-1` and `255` | no: unrelated to the stored value |
 | `FLOAT`, `REAL` | rounds to float precision, 1.5e22 away | no: further than a unit |
 | `DECIMAL` | raises, where it does not fit the precision | no: excluding the document would turn a failing query into a passing one |
-| `JSON_VALUE(… RETURNING DECIMAL)` | its exact value, at any precision | yes: the clause is this cast without the precision check — see *The document column* |
+| `JSON_VALUE(… RETURNING DECIMAL)` | its exact value, at any precision | yes, where the literal is cast to the clause's type and fits it — see *The document column* |
+
+The first column is a cast of the raw value. Over `JSON_VALUE`'s rendering, a cast to `INTEGER` or
+`BIGINT` is not a conversion at all but Java's integer parse of the text: a whole number lands exactly,
+and a rendering with a point or an exponent, or a whole number beyond the type, raises
+(`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`, taken from the
+predicate oracle's checker, which found it). Landing exactly is within one, and a document that raises
+fails the statement, so the window holds there too and the limit's side is spared for nothing. So a
+stored `30.7` converts to 30 under a cast of the raw value, as measured above, and raises under a cast
+of the accessor; chapter 8 said the second converts too.
+
+A double is within one only below 2^52. From there its unit in the last place is whole, and the stored
+value and the literal each round by up to half of it, so a whole unit apart they land on one double:
+`CAST(JSON_VALUE(…) AS DOUBLE) = 2^60` keeps a stored 2^60 + 1 the window would exclude. So
+`TryNumericCastOperand` reports where the conversion rounds from, and no window is read around a bound
+that far out. And a window's bound is a number sent to the service, which reads one sent with a point
+as a double — *Verified against the emulator*. A whole bound a double does not hold is sent as a
+`long`, and a side no value it can be sent compares as, the lower bound of `= 2.9999999999999999`, is
+not stated.
 
 Saturation is the row that had to be found rather than reasoned about. `CAST(x AS INTEGER) =
 2147483647` is true of a document storing `1e30`, so a window around the limit excludes exactly the
@@ -3553,6 +3592,21 @@ Over a path declared an integer the type test goes, and the service does all the
 adds no operand, so the value the window bounds is written out: the same call typed as the bare
 accessor, which is the rendering a cast reads.
 
+**The clause applies no precision, and the comparison may.** The window was first said to hold because
+the clause never checks its precision; it does not, but the comparison casts one side to the other's
+type, measured (`AComparisonThroughReturningDecimalCastsTheWiderSide`). Where the literal's type has
+more digits or scale than the clause's — an `INTEGER` has ten — the value is cast up:
+`RETURNING DECIMAL(5, 1) = 12345` compares `CAST(…):DECIMAL(11, 1)`, which raises on a stored 2^60.
+The window does not read through a cast to `DECIMAL`, so nothing is pushed: `RETURNING DECIMAL(10, 2) = 2.255` reads the container whole, which
+is correct and recorded in `TODO.md`. Where the two together would pass nineteen digits, the literal is
+cast down instead: against the default `DECIMAL(19, 0)` that truncates it, which moves it by less than
+one, and where its whole digits do not fit it raises — `RETURNING DECIMAL(19, 18) = 50` raises on every
+row. Read as 50, the window answered there: over a declared number the service kept nothing between 49
+and 51, and over a path declared at most 10, `> 50` was rewritten to `FALSE`. So
+`CosmosNumericWindow` reads no bound through a cast its literal does not fit. And a bound past 2^53 a
+double does not hold is sent as a `long` — *Verified against the emulator*. Before, the window around
+`= 2^60` lost the document holding 2^60, which the exact comparison it replaced had kept.
+
 #### Promoted columns
 
 A single column has one field ordinal, and Calcite's planner metadata is ordinal-based:
@@ -4287,6 +4341,15 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   test the caller's word rather than the reasoning. Twenty statements over `RETURNING DECIMAL` came
   with it, there and over `typed` and `products`, and fourteen answered differently before the fix:
   rows lost, and columns that failed to read.
+
+  The review of that fix found it had routed the clause into a window that was already wrong past
+  2^53, where a bound loosened by one comes back as the number it was loosened from, and that any exact
+  literal there was sent as a double. `declared` gained `v`, an integer holding 2^53, 2^53 + 1, 2^60
+  and 2^60 + 1, and sixteen statements over it and `n`: the window through `RETURNING DECIMAL` and
+  through the casts, a literal a hair below a whole number, exact comparisons and an `IN` through
+  `RETURNING BIGINT`, and controls that still push. Ten answered differently before; a statement
+  Calcite raises on whatever the data, `RETURNING DECIMAL(19, 18) = 50`, has no oracle and is pinned by
+  planner tests instead.
 
 ---
 

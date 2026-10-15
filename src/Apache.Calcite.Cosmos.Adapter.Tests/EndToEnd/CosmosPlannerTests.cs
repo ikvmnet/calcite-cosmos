@@ -403,6 +403,94 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A bound the service would read as another number is sent as one it reads exactly, or not at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A decimal reaches the service as a double, and beyond 2^53 the unit a window is loosened by is nothing to
+        /// one: <c>= 2^60</c> sent 2^60 - 1 and 2^60 + 1, which came back as 2^60 and excluded the document holding it.
+        /// A whole bound a double does not hold goes as a long, which the service keeps exact. The lower bound of
+        /// <c>= 2.9999999999999999</c>, whose double is 2, has no value that is it, and is dropped — and the upper with
+        /// it, so no window is read. Measured against the emulator in the differential corpus, over <c>declared</c>.
+        /// </para>
+        /// <para>
+        /// A cast to <c>DOUBLE</c> is within one only below 2^52. From there a stored integer and the literal each round by
+        /// up to half a unit, and <c>= 2^60</c> keeps a stored 2^60 + 1. It states no window that far out, and still does
+        /// just inside.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 1152921504606846976", "1152921504606846975", "1152921504606846977")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 2.9999999999999999", null, null)]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS BIGINT) = 9007199254740993", "9007199254740992", "9007199254740994")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 1152921504606846976", null, null)]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 4503599627370495", "4503599627370494", "4503599627370496")]
+        public void ABoundTheServiceWouldReadAsAnotherNumberIsSentExactlyOrNotAtAll(string comparison, string? above, string? below)
+        {
+            var query = Query(FindCosmos(PlanToAsync($"SELECT * FROM products AS c WHERE {comparison}")));
+
+            if (above is null)
+            {
+                query.Sql.Should().NotContain("c.price >", "no value the service is sent is the bound: " + query.Sql);
+                query.Sql.Should().NotContain("c.price <", query.Sql);
+                return;
+            }
+
+            query.Sql.Should().Contain("(c.price > @p0) AND (c.price < @p1)", query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal(above, below);
+            query.Parameters.Should().OnlyContain(p => p.Value is decimal || p.Value is long, "each a value the service reads as itself");
+        }
+
+        /// <summary>
+        /// An exact literal a double does not hold is sent as the long it is, and one with no such value is not sent.
+        /// </summary>
+        /// <remarks>
+        /// Sent as a decimal, which the service reads as a double, <c>RETURNING BIGINT = 1152921504606846977</c> matched
+        /// the document holding 2^60 and not the one holding the literal. One the double does hold stays a decimal: the
+        /// service compares it with a stored integer exactly, and <c>&gt; 1152921504606846976</c> keeps 2^60 + 1.
+        /// </remarks>
+        [Fact]
+        public void AnExactLiteralADoubleDoesNotHoldIsSentAsTheLongItIs()
+        {
+            var query = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING BIGINT) = 1152921504606846977")));
+
+            query.Sql.Should().Contain("(c.price = @p0)");
+            query.Parameters.Single().Value.Should().BeOfType<long>().Which.Should().Be(1152921504606846977L);
+
+            var held = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING BIGINT) > 1152921504606846976")));
+
+            held.Sql.Should().Contain("(c.price > @p0)");
+            held.Parameters.Single().Value.Should().BeOfType<decimal>().Which.Should().Be(1152921504606846976m);
+        }
+
+        /// <summary>
+        /// A literal cast down to a <c>DECIMAL</c> its whole digits do not fit states no window, and no fact.
+        /// </summary>
+        /// <remarks>
+        /// Where the comparison's common type would pass nineteen digits, Calcite casts the literal to the clause's type
+        /// rather than both up, and <c>CAST(50):DECIMAL(19, 18)</c> raises on every row. Read as 50, the window kept
+        /// nothing between 49 and 51 at the service, and answered where the engine raises. A literal it fits is truncated
+        /// and still bounds: <c>= 2.5</c> against plain <c>DECIMAL</c>.
+        /// </remarks>
+        [Fact]
+        public void ALiteralCastDownToADecimalItDoesNotFitStatesNoWindow()
+        {
+            var raises = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL(19, 18)) = 50"))).Sql;
+
+            raises.Should().NotContain("c.price >", "the cast of the literal raises, and nothing bounds what it does not answer: " + raises);
+            raises.Should().NotContain("c.price <", raises);
+
+            var fits = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL(19, 18)) = 5")));
+
+            fits.Sql.Should().Contain("(c.price > @p0) AND (c.price < @p1)", fits.Sql);
+            fits.Parameters.Select(p => Convert.ToDecimal(p.Value)).Should().Equal(4m, 6m);
+        }
+
+        /// <summary>
         /// Nothing else written over <c>RETURNING DECIMAL</c> reaches the service: a column, a sort key, a grouping key,
         /// an inequality, a null test, arithmetic.
         /// </summary>
