@@ -2350,14 +2350,17 @@ disjunction is true exactly where the reading answers a value:
 | reading | null where the path is absent, null, or | test |
 | --- | --- | --- |
 | `JSON_VALUE` read as text, or a field bound to one | an object or an array | `IS_PRIMITIVE` |
-| `JSON_VALUE` with a numeric or boolean `RETURNING` | any other type | `IS_NUMBER`, `IS_BOOL` |
-| `JSON_QUERY` with an array `RETURNING` | anything but an array | `IS_ARRAY` |
+| `JSON_VALUE` with a numeric or boolean `RETURNING`, or a field bound to one | any other type | `IS_NUMBER`, `IS_BOOL` |
+| `JSON_QUERY` with an array `RETURNING`, or a field bound to one | anything but an array | `IS_ARRAY` |
 | `JSON_QUERY`, plain, or a field bound to one | any scalar | `IS_OBJECT OR IS_ARRAY` |
-| the raw value — a promoted column, a field typed as itself, an accessor re-typed `ANY` | — | none |
+| the raw value — a promoted column, the service's own columns, an accessor re-typed `ANY` | — | none |
 
 A typed `RETURNING` over another type is an error that SQL:2016 answers null for and Calcite raises
-over (ikvmnet/calcite-dotnet#120), so the test of the type is never a row the engine answers
-differently. Three writers read the line, and before this each stated it or did not for itself:
+over (ikvmnet/calcite-dotnet#120), so the test of the type never admits a row the engine answers a
+value for. It is not a conversion either: `RETURNING DOUBLE` over a stored integer raises in process
+too, an `Integer` that cannot be cast to a `Double`, while `IS_NUMBER` admits the row. Over integer
+data such a statement has no oracle at all. Three writers read the line, and before this each stated it
+or did not for itself:
 
 - **The projection's guard**, `(test ? p : null)`, which was right all along — #131 put it on every
   nested accessor.
@@ -2380,6 +2383,17 @@ record has `IS_PRIMITIVE` there both false and undefined, and which it is has no
 every form above `IS_DEFINED`, which was measured, decides the absent case first: `NOT IS_DEFINED(p) OR
 …` is true and `IS_DEFINED(p) AND …` false whatever follows, so a type test is only ever asked of a
 value that is there.
+
+**A field bound to a typed accessor reads as the accessor too.** The binding records a field's path and
+whether it is a rendering, and a field bound to `JSON_VALUE(… RETURNING INTEGER)` is not one: it is read
+as its type. So `ReadingTests` had nothing to say of it, and `IS NOT NULL` over the field, or the guard
+under a `NOT`, tested the path's null set — keeping an object the accessor answers null for. No probe
+showed it, because `FILTER_PROJECT_TRANSPOSE` takes every filter in the corpus below the projection and
+the accessor is then written itself; a host without that rule, or a plan choosing a `CosmosFilter` over
+a `CosmosProject`, reaches the field. The field's type is the accessor's, `RETURNING` being what types
+the call, so a nullable field read as its type takes the test its type names. Nothing else bound to a
+path is such a field: the service's `id`, `_ts` and `_etag` are never null, and a promoted column is a
+`VARIANT`, the raw value, which names no test.
 
 **A box is not a reading, and the box is seen through.** Calcite's coercion puts a `CAST(… AS VARIANT)`
 around a side compared with a `VARIANT` — a literal, or the accessor where a promoted column is the
@@ -4410,6 +4424,13 @@ only `IS_DEFINED` was measured. So no rendering depends on it. Every null test a
 type test names the absent case with `IS_DEFINED` first — see *What an accessor reads, stated once* —
 and the projection's `(IS_PRIMITIVE(p) ? p : null)` reads null either way. When it is measured it
 belongs here as a fact, and nothing should have to change.
+
+**That nothing but a typed accessor binds a nullable typed field to a path.** `ReadingTests` gives a
+field read as its own type the test its type names — `IS_NUMBER` for a number, `IS_BOOL`, `IS_ARRAY` —
+on the reading that such a field is a projection of `JSON_VALUE` or `JSON_QUERY` with a `RETURNING`,
+whose type the field carries. It is true of every binding today: the scan's own typed columns are
+`id`, `_ts` and `_etag`, which are never null, and a promoted column is a `VARIANT`. A column promoted
+with a concrete type would be the first to make it a question.
 
 ---
 

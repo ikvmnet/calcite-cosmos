@@ -151,6 +151,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             path!.ToString().Should().Be("c.metadata.sku");
         }
 
+        /// <remarks>
+        /// <para>
+        /// A field a projection bound to <c>JSON_VALUE(… RETURNING INTEGER)</c> is read as an integer, and is null
+        /// wherever the accessor is: for an object, an array, and every value that is not a number. Its reading said
+        /// only that it was typed, so <c>IS NOT NULL</c> over it kept an object, and the guard under a <c>NOT</c> kept
+        /// the object too. The field's type is the accessor's, and the test is the one the accessor gets.
+        /// </para>
+        /// <para>
+        /// Reached only where a filter stays above the projection: a host that transposes it through writes the
+        /// accessor itself, and that was always tested.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFieldBoundToATypedAccessorIsTestedForItsType()
+        {
+            var price = Nullable(1, SqlTypeName.INTEGER);
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.IS_NOT_NULL, price))
+                .Should().Be("(IS_DEFINED(c.price) AND NOT IS_NULL(c.price) AND IS_NUMBER(c.price))");
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, Call(SqlStdOperatorTable.EQUALS, price, Num(5))))
+                .Should().Be("(NOT ((c.price = @p0) OR IS_NULL(c.price) OR NOT IS_DEFINED(c.price) OR NOT IS_NUMBER(c.price)))");
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.IS_NOT_NULL, Nullable(1, SqlTypeName.BOOLEAN)))
+                .Should().Be("(IS_DEFINED(c.price) AND NOT IS_NULL(c.price) AND IS_BOOL(c.price))");
+
+            Translate(Call(SqlStdOperatorTable.IS_NOT_NULL, price))
+                .Should().Be("(IS_DEFINED(c.price) AND NOT IS_NULL(c.price))", "a field nothing says was bound to an accessor is the raw value");
+        }
+
     }
 
 }

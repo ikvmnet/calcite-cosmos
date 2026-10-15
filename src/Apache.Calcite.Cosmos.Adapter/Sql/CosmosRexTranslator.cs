@@ -944,8 +944,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>RETURNING</c> narrows the scalar to the type it names: SQL:2016 makes any other value
         /// an error that <c>NULL ON ERROR</c> answers null for, and Calcite raises there instead
         /// (ikvmnet/calcite-dotnet#120), so a value of another type is never one the engine answers
-        /// differently. A field a projection bound to an accessor reads as that accessor, which its
-        /// reading says.
+        /// a value for — it raises, and so does a stored integer under <c>RETURNING DOUBLE</c>,
+        /// which the test admits (see <see cref="TypeTestOf"/>). A field a projection
+        /// bound to an accessor reads as that accessor: its reading says which rendering, and its type
+        /// which <c>RETURNING</c>.
         /// </para>
         /// <para>
         /// <b>Every writer that needs the line reads it from here</b>: the guard a projected accessor
@@ -982,15 +984,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if (IsDocumentValueType(call.getType()?.getSqlTypeName()))
                     return null;
 
-                return TypeTestOf(call) is SqlFunction test ? new[] { test } : ScalarReading;
+                return TypeTestOf(call.getType()) is SqlFunction test ? new[] { test } : ScalarReading;
             }
 
-            if (node is RexInputRef reference && IsCharacter(reference) && reference.getIndex() >= 0 && reference.getIndex() < _readings.Count)
+            if (node is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < _readings.Count)
             {
                 return _readings[reference.getIndex()] switch
                 {
-                    CosmosReading.Text => ScalarReading,
-                    CosmosReading.JsonText => FragmentReading,
+                    CosmosReading.Text when IsCharacter(reference) => ScalarReading,
+                    CosmosReading.JsonText when IsCharacter(reference) => FragmentReading,
+
+                    // A field a projection bound to a typed accessor is read as the type it names, and
+                    // answers null where that accessor does: for every value of another type. The
+                    // binding records the path and that the reading is typed, and the field's type is
+                    // the accessor's -- RETURNING is what types the call -- so the test is the one
+                    // TypeTestOf gives the accessor itself. Without it, IS NOT NULL over the field kept
+                    // an object, and the guard under a NOT kept the object too, wherever a host left
+                    // the filter above the projection rather than transposing it through. Nullable
+                    // only: every other typed field bound to a path is the service's id, _ts or _etag,
+                    // which is never null and has nothing to test, or a promoted VARIANT column, which
+                    // is the raw value and has no test to give.
+                    CosmosReading.Typed when reference.getType()?.isNullable() == true && TypeTestOf(reference.getType()) is SqlFunction typed => new[] { typed },
                     _ => null,
                 };
             }
@@ -1018,12 +1032,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// By the call's type, not its operand count: <c>RETURNING</c> names the type of the call and
         /// adds no operand, so a bare accessor and a <c>RETURNING INTEGER</c> one differ only in what
         /// they are typed as. A character <c>RETURNING</c> is a rendering and is read as one; see
-        /// <see cref="IsTextJsonValue"/>.
+        /// <see cref="IsTextJsonValue"/>. And so by a field's type too, where a projection bound the
+        /// field to such an accessor — the field is typed what the call is.
+        /// </para>
+        /// <para>
+        /// <b>Not a conversion either.</b> <c>RETURNING DOUBLE</c> over a stored integer is a number,
+        /// and <c>IS_NUMBER</c> admits it, where Calcite raises rather than widening: measured,
+        /// <c>JSON_VALUE(DOC, '$.price' RETURNING DOUBLE) / 2</c> over products fails in process with
+        /// an <c>Integer</c> that cannot be cast to a <c>Double</c>. The same assertion
+        /// ikvmnet/calcite-dotnet#120 records for a string, met by a number of another numeric type,
+        /// so over integer data such a statement has no oracle to agree with, and the pushed one
+        /// answers.
         /// </para>
         /// </remarks>
-        static SqlFunction? TypeTestOf(RexCall accessor)
+        static SqlFunction? TypeTestOf(org.apache.calcite.rel.type.RelDataType? type)
         {
-            switch (accessor.getType()?.getSqlTypeName()?.getName())
+            switch (type?.getSqlTypeName()?.getName())
             {
                 case nameof(SqlTypeName.TINYINT):
                 case nameof(SqlTypeName.SMALLINT):
@@ -1037,6 +1061,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 case nameof(SqlTypeName.BOOLEAN):
                     return CosmosOperators.IsBool;
+
+                // Reached by a field and not by an accessor: a JSON_QUERY whose RETURNING names an
+                // array is answered by ArrayReading first, and the same RETURNING on JSON_VALUE
+                // addresses no path (IsArrayReturningJsonValue).
+                case nameof(SqlTypeName.ARRAY):
+                case nameof(SqlTypeName.MULTISET):
+                    return CosmosOperators.IsArray;
 
                 default:
                     return null;
