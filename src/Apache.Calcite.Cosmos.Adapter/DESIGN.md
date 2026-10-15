@@ -950,6 +950,77 @@ statement already asked costs about a millisecond. Stage 1's gate asks p50 withi
 distinct question: a new statement is outside it, a question of an existing one inside, and what each costs once
 Eggnog's idle rules allocate nothing is the measurement still owed.
 
+#### How the oracle is checked: population D
+
+`SoundnessTests` states facts true of one document and checks that what follows is true of the same document. That
+is the right test of a theory of facts, and blind to the mistake a theory of predicates makes most: a conjunct
+licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
+never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
+discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
+declaration**, not from the filter. A random filter over its paths is admitted with a random renderer, and every
+scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
+the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
+
+**The ground truth is an evaluator of the IR, and it is not `PredicateAtom`.** `IrEval` takes a predicate to TRUE,
+FALSE, UNKNOWN, or a raise, written from what Calcite was measured to do, and a checker that read the table would
+only agree with it. It is held to Calcite's runtime itself (`IrEvalCalciteTests`): one statement per random predicate,
+`CASE WHEN p THEN 'T' WHEN NOT p THEN 'F' ELSE 'U' END` over two hundred documents in a `VALUES`, and the documents it
+says raise asked one at a time. The raw readings cannot be asked that way — a `VARIANT` is what the adapter's reader
+makes of the service's JSON, and no expression over a JSON literal produces one — so where nothing was measured the
+evaluator draws from what the table admits, a coin per question tossed once a trial. That tests the reasoning over
+the table and not the table, which only a measurement can.
+
+**What is checked.** Every fact of JSON a context holds, read row by row from its tables; every claim and
+disequality its fact set answers a consumer; every verdict, of every term of every conjunct and of predicates the
+statement does not hold; every `holds`, verdict and `possible` row; the facts each conjunct was handed to render
+from, on the documents the conjuncts admitted before it keep; and that a conjunct called redundant drops no row the
+rest keep. Two checks look at every declared document, kept or not, because what they check is a property of a term:
+each `atom` row's meaning — the truth value the evaluator gives is among those `Over` names, and the document is among
+those `Kept` admits for it — and C5, every e-node of the predicate, value and path sorts evaluated over its
+children's representatives against its class's. Where nothing was ever unioned every class has one node and C5 has
+nothing to compare; it is the only check that sees a union, and it is there for the day one is written.
+
+**A raise is held at the atoms, not at the verdicts.** The connectives' rules do not model a raise, and whether an
+answer may stand where Calcite fails is the refinement order still to settle; so a verdict is checked on the rows
+Calcite answers, and the connectives decide first, as Calcite may: a conjunction with a FALSE arm is FALSE whatever
+the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so.
+
+**What it found**: two rows of the table that contradicted Calcite. An integer cast of the accessor is a parse of the
+rendering, which raises on a stored `30.0`, and the table converted the number; `RETURNING DECIMAL` parses the
+rendering, a string of digits included, and the table asserted a number. Both are fixed, and measured in
+`CalciteJsonValueMeasurementTests`. Holding the evaluator to Calcite found two things the measurements had not
+written down, and the evaluator follows both: the null test of a cast is simplified to its operand's where it stands
+alone, so the parse that would raise is never made — beside other conjuncts it sometimes is, and those rows are left
+out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
+compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
+
+**What it is worth is what it catches.** `PlantedBugTests` plants seven faults, each in a graph of its own — a rule
+added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
+scheduled without its guard; the renderer handed the wrong stratum — and requires each caught within the trials a run
+pays for:
+
+| planted | caught in trial | by |
+| --- | --- | --- |
+| a too-wide preimage: an equality with text decided true where the path holds only its preimage | 54 | a verdict |
+| establishing from a weakening: a disjunction that holds read as each arm holding | 6 | a `holds` row |
+| never-true read beneath `NOT` | 3 | a verdict |
+| the arm split without its `holds` guard | 0 | a contradiction |
+| an axiom row contradicting the measurement: `IS NULL` of the accessor false of an object | 18 | a fact |
+| a stratum handing a conjunct its own facts | 0 | the strata |
+| a union of a conjunction with its other arm where one arm is always true | 60 | C5 |
+
+The three seams the plants go through are internal and set by nothing else: `PredicateRules.ScheduleWith` schedules
+the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stratum a conjunct is handed, and
+`CosmosStatementScope.ContextFor` gives a checker the context a licence reads, to read every row of it.
+
+**What it costs**, in a Debug build on a shared workstation: 200 trials a run, which take 27 to 41 seconds, 110 to
+150 ms a trial at the median and 350 to 560 at the 95th percentile; the plants another minute, most of it the two
+caught latest; and the comparison with Calcite 24 predicates, 54 statements and 3,135 answers in 21 to 34 seconds. The
+long runs are explicit (`-explicit only`), for a change to the rules, the table or the strata, or a Calcite or IKVM
+upgrade: 5,000 trials took 19 minutes — 3.1 million facts, 261,250 verdicts of which 145,317 decided something, 20,048
+atoms and 149,789 e-nodes over 320,000 documents, and nothing false — and 400 predicates against Calcite four to six,
+54,141 answers and 491 raises, and no disagreement.
+
 #### A schema is one source of facts, and not the only one
 
 What the service guarantees about the properties it maintains — `id` a string, `_ts` an integer,

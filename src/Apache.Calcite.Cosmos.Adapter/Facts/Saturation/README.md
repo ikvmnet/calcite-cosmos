@@ -366,11 +366,21 @@ verdicts.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
-  lets an atom take that truth value, for nine readings, nine tests, ten literals and fifteen kinds of value;
+  lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
 - `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, and an incomplete run;
 - `CosmosPredicateLoaderTests`: the loader, and #117 through today's translator;
-- `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes.
+- `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
+- `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
+  their paths, and 64 documents drawn from each declaration and not from its filter. Every fact a context holds, row
+  by row; every claim and verdict each licence's scope answers; every `holds`, verdict and `possible` row; every
+  `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
+  each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
+- `PlantedBugTests`: seven faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
+  never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the measurement, a
+  stratum handing a conjunct its own facts, and a union of two predicates — each caught within a run's trials;
+- `IrEvalCalciteTests`: the evaluator those are checked against, held to Calcite's runtime over the readings that
+  were measured. The raw readings are drawn from what the table admits, and nothing holds those rows to Calcite yet.
 
 ## What is not here yet
 

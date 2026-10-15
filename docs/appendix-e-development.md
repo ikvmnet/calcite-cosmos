@@ -83,6 +83,23 @@ Tests under `Measurements/` assert what Calcite, IKVM or the service does — no
 A failure there is news about a dependency, and usually means a recorded assumption in `DESIGN.md`
 needs revisiting.
 
+### Generated soundness checks
+
+Some tests draw their cases at random from a fixed seed, and run a CI-sized number of them with every
+run of the suite: `SoundnessTests` for the theory of JSON, `PredicateSoundnessTests` for the predicate
+oracle checked on documents drawn from random declarations, `PlantedBugTests` for the faults that
+checker must catch, and `IrEvalCalciteTests` for the evaluator it checks against, held to Calcite. Each
+has a long run, marked explicit, for a change to the rules they cover or a Calcite or IKVM upgrade:
+
+```sh
+Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation.PredicateSoundnessTests.NothingTheOracleSaysIsFalseOfADeclaredDocumentOverALongRun \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation.IrEvalCalciteTests.TheEvaluatorAgreesWithCalciteOverALongRun
+```
+
+A failure prints the trial's seed, its declaration and its filter; `PopulationD.Run(seed)` replays one
+trial alone.
+
 ## E.6 Where the reasoning lives
 
 - [`DESIGN.md`](../src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) — why each decision was made, and what

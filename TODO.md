@@ -1744,12 +1744,12 @@ holds. Three bugs planted in what was added were each caught by it.
 pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
 schema (*A declaration is trusted*).
 
-### The predicate oracle — *Stage 1's core built, in shadow; its gate is not run*
+### The predicate oracle — *Stage 1's core and its checker built, in shadow; its gate is not run*
 
 Stage 1 of moving the pushdown reasoning onto Eggnog, on the family where its closure is used most: which facts may
 justify which rewrite of a `WHERE` conjunct. Eggnog decides what is true, the host what is written and what is legal,
-Volcano which plan. `DESIGN.md`, from *Predicates as facts: the oracle, in shadow* through *What the oracle promises,
-and what it costs*, is the record; `Facts/Saturation/README.md` is the catalogue. Nothing in the planner calls it.
+Volcano which plan. `DESIGN.md`, from *Predicates as facts: the oracle, in shadow* through *How the oracle is
+checked: population D*, is the record; `Facts/Saturation/README.md` is the catalogue. Nothing in the planner calls it.
 
 **What is built.**
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
@@ -1764,20 +1764,30 @@ and what it costs*, is the record; `Facts/Saturation/README.md` is the catalogue
 - **Tests**: 82 unit tests in `Tests/Facts` and `Tests/Metadata`, among them #117's self-certification shown
   underivable three ways, and a property test holding what an atom establishes to what it decides. A measurement at
   `MeasureTests`' sizes, beside the planner's `Derive` of the same facts.
+- **The population-D checker** (`Tests/Facts/Saturation/PopulationD.cs`): random declarations with a
+  discriminator, `required`, `const`, enums, types and bounds; random filters over their paths in the IR; 64
+  documents drawn from each declaration, with renderings that collide; and every fact, claim, verdict, row, atom,
+  e-node and handed stratum checked on the documents its scope admits, against `IrEval`, an evaluator of the IR
+  written from measurements. `IrEvalCalciteTests` holds the evaluator to Calcite's runtime. It found two rows of
+  the table wrong — an integer cast of the accessor, and `RETURNING DECIMAL` — both fixed.
+- **The planted-bug suite** (`PlantedBugTests`): the six faults the plan names and a union only C5 sees, each caught
+  within a run's 200 trials.
 
 **What is left of the stage.**
-- **The population-D checker** — *medium.* `SoundnessTests` extended: random declarations with discriminators and
-  random IR predicates, 64 documents drawn from the declaration and not conditioned on the query, every derived fact,
-  verdict and admitted rendering checked on the documents its scope admits, and C5 over `Pred`, `Val` and `JPath`
-  classes. It needs an evaluator of the IR over a document, independent of `PredicateAtom`, which it would otherwise
-  only agree with.
 - **The shadow harness** — *medium.* At each `Derive` site, at the rewriter's TRUE, FALSE and lowering decisions,
   at `Establish`, guard deletion and `AlreadyBelow`: the question, today's answer, the oracle's, and the time.
   `CosmosPredicateLoader.TryLoad` and `Renderer` are the entry from a `Filter`.
-- **The planted-bug suite and the defect replay** — *medium.* A too-wide preimage, establishing from a weakening, a
-  rule reading never-true beneath a `NOT`, a split without its `holds` guard, a contradicting axiom, a stratum
-  admitting a conjunct with its own facts; and #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4
-  and gaps 1–5, each answered by the general rules or counted as needing its own.
+- **The defect replay** — *medium.* #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4 and gaps
+  1–5, each answered by the general rules or counted as needing its own.
+- **What the checker does not reach yet** — *small each.*
+  - **The raw readings against Calcite.** A `VARIANT` is the adapter reader's, so C2 needs the reader's
+    materialisation of a document, or the emulator; until then the evaluator draws them from the table, which tests
+    the reasoning over those rows and not the rows.
+  - **The generator's declarations are flat**: one discriminator, five paths, one of them nested; no array
+    elements, forms, extensions or path equalities. C5 compares nothing where nothing was unioned, so only a planted
+    union has exercised it.
+  - **The corpus as population D's workload.** The 78 planner statements, loaded, over documents drawn from
+    `PlannerSchema`'s declarations, is the C5 run the plan asks for per PR.
 - **The gate's measurements** — *medium.* The corpus and the hierarchy A/B against a frozen baseline, agreement with
   today's answers, and the engine budget per statement. Per new statement the oracle costs between what `Derive` of
   the same facts costs and about twice it; a question of a statement already asked about a millisecond. Measure both
@@ -1786,8 +1796,13 @@ and what it costs*, is the record; `Facts/Saturation/README.md` is the catalogue
 **Decided conservatively, and worth deciding properly.**
 - **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
   it, which is the `RETURNING` asymmetry. The refinement order between an error and an answer is still to settle.
+  The connectives do not model a raise — a conjunction with a never-true arm is never true whatever its other arm
+  does — so the checker holds a raise to the atom rows and lets a verdict stand over a row Calcite fails on. Settling
+  the order settles which of the two is to be tightened.
 - **Two `VARIANT` numbers** are never decided equal: Calcite's comparison across numeric types is unmeasured.
-- **An ordering over a rendering** is TRUE or FALSE and no finer: Calcite's string order is unmeasured.
+- **An ordering over a rendering** is TRUE or FALSE and no finer: Calcite's string order is unmeasured. The evaluator
+  orders text as Java's `compareTo` does, and `IrEvalCalciteTests` agrees over the values it draws; a measurement in
+  `Measurements/` would let the table read it.
 - **`NOT` of what is only ever UNKNOWN** is not decided to keep nothing. A fourth verdict, never-false, would decide
   it, at six connectives more.
 - **The numeric window's arithmetic** is in `CosmosNumericWindow` and in `PredicateAtom` both, until the translator
