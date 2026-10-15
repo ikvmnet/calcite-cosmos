@@ -2103,7 +2103,7 @@ across documents* and *A join of a container to itself* is the record.
     disjunction needs, or every operand of a compound read as a value (`DESIGN.md`, *A position
     belongs to a predicate*). The disjunction half was the last to fail over the fixes: two of the
     1,000 predicates, each a `NOT φ` the converter had turned into a disjunction with a negated
-    compound for a branch. Those two and the second witness below are in the differential corpus.
+    compound for a branch. Those two and both witnesses below are in the differential corpus.
     - `SELECT c."id" FROM typed AS c WHERE CASE WHEN CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE)
       > 8E0 THEN c."$.category" = 'b' ELSE c."$.category" = 'a' END` should keep 4 and 5. It kept
       5, having sent `WHERE (IS_DEFINED(c.price) AND IS_DEFINED(c.category))`. Document 4 has no
@@ -2113,22 +2113,26 @@ across documents* and *A join of a container to itself* is the record.
       'none') OR (CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) * 3E0) = 100E0))` should keep 1,
       2, 3 and 7. It kept 1, 2 and 3, having sent `WHERE (IS_DEFINED(c.category) AND
       IS_DEFINED(c.price))`. Document 7 has no category.
-  - **M: the null guard over a `COALESCE` names the paths inside it.** `<>` is pushed as
-    `IS_DEFINED(p) AND NOT IS_NULL(p) AND (… != @p1)`, and a negated comparison gains
-    `OR IS_NULL(p) OR NOT IS_DEFINED(p)`. Both are written over the path the operand reads. Where the
-    operand is `COALESCE(JSON_VALUE(…), 'none')` it is never null, so the guard drops every
-    document without the path.
+  - **M: the null guard over a `COALESCE` named the paths inside it** — *fixed, by the guard
+    declining over an operand that observes absence (`DESIGN.md`, *A position belongs to a
+    predicate*).* `<>` was pushed as `IS_DEFINED(p) AND NOT IS_NULL(p) AND (… != @p1)`, and a
+    negated comparison gained `OR IS_NULL(p) OR NOT IS_DEFINED(p)`, both over the path the operand
+    reads. Where the operand is `COALESCE(JSON_VALUE(…), 'none')` it is never null, so the guard
+    dropped every document without the path. Rechecked over the fixes: none of the 1,000 predicates
+    fails for it, the three witnesses agree, and so do seven neighbours, a typed accessor, the
+    promoted column, a fold, a `NULLIF`, a coalesce of two paths, a `CASE` under a `NOT` and an
+    ordering. All ten are in the differential corpus.
     - `SELECT c."id" FROM typed AS c WHERE COALESCE(JSON_VALUE(c."DOC", '$.big'), 'none') <>
-      'bikes'` should keep all nine documents, and keeps 9.
+      'bikes'` should keep all nine documents, and kept 9.
     - `SELECT c."id" FROM products AS c WHERE COALESCE(JSON_VALUE(c."DOC", '$.category'), 'none')
-      <> 'bikes'` should keep 3 to 7, and keeps 3 to 5.
+      <> 'bikes'` should keep 3 to 7, and kept 3 to 5.
     - `SELECT c."id" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c."DOC", '$.tags[0]'),
-      'none') = 'outdoor')` should keep 2 to 7, and keeps nothing.
+      'none') = 'outdoor')` should keep 2 to 7, and kept nothing.
 
-  And F is wider than the case folds. `SELECT c."id" FROM products AS c WHERE
-  COALESCE(JSON_VALUE(c."DOC", '$.price'), 'none') = '120'` should keep 1, and keeps nothing. The
-  `COALESCE` is compared as the raw number, because `WriteComparand`'s rendering test reaches only
-  the comparison's direct operands.
+  And F was wider than the case folds. `SELECT c."id" FROM products AS c WHERE
+  COALESCE(JSON_VALUE(c."DOC", '$.price'), 'none') = '120'` should keep 1, and kept nothing: the
+  `COALESCE` was compared as the raw number, the rendering test reaching only the comparison's
+  direct operands. Over the fixes it agrees, and it is in the corpus.
 - **What the partition run costs** — *medium, and the owner's to place.* 17.5 to 23.5 minutes for
   the 1,000 predicates on main, on a workstation other work held at full load. Most of it is Calcite
   compiling the reduction of a literal's cast with Janino, under IKVM, in statements the adapter

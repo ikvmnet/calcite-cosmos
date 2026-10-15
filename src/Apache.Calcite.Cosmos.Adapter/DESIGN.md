@@ -4758,10 +4758,12 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   G does not appear: the literals rarely meet a quotient Calcite truncates. H to K are about point
   reads, lookups and `DISTINCT`, which a predicate never reaches. F reaches further than the case
   folds: `COALESCE(JSON_VALUE(…), 'none') = '120'` compares the raw number too, because the
-  rendering test reaches only the comparison's direct operands. `TODO.md` section 10 has M with its
-  witnesses. L closed in two halves, a `CASE` and then a disjunction, each under *A position belongs
-  to a predicate*: the second was the last of the 1,000 to fail over the fixes, two predicates whose
-  `NOT φ` arrived as a disjunction with a negated compound for a branch.
+  rendering test reaches only the comparison's direct operands. M closed with the guard declining over
+  an operand that observes absence, and no predicate fails for it over the fixes; `TODO.md` section
+  10 keeps its witnesses, and they are in the corpus with its neighbours. L closed in two halves, a
+  `CASE` and then a disjunction, each under *A position belongs to a predicate*: the second was the
+  last of the 1,000 to fail over the fixes, two predicates whose `NOT φ` arrived as a disjunction with
+  a negated compound for a branch.
 
   **What it costs, and why.** On a workstation that other work held at full load throughout, two runs
   on main took 17.5 and 23.5 minutes. That was 16 to 21 minutes judging the 4,403 statements, and

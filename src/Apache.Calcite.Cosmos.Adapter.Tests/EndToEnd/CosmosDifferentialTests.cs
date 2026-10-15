@@ -1411,6 +1411,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE", false),
             ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Road Runner' AND (INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'X'))", false),
+
+            // The rest of the witnesses ternary logic partitioning recorded on main, each wrong there and
+            // right over the fixes: L's CASE, whose condition is unknown where price is absent; M, the
+            // null guard written over the path inside a COALESCE, which is never null; and last F
+            // through a COALESCE, the raw number compared as its rendering. Between M's three and F,
+            // the neighbours M was checked against, which agree: a typed accessor, the promoted
+            // column, a fold, a NULLIF, a coalesce of two paths, a CASE under a NOT and an ordering.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 8E0 THEN c.\"$.category\" = 'b' ELSE c.\"$.category\" = 'a' END", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.big'), 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.category'), 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.tags[0]'), 'none') = 'outdoor')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0) <> 80", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0) = 80)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(c.\"$.category\", 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE UPPER(COALESCE(JSON_VALUE(c.\"DOC\", '$.category'), 'none')) <> 'BIKES'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE NULLIF(JSON_VALUE(c.\"DOC\", '$.name'), 'Exact') <> 'Null'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.metadata.sku'), JSON_VALUE(c.\"DOC\", '$.name')) <> 'Sprint'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN JSON_VALUE(c.\"DOC\", '$.name') ELSE 'z' END = 'z')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.metadata.sku'), 'none') > 'A'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.price'), 'none') = '120'", false),
         ];
 
         /// <summary>
