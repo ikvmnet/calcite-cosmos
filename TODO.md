@@ -1257,7 +1257,10 @@ old wording did not allow for.
   stops the one-line change is that the same binding would let `CosmosAggregateRule` group by the
   element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
   t0` is a 400 there and accepted by the emulator, so this is precisely the shape where the emulator
-  cannot answer. Measure it against an account before binding it.
+  cannot answer. Measure it against an account before binding it. The change is now one place for
+  both forms a traversal takes — `TryBindTraversal`, which the logical `Correlate` and the converted
+  `CosmosUnnest` share since the lookup join's implementation-time walk found no case for the second.
+  A lookup whose container side projects the element is the other consumer it would unblock.
 - **Tuple indexes** — *small, and unclaimed.* The one indexing-policy declaration
   `CosmosContainerMetadataReader` still does not read. Nothing consults it yet, which is why it was
   left where the full text and vector paths were not.

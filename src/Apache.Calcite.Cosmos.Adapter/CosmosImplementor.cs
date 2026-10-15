@@ -656,27 +656,54 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // element has no container-rooted path, and the service will not order by one, so it is
                 // left unbound rather than named.
                 case Correlate correlate:
-                {
-                    if (TryBindOutput(correlate.getLeft(), out var left, out var leftReadings, out _, out written, out container) == false)
-                        return false;
+                    return TryBindTraversal(correlate.getLeft(), correlate.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
 
-                    var paths = new CosmosPath?[correlate.getRowType().getFieldCount()];
-                    var reads = new CosmosReading[paths.Length];
-                    for (var i = 0; i < paths.Length; i++)
-                    {
-                        paths[i] = i < left.Count ? left[i] : null;
-                        reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
-                    }
-
-                    fields = paths;
-                    readings = reads;
-                    ordering = new CosmosOrdering[paths.Length];
-                    return true;
-                }
+                // The same traversal once converted, which is a SingleRel and not a Correlate. A rule
+                // asks of the logical subtree and finds the case above; the lookup join asks again of
+                // the converted one when it is implemented, and found no case here at all — so a rule
+                // that had fired threw "The lookup key can no longer be restricted." after the planner
+                // had chosen the plan (soundness review, cause K). Bound as the logical form is, the
+                // element included: CosmosUnnest.Implement binds it to its alias, and leaving it unbound
+                // here is the walk knowing less, which declines and never fails (TODO.md, section 5).
+                case CosmosUnnest unnest:
+                    return TryBindTraversal(unnest.getInput(), unnest.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
 
                 default:
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Binds an array traversal's output: the input's fields as they were, then the element,
+        /// unbound.
+        /// </summary>
+        /// <remarks>
+        /// One method for the two forms a traversal takes — the <c>Correlate</c> a rule sees and the
+        /// <see cref="CosmosUnnest"/> implementation sees — so that they cannot bind differently. A
+        /// traversal writes no clause of its own: it completes a projection beneath it rather than
+        /// starting one.
+        /// </remarks>
+        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        {
+            fields = Array.Empty<CosmosPath?>();
+            readings = Array.Empty<CosmosReading>();
+            ordering = Array.Empty<CosmosOrdering>();
+
+            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container) == false)
+                return false;
+
+            var paths = new CosmosPath?[fieldCount];
+            var reads = new CosmosReading[paths.Length];
+            for (var i = 0; i < paths.Length; i++)
+            {
+                paths[i] = i < left.Count ? left[i] : null;
+                reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
+            }
+
+            fields = paths;
+            readings = reads;
+            ordering = new CosmosOrdering[paths.Length];
+            return true;
         }
 
         readonly RexBuilder _rexBuilder;

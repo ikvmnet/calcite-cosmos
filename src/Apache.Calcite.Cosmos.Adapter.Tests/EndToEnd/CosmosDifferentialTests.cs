@@ -485,6 +485,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT p.\"id\" FROM (VALUES ('30'), ('31')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p ON v.k = p.\"Label\"", false),
             ("SELECT t.\"id\" FROM (VALUES ('1'), ('3')) AS v(k) JOIN typed AS t ON v.k = t.\"id\"", false),
 
+            // A lookup whose container side traverses an array (soundness review, cause K). The rule
+            // decided on the logical correlate and the join asked again of the converted traversal,
+            // which the binding walk had no case for, so the plan was chosen and failed to implement.
+            // The spelling is the one the oracle can evaluate: JSON_QUERY with an array RETURNING
+            // agrees pushed and in process, where StringToArray has no Calcite implementation. The
+            // container side projects document columns only, since the element binds nothing where a
+            // rule decides; and the bike with two tags is two rows, the one with none is none.
+            ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.k = p.\"id\"", false),
+
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
             // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
             // column, which is the path and not a rendering, it renders directly. The mixed-type

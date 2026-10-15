@@ -62,7 +62,10 @@ answer a full join would:
   one spelling finds both, so the join is the ordinary one.
 - **Nothing above the container's scan that a restriction would change the meaning of.** A filter,
   projection or traversal is fine; a `LIMIT`, sort or grouping on the container side is not, because
-  "the first five products" is not "the first five products of each batch".
+  "the first five products" is not "the first five products of each batch". Over a traversal
+  (`UNNEST`, Chapter 11) the key must be a property of the document rather than the element, and the
+  container side must select document properties only: the restriction keeps or drops a document with
+  all of its elements, and an element has no path a restriction, or a pushed projection, could name.
 
 Anything else is joined by reading both sides, with the container side still filtered by whatever
 predicates of its own push down.

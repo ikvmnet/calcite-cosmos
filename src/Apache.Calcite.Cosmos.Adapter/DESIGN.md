@@ -3900,6 +3900,18 @@ The document column and a `JSON_QUERY` column are declined outright. A guarded r
 sound, and would fetch every non-string document on every batch at a price the cost model cannot see,
 so it waits on a measurement.
 
+**A traversal on the probe side is restricted per document, and the binding walk has to know both of
+its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it
+names a property of the document, so it keeps or drops a document with every one of its elements —
+which is what the join on that property does. `IsRestrictable` admitted the traversal from the start.
+But the key is asked about twice: by the rule, of the logical subtree, where the traversal is a
+`Correlate`; and by `CosmosLookupJoin.Prepare`, of the converted one, where it is a `CosmosUnnest` — a
+`SingleRel`, not a `Correlate`, and a node `TryBindOutput` had no case for. So the rule fired and
+`Prepare` threw "The lookup key can no longer be restricted." once the planner had chosen the plan
+(soundness review, cause K: found in the code, then reproduced on the emulator by a lookup from
+`VALUES` onto a view over `UNNEST(JSON_QUERY(… RETURNING VARCHAR ARRAY))`). Both forms now bind through
+`TryBindTraversal`, the element unbound in each; a key on the element is declined, as it was.
+
 **"When the near side is small" is the cost model's to say, and stays so.** The issue asked for the lookup
 where the near side is bounded; the join is chosen where it is cheaper, which for a page of 25 against a
 container is always, and for an unbounded near side against a small container is not. A hard gate on a

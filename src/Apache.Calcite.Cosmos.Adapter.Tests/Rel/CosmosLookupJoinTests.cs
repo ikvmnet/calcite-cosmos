@@ -396,6 +396,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _productsExecutor.Executed.Should().BeEmpty();
         }
 
+        // ── Over a traversal ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// A lookup whose container side traverses an array restricts the documents and keeps every
+        /// element of each.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The rule asks the logical subtree, where the traversal is a <c>Correlate</c> the binding walk
+        /// knows; the node asks again at implementation, where it is a <see cref="CosmosUnnest"/>, which
+        /// is a <c>SingleRel</c> and not a <c>Correlate</c>. The walk had no case for it, so the rule
+        /// fired and <c>Prepare</c> threw "The lookup key can no longer be restricted." — after the
+        /// planner had chosen the plan (soundness review, cause K).
+        /// </para>
+        /// <para>
+        /// Restricting the document is sound: the <c>WHERE</c> runs after the <c>JOIN</c> and names a
+        /// property of the document, so it keeps or drops every element of a document together, which
+        /// is what the join on the document's key does.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ALookupOverATraversalRestrictsTheDocumentAndKeepsItsElements()
+        {
+            Given(
+                orders: new[]
+                {
+                    """{"DOC":{"id":"a"},"id":"a","_ts":1,"_etag":"e","customer":"c1"}""",
+                },
+                products: new[]
+                {
+                    """{"id":"a","name":"Trail Blazer"}""",
+                    """{"id":"a","name":"Trail Blazer"}""",
+                });
+
+            // The container side projects document columns only. The element binds no path where a
+            // rule decides (TODO.md, section 5), so a projection naming it is not pushed and the
+            // container side is then not a statement to restrict. And no column list on the alias:
+            // one puts a projection between the correlate and the uncollect, which is not the
+            // traversal shape, and the array is unnested in process.
+            var plan = Plan("SELECT o.id, p.\"name\" FROM orders o JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) p ON o.id = p.\"id\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+            text.Should().Contain("CosmosUnnest", "and traversed at the service: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().HaveCount(2, "one row per element of the one document the key names");
+
+            _productsExecutor.Executed.Should().ContainSingle();
+
+            var statement = _productsExecutor.Executed[0];
+            statement.Sql.Should().Contain("JOIN t0 IN c.tags");
+            statement.Sql.Should().Contain($"c.id IN ({CosmosLookupJoin.KeyPrefix}0, ");
+        }
+
     }
 
 }

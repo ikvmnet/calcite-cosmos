@@ -188,6 +188,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             BindsNoMoreThanItsImplementation(SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING))));
             BindsNoMoreThanItsImplementation(DistinctOver(ProjectOver(Scan(), new[] { ("id", Ref(1)), ("p", Doc("price")) })));
             BindsNoMoreThanItsImplementation(SortOver(DistinctOver(ProjectOver(Scan(), new[] { ("ts", Ref(2)) })), Collation((0, RelFieldCollation.Direction.ASCENDING))));
+            BindsNoMoreThanItsImplementation(ProjectOver(UnnestOver(Scan(), MapItem("tags")), new[] { ("id", Ref(1)), ("p", Doc("price")) }));
+        }
+
+        /// <summary>
+        /// A converted traversal binds as its logical form does: the document's columns as they were,
+        /// and the element unbound.
+        /// </summary>
+        /// <remarks>
+        /// The walk knew the <c>Correlate</c> a rule sees and not the <see cref="CosmosUnnest"/> it
+        /// becomes, which is a <c>SingleRel</c>. The lookup join asks the walk again of the converted
+        /// subtree when it is implemented, so a lookup over a traversal was chosen and then failed to
+        /// implement (soundness review, cause K; <c>CosmosLookupJoinTests</c> runs the whole path).
+        /// </remarks>
+        [Fact]
+        public void ATraversalBindsAsItsLogicalFormDoes()
+        {
+            var unnest = UnnestOver(Scan(), MapItem("tags"));
+
+            CosmosImplementor.TryBindOutput(unnest, out var fields, out _).Should().BeTrue();
+            fields.Select(f => f?.ToString()).Should().Equal("c", "c.id", "c._ts", "c._etag", "c.category", null);
+
+            BindsNoMoreThanItsImplementation(unnest);
         }
 
         // ── Convention boundary ───────────────────────────────────────────────────
