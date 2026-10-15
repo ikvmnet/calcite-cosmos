@@ -328,6 +328,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// The guard says SQL's comparison is unknown exactly where a path it reads is null, and through
+        /// a <c>CASE</c> that is not so: <c>CASE WHEN name = 'a' THEN 1 ELSE 0 END</c> is 0 where
+        /// <c>name</c> is absent, and its comparison is false there, not unknown. Guarded, the negated
+        /// equality was true over the absent path and the <c>NOT</c> discarded a row SQL keeps; the
+        /// guarded inequality was false there and discarded it too. So a comparison that needs the
+        /// guard declines over an expression that observes absence.
+        /// </para>
+        /// <para>
+        /// The equality in the positive position needs no guard and is untouched, which is the shape
+        /// the corpus has always carried.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AGuardedComparisonOverACaseIsDeclined()
+        {
+            var selected = Call(SqlStdOperatorTable.CASE,
+                Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("a")), Num(1), Num(0));
+
+            var equality = Call(SqlStdOperatorTable.EQUALS, selected, Num(1));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT, equality)).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.NOT_EQUALS, selected, Num(1))).Should().BeFalse();
+
+            Translate(equality).Should().Be("(((c.name = @p0) ? @p1 : @p2) = @p3)");
+        }
+
+        /// <remarks>
         /// A conjunction under a negation has both arms written negated, which is what lets
         /// <c>NOT (x = 1 AND y = 2)</c> keep its row where <c>x</c> is null and <c>y</c> is not 2 --
         /// unknown AND false is false, and its negation is true. Guarding the negation as a whole

@@ -2321,6 +2321,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>CASE</c> implies nothing about the paths inside it either.
+        /// </summary>
+        /// <remarks>
+        /// Its else arm answers where the condition's path is absent, so the predicate can be true
+        /// with every path it reads missing. Measured against the emulator, this was weakened to
+        /// <c>IS_DEFINED(c.category) AND IS_DEFINED(c.name)</c>, and the document with no category —
+        /// whose <c>CASE</c> is <c>'z'</c> — was lost. A <c>CASE</c> now observes absence, as the
+        /// null tests do.
+        /// </remarks>
+        [Fact]
+        public void ACasePushesNoDefinednessRestriction()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) ELSE 'z' END) = 'z'");
+
+            var cosmos = FindCosmos(best);
+            var sql = cosmos is null ? "" : Render(cosmos);
+
+            sql.Should().NotContain("IS_DEFINED", "a CASE implies no path is defined: " + sql);
+        }
+
+        /// <summary>
+        /// A comparison that needs a guard declines over a <c>COALESCE</c>, whose value does not follow
+        /// its path into unknown.
+        /// </summary>
+        /// <remarks>
+        /// Measured over the typed container, <c>NOT (COALESCE(label, 'none') = 'x')</c> and
+        /// <c>COALESCE(label, 'none') &lt;&gt; 'x'</c> each lost the null label and the absent one: the
+        /// guard tested <c>label</c>, and the coalesce is <c>'none'</c> there, which SQL compares.
+        /// </remarks>
+        [Fact]
+        public void AGuardedComparisonOverACoalesceStaysInProcess()
+        {
+            Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') = 'x')"))
+                .Should().Contain("ClrCursorFilter");
+
+            Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') <> 'x'"))
+                .Should().Contain("ClrCursorFilter");
+        }
+
+        /// <summary>
         /// <c>IS NULL</c> over a predicate stays in process, and so does the <c>COALESCE</c> that
         /// expands to one.
         /// </summary>

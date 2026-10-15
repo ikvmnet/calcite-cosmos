@@ -2746,6 +2746,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return;
                 }
 
+                // The guard says SQL's comparison is unknown exactly where a path it reads is null,
+                // which holds through an operator that answers null for a null and through nothing
+                // else. A CASE does not -- COALESCE(label, 'none') is 'none' where label is absent --
+                // and neither does a null or type test, so over one the guard would decide rows the
+                // comparison does not. Measured over the typed container, NOT (COALESCE(label,
+                // 'none') = 'x') and COALESCE(label, 'none') <> 'x' each lost the null label and the
+                // absent one, which SQL keeps. See ObservesAbsence.
+                if (ObservesAbsence(Operand(call, 0)) || ObservesAbsence(Operand(call, 1)))
+                    throw new CosmosTranslationException("A comparison over an expression that answers a value where a path it reads is absent has no guard to restore SQL's unknown in this position: the guard would test the path, and the expression does not follow it.");
+
                 builder.Append('(');
 
                 if (negated)
@@ -3251,6 +3261,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 CollectGuardPaths(Operand(call, i), paths);
+        }
+
+        /// <summary>
+        /// Determines whether an expression can answer something other than unknown where a path it
+        /// reads is absent.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Two consumers, one question.</b> The split rule asks it to decide whether a branch
+        /// implies the paths it reads are defined, and pushes <c>IS_DEFINED</c> of each where it
+        /// does — see <see cref="Rel.Convert.CosmosFilterSplitRule"/>. The guard a comparison takes
+        /// asks it to decide whether SQL's comparison is unknown exactly where those paths are null —
+        /// see <see cref="WriteComparison"/>. Both are the claim that the expression follows its
+        /// paths into unknown, and an expression that observes absence is the one it is false of.
+        /// </para>
+        /// <para>
+        /// Measured against a real account, a comparison on an absent property is <em>undefined</em>
+        /// rather than false, and <c>NOT undefined</c> is not true either, so neither
+        /// <c>c.price &gt; 5</c> nor <c>NOT (c.price &gt; 5)</c> matches a document without a
+        /// <c>price</c>. The <c>IS_*</c> family is different: each returns a real boolean for an absent
+        /// path, so <c>NOT IS_DEFINED(c.price)</c> is genuinely true there. Only <c>IS_DEFINED</c> was
+        /// measured; the rest are refused with it. SQL's own null and truth tests observe absence
+        /// too, being true or false where their operand is unknown.
+        /// </para>
+        /// <para>
+        /// <b>And a <c>CASE</c>, which was missing.</b> An unknown condition takes the next arm, and
+        /// an arm is a value whatever the paths the others read: <c>COALESCE(x, 'none')</c> is
+        /// <c>'none'</c> where <c>x</c> is absent, and <c>CASE WHEN category = 'bikes' THEN … ELSE 'z'
+        /// END = 'z'</c> is true there. Measured against the emulator, the split rule weakened that
+        /// predicate to <c>IS_DEFINED(c.category) AND IS_DEFINED(c.name)</c> and lost the document
+        /// with no category; and a guard written over a coalesce lost the documents whose path was
+        /// null or absent. <c>COALESCE</c> and <c>NULLIF</c> are named beside it for a caller that
+        /// builds them unexpanded.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <returns><c>true</c> where the expression can tell an absent path from an unknown.</returns>
+        internal static bool ObservesAbsence(RexNode node)
+        {
+            if (node is not RexCall call)
+                return false;
+
+            if (CosmosOperators.IsAbsenceObserving(call.getOperator()))
+                return true;
+
+            switch (call.getKind()?.name())
+            {
+                case nameof(SqlKind.IS_NULL):
+                case nameof(SqlKind.IS_NOT_NULL):
+                case nameof(SqlKind.IS_TRUE):
+                case nameof(SqlKind.IS_NOT_TRUE):
+                case nameof(SqlKind.IS_FALSE):
+                case nameof(SqlKind.IS_NOT_FALSE):
+                case nameof(SqlKind.IS_UNKNOWN):
+                case nameof(SqlKind.IS_DISTINCT_FROM):
+                case nameof(SqlKind.IS_NOT_DISTINCT_FROM):
+                case nameof(SqlKind.CASE):
+                case nameof(SqlKind.COALESCE):
+                case nameof(SqlKind.NULLIF):
+                    return true;
+            }
+
+            var operands = call.getOperands();
+            for (var i = 0; i < operands.size(); i++)
+                if (ObservesAbsence((RexNode)operands.get(i)))
+                    return true;
+
+            return false;
         }
 
         /// <summary>

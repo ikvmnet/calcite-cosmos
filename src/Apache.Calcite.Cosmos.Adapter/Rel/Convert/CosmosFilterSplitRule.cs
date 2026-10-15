@@ -510,42 +510,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// answer the same kind of question and a branch using one is rare enough that the caution
         /// costs nothing.
         /// </para>
+        /// <para>
+        /// SQL's own three-valued tests observe absence too, and they are not in the Cosmos family
+        /// because they are not Cosmos functions. <c>x IS NULL</c> is true where the path is missing,
+        /// and the <c>IS_TRUE</c> family collapses unknown to a definite boolean, which is the same
+        /// thing wearing a different hat. Missing these was a live soundness hole. So was missing a
+        /// <c>CASE</c>, whose else arm answers where its condition's path is absent: measured,
+        /// <c>CASE WHEN category = 'bikes' THEN INITCAP(name) ELSE 'z' END = 'z'</c> was weakened to
+        /// <c>IS_DEFINED(c.category) AND IS_DEFINED(c.name)</c> and lost the document with no
+        /// category.
+        /// </para>
+        /// <para>
+        /// The translator asks the same question of the guard it writes, so the answer lives there —
+        /// see <see cref="CosmosRexTranslator.ObservesAbsence"/> — and this reads it.
+        /// </para>
         /// </remarks>
-        static bool ObservesAbsence(RexNode node)
-        {
-            if (node is not RexCall call)
-                return false;
-
-            if (CosmosOperators.IsAbsenceObserving(call.getOperator()))
-                return true;
-
-            // SQL's own three-valued tests observe absence too, and they are not in the Cosmos family
-            // because they are not Cosmos functions. `x IS NULL` renders as
-            // `(NOT IS_DEFINED(x) OR IS_NULL(x))` -- true where the path is missing -- and the IS_TRUE
-            // family collapses unknown to a definite boolean, which is the same thing wearing a
-            // different hat. Missing these was a live soundness hole: a branch using one can be true
-            // with the path absent, so weakening it to IS_DEFINED would have lost exactly those rows.
-            switch (call.getKind()?.name())
-            {
-                case nameof(SqlKind.IS_NULL):
-                case nameof(SqlKind.IS_NOT_NULL):
-                case nameof(SqlKind.IS_TRUE):
-                case nameof(SqlKind.IS_NOT_TRUE):
-                case nameof(SqlKind.IS_FALSE):
-                case nameof(SqlKind.IS_NOT_FALSE):
-                case nameof(SqlKind.IS_UNKNOWN):
-                case nameof(SqlKind.IS_DISTINCT_FROM):
-                case nameof(SqlKind.IS_NOT_DISTINCT_FROM):
-                    return true;
-            }
-
-            var operands = call.getOperands();
-            for (var i = 0; i < operands.size(); i++)
-                if (ObservesAbsence((RexNode)operands.get(i)))
-                    return true;
-
-            return false;
-        }
+        static bool ObservesAbsence(RexNode node) => CosmosRexTranslator.ObservesAbsence(node);
 
         /// <summary>
         /// Collects the document paths an expression reads.

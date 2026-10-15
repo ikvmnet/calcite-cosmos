@@ -842,6 +842,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') IS NOT NULL", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" = 'bikes') IS NULL)", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT COALESCE(c.\"$.category\" <> 'bikes', FALSE)", false),        // P8
+
+            // A CASE observes absence: its else arm answers where its condition's path is absent. The
+            // guard a comparison takes tested the paths inside one, and the split rule weakened one
+            // to IS_DEFINED of them -- found beside the probes, and each answered differently. The
+            // last two are controls, a COALESCE over a path every document has, and one the split
+            // already left alone.
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') = 'x')", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') <> 'x'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END) = 1)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) ELSE 'z' END) = 'z'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') = 'Exact')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'z') = 'z'", false),
         ];
 
         /// <summary>
