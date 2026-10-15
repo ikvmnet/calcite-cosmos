@@ -274,6 +274,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// <c>RETURNING DECIMAL</c> is the exception to <see cref="ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt"/>: it
+        /// parses the value's rendering as a <c>BigDecimal</c>, trimmed, so a stored string of digits answers its number,
+        /// and only what does not parse raises. And it is typed <c>DECIMAL(19, 0)</c>, so a literal it is compared with is
+        /// cast to scale zero while the value keeps its fraction: <c>= 2.5</c> is false of a stored 2.5.
+        /// </summary>
+        /// <remarks>
+        /// The predicate oracle read it as asserting a number, and established that a row a comparison through it keeps
+        /// holds one, which a stored <c>"30"</c> is a counterexample to; and that a row <c>= 2.5</c> keeps holds 2.5, which
+        /// none does.
+        /// </remarks>
+        [Fact]
+        public void ReturningDecimalParsesTheRendering()
+        {
+            Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "a string of digits is parsed");
+            Ask($"JSON_VALUE({Document("\" 30 \"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "trimmed");
+
+            foreach (var json in new[] { "30", "30.0", "2.5", "\"2.5\"" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().BeNull($"{json} parses");
+
+            foreach (var json in new[] { "true", "\"x\"", "\"\"" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().NotBeNull($"{json} does not");
+
+            Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING DECIMAL)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "an object is no scalar, and answers null");
+
+            // The value keeps its fraction, and a literal compared with it is cast to the type's scale, which is zero.
+            string Compared(string json, string comparison) =>
+                Ask($"CASE WHEN JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL) {comparison} THEN 'T' ELSE 'F' END").Value!;
+
+            Compared("2.5", "= 2.5").Should().Be("F", "2.5 is compared as the literal cast to DECIMAL(19, 0)");
+            Compared("2.4", "< 2.5").Should().Be("F");
+            Compared("2.4", "> 2").Should().Be("T", "and the stored value is not cast");
+            Compared("30.0", "= 30").Should().Be("T");
+        }
+
+        /// <summary>
         /// A cast of the accessor to a number is a parse of its rendering, not a conversion of the number stored: Java's
         /// integer parse for <c>INTEGER</c> and <c>BIGINT</c>, and its double parse for <c>DOUBLE</c>, each over the text
         /// trimmed.

@@ -197,6 +197,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Established(Theory(), Eq(Typed(N, "INTEGER"), 30.5m)).IsContradictory.Should().BeTrue("an INTEGER is never 30.5");
         }
 
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> parses the rendering, so a row an equality through it keeps may store the string
+        /// <c>"30"</c>: it is not established to hold a number, only one near the literal if it holds one.
+        /// </summary>
+        [Fact]
+        public void ADecimalReturningEstablishesNoNumber()
+        {
+            var facts = Established(Theory(), Eq(Typed(N, "DECIMAL"), 30m));
+
+            Knows(facts, N, Present).Should().BeTrue();
+            Knows(facts, N, Type(JsonType.Number)).Should().BeFalse("a stored \"30\" parses as 30");
+            Knows(facts, N, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+        }
+
         [Fact]
         public void AnOrderingOverATypedPathStatesNoBound()
         {

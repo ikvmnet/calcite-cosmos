@@ -320,7 +320,7 @@ as facts* and the two sections after it, is the record.
 | --- | --- |
 | `text(p)` | `JSON_VALUE(DOC, p)` read as text: a scalar's rendering, SQL null for anything else |
 | `raw(p)` | the value the service holds: a promoted `VARIANT` column, the accessor re-typed `ANY`, `id` |
-| `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T` |
+| `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
 | `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
 | `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
 | `compare(op, v, w)`, `in(v, S)`, `is null(v)` | the atoms |

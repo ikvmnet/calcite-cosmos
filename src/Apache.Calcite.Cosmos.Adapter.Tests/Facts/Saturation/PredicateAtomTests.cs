@@ -179,6 +179,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 "an integer is never 30.5");
         }
 
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> parses the rendering, so a stored string of digits is a number to it, and a row it keeps
+        /// may hold one; a stored number of either spelling converts, and decides it.
+        /// </summary>
+        [Fact]
+        public void ADecimalReturningParsesTheRendering()
+        {
+            var equal = PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(30m));
+
+            equal.Over(Holding(Of("30"))).Should().HaveFlag(Truths.True, "a stored \"30\" parses as 30");
+            equal.Kept(true).Types.Should().Contain(StringType);
+            equal.AlwaysTrue(Holding(Of(30m))).Should().BeTrue("30 and 30.0 both parse as 30");
+            equal.Over(Holding(Of(true))).Should().Be(Truths.Raises | Truths.True | Truths.False, "a boolean's rendering does not parse");
+            equal.Over(AnObject).Should().Be(Truths.Unknown);
+
+            var fraction = PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(2.5m));
+            fraction.Over(Holding(Of(2.5m))).Should().Be(Truths.True | Truths.False, "the literal is compared at scale zero, which is not 2.5");
+            fraction.Kept(true).Lower.Should().Be(Bound.Above(1.5m), "the window holds whatever the literal is cast to");
+        }
+
         [Fact]
         public void AMembershipIsTheDisjunctionOfItsEqualities()
         {
@@ -226,7 +246,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var readers = new[]
             {
-                Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"),
+                Text, Raw, PredicateAtom.TypedReader("INTEGER"), PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.TypedReader("DECIMAL"),
                 PredicateAtom.CastReader("INTEGER", Text), PredicateAtom.CastReader("BIGINT", Raw), PredicateAtom.CastReader("DOUBLE", Text),
                 PredicateAtom.CastReader("VARCHAR", Raw),
             };

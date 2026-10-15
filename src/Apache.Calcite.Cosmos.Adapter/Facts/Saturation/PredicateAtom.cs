@@ -628,10 +628,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     _kinds = kinds;
                 }
 
+                /// <remarks>
+                /// <c>DECIMAL</c> is the one that converts: it reads the value's rendering as a <c>BigDecimal</c>, a string
+                /// of digits among them, and raises only on what does not parse
+                /// (<c>CalciteJsonValueMeasurementTests.ReturningDecimalParsesTheRendering</c>). That is a cast of the text,
+                /// whose parse reads every rendering of a number, compared with a literal cast to its scale of zero.
+                /// </remarks>
                 public static Reading? For(string type) => type switch
                 {
                     "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => new Typed(ValueSet.Of(IntegerType)),
-                    "FLOAT" or "REAL" or "DOUBLE" or "DECIMAL" => new Typed(ValueSet.Of(IntegerType, FractionType)),
+                    "FLOAT" or "REAL" or "DOUBLE" => new Typed(ValueSet.Of(IntegerType, FractionType)),
+                    "DECIMAL" => new NumberCast("DECIMAL", overText: true),
                     "BOOLEAN" => new Typed(ValueSet.Of(BooleanType)),
                     _ => null,
                 };
@@ -678,7 +685,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             /// <summary>
             /// A cast to <c>INTEGER</c>, <c>BIGINT</c> or <c>DOUBLE</c> over a document value, which converts a stored
-            /// number and a stored string alike.
+            /// number and a stored string alike; and <c>RETURNING DECIMAL</c>, which is a parse of the rendering too.
             /// </summary>
             /// <remarks>
             /// <para>
@@ -737,11 +744,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     if (IsNumber(literal) == false)
                         return Truths.Any;
 
+                    // RETURNING DECIMAL types the value DECIMAL(19, 0), and Calcite casts a literal compared with it to that
+                    // scale: `= 2.5` is FALSE of a stored 2.5. What a literal with a fraction is compared as is not decided
+                    // here; the window around it holds either way.
+                    var rescaled = _target == "DECIMAL" && (TryNumberOf(literal, out var exact) == false || exact != decimal.Truncate(exact));
+
                     return state switch
                     {
                         State.Absent => U,
                         State.Null or State.Structure => _overText ? U : U | R,
+                        State.Scalar { Value: var v } when IsNumber(v) && rescaled => T | F,
                         State.Scalar { Value: var v } when IsNumber(v) => (Holds(op, v, literal) is bool holds ? (holds ? T : F) : T | F) | _parse,
+                        State.AnyNumber when rescaled => T | F,
                         State.AnyNumber n => Range(op, n, literal) | _parse,
                         State.Scalar or State.AnyString => T | F | R,
                         _ => Truths.Any | R,

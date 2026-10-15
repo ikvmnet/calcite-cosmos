@@ -817,7 +817,9 @@ into the typed IR's predicate subset (`SqlValue`, `SqlPredicate`):
 
 - `text(p)` is `JSON_VALUE` read as text, SQL null for an absent path, a null, an object and an array;
 - `raw(p)` is the value the service holds: a promoted `VARIANT` column, the accessor the split rule re-types `ANY`;
-- `typed(p, T)` is a `RETURNING`, which asserts its type and raises on anything else;
+- `typed(p, T)` is a `RETURNING`, which asserts its type and raises on anything else — but for `DECIMAL`, which
+  parses the rendering, a stored string of digits among what it reads, and is compared with a literal cast to its
+  scale of zero, so that `= 2.5` keeps a stored 2 and not a stored 2.5;
 - `cast(T, v)` is a numeric cast, or the cast to text over a raw value, which renders an object and an array too.
 
 Comparisons with a literal or a parameter, `IN` (a `SEARCH` expanded and read back as one membership),
