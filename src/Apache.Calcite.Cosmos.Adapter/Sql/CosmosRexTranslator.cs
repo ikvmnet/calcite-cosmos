@@ -3516,10 +3516,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ["COT"] = ("COT", 1, 1),
             // ASIN and ACOS carry a domain, and Cosmos fails the whole query for a value outside it
             // rather than yielding undefined — measured, along with SQRT(-1), which does the same and
-            // which this adapter has always pushed. LOG(0) is accepted. So this is one property of the
-            // service rather than a fact about these two, and they are treated as SQRT already is; see
-            // OutOfDomainArithmeticFailsTheQuery, which pins the measurement, and DESIGN.md, which
-            // records that the choice to live with it is a choice.
+            // which this adapter has always pushed, and LOG(0), which does too. This comment used to
+            // say LOG(0) was accepted; the measurement beside it said otherwise, and still does. So
+            // this is one property of the service rather than a fact about these two, and they are
+            // treated as SQRT already is; see OutOfDomainArithmeticFailsTheQuery, which pins the
+            // measurement (CosmosAxioms: Service.OutOfDomainArithmeticFailsTheStatement), and
+            // DESIGN.md, which records that the choice to live with it is a choice.
             ["ASIN"] = ("ASIN", 1, 1),
             ["ACOS"] = ("ACOS", 1, 1),
             ["ATAN"] = ("ATAN", 1, 1),

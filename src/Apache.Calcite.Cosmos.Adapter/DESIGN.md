@@ -1170,6 +1170,37 @@ documentation.
 > a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
 > emulator's own answer, worth telling apart from the service's when a test reports one.
 
+**Every measured fact a pushdown relies on is a row in `Sql/CosmosAxioms.cs`.** Each row has an id,
+the statement, the targets it was measured on (emulator, Azure, or Calcite's own runtime), the date,
+and the test that pins it. `CosmosAxiomsTests` requires every named test to exist, so a row cannot
+outlive its evidence. Two reasons:
+
+- **The facts were spread out, and two of them disagreed.** They sat in translator remarks, in this
+  document and in the measurement classes. `IS_PRIMITIVE` over an absent path was false in the
+  translator and undefined here, and false is what the emulator answers. The translator's comment on
+  `LOG(0)` said the service accepts it; the test beside it, then and now, says it fails the
+  statement.
+- **A wrong axiom is wrong everywhere it is consulted**, so the places should consult one list.
+
+Nothing reads the registry yet. A rendering that rests on a row should name its id beside the
+measurement it already cites, until the translator reads the rows itself. The registry is also a
+record of what was run, not of what is believed: a row measured on the emulator alone is owed on
+Azure, and `TODO.md` section 10 lists them. Where the two targets disagree, the reading to encode is
+the conservative one, a capability holding only where both accept it.
+
+Four rows say something other than what was expected when they were measured, and are worth reading
+before writing against them:
+
+- **A comparison across types is not uniformly undefined.** An ordering (`<`, `>`) across types is
+  undefined. An equality across types is *false*, and so `!=` is true, over a null as over a string
+  compared with a number. Only over an absent path is an equality undefined. That is why
+  `NOT (p = x)` keeps a null at the service and not in process.
+- **The `IS_*` family never answers undefined**, `NOT` over one included.
+- **`ReadManyItemsAsync` answers an id asked twice once.** It still answers two documents equal in
+  every value as two, and applies no `DISTINCT`.
+- **`UPPER`, `LOWER` and `CONCAT` are undefined over every non-string**, the guarded accessor
+  included. A null is undefined too, not null.
+
 **A hundred-term `IN` is served by the index.** Measured on a real account with
 `PopulateIndexMetrics`: `WHERE c.category IN (@k0, ..., @k99)` reports
 `{"UtilizedIndexes":{"SingleIndexes":[{"IndexSpec":"/category/?"}]},"PotentialIndexes":{"SingleIndexes":[]}}`
@@ -3427,6 +3458,7 @@ src/
       CosmosQueryBuilder.cs           ✔ Statement assembly and language-constraint enforcement
       CosmosRexTranslator.cs          ✔ RexNode → Cosmos scalar expression
       CosmosTranslationException.cs   ✔ Refusal signal
+      CosmosAxioms.cs                 ✔ The measured facts a pushdown relies on, each with its test
     Internal/
       BigDecimalConverter.cs          ✔ Lossless BigDecimal → decimal
   Apache.Calcite.Cosmos.Adapter.Tests/

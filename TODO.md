@@ -1901,6 +1901,20 @@ across documents* and *A join of a container to itself* is the record.
   one corrected. Measured on the emulator (2026-10-15) and nowhere else. The answers are unlikely to
   differ on Azure, but the emulator has differed before. Run the class with `COSMOS_TEST_ENDPOINT`
   naming an account.
+- **Every emulator-only axiom, on Azure** — *small, and owed.* `Sql/CosmosAxioms.cs` records where
+  each measured fact was measured. These `Service.` rows name the emulator alone:
+  - the `IS_*` family, above;
+  - the comparisons across types, `!=` over a null, and `NOT` over undefined;
+  - the string functions and `/` over each JSON type;
+  - what `ReadManyItemsAsync` answers;
+  - out-of-domain arithmetic;
+  - the stored boolean's logic (`CosmosBooleanLogicMeasurementTests`).
+
+  Run `CosmosJsonTypeMeasurementTests`, `CosmosReadManyMeasurementTests`,
+  `CosmosBooleanLogicMeasurementTests` and `OutOfDomainArithmeticFailsTheQuery` against an account,
+  and add `Azure` to each row that passes. A row that fails there is a disagreement between the
+  targets, and the reading to encode is the conservative one. The registry is not yet read by the
+  translator; that is the step after this.
 - **A malformed response's failure mode** — *small.* A lookup-join stub returning raw documents
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed

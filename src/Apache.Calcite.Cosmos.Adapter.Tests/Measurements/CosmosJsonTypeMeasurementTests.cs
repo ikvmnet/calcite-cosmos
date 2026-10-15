@@ -37,6 +37,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// translator, undefined in <c>DESIGN.md</c> — which is the question that settled it.
     /// </para>
     /// <para>
+    /// <b>And the operators the translator writes over a rendering are measured beside it</b>: the
+    /// string functions, division, the comparisons across types and <c>NOT</c> over undefined. Each
+    /// is a place where the service's answer over a value of the wrong type differs from SQL's over
+    /// the value's rendering, and each is a row of <c>CosmosAxioms</c>.
+    /// </para>
+    /// <para>
     /// <b>Read as a projection, so that undefined is visible.</b> A filter cannot tell undefined from
     /// false: neither keeps the document. An object constructor omits a property whose value is
     /// undefined, so <c>SELECT c.id, F(c.v) AS r</c> answers <c>true</c>, <c>false</c> or nothing, and
@@ -224,6 +230,93 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 (await Answers($"NOT {test}(c.v)")).Should().EndWith("absent=true", $"NOT {test} over an absent path");
 
             (await Answers("NOT IS_DEFINED(c.v)")).Should().Be("string=false number=false boolean=false null=false object=false array=false absent=true");
+        }
+
+        /// <summary>
+        /// The string functions are undefined over anything that is not a string: a number, a
+        /// boolean, a null, a structure and nothing alike.
+        /// </summary>
+        /// <remarks>
+        /// Calcite renders a number or a boolean as text before it folds or joins it, so
+        /// <c>UPPER(JSON_VALUE(doc, '$.v'))</c> is <c>'30'</c> over a stored <c>30</c> and
+        /// <c>'TRUE'</c> over a stored <c>true</c> (<c>CalciteJsonValueMeasurementTests</c>). The same
+        /// function over the guarded accessor is undefined at the service there, so a case fold or a
+        /// concatenation over a rendering does not mean at the service what it means in process
+        /// unless the path is known to hold a string. <c>WriteLike</c> knows this; the projection
+        /// and the comparison sides did not.
+        /// </remarks>
+        [Fact]
+        public async Task TheStringFunctionsAreUndefinedOverAnythingButAString()
+        {
+            (await Answers("UPPER(c.v)")).Should().Be("string=\"BIKES\" number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("LOWER(c.v)")).Should().Be("string=\"bikes\" number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("CONCAT(c.v, \"!\")")).Should().Be("string=\"bikes!\" number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("UPPER((IS_PRIMITIVE(c.v) ? c.v : null))")).Should().Be("string=\"BIKES\" number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined",
+                "and the guard does not change it: it renders nothing");
+        }
+
+        /// <summary>
+        /// <c>/</c> divides as floating point, integers included, and is undefined over anything that
+        /// is not a number.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's <c>/</c> over two integers truncates (<c>CalciteArithmeticMeasurementTests</c>),
+        /// so the operator is the same symbol and a different function wherever both operands are
+        /// integers.
+        /// </remarks>
+        [Fact]
+        public async Task DivisionIsFloatingPointAndUndefinedOverAnythingButANumber()
+        {
+            (await Answers("c.v / 4")).Should().Be("string=undefined number=7.5 boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("7 / 2")).Should().Be("string=3.5 number=3.5 boolean=3.5 null=3.5 object=3.5 array=3.5 absent=3.5");
+            (await Answers("-7 / 2")).Should().Be("string=-3.5 number=-3.5 boolean=-3.5 null=-3.5 object=-3.5 array=-3.5 absent=-3.5");
+        }
+
+        /// <summary>
+        /// An ordering comparison across types is undefined, as is one over an absent path.
+        /// </summary>
+        [Fact]
+        public async Task AnOrderingAcrossTypesIsUndefined()
+        {
+            (await Answers("c.v < \"zzz\"")).Should().Be("string=true number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("c.v > 0")).Should().Be("string=undefined number=true boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+        }
+
+        /// <summary>
+        /// An equality across types is false, not undefined; only over an absent path is it
+        /// undefined. So <c>!=</c> is true over a value of another type and over a null — where SQL's
+        /// <c>&lt;&gt;</c> over a null is unknown.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosBooleanLogicMeasurementTests.AComparisonIsUndefinedOnlyOverAnAbsentPath</c> says
+        /// the same of a boolean in a filter; this says it of every type, read as a value. Which is
+        /// why a pushed <c>&lt;&gt;</c> over a nullable path is guarded with <c>IS_DEFINED</c> and
+        /// <c>NOT IS_NULL</c>, and why <c>NOT (p = x)</c> keeps a null at the service and not in
+        /// process.
+        /// </remarks>
+        [Fact]
+        public async Task AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue()
+        {
+            (await Answers("c.v = \"bikes\"")).Should().Be("string=true number=false boolean=false null=false object=false array=false absent=undefined");
+            (await Answers("c.v != \"bikes\"")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
+            (await Answers("c.v != 30")).Should().Be("string=true number=false boolean=true null=true object=true array=true absent=undefined");
+        }
+
+        /// <summary>
+        /// <c>NOT</c> over undefined is undefined: over an absent path, over a comparison across
+        /// types, and over a value that is not a boolean.
+        /// </summary>
+        /// <remarks>
+        /// SQL's <c>NOT</c> over unknown is unknown too, so the two agree wherever the service's
+        /// undefined stands where SQL's unknown does — and part company wherever the service answers
+        /// false where SQL answers unknown, which is the equality across types and over a null above.
+        /// </remarks>
+        [Fact]
+        public async Task NotOverUndefinedIsUndefined()
+        {
+            (await Answers("NOT (c.v < \"zzz\")")).Should().Be("string=false number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("NOT c.v")).Should().Be("string=undefined number=undefined boolean=false null=undefined object=undefined array=undefined absent=undefined");
+            (await Answers("NOT (c.v = \"bikes\")")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
         }
 
     }
