@@ -687,6 +687,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// number. So a number's converted value is known, and a range of numbers converts to a range.
             /// </para>
             /// <para>
+            /// <b>Over the text accessor it is a parse of the rendering</b>, which is another measurement
+            /// (<c>CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering</c>): Java's integer parse
+            /// for <c>INTEGER</c> and <c>BIGINT</c>, which raises on <c>30.0</c>, <c>2.5</c>, <c>1.0E30</c> and anything
+            /// beyond the type, where a cast of the number would have truncated or saturated. The theory spells a stored
+            /// <c>30</c> and <c>30.0</c> alike, so any number may raise there, and nothing is decided of one. A double's
+            /// parse reads every rendering of a number, and raises on none.
+            /// </para>
+            /// <para>
             /// <b>What it does to anything else is not</b>, and a string, a boolean, and over a raw value a null or a
             /// structure, may convert to anything or raise. A row that keeps a comparison holds a number within the
             /// window <see cref="Window"/> gives, or something that is not a number at all: the window binds numbers
@@ -702,6 +710,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 readonly bool _overText;
                 readonly (decimal Min, decimal Max)? _saturates;
 
+                /// <summary>
+                /// What a stored number may do beside converting: raise, where the rendering is parsed as an integer.
+                /// </summary>
+                readonly Truths _parse;
+
                 public NumberCast(string target, bool overText)
                 {
                     _target = target;
@@ -712,6 +725,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         "BIGINT" => (long.MinValue, long.MaxValue),
                         _ => null,
                     };
+                    _parse = overText && _saturates is not null ? R : Truths.None;
                 }
 
                 public override Truths Equal(State state, string literal) => Compare(state, PredicateAtom.Equal, literal);
@@ -727,8 +741,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     {
                         State.Absent => U,
                         State.Null or State.Structure => _overText ? U : U | R,
-                        State.Scalar { Value: var v } when IsNumber(v) => Holds(op, v, literal) is bool holds ? (holds ? T : F) : T | F,
-                        State.AnyNumber n => Range(op, n, literal),
+                        State.Scalar { Value: var v } when IsNumber(v) => (Holds(op, v, literal) is bool holds ? (holds ? T : F) : T | F) | _parse,
+                        State.AnyNumber n => Range(op, n, literal) | _parse,
                         State.Scalar or State.AnyString => T | F | R,
                         _ => Truths.Any | R,
                     };
@@ -738,8 +752,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     State.Absent => T,
                     State.Null or State.Structure => _overText ? T : T | R,
-                    State.Scalar { Value: var v } when IsNumber(v) => F,
-                    State.AnyNumber => F,
+                    State.Scalar { Value: var v } when IsNumber(v) => F | _parse,
+                    State.AnyNumber => F | _parse,
                     State.Scalar or State.AnyString => F | R,
                     _ => Truths.Any | R,
                 };
@@ -748,8 +762,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     State.Absent => U,
                     State.Null or State.Structure => _overText ? U : U | R,
-                    State.Scalar { Value: var v } when IsNumber(v) => T | F | U,
-                    State.AnyNumber => T | F | U,
+                    State.Scalar { Value: var v } when IsNumber(v) => T | F | U | _parse,
+                    State.AnyNumber => T | F | U | _parse,
                     _ => Truths.Any | R,
                 };
 

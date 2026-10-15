@@ -124,12 +124,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void ARangeTheBoundsSatisfyIsAlwaysTrueOfTheConversion()
         {
-            var atLeastZero = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">=", Of(0m));
+            var atLeastZero = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), ">=", Of(0m));
             var integers = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m)));
 
             atLeastZero.AlwaysTrue(integers).Should().BeTrue();
-            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">", Of(0m)).AlwaysTrue(integers).Should().BeFalse();
-            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), "<", Of(0m)).NeverTrue(integers).Should().BeTrue();
+            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), ">", Of(0m)).AlwaysTrue(integers).Should().BeFalse();
+            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Raw), "<", Of(0m)).NeverTrue(integers).Should().BeTrue();
+            PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), ">=", Of(0m)).AlwaysTrue(integers).Should().BeTrue(
+                "a double's parse reads 30.0 and 1.0E30 as it reads 30");
+        }
+
+        /// <summary>
+        /// A cast of the accessor to an integer type parses the rendering as Java parses an integer, which raises on a
+        /// stored <c>30.0</c>, <c>2.5</c> or <c>1e30</c> and on a number beyond the type. The theory spells <c>30</c> and
+        /// <c>30.0</c> alike, so no number decides it either way: the rows that raise are rows no verdict may decide.
+        /// </summary>
+        [Fact]
+        public void AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber()
+        {
+            var integers = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m)));
+            var atLeastZero = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">=", Of(0m));
+
+            atLeastZero.Over(Holding(Of(30m))).Should().Be(Truths.True | Truths.Raises, "a stored 30.0 renders as 30.0, which Java's integer parse refuses");
+            atLeastZero.Over(Holding(Of(2.5m))).Should().HaveFlag(Truths.Raises);
+            atLeastZero.AlwaysTrue(integers).Should().BeFalse("a stored 3000000000 is no int");
+            PredicateAtom.Compare(PredicateAtom.CastReader("BIGINT", Text), "<", Of(0m)).NeverTrue(integers).Should().BeFalse();
+            PredicateAtom.IsNull(PredicateAtom.CastReader("INTEGER", Text)).Over(Holding(Of(2.5m))).Should().Be(Truths.False | Truths.Raises);
+            PredicateAtom.IsNull(PredicateAtom.CastReader("INTEGER", Text)).Over(Absent).Should().Be(Truths.True);
+            atLeastZero.Over(Holding(Of("30"))).Should().Be(Truths.True | Truths.False | Truths.Raises, "a string is parsed, or raises");
         }
 
         [Fact]

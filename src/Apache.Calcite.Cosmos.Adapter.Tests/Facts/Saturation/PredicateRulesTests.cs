@@ -324,14 +324,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Decide(IsNull(Text(A)), OracleLicence.Residual).Should().Be(Truth.Never);
         }
 
+        /// <summary>
+        /// A range the declared bounds satisfy is a tautology of the number, converted: through a cast of the raw value, or a
+        /// double's parse of the rendering. An integer's parse of the rendering raises on a stored <c>30.0</c> or
+        /// <c>3000000000</c>, which the declaration admits, so there it is decided neither way.
+        /// </summary>
         [Fact]
         public void ARangeTheDeclaredBoundsSatisfyIsAlwaysTrue()
         {
             var scope = Declared(Theory(Outright(N, Present), Outright(N, Type(JsonType.Integer)), Outright(N, new JsonClaim.LowerBound(0m))));
 
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Never);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Always);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Never);
+            scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Always);
+
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown);
         }
 
         [Fact]

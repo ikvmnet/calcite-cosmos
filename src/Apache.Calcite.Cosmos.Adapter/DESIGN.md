@@ -842,6 +842,13 @@ establishes — the asymmetry *Reading a value back* records for `RETURNING`, th
 checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
 a pushdown may do is not settled.
 
+An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
+INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
+truncated or held it at the limit. The theory spells `30` and `30.0` alike, so a number there may always raise, and
+nothing is decided of one; a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
+every rendering, and of a cast of the raw value, and not of this. The first table said otherwise, and the population-D
+checker found it.
+
 **A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
 a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
 or a conjunction that fails, splits: one case per arm, each assuming its arm takes the value, and what every live

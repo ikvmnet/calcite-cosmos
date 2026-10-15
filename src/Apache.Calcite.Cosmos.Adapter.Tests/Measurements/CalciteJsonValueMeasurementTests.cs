@@ -274,6 +274,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// A cast of the accessor to a number is a parse of its rendering, not a conversion of the number stored: Java's
+        /// integer parse for <c>INTEGER</c> and <c>BIGINT</c>, and its double parse for <c>DOUBLE</c>, each over the text
+        /// trimmed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
+        /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
+        /// at the limit (<c>CosmosRexTranslator.TryNumericCastOperand</c>). A double's parse reads every rendering of a
+        /// number. A string spelling a number is parsed as one, and anything else raises.
+        /// </para>
+        /// <para>
+        /// The predicate oracle's row for a numeric cast over the text accessor rests on this
+        /// (<c>PredicateAtom</c>'s <c>NumberCast</c>): the theory spells <c>30</c> and <c>30.0</c> alike, so a number there
+        /// may raise and nothing is decided of it.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ACastOfTheAccessorToANumberParsesTheRendering()
+        {
+            Ask($"CAST(JSON_VALUE({Document("30")}, '$.v') AS INTEGER)").Value.Should().Be("30");
+            Ask($"CAST(JSON_VALUE({Document("\" 30 \"")}, '$.v') AS INTEGER)").Value.Should().Be("30", "a string is trimmed and parsed");
+            Ask($"CAST(JSON_VALUE({Document("2147483648")}, '$.v') AS BIGINT)").Value.Should().Be("2147483648");
+
+            foreach (var json in new[] { "30.0", "2.5", "1e30", "2147483648", "true", "\"x\"" })
+                Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS INTEGER)").Threw.Should().NotBeNull(
+                    $"an integer's parse refuses the rendering of {json}, where a cast of the number would not");
+
+            Ask($"CAST(JSON_VALUE({Document("30.0")}, '$.v') AS BIGINT)").Threw.Should().NotBeNull("and so does a long's");
+
+            foreach (var json in new[] { "30", "30.0", "2.5", "1e30", "\"1e30\"" })
+                Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS DOUBLE)").Threw.Should().BeNull($"a double's parse reads {json}");
+
+            Ask($"CAST(JSON_VALUE({Document("true")}, '$.v') AS DOUBLE)").Threw.Should().NotBeNull("a boolean's rendering is no number");
+            Ask($"CAST(JSON_VALUE({Document("null")}, '$.v') AS INTEGER)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "a JSON null renders as SQL null, which casts to null");
+        }
+
+        /// <summary>
         /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and the
         /// adapter implements the construct rather than reproducing it.
         /// </summary>
