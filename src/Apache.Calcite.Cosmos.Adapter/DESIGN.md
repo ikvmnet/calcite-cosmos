@@ -4014,6 +4014,58 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
 - **The corpus leans into the semantics that have bitten**: null against absent, `NOT` over both,
   grouping by a key some documents lack, `LIKE`'s shapes, and the aggregate forms. It needs the
   emulator and reports inconclusive without one, like every test that needs a service.
+- **And it is grown by generation: ternary logic partitioning.** The written corpus recorded no
+  divergence while ordinary statements one step from it answered wrong rows, so predicates are now
+  drawn as well. `EveryPredicatePartitionsTheRows` draws 1,000 from a fixed seed over `typed` and
+  `products`, from the shapes the adapter pushes:
+  - comparisons over accessors, promoted columns and casts;
+  - the null tests and the truth tests;
+  - `NOT`, `AND`, `OR`, `CASE` and `COALESCE`;
+  - `LIKE`, `IN`, the case folds and concatenation;
+  - `RETURNING` and arithmetic.
+
+  For each φ it pushes `WHERE φ`, `WHERE NOT φ` and `WHERE φ IS NULL` and requires two things. The
+  three must partition the container by id, each row once, which is SQL's three-valued logic and
+  needs no oracle. And each must be the partition Calcite computes, read in process as the
+  predicate's value per row. Both are judged by `Refines`, so a predicate Calcite raises over is not
+  judged. A failure is narrowed to the smallest operand that still fails, and the report lists those
+  witnesses, not the predicates.
+
+  **On main it fails, and is left failing until the root-cause fixes merge.** Over the adapter at
+  `4b65754`, 131 of the 1,000 fail and none goes unjudged. Classified by the smallest witness, a
+  predicate counted under each cause it shows:
+
+  | Cause | Predicates |
+  | --- | --- |
+  | D: `IS NULL` over a boolean expression | 64 |
+  | F: a case fold or a concatenation over the accessor of a number or a boolean | 39 |
+  | **M, new:** the null guard over a `COALESCE` | 17 |
+  | **L, new:** the presence weakening through a `CASE` or a disjunction | 12 |
+  | B: the negated comparison over the accessor of an object or an array | 8 |
+  | A: `IS NULL` or `COALESCE` over the accessor of an object or an array | 8 |
+  | C: the negation leaking into an `IS NULL` operand | 1 |
+
+  G does not appear: the literals rarely meet a quotient Calcite truncates. H to K are about point
+  reads, lookups and `DISTINCT`, which a predicate never reaches. F reaches further than the case
+  folds: `COALESCE(JSON_VALUE(…), 'none') = '120'` compares the raw number too, because the
+  rendering test reaches only the comparison's direct operands. `TODO.md` section 10 has L and M
+  with their witnesses.
+
+  **What it costs, and why.** On a workstation that other work held at full load throughout, two runs
+  on main took 17.5 and 23.5 minutes. That was 16 to 21 minutes judging the 4,403 statements, and
+  about 1.5 narrowing the failures; a passing run skips the narrowing. Both runs found the same 131.
+  The median statement took about 100 ms, and the tail is the cost.
+  - **Most of a slow statement is Calcite reducing a literal's cast by compiling it.** `RexSimplify`
+    hands the cast to `RexExecutorImpl`, which compiles it with Janino, and under IKVM each compile
+    looks classes up by throwing. In a profile of the slowest statements that was 37% of the CPU.
+  - **A constant compared with a `DOUBLE` is spelled as one** (`50E0`), and that halved a
+    100-predicate sample. A comparison with a `VARIANT` column has no literal spelling and still
+    pays.
+  - **Batching the oracle made it worse.** Twenty-five predicates projected in one statement took
+    95–164 s each, against a median of 50 ms apart.
+  - **Four statements at a time was no faster than one** on the loaded machine.
+
+  Whether that fits the CI budget is the owner's call: the whole suite took 12.5 minutes on main.
 
 ---
 

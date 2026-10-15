@@ -77,11 +77,32 @@ with the adapter's rules, once with every pushdown disabled so Calcite evaluates
 — and both run against the same container. Equal rows, or a defect. Every new pushdown should bring its
 statements to the corpus.
 
+What counts as agreement where one side fails is decided in one place, `Refines`:
+
+- Where Calcite raises, the pushdown may answer anything.
+- Where Calcite answers, the pushdown may not fail. The one exception is the service failing a
+  statement that names an out-of-domain function: `ASIN`, `ACOS`, `SQRT` or `LN`.
+
+A statement whose in-process plan raises compares nothing, so it goes in `WithoutAnOracle` with the
+reason, not in the corpus.
+
+**`EveryPredicatePartitionsTheRows`** generates 1,000 predicates from a fixed seed. For each one φ, it
+requires that `WHERE φ`, `WHERE NOT φ` and `WHERE φ IS NULL`, pushed, return every document exactly
+once between them, and that each returns the documents Calcite puts there. It is slow: about twenty
+minutes on a busy workstation. When it fails, it reports the
+smallest part of each failing predicate that still fails. Set `COSMOS_MEASUREMENT_LOG` to a file path
+to have every failure written there in full, with the Cosmos statement each partition sent.
+
 ### Measurements
 
 Tests under `Measurements/` assert what Calcite, IKVM or the service does — not what the adapter does.
 A failure there is news about a dependency, and usually means a recorded assumption in `DESIGN.md`
 needs revisiting.
+
+Each measured fact a pushdown relies on is also a row in `Sql/CosmosAxioms.cs`, with where and when it
+was measured and the test that pins it, and a test checks every named test still exists. A new
+measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
+Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
 
 ## E.6 Where the reasoning lives
 

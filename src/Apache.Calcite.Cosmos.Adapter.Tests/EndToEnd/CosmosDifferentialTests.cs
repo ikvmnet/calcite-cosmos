@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// that have bitten: null against absent, <c>NOT</c> over both, grouping by a key some documents
     /// lack, <c>LIKE</c>'s shapes, and the aggregate forms.
     /// </remarks>
-    public class CosmosDifferentialTests : IClassFixture<CosmosDifferentialTests.Fixture>
+    public partial class CosmosDifferentialTests : IClassFixture<CosmosDifferentialTests.Fixture>
     {
 
         /// <summary>
@@ -236,11 +236,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Plans and executes a statement, with the pushdown rules or with only the way out.
         /// </summary>
-        static async Task<List<object>> Run(string sql, bool pushdown)
+        /// <param name="sql">The statement.</param>
+        /// <param name="pushdown">Whether the pushdown rules may fire.</param>
+        /// <param name="sent">Where given, collects every Cosmos statement the plan sends, so that a
+        /// report can say what was pushed and not only what came back.</param>
+        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(Products, new CosmosQueryExecutor(_container!));
-            var typed = new CosmosTable(Typed, new CosmosQueryExecutor(_typedContainer!));
+            var table = new CosmosTable(Products, Recorded(new CosmosQueryExecutor(_container!), sent));
+            var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
@@ -336,6 +340,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Wraps an executor so that what it is asked to send is written down, or returns it as it is
+        /// where nothing is to be.
+        /// </summary>
+        static ICosmosQueryExecutor Recorded(ICosmosQueryExecutor executor, ICollection<string>? sent)
+        {
+            return sent is null ? executor : new RecordingExecutor(executor, sent);
+        }
+
+        sealed class RecordingExecutor(ICosmosQueryExecutor inner, ICollection<string> sent) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<Apache.Calcite.Extensions.Runtime.IClrCursor<System.Text.Json.JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                lock (sent)
+                    sent.Add(query.PointReadIds is { } ids ? $"ReadMany({string.Join(", ", ids)})" : query.PointReadId is string id ? $"Read({id})" : query.Sql);
+
+                return inner.OpenAsync(query, partitionKey, cancellationToken);
+            }
+
+        }
+
+        /// <summary>
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>
@@ -417,9 +443,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Plans and executes a statement one way, and keeps a failure as an answer rather than
         /// letting it escape.
         /// </summary>
-        static async Task<Outcome> Attempt(string sql, bool pushdown)
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null)
         {
-            try { return new Outcome((await Run(sql, pushdown)).Select(Canonical).ToList(), null); }
+            try { return new Outcome((await Run(sql, pushdown, sent)).Select(Canonical).ToList(), null); }
             catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
         }
 
