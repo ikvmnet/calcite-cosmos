@@ -256,6 +256,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// Over a rendering the comparison is unknown wherever the rendering is null, and that is more
+        /// than an absent path and a JSON null: <c>JSON_VALUE</c> is null for an object and an array,
+        /// where the service's equality is false and its negation true. Measured over the typed
+        /// container, <c>NOT (label = 'bikes')</c> kept the array and the object, which Calcite does
+        /// not. So the guard the negated position takes is the reading's null set, which is what
+        /// <c>NOT IS_PRIMITIVE</c> adds.
+        /// </para>
+        /// <para>
+        /// The same comparison against the raw value, the cast to <c>ANY</c> naming it on purpose,
+        /// takes the path's null set alone: the raw object is a value the service compares, and it
+        /// is the value the comparison is about.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void NotOverAComparisonOfARenderingGuardsItsReadingsNullSet()
+        {
+            var inner = Call(SqlStdOperatorTable.EQUALS, Ref(0, SqlTypeName.VARCHAR), Str("bikes"));
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, inner))
+                .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name) OR NOT IS_PRIMITIVE(c.name)))");
+
+            var raw = Call(SqlStdOperatorTable.EQUALS, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes"));
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, raw))
+                .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name)))");
+        }
+
+        /// <remarks>
         /// Two negations return the position to where it started, so the comparison is written plainly
         /// again. A guard applied to every negation rather than to the position made this keep both the
         /// null-valued document and the absent one, and the corpus said so.

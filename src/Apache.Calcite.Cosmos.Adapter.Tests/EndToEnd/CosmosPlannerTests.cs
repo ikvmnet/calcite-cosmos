@@ -2353,6 +2353,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The equality under a <c>NOT</c> pushes, guarded by the accessor's null set.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The inequality's problem without the inequality: under a negation the comparison has to be
+        /// true wherever SQL's is unknown, so that the <c>NOT</c> above discards the row, and over the
+        /// accessor that is wherever it is null — at an object and an array as well as an absent path
+        /// and a JSON null. The guard named the last two only. Measured over the typed container,
+        /// <c>NOT (label = 'bikes')</c> kept the array and the object, and so did the same equality
+        /// under a negated conjunction and a negated disjunction.
+        /// </para>
+        /// <para>
+        /// A typed <c>RETURNING</c> the same, with the type it names: its <c>!=</c> was restricted
+        /// to the type in the positive position and its <c>=</c> was not under a <c>NOT</c>, so an
+        /// object at the path was kept there. The raw value is null only where the path is absent or
+        /// holds null, and keeps the guard it had.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ANegatedEqualityOverAnAccessorIsGuardedByItsNullSet()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')"))
+                .Should().EndWith("WHERE (NOT ((c.label = @p0) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label) OR NOT IS_PRIMITIVE(c.label)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) = 5)"))
+                .Should().EndWith("WHERE (NOT ((c.metadata = @p0) OR IS_NULL(c.metadata) OR NOT IS_DEFINED(c.metadata) OR NOT IS_NUMBER(c.metadata)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes')"))
+                .Should().EndWith("WHERE (NOT ((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)))");
+        }
+
+        /// <summary>
         /// <c>LIKE</c> the same, its subject being the accessor.
         /// </summary>
         /// <remarks>

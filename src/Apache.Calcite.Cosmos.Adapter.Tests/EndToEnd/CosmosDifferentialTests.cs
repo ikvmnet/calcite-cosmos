@@ -817,6 +817,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_QUERY(c.\"DOC\", '$.label') IS NULL", false),
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_QUERY(c.\"DOC\", '$.label') AS \"L\" FROM typed AS c) AS p WHERE p.\"L\" IS NOT NULL", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NULL", false),
+
+            // The negated equality's guard (B), which is the same null set in the other position: the
+            // comparison has to be true wherever SQL's is unknown, so that the NOT discards the row,
+            // and it named an absent path and a null but not the object and the array. Directly, and
+            // under a negated conjunction and disjunction. The typed equality under a NOT had no type
+            // test where its inequality had one; the last is its control, over a path holding no object.
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", false),                                     // P4
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", false),          // P5
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", false),           // P6
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) = 5)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 5)", false),
         ];
 
         /// <summary>
