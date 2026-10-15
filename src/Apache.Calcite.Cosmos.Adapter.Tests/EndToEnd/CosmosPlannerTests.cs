@@ -3519,6 +3519,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A null test Calcite has folded into a <c>SEARCH</c> is still a null test, and is not
+        /// weakened.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A host running Calcite's own rules simplifies the filter it moves beneath a projection, and
+        /// <c>n IS NULL OR n = 'B-2'</c> comes out as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS
+        /// TRUE])</c>. Written apart, the null test kept the disjunction from being weakened; folded,
+        /// the split rule read the <c>SEARCH</c> as a comparison that needs its path, and pushed
+        /// <c>IS_DEFINED(c.metadata.sku)</c> under a predicate true of all seven products, where only
+        /// one has a sku.
+        /// </para>
+        /// <para>
+        /// Only through the host's rules: this harness without them, and the differential corpus,
+        /// hand the split rule the disjunction as written. Declined, the folded form wins nothing, and
+        /// the plan the planner keeps is the one over the disjunction as written.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ANullTestFoldedIntoASearchIsNotWeakened()
+        {
+            var best = PlanToAsync(
+                "SELECT p.\"id\" FROM (SELECT c.\"id\", INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) AS \"n\" FROM products AS c) AS p WHERE p.\"n\" IS NULL OR p.\"n\" = 'B-2'",
+                hostRewrites: true);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the folded null test is true where the path is absent: " + sql);
+        }
+
+        /// <summary>
         /// A sort above a pushed aggregate stays in Calcite, and the aggregate still pushes.
         /// </summary>
         /// <remarks>

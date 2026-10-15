@@ -4077,6 +4077,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// null or absent. <c>COALESCE</c> and <c>NULLIF</c> are named beside it for a caller that
         /// builds them unexpanded.
         /// </para>
+        /// <para>
+        /// <b>And a <c>SEARCH</c> that decides null</b>, which is a null test folded into a range —
+        /// see <see cref="DecidesNull"/>.
+        /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <returns><c>true</c> where the expression can tell an absent path from an unknown.</returns>
@@ -4103,6 +4107,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case nameof(SqlKind.COALESCE):
                 case nameof(SqlKind.NULLIF):
                     return true;
+
+                // A null test folded into the range: Calcite simplifies `x IS NULL OR x = 'a'` to
+                // SEARCH(x, Sarg['a'; NULL AS TRUE]), which says outright what it answers over a
+                // null. One that answers unknown there is the comparisons it stands for.
+                case nameof(SqlKind.SEARCH) when DecidesNull(call):
+                    return true;
             }
 
             var operands = call.getOperands();
@@ -4111,6 +4121,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a <c>SEARCH</c> answers true or false where its operand is null, rather
+        /// than unknown.
+        /// </summary>
+        /// <remarks>
+        /// Asked of the node as it stands, because one consumer does not expand it. The split rule
+        /// weakens the predicate the planner hands it, and over a projection Calcite's own
+        /// simplification hands it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
+        /// arrived as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS TRUE])</c>, read as strict, and was
+        /// weakened to <c>IS_DEFINED(c.metadata.sku)</c> — keeping one product where SQL keeps all
+        /// seven.
+        /// </remarks>
+        static bool DecidesNull(RexCall call)
+        {
+            return call.getOperands().size() == 2
+                && Operand(call, 1) is RexLiteral literal
+                && literal.getValue() is org.apache.calcite.util.Sarg sarg
+                && sarg.nullAs != org.apache.calcite.rex.RexUnknownAs.UNKNOWN;
         }
 
         /// <summary>

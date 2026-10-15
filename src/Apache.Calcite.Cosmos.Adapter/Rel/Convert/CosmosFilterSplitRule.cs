@@ -568,7 +568,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </para>
         /// <para>
         /// The absence-observing operators — the null and truth tests, <c>CASE</c>, the <c>IS_*</c>
-        /// family — are not read here at all:
+        /// family, a <c>SEARCH</c> that decides null — are not read here at all:
         /// <see cref="TryWeaken"/> asks <see cref="ObservesAbsence"/> of the whole expression first,
         /// and weakens none that has one anywhere.
         /// </para>

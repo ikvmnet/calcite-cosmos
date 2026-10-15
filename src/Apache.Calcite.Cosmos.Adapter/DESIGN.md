@@ -2736,6 +2736,16 @@ the one recorded beside them, `price > 100 OR NOT (category = 'bikes' AND INITCA
 written directly, and `(category = 'bikes' AND price > 100)` compared with `(id = '5')` and with
 `FALSE` — and they are in the corpus. That ends cause L; its `CASE` half is the paragraph above.
 
+**So does a null test folded into a range.** A host running Calcite's own rules simplifies the filter
+it moves beneath a projection, and `n IS NULL OR n = 'B-2'` comes out as `SEARCH(n, Sarg['B-2'; NULL
+AS TRUE])`: true where `n` is null, as the test was, but no longer spelled as one. The split rule read
+it as a comparison and pushed `IS_DEFINED(c.metadata.sku)` under a predicate true of every product.
+`ObservesAbsence` now counts a `SEARCH` whose Sarg answers null outright, either way; one that answers
+unknown, which is what an `IN` builds, is still the comparisons it stands for. The translator expands a
+`SEARCH` before writing it, so only the weakening ever saw the folded form, and only under a host's
+rules — `CosmosPlannerTests.ANullTestFoldedIntoASearchIsNotWeakened` is the witness, the differential
+harness registering none of them.
+
 #### A predicate's value is not its truth
 
 Every guard in the section above answers one question: is the predicate *true*. A `WHERE` keeps a row
