@@ -207,6 +207,27 @@ costs anything, and the measurement is cheap given the harness that exists.
 Queries execute through `GetItemQueryStreamIterator`, with a pinned `id` and complete partition key
 recovered as a point read. The SDK's other cheap routes are unused.
 
+### The document column through a point read — *small, needs a decision*
+
+`SELECT *` or `DOC` by partition key and `id` runs as a query, routed to one partition, rather than as
+the 1 RU read its predicate allows. It used to take the read and fail, reading `DOC` as `VARCHAR`
+(review probe H4l). Serving it from the read is not a matter of reading it as JSON instead: measured
+on the emulator, `ReadItem` returns the document in the order it was written, at another indentation
+and with `_self`, where the query reorders it and leaves `_self` out; `ReadMany` differs from the
+query in indentation. `DOC` is the service's bytes by design, so the read would make it a different
+string depending on whether the statement pinned an `id`. Recovering the read means deciding `DOC` is
+a JSON value — re-serialised to one canonical text on every route, with the system properties
+settled — which changes what every `SELECT *` returns. Measure against a real account first: whether
+a query there carries `_self` and the written order is the first question.
+
+### A read is priced where the converter withdraws it — *small*
+
+`CosmosFilter.RequestUnits` prices a filter as a point read from its own condition, and the read is
+withdrawn after planning wherever the statement rules it out: a computed or guarded column, the
+document column, or a second filter conjoining into the `WHERE`. The rows are right either way; the
+planner compares a route it will not take. Asking the walk whether the filter's input wrote a `WHERE`,
+and whether the projection above reads every column as its path, would price what runs.
+
 ### The sample against SQL Server — *small*
 
 Apache.Calcite 2.0.0-pre.3 fixed the ADO.NET adapter against SQL Server

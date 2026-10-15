@@ -3192,6 +3192,11 @@ Read, it is the JSON the service sent —
 is stored in key order or number formatting. `CosmosReading.Json` is what says so, distinct from
 `Text`, which renders a value the way a cast over `ANY` would and is the wrong answer for a document.
 
+What the service sends is not one text, though, and that is measured: on the emulator a point read
+and a query return the same document in different key orders, at different indentation, and the
+read with a `_self` the query leaves out. So `DOC` is the bytes of *a query's* answer, and a point
+read does not serve it — see *Not every statement is a query*.
+
 **Every pushdown resolves its path in one place.** A clause that needs a document path gets it from
 `CosmosRexTranslator.TryResolvePath`, so a projection, a filter, a sort, a sort with a fetch,
 `GROUP BY`, `DISTINCT`, a nested path, a bracketed name, an array subscript, a numeric comparison,
@@ -3622,9 +3627,26 @@ than leaning on that.
 **The projection is the interesting one.** A read returns the document; the statement would have
 returned `SELECT VALUE { … }`. Two row shapes again — and this time the answer is not to force one,
 because forcing the projected shape is exactly the query the read is avoiding. Instead the converter
-builds a second row builder that walks each output field's *path* in the returned document, `DOC`
-being the empty path. It can only do that where every output field addresses a path, so a computed
-projection withdraws the read and the statement executes as the query it already is.
+builds a second row builder that walks each output field's *path* in the returned document. It can
+only do that where every output field addresses a path, so a computed projection withdraws the read
+and the statement executes as the query it already is.
+
+**Addressing a path is not enough: the query has to read the path's own value, as its declared
+type.** The second row builder took every field that way, and the query does not. A guarded
+accessor renders `IS_PRIMITIVE(c.p) ? c.p : null` and is read as text, a `JSON_QUERY` renders the
+complementary guard and is read as a fragment, and the document column is read as the JSON the
+service sent; each bound a path, so the read was taken and each failed as `VARCHAR` over the
+object, number or boolean at the path — `SELECT *` by partition key and `id` among them (review
+probes H4, H4h, H4f and H4l, measured on the emulator). Each now withdraws the read, decided by the
+reading and by `RenderedExpressions`, which already say where a column is not its path.
+
+The document column was the one worth trying to keep, and measurement settled it: the service does
+not send a document the same way twice. On the emulator `ReadItem` returned it in the order it was
+written, with `_self`, at one indentation; the query returned it reordered, without `_self`, at
+another; `ReadMany` differed from the query in indentation alone. `DOC` is the service's bytes by
+design — see *The document column* — so a read would make it a different string according to
+whether the statement pinned an `id`. Keeping the read means deciding `DOC` is a JSON value rather
+than those bytes, which TODO.md records.
 
 What executes the statement is *not* written into the plan. Calcite prepares a statement once and
 executes it many times, so the plan holds the table's qualified name and `CosmosSchemas.GetExecutor`

@@ -1204,6 +1204,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             plan.Should().Contain("b=[JSON_VALUE($0, '$.data.name')]", plan);
         }
 
+        // ── What a point read can read ────────────────────────────────────────────
+
+        /// <remarks>
+        /// The read the predicate allows, taken: every column is a path read as its declared type, so
+        /// the document the read returns answers each by walking to it. The stub hands back the
+        /// document, as the service's read would.
+        /// </remarks>
+        [Fact]
+        public async Task APointReadReadsTypedPathsOutOfTheDocument()
+        {
+            Given("""{ "id": "1", "category": "bikes", "_ts": 17, "price": 120 }""");
+
+            var rows = await Execute(PlanToClr("SELECT c.\"id\", c.\"_ts\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'"));
+
+            _executor.Executed!.Value.PointReadId.Should().Be("1");
+            rows.Should().HaveCount(1);
+            ((object[])rows[0]).Should().Equal("1", java.lang.Long.valueOf(17L), java.lang.Integer.valueOf(120));
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A column the query reads other than as the path's value as its declared type withdraws the
+        /// read, and the statement runs as the query, still routed. Each of these took the read and
+        /// failed reading <c>VARCHAR</c> over what the path held — the document column over the object,
+        /// the text accessor over the number, the fragment over the object (review probes H4l, H4h and
+        /// H4f, measured on the emulator). The stub hands back the projected row, as the service's
+        /// query would.
+        /// </para>
+        /// <para>
+        /// The document column is not served from the read even read as JSON: the service returns a
+        /// read's document in another key order and with <c>_self</c>, so <c>DOC</c> would be another
+        /// string. See <c>CosmosConverters.DocumentRowBuilder</c>.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", """{ "DOC": { "id": "1", "category": "bikes" }, "id": "1", "$.category": "bikes" }""")]
+        [InlineData("SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", """{ "id": "1", "DOC": { "id": "1", "category": "bikes" } }""")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", """{ "p": 120 }""")]
+        [InlineData("SELECT JSON_QUERY(c.\"DOC\", '$.metadata') AS \"m\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '2'", """{ "m": { "sku": "B-2" } }""")]
+        public async Task AColumnTheReadCannotProduceRunsTheLookupAsAQuery(string sql, string row)
+        {
+            Given(row);
+
+            var rows = await Execute(PlanToClr(sql));
+
+            _executor.Executed!.Value.PointReadId.Should().BeNull("the read cannot produce every column: " + _executor.Executed!.Value.Sql);
+            _executor.Executed!.Value.PointReadIds.Should().BeNull("nor can a batch of them");
+            _executor.Executed!.Value.PartitionKeyIsComplete.Should().BeTrue("the query is still routed to the partition");
+            rows.Should().ContainSingle();
+        }
+
 
     }
 

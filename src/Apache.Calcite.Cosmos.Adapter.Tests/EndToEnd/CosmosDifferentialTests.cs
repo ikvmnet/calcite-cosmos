@@ -624,6 +624,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT t.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')) AS t WHERE t.\"p\" > 200", false),
             ("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"_ts\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')) AS t WHERE t.\"id\" <> '1'", false),
 
+            // What a read selects (review probe H4). The read took every column as its declared type,
+            // and the document column, an accessor read as text and a JSON_QUERY are VARCHAR over an
+            // object, a number or a boolean: each failed to run where the query answered. Single and
+            // batch, the document whole and beside other columns, and each JSON type an accessor
+            // reads as text, over the typed container whose label holds one of each.
+            ("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),
+            ("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),
+            ("SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),
+            ("SELECT JSON_QUERY(c.\"DOC\", '$.metadata') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '2'", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c WHERE c.\"$.category\" = 'a' AND c.\"id\" IN ('1', '2', '3', '4', '5')", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label') FROM typed AS c WHERE c.\"$.category\" = 'a' AND c.\"id\" = '5'", false),
+
             // A sort over a DISTINCT of a path some documents lack (soundness probe P16). The distinct
             // groups the key as IS_DEFINED(p) ? p : null and binds nothing above it; the rule used to
             // read the path regardless, convert the sort, and leave implementation to refuse it. The

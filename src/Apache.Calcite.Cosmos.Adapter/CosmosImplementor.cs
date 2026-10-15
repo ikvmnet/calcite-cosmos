@@ -1121,7 +1121,9 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <para>
         /// The projection is the exception — the converter can read paths out of the document itself —
         /// and it is checked there rather than here, because only the converter knows whether every
-        /// output field is a path, rendered as one and read as the query would read it.
+        /// output field is a path, rendered as one and read as its declared type. See
+        /// <c>CosmosConverters.DocumentRowBuilder</c> for the fields that are not, the document column
+        /// among them.
         /// </para>
         /// </remarks>
         bool ReadsAnswerTheStatement() =>
