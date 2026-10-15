@@ -136,13 +136,21 @@ the service compares and returns the stored value directly.
 
 Know what it does and does not do. **`RETURNING` asserts the type; it does not convert.** In Calcite,
 `RETURNING INTEGER` over a stored `30` gives 30, but over `"30"`, `30.7` or `true` it fails rather
-than converting. So:
+than converting, and over an object, an array or a missing property it gives null. So:
 
 - Use it where the documents really hold that type. `RETURNING INTEGER` over a property holding
   numbers is exactly right.
-- If a document disagrees, a projected value fails to read with a `CosmosMaterializationException`
-  ("Expected a JSON number…" or similar) rather than coming back as something else. That is
-  deliberate: a row type that bends to the data would be a suggestion, not a type.
+- If a document holds another JSON type, the column is null. The adapter reads the property through
+  the type's own test — `IS_NUMBER`, `IS_BOOL` — so an object or an array reads null as it does in
+  Calcite, and so does a string or a boolean under `RETURNING INTEGER`, which is what SQL says
+  (`NULL ON ERROR` is the default) where Calcite fails instead (Chapter 23).
+- A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
+  `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
+  that bends to the data would be a suggestion, not a type. `RETURNING DECIMAL` is the exception the
+  other way: Calcite reads a stored string that spells a number into it, and the adapter does not, so
+  a string there fails to read.
+- A sort on a `RETURNING` column reaches the service only where the container's schema declares the
+  property that type (Chapter 9).
 - To *convert* a string to a number, use `CAST(JSON_VALUE(…) AS INTEGER)`. That converts, which the
   service cannot reproduce, so the cast itself runs in process (Chapter 8 shows how much of the
   predicate around it still pushes).

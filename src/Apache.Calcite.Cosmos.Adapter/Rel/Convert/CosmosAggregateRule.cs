@@ -97,21 +97,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether grouping by the value the service holds at a key's path puts two rows in
-        /// one group exactly where the column, as it is read back, says they are equal.
+        /// Determines whether grouping by the key the service is given puts two rows in one group
+        /// exactly where the column, as it is read back, says they are equal.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>The service groups the stored value; SQL groups the column.</b> A column read as its
-        /// declared type is the stored value, and the two agree. A <c>JSON_VALUE</c> read as text is a
-        /// rendering of it, and the guard the grouping key carries keeps JSON's types apart where the
-        /// rendering does not: a stored <c>30</c> and a stored <c>"30"</c> are two groups at the service
-        /// and one value, <c>'30'</c>, in SQL. Measured on the emulator over the typed container (review
-        /// probes J1, J2 and J13), <c>SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')</c> returned
-        /// <c>'30'</c> twice, its <c>GROUP BY</c> with <c>COUNT(*)</c> two groups of one where SQL has
-        /// one of two, and <c>COUNT(DISTINCT …)</c> — whose inner half is this distinct — counted six
-        /// where SQL counts five. The lookup join's key and the filter translator's comparison are the
-        /// same rendering, and both already refuse it; this is the third reader of the reading.
+        /// <b>The service groups the key the projection wrote; SQL groups the column.</b> A column read
+        /// as its declared type groups as the column reads. Where it is the stored value the key is the
+        /// path; where a <c>RETURNING</c> asserted a type, the key is the guard the projection writes it
+        /// through, null for every value of another type exactly as the column is — see
+        /// <c>CosmosRexTranslator.WriteGuardedAccessor</c>. Before that guard the key was the
+        /// path, and a grouping or a <c>DISTINCT</c> over a path holding an object sent the object back
+        /// for a column declared a number, which the reader refused. <c>RETURNING DECIMAL</c> is the one
+        /// typed accessor still written bare, and so still grouped by the path — <c>TODO.md</c>,
+        /// section 4.
+        /// </para>
+        /// <para>
+        /// A <c>JSON_VALUE</c> read as text is a rendering, and the guard the grouping key carries keeps
+        /// JSON's types apart where the rendering does not: a stored <c>30</c> and a stored <c>"30"</c>
+        /// are two groups at the service and one value, <c>'30'</c>, in SQL. Measured on the emulator
+        /// over the typed container (review probes J1, J2 and J13),
+        /// <c>SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')</c> returned <c>'30'</c> twice, its
+        /// <c>GROUP BY</c> with <c>COUNT(*)</c> two groups of one where SQL has one of two, and
+        /// <c>COUNT(DISTINCT …)</c> — whose inner half is this distinct — counted six where SQL counts
+        /// five. The lookup join's key and the filter translator's comparison are the same rendering,
+        /// and both already refuse it; this is the third reader of the reading.
         /// </para>
         /// <para>
         /// The exception is theirs too, and the question is theirs, asked of the same method —
@@ -120,9 +130,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// and a second JSON type cannot be there to be kept apart. A <c>JSON_QUERY</c> fragment has no
         /// such exception — its text is a serialisation, and whether the service holds two objects equal
         /// exactly where their compact texts are equal, in key order and number spelling, is not
-        /// measured — so it is declined. The document column is the one exception of a grouping's own,
-        /// taken before asking: it groups nothing either way, no two documents being equal, their
-        /// <c>_rid</c> alone telling them apart.
+        /// measured — so it is declined. The two readings a grouping takes before asking are its own:
+        /// the declared one, whose key is the column as above where the method asks whether the
+        /// <em>path</em> is, and the document column, which groups nothing either way, no two documents
+        /// being equal, their <c>_rid</c> alone telling them apart.
         /// </para>
         /// <para>
         /// Declining costs the grouping and nothing else: it runs in process over what the projection
@@ -131,7 +142,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool GroupsAsTheColumnReads(RelNode input, System.Collections.Generic.IReadOnlyList<Sql.CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, Metadata.CosmosContainerMetadata? container, int ordinal)
         {
-            if (ordinal < readings.Count && readings[ordinal] == CosmosReading.Json)
+            if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) is CosmosReading.Typed or CosmosReading.Json)
                 return true;
 
             var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);

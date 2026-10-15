@@ -38,9 +38,9 @@ Listing any container turns discovery off. List every container you want. Chapte
 **Sorted, paged queries read the whole container.**
 Almost always null placement. Set `DefaultNullCollation = "LOW"` on the connection, or write
 `NULLS FIRST` (ascending) / `DESC NULLS LAST`. Also check the key is a path and not a cast or the
-promoted partition key column; that a `JSON_VALUE` key without `RETURNING` is over a path the schema
-declares a string, since text over anything else sorts in process; and that a multi-key sort has a
-matching composite index. Chapter 9's checklist.
+promoted partition key column; that a `JSON_VALUE` key is over a path the schema declares the type it
+reads — a string without `RETURNING`, the `RETURNING` type with it — since anything else sorts in
+process; and that a multi-key sort has a matching composite index. Chapter 9's checklist.
 
 **A sort on the partition key column runs in process.**
 That column is `VARIANT` and cannot be sorted. Sort on `JSON_VALUE(c."DOC", '$.<path>')`, and declare
@@ -81,9 +81,11 @@ identical so pooling shares one, or own the data source. Chapter 6.
 ## Queries that fail
 
 **`CosmosMaterializationException: Expected a JSON string, got Number` (or similar).**
-A document holds a different JSON type than the query declared — `RETURNING INTEGER` over a property
-that is sometimes a string, `VARCHAR ARRAY` over an array of numbers. Fix the declaration or the data;
-the adapter refuses rather than coerces. Chapter 7.
+A document holds something the query's type cannot hold — `RETURNING INTEGER` over a property that is
+sometimes `30.7`, `RETURNING DECIMAL` over one that is sometimes a string, `VARCHAR ARRAY` over an
+array of numbers. Fix the declaration or the data; the adapter refuses rather than coerces. (A
+property that is sometimes a string or an object under `RETURNING INTEGER` reads null instead.)
+Chapter 7.
 
 **`CosmosMaterializationException: A value read as a UUID is not one`.**
 A document contradicts a declared UUID form. The schema is wrong for this container, or a writer wrote

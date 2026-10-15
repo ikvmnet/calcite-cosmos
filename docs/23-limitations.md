@@ -85,6 +85,12 @@ deliberate choice, or work not done yet. The open work is tracked in
 
 - `JSON_VALUE` returns text, so `= '30'` matches the number 30 (Chapter 7).
 - `RETURNING` asserts a type rather than converting to it (Chapter 7).
+- A `RETURNING` column over a value of another type is null; Calcite answers null for an object or an
+  array but fails for a string or a boolean, and the adapter answers null for those too, as SQL says
+  (Chapter 7).
+- A sort on a `JSON_VALUE` column reaches the service only where the container's schema declares the
+  type it reads — a string, or the `RETURNING` type — because the service orders the stored value and
+  places an object or an array after every number, where the column is null (Chapter 9).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).
 - Out-of-domain arithmetic (`SQRT(-1)`) fails the whole Cosmos statement rather than one row (Chapter 8).
 - A Cosmos query is not a snapshot: a long, paged read can see writes made while it runs. That is the

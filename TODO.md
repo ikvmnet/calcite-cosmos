@@ -220,6 +220,19 @@ a JSON value — re-serialised to one canonical text on every route, with the sy
 settled — which changes what every `SELECT *` returns. Measure against a real account first: whether
 a query there carries `_self` and the written order is the first question.
 
+### A typed accessor through a point read — *small*
+
+A pinned `id` and partition key whose projection includes `JSON_VALUE(… RETURNING INTEGER)`, or any
+typed accessor but `DECIMAL`, runs as the routed query rather than as the read. The column is written
+through its type's guard, `IS_NUMBER(p) ? p : null`, so that an object at the path reads null as
+Calcite reads it; read out of the document, the same object failed the read as the integer the plan
+declared (the typed container's `label`, by `id` and by a batch; `DESIGN.md` under *Not every
+statement is a query*). Its rendering is no longer the path, so `DocumentRowBuilder` withdraws the
+read, as it does for the text accessor. Keeping the read means applying the type's test to the read's
+document before the reader sees the value — `CosmosFunctionBodies.IsNumber` and `IsBool` are those
+tests in process — which the converter would have to be told per column, the rendering being Cosmos
+SQL text it cannot evaluate.
+
 ### A read is priced where the converter withdraws it — *small*
 
 `CosmosFilter.RequestUnits` prices a filter as a point read from its own condition, and the read is
@@ -1171,6 +1184,36 @@ the distribution the gate is sized for.
   and every other document, rendered and sorted in process, merged with the first by text. The page
   bounds the first statement and not the second, so it buys back a path that is nearly always a
   string and that nobody declared, and the cost model would have to know the second half's size.
+- **A sort over a typed accessor of a path not declared its type** — *small, and the shape is
+  known.* It runs in process now, with its row limit: `JSON_VALUE(… RETURNING INTEGER)` reads null
+  for an object and an array, and the service sorts both after every number, so a page over the
+  typed container's `label` came back `[null, null, 30]` where SQL answers three nulls
+  (`DESIGN.md` under *Ordering a sort key the way it reads*). A container declaring the path the type
+  still pushes. Easier than the text case, because every value of another type reads one null: the
+  numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
+  order, placed before or after them as the placement says. The cost model would have to know the
+  second half's size, as there.
+- **A sort over a key a filter beneath it already confines** — *small, a pushdown not taken.*
+  `WHERE JSON_VALUE(c."DOC", '$.label') IN ('bikes', 'shoes', 'huge') ORDER BY 1` keeps the sort in
+  process, though the filter reaches the service exactly — unambiguous text matches a stored string
+  and nothing else — so every row the sort sees holds a string at the path and the service's order is
+  SQL's. Before the sort asked how its key was read it pushed, and agreed. `IsReadAsStored` asks the
+  declaration alone, `Derive(null)`, for the reason `IsDeclaredStringOutright` gives: a fact the
+  query proved certifies the conjunct it came from. A sibling filter is not that conjunct, and the
+  remarks there say the ordering may use it. Recovering it means handing the sort the facts a filter
+  *pushed beneath it* entails — only those that reached the service exactly, so not a weakening's,
+  which keeps the comparison above — and asking them for the type, which reaches a typed key under
+  `IS NOT NULL` or a range too. The planner corpus has no such statement.
+- **`RETURNING DECIMAL` is written as the path, and it parses** — *small, and a wrong answer.*
+  Every other numeric `RETURNING` asserts its class, and `DECIMAL` parses a stored string that spells a
+  number (`CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal`):
+  a stored `"30"` is 30 to it. Written as the path, a column over such a string fails the read where
+  Calcite answers, a grouping or a `DISTINCT` keeps `"30"` apart from 30 and fails reading it back,
+  and a lookup on it, restricting by the number, would lose the string — the last by reading, not
+  measured. It is the one typed accessor the projection leaves bare, its
+  type's test reading null where the engine answers. A sort over it is declined unless the path is
+  declared a number, like every typed key. The sound answer is the one an array `RETURNING` has:
+  the clause addresses no path, and is the cast of the rendering it is.
 - **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
   to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
   does, and the service by code point, so the two part where a character above U+FFFF meets one

@@ -32,8 +32,8 @@ new CalciteConnectionStringBuilder
 ```
 
 The `JSON_VALUE` rows below assume the container's schema declares `name` and `metadata.sku` strings
-(Chapter 14); a key read as text needs that before it sorts at the service at all, which 9.3 explains.
-`RETURNING` keys and `id` need nothing declared.
+and `price` an integer (Chapter 14); a `JSON_VALUE` key needs the type it reads declared before it
+sorts at the service at all, which 9.3 explains. `id` needs nothing declared.
 
 | statement | default (`HIGH`) | `LOW` |
 | --- | --- | --- |
@@ -77,7 +77,8 @@ multi-key sort only where a matching composite index exists; otherwise the sort 
 ORDER BY JSON_VALUE(c."DOC", '$.category'), JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) DESC
 ```
 
-pushes on a container whose indexing policy has:
+pushes on a container whose schema declares `category` a string and `price` an integer (9.3), and
+whose indexing policy has:
 
 ```json
 "compositeIndexes": [
@@ -101,9 +102,10 @@ be mapped to a document path"*. So:
 - **A sort on a computed expression runs in process.** That includes a sort on a view column that is
   a `CAST`, a function call or a concatenation.
 - **A sort on a column that *is* a path pushes, where the column is the value stored there**:
-  `JSON_VALUE(… RETURNING …)` of a number or a boolean, `id`, `_ts`, `_etag` — and `JSON_VALUE(…)`
-  read as text where the schema declares the path a string (below). A date or a time read by
-  `RETURNING` needs its stored form declared too (Chapter 15).
+  `id`, `_ts` and `_etag` always; `JSON_VALUE(…)` read as text where the schema declares the path a
+  string, and `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that
+  type (both below). A date or a time read by `RETURNING` needs its stored form declared instead
+  (Chapter 15).
 - **The promoted partition key column cannot be a sort key.** It is `VARIANT` (Chapter 7), and Calcite
   has no order for `VARIANT` values. Sort on `JSON_VALUE(c."DOC", '$.category')` instead, which pushes
   where the schema declares `category` a string.
@@ -128,8 +130,26 @@ the service's order:                     7, 8, 9, 9, 30, 30.7, "30"
 
 So the sort runs in process unless the container's schema says the property holds a string —
 `"type": "string"`, or `["string", "null"]` (Chapter 14) — where the text *is* the stored value and the
-two orders are one. The same goes for a view column bound to the accessor. A property you sort by as a
-number or a boolean is better read with `RETURNING`, which sorts at the service with nothing declared.
+two orders are one. The same goes for a view column bound to the accessor.
+
+**A key read with `RETURNING` sorts at the service only over a declared type, for the same reason.**
+`JSON_VALUE(… RETURNING INTEGER)` is a number where the property holds one and null where it holds
+anything else — an object or an array as surely as a missing property. The service still sorts by
+what is stored, and puts objects and arrays after every number, so the documents the column calls
+null are not where `NULLS FIRST` puts them, and a page is the wrong page:
+
+```
+-- over documents whose label is 30, [1], {"v": 1}, null, and missing
+SELECT JSON_VALUE(c."DOC", '$.label' RETURNING INTEGER) FROM "items" AS c
+ORDER BY 1 NULLS FIRST FETCH NEXT 3 ROWS ONLY
+
+what the query asks:   null, null, null
+the service's page:    null, null, 30        -- the array and the object sort after 30
+```
+
+So it runs in process unless the schema declares the property that type, or null: `"integer"` or
+`"number"` for a numeric `RETURNING`, `"boolean"` for `RETURNING BOOLEAN`, each alone or with
+`"null"`. Declare the properties you sort by, whichever way you read them.
 
 **Some columns never sort at the service**: a `JSON_QUERY` column, the `DOC` column, and an array
 (`JSON_QUERY … RETURNING … ARRAY`). The service orders objects and arrays by rules of its own — `[]`
@@ -155,8 +175,8 @@ A Cosmos statement has one `ORDER BY`, and some clauses cannot be combined with 
 - **`ORDER BY RANK`** (Chapter 17). A ranked query has no other ordering.
 - **An array traversal's element.** Azure rejects `ORDER BY t` over `JOIN t IN c.tags`, though the
   emulator accepts it; a sort on an unnested element runs in process.
-- **A `VARIANT` key**, a `JSON_QUERY` or `DOC` key, an array key, or a text key over a path no schema
-  declares a string, as above.
+- **A `VARIANT` key**, a `JSON_QUERY` or `DOC` key, an array key, a text key over a path no schema
+  declares a string, or a `RETURNING` key over a path no schema declares that type, as above.
 - **A `SELECT DISTINCT` of a property some documents lack.** A distinct and a sort share a statement
   where the key is always present: `id`, `_ts`, `_etag`, or a property the container's schema
   requires (Chapter 14). Anywhere else the distinct folds a missing property and a `null` into SQL's
@@ -212,9 +232,10 @@ rather than relying on a filter.
    (Not needed for `id`, `_ts`, `_etag`.)
 2. Is every key a document path — `JSON_VALUE`, `id`, `_ts`, `_etag` — and not a cast, function or
    the promoted partition key column?
-3. Is a `JSON_VALUE` key without `RETURNING` over a path the container's schema declares a string?
-   Text over anything else sorts in process; a number or a boolean sorts at the service read with
-   `RETURNING`. A `JSON_QUERY`, `DOC` or array key never does.
+3. Does the container's schema declare the type the `JSON_VALUE` key reads? A string for a key
+   without `RETURNING`; for `RETURNING INTEGER` and the other numbers an integer or a number; for
+   `RETURNING BOOLEAN` a boolean — each alone or with null. Anything less sorts in process. A
+   `JSON_QUERY`, `DOC` or array key never sorts at the service.
 4. Two or more keys? Does the container have a composite index matching their order and directions?
 5. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a
    property some documents lack?

@@ -105,6 +105,11 @@ path, a lookup restricting `c.carrier IN (…)` — and the stored value is the 
 nothing but a string can be there. Without the declaration the sort and the grouping run in process
 and the join reads the container whole (Chapters 9, 10 and 12).
 
+A sort on a typed column needs its declaration as well. `JSON_VALUE(… RETURNING INTEGER)` is null where
+the path holds an object, an array or a string, and the service sorts those after every number rather
+than with the nulls; `"type": "integer"` or `"number"` (or `"boolean"` for `RETURNING BOOLEAN`), alone
+or with `"null"`, says nothing else is there, and the sort is sent (Chapter 9.3).
+
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
 would otherwise send only for the recheck to discard. So does a path the query itself compares: a
 comparison keeps only documents that have the path, so `c.carrier = 'x'` beside a weakened comparison on

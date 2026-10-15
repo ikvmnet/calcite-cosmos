@@ -1490,7 +1490,7 @@ CQL is likewise SQL-shaped, and Calcite still hand-builds it rather than routing
 | `CosmosTableScan` | — | ✔ Terminal. One per container; nothing composes beneath it. |
 | `CosmosFilter` | `CosmosFilterRule` | ✔ Only when every `RexNode` is translatable. Refused above a projection, since `WHERE` precedes `SELECT`. |
 | `CosmosProject` | `CosmosProjectRule` | ✔ Renders as an object constructor. Rebinds field ordinals to the projected paths, or clears them when any projection is computed. Declined where the subtree has already chosen its `SELECT`: a statement has one, and there is no derived table to nest a second in. |
-| `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable; each key must be read as the value it orders by — a text accessor only over a declared string, and never a fragment, the document or an array (*Ordering a sort key the way it reads*). |
+| `CosmosSort` | `CosmosSortRule` | ✔ Carries `OFFSET`/`LIMIT`. Blocked if aggregation present. Multi-key sorts require a matching composite index; null placement must be honourable; each key must be read as the value it orders by — a text accessor only over a declared string, a typed accessor only over a path declared its type, and never a fragment, the document or an array (*Ordering a sort key the way it reads*). |
 | `CosmosUnnest` | `CosmosUnnestRule` | ✔ From `Correlate` over `Uncollect`, **never** from `Join`. Sits above a projection and adds the element to it. A predicate over the element is emitted beside it as a `CosmosFilter`. |
 | `CosmosAggregate` | `CosmosAggregateRule` | ✔ `COUNT(*)` always; `SUM`/`MIN`/`MAX`/`AVG` only over a non-nullable input. Blocked if a sort is present. Supersedes a path-only pruning projection. |
 
@@ -2011,14 +2011,37 @@ all. The declared type is what tells them apart, and it is the same test
 | the accessor, and what it is typed | rendered | read as |
 | --- | --- | --- |
 | `JSON_VALUE`, `VARCHAR` or `CHAR` — the bare accessor | `IIF(IS_PRIMITIVE(p), p, null)` | `Text`, the rendering |
-| `JSON_VALUE`, anything else — `RETURNING INTEGER`, … | `p` | `Typed`, the declared type |
+| `JSON_VALUE`, a number or `BOOLEAN` — `RETURNING INTEGER`, … | `IIF(IS_NUMBER(p), p, null)`, `IIF(IS_BOOL(p), p, null)` | `Typed`, the declared type |
+| `JSON_VALUE`, anything else — `DECIMAL`, a date, … | `p` | `Typed`, the declared type |
 | `JSON_VALUE`, `ARRAY` or `MULTISET` | *refused* — the column is left in process | — |
 | `JSON_VALUE` with a behaviour clause other than `NULL` | *refused* — the column is left in process | — |
 | `JSON_QUERY`, `VARCHAR` — the plain accessor | `IIF(IS_OBJECT(p) OR IS_ARRAY(p), p, null)` | `JsonText`, re-serialised compactly |
 | `JSON_QUERY`, `ARRAY` or `MULTISET` — `RETURNING … ARRAY` | `IIF(IS_ARRAY(p), p, null)` | `Typed`, a `java.util.List` |
 
-The third row is the one the rest of this section is about, and it is a reversal of what #119 first
+The fourth row is the one the rest of this section is about, and it is a reversal of what #119 first
 shipped.
+
+**The second row was the bare path for a while too, on an argument the measurements below refute.** A
+typed accessor *asserts* its type, so a document holding another was taken to fail the read as it fails
+Calcite (ikvmnet/calcite-dotnet#120), and the reader refusing it was the clause being trusted. For a
+scalar of another type that holds; for an object and an array it does not. Neither is a scalar, so the
+extraction fails, its error path answers null under the default `NULL ON ERROR`, and the cast that
+raises is never reached — `CalciteJsonValueMeasurementTests.AnAssertingReturningReadsNullForWhatIsNoScalar`,
+under `INTEGER`, `BIGINT`, `DOUBLE` and `BOOLEAN`. The bare path handed the service's object to the
+reader, which refused it for the declared type, so the statement failed where the query answers: over
+the differential suite's typed container, whose `label` holds an array in one document and an object in
+another, the column, a `GROUP BY` and a `DISTINCT` on it, a `COUNT` of it, a `COALESCE` over it and a
+read of it by id all failed with *Expected a JSON number, got Array*. The guard is now the type's own
+test, which is the line the accessor draws; a scalar of another type reads null under it too, which is
+SQL:2016's answer where Calcite raises. `DECIMAL` keeps the bare path, being the one numeric clause that
+parses rather than asserts — a stored `"30"` is 30 to it
+(`EachNumericOrBooleanReturningAssertsItsClassButDecimal`) — so `IS_NUMBER` would read null where the
+engine answers, and bare, what the reader cannot read still fails rather than answers. A date or a time
+stays bare as well: it pushes only where the container declares a stored form the engine reads
+(`RequireTheEngineCouldRead`, above), and a stored form is a string, so the path holds nothing the guard
+would read null for. The guard costs a point read whose columns include one, which runs as the routed
+query instead — see *Not every statement is a query* — and a sort, which orders a path and not the
+guard: see *Ordering a sort key the way it reads*.
 
 **An array `RETURNING` on `JSON_VALUE` is refused, and this section used to argue the opposite.** It
 is worth keeping the reversal visible, because the earlier argument was coherent and still wrong.
@@ -2254,10 +2277,12 @@ value: an object reaching a column the plan typed a list is #129's cast failure 
 
 `TranslateProjection` sets a flag for its compound branch — the one reached once every whole-projection
 shape has declined — and `WriteGuardedAccessor` renders each accessor the way its own projection
-would: `IS_PRIMITIVE` for a text `JSON_VALUE`, `IS_ARRAY` for an array `JSON_QUERY`, the bare path for
-a scalar `RETURNING`. A plain `JSON_QUERY` is **refused** rather than guarded, because a guard is not
-what it needs — its column is the fragment *as text*, produced by the reading and not by the service,
-and nested there is no reading to do it.
+would: `IS_PRIMITIVE` for a text `JSON_VALUE`, `IS_ARRAY` for an array `JSON_QUERY`, its type's test
+for a scalar `RETURNING` and the bare path for `DECIMAL` (the table above). A scalar `RETURNING` alone
+reaches the same method, the compound branch being where every whole-projection shape has sent it. A
+plain `JSON_QUERY` is **refused** rather than guarded, because a guard is not what it needs — its
+column is the fragment *as text*, produced by the reading and not by the service, and nested there is
+no reading to do it.
 
 **Scoped to a projection.** A filter compares the raw value the service holds on purpose, which is
 what `CosmosFilterSplitRule` and `WriteComparand` are built on and is not in question here.
@@ -2280,8 +2305,9 @@ reader, and nothing asked it. Measured on the emulator over the typed container 
 J13 and J14), `SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')` returned `'30'` twice, the grouping
 counted two groups of one where SQL has one of two, and `COUNT(DISTINCT …)`, whose inner half is that
 distinct, counted six where SQL counts five. `CosmosAggregateRule.CanPush` now asks of each grouping
-key what the other two ask: a key read as its declared type groups as it reads, a key read as text
-only where `IsDeclaredStringOutright` holds of its path, and a `JSON_QUERY` fragment not at all — its
+key what the other two ask: a key read as its declared type groups as it reads (a typed accessor's key
+being the guard its projection writes, null exactly where the column is), a key read as text only
+where `IsDeclaredStringOutright` holds of its path, and a `JSON_QUERY` fragment not at all — its
 text is a serialisation, and whether the service holds two objects equal exactly where their compact
 texts are equal, in key order and number spelling, is unmeasured. The document column groups nothing
 either way, no two documents being equal. The grouping then runs in process over the column the
@@ -2320,23 +2346,47 @@ key, since its restriction is the raw `path IN (@k…)`; a grouping a text key, 
 the stored values. The last two each wrapped `IsDeclaredStringOutright` in a dispatch on the reading
 of their own, which differed only over the document column — the second encoding the rule against
 encodings is for. `CosmosRexTranslator.IsReadAsStored` is that dispatch: a field read as declared is
-the stored value; read as text, only where `IsDeclaredStringOutright` holds of its path, the container
-declaring it a string or null outright and nothing else; read as JSON, never. The lookup join and the
-grouping ask it now — the grouping taking its own exception for the document column first, no two
-documents being equal — and `CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
+the stored value, a typed accessor only where its type is declared (below); read as text, only where
+`IsDeclaredStringOutright` holds of its path, the container declaring it a string or null outright and
+nothing else; read as JSON, never. The lookup join and the grouping ask it now — each taking an
+exception of its own first, the grouping for the document column, no two documents being equal — and
+`CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
 readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
 `TryResolveSortKeys`, which both share, refuses a path-bound key that is not stored, and refuses an
 array, a multiset or a map beside the `VARIANT` it already refused, whatever their reading.
 
-**A `RETURNING` key is left alone, and for a reason rather than by default.** The typed accessor
-projects the bare path and the reader reads the declared type. A document holding some other type
-fails the read rather than sorting somewhere — and Calcite fails the same statement
-(ikvmnet/calcite-dotnet#120) — so among the rows that are answered at all the service's order, numbers
-by value and `false` before `true`, is SQL's. Measured: `JSON_VALUE(… '$.price' RETURNING INTEGER)`
-over the products container agreed, pushed.
+**A `RETURNING` key is the stored value only where the container declares its type, and this
+paragraph used to say it always was.** The argument was that a document holding another type fails
+the read rather than sorting somewhere, and that Calcite fails the same statement
+(ikvmnet/calcite-dotnet#120). Both halves were false for an object and an array. Calcite reads both as
+null (*Casts over document values*, beside the table of readings), and the service sorts both after
+every scalar — so under a page the read never reached them. Measured on the emulator over the typed
+container, `label` holding 30, an array, an object, null and nothing among the five documents
+`RETURNING INTEGER` answers for:
+
+| over those five, `ORDER BY 1` | pushed | SQL |
+| --- | --- | --- |
+| `NULLS FIRST FETCH NEXT 3 ROWS ONLY` | `null, null, 30` | `null, null, null` |
+| `DESC NULLS LAST OFFSET 2 ROWS` | `30, null, null` | `null, null, null` |
+| `RETURNING BOOLEAN`, over `true` in place of 30: `NULLS FIRST FETCH NEXT 3 ROWS ONLY` | `null, null, true` | `null, null, null` |
+
+Unpaged the same order failed the read on the object, and with the column guarded it would have
+answered in the wrong order instead: `null, null, 30, null, null`. So `IsReadAsStored` asks of a
+nullable field read as declared what it asks of text, of the type the clause names
+(`CosmosRexTranslator.TypeTestOf`): the container must declare the path that type, or null, outright.
+`JSON_VALUE(… '$.price' RETURNING INTEGER)` over products, which agreed pushed because no document there
+holds anything but a number, now sorts in process; over a path declared an integer it pushes, and
+agrees — the differential suite's `ordering` container. A field that cannot be null is the service's
+own `id`, `_ts` or `_etag` and is asked nothing, and a `VARIANT` column was already declined.
+
+**A grouping and a lookup take a typed key before asking, and a sort cannot.** The grouping key is
+what the projection wrote, which for a typed accessor is now its guard, null exactly where the column
+is; the lookup's restriction compares a parameter of the column's type, which no stored value of
+another type equals, and a document whose column is null matches no key anyway. A sort has no such
+key to be given: the service orders only a path (error 2206, above), and the path is not the column.
 
 **Declining costs the sort and its row limit**: they run in process over the guarded column the
-service still sends, and a page over an undeclared text key reads the container. A declaration
+service still sends, and a page over an undeclared text or typed key reads the container. A declaration
 recovers it. Nothing in one statement can, the service refusing an `ORDER BY` item that is not a path
 (error 2206, above), so the rendering cannot be written as the key; `TODO.md` section 4 records the two
 statements that could.
@@ -3445,8 +3495,8 @@ Calcite cannot sort the column in process, no oracle can measure a pushed sort, 
 declines a sort keyed on a `VARIANT` column rather than push one on faith. A caller orders by
 `JSON_VALUE` over the path instead, which is text and sorts as text in process — and at the service
 only where the container declares the path a string, the service ordering the stored value rather than
-its text (*Ordering a sort key the way it reads*). This waits on an upstream Calcite decision about a
-canonical variant order; see #165.
+its text; a `RETURNING` likewise only where the container declares its type (*Ordering a sort key the
+way it reads*). This waits on an upstream Calcite decision about a canonical variant order; see #165.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it
@@ -3745,6 +3795,13 @@ service sent; each bound a path, so the read was taken and each failed as `VARCH
 object, number or boolean at the path — `SELECT *` by partition key and `id` among them (review
 probes H4, H4h, H4f and H4l, measured on the emulator). Each now withdraws the read, decided by the
 reading and by `RenderedExpressions`, which already say where a column is not its path.
+
+A typed accessor joined them when its column took its type's guard (*Casts over document values*,
+beside the table of readings): read out of the document, an object at the path failed as the integer
+the plan declared, by `id` and by a batch of them, where the query's guard reads null as Calcite does —
+the typed container's `label`, measured on the emulator. Its rendering is no longer the path, so the
+read is withdrawn by the same test and the statement runs as the routed query. Applying the type's
+test to the read's document would keep the read; `TODO.md` section 2 records it beside `DOC`.
 
 The document column was the one worth trying to keep, and measurement settled it: the service does
 not send a document the same way twice. On the emulator `ReadItem` returned it in the order it was

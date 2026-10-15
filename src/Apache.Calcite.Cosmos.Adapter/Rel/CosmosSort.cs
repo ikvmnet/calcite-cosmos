@@ -158,6 +158,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// container declares a string outright — and the rule and the node each ask it of the binding
         /// their own walk produced, so that the two cannot disagree.
         /// </para>
+        /// <para>
+        /// <b>A typed accessor is asked too, and it is the sort that needs it.</b> A <c>RETURNING</c>
+        /// that asserts a type reads null for an object and an array, and the service sorts both after
+        /// every scalar: over the typed container,
+        /// <c>JSON_VALUE(c."DOC", '$.label' RETURNING INTEGER)</c> under <c>NULLS FIRST</c> and a page of
+        /// three came back <c>[null, null, 30]</c> where SQL answers three nulls, and <c>RETURNING
+        /// BOOLEAN</c> <c>[null, null, true]</c>. Unpaged, the same order failed the read on the object
+        /// before the projection was guarded, and with the guard it would have answered in the wrong
+        /// order. So the key is the stored value only where the container declares the path the type
+        /// the clause names, or null, outright. The grouping and the lookup take a typed accessor
+        /// before asking, the one grouping by its guard and the other restricting by a typed parameter;
+        /// ordering has nothing to take it by, the service ordering only a path.
+        /// </para>
         /// </remarks>
         /// <param name="translator">A translator over the input's binding, readings and container.</param>
         /// <param name="rowType">The input's row type.</param>
@@ -287,8 +300,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // Comparable and names no order across types -- so no oracle can measure a pushed sort,
                 // and the SQL standard defines no ordering for a variant to match. Declining leaves the
                 // adapter behaving as the engine does. A caller orders by JSON_VALUE over the path
-                // instead, which is text, and which orders at the service only where the container
-                // declares the path a string -- see StoredFields. See #165, and #163 for the type.
+                // instead, which orders at the service only where the container declares the path the
+                // type the accessor reads -- a string for the text accessor, the type a RETURNING names
+                // otherwise -- see StoredFields. See #165, and #163 for the type.
                 if (type == org.apache.calcite.sql.type.SqlTypeName.VARIANT)
                     return false;
 

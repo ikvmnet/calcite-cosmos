@@ -193,26 +193,26 @@ is not run as a query at all. It is a point read — `ReadItem`, about 1 RU, no 
 the 2.3 RU or more a query costs at best:
 
 ```sql
-SELECT c."id", c."_ts", JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) AS "price" FROM "products" AS c
+SELECT c."id", c."_ts" FROM "products" AS c
 WHERE c."id" = 'bike-1' AND c."$.category" = 'bikes'
 → ReadItem("bike-1", partition "bikes")
 ```
 
 A point read returns a whole document, so anything that is not a document stops it: an `ORDER BY`, a
 row limit, a `GROUP BY` or an aggregate, a `SELECT DISTINCT`, an `UNNEST`, or a computed column in the
-select list. Selecting columns that are document paths read as their declared type is fine — the
-promoted columns, the service's own, and a `JSON_VALUE` with a `RETURNING` clause are taken out of the
-document after it is read. Compare the promoted columns (`"id"` and the partition key column) for a
-point read; a cast or a `JSON_VALUE` over the partition key still routes, but is not used to recover a
-read.
+select list. Selecting columns that are the stored value at a path is fine — the promoted columns and
+the service's own are taken out of the document after it is read. Compare the promoted columns
+(`"id"` and the partition key column) for a point read; a cast or a `JSON_VALUE` over the partition key
+still routes, but is not used to recover a read.
 
 **`DOC` and `*` are queries.** The document column is the JSON the service sent, and the service
 does not send a document the same way twice: measured on the emulator, a read returned it in the
 order it was written and with a `_self` property, and a query reordered and without one. A read
 would make `DOC` a different string
 according to whether the statement named an `id`, so selecting it runs the lookup as a query, still
-routed to one partition. So does a `JSON_VALUE` without `RETURNING`, or a `JSON_QUERY`: each is read
-through a guard the document alone does not carry.
+routed to one partition. So does any `JSON_VALUE` or `JSON_QUERY`, with `RETURNING` or without: each
+is read through a guard the document alone does not carry — `IS_NUMBER(c.price) ? c.price : null` for
+`RETURNING INTEGER`, which reads an object there as null (Chapter 7).
 
 **A point read with something more.** `WHERE id = 'x' AND pk = 'y' AND deletedAt IS NULL` — the
 shape of every by-id lookup through a soft-delete view — cannot be a point read as written, since a

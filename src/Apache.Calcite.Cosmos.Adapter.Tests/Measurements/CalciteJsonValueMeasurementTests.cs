@@ -539,6 +539,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Ask($"CAST(JSON_VALUE({Document("1")}, '$.v') AS BOOLEAN)").Threw.Should().NotBeNull("a number raises");
         }
 
+        /// <summary>
+        /// A <c>RETURNING</c> that asserts a type answers null for an object, an array, a JSON null and
+        /// an absent path, and raises on nothing of them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The other half of the assertion above. An object and an array are not scalars, so the
+        /// extraction fails, its error path answers null under the default <c>NULL ON ERROR</c>, and
+        /// the cast that raises on a scalar of the wrong class is never reached. That is the line
+        /// <c>CosmosRexTranslator.WriteGuardedAccessor</c> writes the column through, a type's own
+        /// test, which is false over all four.
+        /// </para>
+        /// <para>
+        /// <b>What it overturned.</b> The column was written bare on the reading that a document of
+        /// another type fails the statement in process as it fails the read, and over these it does
+        /// not: the service sent the object, the reader refused it for the declared type, and the
+        /// statement failed where Calcite answers null. And a sort keyed on the column ordered the
+        /// object after every number at the service, where the column is null — see
+        /// <c>CosmosRexTranslator.IsReadAsStored</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AnAssertingReturningReadsNullForWhatIsNoScalar()
+        {
+            foreach (var type in new[] { "INTEGER", "BIGINT", "DOUBLE", "BOOLEAN" })
+            {
+                foreach (var json in new[] { "{\"a\":1}", "[1]", "[]", "null" })
+                    Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING {type})").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                        answer => answer.Value == null && answer.Threw == null, $"RETURNING {type} answers null over {json}");
+
+                Ask($"JSON_VALUE('{{}}', '$.v' RETURNING {type})").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                    answer => answer.Value == null && answer.Threw == null, $"and over an absent path, under {type}");
+            }
+        }
+
     }
 
 }

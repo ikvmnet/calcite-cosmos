@@ -72,7 +72,9 @@ count two groups of one, and `COUNT(DISTINCT …)` one too many. Such a grouping
 runs in process, over the column the service still sends — unless the container's schema declares the
 path a string (`"type": "string"`, Chapter 14), where there is no second type to keep apart and it
 pushes. A key read as its declared type is not affected: a promoted column, `id`, `_ts`, or a
-`JSON_VALUE` with `RETURNING` a number or a boolean.
+`JSON_VALUE` with `RETURNING` a number or a boolean — grouped by its type's test,
+`IS_NUMBER(p) ? p : null`, so a document holding an object or an array there lands in the null group,
+as it does in SQL.
 
 ## 10.4 Grouping sets
 

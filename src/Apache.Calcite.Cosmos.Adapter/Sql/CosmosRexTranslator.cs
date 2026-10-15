@@ -393,9 +393,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// Trailing operands are the <c>RETURNING</c>, <c>ON EMPTY</c> and <c>ON ERROR</c> flags.
         /// Nothing is done with them here: the type they declare is what the plan already says the
-        /// column is, and the reading takes the service at its word — a declaration that disagrees with
-        /// the document fails in materialisation rather than answering wrongly, which is the whole
-        /// reason the clause is worth trusting.
+        /// column is. What a column makes of a document holding another type is the projection's to
+        /// say, which writes a typed accessor through its type's test — see
+        /// <see cref="WriteGuardedAccessor"/> — and a field bound to one is the stored value only where
+        /// the container declares the type — see <see cref="IsReadAsStored"/>.
         /// </para>
         /// </remarks>
         bool TryResolveJsonPath(RexCall call, out CosmosPath? path)
@@ -680,9 +681,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// process.
         /// </para>
         /// <para>
-        /// A scalar <c>RETURNING</c> stays bare, as it is alone: the service holds the value the plan
-        /// declared, and there is nothing to guard against that would not equally fail a column of its
-        /// own.
+        /// <b>A scalar <c>RETURNING</c> is guarded by its type's test</b>, nested or alone — alone it
+        /// reaches here too, nothing ahead of the compound branch of <see cref="TranslateProjection"/>
+        /// taking it. It answers only where the path holds the type it names: an object and an array
+        /// read null, as an absent path does, measured at Calcite's runtime
+        /// (<c>CalciteJsonValueMeasurementTests</c>); a scalar of another type is the error SQL:2016
+        /// answers null for under the default <c>NULL ON ERROR</c>, where Calcite raises instead
+        /// (ikvmnet/calcite-dotnet#120). It used to stay bare, on the reading that a document of
+        /// another type fails a column of its own either way, and for an object and an array the
+        /// statement does not fail: the service sent the object, the reader refused it for the
+        /// declared type, and a column, a grouping, a <c>DISTINCT</c> or a <c>COUNT</c> over such a
+        /// path failed where the query answers — measured on the emulator over the differential
+        /// suite's typed container.
+        /// </para>
+        /// <para>
+        /// <c>DECIMAL</c> stays bare. It parses a stored string that spells a number rather than
+        /// asserting its class
+        /// (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>),
+        /// so its type's test would read null where Calcite answers the number, and bare, what the
+        /// reader cannot read as a decimal still fails the read rather than answering.
         /// </para>
         /// </remarks>
         void WriteGuardedAccessor(StringBuilder builder, RexCall call, string rendered)
@@ -700,6 +717,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsTextJsonValue(call))
             {
                 builder.Append('(').Append(CosmosOperators.IsPrimitive.getName()).Append('(').Append(rendered)
+                    .Append(") ? ").Append(rendered).Append(" : null)");
+                return;
+            }
+
+            if (TypeTestOf(call.getType()) is SqlFunction test && call.getType()?.getSqlTypeName() != SqlTypeName.DECIMAL)
+            {
+                builder.Append('(').Append(test.getName()).Append('(').Append(rendered)
                     .Append(") ? ").Append(rendered).Append(" : null)");
                 return;
             }
@@ -1235,22 +1259,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether what is known about the container says this path holds a string.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// What the refusal above rests on is that the service orders raw values <em>across</em> JSON
-        /// types while Calcite orders their renderings, so the two disagree wherever a path holds more
-        /// than one type. Where the container says it holds a string and nothing else, there is no
-        /// second type for them to disagree over: the rendering of a string is the string, and the
-        /// comparison is exact rather than a weakening.
-        /// </para>
-        /// <para>
-        /// Told, not assumed. An empty fact set is every container that declares nothing, and the
-        /// comparison is refused there exactly as it was.
-        /// </para>
-        /// </remarks>
-        /// <summary>
         /// Determines whether the <em>container</em> says this path holds a string, taking nothing
         /// the query established.
         /// </summary>
@@ -1283,18 +1291,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <b>The lookup join asks it too</b>, of a key column the probe side reads as text: its
         /// restriction is the raw <c>path IN (@k…)</c>, which is this equality against a parameter
         /// once per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>. So do a grouping key and a sort
-        /// key, which group and order the path where SQL groups and orders the column — all three
-        /// through <see cref="IsReadAsStored"/>.
+        /// key, which group and order the stored value where SQL groups and orders the column — all
+        /// three through <see cref="IsReadAsStored"/>.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <returns><c>true</c> where the container declares the path a string.</returns>
         internal bool IsDeclaredStringOutright(RexNode node)
         {
-            if (_container is null || _container.Facts.IsEmpty)
-                return false;
+            return IsTextRendering(node) && IsDeclaredOutright(node, JsonType.String);
+        }
 
-            if (IsTextRendering(node) == false)
+        /// <summary>
+        /// Determines whether the container declares, outright, that the path an expression resolves
+        /// to holds one JSON type or null.
+        /// </summary>
+        /// <remarks>
+        /// The declaration alone, by <c>Derive(null)</c>, for the reason
+        /// <see cref="IsDeclaredStringOutright"/> gives. <c>OrNull</c>, because a JSON null and an
+        /// absent path are both SQL's null, which every accessor reads as one and the service places
+        /// together, below every value.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <param name="type">The type.</param>
+        /// <returns><c>true</c> where the container declares the path that type, or null.</returns>
+        bool IsDeclaredOutright(RexNode node, JsonType type)
+        {
+            if (_container is null || _container.Facts.IsEmpty)
                 return false;
 
             if (TryResolvePath(node, out var path) == false || path is null)
@@ -1305,7 +1328,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             _declared ??= _container.Facts.Derive(null);
 
-            return _declared.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+            return _declared.Knows(new JsonFact(document, new JsonClaim.OfType(type, OrNull: true)));
         }
 
         /// <summary>
@@ -1323,27 +1346,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// field bound to a path lets an operator above it address the document — which is what the
         /// binding is for, and which says nothing about whether the stored value and the column agree.
         /// The lookup join restricts <c>path IN (@k…)</c> and matches the column; a grouping key groups
-        /// the path and SQL groups the column; a sort orders by the path and SQL orders the column. Each
-        /// is right exactly where the two are the same value, and that is a question about the field's
-        /// <see cref="CosmosReading"/>, asked here once so that the three cannot answer it three ways.
+        /// the value the service holds and SQL groups the column; a sort orders by the path and SQL
+        /// orders the column. Each is right exactly where the two are the same value, and that is a
+        /// question about the field's <see cref="CosmosReading"/>, asked here once so that the three
+        /// cannot answer it three ways.
         /// </para>
         /// <para>
-        /// <b>Read as declared</b>, the column is the stored value. <b>Read as text</b>, it is a
-        /// rendering: a stored <c>30</c> and a stored <c>"30"</c> are one value as text and two at the
-        /// service, a stored <c>true</c> renders as <c>'true'</c> and sorts below every number there,
-        /// and a stored number sorts numerically where its digits sort as text. The exception is
-        /// <see cref="IsDeclaredStringOutright"/>'s, a container declaring the path a string and nothing
-        /// else, where the rendering is the value. <b>Read as JSON</b> — the document column, or a
-        /// <c>JSON_QUERY</c> fragment — it is a serialisation of an object or an array, which the service
-        /// orders by rules of its own, measured to differ from their text's order (<c>DESIGN.md</c>,
-        /// under <em>Ordering a sort key the way it reads</em>), and equates by rules nobody has
-        /// measured against their text's equality.
+        /// <b>Read as declared</b>, the column is the stored value — unless a <c>RETURNING</c> asserted
+        /// a type. Such a field reads null wherever the path holds anything else, an object and an
+        /// array as surely as an absent path (see <see cref="WriteGuardedAccessor"/>), while the
+        /// service still holds the object and sorts it after every scalar: measured on the emulator
+        /// over the differential suite's typed container,
+        /// <c>JSON_VALUE(DOC, '$.label' RETURNING INTEGER)</c> ordered <c>NULLS FIRST</c> under a page
+        /// of three came back <c>[null, null, 30]</c> where SQL answers three nulls, the array and the
+        /// object that read null having sorted last. So it is the stored value where the container
+        /// declares the path the type <see cref="TypeTestOf"/> names, or null, outright. Nullable
+        /// only: a typed field bound to a path that cannot be null is the service's own <c>id</c>,
+        /// <c>_ts</c> or <c>_etag</c>, and a promoted <c>VARIANT</c> column has no test, being the raw
+        /// value.
         /// </para>
         /// <para>
-        /// A caller with an exception of its own takes it before asking: a grouping by the document
-        /// column groups nothing, no two documents being equal — see
-        /// <c>CosmosAggregateRule.GroupsAsTheColumnReads</c> — and a sort refuses an array however it
-        /// is read, the service's order over arrays not being SQL's — see
+        /// <b>Read as text</b>, it is a rendering: a stored <c>30</c> and a stored <c>"30"</c> are one
+        /// value as text and two at the service, a stored <c>true</c> renders as <c>'true'</c> and
+        /// sorts below every number there, and a stored number sorts numerically where its digits sort
+        /// as text. The exception is <see cref="IsDeclaredStringOutright"/>'s, a container declaring
+        /// the path a string and nothing else, where the rendering is the value. <b>Read as JSON</b> —
+        /// the document column, or a <c>JSON_QUERY</c> fragment — it is a serialisation of an object or
+        /// an array, which the service orders by rules of its own, measured to differ from their text's
+        /// order (<c>DESIGN.md</c>, under <em>Ordering a sort key the way it reads</em>), and equates
+        /// by rules nobody has measured against their text's equality.
+        /// </para>
+        /// <para>
+        /// A caller with an exception of its own takes it before asking. A grouping by the document
+        /// column groups nothing, no two documents being equal, and a grouping by a field read as
+        /// declared groups what the projection wrote, which for a typed accessor is its guard and not
+        /// the path — see <c>CosmosAggregateRule.GroupsAsTheColumnReads</c>. A lookup key read as
+        /// declared is bound as a parameter of its type, which no stored value of another type equals
+        /// — see <c>CosmosLookupJoinRule.IsRestrictedAsStored</c>. And a sort refuses an array however
+        /// it is read, the service's order over arrays not being SQL's — see
         /// <c>CosmosSort.TryResolveSortKeys</c>.
         /// </para>
         /// </remarks>
@@ -1352,15 +1392,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal bool IsReadAsStored(RexInputRef reference)
         {
             var index = reference.getIndex();
+            var type = reference.getType();
 
             return (index >= 0 && index < _readings.Count ? _readings[index] : CosmosReading.Typed) switch
             {
-                CosmosReading.Typed => true,
+                CosmosReading.Typed => type?.isNullable() != true
+                    || TypeTestOf(type) is not SqlFunction test
+                    || TypeTestedBy(test) is JsonType tested && IsDeclaredOutright(reference, tested),
                 CosmosReading.Text => IsDeclaredStringOutright(reference),
                 _ => false,
             };
         }
 
+        /// <summary>
+        /// Determines whether what is known about the container says this path holds a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What the refusal above rests on is that the service orders raw values <em>across</em> JSON
+        /// types while Calcite orders their renderings, so the two disagree wherever a path holds more
+        /// than one type. Where the container says it holds a string and nothing else, there is no
+        /// second type for them to disagree over: the rendering of a string is the string, and the
+        /// comparison is exact rather than a weakening.
+        /// </para>
+        /// <para>
+        /// Told, not assumed. An empty fact set is every container that declares nothing, and the
+        /// comparison is refused there exactly as it was.
+        /// </para>
+        /// </remarks>
         bool IsDeclaredString(RexNode node)
         {
             if (IsTextRendering(node) == false)
@@ -1512,31 +1571,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 if ((RexNode)call.getOperands().get(i) is not RexCall operand)
                     continue;
 
-                // By the call's type, not its operand count: RETURNING names the type of the call
-                // and adds no operand, so a bare accessor and a RETURNING INTEGER one differ only
-                // in what they are typed as.
                 if (operand.getOperator().getName() != "JSON_VALUE")
                     continue;
 
-                switch (operand.getType()?.getSqlTypeName()?.getName())
-                {
-                    case nameof(SqlTypeName.TINYINT):
-                    case nameof(SqlTypeName.SMALLINT):
-                    case nameof(SqlTypeName.INTEGER):
-                    case nameof(SqlTypeName.BIGINT):
-                    case nameof(SqlTypeName.FLOAT):
-                    case nameof(SqlTypeName.REAL):
-                    case nameof(SqlTypeName.DOUBLE):
-                    case nameof(SqlTypeName.DECIMAL):
-                        return CosmosOperators.IsNumber.getName();
-
-                    case nameof(SqlTypeName.BOOLEAN):
-                        return CosmosOperators.IsBool.getName();
-                }
+                if (TypeTestOf(operand.getType()) is SqlFunction test)
+                    return test.getName();
             }
 
             return null;
         }
+
+        /// <summary>
+        /// The service's type test for the JSON type a scalar <c>RETURNING</c> names, or <c>null</c>
+        /// where it names none the service has a test for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>One answer to which JSON type a typed accessor reads, for every writer that needs it</b>:
+        /// the restriction a comparison through one takes (<see cref="TryTypeTestForReturning"/>), the
+        /// guard its column is written through (<see cref="WriteGuardedAccessor"/>), and whether a
+        /// field bound to one is the value the service holds (<see cref="IsReadAsStored"/>).
+        /// </para>
+        /// <para>
+        /// By the type, not the operand count: <c>RETURNING</c> names the type of the call and adds no
+        /// operand, so a bare accessor and a <c>RETURNING INTEGER</c> one differ only in what they are
+        /// typed as — and a field a projection bound to one is typed what the call is.
+        /// </para>
+        /// <para>
+        /// <c>DECIMAL</c> names a number, as the others do, and is the one that parses rather than
+        /// asserting: a stored string spelling a number answers too
+        /// (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>).
+        /// So it is the type the clause reads where the path holds a number, which is what a
+        /// declaration is asked, and not a test of where it answers, which is what a guard would be —
+        /// <see cref="WriteGuardedAccessor"/> leaves it bare.
+        /// </para>
+        /// </remarks>
+        /// <param name="type">The accessor's type, or a field's.</param>
+        /// <returns>The test, or <c>null</c>.</returns>
+        static SqlFunction? TypeTestOf(org.apache.calcite.rel.type.RelDataType? type)
+        {
+            switch (type?.getSqlTypeName()?.getName())
+            {
+                case nameof(SqlTypeName.TINYINT):
+                case nameof(SqlTypeName.SMALLINT):
+                case nameof(SqlTypeName.INTEGER):
+                case nameof(SqlTypeName.BIGINT):
+                case nameof(SqlTypeName.FLOAT):
+                case nameof(SqlTypeName.REAL):
+                case nameof(SqlTypeName.DOUBLE):
+                case nameof(SqlTypeName.DECIMAL):
+                    return CosmosOperators.IsNumber;
+
+                case nameof(SqlTypeName.BOOLEAN):
+                    return CosmosOperators.IsBool;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// The JSON type a test <see cref="TypeTestOf"/> gives is true of, or <c>null</c> for a test it
+        /// does not give — which no declaration then answers for.
+        /// </summary>
+        static JsonType? TypeTestedBy(SqlFunction test) =>
+            test == CosmosOperators.IsNumber ? JsonType.Number
+            : test == CosmosOperators.IsBool ? JsonType.Boolean
+            : null;
 
         /// <summary>
         /// Determines whether an expression is a <c>JSON_VALUE</c> read as text, which is what the

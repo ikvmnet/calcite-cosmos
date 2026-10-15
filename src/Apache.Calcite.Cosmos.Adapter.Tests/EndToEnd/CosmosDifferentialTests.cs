@@ -91,17 +91,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly CosmosContainerMetadata Typed = new("typed", new[] { "/category" });
 
         /// <summary>
-        /// A third container, for what a sort asks of a column: one that declares a path a string, and
-        /// holds arrays and objects at paths that declare nothing.
+        /// A third container, for what a sort asks of a column: one that declares a path a string, an
+        /// integer and a boolean, and holds arrays and objects at paths that declare nothing.
         /// </summary>
         /// <remarks>
         /// Declared, where the other two declare nothing, because a declaration is what a text sort key
-        /// needs before the service may order it — and the other two must go on answering as a
-        /// container that says nothing does.
+        /// and a typed one need before the service may order them — and the other two must go on
+        /// answering as a container that says nothing does.
         /// </remarks>
         static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
-                { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" } } }
+                { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" }, "k": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }
                 """)));
 
         /// <summary>
@@ -152,7 +152,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The documents of <see cref="Ordering"/>: <c>t</c> a string, null or absent, as declared;
         /// <c>f</c> arrays and objects, which the service orders other than as their text; and
-        /// <c>n</c> integer arrays, which it orders other than as SQL compares them.
+        /// <c>n</c> integer arrays, which it orders other than as SQL compares them; <c>k</c> an integer
+        /// and <c>b</c> a boolean, null or absent, as declared.
         /// <para>
         /// The last five are strings on either side of the line where code point order and UTF-16 order
         /// part, as ids and as the declared <c>s</c> and <c>u</c>: U+E000, U+FF21, U+FF20 and U+FFFD sort
@@ -163,13 +164,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         static readonly string[] OrderingDocuments =
         [
-            """{"id":"1","category":"o","t":"Trail","f":[2],"n":[2]}""",
-            """{"id":"2","category":"o","t":"apple","f":[10],"n":[10]}""",
-            """{"id":"3","category":"o","t":"Zebra","f":["a"],"n":[1,5]}""",
-            """{"id":"4","category":"o","t":"a-b","f":{"b":1},"n":[]}""",
-            """{"id":"5","category":"o","t":null,"f":{"a":2},"n":[1]}""",
+            """{"id":"1","category":"o","t":"Trail","f":[2],"n":[2],"k":3,"b":true}""",
+            """{"id":"2","category":"o","t":"apple","f":[10],"n":[10],"k":-1,"b":false}""",
+            """{"id":"3","category":"o","t":"Zebra","f":["a"],"n":[1,5],"k":10}""",
+            """{"id":"4","category":"o","t":"a-b","f":{"b":1},"n":[],"k":null,"b":true}""",
+            """{"id":"5","category":"o","t":null,"f":{"a":2},"n":[1],"k":3}""",
             """{"id":"6","category":"o","f":[1,2],"n":[1,2]}""",
-            """{"id":"7","category":"o","t":"a_b","f":[]}""",
+            """{"id":"7","category":"o","t":"a_b","f":[],"k":0,"b":false}""",
             """{"id":"8","category":"o","t":"Trail blazer","f":{}}""",
             """{"id":"a","category":"o","s":"a","u":"b"}""",
             """{"id":"\uE000","category":"o","s":"\uE000","u":"\uD83D\uDE00"}""",
@@ -535,6 +536,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 3 ROWS ONLY", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.f') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+
+            // A typed accessor over the typed container's label, which holds 30 in document 2, an array
+            // in 4, an object in 5, null in 6 and nothing in 7: the five a RETURNING INTEGER answers for,
+            // 30 and four nulls. The rest hold a string or a boolean, which Calcite raises on rather than
+            // answering the null SQL:2016 gives, and are filtered out so that the oracle runs (#120).
+            // Under a page the sort pushed ORDER BY c.label, the service put the array and the object
+            // after 30, and the page came back [null, null, 30] and [30, null, null] where SQL answers
+            // three nulls; RETURNING BOOLEAN the same with true. Unpaged it failed the read on the
+            // object, as did the column alone, the DISTINCT, the GROUP BY, the COUNT, the COALESCE and
+            // the read by id and by a batch of ids -- the accessor was written bare and the reader
+            // refused the object for an integer.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" = '2' OR c.\"id\" = '4' OR c.\"id\" = '5' ORDER BY 1 NULLS FIRST FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" = '2' OR c.\"id\" = '4' OR c.\"id\" = '5' ORDER BY 1 DESC NULLS LAST OFFSET 2 ROWS", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" = '2' OR c.\"id\" = '4' OR c.\"id\" = '5' ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING BOOLEAN) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" = '3' OR c.\"id\" = '4' OR c.\"id\" = '5' ORDER BY 1 NULLS FIRST FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('2', '4', '5')", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('2', '4', '5')", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER), COUNT(*) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('2', '4', '5') GROUP BY JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER)", false),
+            ("SELECT COUNT(JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER)) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('2', '4', '5')", false),
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.label' RETURNING BOOLEAN) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('3', '4', '5')", false),
+            ("SELECT c.\"id\", COALESCE(JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER), -1) FROM typed AS c WHERE c.\"$.category\" = 'b' OR c.\"id\" IN ('2', '4', '5')", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'a' AND c.\"id\" = '5'", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c WHERE c.\"$.category\" = 'a' AND c.\"id\" IN ('2', '4', '5')", false),
+
+            // And where a typed key still pushes: a path the container declares the type, or null --
+            // k an integer, b a boolean -- whose documents hold nothing the accessor reads null for but
+            // null and nothing.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) FROM ordering AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 3 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
 
             // The same operators over a view's column, which binds to the accessor's path and reads
             // as text -- the spelling that had pushed the raw comparison (#83). Each is the accessor
@@ -1030,6 +1061,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         static readonly (string Sql, string[] Rows)[] WithStatedRows =
         [
+            // A typed accessor over every document of the typed container, whose label holds a
+            // string, a boolean, an array and an object as well as 30, null and nothing. Calcite
+            // throws on the string and the boolean -- the RETURNING assertion, ikvmnet/calcite-dotnet#120
+            // -- so there is no oracle, and answers null for the array and the object, which the
+            // corpus compares. The column is read through IS_NUMBER, null for every value that is not
+            // a number: SQL:2016's answer under the default NULL ON ERROR, and the one the comparison
+            // through the same clause already gives (WithoutAnOracle). A deliberate divergence from
+            // the engine, stated so that it is seen.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING INTEGER) FROM typed AS c",
+                ["(\"1\", null)", "(\"2\", 30)", "(\"3\", null)", "(\"4\", null)", "(\"5\", null)", "(\"6\", null)", "(\"7\", null)", "(\"8\", null)", "(\"9\", null)"]),
 
             // The same traversal with a predicate over the element, which the service applies after
             // the JOIN. Stated rather than compared for the same reason, and it is the row the whole

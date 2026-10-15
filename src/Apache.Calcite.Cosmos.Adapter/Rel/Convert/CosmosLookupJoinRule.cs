@@ -187,8 +187,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <see cref="CosmosRexTranslator.IsReadAsStored"/> — the one a grouping key and a sort key ask.
         /// </para>
         /// <para>
-        /// <b>A column read as declared</b> holds the stored value, so the raw comparison is the
-        /// column's comparison.
+        /// <b>A column read as declared</b> is taken before asking, because the restriction needs less
+        /// than the method answers. The column is the stored value, or, for an accessor whose
+        /// <c>RETURNING</c> asserts a type, null wherever the path holds another — which the method
+        /// counts against it, and rightly for a sort, the service ordering the object the column reads
+        /// null for. A restriction only has to keep every document whose column a key could equal, and
+        /// a key is bound as a parameter of the column's type — see <c>CosmosLookup.Bind</c>: a document
+        /// whose column is a number holds that number, which the restriction keeps, and one whose
+        /// column is null matches no key, so losing it loses no row.
         /// </para>
         /// <para>
         /// <b>A column read as text is a rendering</b>, and the filter translator already refuses this
@@ -223,6 +229,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
         static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container)
         {
+            if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) == CosmosReading.Typed)
+                return true;
+
             var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, container, readings);
 
             return translator.IsReadAsStored(RexInputRef.of(ordinal, probe.getRowType()));

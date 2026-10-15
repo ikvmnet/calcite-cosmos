@@ -1690,6 +1690,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A path declared the type a <c>RETURNING</c> names lets a sort over the typed accessor reach
+        /// the service, and the column it projects keeps its type's guard.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The typed accessor reads null wherever the path holds another type — an object and an array
+        /// among them, which the service sorts after every scalar — so over an undeclared path the
+        /// order parts from SQL's: <c>CosmosPlannerTests.ASortOverAColumnThatIsNotTheStoredValueStaysAbove</c>
+        /// holds that side in process. A path declared the type, or null, holds nothing for the
+        /// accessor to read null for but null itself, and the column is the stored value: the question
+        /// the text accessor's declared string answers, asked of the type the clause names.
+        /// </para>
+        /// <para>
+        /// <c>integer</c> answers for every numeric clause, a whole number being a number. The view's
+        /// column is the same accessor bound under an alias, and orders by the same path. A
+        /// <c>DISTINCT</c> of a path declared required still binds the path for a sort above it, and
+        /// projects the guard while the <c>ORDER BY</c> names the path: measured on the emulator, the
+        /// service accepts that and orders as the bare <c>DISTINCT</c> does.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "null"] } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) FROM items AS c ORDER BY 1 NULLS FIRST""", "ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "number" } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) FROM items AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 10 ROWS ONLY""", "ORDER BY c.n DESC OFFSET 0 LIMIT 10", "(IS_NUMBER(c.n) ? c.n : null)")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer" } } }""", """SELECT p."N" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING BIGINT) AS "N" FROM items AS c) AS p ORDER BY p."N" NULLS FIRST""", "ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "boolean" } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING BOOLEAN) FROM items AS c ORDER BY 1 NULLS FIRST""", "ORDER BY c.n ASC", "(IS_BOOL(c.n) ? c.n : null)")]
+        [InlineData("""{ "type": "object", "required": ["n"], "properties": { "n": { "type": "integer" } } }""", """SELECT DISTINCT JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n" FROM items AS c ORDER BY 1 NULLS FIRST""", "SELECT DISTINCT VALUE { \"n\": (IS_NUMBER(c.n) ? c.n : null) } FROM items c ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
+        public void ADeclaredTypeLetsASortOverATypedAccessorPush(string schema, string sql, string clause, string column)
+        {
+            var container = Declaring(schema);
+            var best = PlanToCosmos(sql, container, out _);
+
+            PlanText(best).Should().Contain("CosmosSort", "the sort reaches the service: " + PlanText(best));
+
+            var statement = Query(FindCosmos(best), container).Sql;
+            statement.Should().Contain(clause, statement);
+            statement.Should().Contain(column, "the column is still the guarded accessor: " + statement);
+        }
+
+        /// <summary>
+        /// A declaration that leaves room for anything but the type a <c>RETURNING</c> names leaves a
+        /// sort over the typed accessor in process.
+        /// </summary>
+        /// <remarks>
+        /// A string declared where the clause names a number, two types, a number where it names a
+        /// boolean and the reverse, and an object with no word about the path. In each the path may hold
+        /// a value the accessor reads null for and the service sorts as itself.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "string" } } }""", "INTEGER")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "string"] } } }""", "INTEGER")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "object"] } } }""", "DOUBLE")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer" } } }""", "BOOLEAN")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "boolean" } } }""", "INTEGER")]
+        [InlineData("""{ "type": "object", "properties": { "u": { "type": "integer" } } }""", "INTEGER")]
+        public void ASortOverATypedAccessorOfAPathNotDeclaredItsTypeStaysAbove(string schema, string type)
+        {
+            var container = Declaring(schema);
+            var best = PlanToCosmos($"""SELECT JSON_VALUE(c."DOC", '$.n' RETURNING {type}) FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
+
+            PlanText(best).Should().NotContain("CosmosSort", "the service would order the stored values: " + PlanText(best));
+        }
+
+        /// <summary>
         /// Without the declaration the same comparison is weakened, exactly as it was.
         /// </summary>
         /// <remarks>
