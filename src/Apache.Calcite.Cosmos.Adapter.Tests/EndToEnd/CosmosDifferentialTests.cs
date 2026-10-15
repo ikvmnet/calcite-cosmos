@@ -893,6 +893,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),                     // P17
             ("SELECT DISTINCT c.\"$.category\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" = '1'", false),                             // P20
             ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.category') FROM products AS c WHERE c.\"$.category\" = 'bikes' AND c.\"id\" IN ('1', '2')", false),  // P21
+
+
+            // ── The probes of the review of the fixes, kept ──────────────────────────
+            //
+            // Named as that review named them. Each answered differently pushed before the change it is
+            // kept beside, or is the control that says the shape still pushes where it agrees.
+
+            // A predicate read as a value (D). The guard that makes a comparison right in a WHERE makes it
+            // false where SQL's is unknown, and so does the service's own equality over a JSON null; a
+            // WHERE cannot tell the two apart, and an enclosing comparison, a column and a grouping key
+            // can. The last two are controls: a comparison Calcite types NOT NULL, and a CASE condition.
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') = FALSE", false),                                         // D1
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') = FALSE", false),                                          // D2
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') = (c.\"id\" = '3')", false),                               // D3
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') IN (FALSE)", false),                                      // D21
+            ("SELECT c.\"id\" FROM products AS c WHERE (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 5) = FALSE", false),
+            ("SELECT c.\"id\", c.\"$.category\" <> 'bikes' FROM products AS c", false),                                                         // D5
+            ("SELECT c.\"id\", c.\"$.category\" = 'bikes' FROM products AS c", false),                                                          // D6
+            ("SELECT c.\"id\", NOT (c.\"$.category\" = 'bikes') FROM products AS c", false),                                                    // D7
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' FROM typed AS c", false),                                             // D8
+            ("SELECT c.\"id\", CASE WHEN c.\"id\" <> '9' THEN c.\"$.category\" = 'bikes' ELSE FALSE END FROM products AS c", false),            // D20
+            ("SELECT c.\"$.category\" = 'bikes', COUNT(*) FROM products AS c GROUP BY c.\"$.category\" = 'bikes'", false),                      // D29
+            ("SELECT c.\"id\", c.\"id\" = '3' FROM products AS c", false),
+            ("SELECT c.\"id\", CASE WHEN c.\"$.category\" <> 'bikes' THEN 'x' ELSE 'y' END FROM products AS c", false),
+
         ];
 
         /// <summary>

@@ -192,22 +192,40 @@ WHERE NOT (JSON_VALUE(c."DOC", '$.label') = 'bikes')
 
 A `CASE` condition is evaluated as SQL selects an arm, whatever `NOT` encloses the `CASE`.
 
-Two shapes have no guard that would make them right, and run in process instead. `IS NULL` over a
-comparison — `(x <> 'a') IS NULL`, or `COALESCE(x <> 'a', FALSE)`, which expands to one — asks where
-the comparison is unknown, and the service has no unknown to find. And a comparison under a `NOT`, or
-an inequality, over a `CASE` or `COALESCE` — `NOT (COALESCE(x, 'none') = 'a')` — would be guarded on
-`x`, which the `COALESCE` does not follow into null. A comparison over one that needs no guard, such as
-a plain equality, is sent as before.
+Two shapes in a `WHERE` have no guard that would make them right, and run in process instead.
+`IS NULL` over a comparison — `(x <> 'a') IS NULL`, or `COALESCE(x <> 'a', FALSE)`, which expands to
+one — asks where the comparison is unknown, and the service has no unknown to find. And a comparison
+under a `NOT`, or an inequality, over a `CASE` or `COALESCE` — `NOT (COALESCE(x, 'none') = 'a')` —
+would be guarded on `x`, which the `COALESCE` does not follow into null. In a `WHERE`, a comparison
+over one that needs no guard, such as a plain equality, is sent as before.
+
+**A comparison whose value is read, rather than its truth, runs in process where it can be null.** The
+guards above make a comparison true or false exactly where SQL's is — and false where SQL's is
+unknown, which a `WHERE` treats the same. A selected column, a grouping key and the operand of another
+comparison do not:
+
+```sql
+SELECT c."id", c."$.category" = 'bikes' AS "isBike" FROM "products" AS c
+→ Cosmos:     SELECT VALUE { "$f0": c.id, "$f1": @p0, "$f2": c.category } FROM products c
+  In process: $f2 = $f1   -- null where category is null or missing, as SQL says
+
+WHERE (c."$.category" <> 'bikes') = FALSE
+→ Cosmos:     WHERE IS_DEFINED(c.category)   -- then rechecked in process
+```
+
+A comparison that cannot be null — over `id` or `_ts`, say — is still sent, and so is a `CASE`
+condition, which selects an arm by its truth alone.
 
 `IS TRUE`, `IS FALSE`, `IS NOT TRUE` and `IS NOT FALSE` reach the service over a boolean column —
 `CAST(JSON_VALUE(…) AS BOOLEAN)` — where the container's schema says the path holds a boolean
 (Chapter 14). The cast is then the stored value: `WHERE "Offline"` becomes `WHERE c.offline`,
 `"Offline" IS TRUE` becomes `c.offline = true`, and `IS NOT TRUE` keeps a document with no `offline`
-at all, as SQL does. Without the declaration the cast parses text — `"TRUE"` is true to Calcite and a
-string to Cosmos — and the test stays in process. Over anything else the truth tests, and
-`IS DISTINCT FROM`, are evaluated in process: reproducing their null semantics over a property that
-may be *absent* needs Cosmos behaviour that has not been measured, and a wrong answer is worse than a
-declined one.
+at all, as SQL does. Selected rather than filtered on, `IS TRUE` is sent in the form that is false for a
+missing `offline`, since a column, unlike a `WHERE`, would read the service's *undefined* as null.
+Without the declaration the cast parses text — `"TRUE"` is true to Calcite and a string to Cosmos —
+and the test stays in process. Over anything else the truth tests, and `IS DISTINCT FROM`, are
+evaluated in process: reproducing their null semantics over a property that may be *absent* needs
+Cosmos behaviour that has not been measured, and a wrong answer is worse than a declined one.
 
 ## 8.5 Partition routing and point reads
 
@@ -345,6 +363,7 @@ documents it has to read.
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
+| a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
 | a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |

@@ -489,13 +489,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Translates <paramref name="node"/>.
+        /// Translates <paramref name="node"/> as a predicate, whose truth alone is read.
         /// </summary>
+        /// <remarks>
+        /// What a <c>WHERE</c> is, and a join condition and a traversal's filter: a row is kept where
+        /// the predicate is true, and false and unknown both discard it. That is what lets a comparison
+        /// written here be false where SQL's is unknown — see <see cref="WriteComparison"/>. Anything
+        /// whose value is read rather than its truth — a column, a sort key, an argument — goes through
+        /// <see cref="TranslateValue"/> instead.
+        /// </remarks>
         /// <param name="node">The expression to translate.</param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="node"/> is <c>null</c>.</exception>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node)
+        public string Translate(RexNode node) => TranslateAs(node, value: false);
+
+        /// <summary>
+        /// Translates <paramref name="node"/> as a value, whose SQL null has to survive.
+        /// </summary>
+        /// <remarks>
+        /// A projected column, and anything else whose value is read. A predicate written here is held
+        /// to more than one in a <c>WHERE</c> is: unknown and false are different values, and a
+        /// comparison that answers one where SQL answers the other is declined — see
+        /// <see cref="_value"/>.
+        /// </remarks>
+        /// <param name="node">The expression to translate.</param>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="node"/> is <c>null</c>.</exception>
+        /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
+        public string TranslateValue(RexNode node) => TranslateAs(node, value: true);
+
+        /// <inheritdoc cref="TranslateValue(RexNode)" />
+        /// <param name="node">The expression to translate.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the expression was translated; otherwise <c>false</c>.</returns>
+        public bool TryTranslateValue(RexNode node, out string? expression)
+        {
+            try
+            {
+                expression = TranslateValue(node);
+                return true;
+            }
+            catch (CosmosTranslationException)
+            {
+                expression = null;
+                return false;
+            }
+        }
+
+        string TranslateAs(RexNode node, bool value)
         {
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
@@ -506,9 +548,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             RequireRenderingsReadAsRenderings(expanded, permitted: true);
 
-            var builder = new StringBuilder();
-            Write(builder, expanded);
-            return builder.ToString();
+            var saved = _value;
+            _value = value;
+
+            try
+            {
+                var builder = new StringBuilder();
+                Write(builder, expanded);
+                return builder.ToString();
+            }
+            finally
+            {
+                _value = saved;
+            }
         }
 
         /// <summary>
@@ -1245,11 +1297,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             // The position a NOT puts its operand in belongs to predicates, and only the connectives
             // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
-            // here, once, rather than by each writer remembering to.
+            // here, once, rather than by each writer remembering to. And an operand of anything else
+            // is read for its value, so a predicate written there is in a value's place -- see _value.
             var position = _negated;
+            var value = _value;
 
             if (CarriesPosition(KindOf(call)) == false)
+            {
                 _negated = false;
+                _value = true;
+            }
 
             try
             {
@@ -1258,6 +1315,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = position;
+                _value = value;
             }
         }
 
@@ -2192,7 +2250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryRenderedTextOperand(node) is RexNode operand)
             {
                 reading = CosmosReading.Text;
-                return Translate(operand);
+                return TranslateValue(operand);
             }
 
             // CLR_ST_GEOG_ASGEOJSON over a stored geography is the property itself. The document holds the
@@ -2283,7 +2341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             try
             {
-                return Translate(node);
+                return TranslateValue(node);
             }
             finally
             {
@@ -2869,6 +2927,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         bool _negated;
 
         /// <summary>
+        /// Whether what is being written is read for its value, where SQL's unknown is a null that has
+        /// to come back, rather than for its truth alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A predicate's truth and its value are two questions, and every guard here answers the
+        /// first.</b> A comparison in a <c>WHERE</c> is written to be false where SQL's is unknown,
+        /// because a row is discarded for either — see <see cref="WriteComparison"/> — and the
+        /// service's own equality is false over a JSON null where SQL's is unknown, which needs no
+        /// guard for the same reason. Read as a value, false and unknown are different answers.
+        /// Measured against the emulator over products, whose category is null in one document and
+        /// absent in another: <c>(category &lt;&gt; 'bikes') = FALSE</c>, and the same <c>IN
+        /// (FALSE)</c>, kept both, the guarded inequality being false over them where SQL's is
+        /// unknown; <c>(category = 'bikes') = FALSE</c> kept the null one; and <c>category =
+        /// 'bikes'</c> projected, or grouped by, answered false for the null category where SQL
+        /// answers null.
+        /// </para>
+        /// <para>
+        /// <b>Where it is set.</b> At the top of <see cref="TranslateValue"/>, which a projection
+        /// goes through, and for every operand of an operator that reads its operands as values —
+        /// a comparison, a function, a cast, arithmetic. The connectives pass it on, as they pass the
+        /// <c>NOT</c>'s position on, and a <c>CASE</c> passes it to its arms and clears it for its
+        /// conditions, which select an arm by their truth. <see cref="Translate(RexNode)"/> starts
+        /// without it: a <c>WHERE</c>, a join condition and a traversal's filter read truth alone.
+        /// </para>
+        /// <para>
+        /// <b>What it declines.</b> A comparison Calcite types nullable, which is the one whose SQL
+        /// value can be unknown: none of its renderings answer null exactly where SQL does, and
+        /// rendering one that did would be a new thing to measure. Typed <c>NOT NULL</c> — the
+        /// comparison of an <c>id</c>, a <c>_ts</c> or a literal — it is two-valued at both ends and
+        /// is written as before. A truth test over a stored boolean is written in its two-valued form
+        /// — see <see cref="WriteTruthTest"/>. <c>IS NULL</c> is two-valued as written, and
+        /// <c>IS NULL</c> over a predicate is declined on its own account.
+        /// </para>
+        /// </remarks>
+        bool _value;
+
+        /// <summary>
         /// Writes <c>NOT</c>, flipping the position its operand is written in.
         /// </summary>
         void WriteNot(StringBuilder builder, RexCall call)
@@ -2929,11 +3025,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireOperandCount(call, 2);
 
             var negated = _negated;
+            var value = _value;
             var notEquals = KindOf(call) == SqlKind.__Enum.NOT_EQUALS;
+
+            // Read for its value, a comparison SQL can answer unknown for is declined: every form
+            // written below is false somewhere SQL's is unknown, which a WHERE cannot tell apart and a
+            // column, a grouping key or an enclosing comparison can. See _value.
+            if (value && call.getType()?.isNullable() != false)
+                throw new CosmosTranslationException("A comparison read as a value is unknown where an operand is null, and the service's comparisons answer false there -- the guard that makes them right in a WHERE is what makes them wrong as a value.");
 
             // Operands are values, and a value has no position. Cleared so that a comparison nested
             // inside one is not written as though the NOT above applied to it.
             _negated = false;
+            _value = true;
 
             try
             {
@@ -3013,6 +3117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = negated;
+                _value = value;
             }
         }
 
@@ -3677,6 +3782,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// difference would show.
         /// </para>
         /// <para>
+        /// <b>And read as a value, where it shows too.</b> A projected <c>x IS TRUE</c> written bare
+        /// would come back null over an absent path, the undefined leaving the property out of the
+        /// row, where SQL answers false. The form a <c>NOT</c> takes is two-valued by construction —
+        /// false where the path is absent, and the comparison's own false over a null and over the
+        /// other boolean — so it is the form a value takes as well. See <see cref="_value"/>.
+        /// </para>
+        /// <para>
         /// <b>Over a stored boolean and nothing else.</b> Every other operand is declined, as the whole
         /// family was before: over an arbitrary expression the service's undefined can arise in places
         /// a test like this cannot see, and the shapes that reach here have only the one, at the path.
@@ -3695,9 +3807,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException($"'{call.getOperator().getName()}' is written only over a path the container declares a boolean: over anything else the service's undefined does not follow SQL's unknown.");
 
             var position = _negated;
+            var value = _value;
 
             // The operand is a value, and a value has no position.
             _negated = false;
+            _value = true;
 
             try
             {
@@ -3709,7 +3823,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 if (negated)
                     builder.Append("(NOT IS_DEFINED(").Append(path).Append(") OR (NOT ").Append(comparison).Append("))");
-                else if (position)
+                else if (position || value)
                     builder.Append("(IS_DEFINED(").Append(path).Append(") AND ").Append(comparison).Append(')');
                 else
                     builder.Append(comparison);
@@ -3717,6 +3831,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = position;
+                _value = value;
             }
         }
 
@@ -4029,8 +4144,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var depth = 0;
 
             // The arms are in the position the CASE is in, and the conditions in the positive one --
-            // see CarriesPosition.
+            // see CarriesPosition. A condition's truth alone selects an arm, however the CASE's own
+            // value is read, so it is a predicate where the arms may be values -- see _value.
             var position = _negated;
+            var value = _value;
 
             try
             {
@@ -4039,8 +4156,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     builder.Append('(');
 
                     _negated = false;
+                    _value = false;
                     Write(builder, (RexNode)operands.get(i));
                     _negated = position;
+                    _value = value;
 
                     builder.Append(" ? ");
                     Write(builder, (RexNode)operands.get(i + 1));
@@ -4054,6 +4173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _negated = position;
+                _value = value;
             }
         }
 

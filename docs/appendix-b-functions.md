@@ -11,7 +11,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 
 | SQL | Cosmos SQL | notes |
 | --- | --- | --- |
-| `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8 |
+| `=` `<>` `<` `<=` `>` `>=` | `=` `!=` `<` `<=` `>` `>=` | over `JSON_VALUE`, see Chapter 8; selected, grouped by or compared with something, in process where it can be null |
 | `AND` `OR` `NOT` | `AND` `OR` `NOT` | with null guards |
 | `+` `-` `*` `%`, unary `-` | the same | |
 | `/` | `/` | a `DOUBLE` quotient only; an integer or `DECIMAL` division stays in process |
@@ -27,7 +27,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `CAST(x AS UUID)`, parse to `TIMESTAMP`/`DATE` | the path, where the container declares the stored form | Chapters 14, 15 |
 | `arr[n]` | `arr[n-1]` | SQL is one-based |
 | `x MEMBER OF arr` | `ARRAY_CONTAINS(arr, x)` | |
-| `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise |
+| `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise. Selected, `IS TRUE` is sent as `IS_DEFINED(x) AND x = true`, false where `x` is missing |
 | `IS DISTINCT FROM` | — | in process |
 | `SIMILAR TO`, `REGEXP_LIKE` | — | in process; use `REGEXMATCH` for Cosmos regular expressions |
 

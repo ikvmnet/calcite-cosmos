@@ -2407,6 +2407,46 @@ IS_DEFINED(c.name)` and lost the document with no category. They are one questio
 null tests, the truth tests and the `IS_*` family. A comparison that needs the guard declines over an
 operand that observes absence; the positive equality needs none and is untouched.
 
+#### A predicate's value is not its truth
+
+Every guard in the section above answers one question: is the predicate *true*. A `WHERE` keeps a row
+for true and discards it for false and for unknown alike, so a comparison written there may be false
+where SQL's is unknown — that is what the positive guard on `!=` is, and why the service's own `=`,
+false over a JSON null, needs none. `IS NULL` over a predicate was the first place the difference
+showed, and declining it closed that place only. Wherever else a predicate's *value* is read, false and
+unknown are different answers. Measured against the emulator over `products`, whose category is null
+in one document and absent in another:
+
+| statement | Calcite | pushed |
+| --- | --- | --- |
+| `WHERE (category <> 'bikes') = FALSE` | documents 1, 2 | 1, 2, 6, 7 |
+| `WHERE (category = 'bikes') = FALSE` | 3, 4, 5 | 3, 4, 5, 6 |
+| `WHERE (category <> 'bikes') IN (FALSE)` | 1, 2 | 1, 2, 6, 7 |
+| `SELECT category = 'bikes'` | null for 6 | false for 6 |
+| `SELECT category = 'bikes', COUNT(*) GROUP BY 1` | false 3, null 2 | false 4, null 1 |
+
+The translator now carries a second piece of state beside the position: whether what it writes is read
+for its value. `TranslateValue` — a projection, a rank's select list — starts there, and every operand
+of an operator that reads its operands as values is there: a comparison's, a function's, a cast's.
+The connectives pass it on as they pass the position on, and a `CASE` passes it to its arms and clears
+it for its conditions, which select an arm by their truth. `Translate`, a `WHERE`, starts without it.
+
+**What it declines is a comparison Calcite types nullable.** None of the forms a comparison is written
+in answers null exactly where SQL does, and rendering one that did — the comparison under a ternary on
+its operands' null sets — would be a new thing to measure, where declining costs the comparison alone:
+the projection split sends its operands and Calcite compares. Typed `NOT NULL`, SQL never answers
+unknown and the comparison is two-valued at both ends, so `SELECT id = '3'` pushes as it did. An
+ordering comparison against a constant measured right as a value, the service's cross-type ordering
+being undefined over a null and so reading back null, and is declined with the rest rather than kept by
+a second rule. A truth test over a stored boolean is written in the form it takes under a `NOT`, which
+names the absent path and is two-valued by construction; written bare it was undefined over an absent
+path, which a projection reads back as null where `IS TRUE` answers false.
+
+**What it costs.** A predicate projected for its own sake is rare. The common shape it touches is a
+`CASE` whose condition the projection split pushed as a column of its own — the condition is read
+there as a value, which it is, since the split cannot know the `CASE` above reads only its truth — and
+there the comparison now runs in process over the operands the service sends.
+
 #### A quotient is a double at the service
 
 The service divides in doubles. SQL divides in the type of its operands, and Calcite truncates an
@@ -3322,7 +3362,9 @@ in process, for every JSON type; over an absent property the record has it both 
 and either way the column reads null. A filter's comparison needs no guard in the positive position: a
 comparison against an object is false at the service and null in process, and both drop the row.
 Everywhere that difference shows — a `NOT`, an `IS NULL` — it takes the accessor's null set; see
-*What an accessor reads, stated once*.
+*What an accessor reads, stated once*. And where it is the comparison's value that is read rather
+than its truth — a column, a grouping key, the operand of another comparison — false and null are
+different answers, and the comparison is declined; see *A predicate's value is not its truth*.
 
 **The gates that admit a document value ask for one, not for a type.** Three of them — the text cast
 and the numeric cast in a comparison, and the rendering in a projection — must spell *is this a value
@@ -3485,7 +3527,9 @@ incorrect plan, not a slow one.
     and a guard around the whole negation discarded it. Two things the guard rests on were learned
     later and are under *Expression translation*: an accessor is null for more than the path is
     (*What an accessor reads, stated once*), and the position belongs to the connectives' operands
-    and to nothing else (*A position belongs to a predicate*).
+    and to nothing else (*A position belongs to a predicate*). A third bounds what the guard is for:
+    it makes the predicate's truth right, and its value — read by a column, a grouping key or an
+    enclosing comparison — is a different question (*A predicate's value is not its truth*).
   - **A grouping key.** The service groups an absent property apart from a present-and-null one, and
     SQL has one `NULL`. The key is therefore grouped and projected as `IS_DEFINED(p) ? p : null`,
     which is SQL's reading of both — except for `id`, `_ts` and `_etag`, which the service guarantees

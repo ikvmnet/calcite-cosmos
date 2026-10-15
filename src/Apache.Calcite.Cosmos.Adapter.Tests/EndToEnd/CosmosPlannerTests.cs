@@ -764,6 +764,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 .Should().Be("SELECT VALUE { \"third\": (c.price / @p0) } FROM products c");
         }
 
+        /// <summary>
+        /// A comparison read as a value stays in process, where SQL can answer it unknown.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every form the comparison is written in is false somewhere SQL's is unknown: the service's
+        /// equality over a JSON null, and the guard a <c>WHERE</c> puts on an inequality over an
+        /// absent path. A <c>WHERE</c> discards the row for either. A column, a grouping key and an
+        /// enclosing comparison do not. Measured against the emulator over products, whose category
+        /// is null in one document and absent in another, <c>category = 'bikes'</c> projected was
+        /// false for the null where Calcite answers null, and <c>(category &lt;&gt; 'bikes') =
+        /// FALSE</c> kept both documents, which SQL discards.
+        /// </para>
+        /// <para>
+        /// Typed <c>NOT NULL</c>, SQL cannot answer it unknown, and a comparison of the id pushes as it
+        /// did. In a <c>CASE</c> condition the truth alone selects an arm, and that pushes too.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AComparisonReadAsAValueIsNotPushedDown()
+        {
+            var projected = PlanToAsync("SELECT c.\"id\", c.\"$.category\" = 'bikes' AS \"b\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().NotContain("(c.category = ", "the comparison's value is Calcite's: " + Render(FindCosmos(projected)));
+
+            var compared = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') = FALSE");
+            Render(FindCosmos(compared)).Should().Be("SELECT VALUE c FROM products c WHERE IS_DEFINED(c.category)", "the split rule pushes what the predicate implies");
+
+            Render(PlanToCosmos("SELECT c.\"id\" = '3' AS \"b\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"b\": (c.id = @p0) } FROM products c");
+
+            Render(PlanToCosmos("SELECT CASE WHEN c.\"$.category\" <> 'bikes' THEN 'x' ELSE 'y' END AS \"b\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"b\": ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? @p1 : @p2) } FROM products c");
+        }
+
         /// <remarks>
         /// Measured on the emulator, Cosmos <c>COUNT(x)</c> counts a JSON null where SQL excludes
         /// it, so the two disagree on any nullable column.
