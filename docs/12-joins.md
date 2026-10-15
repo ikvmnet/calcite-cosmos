@@ -53,8 +53,11 @@ answer a full join would:
   declares the path a string (`"type": "string"`, Chapter 14) — then the text is the stored value. Over
   an undeclared path the join is the ordinary one. `p."id"` is always a string and always qualifies.
 - **Both keys are of a type a parameter can carry**: a string, a number or a boolean. The promoted
-  partition key column is `VARIANT` and does not qualify — join on `JSON_VALUE(p."DOC", '$.category')`
-  instead (Chapter 7).
+  partition key column is `VARIANT` and does not qualify (Chapter 7), and `JSON_VALUE(p."DOC",
+  '$.category')` is the text key of the rule above, so it qualifies only where the container's schema
+  declares `category` a string (Chapter 14). To keep a lookup on the partition key, declare it; without
+  a declaration the join reads the container. A typed accessor over a number or a boolean —
+  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — is the stored value and qualifies as it is.
 - **Or both keys are `UUID`s, and the container's side is `CAST(JSON_VALUE(p."DOC", '$.x') AS UUID)`
   over a path the container's schema gives a UUID format** (Chapter 14). The path then holds one
   spelling per value, so each key is sent in that spelling — `c.x IN ('3f2a…', …)` — and matches exactly

@@ -74,7 +74,9 @@ for the temporal and other types not listed here.
 A parameter is sent to Cosmos as a JSON value of its type: strings as strings, numbers as numbers,
 booleans as booleans, a geometry as its GeoJSON object. A lookup join's keys must be strings, numbers or
 booleans, or `UUID`s read from a path whose schema gives it a UUID format, which are sent in the stored
-spelling; a `VARIANT` or `ANY` key cannot be bound (Chapter 12).
+spelling; a `VARIANT` or `ANY` key cannot be bound (Chapter 12). A string key read by `JSON_VALUE`
+without `RETURNING` is a rendering of whatever the path holds, and is bound only where the schema
+declares the path a string.
 
 A partition key value recovered from a predicate is built from the literal's type — a string, a
 boolean, a number, or null.

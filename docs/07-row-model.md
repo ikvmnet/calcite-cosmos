@@ -236,7 +236,10 @@ FROM "products" AS p
 
 (as DDL where your connection accepts it, or the same `SELECT` as a model view — Chapter 4). Every
 column pushes down: a query over the view reads only the properties it selects and filters at the
-service, and — with `DefaultNullCollation = "LOW"` — sorts and pages there too.
+service, and — with `DefaultNullCollation = "LOW"` — sorts and pages there too. A text column such as
+`"Category"` reads whatever the document holds as text, so grouping on it, or joining another
+container to it by key, reaches the service only where the container's schema declares the path a
+string (Chapters 10, 12 and 14).
 
 Prefer these spellings in views:
 
