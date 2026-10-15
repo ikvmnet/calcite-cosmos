@@ -1595,16 +1595,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and it is the coalesce that must go down: splitting deeper would push the accessor and leave
         /// the service's own conditional to be evaluated in process over it. One column, and the whole
         /// of what the service was willing to answer.
+        /// <para>
+        /// Over a scalar <c>RETURNING</c>, whose value is the value. This was written over the text
+        /// accessor, whose coalesce no longer renders over a path nothing says holds a string — see
+        /// <see cref="ACoalesceOverAnUndeclaredTextAccessorStaysInProcess"/> — which would have made
+        /// the accessor the largest part and said nothing about the walk.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AFragmentIsTheLargestRenderablePartRatherThanTheFirst()
         {
             var best = PlanToAsync(
-                "SELECT CAST(COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS DOUBLE) AS \"x\" FROM products AS c");
+                "SELECT CAST(COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING INTEGER), 0) AS DOUBLE) AS \"x\" FROM products AS c");
 
             var sql = Render(FindCosmos(best));
 
-            sql.Should().Contain("? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0)",
+            sql.Should().Contain("IS_NUMBER(c.a)) ? c.a : @p0)",
                 "the coalesce goes down whole, not the accessor out of it: " + sql);
 
             Plan(best).Should().Contain("CAST($0)", "leaving one column for the cast to read: " + Plan(best));
@@ -1867,34 +1873,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>COALESCE</c> over an accessor pushes, and used to take the whole projection in process
-        /// with it (#130).
+        /// A <c>COALESCE</c> over a text accessor stays in process where nothing says the path holds a
+        /// string, and the accessor beneath it is what goes down.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Nothing about <c>COALESCE</c> was unrenderable.</b> The validator expands
+        /// <b>Nothing about <c>COALESCE</c> was unrenderable (#130).</b> The validator expands
         /// <c>COALESCE(x, y)</c> to <c>CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y)</c> before a
-        /// <c>RexCall</c> exists, and measured, every piece of that already pushed on its own — a
-        /// <c>CASE</c>, an <c>IS NOT NULL</c>, the accessor. What did not was the cast, which converts
-        /// nothing: Calcite writes it to assert what the null test just proved. One refused node fails
-        /// the whole expression, so the projection lifted and the entire document crossed the wire to
-        /// supply one column.
+        /// <c>RexCall</c> exists, every piece of which renders, and the cast converts nothing: Calcite
+        /// writes it to assert what the null test just proved. That is still so, and the array
+        /// coalesce below and the one over a scalar <c>RETURNING</c> push whole.
         /// </para>
         /// <para>
-        /// <b>The test is over the path, and the branch carries the guard.</b> The accessor appears
-        /// twice in the expansion, in the null test and in the asserted branch. The test is the
-        /// accessor's own null set, said over the path: absent, null, or not a scalar — the last being
-        /// what <c>IS_PRIMITIVE</c> adds. The branch carries the guard #131 gave it. The fallback is
-        /// taken exactly where Calcite's <c>JSON_VALUE</c> answers null, whatever the service says of
-        /// <c>IS_PRIMITIVE</c> over an absent path, because <c>IS_DEFINED</c> has already answered
-        /// there.
+        /// <b>What the text accessor's coalesce answers is the trouble.</b> Its branch hands the value
+        /// on as the column, and the column is text: the accessor renders a stored number or boolean
+        /// as text, and the service sends the number or the boolean. Measured against the emulator
+        /// over the typed container, the read failed at the stored <c>true</c>, where Calcite answers
+        /// <c>'true'</c>. Over a declared string the branch is the value and the coalesce pushes — see
+        /// <c>CosmosDeclaredFactPlanningTests</c>, which pins the null test it takes.
         /// </para>
         /// </remarks>
         [Fact]
-        public void ACoalesceOverAnAccessorPushes()
+        public void ACoalesceOverAnUndeclaredTextAccessorStaysInProcess()
         {
-            Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.a) AND NOT IS_NULL(c.a) AND IS_PRIMITIVE(c.a)) ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) } FROM products c");
+            var best = PlanToAsync("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c");
+
+            Plan(best).Should().Contain("CASE(", "the coalesce is Calcite's: " + Plan(best));
+            Render(FindCosmos(best)).Should().Contain("(IS_PRIMITIVE(c.a) ? c.a : null)", "and the accessor is the service's");
         }
 
         /// <summary>
@@ -2022,14 +2027,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plan.Should().NotContain("CosmosFilter(condition=[CLR_FT_CONTAINS", "and nothing of it is rendered: " + plan);
         }
 
+        /// <summary>
+        /// An accessor nested in an expression carries the guard it carries alone (#131), where what
+        /// encloses it reads it as a rendering.
+        /// </summary>
+        /// <remarks>
+        /// A comparison is such a reader: it decides which documents the rendering matches, and over
+        /// unambiguous text the guarded value matches the same ones. A string function is not — see
+        /// <see cref="AStringFunctionOverAnUndeclaredAccessorStaysInProcess"/>.
+        /// </remarks>
         [Fact]
         public void ANestedAccessorCarriesItsGuard()
         {
-            Render(PlanToCosmos("SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": UPPER((IS_PRIMITIVE(c.a) ? c.a : null)) } FROM products c");
+            Render(PlanToCosmos("SELECT CASE WHEN JSON_VALUE(c.\"DOC\", '$.a') = 'x' THEN 1 ELSE 0 END AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": (((IS_PRIMITIVE(c.a) ? c.a : null) = @p0) ? @p1 : @p2) } FROM products c");
+        }
 
-            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) || 'x' AS \"a\" FROM products AS c"))
-                .Should().Contain("CONCAT((IS_PRIMITIVE(c.a) ? c.a : null)");
+        /// <summary>
+        /// A string function over an accessor stays in process where nothing says the path holds a
+        /// string, and the accessor beneath it is what goes down.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This test used to pin <c>UPPER((IS_PRIMITIVE(c.a) ? c.a : null))</c> as the rendering, and
+        /// the guard is right about what it is about: an object and an array, which the accessor
+        /// answers null for. It says nothing about a number or a boolean, which the accessor renders
+        /// as text and the service hands to <c>UPPER</c> as themselves. Measured against the emulator,
+        /// <c>UPPER(label)</c> and <c>label || '!'</c> projected null for the stored 30 and the stored
+        /// <c>true</c>, where Calcite projects <c>30</c>, <c>TRUE</c>, <c>30!</c> and <c>true!</c>.
+        /// </para>
+        /// <para>
+        /// Over a path declared a string the function pushes, being the same function of the same
+        /// text at both ends — see <c>CosmosDeclaredFactPlanningTests</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AStringFunctionOverAnUndeclaredAccessorStaysInProcess()
+        {
+            foreach (var sql in new[]
+            {
+                "SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c",
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) || 'x' AS \"a\" FROM products AS c",
+            })
+            {
+                var best = PlanToAsync(sql);
+                var rendered = Render(FindCosmos(best));
+
+                rendered.Should().Contain("(IS_PRIMITIVE(c.a) ? c.a : null)", "the accessor goes down: " + rendered);
+                rendered.Should().NotContain("UPPER").And.NotContain("CONCAT", "and the function is Calcite's: " + rendered);
+            }
         }
 
         /// <summary>

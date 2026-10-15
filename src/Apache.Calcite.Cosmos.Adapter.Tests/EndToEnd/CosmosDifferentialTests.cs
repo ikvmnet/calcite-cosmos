@@ -854,6 +854,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) ELSE 'z' END) = 'z'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') = 'Exact')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'z') = 'z'", false),
+
+            // An operator over the rendering, which reads text in Calcite and the stored value at the
+            // service (E, F). A string function is undefined there over a number or a boolean, and a
+            // value passed out through a CASE arrives as the number or the boolean: projected, filtered
+            // on, and handed to a comparison that saw no rendering among its operands.
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.label')) FROM typed AS c", false),                                    // P10
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') || '!' FROM typed AS c", false),                                    // P11
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = 'TRUE'", false),                     // P12
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = '30'", false),                       // P13
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = 'BIKES')", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.label')) = 2", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') || 'x' = '30x'", false),
+            ("SELECT c.\"id\", COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') FROM typed AS c", false),
+            ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END FROM typed AS c", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = 'z'", false),
         ];
 
         /// <summary>

@@ -504,9 +504,172 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // first keeps range and IN predicates pushable instead of uniformly declined.
             var expanded = RexUtil.expandSearch(_rexBuilder, null, node);
 
+            RequireRenderingsReadAsRenderings(expanded, permitted: true);
+
             var builder = new StringBuilder();
             Write(builder, expanded);
             return builder.ToString();
+        }
+
+        /// <summary>
+        /// Refuses an expression that hands the rendering of a path to an operator as a value, where
+        /// the path is not known to hold a string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A rendering is text, and the service has the value it renders.</b> <c>JSON_VALUE</c>
+        /// read as text turns a stored number into <c>30</c> and a boolean into <c>true</c>; the path,
+        /// guarded or not, hands the service the number and the boolean themselves. Wherever the value
+        /// is used as a value — upper-cased, concatenated, measured, passed out through a
+        /// <c>CASE</c> — the two answer differently: the service's string functions are undefined
+        /// over a number, and a column the plan typed text comes back holding one. Measured against
+        /// the emulator over the typed container, <c>UPPER(label)</c> and <c>label || '!'</c>
+        /// projected null for the number and the boolean where Calcite projects <c>30</c> and
+        /// <c>TRUE</c>; <c>UPPER(label) = 'TRUE'</c>, <c>UPPER(label) = '30'</c>,
+        /// <c>CHAR_LENGTH(label) = 2</c> and <c>label || 'x' = '30x'</c> each lost the document
+        /// Calcite keeps; and a <c>COALESCE</c> or a <c>CASE</c> passing the accessor out as a column
+        /// failed the read at the boolean.
+        /// </para>
+        /// <para>
+        /// <b>Where a rendering may be read, it is read as one.</b> A comparison reasons about which
+        /// documents a rendering matches — see <see cref="WriteComparand"/> — and a null test asks only
+        /// whether there is one — see <see cref="WriteIsNull"/>. <c>LIKE</c> refuses its rendering
+        /// subject on its own terms. A cast that names the raw value, or that a stored boolean proves,
+        /// says what it reads. The geography, full text, vector and type-test functions take the path
+        /// as an address. Nothing else is told it is reading a rendering, so nothing else may, and a
+        /// new operator is refused until it is.
+        /// </para>
+        /// <para>
+        /// <b>A string is its own rendering.</b> Where what is known of the container says the path
+        /// holds a string or nothing at all, the value the service hands on is the text Calcite
+        /// renders, and every operator agrees over it. Not a <c>JSON_QUERY</c>, which renders the
+        /// fragment and is null for a string: no fact makes its text the value.
+        /// </para>
+        /// <para>
+        /// Asked once, of the whole expression, before anything is written, because the question is
+        /// about the edge between an operator and its operand and not about either alone — and asking
+        /// it in every writer is how <c>WriteLike</c> came to know it and nothing else did.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <param name="permitted">Whether what encloses the expression reads a rendering as one.</param>
+        /// <exception cref="CosmosTranslationException">A rendering is read as a value.</exception>
+        void RequireRenderingsReadAsRenderings(RexNode node, bool permitted)
+        {
+            if (IsRendering(node))
+            {
+                if (permitted == false && IsStringRendering(node) == false)
+                    throw new CosmosTranslationException("JSON_VALUE read as text is the rendering of the value at the path, and an operator over it reads the text: the service hands the operator the value, which renders differently wherever the path does not hold a string.");
+
+                return;
+            }
+
+            if (node is not RexCall call)
+                return;
+
+            // An address rather than a value: an ITEM chain, an accessor with a scalar or array
+            // RETURNING, an array read out of one.
+            if (TryResolvePath(call, out _))
+                return;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                RequireRenderingsReadAsRenderings(Operand(call, i), ReadsRenderings(call, i, permitted));
+        }
+
+        /// <summary>
+        /// Determines whether an expression is the rendering of a document value as text: a
+        /// <c>JSON_VALUE</c> or a plain <c>JSON_QUERY</c> read as text, or a field bound to one.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="IsTextRendering"/> without the array <c>RETURNING</c> of <c>JSON_QUERY</c>, which
+        /// is the array and not its text.
+        /// </remarks>
+        bool IsRendering(RexNode node)
+        {
+            if (IsCollectionJsonQuery(node))
+                return false;
+
+            return IsTextRendering(node);
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a scalar rendering of a path what is known of the
+        /// container says holds a string, where it holds anything.
+        /// </summary>
+        bool IsStringRendering(RexNode node)
+        {
+            if (IsScalarRendering(node) == false)
+                return false;
+
+            if (TryResolvePath(node, out var path) == false || path is null)
+                return false;
+
+            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+                return false;
+
+            // OrNull, because a JSON null renders nothing on either side: the accessor answers SQL
+            // null for it, and the service's string functions are undefined over it.
+            return _facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
+        }
+
+        /// <summary>
+        /// Determines whether an expression renders a scalar: a <c>JSON_VALUE</c> read as text, or a
+        /// field bound to one.
+        /// </summary>
+        /// <remarks>
+        /// The renderings a fact about the stored value can make exact. A plain <c>JSON_QUERY</c> is a
+        /// rendering too, of the fragment, and is null for every scalar — so a path the container
+        /// declares a string is the one path it never renders, and a comparison over it never selects
+        /// the documents the raw comparison does.
+        /// </remarks>
+        bool IsScalarRendering(RexNode node)
+        {
+            return IsTextJsonValue(node)
+                || node is RexInputRef reference
+                    && IsCharacter(reference)
+                    && reference.getIndex() >= 0
+                    && reference.getIndex() < _readings.Count
+                    && _readings[reference.getIndex()] is CosmosReading.Text;
+        }
+
+        /// <summary>
+        /// Determines whether an operator reads its operand, if that is a rendering, as one.
+        /// </summary>
+        /// <param name="call">The operator.</param>
+        /// <param name="ordinal">The operand.</param>
+        /// <param name="permitted">Whether what encloses the operator does, for an operator that hands its operand on unchanged.</param>
+        bool ReadsRenderings(RexCall call, int ordinal, bool permitted)
+        {
+            switch (KindOf(call))
+            {
+                case SqlKind.__Enum.EQUALS:
+                case SqlKind.__Enum.NOT_EQUALS:
+                case SqlKind.__Enum.LESS_THAN:
+                case SqlKind.__Enum.LESS_THAN_OR_EQUAL:
+                case SqlKind.__Enum.GREATER_THAN:
+                case SqlKind.__Enum.GREATER_THAN_OR_EQUAL:
+                case SqlKind.__Enum.IS_NULL:
+                case SqlKind.__Enum.IS_NOT_NULL:
+                case SqlKind.__Enum.LIKE:
+                    return true;
+
+                case SqlKind.__Enum.CAST:
+                case SqlKind.__Enum.SAFE_CAST:
+                    // A marker says what it reads; any other cast either converts, which WriteCast
+                    // refuses, or asserts what is already so and hands its operand on unchanged.
+                    if (IsRawValueMarker(call) || call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT || TryStoredBoolean(call) is not null)
+                        return true;
+
+                    return permitted;
+            }
+
+            var name = call.getOperator().getName();
+
+            return GeographyFunctions.Contains(name)
+                || CosmosOperators.IsAbsenceObserving(call.getOperator())
+                || name is "VECTORDISTANCE"
+                    or "FULLTEXTCONTAINS" or "FULLTEXTCONTAINSALL" or "FULLTEXTCONTAINSANY" or "FULLTEXTSCORE"
+                    or "CLR_FT_CONTAINS" or "CLR_FT_CONTAINS_ALL" or "CLR_FT_CONTAINS_ANY" or "CLR_FT_SCORE";
         }
 
         void Write(StringBuilder builder, RexNode node)
@@ -1487,7 +1650,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (_container is null || _container.Facts.IsEmpty)
                 return false;
 
-            if (IsTextRendering(node) == false)
+            if (IsScalarRendering(node) == false)
                 return false;
 
             if (TryResolvePath(node, out var path) == false || path is null)
@@ -1508,7 +1671,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         bool IsDeclaredString(RexNode node)
         {
-            if (IsTextRendering(node) == false)
+            // A scalar rendering only: a JSON_QUERY is null for a string, so the fact that makes the
+            // accessor's text the value makes the fragment's nothing -- see IsScalarRendering.
+            if (IsScalarRendering(node) == false)
                 return false;
 
             if (TryResolvePath(node, out var path) == false || path is null)
@@ -1980,6 +2145,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // VARCHAR -- so it is dropped here rather than treated as a rendering, and what is left
             // is rendered as the accessor it is.
             node = StripRedundantTextCast(node);
+
+            // A cast that differs from its operand only in nullability converts nothing either -- see
+            // IsNullabilityAssertion -- and over an accessor its column is the accessor's, read as the
+            // accessor is. The split rule hands one up as a column of its own: the asserted branch of
+            // a COALESCE whose CASE stays in process. Read as the declared VARCHAR it failed at a
+            // stored number, which the accessor renders as text.
+            if (node is RexCall assertion && IsNullabilityAssertion(assertion) && Operand(assertion, 0) is RexCall asserted && IsJsonAccessor(asserted))
+                node = asserted;
 
             if (TryRenderedTextOperand(node) is RexNode operand)
             {
@@ -2889,10 +3062,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // CosmosRexTranslatorTests.EqualityThroughACastOverATypedColumnKeepsTheCast and
             // CosmosRexTranslatorTests.Casts.ACastToAnExactTypeIsDeclined, both of which failed to
             // the broader test.
-            if (call.getOperands().size() == 1
-                && call.getType()?.isNullable() == false
-                && Operand(call, 0).getType()?.isNullable() == true
-                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType()))
+            if (IsNullabilityAssertion(call))
             {
                 Write(builder, Operand(call, 0));
                 return;
@@ -3216,6 +3386,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (accessor is RexCall call && (IsTextJsonValue(call) ? IsPlainJsonValue(call) : call.getOperands().size() == 2) == false)
                 return false;
 
+            // The fragment's text against text: the service compares the object as it stands, which
+            // equals no string, and the stored string the literal spells, which JSON_QUERY answers
+            // null for. No literal makes the two select the same documents.
+            if (IsTextRendering(accessor) && IsScalarRendering(accessor) == false)
+                return false;
+
             if (other is not RexLiteral literal)
                 return false;
 
@@ -3329,6 +3505,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a cast differs from its operand only in nullability: a nullable operand
+        /// cast to the same type not null, which is Calcite asserting what a null test has proved.
+        /// </summary>
+        /// <remarks>
+        /// The direction matters, and so does everything else matching: see <see cref="WriteCast"/>,
+        /// which writes one as its operand, for the two tests that caught a broader version.
+        /// </remarks>
+        static bool IsNullabilityAssertion(RexCall call)
+        {
+            var kind = KindOf(call);
+
+            return (kind == SqlKind.__Enum.CAST || kind == SqlKind.__Enum.SAFE_CAST)
+                && call.getOperands().size() == 1
+                && call.getType()?.isNullable() == false
+                && Operand(call, 0).getType()?.isNullable() == true
+                && org.apache.calcite.sql.type.SqlTypeUtil.equalSansNullability(call.getType(), Operand(call, 0).getType());
         }
 
         /// <summary>

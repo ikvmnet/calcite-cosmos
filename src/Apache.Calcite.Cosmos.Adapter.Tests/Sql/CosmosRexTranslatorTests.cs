@@ -374,6 +374,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
+        /// <para>
+        /// A function over a rendering reads the rendering's text in Calcite and the stored value at
+        /// the service, which differ for a number and a boolean: <c>UPPER</c> of the text <c>true</c>
+        /// is <c>TRUE</c>, and of the boolean is undefined. Where nothing says the path holds a string
+        /// the function is declined, in a comparison as much as alone — the comparison asks of its own
+        /// operands whether they are renderings, and the rendering was one call further down.
+        /// </para>
+        /// <para>
+        /// The raw value, named by the cast to <c>ANY</c>, is the value and is not refused: that is the
+        /// spelling the split rule writes under a case fold, guarded to the strings.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFunctionOverARenderingIsDeclined()
+        {
+            var fold = Call(SqlStdOperatorTable.UPPER, Ref(0, SqlTypeName.VARCHAR));
+
+            CanTranslate(TranslatorOverARendering(), fold).Should().BeFalse();
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.EQUALS, fold, Str("TRUE"))).Should().BeFalse();
+            CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.CHAR_LENGTH, Ref(0, SqlTypeName.VARCHAR))).Should().BeFalse();
+
+            TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))))
+                .Should().Be("UPPER(c.name)");
+
+            Translate(fold).Should().Be("UPPER(c.name)", "and a field read as its own type is not a rendering");
+        }
+
+        /// <remarks>
         /// SQL has one null; Cosmos distinguishes absent from present-and-null. Both states must
         /// be tested or a filter would miss documents that simply lack the property.
         /// </remarks>
