@@ -88,6 +88,9 @@ needs revisiting.
 - [`DESIGN.md`](../src/Apache.Calcite.Cosmos.Adapter/DESIGN.md) — why each decision was made, and what
   the service was measured to do.
 - [`TODO.md`](../TODO.md) — what is left, sized and reasoned.
+- [`Facts/Saturation/README.md`](../src/Apache.Calcite.Cosmos.Adapter/Facts/Saturation/README.md) — the
+  catalogue of the theory a container's declared facts are reasoned in, and of the predicate rules the
+  oracle beside it uses. The oracle runs in shadow: nothing a plan does depends on it yet.
 
 ---
 

@@ -1594,7 +1594,8 @@ not be written into the container's shape without changing which documents match
 
 Also open beside it: a declared `type: string` ought to delete the stored-number disjunct the lowered
 equality still carries, and does not — the same shape as the entry above, the exactness test reading
-the literal rather than the fact set.
+the literal rather than the fact set. The predicate oracle, in shadow, establishes the equality's rendering
+preimage, which a declared string meets down to the string (*The predicate oracle*, below).
 
 ### Facts about array elements — *small, and waiting for a consumer*
 
@@ -1701,7 +1702,8 @@ holds. Three bugs planted in what was added were each caught by it.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
   rest, and the adapter has no claim for them, so the reader states none.
 - **Gap 1 spelled per kind** — *medium.* `(type = 'park' AND …) OR (type = 'map' AND …)` wants a derivation per
-  disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only.
+  disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only. The predicate oracle,
+  below, derives it by a split over the arms; nothing in the planner asks it yet.
 - **The schema reader emits splits rather than a meet** — *large.* A hidden discriminator per undiscriminated
   `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
@@ -1741,6 +1743,56 @@ holds. Three bugs planted in what was added were each caught by it.
 **Pin the exact Eggnog version as Calcite is pinned.** It is a single-maintainer prerelease whose public surface is
 pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
 schema (*A declaration is trusted*).
+
+### The predicate oracle — *Stage 1's core built, in shadow; its gate is not run*
+
+Stage 1 of moving the pushdown reasoning onto Eggnog, on the family where its closure is used most: which facts may
+justify which rewrite of a `WHERE` conjunct. Eggnog decides what is true, the host what is written and what is legal,
+Volcano which plan. `DESIGN.md`, from *Predicates as facts: the oracle, in shadow* through *What the oracle promises,
+and what it costs*, is the record; `Facts/Saturation/README.md` is the catalogue. Nothing in the planner calls it.
+
+**What is built.**
+- **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
+  the text accessor, the raw value, `RETURNING`, the numeric cast and the cast to text as readings of their own;
+  comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `AND`, `OR`, `NOT`; everything else opaque.
+- **`PredicateRules`**, 42 rules and a split beside `JsonRules`: analysis, what a predicate taking a truth value
+  establishes (the rendering preimage and the numeric window among it), the split over a junction's arms, and the
+  verdicts with twelve connectives. Every constructor is unextractable.
+- **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata a conjunct is admitted in, the
+  licence table, and the questions (`Judge`, `Decide`, `Facts`, `Knows`, `FactsFor`, `IsContradictory`,
+  `DecideGiven`, `IsRedundant`, `RedundantConjuncts`). The renderer is today's `TryTranslate`.
+- **Tests**: 82 unit tests in `Tests/Facts` and `Tests/Metadata`, among them #117's self-certification shown
+  underivable three ways, and a property test holding what an atom establishes to what it decides. A measurement at
+  `MeasureTests`' sizes, beside the planner's `Derive` of the same facts.
+
+**What is left of the stage.**
+- **The population-D checker** — *medium.* `SoundnessTests` extended: random declarations with discriminators and
+  random IR predicates, 64 documents drawn from the declaration and not conditioned on the query, every derived fact,
+  verdict and admitted rendering checked on the documents its scope admits, and C5 over `Pred`, `Val` and `JPath`
+  classes. It needs an evaluator of the IR over a document, independent of `PredicateAtom`, which it would otherwise
+  only agree with.
+- **The shadow harness** — *medium.* At each `Derive` site, at the rewriter's TRUE, FALSE and lowering decisions,
+  at `Establish`, guard deletion and `AlreadyBelow`: the question, today's answer, the oracle's, and the time.
+  `CosmosPredicateLoader.TryLoad` and `Renderer` are the entry from a `Filter`.
+- **The planted-bug suite and the defect replay** — *medium.* A too-wide preimage, establishing from a weakening, a
+  rule reading never-true beneath a `NOT`, a split without its `holds` guard, a contradicting axiom, a stratum
+  admitting a conjunct with its own facts; and #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4
+  and gaps 1–5, each answered by the general rules or counted as needing its own.
+- **The gate's measurements** — *medium.* The corpus and the hierarchy A/B against a frozen baseline, agreement with
+  today's answers, and the engine budget per statement. Per new statement the oracle costs between what `Derive` of
+  the same facts costs and about twice it; a question of a statement already asked about a millisecond. Measure both
+  again once Eggnog's idle rules allocate nothing, which is most of what a stratum's thirty iterations cost.
+
+**Decided conservatively, and worth deciding properly.**
+- **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
+  it, which is the `RETURNING` asymmetry. The refinement order between an error and an answer is still to settle.
+- **Two `VARIANT` numbers** are never decided equal: Calcite's comparison across numeric types is unmeasured.
+- **An ordering over a rendering** is TRUE or FALSE and no finer: Calcite's string order is unmeasured.
+- **`NOT` of what is only ever UNKNOWN** is not decided to keep nothing. A fourth verdict, never-false, would decide
+  it, at six connectives more.
+- **The numeric window's arithmetic** is in `CosmosNumericWindow` and in `PredicateAtom` both, until the translator
+  over the IR takes the window from the one.
+- **`IS_DEFINED`, `CASE`, `LIKE` and the string functions** load as opaque.
 
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 
