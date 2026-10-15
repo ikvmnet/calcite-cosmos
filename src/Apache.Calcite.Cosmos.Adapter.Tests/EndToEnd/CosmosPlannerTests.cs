@@ -1831,7 +1831,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(PlanToCosmos(
                 "SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY('[]', '$' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"));
 
-            query.Sql.Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) } FROM products c");
+            query.Sql.Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.tags)) ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) } FROM products c");
 
             query.Parameters.Should().HaveCount(1);
             query.Parameters[0].Value.Should().BeAssignableTo<System.Collections.Generic.IEnumerable<object?>>()
@@ -1881,19 +1881,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// supply one column.
         /// </para>
         /// <para>
-        /// <b>The guard is written three times, and that is the shape rather than a mistake.</b> The
-        /// accessor appears three times in the expansion — in the test, in the asserted branch and
-        /// nowhere else — and each occurrence carries the guard #131 gave it. Read through:
-        /// an absent path makes <c>IS_PRIMITIVE</c> undefined, so the ternary is undefined and
-        /// <c>IS_DEFINED</c> is false; an object makes it null, which <c>IS_NULL</c> catches; a scalar
-        /// passes. All three take the fallback exactly where Calcite's <c>JSON_VALUE</c> answers null.
+        /// <b>The test is over the path, and the branch carries the guard.</b> The accessor appears
+        /// twice in the expansion, in the null test and in the asserted branch. The test is the
+        /// accessor's own null set, said over the path: absent, null, or not a scalar — the last being
+        /// what <c>IS_PRIMITIVE</c> adds. The branch carries the guard #131 gave it. The fallback is
+        /// taken exactly where Calcite's <c>JSON_VALUE</c> answers null, whatever the service says of
+        /// <c>IS_PRIMITIVE</c> over an absent path, because <c>IS_DEFINED</c> has already answered
+        /// there.
         /// </para>
         /// </remarks>
         [Fact]
         public void ACoalesceOverAnAccessorPushes()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null)) AND NOT IS_NULL((IS_PRIMITIVE(c.a) ? c.a : null))) ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.a) AND NOT IS_NULL(c.a) AND IS_PRIMITIVE(c.a)) ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) } FROM products c");
         }
 
         /// <summary>
@@ -1909,24 +1910,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public void ACoalesceOverArrayAccessorsPushes()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : (IS_ARRAY(c.other) ? c.other : null)) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.tags)) ? (IS_ARRAY(c.tags) ? c.tags : null) : (IS_ARRAY(c.other) ? c.other : null)) } FROM products c");
         }
 
         /// <summary>
         /// A scalar <c>RETURNING</c> carries no guard into the coalesce, as it carries none alone.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The bare path is what a declared scalar renders as — see
         /// <see cref="AScalarReturningAccessorIsRenderedAsTheBarePath"/> — and the reason is the same nested: a document
         /// whose value is the wrong shape fails the read either way, and the plan declared the type.
         /// Worth pinning beside the two guarded forms so the difference is deliberate rather than
         /// discovered.
+        /// </para>
+        /// <para>
+        /// The null test is another matter, because it decides which branch is taken. The accessor is
+        /// null wherever the value is not of the type it names — an object, which Calcite answers null
+        /// for, and another scalar, which SQL:2016 answers null for and Calcite raises over — so the
+        /// fallback is taken there, rather than the object being handed to a column typed a number.
+        /// </para>
         /// </remarks>
         [Fact]
         public void ACoalesceOverAScalarReturningIsTheBarePath()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n)) ? c.n : @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n) AND IS_NUMBER(c.n)) ? c.n : @p0) } FROM products c");
         }
 
         /// <summary>
@@ -2932,16 +2941,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // ── Testing whether a property exists ─────────────────────────────────────
 
         /// <remarks>
+        /// <para>
         /// The SQL spelling. Cosmos distinguishes an absent property from one present and null and SQL
         /// does not, so this renders as both tests — which is what makes it match a document that simply
         /// lacks the property.
+        /// </para>
+        /// <para>
+        /// <b>And as the third test the accessor needs.</b> <c>JSON_VALUE</c> is null for an object or
+        /// an array, which is exactly what <c>metadata</c> is in the documents that have it, so the two
+        /// tests alone kept every one of them — measured against the emulator over document 2 of the
+        /// differential seed, which Calcite does not return. This test pinned that rendering as right
+        /// until it was found. <c>IS_PRIMITIVE</c> is the line <c>JSON_VALUE</c> draws, the same one
+        /// its projection is guarded by.
+        /// </para>
         /// </remarks>
         [Fact]
         public void IsNotNullOnADocumentPropertyTestsBothCosmosStates()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL");
 
-            Render(best).Should().Contain("(IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata))");
+            Render(best).Should().EndWith("WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_PRIMITIVE(c.metadata))");
+        }
+
+        /// <summary>
+        /// <c>IS NULL</c> over an accessor is true wherever the accessor answers null.
+        /// </summary>
+        /// <remarks>
+        /// The complement, written so that the absent case is decided by <c>IS_DEFINED</c> before any
+        /// type test is asked: the record disagrees about what <c>IS_PRIMITIVE</c> says of an absent
+        /// path, and <c>NOT IS_DEFINED(p) OR …</c> is true there whatever it says.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAnAccessorIsTrueWhereTheAccessorAnswersNull()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NULL"))
+                .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE (NOT IS_DEFINED(c.metadata) OR IS_NULL(c.metadata) OR NOT IS_PRIMITIVE(c.metadata))");
+        }
+
+        /// <summary>
+        /// The null test reads each accessor's own null set: the type a <c>RETURNING</c> names, and
+        /// the fragment <c>JSON_QUERY</c> answers.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_QUERY</c> is the mirror of <c>JSON_VALUE</c>, null for every scalar, so <c>IS NULL</c>
+        /// over it was false of a stored string Calcite answers null for. A typed <c>RETURNING</c> is
+        /// null wherever the value is not of its type — an object, which Calcite answers null for, and
+        /// another scalar, which the standard answers null for and Calcite raises over. The raw value
+        /// is null only where it is absent or null, and keeps the two tests it always had.
+        /// </remarks>
+        [Fact]
+        public void TheNullTestReadsEachAccessorsOwnNullSet()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_QUERY(c.\"DOC\", '$.metadata') IS NULL"))
+                .Should().EndWith("WHERE (NOT IS_DEFINED(c.metadata) OR IS_NULL(c.metadata) OR NOT (IS_OBJECT(c.metadata) OR IS_ARRAY(c.metadata)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NOT NULL"))
+                .Should().EndWith("WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_NUMBER(c.metadata))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IS NULL"))
+                .Should().EndWith("WHERE (NOT IS_DEFINED(c.category) OR IS_NULL(c.category))");
+        }
+
+        /// <summary>
+        /// A view's column bound to the accessor is held to the accessor's null set.
+        /// </summary>
+        /// <remarks>
+        /// The reading the binding carries is what says the column is the accessor's text rather than
+        /// the value — the same thing that holds a comparison over it to the accessor's tests (#83).
+        /// </remarks>
+        [Fact]
+        public void IsNotNullOverAViewColumnReadsTheAccessorsNullSet()
+        {
+            Render(PlanToCosmos("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" IS NOT NULL"))
+                .Should().EndWith("WHERE (IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label))");
         }
 
         /// <remarks>

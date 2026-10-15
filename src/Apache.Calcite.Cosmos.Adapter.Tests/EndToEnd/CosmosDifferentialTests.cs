@@ -792,6 +792,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
             ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
+
+
+            // ── The probes of the soundness review, kept ─────────────────────────────
+            //
+            // Each was run once against the emulator and answered differently pushed, or agreed and is
+            // kept as the control beside one that did not. Named P1 to P27 as the review named them, so
+            // that a statement here can be traced to the root cause it was found under.
+
+            // The accessor's null set (A). JSON_VALUE is null for an object and an array as well as for
+            // an absent path and a JSON null, and IS NULL over it tested the path's null set alone:
+            // products' metadata is an object, and typed's label holds one document per JSON type.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", false),                                  // P1
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", false),   // P19
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", false),                                        // P2
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') IS NULL", false),                                            // P3
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') IS NULL)", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" IS NOT NULL", false), // P25
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') = 'none'", false),                         // P26
+            ("SELECT c.\"id\", CASE WHEN JSON_VALUE(c.\"DOC\", '$.label') IS NULL THEN 'missing' ELSE 'present' END FROM typed AS c", false),   // P27, the projection, which agreed
+
+            // The same for the other readings: JSON_QUERY is null for every scalar, and a typed
+            // RETURNING for an object -- found beside the probes, the same test applied to them.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_QUERY(c.\"DOC\", '$.label') IS NULL", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_QUERY(c.\"DOC\", '$.label') AS \"L\" FROM typed AS c) AS p WHERE p.\"L\" IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NULL", false),
         ];
 
         /// <summary>

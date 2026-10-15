@@ -687,24 +687,140 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         void WriteGuardedAccessor(StringBuilder builder, RexCall call, string rendered)
         {
-            if (IsCollectionJsonQuery(call))
-            {
-                builder.Append('(').Append(CosmosOperators.IsArray.getName()).Append('(').Append(rendered)
-                    .Append(") ? ").Append(rendered).Append(" : null)");
-                return;
-            }
-
-            if (IsPlainJsonQuery(call))
+            if (IsPlainJsonQuery(call) && IsCollectionJsonQuery(call) == false)
                 throw new CosmosTranslationException("A JSON_QUERY inside an expression is the fragment as text, which the service has no way to produce -- the enclosing operator would run over the value instead. JSON_QUERY renders as a column of its own, where the reading writes the text.");
 
-            if (IsTextJsonValue(call))
+            if (IsCollectionJsonQuery(call) || IsTextJsonValue(call))
             {
-                builder.Append('(').Append(CosmosOperators.IsPrimitive.getName()).Append('(').Append(rendered)
-                    .Append(") ? ").Append(rendered).Append(" : null)");
+                builder.Append(Guarded(ReadingTests(call)!, rendered));
                 return;
             }
 
             builder.Append(rendered);
+        }
+
+        /// <summary>
+        /// The service's type tests, any one of which is true exactly where a reading of a path
+        /// answers a value, for a reading that answers null for more than an absent path and a JSON
+        /// null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What an accessor reads at a path is not what the path holds, and this is the one place
+        /// that says how.</b> <c>JSON_VALUE</c> answers SQL null unless the value is a scalar — an
+        /// object and an array read as null as surely as an absent path does — and a plain
+        /// <c>JSON_QUERY</c> is its mirror, answering only for an object or an array. A typed
+        /// <c>RETURNING</c> narrows the scalar to the type it names: SQL:2016 makes any other value
+        /// an error that <c>NULL ON ERROR</c> answers null for, and Calcite raises there instead
+        /// (ikvmnet/calcite-dotnet#120), so a value of another type is never one the engine answers
+        /// differently. A field a projection bound to an accessor reads as that accessor, which its
+        /// reading says.
+        /// </para>
+        /// <para>
+        /// <b>Every writer that needs the line reads it from here</b>: the guard a projected accessor
+        /// carries (<see cref="WriteGuardedAccessor"/>, <see cref="TryJsonValueProjection"/> and its
+        /// siblings) and the null test (<see cref="WriteIsNull"/>). Each of those used to state it,
+        /// or not, for itself, and the null test was the one that did not: <c>IS NOT NULL</c> over an
+        /// accessor at an object kept the document.
+        /// </para>
+        /// <para>
+        /// <c>null</c> for the raw value — a promoted column, a field typed as itself, an accessor the
+        /// split rule re-typed <c>ANY</c> — which is null only where the path is absent or holds null,
+        /// and which the null test and the guard already say in full.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">An expression that resolves to a path.</param>
+        /// <returns>The tests, or <c>null</c> where the expression is the raw value.</returns>
+        IReadOnlyList<SqlFunction>? ReadingTests(RexNode node)
+        {
+            if (IsCollectionJsonQuery(node))
+                return ArrayReading;
+
+            if (IsPlainJsonQuery(node))
+                return FragmentReading;
+
+            if (IsTextJsonValue(node))
+                return ScalarReading;
+
+            if (node is RexCall call && call.getOperator().getName() == "JSON_VALUE")
+                return TypeTestOf(call) is SqlFunction test ? new[] { test } : ScalarReading;
+
+            if (node is RexInputRef reference && IsCharacter(reference) && reference.getIndex() >= 0 && reference.getIndex() < _readings.Count)
+            {
+                return _readings[reference.getIndex()] switch
+                {
+                    CosmosReading.Text => ScalarReading,
+                    CosmosReading.JsonText => FragmentReading,
+                    _ => null,
+                };
+            }
+
+            return null;
+        }
+
+        static readonly SqlFunction[] ScalarReading = [CosmosOperators.IsPrimitive];
+        static readonly SqlFunction[] ArrayReading = [CosmosOperators.IsArray];
+        static readonly SqlFunction[] FragmentReading = [CosmosOperators.IsObject, CosmosOperators.IsArray];
+
+        /// <summary>
+        /// The service's type test for the type a scalar <c>RETURNING</c> names, or <c>null</c>
+        /// where it names none the service has a test for.
+        /// </summary>
+        static SqlFunction? TypeTestOf(RexCall accessor)
+        {
+            switch (accessor.getType()?.getSqlTypeName()?.getName())
+            {
+                case nameof(SqlTypeName.TINYINT):
+                case nameof(SqlTypeName.SMALLINT):
+                case nameof(SqlTypeName.INTEGER):
+                case nameof(SqlTypeName.BIGINT):
+                case nameof(SqlTypeName.FLOAT):
+                case nameof(SqlTypeName.REAL):
+                case nameof(SqlTypeName.DOUBLE):
+                case nameof(SqlTypeName.DECIMAL):
+                    return CosmosOperators.IsNumber;
+
+                case nameof(SqlTypeName.BOOLEAN):
+                    return CosmosOperators.IsBool;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Writes the disjunction of a reading's tests over a path, bare.
+        /// </summary>
+        static string AnyOf(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            var text = new StringBuilder();
+
+            for (var i = 0; i < tests.Count; i++)
+            {
+                if (i > 0)
+                    text.Append(" OR ");
+
+                text.Append(tests[i].getName()).Append('(').Append(path).Append(')');
+            }
+
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// Writes the disjunction of a reading's tests over a path as one operand of a connective.
+        /// </summary>
+        static string AnyOfOperand(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            return tests.Count == 1 ? AnyOf(tests, path) : "(" + AnyOf(tests, path) + ")";
+        }
+
+        /// <summary>
+        /// Writes a path as the value a reading answers: the value where a test admits it, null
+        /// everywhere else.
+        /// </summary>
+        static string Guarded(IReadOnlyList<SqlFunction> tests, string path)
+        {
+            return $"({AnyOf(tests, path)} ? {path} : null)";
         }
 
         /// <summary>
@@ -2003,8 +2119,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Metadata.CosmosUuidForms.IsUuid(representation) == false)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ScalarReading, path.ToString());
             return true;
         }
 
@@ -2128,8 +2243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (Client.CosmosJson.CanRead(node.getType()) == false)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ScalarReading, path.ToString());
             return true;
         }
 
@@ -2152,9 +2266,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// object or an array renders as nothing: SQL/JSON answers null there rather than writing one
         /// out, which is the whole difference between <c>JSON_VALUE</c> and <c>JSON_QUERY</c>.
         /// <c>IS_PRIMITIVE</c> is exactly that distinction — true of a string, a number, a boolean and
-        /// a JSON null, false of an object, an array and an absent property — so
-        /// <c>IIF(IS_PRIMITIVE(p), p, null)</c> means at the service what the function means here, for
-        /// every JSON type.
+        /// a JSON null, false of an object and an array — so <c>IIF(IS_PRIMITIVE(p), p, null)</c> means
+        /// at the service what the function means here, for every JSON type. Over an absent property
+        /// the record has it both false and undefined; either way the ternary does not answer the
+        /// value, and the column reads null, which is what the function answers there.
         /// </para>
         /// <para>
         /// <c>JSON_QUERY</c> is the other half and is <em>not</em> handled: it answers the JSON text of
@@ -2184,8 +2299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsPrimitive.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2245,8 +2359,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2295,8 +2408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsJsonAccessor(call) == false || TryResolveJsonPath(call, out var path) == false || path is null)
                 return false;
 
-            var rendered = path.ToString();
-            expression = $"({CosmosOperators.IsObject.getName()}({rendered}) OR {CosmosOperators.IsArray.getName()}({rendered}) ? {rendered} : null)";
+            expression = Guarded(ReadingTests(call)!, path.ToString());
             return true;
         }
 
@@ -2503,14 +2615,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append(')');
         }
 
-        /// <summary>
-        /// Writes a null test.
-        /// </summary>
-        /// <remarks>
-        /// Cosmos distinguishes an absent property (<c>undefined</c>) from one present with a null
-        /// value, whereas SQL has only <c>NULL</c>. Both Cosmos states must therefore be tested,
-        /// or a filter on a property that is simply missing from a document would not match.
-        /// </remarks>
         /// <summary>
         /// Whether an odd number of <c>NOT</c>s encloses what is being written.
         /// </summary>
@@ -3232,12 +3336,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
         }
 
+        /// <summary>
+        /// Writes <c>IS NULL</c> and <c>IS NOT NULL</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Cosmos distinguishes an absent property (<c>undefined</c>) from one present with a null
+        /// value, whereas SQL has only <c>NULL</c>. Both Cosmos states must therefore be tested, or a
+        /// filter on a property that is simply missing from a document would not match.
+        /// </para>
+        /// <para>
+        /// <b>Over an accessor that is not the whole of it.</b> <c>JSON_VALUE</c> is null for an object
+        /// and an array as well, and <c>JSON_QUERY</c> for every scalar — see
+        /// <see cref="ReadingTests"/> — so over a path one of them reads, the test is the reading's
+        /// null set and not the path's. Measured against the emulator before this was written,
+        /// <c>JSON_VALUE(DOC, '$.metadata') IS NOT NULL</c> kept the document whose <c>metadata</c> is
+        /// an object, which Calcite does not, and <c>IS NULL</c> over the mixed-type <c>label</c> lost
+        /// the array and the object.
+        /// </para>
+        /// <para>
+        /// <b>Written so that it does not matter what the service says of a type test over an absent
+        /// path.</b> The record disagrees with itself there — false in one place, undefined in another
+        /// — and the absent case is named by <c>IS_DEFINED</c>, which was measured, ahead of the type
+        /// test in both forms: <c>NOT IS_DEFINED(p) OR …</c> is true and <c>IS_DEFINED(p) AND …</c>
+        /// false whatever follows, so the test is only ever asked of a value that is there.
+        /// </para>
+        /// <para>
+        /// Over the path itself rather than over the guarded value a projection writes for the
+        /// accessor, so that the filter and the projection say it in one spelling — and because the
+        /// guarded value is only right here by way of how the service answers a ternary over an
+        /// undefined condition, which is another thing the record does not settle.
+        /// </para>
+        /// </remarks>
         void WriteIsNull(StringBuilder builder, RexCall call, bool negated)
         {
             RequireOperandCount(call, 1);
 
+            var value = Operand(call, 0);
+
+            if (TryResolvePath(value, out var path) && path is not null)
+            {
+                if (value is RexCall accessor && IsJsonAccessor(accessor))
+                    RequireTheEngineCouldRead(accessor, path);
+
+                var rendered = path.ToString();
+                var tests = ReadingTests(value);
+
+                if (negated)
+                {
+                    builder.Append("(IS_DEFINED(").Append(rendered).Append(") AND NOT IS_NULL(").Append(rendered).Append(')');
+
+                    if (tests is not null)
+                        builder.Append(" AND ").Append(AnyOfOperand(tests, rendered));
+                }
+                else
+                {
+                    builder.Append("(NOT IS_DEFINED(").Append(rendered).Append(") OR IS_NULL(").Append(rendered).Append(')');
+
+                    if (tests is not null)
+                        builder.Append(" OR NOT ").Append(AnyOfOperand(tests, rendered));
+                }
+
+                builder.Append(')');
+                return;
+            }
+
             var operand = new StringBuilder();
-            Write(operand, Operand(call, 0));
+            Write(operand, value);
             var text = operand.ToString();
 
             if (negated)
