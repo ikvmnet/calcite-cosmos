@@ -860,6 +860,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             expression.Should().Contain("c.price");
         }
 
+        /// <remarks>
+        /// Calcite folds a null test into the range it sits beside: <c>x IS NULL OR x = 1</c> becomes
+        /// <c>SEARCH(x, Sarg[1; NULL AS TRUE])</c>, which is true where <c>x</c> is null as the test was.
+        /// It observes absence as the test does, and the split rule, which weakens the folded form as
+        /// the planner hands it over, read it as strict. A <c>SEARCH</c> that answers unknown over a
+        /// null, which is what an <c>IN</c> builds, is the comparisons it stands for.
+        /// </remarks>
+        [Fact]
+        public void ASearchThatDecidesNullObservesAbsence()
+        {
+            var price = _rex.makeInputRef(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.INTEGER), true), 1);
+
+            var folded = new RexSimplify(_rex, org.apache.calcite.plan.RelOptPredicateList.EMPTY, RexUtil.EXECUTOR).simplifyUnknownAs(
+                Call(SqlStdOperatorTable.OR, Call(SqlStdOperatorTable.IS_NULL, price), Call(SqlStdOperatorTable.EQUALS, price, Num(1))),
+                RexUnknownAs.UNKNOWN);
+
+            folded.getKind().name().Should().Be("SEARCH", "Calcite folds the null test into the range: " + folded);
+            CosmosRexTranslator.ObservesAbsence(folded).Should().BeTrue();
+
+            CosmosRexTranslator.ObservesAbsence(_rex.makeIn(price, java.util.Arrays.asList(Num(1), Num(2)))).Should().BeFalse();
+        }
+
         // ── Equality against text, through a cast ─────────────────────────────────
 
         RexNode Any(int index) => _rex.makeInputRef(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.ANY), true), index);

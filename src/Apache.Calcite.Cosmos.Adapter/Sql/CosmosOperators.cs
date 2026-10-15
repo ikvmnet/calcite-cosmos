@@ -265,9 +265,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// without a <c>price</c>, while <c>NOT IS_DEFINED(c.price)</c> does.
         /// </para>
         /// <para>
-        /// Only <c>IS_DEFINED</c> was measured. The rest of the family is treated the same way because
-        /// they answer the same kind of question, and a predicate that uses one is rare enough that
-        /// the caution costs nothing worth measuring for.
+        /// Measured for the whole family now, where it had been for <c>IS_DEFINED</c> alone: each
+        /// answers <c>true</c> or <c>false</c> over every JSON type and over an absent path, never
+        /// undefined, and <c>NOT</c> over one is a real boolean too —
+        /// <c>CosmosJsonTypeMeasurementTests</c>, on the emulator, with Azure owed.
         /// </para>
         /// <para>
         /// By name, not by instance. A call resolved through a schema rather than through

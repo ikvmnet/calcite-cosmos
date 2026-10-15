@@ -2958,10 +2958,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// object or an array renders as nothing: SQL/JSON answers null there rather than writing one
         /// out, which is the whole difference between <c>JSON_VALUE</c> and <c>JSON_QUERY</c>.
         /// <c>IS_PRIMITIVE</c> is exactly that distinction — true of a string, a number, a boolean and
-        /// a JSON null, false of an object and an array — so <c>IIF(IS_PRIMITIVE(p), p, null)</c> means
-        /// at the service what the function means here, for every JSON type. Over an absent property
-        /// the record has it both false and undefined; either way the ternary does not answer the
-        /// value, and the column reads null, which is what the function answers there.
+        /// a JSON null, false of an object, an array and an absent property, false rather than
+        /// undefined, measured in <c>CosmosJsonTypeMeasurementTests</c> — so
+        /// <c>IIF(IS_PRIMITIVE(p), p, null)</c> means at the service what the function means here, for
+        /// every JSON type.
         /// </para>
         /// <para>
         /// <c>JSON_QUERY</c> is the other half and is <em>not</em> handled: it answers the JSON text of
@@ -4077,6 +4077,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// null or absent. <c>COALESCE</c> and <c>NULLIF</c> are named beside it for a caller that
         /// builds them unexpanded.
         /// </para>
+        /// <para>
+        /// <b>And a <c>SEARCH</c> that decides null</b>, which is a null test folded into a range —
+        /// see <see cref="DecidesNull"/>.
+        /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <returns><c>true</c> where the expression can tell an absent path from an unknown.</returns>
@@ -4103,6 +4107,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 case nameof(SqlKind.COALESCE):
                 case nameof(SqlKind.NULLIF):
                     return true;
+
+                // A null test folded into the range: Calcite simplifies `x IS NULL OR x = 'a'` to
+                // SEARCH(x, Sarg['a'; NULL AS TRUE]), which says outright what it answers over a
+                // null. One that answers unknown there is the comparisons it stands for.
+                case nameof(SqlKind.SEARCH) when DecidesNull(call):
+                    return true;
             }
 
             var operands = call.getOperands();
@@ -4111,6 +4121,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a <c>SEARCH</c> answers true or false where its operand is null, rather
+        /// than unknown.
+        /// </summary>
+        /// <remarks>
+        /// Asked of the node as it stands, because one consumer does not expand it. The split rule
+        /// weakens the predicate the planner hands it, and over a projection Calcite's own
+        /// simplification hands it the folded form: <c>INITCAP(sku) IS NULL OR INITCAP(sku) = 'B-2'</c>
+        /// arrived as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS TRUE])</c>, read as strict, and was
+        /// weakened to <c>IS_DEFINED(c.metadata.sku)</c> — keeping one product where SQL keeps all
+        /// seven.
+        /// </remarks>
+        static bool DecidesNull(RexCall call)
+        {
+            return call.getOperands().size() == 2
+                && Operand(call, 1) is RexLiteral literal
+                && literal.getValue() is org.apache.calcite.util.Sarg sarg
+                && sarg.nullAs != org.apache.calcite.rex.RexUnknownAs.UNKNOWN;
         }
 
         /// <summary>
@@ -4697,10 +4727,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             ["COT"] = ("COT", 1, 1),
             // ASIN and ACOS carry a domain, and Cosmos fails the whole query for a value outside it
             // rather than yielding undefined — measured, along with SQRT(-1), which does the same and
-            // which this adapter has always pushed. LOG(0) is accepted. So this is one property of the
-            // service rather than a fact about these two, and they are treated as SQRT already is; see
-            // OutOfDomainArithmeticFailsTheQuery, which pins the measurement, and DESIGN.md, which
-            // records that the choice to live with it is a choice.
+            // which this adapter has always pushed, and LOG(0), which does too. This comment used to
+            // say LOG(0) was accepted; the measurement beside it said otherwise, and still does. So
+            // this is one property of the service rather than a fact about these two, and they are
+            // treated as SQRT already is; see OutOfDomainArithmeticFailsTheQuery, which pins the
+            // measurement (CosmosAxioms: Service.OutOfDomainArithmeticFailsTheStatement), and
+            // DESIGN.md, which records that the choice to live with it is a choice.
             ["ASIN"] = ("ASIN", 1, 1),
             ["ACOS"] = ("ACOS", 1, 1),
             ["ATAN"] = ("ATAN", 1, 1),

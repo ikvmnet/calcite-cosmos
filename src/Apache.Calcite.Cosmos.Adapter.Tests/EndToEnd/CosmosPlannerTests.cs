@@ -1749,7 +1749,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
 
             plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
-            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0:DOUBLE))])", plan);
+            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0))])", plan);
+        }
+
+        /// <summary>
+        /// The alternatives plan under a host that reduces expressions, and push what they pushed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A connection's planner registers <c>FILTER_REDUCE_EXPRESSIONS</c> — Calcite's
+        /// <c>RelOptUtil.registerDefaultRules</c> adds it last — and its simplifier reads the
+        /// alternatives as it reads any condition. Written over one raw value they compared a string
+        /// with a double or a boolean there, the simplifier taking every literal an expression is
+        /// compared with to be of one class, and planning threw a <c>ClassCastException</c>. Measured
+        /// through a connection — the host's own prepare, against the emulator and offline —
+        /// <c>= '30'</c>, <c>= 'true'</c>, the cast form, the view's column and the partition key's cast
+        /// form each failed to plan. The number and the boolean now read the value in their own type —
+        /// the accessor re-typed, or the literal boxed as <c>VARIANT</c> where the value is a column.
+        /// </para>
+        /// <para>
+        /// What reaches the service is what the bare planner sends, but for the boolean beside an
+        /// accessor: the reducing host folds its equality with <c>TRUE</c> to the read itself, and the
+        /// service holds <c>c.label</c> true of the stored <c>true</c> and of nothing else.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "1.0E30", 1e30 })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", "WHERE ((c.label = @p0) OR c.label)", new object[] { "true" })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'false'", "WHERE ((c.label = @p0) OR (NOT c.label))", new object[] { "false" })]
+        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE ((c.category = @p0) OR (c.category = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE ((c.category = @p0) OR (c.category = @p1))", new object[] { "true", true })]
+        public void TheAlternativesPlanUnderAHostThatReducesExpressions(string sql, string where, object[] parameters)
+        {
+            foreach (var hostRewrites in new[] { false, true })
+            {
+                var query = Query(FindCosmos(PlanToAsync(sql, hostRewrites, reduce: true)));
+
+                query.Sql.Should().EndWith(where, "with host rewrites " + hostRewrites);
+                query.Parameters.Select(p => p.Value).Should().Equal(parameters, "with host rewrites " + hostRewrites);
+            }
         }
 
         /// <remarks>
@@ -3332,8 +3372,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the transpose copies a Cosmos filter below a Cosmos projection with the projection's
         /// expression inlined, and nothing rechecks what it made. A plan has to survive them because
         /// every connection-based host has them.
+        /// <para>
+        /// <c>reduce</c> adds a fourth every such host has, <c>FILTER_REDUCE_EXPRESSIONS</c>, which
+        /// simplifies every filter the split rule makes: a weakening it cannot read fails the plan. No
+        /// executor is set, so it folds no constants; the simplification, which is where a weakening
+        /// fails, runs whether or not one is.
+        /// </para>
         /// </remarks>
-        RelNode PlanToAsync(string sql, bool hostRewrites)
+        RelNode PlanToAsync(string sql, bool hostRewrites) => PlanToAsync(sql, hostRewrites, reduce: false);
+
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -3350,6 +3398,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_FILTER_TRANSPOSE);
                 planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_MERGE);
             }
+
+            if (reduce)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_REDUCE_EXPRESSIONS);
 
             var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
@@ -3437,6 +3488,247 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             plan.Should().NotContain("CosmosFilter",
                 "a branch that can be true with the path absent implies nothing about definedness: " + plan);
+        }
+
+        /// <summary>
+        /// A disjunction implies only the paths every branch needs, and a branch that is a negated
+        /// conjunction of these needs none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens a disjunction branch by branch, and
+        /// where one branch has no weakening it gave the disjunction whole to the walk that collects the
+        /// paths a predicate needs — which descended into every branch and pushed <c>IS_DEFINED</c> of
+        /// each path it found. A disjunction is true where one branch is, so a document lacking the
+        /// other branches' paths belongs in the result.
+        /// </para>
+        /// <para>
+        /// The first two are the predicates ternary logic partitioning found, written as <c>NOT φ</c>.
+        /// Calcite's converter pushes the <c>NOT</c> down through the connectives above an <c>IN</c>, so
+        /// each arrives as a disjunction one of whose branches is <c>NOT (… AND …)</c>, which has no
+        /// weakening. Measured against the emulator, the first sent <c>WHERE (IS_DEFINED(c.tags) AND
+        /// IS_DEFINED(c.metadata.sku))</c> and kept none of the seven documents its negation is true of;
+        /// the second sent <c>WHERE (IS_DEFINED(c.tags[0]) AND IS_DEFINED(c.price))</c> and kept one.
+        /// The third is the shape written directly: it sent <c>WHERE IS_DEFINED(c.price)</c> and lost the
+        /// shoe with no price, for which the negated branch is true.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))")]
+        [InlineData("NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')")]
+        public void ADisjunctionWithANegatedCompoundBranchPushesNoPresence(string predicate)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var plan = Plan(best);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the negated branch is true where the paths the others read are absent: " + sql);
+            plan.Should().Contain("ClrCursorFilter", "the predicate is decided in process: " + plan);
+        }
+
+        /// <summary>
+        /// A compound read as a value implies only what every one of its operands needs.
+        /// </summary>
+        /// <remarks>
+        /// A comparison needs both of its operands, and a conjunction read as one of them is false where
+        /// either conjunct is, whatever the other reads. Measured against the emulator, the first pushed
+        /// <c>IS_DEFINED</c> of category, price and id and lost document 5, a shoe with no price whose
+        /// conjunction is false and whose id is '5'; the second pushed category and price, and lost
+        /// documents 5 and 7. What is left is the path the comparison's other side reads, which every
+        /// document has.
+        /// </remarks>
+        [Fact]
+        public void ACompoundReadAsAValueImpliesOnlyWhatEveryOperandNeeds()
+        {
+            var compared = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')")));
+
+            compared.Should().EndWith("WHERE IS_DEFINED(c.id)");
+
+            var negated = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE")));
+
+            negated.Should().NotContain("IS_DEFINED", "the conjunction is false where either conjunct is: " + negated);
+        }
+
+        /// <summary>
+        /// The paths every branch of a disjunction needs are still implied.
+        /// </summary>
+        /// <remarks>
+        /// The other side of the two above. A disjunction inside a branch implies the path both of its
+        /// own branches read, so the conjunction around it pushes that beside its other path.
+        /// </remarks>
+        [Fact]
+        public void APathEveryBranchNeedsIsStillImplied()
+        {
+            var sql = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Road Runner' AND (INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'X'))")));
+
+            sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)))");
+        }
+
+        /// <summary>
+        /// A path every branch reads is implied however each branch spells it.
+        /// </summary>
+        /// <remarks>
+        /// The inner disjunction reads the category in both branches, once as the promoted column and
+        /// once through the document. Matched by expression the two were different paths, the
+        /// disjunction needed neither, and the weakening pushed <c>IS_DEFINED(c.name)</c> alone — sound,
+        /// and less than it could. Matched by the path each resolves to, the category is needed too.
+        /// </remarks>
+        [Fact]
+        public void APathEveryBranchNeedsIsImpliedHoweverEachSpellsIt()
+        {
+            var sql = Render(FindCosmos(PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))")));
+
+            sql.Should().EndWith("WHERE ((c.price > @p0) OR (IS_DEFINED(c.name) AND IS_DEFINED(c.category)))");
+        }
+
+        /// <summary>
+        /// A negated compound, or one compared with <c>TRUE</c> or <c>FALSE</c>, is read for its truth or
+        /// for its falsity, and implies what that needs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A disjunction is false only where every branch is, so false it needs what any branch does; a
+        /// conjunction is true only where every conjunct is. A <c>NOT</c> swaps the two, and so does a
+        /// comparison with <c>FALSE</c>. Each of these pushed nothing before: a negated compound needed
+        /// nothing, and a compared one only what its operands need as values, which for a compound is
+        /// the little every operand needs. Each now pushes both paths, and each agrees with Calcite on
+        /// the emulator, as the differential corpus says.
+        /// </para>
+        /// <para>
+        /// The last is the conjunction's falsity, which is what every conjunct needs to be false: both
+        /// read the name, so the name is needed and nothing else.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = FALSE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> TRUE", "WHERE (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)", "WHERE ((c.price > @p0) OR (IS_DEFINED(c.category) AND IS_DEFINED(c.metadata.sku)))")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", "WHERE ((c.price > @p0) OR IS_DEFINED(c.name))")]
+        public void ACompoundIsReadForItsTruthOrItsFalsity(string predicate, string where)
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate)));
+
+            sql.Should().EndWith(where);
+        }
+
+        /// <summary>
+        /// A disjunction inside a conjunction inside a disjunction implies only what every one of its
+        /// branches needs, however a host's rules have rewritten the negations around it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Review's probe, written as a double negation. A host that reduces expressions folds the
+        /// <c>NOT (NOT …)</c> away, and before bbb7a61 the walk then read the inner disjunction as
+        /// needing every branch: measured against the emulator, it pushed <c>IS_DEFINED</c> of the
+        /// name, the category and the sku, and kept two of the five documents it is true of. The
+        /// category and the sku are each read by one branch only, so what the branch needs is the name.
+        /// </para>
+        /// <para>
+        /// Pinned both ways: as written, through the host's rules this harness registers, and folded,
+        /// which is the form the reducing rule hands the split rule.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("NOT (NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", true)]
+        [InlineData("(c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", false)]
+        public void ADisjunctionInsideAConjunctionInsideADisjunctionNeedsOnlyItsCommonPaths(string inner, bool hostRewrites)
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR " +
+                "(INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND " + inner + ")",
+                hostRewrites);
+
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.price > @p0) OR IS_DEFINED(c.name))");
+        }
+
+        /// <summary>
+        /// A null test Calcite has folded into a <c>SEARCH</c> is still a null test, and is not
+        /// weakened.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A host running Calcite's own rules simplifies the filter it moves beneath a projection, and
+        /// <c>n IS NULL OR n = 'B-2'</c> comes out as <c>SEARCH(INITCAP(sku), Sarg['B-2'; NULL AS
+        /// TRUE])</c>. Written apart, the null test kept the disjunction from being weakened; folded,
+        /// the split rule read the <c>SEARCH</c> as a comparison that needs its path, and pushed
+        /// <c>IS_DEFINED(c.metadata.sku)</c> under a predicate true of all seven products, where only
+        /// one has a sku.
+        /// </para>
+        /// <para>
+        /// Only through the host's rules: this harness without them, and the differential corpus,
+        /// hand the split rule the disjunction as written. Declined, the folded form wins nothing, and
+        /// the plan the planner keeps is the one over the disjunction as written.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ANullTestFoldedIntoASearchIsNotWeakened()
+        {
+            var best = PlanToAsync(
+                "SELECT p.\"id\" FROM (SELECT c.\"id\", INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) AS \"n\" FROM products AS c) AS p WHERE p.\"n\" IS NULL OR p.\"n\" = 'B-2'",
+                hostRewrites: true);
+
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the folded null test is true where the path is absent: " + sql);
+        }
+
+        /// <summary>
+        /// A call that answers a value over a null is not read through, and implies nothing about the
+        /// paths beneath it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The walk that collects the paths a predicate needs descended into every operator but the
+        /// connectives, on the premise that each answers null for a null. A constructor does not: an
+        /// array or a map holding a null is not null, so a comparison over its cardinality or over an
+        /// element it also holds is true with the path absent. Measured against the emulator, the
+        /// first pushed <c>WHERE IS_DEFINED(c.metadata.sku)</c> and kept one of the seven documents it
+        /// is true of. <c>CONCAT_WS</c> and <c>ARRAY_CONTAINS</c>, which lost rows the same way, are
+        /// library functions this harness does not register; the differential corpus has them.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("CARDINALITY(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1")]
+        [InlineData("ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'x'][2] = 'x'")]
+        [InlineData("CARDINALITY(MAP['k', INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1")]
+        public void ACallThatAnswersAValueOverANullImpliesNoPresence(string predicate)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the call is not null where the path beneath it is absent: " + sql);
+        }
+
+        /// <summary>
+        /// A function that is null for a null is still read through to the path it reads.
+        /// </summary>
+        /// <remarks>
+        /// The other side of the one above. Calcite classifies none of these — each reports
+        /// <see cref="Strong.Policy.AS_IS"/> — so each is one the split rule names, measured in process
+        /// to answer null over a path no document has. The last is an accessor over a scalar rendering,
+        /// which addresses no path of its own and is null where the rendering it parses is.
+        /// </remarks>
+        [Theory]
+        [InlineData("REPLACE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'B', 'C') = 'C-2'", "c.metadata.sku")]
+        [InlineData("POSITION('-' IN INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))) = 2", "c.metadata.sku")]
+        [InlineData("CHAR_LENGTH(SUBSTRING(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) FROM 2)) = 2", "c.metadata.sku")]
+        [InlineData("INITCAP(JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$')) = 'Sprint'", "c.name")]
+        public void AFunctionNullForANullStillImpliesThePathItReads(string predicate, string path)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().EndWith($"WHERE IS_DEFINED({path})");
         }
 
         /// <summary>

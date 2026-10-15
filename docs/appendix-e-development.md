@@ -91,11 +91,43 @@ license is wrong only where something is declared. Where it sends a number, ask 
 over `declared`'s `v`, which holds integers a double does not: a bound loosened by one, or a literal,
 that the service reads as a double comes back as another number.
 
+What counts as agreement where one side fails is decided in one place, `Refines`:
+
+- Where Calcite raises, the pushdown may answer anything.
+- Where Calcite answers, the pushdown may not fail. The one exception is the service failing a
+  statement that names an out-of-domain function: `ASIN`, `ACOS`, `SQRT` or `LN`.
+
+A statement whose in-process plan raises compares nothing, so it goes in `WithoutAnOracle` with the
+reason, not in the corpus.
+
+**`EveryPredicatePartitionsTheRows`** generates predicates from a fixed seed. For each one φ, it
+requires that `WHERE φ`, `WHERE NOT φ` and `WHERE φ IS NULL`, pushed, return every document exactly
+once between them, and that each returns the documents Calcite puts there. When it fails, it reports
+the smallest part of each failing predicate that still fails. Set `COSMOS_MEASUREMENT_LOG` to a file
+path to have every failure written there in full, with the Cosmos statement each partition sent.
+
+It runs at two sizes:
+
+- **By default, the first 200 predicates**, which is what every run of the differential class pays:
+  three to five minutes of judging on a workstation, and the class about eight.
+- **With `COSMOS_PARTITION_GATE=1`, all 1,000.** That is Stage 0's gate, and it takes sixteen to
+  twenty-one minutes of judging, and the class about twenty.
+
+The seed does not change with the size, and the predicates are drawn in order, so the default run asks
+exactly the first 200 the full run asks. A predicate that fails in one fails in the other, as the same
+statement. Where the full run belongs, a nightly job or a gate before merging, is not settled yet
+(`TODO.md`, section 10); until it is, run it by hand after changing the translator or the split rule.
+
 ### Measurements
 
 Tests under `Measurements/` assert what Calcite, IKVM or the service does — not what the adapter does.
 A failure there is news about a dependency, and usually means a recorded assumption in `DESIGN.md`
 needs revisiting.
+
+Each measured fact a pushdown relies on is also a row in `Sql/CosmosAxioms.cs`, with where and when it
+was measured and the test that pins it, and a test checks every named test still exists. A new
+measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
+Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
 
 ## E.6 Where the reasoning lives
 

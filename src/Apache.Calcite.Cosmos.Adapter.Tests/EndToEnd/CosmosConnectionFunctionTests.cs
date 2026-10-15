@@ -146,6 +146,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     await catalog.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("kind").GetString()), cancellationToken: cts.Token);
                 }
 
+                // A third, whose label is text in two documents and in the others a number or a
+                // boolean that renders as that text. It exists for the alternatives a refused text
+                // equality pushes, which a connection's planner simplifies and the other tests' does not.
+                var labelled = new ContainerProperties("labels", "/id");
+
+                try { await database.GetContainer("labels").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
+                var labels = (await database.CreateContainerIfNotExistsAsync(labelled, cancellationToken: cts.Token)).Container;
+
+                foreach (var json in new[]
+                {
+                    """{"id":"s","label":"30"}""",
+                    """{"id":"n","label":30}""",
+                    """{"id":"w","label":"true"}""",
+                    """{"id":"t","label":true}""",
+                    """{"id":"f","label":false}""",
+                    """{"id":"b","label":"bikes"}""",
+                })
+                {
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var doc = JsonDocument.Parse(json);
+                    await labels.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("id").GetString()), cancellationToken: cts.Token);
+                }
+
                 _client = client;
             }
             catch (Exception e)
@@ -199,7 +222,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                       "type": "object",
                       "properties": { "kind": { "enum": ["book", "disc"] } }
                     }
-                  }
+                  },
+                  "labels"
                 ],
                 "connectionMode": "gateway"
               }
@@ -335,6 +359,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
 
             (await QueryAsync(sql)).Should().Equal("1");
+        }
+
+        /// <summary>
+        /// A text equality that the service cannot decide plans through a connection, pushes the
+        /// string or the value that renders as it, and keeps the rows Calcite keeps.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// It did not plan. The split rule pushes <c>c.label = '30' OR c.label = 30</c> under the
+        /// comparison Calcite makes, and wrote both over one raw value; a connection registers
+        /// <c>FILTER_REDUCE_EXPRESSIONS</c> among Calcite's defaults, its simplifier compared the string
+        /// with the double, and the statement failed with a <c>ClassCastException</c> — <c>= '30'</c>,
+        /// <c>= 'true'</c> and the cast form alike, and through a view's column. The bare planner the
+        /// other tests use does not simplify the filter, which is how it went unseen.
+        /// </para>
+        /// <para>
+        /// The rows are the half a plan cannot show. Each literal is held by a string and by a value of
+        /// another type that Calcite renders as it, so a branch that went missing loses a row here; and
+        /// <c>'false'</c> is the one the reducing host folds to <c>NOT c.label</c>, which the service
+        /// has to hold true of the stored <c>false</c> alone.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task ATextEqualityTheServiceCannotDecidePlansThroughAConnection()
+        {
+            RequireService();
+
+            foreach (var (predicate, expected) in new[]
+            {
+                ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }),
+                ("""JSON_VALUE(c."DOC", '$.label') = 'true'""", new[] { "t", "w" }),
+                ("""JSON_VALUE(c."DOC", '$.label') = 'false'""", new[] { "f" }),
+                ("""CAST(JSON_VALUE(c."DOC", '$.label') AS VARCHAR) = '30'""", new[] { "n", "s" }),
+            })
+            {
+                var sql = """SELECT c."id" FROM "labels" AS c WHERE """ + predicate;
+
+                await using (var connection = await OpenAsync())
+                {
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = "EXPLAIN PLAN FOR " + sql;
+                    var plan = (string?)await command.ExecuteScalarAsync() ?? "";
+
+                    plan.Should().Contain("CosmosFilter(condition=[OR(", "the alternatives should reach the service:\n" + plan);
+                }
+
+                (await QueryAsync(sql)).Should().Equal(expected, predicate);
+            }
+
+            (await QueryAsync("""SELECT p."id" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.label') AS "Label" FROM "labels" AS c) AS p WHERE p."Label" = '30'"""))
+                .Should().Equal("n", "s");
         }
 
         /// <summary>

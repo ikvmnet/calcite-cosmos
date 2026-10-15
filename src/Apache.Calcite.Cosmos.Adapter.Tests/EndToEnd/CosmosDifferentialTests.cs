@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// that have bitten: null against absent, <c>NOT</c> over both, grouping by a key some documents
     /// lack, <c>LIKE</c>'s shapes, and the aggregate forms.
     /// </remarks>
-    public class CosmosDifferentialTests : IClassFixture<CosmosDifferentialTests.Fixture>
+    public partial class CosmosDifferentialTests : IClassFixture<CosmosDifferentialTests.Fixture>
     {
 
         /// <summary>
@@ -332,13 +332,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Plans and executes a statement, with the pushdown rules or with only the way out.
         /// </summary>
-        static async Task<List<object>> Run(string sql, bool pushdown)
+        /// <param name="sql">The statement.</param>
+        /// <param name="pushdown">Whether the pushdown rules may fire.</param>
+        /// <param name="sent">Where given, collects every Cosmos statement the plan sends, so that a
+        /// report can say what was pushed and not only what came back.</param>
+        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(Products, new CosmosQueryExecutor(_container!));
-            var typed = new CosmosTable(Typed, new CosmosQueryExecutor(_typedContainer!));
-            var ordering = new CosmosTable(Ordering, new CosmosQueryExecutor(_orderingContainer!));
-            var declared = new CosmosTable(Declared, new CosmosQueryExecutor(_declaredContainer!));
+            var table = new CosmosTable(Products, Recorded(new CosmosQueryExecutor(_container!), sent));
+            var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
+            var ordering = new CosmosTable(Ordering, Recorded(new CosmosQueryExecutor(_orderingContainer!), sent));
+            var declared = new CosmosTable(Declared, Recorded(new CosmosQueryExecutor(_declaredContainer!), sent));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
@@ -436,6 +440,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Wraps an executor so that what it is asked to send is written down, or returns it as it is
+        /// where nothing is to be.
+        /// </summary>
+        static ICosmosQueryExecutor Recorded(ICosmosQueryExecutor executor, ICollection<string>? sent)
+        {
+            return sent is null ? executor : new RecordingExecutor(executor, sent);
+        }
+
+        sealed class RecordingExecutor(ICosmosQueryExecutor inner, ICollection<string> sent) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<Apache.Calcite.Extensions.Runtime.IClrCursor<System.Text.Json.JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                lock (sent)
+                    sent.Add(query.PointReadIds is { } ids ? $"ReadMany({string.Join(", ", ids)})" : query.PointReadId is string id ? $"Read({id})" : query.Sql);
+
+                return inner.OpenAsync(query, partitionKey, cancellationToken);
+            }
+
+        }
+
+        /// <summary>
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>
@@ -508,46 +534,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// What one plan of a statement did: the rows it answered, canonical and in the order they
+        /// came, or what it raised instead.
+        /// </summary>
+        readonly record struct Outcome(List<string>? Rows, Exception? Raised);
+
+        /// <summary>
+        /// Plans and executes a statement one way, and keeps a failure as an answer rather than
+        /// letting it escape.
+        /// </summary>
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null)
+        {
+            try { return new Outcome((await Run(sql, pushdown, sent)).Select(Canonical).ToList(), null); }
+            catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
+        }
+
+        /// <summary>
+        /// The functions whose argument outside their domain makes the service fail the whole
+        /// statement where Calcite answers NaN for the row — measured in
+        /// <c>CosmosQueryExecutorTests.OutOfDomainArithmeticFailsTheQuery</c>, and pushed anyway by
+        /// decision; see <c>DESIGN.md</c>. Named as SQL spells them: <c>LN</c> is the service's
+        /// <c>LOG</c>.
+        /// </summary>
+        /// <remarks>
+        /// A declared list and not a pattern: a service error is acceptable only where it was measured
+        /// and chosen, and nothing else earns the exception by resembling these.
+        /// </remarks>
+        static readonly string[] OutOfDomainFunctions = ["ASIN", "ACOS", "SQRT", "LN"];
+
+        /// <summary>
+        /// Decides whether a pushed plan's outcome refines the oracle's, and describes why not, or
+        /// returns <c>null</c> where it does. <b>The error refinement order lives here and nowhere
+        /// else</b>; see <c>DESIGN.md</c> under <em>Differential testing</em>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A Calcite error refines to anything.</b> Where the engine raises, the pushdown may answer
+        /// rows or fail in its turn. That is what licenses the <c>RETURNING</c> statement in
+        /// <see cref="WithoutAnOracle"/>: the engine asserts a type the standard says it should
+        /// convert to, and the pushed statement answers what the standard says.
+        /// </para>
+        /// <para>
+        /// <b>A failure of the pushdown is never acceptable where Calcite answers</b>, with one
+        /// exception: the service failing a statement that names one of
+        /// <see cref="OutOfDomainFunctions"/>. It must be the service's failure — a plan that cannot
+        /// be implemented, or a row the reader cannot read, is the adapter's, and is a defect whatever
+        /// the statement names.
+        /// </para>
+        /// <para>
+        /// Which side failed is part of the answer, not an incidental detail of the message: a pushdown
+        /// that throws where the oracle returns rows is a different defect from one that returns the
+        /// wrong rows, and the two were indistinguishable while both were reported as "failed to run".
+        /// </para>
+        /// </remarks>
+        static string? Refines(string sql, bool ordered, Outcome oracle, Outcome pushed)
+        {
+            if (oracle.Raised is not null)
+                return null;
+
+            if (pushed.Raised is Exception raised)
+            {
+                if (IsServiceFailure(raised) && NamesAnOutOfDomainFunction(sql))
+                    return null;
+
+                return $"{sql}\n  the pushdown failed to run: {raised.Message}\n  oracle: [{string.Join("; ", oracle.Rows!)}]";
+            }
+
+            var expected = oracle.Rows!.ToList();
+            var actual = pushed.Rows!.ToList();
+
+            if (ordered == false)
+            {
+                expected.Sort(StringComparer.Ordinal);
+                actual.Sort(StringComparer.Ordinal);
+            }
+
+            if (actual.SequenceEqual(expected))
+                return null;
+
+            return $"{sql}\n  pushed: [{string.Join("; ", actual)}]\n  oracle: [{string.Join("; ", expected)}]";
+        }
+
+        /// <summary>
+        /// Determines whether a failure is the service refusing the statement, rather than the adapter
+        /// failing to plan, implement or read it.
+        /// </summary>
+        static bool IsServiceFailure(Exception e)
+        {
+            for (var inner = e; inner is not null; inner = inner.InnerException)
+                if (inner is CosmosException)
+                    return true;
+
+            return false;
+        }
+
+        static bool NamesAnOutOfDomainFunction(string sql)
+        {
+            return OutOfDomainFunctions.Any(name => System.Text.RegularExpressions.Regex.IsMatch(sql, $@"\b{name}\s*\(", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        }
+
+        /// <summary>
         /// Runs one statement both ways and describes the difference, or returns <c>null</c> where
         /// there is none.
         /// </summary>
         /// <remarks>
-        /// Which side failed is part of the answer, not an incidental detail of the message: a pushdown
-        /// that throws where the oracle returns rows is a different defect from one that returns the
-        /// wrong rows, and the two were indistinguishable while both were reported as "failed to run".
+        /// Stricter than <see cref="Refines"/> in one respect, and deliberately: an oracle that raises
+        /// is reported here rather than accepted. Every outcome refines a Calcite error, so a corpus
+        /// statement whose oracle raises compares nothing at all, and belongs in
+        /// <see cref="WithoutAnOracle"/> with the reason rather than in a list that claims a comparison.
         /// </remarks>
         static async Task<string?> Compare(string sql, bool ordered)
         {
-            List<string> pushed;
-            List<string> oracle;
+            var oracle = await Attempt(sql, pushdown: false);
+            if (oracle.Raised is Exception e)
+                return $"{sql}\n  the oracle failed to run, so this compares nothing: {e.Message}";
 
-            try { oracle = (await Run(sql, pushdown: false)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the oracle failed to run: {e.Message}"; }
-
-            try { pushed = (await Run(sql, pushdown: true)).Select(Canonical).ToList(); }
-            catch (Exception e) when (e is not SkipException) { return $"{sql}\n  the pushdown failed to run: {e.Message}\n  oracle: [{string.Join("; ", oracle)}]"; }
-
-            if (ordered == false)
-            {
-                pushed.Sort(StringComparer.Ordinal);
-                oracle.Sort(StringComparer.Ordinal);
-            }
-
-            if (pushed.SequenceEqual(oracle))
-                return null;
-
-            return $"{sql}\n  pushed: [{string.Join("; ", pushed)}]\n  oracle: [{string.Join("; ", oracle)}]";
+            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true));
         }
 
         /// <summary>
         /// The corpus. Ordered statements compare as sequences; the rest as multisets.
         /// </summary>
         /// <remarks>
-        /// Excluded by name, with the recorded reason: out-of-domain arithmetic (<c>SQRT(-1)</c> and
-        /// kin), which is pushed deliberately and diverges deliberately — the service fails the
-        /// query where Calcite yields NaN; and integer overflow (<c>price * 100000000</c>), pushed
-        /// deliberately too — Calcite wraps, where SQL raises and the service computes the value, so
-        /// a filter keeps the true product and a projected one fails the read. See <c>DESIGN.md</c>.
+        /// Out-of-domain arithmetic (<c>SQRT(-1)</c> and kin) is pushed deliberately and diverges
+        /// deliberately — the service fails the query where Calcite yields NaN; see <c>DESIGN.md</c>.
+        /// It used to be excluded by name. It is judged now, by <see cref="Refines"/>, which accepts
+        /// exactly that failure and no other.
+        /// Integer overflow (<c>price * 100000000</c>) is left out of the corpus by name, pushed
+        /// deliberately too — Calcite wraps, where SQL raises and the service computes the value, so a
+        /// filter keeps the true product and a projected one fails the read. See <c>DESIGN.md</c>.
         /// </remarks>
         static readonly (string Sql, bool Ordered)[] Corpus =
         [
@@ -851,6 +966,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price') + 1 > 100)", false),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.price') + 1 FROM products AS c", false),
 
+            // Out of domain for three of the prices: Calcite answers NaN for those rows, and the
+            // service fails the statement. The one service failure the refinement order accepts.
+            ("SELECT SQRT(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) - 100) FROM products AS c", false),
+
             // Conjunction and disjunction mixing a known-true arm with an unknown one.
             ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 OR c.\"$.category\" = 'shoes'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50 AND c.\"$.category\" = 'shoes'", false),
@@ -1041,6 +1160,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
             ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
+
+            // The key against text a boolean renders as, whose alternative compares the key with a
+            // boolean boxed as VARIANT -- the box the number beside '30' takes too, a column having no
+            // call to re-type. Nothing here stores one, so what this checks is that the statement the
+            // box writes runs at the service and loses nothing.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", false),
 
 
             // ── The probes of the soundness review, kept ─────────────────────────────
@@ -1274,6 +1399,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846976E0", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 9007199254740991", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740992", false),
+
+            // The presence weakening through a disjunction (L), the half a CASE did not cover. A
+            // disjunction with a branch that has no weakening was weakened whole, to IS_DEFINED of every
+            // path any branch reads, and a branch is true without the others' paths. The first two are
+            // ternary logic partitioning's witnesses, the NOT φ it pushed: the converter pushes their NOT
+            // down through the connectives above the IN, and a branch NOT (… AND …) is what arrives.
+            // The third is the witness recorded beside them, the fourth the shape written directly. Then
+            // a conjunction compared as a value, which is false where one conjunct is. The last two are
+            // controls, a disjunction compared and a path both branches of an inner disjunction read,
+            // which agreed before.
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (((JSON_VALUE(c.\"DOC\", '$.tags') IN ('Road Runner', 'BIKES') OR JSON_VALUE(c.\"DOC\", '$.metadata.sku') <> 'SPRINT') AND ((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) - 3E0) = 5E0 AND (CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) || '!') > 'bikes')))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((((JSON_VALUE(c.\"DOC\", '$.name') || '!') = 'shoes' AND c.\"id\" > 'SPRINT') AND (JSON_VALUE(c.\"DOC\", '$.tags[0]') IN ('bikes', 'bikes') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) + 1E0) NOT IN (5E0, 340E0))))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((JSON_VALUE(c.\"DOC\", '$.price') <> 'SPRINT' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) < 10) AND (c.\"$.category\" IN ('Sprint!', 'none') OR (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) * 3E0) = 100E0))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Road Runner' AND (INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'X'))", false),
+
+            // The rest of the witnesses ternary logic partitioning recorded on main, each wrong there and
+            // right over the fixes: L's CASE, whose condition is unknown where price is absent; M, the
+            // null guard written over the path inside a COALESCE, which is never null; and last F
+            // through a COALESCE, the raw number compared as its rendering. Between M's three and F,
+            // the neighbours M was checked against, which agree: a typed accessor, the promoted
+            // column, a fold, a NULLIF, a coalesce of two paths, a CASE under a NOT and an ordering.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 8E0 THEN c.\"$.category\" = 'b' ELSE c.\"$.category\" = 'a' END", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.big'), 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.category'), 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.tags[0]'), 'none') = 'outdoor')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0) <> 80", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0) = 80)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(c.\"$.category\", 'none') <> 'bikes'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE UPPER(COALESCE(JSON_VALUE(c.\"DOC\", '$.category'), 'none')) <> 'BIKES'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE NULLIF(JSON_VALUE(c.\"DOC\", '$.name'), 'Exact') <> 'Null'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.metadata.sku'), JSON_VALUE(c.\"DOC\", '$.name')) <> 'Sprint'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN JSON_VALUE(c.\"DOC\", '$.name') ELSE 'z' END = 'z')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.metadata.sku'), 'none') > 'A'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.price'), 'none') = '120'", false),
+
+            // The presence weakening read through a call that answers a value over a null, on the
+            // premise that every function is null for a null. CONCAT_WS skips the absent sku, and an
+            // array holding a null is neither null nor empty, so each is true for documents with no
+            // sku, and each pushed IS_DEFINED of the paths beneath it: the first two kept none of the
+            // six they are true of, the last two one of seven.
+            ("SELECT c.\"id\" FROM products AS c WHERE CONCAT_WS('-', JSON_VALUE(c.\"DOC\", '$.name'), JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'Road Runner-B-2'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CONCAT_WS('-', JSON_VALUE(c.\"DOC\", '$.name'), JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'Road Runner-B-2')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CARDINALITY(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE ARRAY_CONTAINS(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'x'], 'x')", false),
+
+            // A path every branch of a disjunction reads, spelled two ways: the category as the
+            // promoted column and through the document. Matched by the path rather than the
+            // expression, the weakening now implies it, and the restriction it adds keeps every row.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 300 OR (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (c.\"$.category\" = 'bikes' OR JSON_VALUE(c.\"DOC\", '$.category') = 'shoes'))", false),
+
+            // A predicate read for its falsity: a negated disjunction needs every branch's paths, a
+            // doubly negated conjunction every conjunct's, a compound compared with TRUE or FALSE is the
+            // compound read either way, and a negated conjunction only what every conjunct needs to be
+            // false. Each pushed nothing before and now pushes those paths, and each keeps every row.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT ((c.\"$.category\" = 'shoes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') <> FALSE)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') = TRUE", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' OR (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A')", false),
+
+            // Negations the disjunction fix closed beyond its own witnesses, as review wrote them, each
+            // losing rows as written before bbb7a61: a disjunction with a negated conjunction for a
+            // branch under a conjunct, which pushed the price and lost the shoe without one; a
+            // conjunction cast to text, which pushed the category and the sku and kept none of three;
+            // and the partitioning witness's shape with an IN holding a function, which kept none of
+            // three.
+            ("SELECT c.\"id\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST((c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') AS VARCHAR) = 'FALSE'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" IN ('bikes', INITCAP(JSON_VALUE(c.\"DOC\", '$.name'))) OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'B-2') AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A'))", false),
         ];
 
         /// <summary>
@@ -1400,9 +1599,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Runs what cannot be compared, so that it is at least known to answer.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Weaker than the corpus by a long way, and the strongest thing available while the oracle
         /// cannot be built for these — see <see cref="WithoutAnOracle"/>. It still catches a pushdown
         /// that stops running at all.
+        /// </para>
+        /// <para>
+        /// Stricter than <see cref="Refines"/>, which accepts any outcome here, a failure included,
+        /// since Calcite raises — so requiring an answer is this list's own standard. And the oracle
+        /// is run too, because its raising is the only thing that licenses the list: a statement whose
+        /// oracle has started answering belongs in the corpus, which is how a repaired engine is
+        /// noticed, as a closed divergence is.
+        /// </para>
         /// </remarks>
         [Fact]
         public async Task EveryStatementWithoutAnOracleStillRuns()
@@ -1414,14 +1622,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             foreach (var (sql, reason) in WithoutAnOracle)
             {
-                try
-                {
-                    await Run(sql, pushdown: true);
-                }
-                catch (Exception e) when (e is not SkipException)
-                {
+                var oracle = await Attempt(sql, pushdown: false);
+                var pushed = await Attempt(sql, pushdown: true);
+
+                if (oracle.Raised is null)
+                    failures.Add($"{sql}\n  no oracle because: {reason}\n  but the oracle answered, so it belongs in the corpus: [{string.Join("; ", oracle.Rows!)}]");
+                else if (pushed.Raised is Exception e)
                     failures.Add($"{sql}\n  no oracle because: {reason}\n  and the pushdown failed to run: {e.Message}");
-                }
             }
 
             failures.Should().BeEmpty("a statement with no oracle must at least answer:\n" + string.Join("\n", failures));

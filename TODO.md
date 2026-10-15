@@ -1446,6 +1446,22 @@ old wording did not allow for.
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
+### Two weakenings over one path still share one raw value — *small, found beside the alternatives*
+
+A connection's planner simplifies every filter the split rule makes — `RelOptUtil.registerDefaultRules`
+adds `FILTER_REDUCE_EXPRESSIONS` — and Calcite's simplifier takes every literal one expression is
+compared with in a condition to be of one class. The alternatives a refused text equality pushes broke
+that inside one weakening and no longer do: their number and boolean read the accessor re-typed, or a
+literal boxed as `VARIANT` (`DESIGN.md`, beside *What a refused text equality implies*). Two weakenings
+in one filter still meet on the accessor typed `ANY`, the numeric window's bound being a `DECIMAL` and
+the text comparison's guard a string, so `CAST(JSON_VALUE(DOC, '$.label') AS INTEGER) > 10 AND
+JSON_VALUE(DOC, '$.label') > 'bikes'` fails to plan through a connection with a `ClassCastException`,
+on `main` too, and so does the same bound beside `= '30'`. Measured through the host's prepare, offline
+and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for it
+wants a connection, as `CosmosConnectionFunctionTests` opens one. The fix is the same one, the bound
+reading the value in its own type — but the bound's literal is the type `f9c159e` chose so that the
+service reads it as itself, so it wants that measurement redone rather than a re-typing done blind.
+
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
 `CosmosToClrCursorConverter` is the wire, and since #125 it costs rows times the width it
@@ -2071,6 +2087,89 @@ across documents* and *A join of a container to itself* is the record.
   either would have gone on skipping for ever. Both now measure the gap and report it, and the
   index-metrics pair already did. Any future gap belongs in that shape. *(Retained here as the rule
   rather than as a task.)*
+- **The `IS_*` family on Azure** — *small, and owed.* `CosmosJsonTypeMeasurementTests` pins what
+  `IS_PRIMITIVE`, `IS_STRING`, `IS_NUMBER`, `IS_BOOL`, `IS_NULL`, `IS_OBJECT`, `IS_ARRAY` and
+  `IS_DEFINED`, and `NOT` over each, answer over every JSON type and over an absent path. Every one
+  answers a real boolean, never undefined, and `IS_PRIMITIVE` is false over an absent path. That
+  settled the repository's two recorded answers in the translator's favour, and `DESIGN.md` was the
+  one corrected. Measured on the emulator (2026-10-15) and nowhere else. The answers are unlikely to
+  differ on Azure, but the emulator has differed before. Run the class with `COSMOS_TEST_ENDPOINT`
+  naming an account.
+- **Every emulator-only axiom, on Azure** — *small, and owed.* `Sql/CosmosAxioms.cs` records where
+  each measured fact was measured. These `Service.` rows name the emulator alone:
+  - the `IS_*` family, above;
+  - the comparisons across types, `!=` over a null, and `NOT` over undefined;
+  - the string functions and `/` over each JSON type;
+  - what `ReadManyItemsAsync` answers;
+  - out-of-domain arithmetic;
+  - the stored boolean's logic (`CosmosBooleanLogicMeasurementTests`).
+
+  Run `CosmosJsonTypeMeasurementTests`, `CosmosReadManyMeasurementTests`,
+  `CosmosBooleanLogicMeasurementTests` and `OutOfDomainArithmeticFailsTheQuery` against an account,
+  and add `Azure` to each row that passes. A row that fails there is a disagreement between the
+  targets, and the reading to encode is the conservative one. The registry is not yet read by the
+  translator; that is the step after this.
+- **Ternary logic partitioning passes over the fixes** — *done; what it found is kept below.*
+  `EveryPredicatePartitionsTheRows` (`DESIGN.md`, *Differential testing*) fails on main: 131 of
+  1,000 predicates. Over the fixes for A to K it failed two, both L, and with L closed the gate's
+  1,000 pass. Whatever fails from here is a defect, a fix missing a shape or a cause nobody has
+  named. Besides A to K it found two causes, each a wrong answer from ordinary SQL:
+  - **L: the presence weakening read a `CASE`, or a disjunction, as needing every path it reads** —
+    *fixed.* A `CASE` now observes absence, and `CollectPaths` takes only what every branch of a
+    disjunction needs, or every operand of a compound read as a value (`DESIGN.md`, *A position
+    belongs to a predicate*). The disjunction half was the last to fail over the fixes: two of the
+    1,000 predicates, each a `NOT φ` the converter had turned into a disjunction with a negated
+    compound for a branch. Those two and both witnesses below are in the differential corpus.
+    - `SELECT c."id" FROM typed AS c WHERE CASE WHEN CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE)
+      > 8E0 THEN c."$.category" = 'b' ELSE c."$.category" = 'a' END` should keep 4 and 5. It kept
+      5, having sent `WHERE (IS_DEFINED(c.price) AND IS_DEFINED(c.category))`. Document 4 has no
+      price.
+    - `SELECT c."id" FROM products AS c WHERE NOT ((JSON_VALUE(c."DOC", '$.price') <> 'SPRINT' AND
+      JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) < 10) AND (c."$.category" IN ('Sprint!',
+      'none') OR (CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) * 3E0) = 100E0))` should keep 1,
+      2, 3 and 7. It kept 1, 2 and 3, having sent `WHERE (IS_DEFINED(c.category) AND
+      IS_DEFINED(c.price))`. Document 7 has no category.
+  - **M: the null guard over a `COALESCE` named the paths inside it** — *fixed, by the guard
+    declining over an operand that observes absence (`DESIGN.md`, *A position belongs to a
+    predicate*).* `<>` was pushed as `IS_DEFINED(p) AND NOT IS_NULL(p) AND (… != @p1)`, and a
+    negated comparison gained `OR IS_NULL(p) OR NOT IS_DEFINED(p)`, both over the path the operand
+    reads. Where the operand is `COALESCE(JSON_VALUE(…), 'none')` it is never null, so the guard
+    dropped every document without the path. Rechecked over the fixes: none of the 1,000 predicates
+    fails for it, the three witnesses agree, and so do seven neighbours, a typed accessor, the
+    promoted column, a fold, a `NULLIF`, a coalesce of two paths, a `CASE` under a `NOT` and an
+    ordering. All ten are in the differential corpus.
+    - `SELECT c."id" FROM typed AS c WHERE COALESCE(JSON_VALUE(c."DOC", '$.big'), 'none') <>
+      'bikes'` should keep all nine documents, and kept 9.
+    - `SELECT c."id" FROM products AS c WHERE COALESCE(JSON_VALUE(c."DOC", '$.category'), 'none')
+      <> 'bikes'` should keep 3 to 7, and kept 3 to 5.
+    - `SELECT c."id" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c."DOC", '$.tags[0]'),
+      'none') = 'outdoor')` should keep 2 to 7, and kept nothing.
+
+  And F was wider than the case folds. `SELECT c."id" FROM products AS c WHERE
+  COALESCE(JSON_VALUE(c."DOC", '$.price'), 'none') = '120'` should keep 1, and kept nothing: the
+  `COALESCE` was compared as the raw number, the rendering test reaching only the comparison's
+  direct operands. Over the fixes it agrees, and it is in the corpus.
+
+  Review found one more of L's kind that partitioning could not: the weakening read through every
+  function as though each were null for a null, and `CONCAT_WS`, `ARRAY[…]` and `ARRAY_CONTAINS`
+  over one are not — *fixed* (`DESIGN.md`, *A position belongs to a predicate*), and the four
+  statements that lost rows are in the corpus.
+- **The partition generator's vocabulary** — *small.* Its text expressions are an accessor, a
+  column or a cast under `UPPER`, `LOWER`, `COALESCE` or `||`, and every one of those but the
+  `COALESCE` is null for a null — which is why the run never met a function that answers a value
+  over one, and review did. Drawing `CONCAT_WS`, a constructor read through `CARDINALITY` or an
+  element, and a library function or two would let it ask the question `IsNullWhereAnOperandIs`
+  answers. Each costs Calcite's evaluation of it in every statement that draws it.
+- **Where the gate's partition run belongs** — *small, and the owner's call.* Every run of the
+  differential class judges the first 200 predicates, in three to five minutes; the gate's 1,000
+  run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
+  full run belongs in a nightly job or in a gate before merging, a change to the translator or the
+  split rule above all, and which of the two is the owner's to decide. The default being its
+  prefix, either is the pull request's run carried further, and the variable is how it asks.
+- **What the partition run costs** — *medium.* Most of it is Calcite compiling the reduction of a
+  literal's cast with Janino, under IKVM, in statements the adapter plans. A host planning through a
+  connection pays the same, which makes it worth reducing for its own sake, and the cheaper it is the
+  more of the 1,000 a pull request can afford.
 - **A malformed response's failure mode** — *small.* A lookup-join stub returning raw documents
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed

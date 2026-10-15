@@ -499,7 +499,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// false, and <c>NOT undefined</c> is not true either — so neither <c>c.price &gt; 5</c> nor
         /// <c>NOT (c.price &gt; 5)</c> matches a document without a <c>price</c>, and both therefore
         /// imply the path is defined. Polarity does not come into it for a single comparison, which
-        /// was the guess and was wrong. It does come into it for a negated <em>compound</em>: see
+        /// was the guess and was wrong. It does come into it for a negated <em>conjunction</em>: see
         /// <see cref="CollectPaths"/>, where a sibling that is merely false makes the negation true
         /// and the paths on the other side imply nothing at all.
         /// </para>
@@ -528,48 +528,310 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static bool ObservesAbsence(RexNode node) => CosmosRexTranslator.ObservesAbsence(node);
 
         /// <summary>
-        /// Collects the document paths an expression reads.
+        /// What <see cref="CollectPaths"/> asks of an expression: the paths it cannot do without where
+        /// it is true, where it is false, or where it is anything but null.
+        /// </summary>
+        enum Reading
+        {
+
+            /// <summary>Where it is true: a predicate in its own position.</summary>
+            Truth,
+
+            /// <summary>Where it is false: a predicate under a <c>NOT</c>.</summary>
+            Falsity,
+
+            /// <summary>Where it is not null: an operand of anything but a connective.</summary>
+            Value,
+
+        }
+
+        /// <summary>
+        /// The reading of a predicate's operand under a <c>NOT</c>: true where it is false, false where
+        /// it is true, and null exactly where it is.
+        /// </summary>
+        static Reading Negated(Reading reading) => reading switch
+        {
+            Reading.Truth => Reading.Falsity,
+            Reading.Falsity => Reading.Truth,
+            _ => Reading.Value,
+        };
+
+        /// <summary>
+        /// Collects the document paths an expression cannot do without: those that must be defined
+        /// wherever it is true, wherever it is false, or, read as a value, wherever it is not null.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The largest sub-expression that resolves wins, so <c>c.a.b</c> is collected rather than
         /// <c>c.a</c> — the deeper path being defined is the stronger statement and is the one implied.
         /// The root is skipped: every document is defined, so <c>IS_DEFINED(c)</c> restricts nothing.
+        /// </para>
+        /// <para>
+        /// <b>An operator implies the paths of every operand only where every operand has to answer.</b>
+        /// A comparison, arithmetic and most functions answer null for a null, so each needs all of its
+        /// operands — but not every function does, and one that answers a value over a null implies
+        /// nothing: see <see cref="IsNullWhereAnOperandIs"/>, which says which may be read through. A
+        /// conjunction needs all of its conjuncts to be true. A connective whose
+        /// answer one operand can settle alone does not: a disjunction is true where one branch is,
+        /// whatever the others read, and a conjunction read as a value is false where one conjunct
+        /// is. Each of those implies only what every one of its operands implies. This used to
+        /// descend into both as though they were strict, and it was a wrong answer each way:
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description>A disjunction <see cref="TryWeakenDisjunction"/> gave up on reached here
+        /// whole. <c>price &gt; 100 OR NOT (category = 'bikes' AND INITCAP(name) = 'Sprint')</c>
+        /// pushed <c>IS_DEFINED(c.price)</c>, the negated branch contributing nothing, and lost the
+        /// shoe with no price for which that branch is true. Calcite writes the shape unasked:
+        /// <c>SqlToRelConverter</c> pushes a <c>NOT</c> down through the connectives above an
+        /// <c>IN</c>, so <c>NOT ((tags IN (…) OR sku &lt;&gt; 'SPRINT') AND (price - 3 = 5 AND
+        /// name || '!' &gt; 'bikes'))</c> arrives as a disjunction of the first operand's negation
+        /// and <c>NOT (… AND …)</c>, and pushed <c>IS_DEFINED(c.tags) AND IS_DEFINED(c.metadata.sku)</c>
+        /// against a negation true of all seven documents. Ternary logic partitioning found it
+        /// twice.</description></item>
+        /// <item><description>A compound inside a comparison is read as a value. <c>(category =
+        /// 'bikes' AND price &gt; 100) &lt;&gt; (id = '5')</c> pushed <c>IS_DEFINED</c> of all
+        /// three paths, and the shoe with no price, whose conjunction is false, was lost.</description></item>
+        /// </list>
+        /// <para>
+        /// <b>Falsity is the third reading, and it is the dual of truth.</b> A conjunction is false
+        /// where one conjunct is, so false it needs only what every conjunct needs to be false; a
+        /// disjunction is false where every branch is, so false it needs what any branch does. A
+        /// <c>NOT</c> swaps the two, and a predicate compared with <c>TRUE</c> or <c>FALSE</c> is that
+        /// predicate read for its truth or its falsity rather than as a value. Before, a negated
+        /// compound needed nothing and a compared one only what its operands needed as values, which
+        /// declined sound restrictions — measured over products, <c>price &gt; 100 OR NOT ((category =
+        /// 'shoes' OR INITCAP(sku) = 'B-2') &lt;&gt; FALSE)</c>, whose second branch is true only where
+        /// both disjuncts are false, pushed nothing, where the category and the sku are both needed.
+        /// Every reading needs at least what the value does, so this only ever adds what is sound.
+        /// </para>
+        /// <para>
+        /// A disjunction's common paths are still implied, so <c>x = 1 OR x &gt; 5</c> under a
+        /// connective keeps <c>IS_DEFINED(x)</c>; where a branch implies nothing, nor does the
+        /// disjunction.
+        /// </para>
+        /// <para>
+        /// The absence-observing operators — the null and truth tests, <c>CASE</c>, the <c>IS_*</c>
+        /// family, a <c>SEARCH</c> that decides null — are not read here at all:
+        /// <see cref="TryWeaken"/> asks <see cref="ObservesAbsence"/> of the whole expression first,
+        /// and weakens none that has one anywhere.
+        /// </para>
         /// </remarks>
-        static void CollectPaths(RexNode node, CosmosRexTranslator translator, string rootAlias, List<RexNode> paths)
+        /// <param name="node">The expression.</param>
+        /// <param name="reading">Whether it is read for its truth, its falsity or its value.</param>
+        /// <param name="translator">Resolves the paths.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <returns>The paths, each once, in the order they are first read: each as the path it
+        /// resolves to, by which two are the same, and as the first expression read at it.</returns>
+        static List<(string Path, RexNode Node)> CollectPaths(RexNode node, Reading reading, CosmosRexTranslator translator, string rootAlias)
         {
             if (translator.TryResolvePath(node, out var path) && path is not null)
             {
-                if (path.ToString() != rootAlias)
-                    paths.Add(node);
-
-                return;
+                var text = path.ToString();
+                return text == rootAlias ? new() : new() { (text, node) };
             }
 
             if (node is not RexCall call)
-                return;
-
-            // A negated compound implies nothing about the paths inside it, and this is where that
-            // has to be said. `NOT (a > 1)` does imply the path is defined -- an absent property
-            // makes the comparison undefined and `NOT undefined` is not true either, which is the
-            // measurement above. `NOT (a = 1 AND b > 1)` does not: where `a = 1` is false the
-            // conjunction is false whatever `b` does, so the negation is *true* and a document with
-            // no `b` belongs in the result. Pushing `IS_DEFINED(b)` deletes it.
-            //
-            // Measured as a wrong answer rather than reasoned into: the differential oracle caught
-            // `NOT (c.category = 'bikes' AND CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) > 50)`
-            // returning three rows where Calcite returns five.
-            //
-            // The same argument covers a disjunction under the negation, and the reasoning there is
-            // subtler rather than simpler, so both are refused together.
-            if (KindOf(call) == SqlKind.__Enum.NOT
-                && call.getOperands().size() == 1
-                && ((RexNode)call.getOperands().get(0)) is RexCall inner
-                && (KindOf(inner) == SqlKind.__Enum.AND || KindOf(inner) == SqlKind.__Enum.OR))
-                return;
+                return new();
 
             var operands = call.getOperands();
+
+            switch (KindOf(call))
+            {
+                // Every conjunct is true where the conjunction is, and every branch false where the
+                // disjunction is.
+                case SqlKind.__Enum.AND when reading == Reading.Truth:
+                case SqlKind.__Enum.OR when reading == Reading.Falsity:
+                    return Union(operands, reading, translator, rootAlias);
+
+                // One operand settles it: a branch true or a conjunct false, and read as a value,
+                // either.
+                case SqlKind.__Enum.AND:
+                case SqlKind.__Enum.OR:
+                    return Common(operands, reading, translator, rootAlias);
+
+                // A negation is true where its operand is false, and that is all a negated compound
+                // implies. `NOT (a > 1)` implies the path is defined -- an absent property makes the
+                // comparison undefined and `NOT undefined` is not true either, which is the measurement
+                // above. `NOT (a = 1 AND b > 1)` implies neither path: where `a = 1` is false the
+                // conjunction is false whatever `b` does, so the negation is *true* and a document with
+                // no `b` belongs in the result. Pushing `IS_DEFINED(b)` deletes it. A conjunction's
+                // falsity is what every conjunct's falsity needs, which here is nothing.
+                //
+                // Measured as a wrong answer rather than reasoned into: the differential oracle caught
+                // `NOT (c.category = 'bikes' AND CAST(JSON_VALUE(c."DOC", '$.price') AS DOUBLE) > 50)`
+                // returning three rows where Calcite returns five.
+                //
+                // A disjunction under the negation does need every branch, each having to be false, and
+                // its falsity says so. Read as a value the NOT is strict, and its operand is read as one
+                // too.
+                case SqlKind.__Enum.NOT when operands.size() == 1:
+                    return CollectPaths((RexNode)operands.get(0), Negated(reading), translator, rootAlias);
+
+                // A predicate compared with TRUE or FALSE is true where the predicate is, or where it is
+                // false, and null exactly where it is null -- so it is read as the predicate, for its
+                // truth or its falsity. Read as a value instead it needed only what its operands need as
+                // values, which for a compound is what every operand needs, and declined the rest.
+                case SqlKind.__Enum.EQUALS or SqlKind.__Enum.NOT_EQUALS when TryComparedWithBoolean(call, out var predicate, out var same):
+                    return CollectPaths(predicate, same ? reading : Negated(reading), translator, rootAlias);
+
+                // Anything else needs every operand, each as a value, only where it is null for a null
+                // one. One that answers a value over a null -- CONCAT_WS skipping it, an ARRAY holding
+                // it -- is true or not null with the path absent, and implies nothing.
+                default:
+                    return IsNullWhereAnOperandIs(call)
+                        ? Union(operands, Reading.Value, translator, rootAlias)
+                        : new();
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a call is null wherever one of its operands is null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The premise every path <see cref="CollectPaths"/> finds rests on.</b> An operand's path is
+        /// implied only where an absent path makes the operand null and a null operand makes the call
+        /// null, all the way up to the conjunct. A comparison, <c>LIKE</c> and arithmetic are like that.
+        /// Not every function is, and the walk used to assume they all were: measured against the
+        /// emulator over products, <c>CONCAT_WS('-', name, sku) &lt;&gt; 'Road Runner-B-2'</c> pushed
+        /// <c>IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)</c> and kept none of the six documents it
+        /// is true of, <c>CONCAT_WS</c> skipping the absent sku; and <c>CARDINALITY(ARRAY[INITCAP(sku)])
+        /// = 1</c> pushed <c>IS_DEFINED(c.metadata.sku)</c> and kept one of seven, an array holding a null
+        /// not being null. <c>ARRAY_CONTAINS(ARRAY[INITCAP(sku), 'x'], 'x')</c> did the same.
+        /// </para>
+        /// <para>
+        /// <b>So the walk descends only where this says it may, and a call it does not know implies
+        /// nothing.</b> A list of what is safe rather than of what is not, because the unknown function
+        /// is the one a library adds next, and declining a weakening loses no rows. Calcite's own answer
+        /// comes first — <see cref="Strong.Policy.ANY"/>, which the comparisons, <c>LIKE</c>, the
+        /// arithmetic, the cast, <c>NOT</c>, <c>ITEM</c>, <c>TRIM</c>, <c>FLOOR</c>, <c>CEIL</c> and
+        /// <c>EXTRACT</c> carry. An ordinary function reports <see cref="Strong.Policy.AS_IS"/>, which
+        /// says nothing either way, so the functions named below are the ones Calcite was measured to
+        /// answer null for over a path every document lacks, each read in process against the emulator.
+        /// A <c>SEARCH</c> that answers unknown over a null is the comparisons it stands for; one that
+        /// decides null observes absence and never reaches the walk. A plain accessor that addresses no
+        /// path of its own is null where the value it parses is, so <c>JSON_VALUE(JSON_VALUE(DOC,
+        /// '$.name'), '$')</c> needs the name it reads.
+        /// </para>
+        /// <para>
+        /// <see cref="CosmosSelfJoinRule"/> asks a stronger question of a key, null <em>exactly</em> where
+        /// an operand is, because a key that could be null where its inputs are not falls outside the
+        /// constraint it is proved under. This one is only the half a weakening needs, which admits an
+        /// accessor and a cast that is null for more than a null.
+        /// </para>
+        /// </remarks>
+        static bool IsNullWhereAnOperandIs(RexCall call)
+        {
+            if (Strong.policy(call) == Strong.Policy.ANY)
+                return true;
+
+            if (KindOf(call) == SqlKind.__Enum.SEARCH)
+                return call.getOperands().size() == 2
+                    && call.getOperands().get(1) is RexLiteral literal
+                    && literal.getValue() is org.apache.calcite.util.Sarg sarg
+                    && sarg.nullAs == RexUnknownAs.UNKNOWN;
+
+            if (CosmosRexTranslator.IsPlainJsonValue(call) || CosmosRexTranslator.IsPlainJsonQuery(call))
+                return true;
+
+            return call.getOperator().getName() switch
+            {
+                "||" or "UPPER" or "LOWER" or "INITCAP" or "SUBSTRING" or "CHAR_LENGTH" or "CHARACTER_LENGTH" or
+                "POSITION" or "REPLACE" or "LEFT" or "RIGHT" or "REVERSE" or "REPEAT" or
+                "MOD" or "ABS" or "ROUND" or "POWER" or "SAFE_CAST" => true,
+                _ => false,
+            };
+        }
+
+        /// <summary>
+        /// The paths any of the operands needs, which is what an operator needing all of them needs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A path is told apart by the path it resolves to, never by the expression that reads it.</b>
+        /// One path has several spellings — the promoted column <c>c."$.category"</c> and
+        /// <c>JSON_VALUE(c."DOC", '$.category')</c>, a typed accessor and a text one — and each is a
+        /// different expression with the same thing to say about the document. Told apart by the
+        /// expression, a path read two ways was implied twice here, and found in neither branch by
+        /// <see cref="Common"/>, which then declined a sound restriction. Either spelling renders the
+        /// same <c>IS_DEFINED</c>, and the first read is the one kept.
+        /// </para>
+        /// </remarks>
+        static List<(string Path, RexNode Node)> Union(java.util.List operands, Reading reading, CosmosRexTranslator translator, string rootAlias)
+        {
+            var paths = new List<(string Path, RexNode Node)>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
             for (var i = 0; i < operands.size(); i++)
-                CollectPaths((RexNode)operands.get(i), translator, rootAlias, paths);
+                foreach (var path in CollectPaths((RexNode)operands.get(i), reading, translator, rootAlias))
+                    if (seen.Add(path.Path))
+                        paths.Add(path);
+
+            return paths;
+        }
+
+        /// <summary>
+        /// The paths every one of the operands needs, which is what an operator any one of them can
+        /// settle needs.
+        /// </summary>
+        /// <remarks>
+        /// By the path, as <see cref="Union"/> says: <c>c."$.category" = 'bikes' OR
+        /// JSON_VALUE(c."DOC", '$.category') = 'shoes'</c> needs the category in both branches, and
+        /// matched by expression it needed nothing.
+        /// </remarks>
+        static List<(string Path, RexNode Node)> Common(java.util.List operands, Reading reading, CosmosRexTranslator translator, string rootAlias)
+        {
+            if (operands.size() == 0)
+                return new();
+
+            var common = CollectPaths((RexNode)operands.get(0), reading, translator, rootAlias);
+
+            for (var i = 1; i < operands.size() && common.Count > 0; i++)
+            {
+                var needed = new HashSet<string>(CollectPaths((RexNode)operands.get(i), reading, translator, rootAlias).Select(p => p.Path), StringComparer.Ordinal);
+                common = common.Where(p => needed.Contains(p.Path)).ToList();
+            }
+
+            return common;
+        }
+
+        /// <summary>
+        /// Determines whether a comparison is a predicate compared with <c>TRUE</c> or <c>FALSE</c>,
+        /// and whether it is true where that predicate is or where it is false.
+        /// </summary>
+        /// <param name="call">An <c>=</c> or a <c>&lt;&gt;</c>.</param>
+        /// <param name="predicate">The side that is not the literal.</param>
+        /// <param name="same">Whether the comparison is true where the predicate is: <c>= TRUE</c> and
+        /// <c>&lt;&gt; FALSE</c>.</param>
+        static bool TryComparedWithBoolean(RexCall call, out RexNode predicate, out bool same)
+        {
+            predicate = null!;
+            same = false;
+
+            if (call.getOperands().size() != 2)
+                return false;
+
+            var left = (RexNode)call.getOperands().get(0);
+            var right = (RexNode)call.getOperands().get(1);
+
+            java.lang.Boolean? literal;
+            if (right is RexLiteral r && r.getValue() is java.lang.Boolean onRight && left is not RexLiteral)
+            {
+                literal = onRight;
+                predicate = left;
+            }
+            else if (left is RexLiteral l && l.getValue() is java.lang.Boolean onLeft && right is not RexLiteral)
+            {
+                literal = onLeft;
+                predicate = right;
+            }
+            else
+            {
+                return false;
+            }
+
+            same = (KindOf(call) == SqlKind.__Enum.EQUALS) == literal.booleanValue();
+            return true;
         }
 
         /// <summary>
@@ -600,14 +862,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (TryTextComparisonWeakening(node, translator, rexBuilder, rootAlias) is RexNode weakened)
                 return weakened;
 
-            var paths = new List<RexNode>();
-            CollectPaths(node, translator, rootAlias, paths);
+            var paths = CollectPaths(node, Reading.Truth, translator, rootAlias);
 
             if (paths.Count == 0)
                 return null;
 
             var terms = new java.util.ArrayList();
-            foreach (var path in paths)
+            foreach (var (_, path) in paths)
                 terms.add(rexBuilder.makeCall(CosmosOperators.IsDefined, new[] { path }));
 
             return RexUtil.composeConjunction(rexBuilder, terms);
@@ -719,7 +980,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <para>
         /// The branches are written against the value with its type discarded, so that the translator
         /// renders each as the path and does not apply the test it applies to the conjunct: what is
-        /// pushed here is never evaluated by Calcite, only sent.
+        /// pushed here is never evaluated by Calcite, only sent. It is still simplified by Calcite
+        /// wherever a host reduces expressions, so the number and the boolean read the value in their
+        /// own type rather than beside the string in one — see <see cref="EqualsOtherThanText"/>.
         /// </para>
         /// </remarks>
         static RexNode? TryTextEqualityAlternatives(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
@@ -792,11 +1055,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
                 branches.add(double.IsFinite(number)
-                    ? rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
+                    ? EqualsOtherThanText(rexBuilder, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
                     : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
 
             if (text is "true" or "false")
-                branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeLiteral(text == "true")));
+                branches.add(EqualsOtherThanText(rexBuilder, value, rexBuilder.makeLiteral(text == "true")));
 
             if (scalarOnly == false && text.Length > 0 && text[0] == '[')
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsArray, new[] { value }));
@@ -805,6 +1068,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
 
             return RexUtil.composeDisjunction(rexBuilder, branches);
+        }
+
+        /// <summary>
+        /// Writes an alternative that compares the raw value with a number or a boolean, as a
+        /// comparison Calcite's own rules can read beside the one with the string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>One expression, one kind of literal.</b> Calcite's simplifier takes every literal an
+        /// expression is compared with in one condition to be of one class: it gathers the comparisons
+        /// on an expression into one range set, and it reads each branch of a disjunction under the
+        /// negation of the branches before it, and both compare the literals with each other. The
+        /// alternatives written over one raw value compared a string with a double, or with a boolean,
+        /// and the comparison threw — so <c>JSON_VALUE(DOC, '$.label') = '30'</c> and <c>= 'true'</c>
+        /// failed to plan wherever <c>FILTER_REDUCE_EXPRESSIONS</c> is registered, which a connection
+        /// does by default: Calcite's <c>RelOptUtil.registerDefaultRules</c> adds it last. The bare
+        /// planner this adapter's tests mostly use never simplified the condition, so nothing saw it.
+        /// </para>
+        /// <para>
+        /// <b>So the value is read in the type the comparison needs.</b> An accessor is re-typed to the
+        /// literal's type, which is the accessor with a <c>RETURNING</c> of that type: another
+        /// expression to the simplifier, and to the translator the typed read of the path, which a
+        /// positive equality writes as the path — <c>c.label = 30</c>, as before. Under a host that
+        /// reduces, the boolean's equality folds to the read itself and is written <c>c.label</c> or
+        /// <c>NOT c.label</c>, which the service holds true of that boolean and of nothing else.
+        /// </para>
+        /// <para>
+        /// A field has no call to re-type — a view's column bound to the accessor, or a document-value
+        /// column under a cast to text — and a cast of one to a number is the conversion the translator
+        /// refuses, rightly. Its literal is boxed as <c>VARIANT</c> instead, the box Calcite's own
+        /// coercion puts around a literal compared with a raw value: the translator writes it as the
+        /// literal, and the simplifier does not read it as one. The box costs what Calcite charges for
+        /// every comparison with a <c>VARIANT</c>: the simplifier hands the cast to the executor, which
+        /// compiles it, each time it simplifies the filter — nine compilations and between one and a
+        /// half and three seconds of planning for <c>CAST(c."$.category" AS VARCHAR) = '30'</c>,
+        /// measured through a connection. The accessor is the spelling nearly every caller writes and
+        /// costs nothing, which is why the two are not one.
+        /// </para>
+        /// </remarks>
+        /// <param name="rexBuilder">Builds the comparison.</param>
+        /// <param name="value">The raw value: an accessor typed <c>ANY</c>, or a field.</param>
+        /// <param name="literal">A number or a boolean.</param>
+        static RexNode EqualsOtherThanText(RexBuilder rexBuilder, RexNode value, RexLiteral literal)
+        {
+            var types = rexBuilder.getTypeFactory();
+
+            if (value is RexCall accessor && accessor.getOperator().getName() == "JSON_VALUE")
+                return rexBuilder.makeCall(
+                    SqlStdOperatorTable.EQUALS,
+                    rexBuilder.makeCall(types.createTypeWithNullability(literal.getType(), true), accessor.getOperator(), accessor.getOperands()),
+                    literal);
+
+            var variant = types.createSqlType(org.apache.calcite.sql.type.SqlTypeName.VARIANT);
+            return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeAbstractCast(variant, literal, false));
         }
 
         /// <summary>

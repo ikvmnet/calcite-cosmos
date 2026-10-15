@@ -1183,6 +1183,37 @@ documentation.
 > a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
 > emulator's own answer, worth telling apart from the service's when a test reports one.
 
+**Every measured fact a pushdown relies on is a row in `Sql/CosmosAxioms.cs`.** Each row has an id,
+the statement, the targets it was measured on (emulator, Azure, or Calcite's own runtime), the date,
+and the test that pins it. `CosmosAxiomsTests` requires every named test to exist, so a row cannot
+outlive its evidence. Two reasons:
+
+- **The facts were spread out, and two of them disagreed.** They sat in translator remarks, in this
+  document and in the measurement classes. `IS_PRIMITIVE` over an absent path was false in the
+  translator and undefined here, and false is what the emulator answers. The translator's comment on
+  `LOG(0)` said the service accepts it; the test beside it, then and now, says it fails the
+  statement.
+- **A wrong axiom is wrong everywhere it is consulted**, so the places should consult one list.
+
+Nothing reads the registry yet. A rendering that rests on a row should name its id beside the
+measurement it already cites, until the translator reads the rows itself. The registry is also a
+record of what was run, not of what is believed: a row measured on the emulator alone is owed on
+Azure, and `TODO.md` section 10 lists them. Where the two targets disagree, the reading to encode is
+the conservative one, a capability holding only where both accept it.
+
+Four rows say something other than what was expected when they were measured, and are worth reading
+before writing against them:
+
+- **A comparison across types is not uniformly undefined.** An ordering (`<`, `>`) across types is
+  undefined. An equality across types is *false*, and so `!=` is true, over a null as over a string
+  compared with a number. Only over an absent path is an equality undefined. That is why
+  `NOT (p = x)` keeps a null at the service and not in process.
+- **The `IS_*` family never answers undefined**, `NOT` over one included.
+- **`ReadManyItemsAsync` answers an id asked twice once.** It still answers two documents equal in
+  every value as two, and applies no `DISTINCT`.
+- **`UPPER`, `LOWER` and `CONCAT` are undefined over every non-string**, the guarded accessor
+  included. A null is undefined too, not null.
+
 **A hundred-term `IN` is served by the index.** Measured on a real account with
 `PopulateIndexMetrics`: `WHERE c.category IN (@k0, ..., @k99)` reports
 `{"UtilizedIndexes":{"SingleIndexes":[{"IndexSpec":"/category/?"}]},"PotentialIndexes":{"SingleIndexes":[]}}`
@@ -1816,6 +1847,23 @@ answers null for those and for a JSON null, so under it no such literal is ambig
 translator pushes it exactly — its literal test is the narrower one, `IsUnambiguousTextFor`. The
 branches are written against the accessor with its type discarded, which is how the translator is
 told to render the path without applying the conjunct's test to a branch that is not the conjunct.
+
+**And each branch reads the value in its own literal's type, because Calcite simplifies what it is
+never asked to evaluate.** The branches were first written over one raw value, a string beside a
+double or a boolean, and a connection could not plan them: `RelOptUtil.registerDefaultRules` adds
+`FILTER_REDUCE_EXPRESSIONS` to every connection's planner, and its simplifier takes the literals one
+expression is compared with to be of one class — it gathers them into one range set, and reads each
+branch of a disjunction under the negation of those before it. `= '30'` and `= 'true'` threw a
+`ClassCastException` there, measured through a connection against the emulator; the bare planner most
+tests use never simplified the filter. So the string branch compares the accessor typed `ANY`, and the number and
+the boolean compare it re-typed to the literal's type, which is the accessor with a `RETURNING` of
+that type and a separate expression to the simplifier. The statement is unchanged — `c.x = 30` — but
+for the boolean under a reducing host, whose equality with `TRUE` folds to the read and is written
+`c.x`, true of the stored `true` and of nothing else. A column has no call to re-type, and a cast of
+one to a number is a conversion the translator refuses, so its literal is boxed as `VARIANT` instead,
+the box Calcite's own coercion uses. That box is not free — the simplifier hands a cast of a literal
+to the executor, which compiles it every time — which is why the accessor, the spelling nearly every
+caller writes, is not boxed too.
 
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
@@ -2538,9 +2586,12 @@ SELECT VALUE { "a": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.
 ```
 
 It was written as the null test of the guarded value, three guards deep, which is right only by way of
-what the service does with a ternary whose condition is undefined — and the record has `IS_PRIMITIVE`
-over an absent path both false and undefined. Said over the path, `IS_DEFINED` answers the absent case
-before any type test is asked.
+what the service does with a ternary whose condition is undefined. Said over the path, `IS_DEFINED`
+answers the absent case before any type test is asked. The record used to have `IS_PRIMITIVE` over an
+absent path both false and undefined; measured on the emulator (`CosmosJsonTypeMeasurementTests`) the
+whole `IS_*` family answers a real boolean there, never undefined, so it is false. The rendering does
+not lean on that: one conjunct or the other catches the case either way. Azure is owed the same
+measurement; `TODO.md` section 10 records it.
 
 **Over a text accessor nothing says holds a string, the coalesce no longer pushes whole**, because its
 branch hands the value out as a text column and the service sends a number as a number — measured, the
@@ -2684,6 +2735,88 @@ IS_DEFINED(c.name)` and lost the document with no category. They are one questio
 `CosmosRexTranslator.ObservesAbsence` answers it for both: a `CASE`, `COALESCE` and `NULLIF` beside the
 null tests, the truth tests and the `IS_*` family. A comparison that needs the guard declines over an
 operand that observes absence; the positive equality needs none and is untouched.
+
+**A disjunction implies what every branch implies, and no more.** The weakening pushes `IS_DEFINED` of
+the paths a conjunct cannot do without, and the walk that finds them treated every operator as needing
+every operand. A comparison, arithmetic and most functions do, answering null for a null; a conjunction
+does where it must be true. But a disjunction is true where one branch is, whatever the others read,
+and a conjunction read as a value — compared with something — is false where one conjunct is. So
+`CosmosFilterSplitRule.CollectPaths` now unions only through the first kind, and takes what every
+operand needs through the second; a negated compound needed nothing (until the falsity reading,
+below). The disjunction reached it
+whole wherever `TryWeakenDisjunction` gave up on a branch, and Calcite writes that shape unasked:
+`SqlToRelConverter` pushes a `NOT` down through the connectives above an `IN`, so ternary logic
+partitioning's `NOT ((tags IN (…) OR sku <> 'SPRINT') AND (price - 3 = 5 AND name || '!' > 'bikes'))`
+arrived as a disjunction with a `NOT (… AND …)` branch, which has no weakening, and pushed
+`IS_DEFINED(c.tags) AND IS_DEFINED(c.metadata.sku)` against a negation true of all seven products.
+Measured against the emulator, six statements lost rows that way — the two that partitioning found,
+the one recorded beside them, `price > 100 OR NOT (category = 'bikes' AND INITCAP(name) = 'Sprint')`
+written directly, and `(category = 'bikes' AND price > 100)` compared with `(id = '5')` and with
+`FALSE` — and they are in the corpus. That ends cause L; its `CASE` half is the paragraph above.
+
+**So does a null test folded into a range.** A host running Calcite's own rules simplifies the filter
+it moves beneath a projection, and `n IS NULL OR n = 'B-2'` comes out as `SEARCH(n, Sarg['B-2'; NULL
+AS TRUE])`: true where `n` is null, as the test was, but no longer spelled as one. The split rule read
+it as a comparison and pushed `IS_DEFINED(c.metadata.sku)` under a predicate true of every product.
+`ObservesAbsence` now counts a `SEARCH` whose Sarg answers null outright, either way; one that answers
+unknown, which is what an `IN` builds, is still the comparisons it stands for. The translator expands a
+`SEARCH` before writing it, so only the weakening ever saw the folded form, and only under a host's
+rules — `CosmosPlannerTests.ANullTestFoldedIntoASearchIsNotWeakened` is the witness, the differential
+harness registering none of them.
+
+**And a function is read through only where it is null for a null.** The walk descended into every
+operator but the connectives, on the premise that a function answers null for a null, and some answer a
+value instead. Measured against the emulator over `products`: `CONCAT_WS('-', name, sku) <> 'Road
+Runner-B-2'` pushed `IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)` and kept none of the six
+documents it is true of, `CONCAT_WS` skipping the absent sku; `CARDINALITY(ARRAY[INITCAP(sku)]) = 1`
+pushed `IS_DEFINED(c.metadata.sku)` and kept one of seven, an array holding a null not being null; and
+`ARRAY_CONTAINS(ARRAY[INITCAP(sku), 'x'], 'x')` did the same. The question was older than the
+disjunction and the negation: none of these has either. `CosmosFilterSplitRule.IsNullWhereAnOperandIs`
+now says which calls may be read through, and a call it does not know implies nothing — a list of what
+is safe rather than of what is not, since the function a library adds next is the one nobody listed,
+and declining a weakening keeps every row. It is Calcite's `Strong.Policy.ANY` (the comparisons,
+`LIKE`, arithmetic, the cast, `NOT`, `ITEM`), a `SEARCH` that answers unknown over a null, a plain
+accessor, and the string and numeric functions measured to answer null over a path no document has:
+`||`, `UPPER`, `LOWER`, `INITCAP`, `SUBSTRING`, `CHAR_LENGTH`, `POSITION`, `REPLACE`, `LEFT`, `RIGHT`,
+`REVERSE`, `REPEAT`, `MOD`, `ABS`, `ROUND`, `POWER` and `SAFE_CAST`. The self-join rule's
+`IsNullExactlyWhereAnOperandIs` is the stronger question, null *exactly* where an operand is, and stays
+its own. The guard a comparison takes rests on the same premise and still asks `ObservesAbsence`, the
+list of what is not safe; it is written only over what the translator writes, and the translator
+declines `CONCAT_WS`, the constructors and `ARRAY_CONTAINS` alike. Across the differential corpus, the
+planner corpus and the gate's 1,000 predicates in all three partitions, planned before and after, the
+weakening changed for those statements alone.
+
+**What every branch needs is matched by path, not by spelling.** One path has several spellings — the
+promoted column `c."$.category"` and `JSON_VALUE(c."DOC", '$.category')`, a typed accessor and a text
+one — and the walk told paths apart by expression, so a disjunction reading the category one way in each
+branch needed it in neither: `price > 300 OR (INITCAP(name) <> 'Zzz' AND (c."$.category" = 'bikes' OR
+JSON_VALUE(c."DOC", '$.category') = 'shoes'))` pushed `(c.price > @p0) OR IS_DEFINED(c.name)`. Sound, and
+less than it could. The walk now keys each path on what it resolves to and keeps the first expression
+read there, which renders the same `IS_DEFINED`; the statement pushes the category too, and agrees.
+Two *conjuncts* weakened to one path through different spellings still push it twice — one of the
+gate's predicates sends `IS_DEFINED(c.price) AND IS_DEFINED(c.price)` — which is harmless and is left:
+what is already below is recognised by expression, and dropping a weakening for matching another
+spelling is a change to the guard against pushing one under itself for ever (#210), not to this walk.
+
+**A predicate is read for its truth, its falsity or its value.** The walk had two readings, the paths a
+predicate needs to be true and those it needs to be anything but null, and two shapes fell between
+them. A negated compound needed nothing at all, because `NOT (a AND b)` is true where `a` alone is
+false. And a compound compared with a boolean literal was read as a value, which for a compound is
+what every operand needs. Both were sound and both declined restrictions that hold: measured over
+`products`, `price > 100 OR NOT ((category = 'shoes' OR INITCAP(sku) = 'B-2') <> FALSE)`, whose second
+branch is true only where both disjuncts are false, pushed nothing where the category and the sku are
+each needed. The third reading is falsity, the dual of truth: a conjunction is false where one conjunct
+is, so false it needs what every conjunct needs to be false; a disjunction is false where every branch
+is, so false it needs what any branch does. A `NOT` swaps truth and falsity and keeps a value a value,
+and `x = TRUE` and `x <> FALSE` are `x` while `x = FALSE` and `x <> TRUE` are `NOT x`, read either way.
+`NOT (a AND b)` still needs nothing, `a` false and `b` false having nothing in common, so the witnesses
+above stand. Every reading needs at least what the value reading does — a predicate that is true or
+false is not null — so the change only adds: `NOT (a OR b)` now needs both, `NOT NOT (a AND b)` both,
+and `(a AND b) = TRUE` both. The refusal of `NOT (a OR b)`, which the comment beside it admitted cost
+a weakening and never a row, goes with it. Planned before and after, 62 of the partition run's
+statements and 3 of the corpus's push more than they did and none less — what any of them pushed
+before is still there, with `IS_DEFINED` terms beside it — and the gate's 1,000 predicates pass over
+the change, as does the corpus with a statement for each shape.
 
 #### A predicate's value is not its truth
 
@@ -3971,6 +4104,7 @@ src/
       CosmosQueryBuilder.cs           ✔ Statement assembly and language-constraint enforcement
       CosmosRexTranslator.cs          ✔ RexNode → Cosmos scalar expression
       CosmosTranslationException.cs   ✔ Refusal signal
+      CosmosAxioms.cs                 ✔ The measured facts a pushdown relies on, each with its test
     Internal/
       BigDecimalConverter.cs          ✔ Lossless BigDecimal → decimal
   Apache.Calcite.Cosmos.Adapter.Tests/
@@ -4596,6 +4730,33 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   the corpus rather than sit there looking settled. Nothing belongs there as a decision. A statement
   with no oracle at all — the array traversal, whose unpushed form has no implementation in the
   CLR convention — is listed separately with the reason, and is at least required to run.
+- **Decision, and the owner's to confirm: the error refinement order.** A comparison needs to know
+  what a pushed plan may do where one side raises, and the adapter had answered that three ways
+  without saying so. #162 treated rows where Calcite raises as a defect, and withdrew the temporal
+  rewrites that produced them. The `RETURNING` statement under `WithoutAnOracle` keeps the opposite:
+  the pushed statement answers where the engine throws, deliberately. And `SQRT(-1)` is pushed
+  although the service fails the statement where Calcite answers NaN, so the corpus left it out by
+  name. The rule adopted:
+
+  - **A Calcite error refines to anything.** Where the engine raises, a pushdown may answer rows,
+    or fail in its turn.
+  - **A failure of the pushdown is never acceptable where Calcite answers,** except the service
+    failing a statement that names a declared out-of-domain function: `ASIN`, `ACOS`, `SQRT` and
+    `LN`, the four measured by `OutOfDomainArithmeticFailsTheQuery`. A plan that cannot be
+    implemented, or a row the reader refuses, is the adapter's failure and never excepted.
+
+  `CosmosDifferentialTests.Refines` applies it, and nothing else in the harness decides it. The
+  corpus is stricter on one side, on purpose. A corpus statement whose oracle raises compares
+  nothing, so it is reported and belongs in `WithoutAnOracle`. That list in turn requires its oracle
+  still to raise, so a repaired engine moves the statement back.
+
+  **What it costs.** The order permits what #162 forbade, so the differential can no longer see a
+  regression of #162. That guard is held by `CalciteTemporalReadingMeasurementTests`, which pins the
+  table `CosmosTemporalForms.EngineReads` is, and by the rewriter's own tests, not by the oracle. The
+  code may always be stricter than the order: #162 is a choice of fidelity, and the order only says
+  what a comparison accepts. If the
+  owner wants rows where Calcite raises to remain a defect, the first bullet becomes "a Calcite
+  error refines only to an error", and the `RETURNING` statement becomes a recorded divergence.
 - **The corpus leans into the semantics that have bitten**: null against absent, `NOT` over both,
   grouping by a key some documents lack, `LIKE`'s shapes, and the aggregate forms. It needs the
   emulator and reports inconclusive without one, like every test that needs a service.
@@ -4635,6 +4796,84 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   `RETURNING BIGINT`, and controls that still push. Ten answered differently before; a statement
   Calcite raises on whatever the data, `RETURNING DECIMAL(19, 18) = 50`, has no oracle and is pinned by
   planner tests instead.
+- **And it is grown by generation: ternary logic partitioning.** The written corpus recorded no
+  divergence while ordinary statements one step from it answered wrong rows, so predicates are now
+  drawn as well. `EveryPredicatePartitionsTheRows` draws 1,000 from a fixed seed over `typed` and
+  `products` — the first 200 of them unless the gate is asked for, as below — from the shapes the
+  adapter pushes:
+  - comparisons over accessors, promoted columns and casts;
+  - the null tests and the truth tests;
+  - `NOT`, `AND`, `OR`, `CASE` and `COALESCE`;
+  - `LIKE`, `IN`, the case folds and concatenation;
+  - `RETURNING` and arithmetic.
+
+  For each φ it pushes `WHERE φ`, `WHERE NOT φ` and `WHERE φ IS NULL` and requires two things. The
+  three must partition the container by id, each row once, which is SQL's three-valued logic and
+  needs no oracle. And each must be the partition Calcite computes, read in process as the
+  predicate's value per row. Both are judged by `Refines`, so a predicate Calcite raises over is not
+  judged. A failure is narrowed to the smallest operand that still fails, and the report lists those
+  witnesses, not the predicates.
+
+  **On main it fails, and is left failing until the root-cause fixes merge.** Over the adapter at
+  `4b65754`, 131 of the 1,000 fail and none goes unjudged. Classified by the smallest witness, a
+  predicate counted under each cause it shows:
+
+  | Cause | Predicates |
+  | --- | --- |
+  | D: `IS NULL` over a boolean expression | 64 |
+  | F: a case fold or a concatenation over the accessor of a number or a boolean | 39 |
+  | **M, new:** the null guard over a `COALESCE` | 17 |
+  | **L, new:** the presence weakening through a `CASE` or a disjunction | 12 |
+  | B: the negated comparison over the accessor of an object or an array | 8 |
+  | A: `IS NULL` or `COALESCE` over the accessor of an object or an array | 8 |
+  | C: the negation leaking into an `IS NULL` operand | 1 |
+
+  G does not appear: the literals rarely meet a quotient Calcite truncates. H to K are about point
+  reads, lookups and `DISTINCT`, which a predicate never reaches. F reaches further than the case
+  folds: `COALESCE(JSON_VALUE(…), 'none') = '120'` compares the raw number too, because the
+  rendering test reaches only the comparison's direct operands. M closed with the guard declining over
+  an operand that observes absence, and no predicate fails for it over the fixes; `TODO.md` section
+  10 keeps its witnesses, and they are in the corpus with its neighbours. L closed in two halves, a
+  `CASE` and then a disjunction, each under *A position belongs to a predicate*: the second was the
+  last of the 1,000 to fail over the fixes, two predicates whose `NOT φ` arrived as a disjunction with
+  a negated compound for a branch.
+
+  **What it costs, and why.** On a workstation that other work held at full load throughout, two runs
+  on main took 17.5 and 23.5 minutes. That was 16 to 21 minutes judging the 4,403 statements, and
+  about 1.5 narrowing the failures; a passing run skips the narrowing. Both runs found the same 131.
+  The median statement took about 100 ms, and the tail is the cost.
+  - **Most of a slow statement is Calcite reducing a literal's cast by compiling it.** `RexSimplify`
+    hands the cast to `RexExecutorImpl`, which compiles it with Janino, and under IKVM each compile
+    looks classes up by throwing. In a profile of the slowest statements that was 37% of the CPU.
+  - **A constant compared with a `DOUBLE` is spelled as one** (`50E0`), and that halved a
+    100-predicate sample. A comparison with a `VARIANT` column has no literal spelling and still
+    pays.
+  - **Batching the oracle made it worse.** Twenty-five predicates projected in one statement took
+    95–164 s each, against a median of 50 ms apart.
+  - **Four statements at a time was no faster than one** on the loaded machine.
+
+  Whether that fits the CI budget is the owner's call: the whole suite took 12.5 minutes on main.
+
+  **So the run has two sizes, and they are one sequence.** Every run of the class judges the first
+  200 predicates; `COSMOS_PARTITION_GATE=1` judges all 1,000, which is Stage 0's gate, and any other
+  value, or none, is the default. The seed does not change with the size and the generator draws in
+  order, so the default is a prefix of the gate, not a sample of its own: a predicate failing in one
+  fails in the other, as the same statement, and the full run only asks more.
+  The size was measured against two things:
+  - **What it would have found.** Of the 129 distinct predicates that failed on main, the first 200
+    hold 20, and they show every cause the 1,000 did except two: C, which one predicate showed, at
+    553, and L's disjunction half, whose first witness is predicate 281. The corpus holds written
+    statements for both. The first 150 hold 15 and miss L altogether, its first witness being
+    predicate 178.
+  - **What it costs.** Against the emulator, on a workstation running other work, the default judged
+    its 200 in 276 s and the class took 8.1 minutes; the gate judged its 1,000 in 983 s and the class
+    took 19.3, and an earlier gate run over the fixes judged for 1,278 s. Inside that 983 s the same
+    200 took 182 s. The tail decides it, single statements of 30 to 46 s, so a run's time moves by
+    a third with the machine, and a fifth of the predicates costs a fifth to a quarter of the
+    time.
+
+  Over the fixes for A to K and both halves of L, the gate's 1,000 pass: 973 distinct, one
+  not judged because Calcite raised, none failing, 3,880 statements run.
 
 ---
 
