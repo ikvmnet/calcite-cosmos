@@ -274,6 +274,169 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// <c>RETURNING DECIMAL</c> is the exception to <see cref="ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt"/>: it
+        /// parses the value's rendering as a <c>BigDecimal</c>, trimmed, so a stored string of digits answers its number,
+        /// and only what does not parse raises. And it is typed <c>DECIMAL(19, 0)</c>, so a literal it is compared with is
+        /// cast to scale zero while the value keeps its fraction: <c>= 2.5</c> is false of a stored 2.5.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Measured first where the predicate oracle's checker found it, on <c>feature/predicate-oracle-checker</c> in
+        /// 5730e87 ("Read RETURNING DECIMAL as the parse of a rendering it is"): the oracle read the clause as asserting
+        /// a number, and established that a row a comparison through it keeps holds one, which a stored <c>"30"</c> is a
+        /// counterexample to; and that a row <c>= 2.5</c> keeps holds 2.5, which none does. Brought here unchanged.
+        /// </para>
+        /// <para>
+        /// <b>The adapter read it the same way, twice.</b> The translator wrote the accessor as the path, so <c>= 2</c>
+        /// pushed as <c>c.body = 2</c> and lost every document storing <c>"2"</c>; and the fact extractor took the
+        /// equality to say the path holds the number 2, which over a path declared a string was a contradiction the
+        /// rewriter answered with <c>FALSE</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ReturningDecimalParsesTheRendering()
+        {
+            Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "a string of digits is parsed");
+            Ask($"JSON_VALUE({Document("\" 30 \"")}, '$.v' RETURNING DECIMAL)").Value.Should().Be("30", "trimmed");
+
+            foreach (var json in new[] { "30", "30.0", "2.5", "\"2.5\"" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().BeNull($"{json} parses");
+
+            foreach (var json in new[] { "true", "\"x\"", "\"\"" })
+                Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().NotBeNull($"{json} does not");
+
+            Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING DECIMAL)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
+                answer => answer.Value == null && answer.Threw == null, "an object is no scalar, and answers null");
+
+            // The value keeps its fraction, and a literal compared with it is cast to the type's scale, which is zero.
+            string Compared(string json, string comparison) =>
+                Ask($"CASE WHEN JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL) {comparison} THEN 'T' ELSE 'F' END").Value!;
+
+            Compared("2.5", "= 2.5").Should().Be("F", "2.5 is compared as the literal cast to DECIMAL(19, 0)");
+            Compared("2.4", "< 2.5").Should().Be("F");
+            Compared("2.4", "> 2").Should().Be("T", "and the stored value is not cast");
+            Compared("30.0", "= 30").Should().Be("T");
+        }
+
+        /// <summary>
+        /// What each numeric and boolean <c>RETURNING</c> does with a string, and with a number of a type other than its
+        /// own: every one but <c>DECIMAL</c> casts the value the reader built to one Java class and raises on anything
+        /// else, and <c>DECIMAL</c> parses.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The class is the JSON reader's, not the document's type.</b> A whole number within an <c>int</c> arrives as
+        /// an <c>Integer</c>, a larger one as a <c>Long</c>, and one written with a point or an exponent as a
+        /// <c>Double</c> — so <c>BIGINT</c> answers only a whole number past an <c>INTEGER</c>'s range and raises on a
+        /// stored 30, <c>DOUBLE</c> and <c>FLOAT</c> answer <c>30.0</c> and raise on 30, and <c>SMALLINT</c>,
+        /// <c>TINYINT</c> and <c>REAL</c>, whose classes the reader never builds, raise on every scalar there is. A
+        /// string raises under all of them, a string spelling the type included, and so does a boolean under every one
+        /// but <c>BOOLEAN</c>. <c>NULL ON ERROR</c> catches none of it (#81, ikvmnet/calcite-dotnet#120).
+        /// </para>
+        /// <para>
+        /// <b>So "<c>RETURNING</c> asserts" holds of all of them but one</b>, which is what the adapter rests on where it
+        /// writes a typed accessor as the path: a row Calcite answers a value for holds that type at the path, and a
+        /// document holding anything else fails the statement, which the pushed type test excludes instead.
+        /// <c>DECIMAL</c>, at every precision and scale, parses the trimmed text of a string and converts a number of
+        /// either class, raising only where the text is no number; a boolean's rendering is not one.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EachNumericOrBooleanReturningAssertsItsClassButDecimal()
+        {
+            // The JSON values, and the Java class the reader builds for each.
+            var integer = "30";             // Integer
+            var large = "2147483648";       // Long
+            var fraction = "30.0";          // Double
+            var digits = "\"30\"";          // String, spelling a number
+            var spaced = "\" 30 \"";
+            var spelled = "\"true\"";       // String, spelling a boolean
+            var boolean = "true";           // Boolean
+
+            string? Answer(string type, string json)
+            {
+                var answer = Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING {type})");
+                return answer.Threw is null ? answer.Value ?? "null" : null;
+            }
+
+            // What answers, by type; everything else raises.
+            var answers = new (string Type, string[] Answered)[]
+            {
+                ("INTEGER", [integer]),
+                ("BIGINT", [large]),
+                ("SMALLINT", []),
+                ("TINYINT", []),
+                ("DOUBLE", [fraction]),
+                ("FLOAT", [fraction]),
+                ("REAL", []),
+                ("BOOLEAN", [boolean]),
+                ("DECIMAL", [integer, large, fraction, digits, spaced]),
+                ("DECIMAL(10, 2)", [integer, large, fraction, digits, spaced]),
+                ("DECIMAL(5, 1)", [integer, large, fraction, digits, spaced]),
+            };
+
+            foreach (var (type, answered) in answers)
+                foreach (var json in new[] { integer, large, fraction, digits, spaced, spelled, boolean })
+                {
+                    if (Array.IndexOf(answered, json) >= 0)
+                        Answer(type, json).Should().NotBeNull($"RETURNING {type} answers {json}");
+                    else
+                        Answer(type, json).Should().BeNull($"RETURNING {type} raises on {json}");
+                }
+
+            Answer("DECIMAL", digits).Should().Be("30", "the string is parsed as the number it spells");
+            Answer("DECIMAL", spaced).Should().Be("30", "after trimming");
+            Answer("DECIMAL(5, 1)", large).Should().Be("2147483648", "and the declared precision is not applied");
+
+            Ask($"JSON_VALUE({Document("\"x\"")}, '$.v' RETURNING DECIMAL NULL ON ERROR)").Threw.Should().NotBeNull(
+                "the parse failing is not the error ON ERROR governs");
+            Ask($"JSON_VALUE({Document("\"30\"")}, '$.v' RETURNING INTEGER NULL ON ERROR)").Threw.Should().NotBeNull(
+                "and neither is the assertion");
+        }
+
+        /// <summary>
+        /// <c>RETURNING DECIMAL</c> is not the service's value even where the path holds a number: a stored fraction is
+        /// the double's exact binary expansion, and the literal it is compared with is truncated toward zero to the
+        /// comparison's scale.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The reader holds a fraction as a <c>Double</c>, and the clause converts that double exactly rather than its
+        /// rendering: a stored <c>0.1</c> is <c>0.1000000000000000055511151231257827…</c>, so under
+        /// <c>RETURNING DECIMAL(10, 1)</c> it is not equal to <c>0.1</c> and is greater than it, where the service's
+        /// doubles are equal. A stored <c>"0.1"</c> parses to 0.1 exactly. Neither is cast to the declared scale:
+        /// <c>"2.255"</c> under <c>DECIMAL(10, 2)</c> equals <c>2.255</c>.
+        /// </para>
+        /// <para>
+        /// The literal is cast to the comparison's type, and against the default <c>DECIMAL(19, 0)</c> that truncates
+        /// it toward zero: <c>= 2.5</c> keeps a stored 2, <c>= -2.5</c> a stored -2 and not -3, and <c>= 0.9</c> a stored
+        /// 0. It moves by less than one, which is what lets a comparison through the clause push the window
+        /// <c>CosmosNumericWindow</c> states for a cast to a number.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ReturningDecimalReadsAStoredFractionExactlyAndTruncatesItsLiteral()
+        {
+            string Compared(string json, string type, string comparison) =>
+                Ask($"CASE WHEN JSON_VALUE({Document(json)}, '$.v' RETURNING {type}) {comparison} THEN 'T' ELSE 'F' END").Value!;
+
+            Compared("0.1", "DECIMAL(10, 1)", "= 0.1").Should().Be("F", "the stored double is not 0.1");
+            Compared("0.1", "DECIMAL(10, 1)", "> 0.1").Should().Be("T", "it is a little more");
+            Compared("\"0.1\"", "DECIMAL(10, 1)", "= 0.1").Should().Be("T", "where the string parses to 0.1 exactly");
+            Compared("0.5", "DECIMAL(10, 1)", "= 0.5").Should().Be("T", "and a double that is exact is exact");
+            Compared("\"2.255\"", "DECIMAL(10, 2)", "= 2.255").Should().Be("T", "the value is not cast to the declared scale");
+
+            Compared("2", "DECIMAL", "= 2.5").Should().Be("T", "2.5 is truncated to 2");
+            Compared("1", "DECIMAL", "= 1.5").Should().Be("T", "and 1.5 to 1, so it is truncation and not rounding to even");
+            Compared("-2", "DECIMAL", "= -2.5").Should().Be("T", "toward zero");
+            Compared("-3", "DECIMAL", "= -2.5").Should().Be("F");
+            Compared("0", "DECIMAL", "= 0.9").Should().Be("T");
+            Compared("-0.9", "DECIMAL", "= 0.9").Should().Be("F", "the value is not truncated");
+
+            Ask($"JSON_VALUE({Document("0.1")}, '$.v' RETURNING DECIMAL)").Value.Should().StartWith("0.1000000000000000055", "projected, the expansion is the value");
+        }
+
+        /// <summary>
         /// An array <c>RETURNING</c> never answers an array. <b>This too is a defect</b>, and the
         /// adapter implements the construct rather than reproducing it.
         /// </summary>
