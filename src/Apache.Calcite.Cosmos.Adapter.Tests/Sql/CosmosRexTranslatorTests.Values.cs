@@ -97,6 +97,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, Cast(label, SqlTypeName.VARCHAR, 3), Str("bik"))).Should().BeFalse();
         }
 
+        /// <remarks>
+        /// <para>
+        /// Calcite boxes the other side of a comparison with a <c>VARIANT</c>, and the box carries the value unchanged,
+        /// so a rendering inside one is still a rendering. Asked of the box, the equality saw none: measured over the
+        /// typed container, <c>label = CAST('30' AS VARIANT)</c> pushed as <c>c.label = '30'</c> and lost the stored
+        /// number 30, which Calcite renders and keeps. Against unambiguous text it is exact, box or no box.
+        /// </para>
+        /// <para>
+        /// The box hid the reading from <c>IS NULL</c> the same way, which tested the path's null set alone and lost
+        /// the array and the object.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AVariantBoxIsSeenThroughToTheRendering()
+        {
+            var label = Text("$.label", Ref(2, SqlTypeName.VARCHAR));
+
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.EQUALS, Variant(label), Variant(Str("30")))).Should().BeFalse();
+            CanTranslate(Translator(), Call(SqlStdOperatorTable.LESS_THAN, Variant(label), Variant(Str("x")))).Should().BeFalse();
+
+            Translate(Call(SqlStdOperatorTable.EQUALS, Variant(label), Variant(Str("bikes"))))
+                .Should().Be("(c.label = @p0)");
+
+            Translate(Call(SqlStdOperatorTable.IS_NULL, Variant(label)))
+                .Should().Be("(NOT IS_DEFINED(c.label) OR IS_NULL(c.label) OR NOT IS_PRIMITIVE(c.label))");
+        }
+
     }
 
 }

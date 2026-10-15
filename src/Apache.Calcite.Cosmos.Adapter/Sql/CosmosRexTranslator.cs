@@ -707,9 +707,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 case SqlKind.__Enum.CAST:
                 case SqlKind.__Enum.SAFE_CAST:
-                    // A marker says what it reads; any other cast either converts, which WriteCast
-                    // refuses, or asserts what is already so and hands its operand on unchanged.
-                    if (IsRawValueMarker(call) || call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT || TryStoredBoolean(call) is not null)
+                    // A marker says what it reads, and so does a cast a stored boolean proves. Any other
+                    // cast hands its operand on to whatever encloses it, to be judged there: one that
+                    // converts is refused by WriteCast, and one that boxes, asserts or renders hands
+                    // the value through. That includes the box Calcite's coercion puts around a side
+                    // of a comparison with a VARIANT, which the comparison sees through to the
+                    // rendering underneath (WriteComparand), and the cast to text an equality drops,
+                    // which is the rendering itself and declares no width (TryTextCastValue).
+                    if (IsRawValueMarker(call) || TryStoredBoolean(call) is not null)
                         return true;
 
                     return permitted;
@@ -1861,6 +1866,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// under it, exactly as they read the bare literal an <c>ANY</c>-typed column left uncoerced.
         /// Only the single-operand cast whose sole effect is the <c>VARIANT</c> retyping; anything else
         /// is returned unchanged.
+        /// <para>
+        /// The validator boxes the accessor too, where the promoted column is the other side, and the
+        /// box hides nothing about what is inside it: a rendering boxed is a rendering. So the
+        /// comparison, <c>LIKE</c> and the null test ask their questions beneath it — see
+        /// <see cref="WriteComparand"/>.
+        /// </para>
         /// </remarks>
         internal static RexNode StripVariantCoercion(RexNode node)
         {
@@ -3282,23 +3293,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryUuidParameter(left) is org.apache.calcite.rex.RexDynamicParam uuidOnLeft && TryWriteStoredUuidParameter(builder, right, uuidOnLeft, Reverse(op)))
                 return;
 
+            // What each side is beneath the box Calcite's coercion puts around it where the other side
+            // is a VARIANT. The box carries the value unchanged, and WriteCast writes it as the value
+            // underneath -- so a rendering inside one is still a rendering, and the tests below are
+            // asked of it. Asked of the box, they saw no rendering: measured over the typed container,
+            // `label = CAST('30' AS VARIANT)` pushed as `c.label = '30'` and lost the stored number 30,
+            // which Calcite renders as '30' and keeps. Which is also the shape of an accessor compared
+            // with a promoted column, the validator boxing the accessor.
+            var leftValue = StripVariantCoercion(left);
+            var rightValue = StripVariantCoercion(right);
+
             if (KindOf(call) == SqlKind.__Enum.EQUALS)
             {
                 if (TryTextCastOperand(left, right) is RexNode unwrappedLeft)
                     left = unwrappedLeft;
                 else if (TryTextCastOperand(right, left) is RexNode unwrappedRight)
                     right = unwrappedRight;
-                else if ((IsTextRendering(left) && IsUnambiguousTextEquality(left, right) == false
-                    || IsTextRendering(right) && IsUnambiguousTextEquality(right, left) == false)
+                else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
+                    || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
                     // Unless the container itself says the path holds a string and nothing else, in
                     // which case the rendering *is* the stored value and the comparand need not be
                     // inspected at all -- which is what lets a parameter through.
-                    && (IsDeclaredStringOutright(left) || IsDeclaredStringOutright(right)) == false)
+                    && (IsDeclaredStringOutright(leftValue) || IsDeclaredStringOutright(rightValue)) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
-                && (IsTextRendering(left) && IsCharacter(right) || IsTextRendering(right) && IsCharacter(left))
-                && (IsDeclaredString(left) || IsDeclaredString(right)) == false)
+                && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
+                && (IsDeclaredString(leftValue) || IsDeclaredString(rightValue)) == false)
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,
@@ -3510,6 +3531,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var name = node.getType()?.getSqlTypeName();
             return name == SqlTypeName.VARCHAR || name == SqlTypeName.CHAR;
+        }
+
+        /// <summary>
+        /// Determines whether the other side of an ordering comparison with a rendering makes it a
+        /// comparison Calcite decides by the rendering's text.
+        /// </summary>
+        /// <remarks>
+        /// Text, as <see cref="IsCharacter"/> says; and a document value, typed <c>VARIANT</c> or
+        /// <c>ANY</c>, which the validator compares a rendering with by boxing the rendering — the
+        /// text in the box, where the service has the raw value at the path. A number is neither, for
+        /// the reason <see cref="IsCharacter"/> gives.
+        /// </remarks>
+        static bool IsTextComparand(RexNode node)
+        {
+            return IsCharacter(node) || IsDocumentValueType(node.getType()?.getSqlTypeName());
         }
 
         /// <summary>
@@ -3886,7 +3922,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             RequireOperandCount(call, 1);
 
-            var value = Operand(call, 0);
+            // Beneath the VARIANT box, which is null exactly where what it boxes is, and which hid the
+            // accessor's reading from the test: measured over the typed container,
+            // `CAST(label AS VARIANT) IS NULL` was written over the path's null set alone and lost
+            // the array and the object, which JSON_VALUE answers null for.
+            var value = StripVariantCoercion(Operand(call, 0));
 
             if (TryResolvePath(value, out var path) && path is not null)
             {
@@ -3976,7 +4016,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // pattern where the value is a string. Through a case fold as well: `UPPER(label)` is
             // `30` in Calcite, having folded the rendering, and undefined at the service, so
             // `UPPER(label) LIKE '3%'` has the same gap and takes the same guard.
-            if (IsTextRendering(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsTextRendering(folded))
+            //
+            // And through the coercions the subject is unwrapped from before it is written. A
+            // rendering boxed as a VARIANT and cast back to text is the same rendering, and
+            // StripTextCoercion then WriteCast's VARIANT branch took it down to the bare path:
+            // measured, `CAST(CAST(label AS VARIANT) AS VARCHAR) LIKE '3%'` pushed as
+            // STARTSWITH(c.label, '3') and lost the stored 30.
+            if (IsRenderingBeneathCoercion(subject) || TryCaseFoldOperand(subject, out _) is RexNode folded && IsRenderingBeneathCoercion(folded))
                 throw new CosmosTranslationException("LIKE over JSON_VALUE read as text matches a rendering, and the service's string functions are undefined over a value that is not a string.");
 
             if (Operand(call, 1) is not RexLiteral patternLiteral || GetLiteralValue(patternLiteral) is not string pattern)
@@ -4005,6 +4051,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             WriteBinary(builder, StripTextCoercion(Operand(call, 0)), Operand(call, 1), "LIKE");
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a rendering, or one boxed as a <c>VARIANT</c> and cast
+        /// back to text — the two coercions a string operator's subject is unwrapped from before it is
+        /// written.
+        /// </summary>
+        bool IsRenderingBeneathCoercion(RexNode node)
+        {
+            return IsTextRendering(node) || IsTextRendering(StripVariantCoercion(StripTextCoercion(node)));
         }
 
         /// <summary>

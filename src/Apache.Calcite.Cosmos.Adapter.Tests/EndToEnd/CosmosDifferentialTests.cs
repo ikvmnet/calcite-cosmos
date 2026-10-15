@@ -926,6 +926,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(2)) = 'Ex'", false),                       // W4
             ("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR(3)) = 'bik' AND c.\"id\" = '1'", false),
 
+            // A rendering inside the box Calcite's coercion puts around a side compared with a VARIANT (E7),
+            // which the comparison, LIKE and IS NULL each looked at instead of the rendering. The fourth is
+            // the control: against unambiguous text the box changes nothing, and the equality pushes.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = CAST('30' AS VARIANT)", false),                         // E7
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARIANT) AS VARCHAR) LIKE '3%'", false),    // W5
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARIANT) IS NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = CAST('bikes' AS VARIANT)", false),
+
         ];
 
         /// <summary>

@@ -2381,6 +2381,16 @@ every form above `IS_DEFINED`, which was measured, decides the absent case first
 …` is true and `IS_DEFINED(p) AND …` false whatever follows, so a type test is only ever asked of a
 value that is there.
 
+**A box is not a reading, and the box is seen through.** Calcite's coercion puts a `CAST(… AS VARIANT)`
+around a side compared with a `VARIANT` — a literal, or the accessor where a promoted column is the
+other side — and the box carries the value unchanged. `WriteCast` writes the value underneath, and the
+comparison, `LIKE` and the null test each asked their question of the box: measured over `typed`,
+`label = CAST('30' AS VARIANT)` pushed as `c.label = '30'` and lost the stored number 30, which Calcite
+renders as `'30'` and keeps; `CAST(CAST(label AS VARIANT) AS VARCHAR) LIKE '3%'` pushed as
+`STARTSWITH(c.label, '3')` and lost it too; and `CAST(label AS VARIANT) IS NULL` tested the path's null
+set and lost the array and the object. Each now asks of what is in the box, through
+`StripVariantCoercion`. Against unambiguous text the box changes nothing, and the equality pushes.
+
 #### A position belongs to a predicate
 
 The translator tracks whether an odd number of `NOT`s encloses what it writes, because a comparison
