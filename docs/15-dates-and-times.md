@@ -157,8 +157,9 @@ A view column written this way filters, sorts and pages at the service over a de
 ## 15.5 Instants stored as numbers
 
 A property holding epoch milliseconds is read with `JSON_VALUE(… RETURNING TIMESTAMP)` and compares
-exactly at the service. Epoch seconds is a number like any other: read it with `RETURNING BIGINT` and
-compare numbers.
+exactly at the service. Epoch seconds is a number like any other: read it with `RETURNING INTEGER` and
+compare numbers. Not `RETURNING BIGINT`, which Calcite answers only for a number past an `INTEGER`'s
+range and fails on today's epoch seconds wherever it runs in process (Chapter 7).
 
 ## 15.6 Why your container may not have a fixed shape
 

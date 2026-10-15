@@ -170,9 +170,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <para>
         /// Into the same shapes <c>CosmosRexTranslator.GetLiteralValue</c> produces, so that a value
         /// arriving late is indistinguishable from one written into the statement: every integer width
-        /// as a <c>long</c>, every approximate one as a <c>double</c>. A parameter that bound
+        /// as a <c>long</c>, every approximate one as a <c>double</c>, and an exact one as
+        /// <see cref="CosmosRexTranslator.TryGetExactNumberValue"/> sends it — a decimal, or a long
+        /// where the decimal's double would be another whole number. A parameter that bound
         /// differently from a literal of the same type would be a second convention for the same
-        /// thing, and the service would be the one to notice.
+        /// thing, and the service would be the one to notice. One no value serves fails the
+        /// execution, the plan having been made to send it, where the literal is declined.
         /// </para>
         /// <para>
         /// <b>A geography is the one type whose constant form need not be a bound value</b>, so the
@@ -206,7 +209,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 java.lang.Long l => l.longValue(),
                 java.lang.Float f => (double)f.floatValue(),
                 java.lang.Double d => d.doubleValue(),
-                java.math.BigDecimal d => BigDecimalConverter.ToDecimal(d),
+                java.math.BigDecimal d => CosmosRexTranslator.TryGetExactNumberValue(d)
+                    ?? throw new CosmosExecutionException($"Parameter {value.VariableName} is the number {d}, which no value the service can be sent compares there as."),
                 java.lang.Boolean b => b.booleanValue(),
                 org.locationtech.jts.geom.Geometry g => CosmosJson.ToGeoJsonValue(g),
                 var other => other,

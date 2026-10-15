@@ -156,7 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container);
 
             for (var i = 0; i < projects.size(); i++)
-                if (translator.TryTranslate((RexNode)projects.get(i), out _) == false)
+                if (translator.TryTranslateValue((RexNode)projects.get(i), out _) == false)
                     return null;
 
             try

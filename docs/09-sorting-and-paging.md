@@ -105,7 +105,8 @@ be mapped to a document path"*. So:
   `id`, `_ts` and `_etag` always; `JSON_VALUE(…)` read as text where the schema declares the path a
   string, and `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that
   type (both below). A date or a time read by `RETURNING` needs its stored form declared instead
-  (Chapter 15).
+  (Chapter 15). Not `RETURNING DECIMAL` under any declaration: it parses a stored string, and so
+  orders `"10"` after `"9"` where the service orders the strings (Chapter 7).
 - **The promoted partition key column cannot be a sort key.** It is `VARIANT` (Chapter 7), and Calcite
   has no order for `VARIANT` values. Sort on `JSON_VALUE(c."DOC", '$.category')` instead, which pushes
   where the schema declares `category` a string.

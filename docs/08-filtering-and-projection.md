@@ -38,9 +38,10 @@ is sent, and the disjunction is rechecked in process.
 | --- | --- |
 | `=`, `<>`, `<`, `<=`, `>`, `>=` | the same operators (`<>` as `!=`) — subject to 8.3 |
 | `AND`, `OR`, `NOT` | the same, with guards that keep SQL's three-valued logic (8.4) |
-| `+`, `-`, `*`, `/`, `%`, unary `-` | the same |
-| `x IS NULL` | `(NOT IS_DEFINED(x) OR IS_NULL(x))` |
-| `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))` |
+| `+`, `-`, `*`, `%`, unary `-` | the same |
+| `/` | the same, where Calcite computes the quotient as a `DOUBLE`; an integer or `DECIMAL` division runs in process |
+| `x IS NULL` | `(NOT IS_DEFINED(x) OR IS_NULL(x))`, and over an accessor whatever else it reads as null (8.4) |
+| `x IS NOT NULL` | `(IS_DEFINED(x) AND NOT IS_NULL(x))`, likewise |
 | `x IN (a, b, c)`, `x BETWEEN a AND b` | equivalent comparisons — measured to cost exactly what the native forms cost |
 | `x LIKE 'abc%'` | `STARTSWITH(x, 'abc')` |
 | `x LIKE '%abc%'`, other patterns | Cosmos `LIKE` |
@@ -109,6 +110,22 @@ does all the work; the recheck is cheap. **If the container declares that the pa
 (Chapter 14), there is no second type to disagree about, the comparison is sent exactly, and nothing
 is rechecked — which also lets a row limit travel with it.
 
+**A function over `JSON_VALUE` runs in process unless the path is declared a string.** `UPPER`,
+`LOWER`, `||`, `CHAR_LENGTH`, `SUBSTRING` and the rest read the *text*, so `UPPER(JSON_VALUE(…))` is
+`'TRUE'` for a stored boolean and `'30'` for a stored number. The service's string functions are
+undefined over a number or a boolean, so the two would disagree for exactly those documents. The same
+goes for a `CASE` or `COALESCE` that passes the value on. The property itself is still extracted at
+the service, and only the function runs in process:
+
+```sql
+WHERE UPPER(JSON_VALUE(c."DOC", '$.status')) = 'OPEN'
+→ Cosmos:     … WHERE IS_DEFINED(c.status)
+  In process: UPPER(status) = 'OPEN'
+```
+
+Declaring the path a string (Chapter 14) sends the whole comparison: `WHERE (UPPER(c.status) = @p0)`.
+`UPPER(…) LIKE '%ABC%'` keeps its own rewrite (8.2), restricted to the strings and rechecked.
+
 ### `RETURNING`: exact
 
 A comparison through a typed accessor compares the stored value directly, and is exact:
@@ -118,7 +135,9 @@ WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > 1000
 → WHERE (c.price > @p0)
 ```
 
-This is the spelling to use for numbers that are stored as numbers.
+This is the spelling to use for numbers that are stored as numbers. **Except `RETURNING DECIMAL`**,
+which parses a stored string — `"2"` is 2 to it (Chapter 7) — and is handled as the cast to a number
+below: a bound is sent, and the comparison rechecked in process.
 
 ### `CAST` to text: exact
 
@@ -126,22 +145,48 @@ This is the spelling to use for numbers that are stored as numbers.
 string `'text'` when no other JSON value renders as that text — so the cast is dropped and the
 equality sent. This is what keeps a view's text columns filterable.
 
+Only a `VARCHAR` with no length. `CAST(x AS VARCHAR(3))` truncates and `CHAR(8)` pads, so
+`CAST(x AS VARCHAR(3)) = 'bik'` is true of a stored `'bikes'` and is evaluated in process; the service
+is sent only what it implies. The same holds for routing: a sized cast over the partition key does not
+route (8.5).
+
 ### `CAST` to a number: a bound, then a recheck
 
-`CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, `30.7` becomes
-30 — and the service cannot reproduce a conversion. But the comparison still *implies* something the
-service can check: every document it keeps has a raw value above 9. So the adapter sends that bound
-and rechecks the cast in process:
+`CAST(JSON_VALUE(c."DOC", '$.price') AS INTEGER) > 10` converts — `"30"` becomes 30, and `30.7`,
+whose text is no integer, fails the statement (cast to `DOUBLE` to read it) — and the service cannot
+reproduce a conversion. But the comparison still *implies* something the service can check: every
+document it keeps has a raw value above 9. So the adapter sends that bound and rechecks the cast in
+process:
 
 ```
 → WHERE IS_DEFINED(c.price) AND (NOT IS_NUMBER(c.price) OR c.price > 9)
 ```
 
 Non-numbers pass through to the recheck, because Calcite converts a stored `"30"` too. For a property
-that really holds numbers, the service does nearly all the filtering. The bound is applied for casts
-to `INTEGER`, `BIGINT` and `DOUBLE`. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and `REAL`
-(which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
-evaluated in process only.
+that really holds numbers, the service does nearly all the filtering — and where the container
+declares the property an integer (Chapter 14), the type test is dropped and it does all of it. The
+bound is applied for casts to `INTEGER`, `BIGINT` and `DOUBLE`, and for `RETURNING DECIMAL`, which is
+the same conversion written as a clause. Casts to `SMALLINT` and `TINYINT` (which wrap), `FLOAT` and
+`REAL` (which round further than a unit) and `DECIMAL` (which can raise) state no usable bound and are
+evaluated in process only. So is a cast to `DOUBLE` compared with a number beyond 2^52
+(4,503,599,627,370,496), where a double no longer holds a unit: `= 2^60` is true of a stored
+2^60 + 1.
+
+`RETURNING DECIMAL` sends the bound where Calcite compares the literal at the clause's type, which
+under plain `DECIMAL` it always does, truncating the literal to a whole number. Where the literal's
+type is the wider — `RETURNING DECIMAL(10, 2) = 2.255`, or `RETURNING DECIMAL(5, 1) = 12345`, an
+`INTEGER` literal — Calcite casts the value up instead, and the comparison runs in process whole.
+Where the clause cannot hold the literal — `RETURNING DECIMAL(19, 18) = 50` — Calcite raises on every
+row, and so does the statement.
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = 2
+→ WHERE IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body > 1 AND c.body < 3))
+  In process: the comparison, which keeps "2", " 2 " and "2.0"
+```
+
+A declaration that the property is a string does not make that comparison false: the clause reads the
+string.
 
 If the values are numbers in the documents, prefer `RETURNING` to `CAST`: it is exact.
 
@@ -160,15 +205,55 @@ the statement means what SQL means, in either polarity. `NOT (x = 1 AND y = 2)` 
 is null and `y` is not 2, exactly as SQL does. You do not need to write anything for this; it is
 mentioned so that the guards in a generated statement are not a surprise.
 
+**Null means what the accessor reads as null.** `JSON_VALUE` is null for an object or an array as well
+as for a missing property and a JSON null, `JSON_QUERY` is null for anything that is not an object or
+an array, and a `RETURNING INTEGER` accessor is null for anything that is not a number. So `IS NULL`,
+`IS NOT NULL` and the guard under a `NOT` carry the accessor's own test:
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.metadata') IS NOT NULL
+→ WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_PRIMITIVE(c.metadata))
+
+WHERE NOT (JSON_VALUE(c."DOC", '$.label') = 'bikes')
+→ WHERE (NOT ((c.label = @p0) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label) OR NOT IS_PRIMITIVE(c.label)))
+```
+
+A `CASE` condition is evaluated as SQL selects an arm, whatever `NOT` encloses the `CASE`.
+
+Two shapes in a `WHERE` have no guard that would make them right, and run in process instead.
+`IS NULL` over a comparison — `(x <> 'a') IS NULL`, or `COALESCE(x <> 'a', FALSE)`, which expands to
+one — asks where the comparison is unknown, and the service has no unknown to find. And a comparison
+under a `NOT`, or an inequality, over a `CASE` or `COALESCE` — `NOT (COALESCE(x, 'none') = 'a')` —
+would be guarded on `x`, which the `COALESCE` does not follow into null. In a `WHERE`, a comparison
+over one that needs no guard, such as a plain equality, is sent as before.
+
+**A comparison whose value is read, rather than its truth, runs in process where it can be null.** The
+guards above make a comparison true or false exactly where SQL's is — and false where SQL's is
+unknown, which a `WHERE` treats the same. A selected column, a grouping key and the operand of another
+comparison do not:
+
+```sql
+SELECT c."id", c."$.category" = 'bikes' AS "isBike" FROM "products" AS c
+→ Cosmos:     SELECT VALUE { "$f0": c.id, "$f1": @p0, "$f2": c.category } FROM products c
+  In process: $f2 = $f1   -- null where category is null or missing, as SQL says
+
+WHERE (c."$.category" <> 'bikes') = FALSE
+→ Cosmos:     WHERE IS_DEFINED(c.category)   -- then rechecked in process
+```
+
+A comparison that cannot be null — over `id` or `_ts`, say — is still sent, and so is a `CASE`
+condition, which selects an arm by its truth alone.
+
 `IS TRUE`, `IS FALSE`, `IS NOT TRUE` and `IS NOT FALSE` reach the service over a boolean column —
 `CAST(JSON_VALUE(…) AS BOOLEAN)` — where the container's schema says the path holds a boolean
 (Chapter 14). The cast is then the stored value: `WHERE "Offline"` becomes `WHERE c.offline`,
 `"Offline" IS TRUE` becomes `c.offline = true`, and `IS NOT TRUE` keeps a document with no `offline`
-at all, as SQL does. Without the declaration the cast parses text — `"TRUE"` is true to Calcite and a
-string to Cosmos — and the test stays in process. Over anything else the truth tests, and
-`IS DISTINCT FROM`, are evaluated in process: reproducing their null semantics over a property that
-may be *absent* needs Cosmos behaviour that has not been measured, and a wrong answer is worse than a
-declined one.
+at all, as SQL does. Selected rather than filtered on, `IS TRUE` is sent in the form that is false for a
+missing `offline`, since a column, unlike a `WHERE`, would read the service's *undefined* as null.
+Without the declaration the cast parses text — `"TRUE"` is true to Calcite and a string to Cosmos —
+and the test stays in process. Over anything else the truth tests, and `IS DISTINCT FROM`, are
+evaluated in process: reproducing their null semantics over a property that may be *absent* needs
+Cosmos behaviour that has not been measured, and a wrong answer is worse than a declined one.
 
 ## 8.5 Partition routing and point reads
 
@@ -237,7 +322,7 @@ A select list becomes a Cosmos object constructor, and the service returns only 
 ```sql
 SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name", JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) * 2 AS "double"
 FROM "products" AS c
-→ SELECT VALUE { "id": c.id, "name": (IS_PRIMITIVE(c.name) ? c.name : null), "double": (c.price * @p0) } FROM products c
+→ SELECT VALUE { "id": c.id, "name": (IS_PRIMITIVE(c.name) ? c.name : null), "double": ((IS_NUMBER(c.price) ? c.price : null) * @p0) } FROM products c
 ```
 
 Selecting only what you need matters more here than in a relational database. A Cosmos document
@@ -255,6 +340,16 @@ process — the document is not shipped to supply one value.
 `JSON_QUERY`, a declared UUID or a stored geography is sent as the plain property and converted as it
 is read, by the same code Calcite would have used in process. The result is identical and the
 projection still pushes.
+
+**A function over `JSON_VALUE`, or a `COALESCE` or `CASE` passing one out, is computed in process
+unless the path is declared a string** (8.3). The property is still extracted at the service and
+rendered as text on the way back, so the document is not shipped:
+
+```sql
+SELECT UPPER(JSON_VALUE(c."DOC", '$.name')) AS "name" FROM "products" AS c
+→ Cosmos:     SELECT VALUE { "$f0": (IS_PRIMITIVE(c.name) ? c.name : null) } FROM products c
+  In process: UPPER($f0)
+```
 
 **A projection that would read as nothing is declined while planning.** A column of a SQL type the
 reader has no conversion for — an `INTERVAL`, an unsigned integer, a time with a time zone — is never
@@ -285,6 +380,14 @@ A parameter is sent as a Cosmos parameter, exactly as a literal of the same type
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
 prepared statement serves every page.
 
+**A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
+as a double, and keeps a stored integer exact. So a whole number beyond 2^53
+(9,007,199,254,740,992) that a double does not hold — `1152921504606846977` — is sent as a 64-bit
+integer, which compares exactly; sent with a point, it would match the document holding
+`1152921504606846976` instead. A number no value Cosmos reads is — a fraction a hair from a whole number,
+`2.9999999999999999`, which a double reads as 3 — is compared in process if it is a literal, and fails
+the statement if it is a parameter's value.
+
 **A parameter compared with `JSON_VALUE` is sent in its weakened form.** Whether a text comparison
 can be exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and a parameter's value
 is not known when the statement is planned. So the comparison is sent as `NOT IS_STRING(…) OR …` and
@@ -309,8 +412,18 @@ documents it has to read.
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with brackets, `ESCAPE` or a computed pattern | Cosmos reads `[…]` differently |
-| `CAST` to a sized or numeric type in a projection | it converts, and the service would not |
+| `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
+| `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the bound a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
+| a number literal a double reads as another whole number, `2.9999999999999999` | Cosmos reads it as a double, 3, and no value it can be sent is the number (8.7) |
 | `IS TRUE`, `IS FALSE` over anything but a declared boolean; `IS DISTINCT FROM` | null-versus-absent behaviour not measured |
+| a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
+| an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
+| `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
+| a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
+| `GROUP BY` or `DISTINCT` over `JSON_VALUE`, where the path is not declared a string | Calcite groups the text, the service the value — `30` and `"30"` are one group or two (Chapter 10) |
+| `JSON_VALUE` or `JSON_QUERY` over the result of `JSON_VALUE` | Calcite parses the text as a document; the service has the value |
+| `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
+| a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |
 | an array literal, `ARRAY['x', 'y']` | not rendered yet — so functions taking one stay in process too |
 | a relational join, `UNION`, `INTERSECT`, `EXCEPT` | no Cosmos equivalent (Chapter 12) |
@@ -319,6 +432,13 @@ documents it has to read.
 **Out-of-domain arithmetic fails the whole statement.** `SQRT(-1)`, `ASIN(2)` and `ACOS(2)` make Cosmos
 reject the query, where Calcite would produce `NaN` for that row. They are pushed anyway, consistently
 with how `SQRT` always has been; if your data can produce such inputs, guard them in the query.
+
+**Integer overflow is computed, not wrapped.** Cosmos does arithmetic in doubles, so
+`price * 100000000` is the true product. Calcite's `INTEGER` arithmetic wraps where SQL would raise,
+so the two disagree once a result passes about two billion: a filter keeps the rows the true product
+satisfies, and a selected product fails the statement, not being an `INTEGER`. If your data can get
+there, make an operand a `DOUBLE` — `CAST(100000000 AS DOUBLE)`. Reading the value `RETURNING BIGINT`
+pushes the same way, but in process it fails for every value within an `INTEGER`'s range (Chapter 7).
 
 ---
 

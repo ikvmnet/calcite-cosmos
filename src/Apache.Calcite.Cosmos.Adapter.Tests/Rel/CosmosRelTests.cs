@@ -138,6 +138,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             new(_cluster, Traits(), input, org.apache.calcite.util.ImmutableBitSet.range(input.getRowType().getFieldCount()), null, new java.util.ArrayList());
 
         /// <summary>
+        /// <c>JSON_VALUE(&lt;doc&gt;, '$.a' RETURNING INTEGER)</c>, a key a <c>DISTINCT</c> may group at the
+        /// service whatever the container declares.
+        /// </summary>
+        /// <remarks>
+        /// Not the text accessor, which groups its rendering in SQL and the value at the service: the
+        /// node refuses to group it over a path not declared a string, as the rule does — see
+        /// <see cref="CosmosAggregate.GroupsAsTheColumnReads"/>.
+        /// </remarks>
+        RexNode TypedDoc(string path) => _rex.makeCall(
+            _cluster.getTypeFactory().createTypeWithNullability(_cluster.getTypeFactory().createSqlType(SqlTypeName.INTEGER), true),
+            SqlStdOperatorTable.JSON_VALUE,
+            Nodes(Ref(0), Str("$." + path)));
+
+        /// <summary>
         /// A <c>DISTINCT</c> of a path some documents lack binds nothing, at the rule as in the node.
         /// </summary>
         /// <remarks>
@@ -152,7 +166,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         [Fact]
         public void ADistinctOfAPathSomeDocumentsLackBindsNothing()
         {
-            var distinct = DistinctOver(ProjectOver(Scan(), new[] { ("p", Doc("price")) }));
+            var distinct = DistinctOver(ProjectOver(Scan(), new[] { ("p", TypedDoc("price")) }));
 
             CosmosImplementor.TryBindOutput(distinct, out var fields, out _).Should().BeTrue();
             fields.Should().Equal(new CosmosPath?[] { null });
@@ -186,7 +200,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             BindsNoMoreThanItsImplementation(ProjectOver(Scan(), new[] { ("id", Ref(1)), ("p", Doc("price")), ("n", _rex.makeCall(SqlStdOperatorTable.PLUS, Ref(2), Num(1))) }));
             BindsNoMoreThanItsImplementation(new CosmosFilter(_cluster, Traits(), Scan(), _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(4), Str("bikes"))));
             BindsNoMoreThanItsImplementation(SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING))));
-            BindsNoMoreThanItsImplementation(DistinctOver(ProjectOver(Scan(), new[] { ("id", Ref(1)), ("p", Doc("price")) })));
+            BindsNoMoreThanItsImplementation(DistinctOver(ProjectOver(Scan(), new[] { ("id", Ref(1)), ("p", TypedDoc("price")) })));
             BindsNoMoreThanItsImplementation(SortOver(DistinctOver(ProjectOver(Scan(), new[] { ("ts", Ref(2)) })), Collation((0, RelFieldCollation.Direction.ASCENDING))));
             BindsNoMoreThanItsImplementation(ProjectOver(UnnestOver(Scan(), MapItem("tags")), new[] { ("id", Ref(1)), ("p", Doc("price")) }));
         }

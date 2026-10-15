@@ -97,13 +97,17 @@ A comparison over `JSON_VALUE` is normally sent weakened — `NOT IS_STRING(c.ca
 @p0` — and rechecked, because the service orders values across JSON types where SQL compares their
 text (Chapter 8). Where the schema says the path holds a string, there is no second type to disagree
 over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can travel with it. A
-`type` declaration earns its keep on its own.
+`type` declaration earns its keep on its own. It also lets a string function over the path push —
+`UPPER(JSON_VALUE(c."DOC", '$.carrier'))`, a concatenation, a length, a `COALESCE` — in a filter and in
+a projection, which over an undeclared path run in process, the accessor reading a stored number as
+text.
 
 The same declaration is what lets the text column be **sorted, grouped or joined on at the service**.
 Each of those acts on the stored value in the column's place — `ORDER BY c.carrier`, `GROUP BY` the
 path, a lookup restricting `c.carrier IN (…)` — and the stored value is the column's text only where
-nothing but a string can be there. Without the declaration the sort and the grouping run in process
-and the join reads the container whole (Chapters 9, 10 and 12).
+nothing but a string can be there: a stored `30` and `"30"` are one value as text and two at the
+service. Without the declaration the sort and the grouping run in process and the join reads the
+container whole (Chapters 9, 10 and 12).
 
 A sort on a typed column needs its declaration as well. `JSON_VALUE(… RETURNING INTEGER)` is null where
 the path holds an object, an array or a string, and the service sorts those after every number rather

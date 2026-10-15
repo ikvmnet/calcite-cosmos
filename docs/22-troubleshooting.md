@@ -82,10 +82,9 @@ identical so pooling shares one, or own the data source. Chapter 6.
 
 **`CosmosMaterializationException: Expected a JSON string, got Number` (or similar).**
 A document holds something the query's type cannot hold — `RETURNING INTEGER` over a property that is
-sometimes `30.7`, `RETURNING DECIMAL` over one that is sometimes a string, `VARCHAR ARRAY` over an
-array of numbers. Fix the declaration or the data; the adapter refuses rather than coerces. (A
-property that is sometimes a string or an object under `RETURNING INTEGER` reads null instead.)
-Chapter 7.
+sometimes `30.7`, `VARCHAR ARRAY` over an array of numbers. Fix the declaration or the data; the
+adapter refuses rather than coerces. (A property that is sometimes a string or an object under
+`RETURNING INTEGER` reads null instead.) Chapter 7.
 
 **`CosmosMaterializationException: A value read as a UUID is not one`.**
 A document contradicts a declared UUID form. The schema is wrong for this container, or a writer wrote

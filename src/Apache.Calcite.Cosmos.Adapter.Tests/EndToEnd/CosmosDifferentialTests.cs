@@ -95,14 +95,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// integer and a boolean, and holds arrays and objects at paths that declare nothing.
         /// </summary>
         /// <remarks>
-        /// Declared, where the other two declare nothing, because a declaration is what a text sort key
-        /// and a typed one need before the service may order them — and the other two must go on
-        /// answering as a container that says nothing does.
+        /// Declared, where <c>products</c> and <c>typed</c> declare nothing, because a declaration is
+        /// what a text sort key and a typed one need before the service may order them — and those two
+        /// must go on answering as a container that says nothing does.
         /// </remarks>
         static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
                 { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" }, "k": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }
                 """)));
+
+        /// <summary>
+        /// A fourth container, declaring what a filter concludes from: <c>body</c> is a string and <c>n</c> an
+        /// integer, and every document keeps to that.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>products</c> and <c>typed</c> declare nothing, and <c>ordering</c> declares what a sort asks, so nothing
+        /// else in the corpus asked what a declaration lets a filter conclude, and a conclusion the clause does not
+        /// license is a wrong answer only a declared container shows: over this one, <c>JSON_VALUE(… RETURNING
+        /// DECIMAL) = 2</c> was rewritten to <c>FALSE</c>, the equality read as the path holding the number 2 and the
+        /// declaration saying it holds a string.
+        /// </para>
+        /// <para>
+        /// The documents keep the declaration on purpose, unlike <c>typed</c>'s: a fact is the caller's word, and a
+        /// container that broke it would test the word rather than the reasoning. So every <c>body</c> is a string, and
+        /// most spell a number in a different way — <c>"2"</c>, <c>" 2 "</c>, <c>"2.0"</c> — which is what a parsing
+        /// <c>RETURNING</c> reads alike. None fails to parse, which would make the oracle raise.
+        /// </para>
+        /// <para>
+        /// <c>v</c> is an integer too, and holds the four that tell a double from the number: 2^53, 2^53 + 1, 2^60 and
+        /// 2^60 + 1. The service keeps each as the integer it is, and reads a number it is sent with a point as a
+        /// double, which holds the first and third and not the others; a whole unit is nothing to a double there, and
+        /// a bound loosened by one comes back as the number it was loosened from. Every one lies beyond an
+        /// <c>INTEGER</c>'s range, so <c>RETURNING BIGINT</c> answers each rather than raising.
+        /// </para>
+        /// </remarks>
+        static readonly CosmosContainerMetadata Declared = new CosmosContainerMetadata("declared", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }""")!));
 
         /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
@@ -179,10 +209,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"\uFFFD","category":"o","s":"\uFFFD","u":"\uFFFD"}""",
         ];
 
+        /// <summary>
+        /// The documents the declared container holds: a string at <c>body</c> in all but one, which lacks it, an
+        /// integer at <c>n</c>, and in the first four an integer at <c>v</c> a double does not always hold.
+        /// </summary>
+        static readonly string[] DeclaredDocuments =
+        [
+            """{"id":"1","category":"a","body":"2","n":1,"v":9007199254740992}""",
+            """{"id":"2","category":"a","body":" 2 ","n":2,"v":9007199254740993}""",
+            """{"id":"3","category":"a","body":"3","n":3,"v":1152921504606846976}""",
+            """{"id":"4","category":"a","body":"2.0","n":2,"v":1152921504606846977}""",
+            """{"id":"5","category":"b","body":"2.5","n":5}""",
+            """{"id":"6","category":"b"}""",
+        ];
+
         static CosmosClient? _client;
         static Container? _container;
         static Container? _typedContainer;
         static Container? _orderingContainer;
+        static Container? _declaredContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -210,6 +255,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _container = await Seed(database, "products", Documents, cts.Token);
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
                 _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
+                _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
 
                 _client = client;
             }
@@ -221,6 +267,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _container = null;
                 _typedContainer = null;
                 _orderingContainer = null;
+                _declaredContainer = null;
             }
         }
 
@@ -257,6 +304,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _container = null;
             _typedContainer = null;
             _orderingContainer = null;
+            _declaredContainer = null;
         }
 
         sealed class TestDataContext : DataContext
@@ -290,11 +338,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var table = new CosmosTable(Products, new CosmosQueryExecutor(_container!));
             var typed = new CosmosTable(Typed, new CosmosQueryExecutor(_typedContainer!));
             var ordering = new CosmosTable(Ordering, new CosmosQueryExecutor(_orderingContainer!));
+            var declared = new CosmosTable(Declared, new CosmosQueryExecutor(_declaredContainer!));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
             rootSchema.add("typed", typed);
             rootSchema.add("ordering", ordering);
+            rootSchema.add("declared", declared);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -327,7 +377,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention })
+            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention })
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -495,7 +545,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// Excluded by name, with the recorded reason: out-of-domain arithmetic (<c>SQRT(-1)</c> and
         /// kin), which is pushed deliberately and diverges deliberately — the service fails the
-        /// query where Calcite yields NaN; see <c>DESIGN.md</c>.
+        /// query where Calcite yields NaN; and integer overflow (<c>price * 100000000</c>), pushed
+        /// deliberately too — Calcite wraps, where SQL raises and the service computes the value, so
+        /// a filter keeps the true product and a projected one fails the read. See <c>DESIGN.md</c>.
         /// </remarks>
         static readonly (string Sql, bool Ordered)[] Corpus =
         [
@@ -989,6 +1041,239 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'b'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
             ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
+
+
+            // ── The probes of the soundness review, kept ─────────────────────────────
+            //
+            // Each was run once against the emulator and answered differently pushed, or agreed and is
+            // kept as the control beside one that did not. Named P1 to P27 as the review named them, so
+            // that a statement here can be traced to the root cause it was found under.
+
+            // The accessor's null set (A). JSON_VALUE is null for an object and an array as well as for
+            // an absent path and a JSON null, and IS NULL over it tested the path's null set alone:
+            // products' metadata is an object, and typed's label holds one document per JSON type.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL", false),                                  // P1
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL AND c.\"$.category\" = 'bikes'", false),   // P19
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') IS NOT NULL", false),                                        // P2
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') IS NULL", false),                                            // P3
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') IS NULL)", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE p.\"Label\" IS NOT NULL", false), // P25
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') = 'none'", false),                         // P26
+            ("SELECT c.\"id\", CASE WHEN JSON_VALUE(c.\"DOC\", '$.label') IS NULL THEN 'missing' ELSE 'present' END FROM typed AS c", false),   // P27, the projection, which agreed
+
+            // The same for the other readings: JSON_QUERY is null for every scalar, and a typed
+            // RETURNING for an object -- found beside the probes, the same test applied to them.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_QUERY(c.\"DOC\", '$.label') IS NULL", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_QUERY(c.\"DOC\", '$.label') AS \"L\" FROM typed AS c) AS p WHERE p.\"L\" IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NULL", false),
+
+            // The negated equality's guard (B), which is the same null set in the other position: the
+            // comparison has to be true wherever SQL's is unknown, so that the NOT discards the row,
+            // and it named an absent path and a null but not the object and the array. Directly, and
+            // under a negated conjunction and disjunction. The typed equality under a NOT had no type
+            // test where its inequality had one; the last is its control, over a path holding no object.
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')", false),                                     // P4
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' AND c.\"$.category\" = 'a')", false),          // P5
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' OR c.\"$.category\" = 'b')", false),           // P6
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) = 5)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 5)", false),
+
+            // A CASE condition under a NOT (C). The condition selects an arm, so it is a positive
+            // position whatever encloses the CASE, and it was written in the NOT's: the inequality
+            // unguarded and the equality guarded the wrong way, each taking the then arm for the
+            // null category where SQL takes the else.
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)", false),  // P7
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" <> '6' END)", false),  // P9
+
+            // IS NULL over a predicate (D), which asks where it is unknown. The comparison written
+            // positively is false there, so nothing is left to find; COALESCE(p, FALSE) expands to one.
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') IS NULL", false),                  // P18
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" = 'bikes') IS NULL)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT COALESCE(c.\"$.category\" <> 'bikes', FALSE)", false),        // P8
+
+            // A CASE observes absence: its else arm answers where its condition's path is absent. The
+            // guard a comparison takes tested the paths inside one, and the split rule weakened one
+            // to IS_DEFINED of them -- found beside the probes, and each answered differently. The
+            // last two are controls, a COALESCE over a path every document has, and one the split
+            // already left alone.
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') = 'x')", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') <> 'x'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT ((CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END) = 1)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) ELSE 'z' END) = 'z'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') = 'Exact')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'z') = 'z'", false),
+
+            // An operator over the rendering, which reads text in Calcite and the stored value at the
+            // service (E, F). A string function is undefined there over a number or a boolean, and a
+            // value passed out through a CASE arrives as the number or the boolean: projected, filtered
+            // on, and handed to a comparison that saw no rendering among its operands.
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.label')) FROM typed AS c", false),                                    // P10
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') || '!' FROM typed AS c", false),                                    // P11
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = 'TRUE'", false),                     // P12
+            ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = '30'", false),                       // P13
+            ("SELECT c.\"id\" FROM typed AS c WHERE NOT (UPPER(JSON_VALUE(c.\"DOC\", '$.label')) = 'BIKES')", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.label')) = 2", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') || 'x' = '30x'", false),
+            ("SELECT c.\"id\", COALESCE(JSON_VALUE(c.\"DOC\", '$.label'), 'none') FROM typed AS c", false),
+            ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END FROM typed AS c", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = '30'", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE CASE WHEN c.\"$.category\" = 'a' THEN JSON_VALUE(c.\"DOC\", '$.label') ELSE 'z' END = 'z'", false),
+
+            // Division (G): Calcite truncates an integer quotient toward zero, and the service answers
+            // the fraction, which an integer column then cannot be read as. Filtered, projected, and
+            // over a negative dividend, where truncation and flooring part; the last is the control,
+            // a quotient Calcite computes in doubles.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 2", false),       // P14
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 FROM products AS c", false),                 // P15
+            ("SELECT c.\"id\", (0 - JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)) / 3 FROM products AS c", false),
+            ("SELECT c.\"id\", c.\"_ts\" / CAST(2 AS DOUBLE) FROM products AS c", false),
+
+            // An equality over a view's JSON_QUERY column. The fragment's text against text is never
+            // the raw comparison -- the service's object equals no string, and the stored string
+            // 'bikes' is one JSON_QUERY answers null for -- and the filter rule pushed it as though it
+            // were the accessor's, which the implementor then refused: the plan failed where Calcite
+            // answers no rows.
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_QUERY(c.\"DOC\", '$.label') AS \"L\" FROM typed AS c) AS p WHERE p.\"L\" = 'bikes'", false),
+
+            // DISTINCT under a point read, single and batched (P17, P20 and P21). All three agreed when
+            // the review ran them, and are kept with the DISTINCT statements above, beside the batch it
+            // found duplicating a row: a key whose two documents share a value, which a ReadMany returns
+            // once per document.
+
+            // A control for the quotient: the integer accessor over a double divisor, which Calcite widens
+            // and divides in doubles. RETURNING DOUBLE would be the obvious spelling and has no oracle over
+            // these prices -- Calcite raises over a stored integer rather than widening it.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / CAST(3 AS DOUBLE) FROM products AS c", false),
+
+
+            // ── The probes of the review of the fixes, kept ──────────────────────────
+            //
+            // Named as that review named them. Each answered differently pushed before the change it is
+            // kept beside, or is the control that says the shape still pushes where it agrees.
+
+            // A predicate read as a value (D). The guard that makes a comparison right in a WHERE makes it
+            // false where SQL's is unknown, and so does the service's own equality over a JSON null; a
+            // WHERE cannot tell the two apart, and an enclosing comparison, a column and a grouping key
+            // can. The last two are controls: a comparison Calcite types NOT NULL, and a CASE condition.
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') = FALSE", false),                                         // D1
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') = FALSE", false),                                          // D2
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes') = (c.\"id\" = '3')", false),                               // D3
+            ("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') IN (FALSE)", false),                                      // D21
+            ("SELECT c.\"id\" FROM products AS c WHERE (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) = 5) = FALSE", false),
+            ("SELECT c.\"id\", c.\"$.category\" <> 'bikes' FROM products AS c", false),                                                         // D5
+            ("SELECT c.\"id\", c.\"$.category\" = 'bikes' FROM products AS c", false),                                                          // D6
+            ("SELECT c.\"id\", NOT (c.\"$.category\" = 'bikes') FROM products AS c", false),                                                    // D7
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') = 'bikes' FROM typed AS c", false),                                             // D8
+            ("SELECT c.\"id\", CASE WHEN c.\"id\" <> '9' THEN c.\"$.category\" = 'bikes' ELSE FALSE END FROM products AS c", false),            // D20
+            ("SELECT c.\"$.category\" = 'bikes', COUNT(*) FROM products AS c GROUP BY c.\"$.category\" = 'bikes'", false),                      // D29
+            ("SELECT c.\"id\", c.\"id\" = '3' FROM products AS c", false),
+            ("SELECT c.\"id\", CASE WHEN c.\"$.category\" <> 'bikes' THEN 'x' ELSE 'y' END FROM products AS c", false),
+
+            // A cast to text with a width (W), which truncates where the cast without one renders. Taken as
+            // the rendering it was dropped from the equality, and over the partition key it routed the read
+            // to a partition named for the truncated text; the last is the same beside a point read.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR(3)) = 'bik'", false),                     // W1
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR(3)) = 'bik'", false),                                 // W3
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR(2)) = 'Ex'", false),                       // W4
+            ("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR(3)) = 'bik' AND c.\"id\" = '1'", false),
+
+            // A rendering inside the box Calcite's coercion puts around a side compared with a VARIANT (E7),
+            // which the comparison, LIKE and IS NULL each looked at instead of the rendering. The fourth is
+            // the control: against unambiguous text the box changes nothing, and the equality pushes.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = CAST('30' AS VARIANT)", false),                         // E7
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARIANT) AS VARCHAR) LIKE '3%'", false),    // W5
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARIANT) IS NULL", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = CAST('bikes' AS VARIANT)", false),
+
+            // Grouping by a rendering (E9, E10 and E13), which Calcite groups by its text and the service by
+            // the value: typed's price is the number 30 in one document and the string "30" in another. The
+            // same three statements as the first review's J2, J1 and J13, and kept with them above.
+
+            // Arithmetic in a decimal fraction (G), which Calcite computes exactly and the service in
+            // doubles. Filtered, projected, grouped by and summed; the remainder by 0.3 was found beside them.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 = 374", false),               // G4
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 FROM products AS c", false),                           // G5
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 0.07 = 0.35", false),             // G6
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 0.7 FROM products AS c", false),                           // G15
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 0.1 + 0.2 = 10.3", false),        // G20
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1, COUNT(*) FROM products AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1", false), // G26
+            ("SELECT SUM(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1) FROM products AS c", false),                                // G27
+            ("SELECT c.\"id\" FROM products AS c WHERE MOD(JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER), 0.3) = 0.2", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 2 > 100", false),
+
+            // An accessor addressing through a rendering (N), whose text Calcite parses as JSON and whose
+            // value the service holds. The last is the control: a JSON_QUERY's text is the fragment.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') IS NOT NULL", false),                  // N1
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') = 'Exact'", false),                       // N3
+            ("SELECT c.\"id\", JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$') FROM typed AS c", false),
+            ("SELECT c.\"id\", JSON_VALUE(JSON_QUERY(c.\"DOC\", '$.metadata'), '$.sku') FROM products AS c", false),                           // N2
+
+
+            // ── RETURNING DECIMAL, which parses ──────────────────────────────────────
+            //
+            // Every other numeric RETURNING asserts its type and raises on anything else; DECIMAL parses what the path
+            // holds, a stored "2" as 2. Read as the path, and as a claim that the path holds the number, it lost the
+            // strings at the service and rewrote a filter over a declared string to FALSE. Found by the review of the
+            // predicate oracle's gate, whose two statements open this.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) > 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2.5", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL(10, 1)) = 2.5", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) <> 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = 2)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) IS NOT NULL", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) IN (2, 3)", false),
+            ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) AS \"B\" FROM declared AS c) AS p WHERE p.\"B\" = 2", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) FROM declared AS c", false),
+            ("SELECT c.\"id\" FROM declared AS c ORDER BY JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL), c.\"id\"", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL), COUNT(*) FROM declared AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) = 2", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) > 2", false),
+
+            // The same over a container that declares nothing, where typed's price is the number 30 in one document and
+            // the string "30" in another; and over products', which holds only numbers, as the control.
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 30", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) > 8", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) FROM typed AS c", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) > 100", false),
+
+            // The controls: text over the declared string is the value, and pushes exactly; a RETURNING that asserts is
+            // the value wherever Calcite answers one.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') = '2'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) = 2", false),
+
+
+            // ── A number the service reads as a double ───────────────────────────────
+            //
+            // An exact literal was sent with a point, and the service reads it as a double; declared's v holds 2^53,
+            // 2^53 + 1, 2^60 and 2^60 + 1 as the integers they are. Found by the review of the RETURNING DECIMAL fix.
+            //
+            // The window around a cast's comparison, loosened by one, where one is nothing to a double: 2^60 - 1 came
+            // back as 2^60 and excluded it. A cast to DOUBLE beside them, which rounds a stored integer from 2^52. And
+            // the window around a literal a hair below a whole number: RETURNING DECIMAL truncates 2.9999999999999999
+            // to 2, and the bound below it, 1.9999999999999999, came back as 2 and excluded the stored 2.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) = 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING DECIMAL) >= 9007199254740993", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS BIGINT) = 9007199254740992", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS BIGINT) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.v') AS DOUBLE) = 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) = 2.9999999999999999", false),
+
+            // An exact comparison against a literal the double does not hold, which came back as its neighbour and
+            // matched the document holding that; and one the double does hold, past 2^53, where how the service orders
+            // a stored integer against a double is not measured. The last is an approximate literal, which Calcite
+            // compares in doubles and the service with the integer as it is. The first of the controls pushes.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846977", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740993", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) IN (1152921504606846977, 9007199254740993)", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 1152921504606846976", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 1152921504606846976E0", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 9007199254740991", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740992", false),
         ];
 
         /// <summary>

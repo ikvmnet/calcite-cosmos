@@ -233,7 +233,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             /// the raw value. A nullable field typed a number or a boolean is what a <c>RETURNING</c>
             /// accessor binds, which reads null for an object or an array the service sorts after every
             /// scalar — so it is the stored value only where the container declares the path that type,
-            /// or null, outright. <c>DECIMAL</c> names a number like the rest.
+            /// or null, outright. Not <c>DECIMAL</c>, which parses rather than asserting and addresses no
+            /// path at all (<see cref="CosmosRexTranslator.IsParsingJsonValue"/>), so no field is bound
+            /// to one.
             /// </para>
             /// <para>
             /// A declaration of something else, or of nothing about the path, is no declaration of the
@@ -249,7 +251,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     CosmosPath.Root("c").Property("v"),         // 1 — VARIANT
                     CosmosPath.Root("c").Property("n"),         // 2 — INTEGER
                     CosmosPath.Root("c").Property("b"),         // 3 — BOOLEAN
-                    CosmosPath.Root("c").Property("n"),         // 4 — DECIMAL
                 };
 
                 org.apache.calcite.rel.type.RelDataType Nullable(SqlTypeName name) =>
@@ -260,10 +261,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     .add("v", Nullable(SqlTypeName.VARIANT))
                     .add("n", Nullable(SqlTypeName.INTEGER))
                     .add("b", Nullable(SqlTypeName.BOOLEAN))
-                    .add("d", Nullable(SqlTypeName.DECIMAL))
                     .build();
 
-                var readings = new[] { CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed };
+                var readings = new[] { CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed };
 
                 IReadOnlyList<bool> Stored(string? schema)
                 {
@@ -274,15 +274,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     return CosmosSort.StoredFields(new CosmosRexTranslator(_rex, fields, new CosmosParameterList(), null, container, readings), rowType);
                 }
 
-                Stored(null).Should().Equal(true, true, false, false, false);
+                Stored(null).Should().Equal(true, true, false, false);
                 Stored("""{ "type": "object", "properties": { "n": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }""")
-                    .Should().Equal(true, true, true, true, true);
+                    .Should().Equal(true, true, true, true);
                 Stored("""{ "type": "object", "properties": { "n": { "type": "number" } } }""")
-                    .Should().Equal(true, true, true, false, true);
+                    .Should().Equal(true, true, true, false);
                 Stored("""{ "type": "object", "properties": { "n": { "type": "string" }, "b": { "type": "integer" } } }""")
-                    .Should().Equal(true, true, false, false, false);
+                    .Should().Equal(true, true, false, false);
                 Stored("""{ "type": "object", "properties": { "n": { "type": ["integer", "object"] }, "b": { "type": ["boolean", "string"] } } }""")
-                    .Should().Equal(true, true, false, false, false);
+                    .Should().Equal(true, true, false, false);
             }
 
             /// <remarks>

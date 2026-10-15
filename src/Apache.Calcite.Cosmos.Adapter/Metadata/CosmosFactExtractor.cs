@@ -186,6 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// whether an equality between the two says what the path holds.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <b>A comparison over a rendering is a comparison of text.</b> <c>JSON_VALUE</c> reads a stored
         /// number 5 as the text <c>5</c>, so <c>JSON_VALUE(…) = '5'</c> keeps a document storing the
         /// number as well as one storing the string. Reading it as the string <c>"5"</c> would be a fact
@@ -193,6 +194,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// equality over a rendering is exact only where no other scalar renders as its text —
         /// <see cref="CosmosRexTranslator.IsUnambiguousTextFor"/>, the test the cast spelling passes
         /// before it is unwrapped.
+        /// </para>
+        /// <para>
+        /// <b>A typed <c>RETURNING</c> is exact because it asserts.</b> Every numeric and boolean one
+        /// casts the value read to one Java class and raises on any other, so a row an equality through
+        /// it keeps holds the literal and a document holding anything else fails the statement. Except
+        /// <c>DECIMAL</c>, which parses: <c>= 2</c> through it keeps a stored <c>"2"</c>, and read as
+        /// exact it said the path holds the number 2, which beside a declared string was a contradiction
+        /// that rewrote the filter to <c>FALSE</c>. It addresses no path —
+        /// <see cref="CosmosRexTranslator.IsParsingJsonValue"/> — so it never resolves here, and
+        /// <see cref="ReadWindow"/> reads it as the cast it is: the path is there, and a number there is
+        /// near the literal.
+        /// </para>
         /// </remarks>
         /// <param name="call">The comparison.</param>
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
@@ -265,8 +278,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Reads a comparison through a numeric cast as the window it puts the raw value in, or answers
-        /// <c>false</c> where it is not one.
+        /// Reads a comparison through a numeric cast, or through <c>RETURNING DECIMAL</c>, as the window it
+        /// puts the raw value in, or answers <c>false</c> where it is not one.
         /// </summary>
         /// <remarks>
         /// The window binds numbers only — the cast converts a stored string too, so <c>&gt; 500</c> keeps
@@ -275,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         static bool ReadWindow(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, List<JsonFact> facts)
         {
-            if (CosmosNumericWindow.TryRead(call, out var window) == false)
+            if (CosmosNumericWindow.TryRead(call, RexBuilderHolder.Value, out var window) == false)
                 return false;
 
             if (TryPath(window.Value, fields, rootAlias) is not JsonDocumentPath path)

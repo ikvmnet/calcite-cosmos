@@ -369,6 +369,167 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        /// <summary>
+        /// A comparison through <c>RETURNING DECIMAL</c> pushes the bound a cast to a number pushes, and is
+        /// rechecked above.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The clause parses what the path holds — a stored <c>"30"</c> is 30 to it, measured — where every
+        /// other numeric <c>RETURNING</c> asserts. It was written as the path, so <c>= 30</c> pushed as
+        /// <c>c.price = 30</c> and lost the string. It is the cast written as a clause, and takes the cast's
+        /// window: non-numbers pass the type test to the recheck.
+        /// </para>
+        /// <para>
+        /// The literal is truncated to the comparison's scale, <c>= 30.5</c> keeping a stored 30, and the window is
+        /// read from the literal as written; the truncation moves it by less than the unit the window allows.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("= 30", "29", "31")]
+        [InlineData("> 30", "29", null)]
+        [InlineData("= 30.5", "29.5", "31.5")]
+        public void AComparisonThroughADecimalReturningPushesTheBoundACastPushes(string comparison, string above, string? below)
+        {
+            var best = PlanToAsync($"SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) {comparison}");
+            var query = Query(FindCosmos(best));
+
+            query.Sql.Should().Contain("IS_DEFINED(c.price)");
+            query.Sql.Should().Contain("(NOT IS_NUMBER(c.price)) OR", "a stored string that spells a number is the recheck's to decide: " + query.Sql);
+            query.Sql.Should().NotContain("c.price = @", "the comparison itself has no Cosmos form");
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal(below is null ? new[] { above } : new[] { above, below });
+
+            Plan(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A bound the service would read as another number is sent as one it reads exactly, or not at all.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A decimal reaches the service as a double, and beyond 2^53 the unit a window is loosened by is nothing to
+        /// one: <c>= 2^60</c> sent 2^60 - 1 and 2^60 + 1, which came back as 2^60 and excluded the document holding it.
+        /// A whole bound a double does not hold goes as a long, which the service keeps exact. The lower bound of
+        /// <c>= 2.9999999999999999</c>, whose double is 2, has no value that is it, and is dropped — and the upper with
+        /// it, so no window is read. Measured against the emulator in the differential corpus, over <c>declared</c>.
+        /// </para>
+        /// <para>
+        /// A cast to <c>DOUBLE</c> is within one only below 2^52. From there a stored integer and the literal each round by
+        /// up to half a unit, and <c>= 2^60</c> keeps a stored 2^60 + 1. It states no window that far out, and still does
+        /// just inside.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 1152921504606846976", "1152921504606846975", "1152921504606846977")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL) = 2.9999999999999999", null, null)]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS BIGINT) = 9007199254740993", "9007199254740992", "9007199254740994")]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 1152921504606846976", null, null)]
+        [InlineData("CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) = 4503599627370495", "4503599627370494", "4503599627370496")]
+        public void ABoundTheServiceWouldReadAsAnotherNumberIsSentExactlyOrNotAtAll(string comparison, string? above, string? below)
+        {
+            var query = Query(FindCosmos(PlanToAsync($"SELECT * FROM products AS c WHERE {comparison}")));
+
+            if (above is null)
+            {
+                query.Sql.Should().NotContain("c.price >", "no value the service is sent is the bound: " + query.Sql);
+                query.Sql.Should().NotContain("c.price <", query.Sql);
+                return;
+            }
+
+            query.Sql.Should().Contain("(c.price > @p0) AND (c.price < @p1)", query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().Equal(above, below);
+            query.Parameters.Should().OnlyContain(p => p.Value is decimal || p.Value is long, "each a value the service reads as itself");
+        }
+
+        /// <summary>
+        /// An exact literal a double does not hold is sent as the long it is, and one with no such value is not sent.
+        /// </summary>
+        /// <remarks>
+        /// Sent as a decimal, which the service reads as a double, <c>RETURNING BIGINT = 1152921504606846977</c> matched
+        /// the document holding 2^60 and not the one holding the literal. One the double does hold stays a decimal: the
+        /// service compares it with a stored integer exactly, and <c>&gt; 1152921504606846976</c> keeps 2^60 + 1.
+        /// </remarks>
+        [Fact]
+        public void AnExactLiteralADoubleDoesNotHoldIsSentAsTheLongItIs()
+        {
+            var query = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING BIGINT) = 1152921504606846977")));
+
+            query.Sql.Should().Contain("(c.price = @p0)");
+            query.Parameters.Single().Value.Should().BeOfType<long>().Which.Should().Be(1152921504606846977L);
+
+            var held = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING BIGINT) > 1152921504606846976")));
+
+            held.Sql.Should().Contain("(c.price > @p0)");
+            held.Parameters.Single().Value.Should().BeOfType<decimal>().Which.Should().Be(1152921504606846976m);
+        }
+
+        /// <summary>
+        /// A literal cast down to a <c>DECIMAL</c> its whole digits do not fit states no window, and no fact.
+        /// </summary>
+        /// <remarks>
+        /// Where the comparison's common type would pass nineteen digits, Calcite casts the literal to the clause's type
+        /// rather than both up, and <c>CAST(50):DECIMAL(19, 18)</c> raises on every row. Read as 50, the window kept
+        /// nothing between 49 and 51 at the service, and answered where the engine raises. A literal it fits is truncated
+        /// and still bounds: <c>= 2.5</c> against plain <c>DECIMAL</c>.
+        /// </remarks>
+        [Fact]
+        public void ALiteralCastDownToADecimalItDoesNotFitStatesNoWindow()
+        {
+            var raises = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL(19, 18)) = 50"))).Sql;
+
+            raises.Should().NotContain("c.price >", "the cast of the literal raises, and nothing bounds what it does not answer: " + raises);
+            raises.Should().NotContain("c.price <", raises);
+
+            var fits = Query(FindCosmos(PlanToAsync(
+                "SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL(19, 18)) = 5")));
+
+            fits.Sql.Should().Contain("(c.price > @p0) AND (c.price < @p1)", fits.Sql);
+            fits.Parameters.Select(p => Convert.ToDecimal(p.Value)).Should().Equal(4m, 6m);
+        }
+
+        /// <summary>
+        /// Nothing else written over <c>RETURNING DECIMAL</c> reaches the service: a column, a sort key, a grouping key,
+        /// an inequality, a null test, arithmetic.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each read the path for the parse. The column, and the grouping and the sort over it, sent back the stored string
+        /// where the plan declared a number, and the statement failed to read where Calcite answers the number the
+        /// string spells; the null test and the inequality took <c>IS_NUMBER</c> as the clause's null set and lost the
+        /// string. Measured against the emulator, in the differential corpus. A parsing <c>RETURNING</c> addresses no
+        /// path, so each is Calcite's.
+        /// </para>
+        /// <para>
+        /// The control is <c>RETURNING INTEGER</c>, which asserts its type and is written as the path, through its type's
+        /// test — see <see cref="AScalarReturningAccessorIsGuardedByItsTypesTest"/>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void NothingElseOverADecimalReturningIsPushed()
+        {
+            const string Price = "JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL)";
+
+            foreach (var sql in new[]
+            {
+                $"SELECT c.\"id\", {Price} AS \"p\" FROM products AS c",
+                $"SELECT c.\"id\" FROM products AS c ORDER BY {Price}",
+                $"SELECT {Price} AS \"p\", COUNT(*) AS \"n\" FROM products AS c GROUP BY {Price}",
+                $"SELECT c.\"id\" FROM products AS c WHERE {Price} <> 30",
+                $"SELECT c.\"id\" FROM products AS c WHERE {Price} IS NOT NULL",
+                $"SELECT c.\"id\", {Price} * 2 AS \"p\" FROM products AS c",
+            })
+            {
+                var best = PlanToAsync(sql);
+                Render(FindCosmos(best)).Should().NotContain("c.price", "the parse is Calcite's: " + sql + "\n" + Plan(best));
+            }
+
+            Render(FindCosmos(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"p\" FROM products AS c")))
+                .Should().Be("SELECT VALUE { \"id\": c.id, \"p\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c", "an asserted type is the value at the path, where it is of that type");
+        }
+
         /// <remarks>
         /// Nothing is known about where converting to a date lands, so there is no bound to state — and
         /// the definedness the comparison implies is still worth pushing.
@@ -838,6 +999,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         // ── The planner declines rather than guessing ─────────────────────────────
+
+        /// <summary>
+        /// An integer division stays in process, and the accessor beneath it is what goes down.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite truncates an integer quotient toward zero and the service answers the fraction.
+        /// Measured against the emulator, <c>price / 2 = 2</c> lost the document priced 5, and
+        /// <c>price / 3</c> projected failed the read at <c>113.33333333333333</c>, which is not the
+        /// integer the plan declared. A quotient Calcite computes in doubles is the service's
+        /// quotient, and pushes.
+        /// </para>
+        /// <para>
+        /// The control divides the integer accessor by a double, so that Calcite widens the integer
+        /// it reads and the differential corpus can say the two agree. <c>RETURNING DOUBLE</c> would
+        /// have been the obvious spelling and cannot be checked: over a stored integer Calcite raises
+        /// rather than widening, the assertion ikvmnet/calcite-dotnet#120 records, so there is no
+        /// oracle to agree with.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AnIntegerDivisionIsNotPushedDown()
+        {
+            var filtered = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 2");
+            Render(FindCosmos(filtered)).Should().NotContain(" / ", "the quotient is Calcite's: " + Render(FindCosmos(filtered)));
+
+            var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 3 AS \"third\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / CAST(3 AS DOUBLE) AS \"third\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"third\": ((IS_NUMBER(c.price) ? c.price : null) / @p0) } FROM products c");
+        }
+
+        /// <summary>
+        /// A sum, difference, product or remainder Calcite types a decimal fraction stays in process.
+        /// </summary>
+        /// <remarks>
+        /// Calcite computes <c>price * 1.1</c> exactly, in <c>DECIMAL</c>, and the service in doubles,
+        /// where <c>1.1</c> is not <c>1.1</c>. Measured against the emulator, <c>price * 1.1 = 374</c>
+        /// lost the document priced 340, whose product the service makes <c>374.00000000000006</c>,
+        /// and the product projected came back the same way. An integer product is exact in doubles,
+        /// and pushes.
+        /// </remarks>
+        [Fact]
+        public void ArithmeticInDecimalFractionsIsNotPushedDown()
+        {
+            var filtered = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 1.1 = 374");
+            Render(FindCosmos(filtered)).Should().NotContain(" * ", "the product is Calcite's: " + Render(FindCosmos(filtered)));
+
+            var projected = PlanToAsync("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 0.1 AS \"p\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().Be("SELECT VALUE { \"$f0\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c");
+
+            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) * 2 AS \"p\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"p\": ((IS_NUMBER(c.price) ? c.price : null) * @p0) } FROM products c");
+        }
+
+        /// <summary>
+        /// A comparison read as a value stays in process, where SQL can answer it unknown.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every form the comparison is written in is false somewhere SQL's is unknown: the service's
+        /// equality over a JSON null, and the guard a <c>WHERE</c> puts on an inequality over an
+        /// absent path. A <c>WHERE</c> discards the row for either. A column, a grouping key and an
+        /// enclosing comparison do not. Measured against the emulator over products, whose category
+        /// is null in one document and absent in another, <c>category = 'bikes'</c> projected was
+        /// false for the null where Calcite answers null, and <c>(category &lt;&gt; 'bikes') =
+        /// FALSE</c> kept both documents, which SQL discards.
+        /// </para>
+        /// <para>
+        /// Typed <c>NOT NULL</c>, SQL cannot answer it unknown, and a comparison of the id pushes as it
+        /// did. In a <c>CASE</c> condition the truth alone selects an arm, and that pushes too.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AComparisonReadAsAValueIsNotPushedDown()
+        {
+            var projected = PlanToAsync("SELECT c.\"id\", c.\"$.category\" = 'bikes' AS \"b\" FROM products AS c");
+            Render(FindCosmos(projected)).Should().NotContain("(c.category = ", "the comparison's value is Calcite's: " + Render(FindCosmos(projected)));
+
+            var compared = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" <> 'bikes') = FALSE");
+            Render(FindCosmos(compared)).Should().Be("SELECT VALUE c FROM products c WHERE IS_DEFINED(c.category)", "the split rule pushes what the predicate implies");
+
+            Render(PlanToCosmos("SELECT c.\"id\" = '3' AS \"b\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"b\": (c.id = @p0) } FROM products c");
+
+            Render(PlanToCosmos("SELECT CASE WHEN c.\"$.category\" <> 'bikes' THEN 'x' ELSE 'y' END AS \"b\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"b\": ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? @p1 : @p2) } FROM products c");
+        }
 
         /// <remarks>
         /// Measured on the emulator, Cosmos <c>COUNT(x)</c> counts a JSON null where SQL excludes
@@ -1574,8 +1824,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </para>
         /// <para>
         /// This test used to pin that the pushed distinct kept the guard, which it must where it pushes
-        /// at all — <c>CosmosDeclaredFactPlanningTests</c> holds that over a path declared a string, the
-        /// one place it now does. Here the guard is still the projection's, beneath the aggregate.
+        /// at all: the distinct rebuilt the select list from the binding, which is the path, and
+        /// emitting the path returned a number for a column declared <c>VARCHAR</c> — which the reader
+        /// refuses rather than coerces, so the statement failed outright, <em>Expected a JSON string,
+        /// got Number</em>, found by the differential oracle. <c>CosmosDeclaredFactPlanningTests</c>
+        /// holds the guarded key over a path declared a string, the one place it now pushes. Here the
+        /// guard is still the projection's, beneath the aggregate.
         /// </para>
         /// </remarks>
         [Theory]
@@ -1807,16 +2061,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and it is the coalesce that must go down: splitting deeper would push the accessor and leave
         /// the service's own conditional to be evaluated in process over it. One column, and the whole
         /// of what the service was willing to answer.
+        /// <para>
+        /// Over a scalar <c>RETURNING</c>, whose value is the value. This was written over the text
+        /// accessor, whose coalesce no longer renders over a path nothing says holds a string — see
+        /// <see cref="ACoalesceOverAnUndeclaredTextAccessorStaysInProcess"/> — which would have made
+        /// the accessor the largest part and said nothing about the walk.
+        /// </para>
         /// </remarks>
         [Fact]
         public void AFragmentIsTheLargestRenderablePartRatherThanTheFirst()
         {
             var best = PlanToAsync(
-                "SELECT CAST(COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS DOUBLE) AS \"x\" FROM products AS c");
+                "SELECT CAST(COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING INTEGER), 0) AS DOUBLE) AS \"x\" FROM products AS c");
 
             var sql = Render(FindCosmos(best));
 
-            sql.Should().Contain("? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0)",
+            sql.Should().Contain("IS_NUMBER(c.a)) ? (IS_NUMBER(c.a) ? c.a : null) : @p0)",
                 "the coalesce goes down whole, not the accessor out of it: " + sql);
 
             Plan(best).Should().Contain("CAST($0)", "leaving one column for the cast to read: " + Plan(best));
@@ -2043,7 +2303,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(PlanToCosmos(
                 "SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY('[]', '$' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"));
 
-            query.Sql.Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) } FROM products c");
+            query.Sql.Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.tags)) ? (IS_ARRAY(c.tags) ? c.tags : null) : @p0) } FROM products c");
 
             query.Parameters.Should().HaveCount(1);
             query.Parameters[0].Value.Should().BeAssignableTo<System.Collections.Generic.IEnumerable<object?>>()
@@ -2079,33 +2339,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>COALESCE</c> over an accessor pushes, and used to take the whole projection in process
-        /// with it (#130).
+        /// A <c>COALESCE</c> over a text accessor stays in process where nothing says the path holds a
+        /// string, and the accessor beneath it is what goes down.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Nothing about <c>COALESCE</c> was unrenderable.</b> The validator expands
+        /// <b>Nothing about <c>COALESCE</c> was unrenderable (#130).</b> The validator expands
         /// <c>COALESCE(x, y)</c> to <c>CASE(IS NOT NULL(x), CAST(x):T NOT NULL, y)</c> before a
-        /// <c>RexCall</c> exists, and measured, every piece of that already pushed on its own — a
-        /// <c>CASE</c>, an <c>IS NOT NULL</c>, the accessor. What did not was the cast, which converts
-        /// nothing: Calcite writes it to assert what the null test just proved. One refused node fails
-        /// the whole expression, so the projection lifted and the entire document crossed the wire to
-        /// supply one column.
+        /// <c>RexCall</c> exists, every piece of which renders, and the cast converts nothing: Calcite
+        /// writes it to assert what the null test just proved. That is still so, and the array
+        /// coalesce below and the one over a scalar <c>RETURNING</c> push whole.
         /// </para>
         /// <para>
-        /// <b>The guard is written three times, and that is the shape rather than a mistake.</b> The
-        /// accessor appears three times in the expansion — in the test, in the asserted branch and
-        /// nowhere else — and each occurrence carries the guard #131 gave it. Read through:
-        /// an absent path makes <c>IS_PRIMITIVE</c> undefined, so the ternary is undefined and
-        /// <c>IS_DEFINED</c> is false; an object makes it null, which <c>IS_NULL</c> catches; a scalar
-        /// passes. All three take the fallback exactly where Calcite's <c>JSON_VALUE</c> answers null.
+        /// <b>What the text accessor's coalesce answers is the trouble.</b> Its branch hands the value
+        /// on as the column, and the column is text: the accessor renders a stored number or boolean
+        /// as text, and the service sends the number or the boolean. Measured against the emulator
+        /// over the typed container, the read failed at the stored <c>true</c>, where Calcite answers
+        /// <c>'true'</c>. Over a declared string the branch is the value and the coalesce pushes — see
+        /// <c>CosmosDeclaredFactPlanningTests</c>, which pins the null test it takes.
         /// </para>
         /// </remarks>
         [Fact]
-        public void ACoalesceOverAnAccessorPushes()
+        public void ACoalesceOverAnUndeclaredTextAccessorStaysInProcess()
         {
-            Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_PRIMITIVE(c.a) ? c.a : null)) AND NOT IS_NULL((IS_PRIMITIVE(c.a) ? c.a : null))) ? (IS_PRIMITIVE(c.a) ? c.a : null) : @p0) } FROM products c");
+            var best = PlanToAsync("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR), 'x') AS \"a\" FROM products AS c");
+
+            Plan(best).Should().Contain("CASE(", "the coalesce is Calcite's: " + Plan(best));
+            Render(FindCosmos(best)).Should().Contain("(IS_PRIMITIVE(c.a) ? c.a : null)", "and the accessor is the service's");
         }
 
         /// <summary>
@@ -2121,13 +2381,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public void ACoalesceOverArrayAccessorsPushes()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY), JSON_QUERY(c.\"DOC\", '$.other' RETURNING VARCHAR ARRAY)) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_ARRAY(c.tags) ? c.tags : null)) AND NOT IS_NULL((IS_ARRAY(c.tags) ? c.tags : null))) ? (IS_ARRAY(c.tags) ? c.tags : null) : (IS_ARRAY(c.other) ? c.other : null)) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.tags) AND NOT IS_NULL(c.tags) AND IS_ARRAY(c.tags)) ? (IS_ARRAY(c.tags) ? c.tags : null) : (IS_ARRAY(c.other) ? c.other : null)) } FROM products c");
         }
 
         /// <summary>
         /// A scalar <c>RETURNING</c> carries its type's guard into the coalesce, as it carries it alone.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The third guarded form beside the two above — see
         /// <see cref="AScalarReturningAccessorIsGuardedByItsTypesTest"/>. It used to be the bare path, on
         /// the reading that a document of the wrong type fails the read either way, and here that
@@ -2135,12 +2396,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and the coalesce answers <c>0</c>, where the bare path handed the object to the reader as
         /// the integer the plan declared. Guarded, the object is null at the service too and the
         /// fallback is taken.
+        /// </para>
+        /// <para>
+        /// The null test decides which branch is taken, and reads the same null set from the same
+        /// place as the guard. The accessor is null wherever the value is not of the type it names — an
+        /// object, which Calcite answers null for, and another scalar, which SQL:2016 answers null for
+        /// and Calcite raises over — so the test is over the path and the type's test, as the array
+        /// form's above is over the path and <c>IS_ARRAY</c>.
+        /// </para>
         /// </remarks>
         [Fact]
         public void ACoalesceOverAScalarReturningReadsThroughItsGuard()
         {
             Render(PlanToCosmos("SELECT COALESCE(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER), 0) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED((IS_NUMBER(c.n) ? c.n : null)) AND NOT IS_NULL((IS_NUMBER(c.n) ? c.n : null))) ? (IS_NUMBER(c.n) ? c.n : null) : @p0) } FROM products c");
+                .Should().Be("SELECT VALUE { \"a\": ((IS_DEFINED(c.n) AND NOT IS_NULL(c.n) AND IS_NUMBER(c.n)) ? (IS_NUMBER(c.n) ? c.n : null) : @p0) } FROM products c");
         }
 
         /// <summary>
@@ -2227,14 +2496,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plan.Should().NotContain("CosmosFilter(condition=[CLR_FT_CONTAINS", "and nothing of it is rendered: " + plan);
         }
 
+        /// <summary>
+        /// An accessor nested in an expression carries the guard it carries alone (#131), where what
+        /// encloses it reads it as a rendering.
+        /// </summary>
+        /// <remarks>
+        /// A comparison is such a reader: it decides which documents the rendering matches, and over
+        /// unambiguous text the guarded value matches the same ones. A string function is not — see
+        /// <see cref="AStringFunctionOverAnUndeclaredAccessorStaysInProcess"/>.
+        /// </remarks>
         [Fact]
         public void ANestedAccessorCarriesItsGuard()
         {
-            Render(PlanToCosmos("SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"a\": UPPER((IS_PRIMITIVE(c.a) ? c.a : null)) } FROM products c");
+            Render(PlanToCosmos("SELECT CASE WHEN JSON_VALUE(c.\"DOC\", '$.a') = 'x' THEN 1 ELSE 0 END AS \"a\" FROM products AS c"))
+                .Should().Be("SELECT VALUE { \"a\": (((IS_PRIMITIVE(c.a) ? c.a : null) = @p0) ? @p1 : @p2) } FROM products c");
+        }
 
-            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) || 'x' AS \"a\" FROM products AS c"))
-                .Should().Contain("CONCAT((IS_PRIMITIVE(c.a) ? c.a : null)");
+        /// <summary>
+        /// A string function over an accessor stays in process where nothing says the path holds a
+        /// string, and the accessor beneath it is what goes down.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This test used to pin <c>UPPER((IS_PRIMITIVE(c.a) ? c.a : null))</c> as the rendering, and
+        /// the guard is right about what it is about: an object and an array, which the accessor
+        /// answers null for. It says nothing about a number or a boolean, which the accessor renders
+        /// as text and the service hands to <c>UPPER</c> as themselves. Measured against the emulator,
+        /// <c>UPPER(label)</c> and <c>label || '!'</c> projected null for the stored 30 and the stored
+        /// <c>true</c>, where Calcite projects <c>30</c>, <c>TRUE</c>, <c>30!</c> and <c>true!</c>.
+        /// </para>
+        /// <para>
+        /// Over a path declared a string the function pushes, being the same function of the same
+        /// text at both ends — see <c>CosmosDeclaredFactPlanningTests</c>.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AStringFunctionOverAnUndeclaredAccessorStaysInProcess()
+        {
+            foreach (var sql in new[]
+            {
+                "SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR)) AS \"a\" FROM products AS c",
+                "SELECT JSON_VALUE(c.\"DOC\", '$.a' RETURNING VARCHAR) || 'x' AS \"a\" FROM products AS c",
+            })
+            {
+                var best = PlanToAsync(sql);
+                var rendered = Render(FindCosmos(best));
+
+                rendered.Should().Contain("(IS_PRIMITIVE(c.a) ? c.a : null)", "the accessor goes down: " + rendered);
+                rendered.Should().NotContain("UPPER").And.NotContain("CONCAT", "and the function is Calcite's: " + rendered);
+            }
         }
 
         /// <summary>
@@ -2459,9 +2769,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Calcite raises (ikvmnet/calcite-dotnet#120).
         /// </para>
         /// <para>
-        /// <c>DECIMAL</c> stays bare: it parses a stored string spelling a number, so <c>IS_NUMBER</c>
-        /// would read null where Calcite answers, and bare the reader still refuses what it cannot
-        /// read.
+        /// <c>DECIMAL</c> is not among them: it parses a stored string spelling a number, so no type
+        /// test is where it answers, and it addresses no path at all — see
+        /// <see cref="NothingElseOverADecimalReturningIsPushed"/>.
         /// </para>
         /// </remarks>
         [Fact]
@@ -2475,9 +2785,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) AS \"b\" FROM products AS c"))
                 .Should().Be("SELECT VALUE { \"b\": (IS_BOOL(c.b) ? c.b : null) } FROM products c");
-
-            Render(PlanToCosmos("SELECT JSON_VALUE(c.\"DOC\", '$.d' RETURNING DECIMAL) AS \"d\" FROM products AS c"))
-                .Should().Be("SELECT VALUE { \"d\": c.d } FROM products c");
         }
 
         /// <summary>
@@ -2521,6 +2828,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "SELECT c.\"id\" FROM products AS c WHERE NOT (CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) > 50)");
 
             Render(FindCosmos(best)).Should().Contain("IS_DEFINED(c.price)");
+        }
+
+        /// <summary>
+        /// A <c>CASE</c> condition under a <c>NOT</c> is written in the positive position.
+        /// </summary>
+        /// <remarks>
+        /// The condition selects an arm, and both SQL and the service take the next arm for a condition
+        /// that is not true, so it has to be true exactly where SQL's is, whatever encloses the
+        /// <c>CASE</c>. It was written in the position of the <c>NOT</c> above it, the inequality
+        /// unguarded and so true over the null category: the then arm was taken where SQL takes the
+        /// else, and measured against the emulator the document was kept. The arms stay in the
+        /// <c>NOT</c>'s position, which is where their value is negated.
+        /// </remarks>
+        [Fact]
+        public void ACaseConditionUnderANegationIsWrittenPositively()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" <> 'bikes' THEN c.\"id\" = '1' ELSE c.\"id\" = '6' END)"))
+                .Should().EndWith("WHERE (NOT ((IS_DEFINED(c.category) AND NOT IS_NULL(c.category) AND (c.category != @p0)) ? ((c.id = @p1) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id)) : ((c.id = @p2) OR IS_NULL(c.id) OR NOT IS_DEFINED(c.id))))");
+        }
+
+        /// <summary>
+        /// A <c>CASE</c> implies nothing about the paths inside it either.
+        /// </summary>
+        /// <remarks>
+        /// Its else arm answers where the condition's path is absent, so the predicate can be true
+        /// with every path it reads missing. Measured against the emulator, this was weakened to
+        /// <c>IS_DEFINED(c.category) AND IS_DEFINED(c.name)</c>, and the document with no category —
+        /// whose <c>CASE</c> is <c>'z'</c> — was lost. A <c>CASE</c> now observes absence, as the
+        /// null tests do.
+        /// </remarks>
+        [Fact]
+        public void ACasePushesNoDefinednessRestriction()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN c.\"$.category\" = 'bikes' THEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) ELSE 'z' END) = 'z'");
+
+            var cosmos = FindCosmos(best);
+            var sql = cosmos is null ? "" : Render(cosmos);
+
+            sql.Should().NotContain("IS_DEFINED", "a CASE implies no path is defined: " + sql);
+        }
+
+        /// <summary>
+        /// A comparison that needs a guard declines over a <c>COALESCE</c>, whose value does not follow
+        /// its path into unknown.
+        /// </summary>
+        /// <remarks>
+        /// Measured over the typed container, <c>NOT (COALESCE(label, 'none') = 'x')</c> and
+        /// <c>COALESCE(label, 'none') &lt;&gt; 'x'</c> each lost the null label and the absent one: the
+        /// guard tested <c>label</c>, and the coalesce is <c>'none'</c> there, which SQL compares.
+        /// </remarks>
+        [Fact]
+        public void AGuardedComparisonOverACoalesceStaysInProcess()
+        {
+            Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE NOT (COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') = 'x')"))
+                .Should().Contain("ClrCursorFilter");
+
+            Plan(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.name'), 'none') <> 'x'"))
+                .Should().Contain("ClrCursorFilter");
+        }
+
+        /// <summary>
+        /// <c>IS NULL</c> over a predicate stays in process, and so does the <c>COALESCE</c> that
+        /// expands to one.
+        /// </summary>
+        /// <remarks>
+        /// <c>COALESCE(p, FALSE)</c> is <c>CASE WHEN p IS NOT NULL THEN p ELSE FALSE END</c>, and the
+        /// service has no way to ask where <c>p</c> is unknown: its comparisons are two-valued over a
+        /// null where SQL's are not. Measured against the emulator,
+        /// <c>NOT COALESCE(category &lt;&gt; 'bikes', FALSE)</c> lost the document whose category is
+        /// null. Nothing restricts the read in its place, the predicate observing absence.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAPredicateStaysInProcess()
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE NOT COALESCE(c.\"$.category\" <> 'bikes', FALSE)");
+
+            Plan(best).Should().Contain("ClrCursorFilter", "the predicate is Calcite's to answer: " + Plan(best));
+            Render(FindCosmos(best)).Should().NotContain("WHERE", "and nothing it implies is pushed in its place: " + Render(FindCosmos(best)));
         }
 
         // ── The comparisons over a text accessor ──────────────────────────────────────
@@ -2571,6 +2957,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             Render(FindCosmos(PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') <> 'steel'")))
                 .Should().Contain("NOT IS_STRING(c.name)");
+        }
+
+        /// <summary>
+        /// The equality under a <c>NOT</c> pushes, guarded by the accessor's null set.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The inequality's problem without the inequality: under a negation the comparison has to be
+        /// true wherever SQL's is unknown, so that the <c>NOT</c> above discards the row, and over the
+        /// accessor that is wherever it is null — at an object and an array as well as an absent path
+        /// and a JSON null. The guard named the last two only. Measured over the typed container,
+        /// <c>NOT (label = 'bikes')</c> kept the array and the object, and so did the same equality
+        /// under a negated conjunction and a negated disjunction.
+        /// </para>
+        /// <para>
+        /// A typed <c>RETURNING</c> the same, with the type it names: its <c>!=</c> was restricted
+        /// to the type in the positive position and its <c>=</c> was not under a <c>NOT</c>, so an
+        /// object at the path was kept there. The raw value is null only where the path is absent or
+        /// holds null, and keeps the guard it had.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ANegatedEqualityOverAnAccessorIsGuardedByItsNullSet()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.label') = 'bikes')"))
+                .Should().EndWith("WHERE (NOT ((c.label = @p0) OR IS_NULL(c.label) OR NOT IS_DEFINED(c.label) OR NOT IS_PRIMITIVE(c.label)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) = 5)"))
+                .Should().EndWith("WHERE (NOT ((c.metadata = @p0) OR IS_NULL(c.metadata) OR NOT IS_DEFINED(c.metadata) OR NOT IS_NUMBER(c.metadata)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE NOT (c.\"$.category\" = 'bikes')"))
+                .Should().EndWith("WHERE (NOT ((c.category = @p0) OR IS_NULL(c.category) OR NOT IS_DEFINED(c.category)))");
         }
 
         /// <summary>
@@ -3162,16 +3580,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // ── Testing whether a property exists ─────────────────────────────────────
 
         /// <remarks>
+        /// <para>
         /// The SQL spelling. Cosmos distinguishes an absent property from one present and null and SQL
         /// does not, so this renders as both tests — which is what makes it match a document that simply
         /// lacks the property.
+        /// </para>
+        /// <para>
+        /// <b>And as the third test the accessor needs.</b> <c>JSON_VALUE</c> is null for an object or
+        /// an array, which is exactly what <c>metadata</c> is in the documents that have it, so the two
+        /// tests alone kept every one of them — measured against the emulator over document 2 of the
+        /// differential seed, which Calcite does not return. This test pinned that rendering as right
+        /// until it was found. <c>IS_PRIMITIVE</c> is the line <c>JSON_VALUE</c> draws, the same one
+        /// its projection is guarded by.
+        /// </para>
         /// </remarks>
         [Fact]
         public void IsNotNullOnADocumentPropertyTestsBothCosmosStates()
         {
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NOT NULL");
 
-            Render(best).Should().Contain("(IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata))");
+            Render(best).Should().EndWith("WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_PRIMITIVE(c.metadata))");
+        }
+
+        /// <summary>
+        /// <c>IS NULL</c> over an accessor is true wherever the accessor answers null.
+        /// </summary>
+        /// <remarks>
+        /// The complement, written so that the absent case is decided by <c>IS_DEFINED</c> before any
+        /// type test is asked: the record disagrees about what <c>IS_PRIMITIVE</c> says of an absent
+        /// path, and <c>NOT IS_DEFINED(p) OR …</c> is true there whatever it says.
+        /// </remarks>
+        [Fact]
+        public void IsNullOverAnAccessorIsTrueWhereTheAccessorAnswersNull()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata') IS NULL"))
+                .Should().Be("SELECT VALUE { \"id\": c.id } FROM products c WHERE (NOT IS_DEFINED(c.metadata) OR IS_NULL(c.metadata) OR NOT IS_PRIMITIVE(c.metadata))");
+        }
+
+        /// <summary>
+        /// The null test reads each accessor's own null set: the type a <c>RETURNING</c> names, and
+        /// the fragment <c>JSON_QUERY</c> answers.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_QUERY</c> is the mirror of <c>JSON_VALUE</c>, null for every scalar, so <c>IS NULL</c>
+        /// over it was false of a stored string Calcite answers null for. A typed <c>RETURNING</c> is
+        /// null wherever the value is not of its type — an object, which Calcite answers null for, and
+        /// another scalar, which the standard answers null for and Calcite raises over. The raw value
+        /// is null only where it is absent or null, and keeps the two tests it always had.
+        /// </remarks>
+        [Fact]
+        public void TheNullTestReadsEachAccessorsOwnNullSet()
+        {
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_QUERY(c.\"DOC\", '$.metadata') IS NULL"))
+                .Should().EndWith("WHERE (NOT IS_DEFINED(c.metadata) OR IS_NULL(c.metadata) OR NOT (IS_OBJECT(c.metadata) OR IS_ARRAY(c.metadata)))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.metadata' RETURNING INTEGER) IS NOT NULL"))
+                .Should().EndWith("WHERE (IS_DEFINED(c.metadata) AND NOT IS_NULL(c.metadata) AND IS_NUMBER(c.metadata))");
+
+            Render(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" IS NULL"))
+                .Should().EndWith("WHERE (NOT IS_DEFINED(c.category) OR IS_NULL(c.category))");
+        }
+
+        /// <summary>
+        /// A view's column bound to the accessor is held to the accessor's null set.
+        /// </summary>
+        /// <remarks>
+        /// The reading the binding carries is what says the column is the accessor's text rather than
+        /// the value — the same thing that holds a comparison over it to the accessor's tests (#83).
+        /// </remarks>
+        [Fact]
+        public void IsNotNullOverAViewColumnReadsTheAccessorsNullSet()
+        {
+            Render(PlanToCosmos("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" IS NOT NULL"))
+                .Should().EndWith("WHERE (IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label))");
         }
 
         /// <remarks>

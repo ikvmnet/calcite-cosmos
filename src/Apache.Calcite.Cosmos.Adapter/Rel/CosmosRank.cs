@@ -133,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var names = getRowType().getFieldNames();
 
             for (var i = 0; i < _projects.size(); i++)
-                implementor.Query.SelectProperty((string)names.get(i), translator.Translate((RexNode)_projects.get(i)));
+                implementor.Query.SelectProperty((string)names.get(i), translator.TranslateValue((RexNode)_projects.get(i)));
 
             // Rendered through the one entry point that permits a scoring function, and into the clause
             // rather than the select list — the only place the service accepts one.

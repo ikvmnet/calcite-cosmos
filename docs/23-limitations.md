@@ -84,7 +84,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 ## Behaviours that are correct but surprising
 
 - `JSON_VALUE` returns text, so `= '30'` matches the number 30 (Chapter 7).
-- `RETURNING` asserts a type rather than converting to it (Chapter 7).
+- `RETURNING` asserts a type rather than converting to it — except `DECIMAL`, which parses a stored
+  string, and is computed in process for that reason (Chapter 7).
 - A `RETURNING` column over a value of another type is null; Calcite answers null for an object or an
   array but fails for a string or a boolean, and the adapter answers null for those too, as SQL says
   (Chapter 7).
