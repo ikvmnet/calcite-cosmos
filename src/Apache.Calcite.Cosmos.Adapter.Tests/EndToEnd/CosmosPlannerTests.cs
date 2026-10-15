@@ -3550,6 +3550,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A call that answers a value over a null is not read through, and implies nothing about the
+        /// paths beneath it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The walk that collects the paths a predicate needs descended into every operator but the
+        /// connectives, on the premise that each answers null for a null. A constructor does not: an
+        /// array or a map holding a null is not null, so a comparison over its cardinality or over an
+        /// element it also holds is true with the path absent. Measured against the emulator, the
+        /// first pushed <c>WHERE IS_DEFINED(c.metadata.sku)</c> and kept one of the seven documents it
+        /// is true of. <c>CONCAT_WS</c> and <c>ARRAY_CONTAINS</c>, which lost rows the same way, are
+        /// library functions this harness does not register; the differential corpus has them.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("CARDINALITY(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1")]
+        [InlineData("ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'x'][2] = 'x'")]
+        [InlineData("CARDINALITY(MAP['k', INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1")]
+        public void ACallThatAnswersAValueOverANullImpliesNoPresence(string predicate)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("IS_DEFINED", "the call is not null where the path beneath it is absent: " + sql);
+        }
+
+        /// <summary>
+        /// A function that is null for a null is still read through to the path it reads.
+        /// </summary>
+        /// <remarks>
+        /// The other side of the one above. Calcite classifies none of these — each reports
+        /// <see cref="Strong.Policy.AS_IS"/> — so each is one the split rule names, measured in process
+        /// to answer null over a path no document has. The last is an accessor over a scalar rendering,
+        /// which addresses no path of its own and is null where the rendering it parses is.
+        /// </remarks>
+        [Theory]
+        [InlineData("REPLACE(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'B', 'C') = 'C-2'", "c.metadata.sku")]
+        [InlineData("POSITION('-' IN INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))) = 2", "c.metadata.sku")]
+        [InlineData("CHAR_LENGTH(SUBSTRING(INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) FROM 2)) = 2", "c.metadata.sku")]
+        [InlineData("INITCAP(JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.name'), '$')) = 'Sprint'", "c.name")]
+        public void AFunctionNullForANullStillImpliesThePathItReads(string predicate, string path)
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE " + predicate);
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().EndWith($"WHERE IS_DEFINED({path})");
+        }
+
+        /// <summary>
         /// A sort above a pushed aggregate stays in Calcite, and the aggregate still pushes.
         /// </summary>
         /// <remarks>

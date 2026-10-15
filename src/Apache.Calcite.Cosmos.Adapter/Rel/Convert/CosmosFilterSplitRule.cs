@@ -539,8 +539,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </para>
         /// <para>
         /// <b>An operator implies the paths of every operand only where every operand has to answer.</b>
-        /// A comparison, a function and arithmetic answer null for a null, so each needs all of its
-        /// operands, and a conjunction needs all of its conjuncts to be true. A connective whose
+        /// A comparison, arithmetic and most functions answer null for a null, so each needs all of its
+        /// operands — but not every function does, and one that answers a value over a null implies
+        /// nothing: see <see cref="IsNullWhereAnOperandIs"/>, which says which may be read through. A
+        /// conjunction needs all of its conjuncts to be true. A connective whose
         /// answer one operand can settle alone does not: a disjunction is true where one branch is,
         /// whatever the others read, and a conjunction read as a value is false where one conjunct
         /// is. Each of those implies only what every one of its operands implies. This used to
@@ -622,10 +624,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     return CollectPaths(operand, value, translator, rootAlias);
 
-                // Anything else answers null for a null, so it needs every operand, each as a value.
+                // Anything else needs every operand, each as a value, only where it is null for a null
+                // one. One that answers a value over a null -- CONCAT_WS skipping it, an ARRAY holding
+                // it -- is true or not null with the path absent, and implies nothing.
                 default:
-                    return Union(operands, value: true, translator, rootAlias);
+                    return IsNullWhereAnOperandIs(call)
+                        ? Union(operands, value: true, translator, rootAlias)
+                        : new List<RexNode>();
             }
+        }
+
+        /// <summary>
+        /// Determines whether a call is null wherever one of its operands is null.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The premise every path <see cref="CollectPaths"/> finds rests on.</b> An operand's path is
+        /// implied only where an absent path makes the operand null and a null operand makes the call
+        /// null, all the way up to the conjunct. A comparison, <c>LIKE</c> and arithmetic are like that.
+        /// Not every function is, and the walk used to assume they all were: measured against the
+        /// emulator over products, <c>CONCAT_WS('-', name, sku) &lt;&gt; 'Road Runner-B-2'</c> pushed
+        /// <c>IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)</c> and kept none of the six documents it
+        /// is true of, <c>CONCAT_WS</c> skipping the absent sku; and <c>CARDINALITY(ARRAY[INITCAP(sku)])
+        /// = 1</c> pushed <c>IS_DEFINED(c.metadata.sku)</c> and kept one of seven, an array holding a null
+        /// not being null. <c>ARRAY_CONTAINS(ARRAY[INITCAP(sku), 'x'], 'x')</c> did the same.
+        /// </para>
+        /// <para>
+        /// <b>So the walk descends only where this says it may, and a call it does not know implies
+        /// nothing.</b> A list of what is safe rather than of what is not, because the unknown function
+        /// is the one a library adds next, and declining a weakening loses no rows. Calcite's own answer
+        /// comes first — <see cref="Strong.Policy.ANY"/>, which the comparisons, <c>LIKE</c>, the
+        /// arithmetic, the cast, <c>NOT</c>, <c>ITEM</c>, <c>TRIM</c>, <c>FLOOR</c>, <c>CEIL</c> and
+        /// <c>EXTRACT</c> carry. An ordinary function reports <see cref="Strong.Policy.AS_IS"/>, which
+        /// says nothing either way, so the functions named below are the ones Calcite was measured to
+        /// answer null for over a path every document lacks, each read in process against the emulator.
+        /// A <c>SEARCH</c> that answers unknown over a null is the comparisons it stands for; one that
+        /// decides null observes absence and never reaches the walk. A plain accessor that addresses no
+        /// path of its own is null where the value it parses is, so <c>JSON_VALUE(JSON_VALUE(DOC,
+        /// '$.name'), '$')</c> needs the name it reads.
+        /// </para>
+        /// <para>
+        /// <see cref="CosmosSelfJoinRule"/> asks a stronger question of a key, null <em>exactly</em> where
+        /// an operand is, because a key that could be null where its inputs are not falls outside the
+        /// constraint it is proved under. This one is only the half a weakening needs, which admits an
+        /// accessor and a cast that is null for more than a null.
+        /// </para>
+        /// </remarks>
+        static bool IsNullWhereAnOperandIs(RexCall call)
+        {
+            if (Strong.policy(call) == Strong.Policy.ANY)
+                return true;
+
+            if (KindOf(call) == SqlKind.__Enum.SEARCH)
+                return call.getOperands().size() == 2
+                    && call.getOperands().get(1) is RexLiteral literal
+                    && literal.getValue() is org.apache.calcite.util.Sarg sarg
+                    && sarg.nullAs == RexUnknownAs.UNKNOWN;
+
+            if (CosmosRexTranslator.IsPlainJsonValue(call) || CosmosRexTranslator.IsPlainJsonQuery(call))
+                return true;
+
+            return call.getOperator().getName() switch
+            {
+                "||" or "UPPER" or "LOWER" or "INITCAP" or "SUBSTRING" or "CHAR_LENGTH" or "CHARACTER_LENGTH" or
+                "POSITION" or "REPLACE" or "LEFT" or "RIGHT" or "REVERSE" or "REPEAT" or
+                "MOD" or "ABS" or "ROUND" or "POWER" or "SAFE_CAST" => true,
+                _ => false,
+            };
         }
 
         /// <summary>

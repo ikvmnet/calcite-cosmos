@@ -2133,6 +2133,17 @@ across documents* and *A join of a container to itself* is the record.
   COALESCE(JSON_VALUE(c."DOC", '$.price'), 'none') = '120'` should keep 1, and kept nothing: the
   `COALESCE` was compared as the raw number, the rendering test reaching only the comparison's
   direct operands. Over the fixes it agrees, and it is in the corpus.
+
+  Review found one more of L's kind that partitioning could not: the weakening read through every
+  function as though each were null for a null, and `CONCAT_WS`, `ARRAY[…]` and `ARRAY_CONTAINS`
+  over one are not — *fixed* (`DESIGN.md`, *A position belongs to a predicate*), and the four
+  statements that lost rows are in the corpus.
+- **The partition generator's vocabulary** — *small.* Its text expressions are an accessor, a
+  column or a cast under `UPPER`, `LOWER`, `COALESCE` or `||`, and every one of those but the
+  `COALESCE` is null for a null — which is why the run never met a function that answers a value
+  over one, and review did. Drawing `CONCAT_WS`, a constructor read through `CARDINALITY` or an
+  element, and a library function or two would let it ask the question `IsNullWhereAnOperandIs`
+  answers. Each costs Calcite's evaluation of it in every statement that draws it.
 - **Where the gate's partition run belongs** — *small, and the owner's call.* Every run of the
   differential class judges the first 200 predicates, in three to five minutes; the gate's 1,000
   run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The

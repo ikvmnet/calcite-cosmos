@@ -2721,7 +2721,7 @@ operand that observes absence; the positive equality needs none and is untouched
 
 **A disjunction implies what every branch implies, and no more.** The weakening pushes `IS_DEFINED` of
 the paths a conjunct cannot do without, and the walk that finds them treated every operator as needing
-every operand. A comparison, a function and arithmetic do, answering null for a null; a conjunction
+every operand. A comparison, arithmetic and most functions do, answering null for a null; a conjunction
 does where it must be true. But a disjunction is true where one branch is, whatever the others read,
 and a conjunction read as a value — compared with something — is false where one conjunct is. So
 `CosmosFilterSplitRule.CollectPaths` now unions only through the first kind, and takes what every
@@ -2745,6 +2745,28 @@ unknown, which is what an `IN` builds, is still the comparisons it stands for. T
 `SEARCH` before writing it, so only the weakening ever saw the folded form, and only under a host's
 rules — `CosmosPlannerTests.ANullTestFoldedIntoASearchIsNotWeakened` is the witness, the differential
 harness registering none of them.
+
+**And a function is read through only where it is null for a null.** The walk descended into every
+operator but the connectives, on the premise that a function answers null for a null, and some answer a
+value instead. Measured against the emulator over `products`: `CONCAT_WS('-', name, sku) <> 'Road
+Runner-B-2'` pushed `IS_DEFINED(c.name) AND IS_DEFINED(c.metadata.sku)` and kept none of the six
+documents it is true of, `CONCAT_WS` skipping the absent sku; `CARDINALITY(ARRAY[INITCAP(sku)]) = 1`
+pushed `IS_DEFINED(c.metadata.sku)` and kept one of seven, an array holding a null not being null; and
+`ARRAY_CONTAINS(ARRAY[INITCAP(sku), 'x'], 'x')` did the same. The question was older than the
+disjunction and the negation: none of these has either. `CosmosFilterSplitRule.IsNullWhereAnOperandIs`
+now says which calls may be read through, and a call it does not know implies nothing — a list of what
+is safe rather than of what is not, since the function a library adds next is the one nobody listed,
+and declining a weakening keeps every row. It is Calcite's `Strong.Policy.ANY` (the comparisons,
+`LIKE`, arithmetic, the cast, `NOT`, `ITEM`), a `SEARCH` that answers unknown over a null, a plain
+accessor, and the string and numeric functions measured to answer null over a path no document has:
+`||`, `UPPER`, `LOWER`, `INITCAP`, `SUBSTRING`, `CHAR_LENGTH`, `POSITION`, `REPLACE`, `LEFT`, `RIGHT`,
+`REVERSE`, `REPEAT`, `MOD`, `ABS`, `ROUND`, `POWER` and `SAFE_CAST`. The self-join rule's
+`IsNullExactlyWhereAnOperandIs` is the stronger question, null *exactly* where an operand is, and stays
+its own. The guard a comparison takes rests on the same premise and still asks `ObservesAbsence`, the
+list of what is not safe; it is written only over what the translator writes, and the translator
+declines `CONCAT_WS`, the constructors and `ARRAY_CONTAINS` alike. Across the differential corpus, the
+planner corpus and the gate's 1,000 predicates in all three partitions, planned before and after, the
+weakening changed for those statements alone.
 
 #### A predicate's value is not its truth
 

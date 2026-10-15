@@ -1431,6 +1431,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE NOT (CASE WHEN c.\"$.category\" = 'bikes' THEN JSON_VALUE(c.\"DOC\", '$.name') ELSE 'z' END = 'z')", false),
             ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.metadata.sku'), 'none') > 'A'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE COALESCE(JSON_VALUE(c.\"DOC\", '$.price'), 'none') = '120'", false),
+
+            // The presence weakening read through a call that answers a value over a null, on the
+            // premise that every function is null for a null. CONCAT_WS skips the absent sku, and an
+            // array holding a null is neither null nor empty, so each is true for documents with no
+            // sku, and each pushed IS_DEFINED of the paths beneath it: the first two kept none of the
+            // six they are true of, the last two one of seven.
+            ("SELECT c.\"id\" FROM products AS c WHERE CONCAT_WS('-', JSON_VALUE(c.\"DOC\", '$.name'), JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'Road Runner-B-2'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (CONCAT_WS('-', JSON_VALUE(c.\"DOC\", '$.name'), JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'Road Runner-B-2')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE CARDINALITY(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku'))]) = 1", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE ARRAY_CONTAINS(ARRAY[INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')), 'x'], 'x')", false),
         ];
 
         /// <summary>
