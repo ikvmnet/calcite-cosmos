@@ -4727,7 +4727,8 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
 - **And it is grown by generation: ternary logic partitioning.** The written corpus recorded no
   divergence while ordinary statements one step from it answered wrong rows, so predicates are now
   drawn as well. `EveryPredicatePartitionsTheRows` draws 1,000 from a fixed seed over `typed` and
-  `products`, from the shapes the adapter pushes:
+  `products` — the first 200 of them unless the gate is asked for, as below — from the shapes the
+  adapter pushes:
   - comparisons over accessors, promoted columns and casts;
   - the null tests and the truth tests;
   - `NOT`, `AND`, `OR`, `CASE` and `COALESCE`;
@@ -4780,6 +4781,27 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   - **Four statements at a time was no faster than one** on the loaded machine.
 
   Whether that fits the CI budget is the owner's call: the whole suite took 12.5 minutes on main.
+
+  **So the run has two sizes, and they are one sequence.** Every run of the class judges the first
+  200 predicates; `COSMOS_PARTITION_GATE=1` judges all 1,000, which is Stage 0's gate, the variable
+  named the way `COSMOS_SHADOW_GATE` names Stage 1's. The seed does not change with the size and the
+  generator draws in order, so the default is a prefix of the gate, not a sample of its own: a
+  predicate failing in one fails in the other, as the same statement, and the full run only asks more.
+  The size was measured against two things:
+  - **What it would have found.** Of the 129 distinct predicates that failed on main, the first 200
+    hold 20, and they show every cause the 1,000 did except two: C, which one predicate showed, at
+    553, and L's disjunction half, whose first witness is predicate 281. The corpus holds written
+    statements for both. The first 150 hold 15 and miss L altogether, its first witness being
+    predicate 178.
+  - **What it costs.** Against the emulator, on a workstation running other work, the default judged
+    its 200 in 276 s and the class took 8.1 minutes; the gate judged its 1,000 in 983 s and the class
+    took 19.3, and an earlier gate run over the fixes judged for 1,278 s. Inside that 983 s the same
+    200 took 182 s. The tail decides it, single statements of 30 to 46 s, so a run's time moves by
+    a third with the machine, and a fifth of the predicates costs a fifth to a quarter of the
+    time.
+
+  Over the fixes for A to K and both halves of L, the gate's 1,000 pass: 973 distinct, one
+  not judged because Calcite raised, none failing, 3,880 statements run.
 
 ---
 

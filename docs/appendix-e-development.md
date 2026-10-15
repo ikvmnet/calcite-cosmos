@@ -100,12 +100,23 @@ What counts as agreement where one side fails is decided in one place, `Refines`
 A statement whose in-process plan raises compares nothing, so it goes in `WithoutAnOracle` with the
 reason, not in the corpus.
 
-**`EveryPredicatePartitionsTheRows`** generates 1,000 predicates from a fixed seed. For each one φ, it
+**`EveryPredicatePartitionsTheRows`** generates predicates from a fixed seed. For each one φ, it
 requires that `WHERE φ`, `WHERE NOT φ` and `WHERE φ IS NULL`, pushed, return every document exactly
-once between them, and that each returns the documents Calcite puts there. It is slow: about twenty
-minutes on a busy workstation. When it fails, it reports the
-smallest part of each failing predicate that still fails. Set `COSMOS_MEASUREMENT_LOG` to a file path
-to have every failure written there in full, with the Cosmos statement each partition sent.
+once between them, and that each returns the documents Calcite puts there. When it fails, it reports
+the smallest part of each failing predicate that still fails. Set `COSMOS_MEASUREMENT_LOG` to a file
+path to have every failure written there in full, with the Cosmos statement each partition sent.
+
+It runs at two sizes:
+
+- **By default, the first 200 predicates**, which is what every run of the differential class pays:
+  three to five minutes of judging on a workstation, and the class about eight.
+- **With `COSMOS_PARTITION_GATE=1`, all 1,000.** That is Stage 0's gate, and it takes sixteen to
+  twenty-one minutes of judging, and the class about twenty.
+
+The seed does not change with the size, and the predicates are drawn in order, so the default run asks
+exactly the first 200 the full run asks. A predicate that fails in one fails in the other, as the same
+statement. Where the full run belongs, a nightly job or a gate before merging, is not settled yet
+(`TODO.md`, section 10); until it is, run it by hand after changing the translator or the split rule.
 
 ### Measurements
 

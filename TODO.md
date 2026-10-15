@@ -2093,11 +2093,11 @@ across documents* and *A join of a container to itself* is the record.
   and add `Azure` to each row that passes. A row that fails there is a disagreement between the
   targets, and the reading to encode is the conservative one. The registry is not yet read by the
   translator; that is the step after this.
-- **Ternary logic partitioning is red until the root-cause fixes merge** — *rerun it then.*
+- **Ternary logic partitioning passes over the fixes** — *done; what it found is kept below.*
   `EveryPredicatePartitionsTheRows` (`DESIGN.md`, *Differential testing*) fails on main: 131 of
-  1,000 predicates. Rerun it once the fixes for A to G are in. Whatever still fails is a defect,
-  either one of those fixes missing a shape or a cause nobody has named. It found two causes the
-  fixes do not target, each a wrong answer from ordinary SQL:
+  1,000 predicates. Over the fixes for A to K it failed two, both L, and with L closed the gate's
+  1,000 pass. Whatever fails from here is a defect, a fix missing a shape or a cause nobody has
+  named. Besides A to K it found two causes, each a wrong answer from ordinary SQL:
   - **L: the presence weakening read a `CASE`, or a disjunction, as needing every path it reads** —
     *fixed.* A `CASE` now observes absence, and `CollectPaths` takes only what every branch of a
     disjunction needs, or every operand of a compound read as a value (`DESIGN.md`, *A position
@@ -2133,11 +2133,16 @@ across documents* and *A join of a container to itself* is the record.
   COALESCE(JSON_VALUE(c."DOC", '$.price'), 'none') = '120'` should keep 1, and kept nothing: the
   `COALESCE` was compared as the raw number, the rendering test reaching only the comparison's
   direct operands. Over the fixes it agrees, and it is in the corpus.
-- **What the partition run costs** — *medium, and the owner's to place.* 17.5 to 23.5 minutes for
-  the 1,000 predicates on main, on a workstation other work held at full load. Most of it is Calcite
-  compiling the reduction of a literal's cast with Janino, under IKVM, in statements the adapter
-  plans. A host planning through a connection pays the same, which makes it worth reducing for its
-  own sake. Until then, a nightly job may be the place for the run rather than every pull request.
+- **Where the gate's partition run belongs** — *small, and the owner's call.* Every run of the
+  differential class judges the first 200 predicates, in three to five minutes; the gate's 1,000
+  run only where `COSMOS_PARTITION_GATE=1`, in sixteen to twenty-one, and nothing sets it yet. The
+  full run belongs in a nightly job or in a gate before merging, a change to the translator or the
+  split rule above all, and which of the two is the owner's to decide. The default being its
+  prefix, either is the pull request's run carried further, and the variable is how it asks.
+- **What the partition run costs** — *medium.* Most of it is Calcite compiling the reduction of a
+  literal's cast with Janino, under IKVM, in statements the adapter plans. A host planning through a
+  connection pays the same, which makes it worth reducing for its own sake, and the cheaper it is the
+  more of the 1,000 a pull request can afford.
 - **A malformed response's failure mode** — *small.* A lookup-join stub returning raw documents
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed

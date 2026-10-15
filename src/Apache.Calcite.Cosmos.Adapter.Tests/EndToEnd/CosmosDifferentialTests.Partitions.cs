@@ -53,16 +53,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// How many predicates <see cref="EveryPredicatePartitionsTheRows"/> generates, alternating
-        /// between the two containers.
+        /// between the two containers: <see cref="GatePartitionedPredicates"/> where
+        /// <c>COSMOS_PARTITION_GATE=1</c>, and <see cref="DefaultPartitionedPredicates"/> otherwise.
         /// </summary>
         /// <remarks>
         /// Each costs four statements: the three partitions pushed, and Calcite's reading of the
-        /// predicate in process. See the test's remarks for what a run of this many costs.
+        /// predicate in process. See the test's remarks for what a run of each size costs.
         /// </remarks>
-        const int PartitionedPredicates = 1_000;
+        static int PartitionedPredicates => Environment.GetEnvironmentVariable("COSMOS_PARTITION_GATE") == "1"
+            ? GatePartitionedPredicates
+            : DefaultPartitionedPredicates;
 
         /// <summary>
-        /// The generator's seed, fixed so that a failure names a predicate the next run asks again.
+        /// The full run, which is Stage 0's gate: ternary logic partitioning holds over 1,000 generated
+        /// predicates.
+        /// </summary>
+        const int GatePartitionedPredicates = 1_000;
+
+        /// <summary>
+        /// The run every pass of the class makes, sized for a pull request rather than for the gate.
+        /// </summary>
+        /// <remarks>
+        /// The first of the gate's predicates, not others: the generator draws them in order from one
+        /// seed, so this run asks exactly what the full run asks first, and a predicate failing here
+        /// fails there too, as the same statement. The size was measured; see <c>DESIGN.md</c> under
+        /// <em>Differential testing</em>.
+        /// </remarks>
+        const int DefaultPartitionedPredicates = 200;
+
+        /// <summary>
+        /// The generator's seed, fixed so that a failure names a predicate the next run asks again, and
+        /// so that the default run is a prefix of the gate's.
         /// </summary>
         const int PartitionSeed = 20_261_015;
 
@@ -474,9 +495,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What a run costs.</b> Measured against the emulator with this seed and count: see
+        /// <b>What a run costs.</b> Measured against the emulator with this seed, at both sizes: see
         /// <c>DESIGN.md</c> under <em>Differential testing</em>. Repeated statements run once, and the
-        /// predicates are judged <see cref="PartitionParallelism"/> at a time.
+        /// predicates are judged <see cref="PartitionParallelism"/> at a time. Every run of the class
+        /// pays for <see cref="DefaultPartitionedPredicates"/>; <c>COSMOS_PARTITION_GATE=1</c> asks
+        /// for the gate's <see cref="GatePartitionedPredicates"/>, of which those are the first.
         /// </para>
         /// <para>
         /// <c>COSMOS_MEASUREMENT_LOG</c> names a file to append every failure to in full, with the
@@ -521,7 +544,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 narrowed[i] = await judge.Narrow(failing[i]);
             });
 
-            var summary = $"{predicates.Count} predicates, {predicates.Select(p => p.Vocabulary.Table + " " + p.Predicate.Sql).Distinct().Count()} distinct, " +
+            var size = predicates.Count == GatePartitionedPredicates ? "the gate's" : "the first of the gate's " + GatePartitionedPredicates + "; COSMOS_PARTITION_GATE=1 asks for all of them";
+            var summary = $"{predicates.Count} predicates ({size}), {predicates.Select(p => p.Vocabulary.Table + " " + p.Predicate.Sql).Distinct().Count()} distinct, " +
                 $"{judged.Count(p => p.Judged == false)} not judged because Calcite raised, {failing.Count} failing; " +
                 $"{judge.Statements} statements run; judged in {judging.TotalSeconds:F1} s, narrowed in {(clock.Elapsed - judging).TotalSeconds:F1} s " +
                 $"at {PartitionParallelism} at a time";
