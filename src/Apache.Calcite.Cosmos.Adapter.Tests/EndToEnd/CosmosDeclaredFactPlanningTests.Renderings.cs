@@ -98,6 +98,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(PlanToCosmos(sql, undeclared, out _)).Should().Contain("CASE(", "over a path that may hold a boolean the coalesce is Calcite's");
         }
 
+        /// <summary>
+        /// A grouping by the accessor, and a <c>DISTINCT</c> over it, push where the path holds a string, and stay
+        /// above the guarded column where nothing says so.
+        /// </summary>
+        /// <remarks>
+        /// Calcite groups the rendering and the service the value, which part where a path holds <c>30</c> in one
+        /// document and <c>"30"</c> in another: measured over the typed container, a pushed <c>GROUP BY</c> returned
+        /// the group <c>"30"</c> twice, and <c>COUNT(DISTINCT …)</c>, which Calcite expands into a grouping beneath
+        /// the count, counted 6 where Calcite counts 5. A string is its own rendering, so over a declared one the
+        /// groups are the same at both ends.
+        /// </remarks>
+        [Fact]
+        public void AGroupingOverAnAccessorPushesWhereThePathHoldsAString()
+        {
+            var grouped = $"""SELECT {Label} AS "l", COUNT(*) AS "n" FROM items AS c GROUP BY {Label}""";
+            var distinct = $"""SELECT DISTINCT {Label} AS "l" FROM items AS c""";
+
+            var declared = Declaring(Labels);
+            Query(FindCosmos(PlanToCosmos(grouped, declared, out _)), declared).Sql
+                .Should().Be("SELECT (IS_PRIMITIVE(c.label) ? c.label : null) AS \"l\", COUNT(1) AS \"n\" FROM items c GROUP BY (IS_PRIMITIVE(c.label) ? c.label : null)");
+            Query(FindCosmos(PlanToCosmos(distinct, declared, out _)), declared).Sql
+                .Should().Be("SELECT DISTINCT VALUE { \"l\": (IS_PRIMITIVE(c.label) ? c.label : null) } FROM items c");
+
+            var undeclared = Declared(false);
+
+            foreach (var sql in new[] { grouped, distinct })
+            {
+                var best = PlanToCosmos(sql, undeclared, out _);
+
+                PlanText(best).Should().Contain("ClrCursorAggregate", "over a path that may hold a number the grouping is Calcite's: " + PlanText(best));
+                Query(FindCosmos(best), undeclared).Sql
+                    .Should().Be("SELECT VALUE { \"l\": (IS_PRIMITIVE(c.label) ? c.label : null) } FROM items c", "and the guarded column beneath it is what goes down");
+            }
+        }
+
     }
 
 }

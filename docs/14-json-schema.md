@@ -100,7 +100,9 @@ over: the comparison is sent exactly, nothing is rechecked, and a `FETCH` can tr
 `type` declaration earns its keep on its own. It also lets a string function over the path push —
 `UPPER(JSON_VALUE(c."DOC", '$.carrier'))`, a concatenation, a length, a `COALESCE` — in a filter and in
 a projection, which over an undeclared path run in process, the accessor reading a stored number as
-text.
+text. And it lets a `GROUP BY` or a `DISTINCT` over the path push, which over an undeclared path
+groups in process, the stored `30` and `"30"` being one value as text and two at the service
+(Chapter 10).
 
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
 would otherwise send only for the recheck to discard. So does a path the query itself compares: a

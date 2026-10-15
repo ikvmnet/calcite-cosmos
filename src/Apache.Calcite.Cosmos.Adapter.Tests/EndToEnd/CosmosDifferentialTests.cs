@@ -934,6 +934,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARIANT) IS NULL", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = CAST('bikes' AS VARIANT)", false),
 
+            // Grouping by a rendering (E9), which Calcite groups by its text and the service by the value:
+            // typed's price is the number 30 in one document and the string "30" in another.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.price'), COUNT(*) FROM typed AS c GROUP BY JSON_VALUE(c.\"DOC\", '$.price')", false),            // E9
+            ("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM typed AS c", false),                                                        // E10
+            ("SELECT COUNT(DISTINCT JSON_VALUE(c.\"DOC\", '$.price')) FROM typed AS c", false),                                                 // E13
+
         ];
 
         /// <summary>

@@ -369,6 +369,7 @@ documents it has to read.
 | a string function, `\|\|`, or a `CASE`/`COALESCE` arm over `JSON_VALUE`, where the path is not declared a string | the function reads the text, and the service the stored number or boolean (8.3) |
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
+| `GROUP BY` or `DISTINCT` over `JSON_VALUE`, where the path is not declared a string | Calcite groups the text, the service the value — `30` and `"30"` are one group or two (Chapter 10) |
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
 | a comparison under a `NOT`, or an inequality, over a `CASE` or `COALESCE` | no guard follows the `CASE` into null (8.4) |
 | `SUBSTRING` without a length, `TRIM` of other characters, `TRUNCATE`/`ROUND` to decimal places | the Cosmos forms are not verified |

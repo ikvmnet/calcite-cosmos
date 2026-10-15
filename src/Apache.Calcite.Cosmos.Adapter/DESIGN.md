@@ -3553,6 +3553,18 @@ incorrect plan, not a slow one.
     which is SQL's reading of both — except for `id`, `_ts` and `_etag`, which the service guarantees
     are present, where normalising would buy nothing and cost the plain path form an index is defined
     on. See `CosmosAggregate.GroupingKey`.
+
+    A key read as text is grouped by its rendering in Calcite and by the value at the service, and
+    those part wherever a path holds more than one type: measured over `typed`, whose price is the
+    number 30 in one document and the string `"30"` in another, `GROUP BY JSON_VALUE(DOC, '$.price')`
+    returned the group `"30"` twice, `SELECT DISTINCT` the same, and `COUNT(DISTINCT …)` counted 6
+    where Calcite counts 5. A key read as text therefore groups at the service only where the
+    container declares the path a string, outright — `CosmosAggregate.GroupsAsCalciteDoes`, asked by
+    the rule and by implementation alike — and a key read as a fragment's text never does. Over a
+    container that declares nothing, a grouping or a `DISTINCT` by `JSON_VALUE` runs in process over
+    the guarded column the service sends. The raw value groups refine the renderings' — each value
+    has one rendering — so pushing the grouping by value and finishing it by rendering in process,
+    as a grouping set is finished, would recover the pushdown exactly; `TODO.md` carries it.
 - **Heterogeneous types per path.** The same path may be a string in one item and a number in
   the next. This is why a promoted declared-path column is typed `VARIANT` rather than a concrete
   type: `VARIANT`, like the `ANY` a document accessor carries, learns the value's type per row and

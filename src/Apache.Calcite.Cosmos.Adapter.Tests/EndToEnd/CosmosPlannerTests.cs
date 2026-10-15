@@ -1520,26 +1520,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>DISTINCT</c> over an accessor keeps the guard the projection beneath it rendered.
+        /// A <c>DISTINCT</c> over a text accessor stays in process where nothing says the path holds a
+        /// string, and the projection beneath it keeps the guard.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The distinct rebuilds the select list from the binding, which is the path, and the path
         /// holds the raw value where the column carries text. Emitting the path returned a number for
         /// a column declared <c>VARCHAR</c> — which the reader refuses rather than coerces, so the
-        /// statement failed outright: <em>Expected a JSON string, got Number</em>.
+        /// statement failed outright: <em>Expected a JSON string, got Number</em>. Found by the
+        /// differential oracle rather than here: the fault was in what came back rather than in the
+        /// plan.
         /// </para>
         /// <para>
-        /// Found by the differential oracle rather than here, which is why this test exists: the
-        /// offline suite could not see it, the fault being in what came back rather than in the plan.
+        /// <b>The guard was not enough.</b> The guarded path de-duplicates the value and Calcite the
+        /// rendering, which part where a path holds <c>30</c> in one document and <c>"30"</c> in
+        /// another: measured over the typed container, the pushed <c>DISTINCT</c> returned
+        /// <c>"30"</c> twice. So over a container that declares nothing the distinct is Calcite's,
+        /// over the guarded column the service sends. A declared string pushes it —
+        /// <c>CosmosDeclaredFactPlanningTests.AGroupingOverAnAccessorPushesWhereThePathHoldsAString</c>.
         /// </para>
         /// </remarks>
         [Fact]
-        public void ADistinctOverAnAccessorKeepsTheGuard()
+        public void ADistinctOverAnUndeclaredAccessorStaysAboveTheGuardedColumn()
         {
-            var best = PlanToCosmos("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
+            var best = PlanToAsync("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c");
+            var plan = Plan(best);
 
-            Render(best).Should().Contain("(IS_PRIMITIVE(c.price) ? c.price : null)");
+            plan.Should().Contain("ClrCursorAggregate", "the distinct is Calcite's over a path that may hold a number and a string: " + plan);
+            Render(FindCosmos(best)).Should().Be("SELECT VALUE { \"EXPR$0\": (IS_PRIMITIVE(c.price) ? c.price : null) } FROM products c");
         }
 
         /// <summary>
