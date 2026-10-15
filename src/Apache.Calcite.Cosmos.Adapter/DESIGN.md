@@ -4783,10 +4783,10 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   Whether that fits the CI budget is the owner's call: the whole suite took 12.5 minutes on main.
 
   **So the run has two sizes, and they are one sequence.** Every run of the class judges the first
-  200 predicates; `COSMOS_PARTITION_GATE=1` judges all 1,000, which is Stage 0's gate, the variable
-  named the way `COSMOS_SHADOW_GATE` names Stage 1's. The seed does not change with the size and the
-  generator draws in order, so the default is a prefix of the gate, not a sample of its own: a
-  predicate failing in one fails in the other, as the same statement, and the full run only asks more.
+  200 predicates; `COSMOS_PARTITION_GATE=1` judges all 1,000, which is Stage 0's gate, and any other
+  value, or none, is the default. The seed does not change with the size and the generator draws in
+  order, so the default is a prefix of the gate, not a sample of its own: a predicate failing in one
+  fails in the other, as the same statement, and the full run only asks more.
   The size was measured against two things:
   - **What it would have found.** Of the 129 distinct predicates that failed on main, the first 200
     hold 20, and they show every cause the 1,000 did except two: C, which one predicate showed, at
