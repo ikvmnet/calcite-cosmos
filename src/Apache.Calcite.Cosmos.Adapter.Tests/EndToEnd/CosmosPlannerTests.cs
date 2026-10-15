@@ -1749,7 +1749,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var plan = Plan(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'"));
 
             plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
-            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0:DOUBLE))])", plan);
+            plan.Should().Contain("CosmosFilter(condition=[OR(=(JSON_VALUE($0, '$.label'), '30':VARCHAR(2000)), =(JSON_VALUE($0, '$.label'), 30.0E0))])", plan);
+        }
+
+        /// <summary>
+        /// The alternatives plan under a host that reduces expressions, and push what they pushed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A connection's planner registers <c>FILTER_REDUCE_EXPRESSIONS</c> — Calcite's
+        /// <c>RelOptUtil.registerDefaultRules</c> adds it last — and its simplifier reads the
+        /// alternatives as it reads any condition. Written over one raw value they compared a string
+        /// with a double or a boolean there, the simplifier taking every literal an expression is
+        /// compared with to be of one class, and planning threw a <c>ClassCastException</c>. Measured
+        /// through a connection — the host's own prepare, against the emulator and offline —
+        /// <c>= '30'</c>, <c>= 'true'</c>, the cast form, the view's column and the partition key's cast
+        /// form each failed to plan. The number and the boolean now read the value in their own type —
+        /// the accessor re-typed, or the literal boxed as <c>VARIANT</c> where the value is a column.
+        /// </para>
+        /// <para>
+        /// What reaches the service is what the bare planner sends, but for the boolean beside an
+        /// accessor: the reducing host folds its equality with <c>TRUE</c> to the read itself, and the
+        /// service holds <c>c.label</c> true of the stored <c>true</c> and of nothing else.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "1.0E30", 1e30 })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", "WHERE ((c.label = @p0) OR c.label)", new object[] { "true" })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'false'", "WHERE ((c.label = @p0) OR (NOT c.label))", new object[] { "false" })]
+        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE ((c.category = @p0) OR (c.category = @p1))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE ((c.category = @p0) OR (c.category = @p1))", new object[] { "true", true })]
+        public void TheAlternativesPlanUnderAHostThatReducesExpressions(string sql, string where, object[] parameters)
+        {
+            foreach (var hostRewrites in new[] { false, true })
+            {
+                var query = Query(FindCosmos(PlanToAsync(sql, hostRewrites, reduce: true)));
+
+                query.Sql.Should().EndWith(where, "with host rewrites " + hostRewrites);
+                query.Parameters.Select(p => p.Value).Should().Equal(parameters, "with host rewrites " + hostRewrites);
+            }
         }
 
         /// <remarks>
@@ -3332,8 +3372,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the transpose copies a Cosmos filter below a Cosmos projection with the projection's
         /// expression inlined, and nothing rechecks what it made. A plan has to survive them because
         /// every connection-based host has them.
+        /// <para>
+        /// <c>reduce</c> adds a fourth every such host has, <c>FILTER_REDUCE_EXPRESSIONS</c>, which
+        /// simplifies every filter the split rule makes: a weakening it cannot read fails the plan. No
+        /// executor is set, so it folds no constants; the simplification, which is where a weakening
+        /// fails, runs whether or not one is.
+        /// </para>
         /// </remarks>
-        RelNode PlanToAsync(string sql, bool hostRewrites)
+        RelNode PlanToAsync(string sql, bool hostRewrites) => PlanToAsync(sql, hostRewrites, reduce: false);
+
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -3350,6 +3398,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_FILTER_TRANSPOSE);
                 planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_MERGE);
             }
+
+            if (reduce)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_REDUCE_EXPRESSIONS);
 
             var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
