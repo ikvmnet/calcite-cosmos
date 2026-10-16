@@ -2049,6 +2049,12 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
     another suite was loading: the corpus new 5.2–11.4 s on `main` and 8.3–13.6 s here, medians 7.6 s and 9.3 s, p90
     168 ms against 235 ms; planned again 4.0 s against 4.5 s; the hierarchy's p50s 3.5–12.1 s on both, which no
     difference survives.
+  - **The review's follow-up cost nothing the runs can see**: rules scoped to their own container, every scope the
+    licence table's, a deletion asked beside what reaches the service, required translator facts. Interleaved with
+    the review's tip (`14d6d46`) rebuilt, four runs each: the corpus new 4.33–4.53 s there and 4.24–4.61 s here, p50
+    20–22 ms against 17–19 ms, p90 130–150 ms against 157–164 ms; planned again 1.99–2.09 s against 1.89–2.08 s. The
+    hierarchy, three runs each, planned again on one connection: `MapLinks` p50 2.8–3.5 s against 2.8–3.2 s,
+    `MapLinksByMapName` 2.9–3.6 s against 2.8–3.1 s.
 
 **Decided conservatively, and worth deciding properly.**
 - **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
