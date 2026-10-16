@@ -186,6 +186,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                             fast.Knows(Fact(path, claim)).Should().BeTrue($"Knows({path}, {Describe(claim)}) under {described}, which the engine knows");
                     }
                 }
+
+                // The context is the scope's, and is read here past the scope's last use: in Release the JIT lets the
+                // scope go at ContextFor, and its lease's finalizer disposes the context, which then answers less.
+                GC.KeepAlive(scope);
             }
 
             overlaid.Should().BeGreaterThan(150, "or the comparison says little about the overlay");

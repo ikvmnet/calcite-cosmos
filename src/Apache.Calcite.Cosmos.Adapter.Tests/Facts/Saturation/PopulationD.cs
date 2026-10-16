@@ -259,6 +259,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                 if (_validated.Add(context))
                     Validate(name, context, rules);
+
+                // The context lives as long as the scope's lease; see ContextFor.
+                GC.KeepAlive(scope);
             }
 
             /// <summary>

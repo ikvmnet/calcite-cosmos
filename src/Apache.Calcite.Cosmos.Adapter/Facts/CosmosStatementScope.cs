@@ -298,6 +298,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns the context a licence's questions are read from, and the rules it ran, for a checker that reads every row
         /// of it rather than asking: the context is <c>null</c> where nothing is known, or nothing is kept.
         /// </summary>
+        /// <remarks>
+        /// The context is this scope's and lives only as long as it: once the scope is unreachable its lease's finalizer
+        /// disposes the context, which then answers less rather than throwing. A caller reading the context past its last use
+        /// of the scope keeps the scope alive (<see cref="GC.KeepAlive(object)"/>); Release's JIT lets it go at this call.
+        /// </remarks>
         internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Engine.Scope, _terms.Rules);
 
         /// <summary>
