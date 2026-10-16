@@ -396,9 +396,11 @@ verdicts.
 - **The schema reader has to state these facts.** `JsonSchemaFacts` reads `minimum`, `maximum` and their exclusive
   forms as bounds, and does not read `items`, `prefixItems`, `minItems`, `maxItems`, `minLength`, `maxLength`,
   `multipleOf` or `additionalProperties`. `JsonDocumentPath` has no element segment.
-- **The extractor reads a range only through a numeric cast,** whose window was measured. A comparison on a typed
-  path states the presence alone.
-- **The rewriter could ask `Decide`,** where it asks `Knows` of a context.
+- **A range is read only through a numeric cast,** whose window was measured (`PredicateAtom`'s `NumberCast`). A
+  comparison on a typed path or a raw value states the types and the presence alone.
+- **A verdict of an atom over one path is the engine's**, opened for it, where a stratum read off the overlay could
+  read it as `PredicateAtom.Over` reads one; the planner's redundancy questions are where that would pay
+  (`TODO.md`, *What a new statement costs*).
 - **The schema compiler has to emit conditional rules and discriminators directly.** That means a hidden
   discriminator for each undiscriminated `anyOf`, at which point `JsonSchemaFacts.Meet` and `JsonFact.Entails` go.
   Today's compiler emits `JsonFactRule`s and a meet.
@@ -413,8 +415,9 @@ verdicts.
 **Reasoning still to add**
 - **The converse of inheritance:** what every individual element is proven to be, every element is. This holds
   only once the length fixes which elements exist.
-- **A disjunction in the query, for the planner.** The oracle splits on an `OR`'s arms (`PredicateRules.ByArm`); the
-  planner's `Derive` still reads only conjunctions.
+- **A disjunction inside a conjunct the strata leave above.** The oracle splits on an `OR`'s arms
+  (`PredicateRules.ByArm`) wherever it is assumed; a conjunct no stratum admits is assumed only by the questions that
+  read every conjunct, and what its arms prove reaches a render only through the conjuncts admitted beside it.
 - **Rules that could be cheaper:**
   - several rules match only paths that are rarely touched;
   - Eggnog's roadmap lists demand-indexed rules;

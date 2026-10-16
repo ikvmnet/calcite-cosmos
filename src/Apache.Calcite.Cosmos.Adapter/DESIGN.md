@@ -2927,7 +2927,8 @@ of their own, which differed only over the document column — the second encodi
 encodings is for. `CosmosRexTranslator.IsReadAsStored` is that dispatch: a field read as declared is
 the stored value, a typed accessor only where its type is declared (below); read as text, only where
 `IsDeclaredString` holds of its path, what is known saying it holds a string or null and nothing else —
-which for these readers, naming no filter's licence, is what the container declares of every document; read as
+of what is known of the rows each reads — the declaration, or a filter beneath keeping a kind that declares it (L1,
+*The oracle in the planner*); read as
 JSON, never. The lookup join and the grouping ask it now — each taking an
 exception of its own first, the grouping for the document column, no two documents being equal — and
 `CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
@@ -4418,9 +4419,10 @@ service holds with the runtime type its JSON shape names (`VariantSqlValue.creat
 Calcite cannot sort the column in process, no oracle can measure a pushed sort, and `CosmosSort`
 declines a sort keyed on a `VARIANT` column rather than push one on faith. A caller orders by
 `JSON_VALUE` over the path instead, which is text and sorts as text in process — and at the service
-only where the container declares the path a string, the service ordering the stored value rather than
-its text; a `RETURNING` likewise only where the container declares its type (*Ordering a sort key the
-way it reads*). This waits on an upstream Calcite decision about a canonical variant order; see #165.
+only where what is known of the rows says the path holds a string, the declaration or a filter keeping a
+kind that declares it, the service ordering the stored value rather than its text; a `RETURNING` likewise
+only where the rows are known to hold its type (*Ordering a sort key the way it reads*). This waits on an
+upstream Calcite decision about a canonical variant order; see #165.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it
@@ -5017,7 +5019,8 @@ that never sees them. Those, and semi and anti joins, stay joins.
 
 **A `UUID` key is restricted where the container stores one spelling per value.** The key column is a
 cast, which binds to no path and has no parameter type, and that used to be the end of it. But the cast
-is of a text accessor, and where the container's unconditional facts give that path a UUID form, the
+is of a text accessor, and where what is known of the probe's rows gives that path a UUID form — the
+declaration, or the probe's filter keeping a kind that declares it (`OracleLicence.Key`, L1) — the
 stored text is one spelling of each value: `CosmosUuidForms.Render` writes a key in it, and
 `path IN (@k0, …)` matches exactly the documents whose cast equals the key. The same fact lowers a
 comparison against a literal and makes a self-join's key count; here the key is data rather than a
@@ -5027,7 +5030,8 @@ one a confined form's sign class excludes — names no document, and is answered
 request. Both sides compare as a `Guid` once fetched, whichever of `UuidValue`, `java.util.UUID` or
 `Guid` carried them.
 
-**A key read as text is restricted only where the container says the path holds a string.** The
+**A key read as text is restricted only where what is known of the probe's rows says the path holds a
+string** — the declaration, or the probe's filter keeping a kind that declares it (L1). The
 restriction names the stored value, `path IN (@k0, …)`, and the join then matches the fetched rows to
 the build side's keys in process, by the key *as the column reads it*. So the fetch may return more
 than matches and never less, and whether it can return less is a question about the column's reading,

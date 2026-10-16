@@ -1737,18 +1737,9 @@ as `(c.t = '30') OR (c.t = 30)`, the alternative covering a stored number the ac
 `'30'`. Where the container says the path holds a string there is no such document, and the same
 check deletes the alternative.
 
-**And it is worth recording what it cost to get right, because the first attempt was unsound.**
-`IsDeclaredString` reads the translator's fact set, which is the declaration *closed under what the
-query's own conjuncts proved* — and `JsonFact.Entails` reads `EqualTo v` as `OfType` of `v`'s type.
-So over `JSON_VALUE(…, '$.label') = '30'` the extractor records `EqualTo "30"`, that entails
-`OfType String`, and the comparison certifies **itself** exact: precisely the conflation the guard
-exists to prevent. Four tests in `CosmosPlannerTests` caught it.
-
-The fix asks `Derive(null)` instead. Note this is not an argument against the derived set generally —
-the ordering branch is right to use it, because there the fact comes from a *sibling* conjunct which
-reaches the service too, so the rows the ordering sees are rows the equality already confined to a
-string. The circularity is only where the fact comes from the conjunct being translated, which cannot
-confine anything it is itself the test of.
+**The first attempt was unsound**: the facts a comparison was rendered from held what it established
+itself, and `= '30'` certified itself exact (#117). The strata make that unrepresentable; `DESIGN.md`
+under *Which facts may justify what*.
 
 **A declared instant took the parameter too (#182).** A comparison of a stored instant against `?` is
 written in the path's own spelling when the statement runs, the slot carrying the form and the way a
@@ -1785,10 +1776,9 @@ rendering, and nothing has asked yet. The approximate types are a different matt
 purpose: a stored spelling maps to one `DOUBLE`, but a `DOUBLE` maps back to many, so a literal could
 not be written into the container's shape without changing which documents match.
 
-Also open beside it: a declared `type: string` ought to delete the stored-number disjunct the lowered
-equality still carries, and does not — the same shape as the entry above, the exactness test reading
-the literal rather than the fact set. The predicate oracle, in shadow, establishes the equality's rendering
-preimage, which a declared string meets down to the string (*The predicate oracle*, below).
+The stored-number disjunct a lowered equality carried beside a declared string is gone: a declared
+`type: string`, or a sibling's kind declaring one, makes `label = '30'` exact from the stratum it is
+rendered from, and the oracle's rendering preimage meets a declared string down to the string.
 
 ### Facts about array elements — *small, and waiting for a consumer*
 
@@ -1944,10 +1934,12 @@ Eggnog decides what is true, the host what is written and what is legal, Volcano
 and measured in shadow (Stage 1), and now answers every question the planner asks of a fact: the filter rule's whether
 it pushes whole, the implementor's rendering, the split rule's which conjuncts push and which weakening, the rewriter's
 contradiction, deletion and lowering, the translator's every question of a type; the clauses after a filter, what a
-statement pins and whether a read answers it, and a self-join's and a lookup join's keys. No `Derive` is left outside
-the oracle's own reading of the declaration (`JsonFactTheory.Derive`, now internal). `DESIGN.md`, from *Predicates
-as facts: the oracle* through *How the oracle is checked: population D*, is the record; `Facts/Saturation/README.md`
-is the catalogue.
+statement pins and whether a read answers it, and a self-join's and a lookup join's keys. `JsonFactTheory.Derive`, the
+second engine for what a filter establishes, is gone: the theory states its declaration and compiles it for the oracle,
+and the test assembly keeps a reference evaluator of established facts for the theory's own tests. Every scope a
+question reads is a row of the licence table, a translator is always handed the facts it reads, and each converter
+rule reads only its own container. `DESIGN.md`, from *Predicates as facts: the oracle* through *How the oracle is
+checked: population D*, is the record; `Facts/Saturation/README.md` is the catalogue.
 
 **What is built.**
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
@@ -1982,6 +1974,19 @@ is the catalogue.
   change beside the commit before it.
 
 **What is left.**
+- **Text sorts the rows' facts give the service are ordered by code point there** — *the open defect in section 4,
+  widened.* A key a filter proves present sorts under Calcite's own placement, and a kind's string as a declared one
+  does; three divergences record it. The decline waiting on that decision is one place, the text exception of
+  `IsReadAsStored`.
+- **A batch of point reads lost to a pushed `DISTINCT`** — *small, a cost-model choice.* Corpus row P21, `SELECT
+  DISTINCT category … WHERE category = 'bikes' AND id IN ('1', '2')`, read the two documents and de-duplicated in
+  process on `main`; with the grouping reading the rows the filter kept, the `DISTINCT` pushes, and Volcano prefers
+  one routed query with it to the batch. The rows are the same. Pricing `ReadMany` below a query where it reads a few
+  ids would bring the batch back; nothing measured says which is cheaper for two documents.
+- **The atom's readers are strings, and `RETURNING DECIMAL` a target inside `NumberCast`** — *small, no behaviour.*
+  `typed:T` and `cast:T:inner` are parsed back by `Reading.Parse`, restating the IR's `SqlValue`; the decimal's
+  rescaled literal and exact comparison are branches on its target. A reader registered as a record value, and the
+  decimal parse a reading of its own, would state each once.
 - **A `DISTINCT`'s key binding reads the declaration** — *small, and it waits on the statement node.* The binding is
   asked by the sort's rule on its own walk and again at implementation, so only what holds of every document answers
   alike on both; a key only the filter proves present binds nothing, and a sort over the `DISTINCT` stays in process
