@@ -140,7 +140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Walked rather than read off the left's row type: above a projection those names are
             // aliases, and the array expression would resolve against paths the container has not got.
-            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out _, out _, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // A traversal multiplies rows, and the service applies the JOIN before every clause a

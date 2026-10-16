@@ -65,7 +65,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (project.getProjects().size() == 0)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out var written, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             if ((written & CosmosClauses.Projection) != 0)

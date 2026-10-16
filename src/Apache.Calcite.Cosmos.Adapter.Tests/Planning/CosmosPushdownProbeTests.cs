@@ -219,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <summary>
         /// The plan, and every statement its Cosmos parts send.
         /// </summary>
-        static string Describe(RelNode planned)
+        internal static string Describe(RelNode planned)
         {
             var text = new StringBuilder();
             text.AppendLine(PlannerHarness.Explain(planned));
@@ -267,15 +267,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
-        /// Plans a statement over one container to the CLR convention, the Cosmos rules beside the way out.
+        /// Plans a statement over its containers to the CLR convention, every container's Cosmos rules beside the way
+        /// out, as a host registering several does.
         /// </summary>
-        internal static RelNode Plan(string sql, CosmosContainerMetadata container)
+        internal static RelNode Plan(string sql, params CosmosContainerMetadata[] containers)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(container);
+            var tables = containers.Select(container => new CosmosTable(container)).ToArray();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
-            rootSchema.add(container.Name, table);
+            foreach (var table in tables)
+                rootSchema.add(table.Container.Name, table);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -292,8 +294,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
 
-            foreach (var rule in CosmosRules.GetRules(table.Convention))
-                planner.addRule(rule);
+            foreach (var table in tables)
+                foreach (var rule in CosmosRules.GetRules(table.Convention))
+                    planner.addRule(rule);
 
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);

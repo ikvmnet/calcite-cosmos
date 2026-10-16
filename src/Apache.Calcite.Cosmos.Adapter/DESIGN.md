@@ -1080,8 +1080,20 @@ whole one as a `long` and any other as a `double`, the oracle holding a `decimal
 `FALSE` where every conjunct together contradicts the declaration, and `TRUE` where it deleted every conjunct.
 Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
 `false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
-never sees. The split rule matches the logical filter too, and puts the empty relation, or the filter's input, beside
-it; a host with a rule for an empty `Values` answers the first with no request at all.
+never sees. `CosmosFilterReduceRule` matches the logical filter, over its own convention's container only, and puts
+the empty relation, or the filter's input, beside it; a host with a rule for an empty `Values` answers the first with
+no request at all. Only the logical filter: a converted one carries a condition some convention already rewrote, and
+a filter in a host's convention is not the adapter's to reduce.
+
+**Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
+sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and
+declined another convention's (`CosmosFilterSplitRule.FindTable`); the conversions did not, and decided under their
+own convention's declaration. Unimplementable, the converted filter was still a member of the original's set, and
+once a converted filter carried a constant, the reduction read it there: in `SELECT … FROM typed WHERE kind IS NULL
+UNION ALL SELECT … FROM kinds`, the kinds' required `kind` made typed's filter `FALSE`, and nine rows were lost; `kind
+IN ('a', 'b', 'c')`, which the kinds' enum covers, dropped typed's filter and kept nine too many. Every conversion now
+asks whether the walk of its input found its own container (`CosmosConvention.Owns`), and the reduction reads only
+the logical filter. It also takes the oracle's work for a filter from once per registered container to once.
 
 **Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
 implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered

@@ -32,12 +32,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the case that matters: <c>AGGREGATE_EXPAND_DISTINCT_AGGREGATES</c> produces exactly that
         /// shape, and only the inner half is Cosmos's to take.
         /// </remarks>
-        static bool IsSupported(Aggregate aggregate)
+        static bool IsSupported(CosmosConvention convention, Aggregate aggregate)
         {
             if (aggregate.getGroupType() != Aggregate.Group.SIMPLE)
                 return false;
 
-            return CanPush(aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList(), container => Facts(aggregate, container));
+            return CanPush(convention, aggregate.getInput(), aggregate.getGroupSet(), aggregate.getAggCallList(), container => Facts(aggregate, container));
         }
 
         /// <summary>
@@ -52,14 +52,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// rendered faithfully. Shared with <see cref="CosmosAggregateSplitRule"/>, which asks the
         /// question of the bottom half it would create rather than of a node that exists.
         /// </summary>
+        /// <param name="convention">The convention converting it, whose container the input must read
+        /// (<see cref="CosmosConvention.Owns"/>).</param>
         /// <param name="input">The rows aggregated.</param>
         /// <param name="groupSet">The keys.</param>
         /// <param name="calls">The calls.</param>
         /// <param name="facts">What every row of the input is known to satisfy, given the container its walk found; by
         /// default what the filters beneath establish (L1), read afresh.</param>
-        internal static bool CanPush(RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls, System.Func<Metadata.CosmosContainerMetadata?, JsonFactSet>? facts = null)
+        internal static bool CanPush(CosmosConvention convention, RelNode input, org.apache.calcite.util.ImmutableBitSet groupSet, java.util.List calls, System.Func<Metadata.CosmosContainerMetadata?, JsonFactSet>? facts = null)
         {
-            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _, out var written, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // Binding passes through a sort and a DISTINCT, an aggregate cannot.
@@ -125,7 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public static CosmosAggregateRule Create(CosmosConvention convention)
         {
             return (CosmosAggregateRule)Config.INSTANCE
-                .withConversion(typeof(Aggregate), new DelegatePredicate<Aggregate>(IsSupported), Convention.NONE, convention, "CosmosAggregateRule")
+                .withConversion(typeof(Aggregate), new DelegatePredicate<Aggregate>(a => IsSupported(convention, a)), Convention.NONE, convention, "CosmosAggregateRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosAggregateRule>(c => new CosmosAggregateRule(c)))
                 .toRule(typeof(CosmosAggregateRule));
         }

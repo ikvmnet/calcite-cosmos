@@ -145,9 +145,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindTable(((Filter)call.rel(0)).getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
-            if (KeepsNothing((Filter)call.rel(0), _convention.Container) || KeepsEverything((Filter)call.rel(0), _convention.Container))
-                return true;
-
             var (pushable, residual) = Split((Filter)call.rel(0), _convention.Container);
 
             return pushable.Count > 0 && residual.Count > 0;
@@ -157,23 +154,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public override void onMatch(RelOptRuleCall call)
         {
             var filter = (Filter)call.rel(0);
-
-            // No document satisfies the filter, so the relation is the empty one, and no request at all is
-            // what answers it: a host with a rule for an empty Values plans none, where the filter made
-            // FALSE was a round trip for no rows.
-            if (KeepsNothing(filter, _convention.Container))
-            {
-                call.transformTo(org.apache.calcite.rel.logical.LogicalValues.createEmpty(filter.getCluster(), filter.getRowType()));
-                return;
-            }
-
-            // Every conjunct is one the rest of the filter and the declaration make true of every
-            // document: the filter is its input, and the statement needs no WHERE.
-            if (KeepsEverything(filter, _convention.Container))
-            {
-                call.transformTo(filter.getInput());
-                return;
-            }
 
             var (pushable, residual) = Split(filter, _convention.Container);
             if (pushable.Count == 0 || residual.Count == 0)
@@ -186,31 +166,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             call.transformTo(outer);
         }
-
-        /// <summary>
-        /// Determines whether a filter keeps no document: whether its conjuncts and the container's
-        /// declaration cannot all hold, which the rewrite answers with <c>FALSE</c>.
-        /// </summary>
-        /// <remarks>
-        /// Asked here and not of the converted filter alone, because <c>CoreRules.FILTER_REDUCE_EXPRESSIONS</c>,
-        /// which makes an always-false filter an empty <c>Values</c>, matches a <c>LogicalFilter</c>, and
-        /// the constant is reached only by the rewrite: on the converted filter it is too late to be
-        /// anything but a statement.
-        /// </remarks>
-        internal static bool KeepsNothing(Filter filter, Metadata.CosmosContainerMetadata container) =>
-            Rewritten(filter, container) is RexNode rewritten && rewritten.isAlwaysFalse();
-
-        /// <summary>
-        /// Determines whether a filter keeps every document: whether the rewrite deleted every conjunct as
-        /// one the rest and the declaration imply.
-        /// </summary>
-        internal static bool KeepsEverything(Filter filter, Metadata.CosmosContainerMetadata container) =>
-            Rewritten(filter, container) is RexLiteral literal && literal.isAlwaysTrue();
-
-        static RexNode? Rewritten(Filter filter, Metadata.CosmosContainerMetadata container) =>
-            CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _)
-                ? Metadata.CosmosFactRewriter.Rewrite(filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder(), readings)
-                : null;
 
         /// <summary>
         /// Partitions a filter's top-level conjuncts by whether each renders as Cosmos SQL.

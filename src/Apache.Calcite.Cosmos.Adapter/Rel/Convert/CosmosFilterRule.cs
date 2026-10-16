@@ -52,7 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out var written) == false)
+            // Only a filter over this convention's own container, which is the declaration its condition is
+            // rewritten and rendered under (CosmosConvention.Owns).
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // WHERE is evaluated before OFFSET/LIMIT, so onto a subtree that has taken a page this

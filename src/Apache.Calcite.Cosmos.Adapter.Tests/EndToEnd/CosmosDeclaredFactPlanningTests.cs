@@ -126,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// What a plan for a filter no document satisfies is: the empty relation, sent nowhere. The rewrite answers
-        /// <c>FALSE</c> where the conjuncts contradict the declaration, and the split rule puts an empty <c>Values</c>
+        /// <c>FALSE</c> where the conjuncts contradict the declaration, and <c>CosmosFilterReduceRule</c> puts an empty <c>Values</c>
         /// beside the filter, which the CLR convention answers with no request; a converted <c>CosmosFilter</c> carrying
         /// the constant was a round trip for no rows (<c>TODO.md</c>, <em>A contradiction should send nothing</em>).
         /// </summary>

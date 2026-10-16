@@ -59,7 +59,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsSupported(CosmosConvention convention, Sort sort)
         {
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out var written, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // A statement has one ORDER BY, and its OFFSET/LIMIT is applied after it rather than

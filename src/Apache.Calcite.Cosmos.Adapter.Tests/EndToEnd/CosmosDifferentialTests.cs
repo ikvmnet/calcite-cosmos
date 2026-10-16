@@ -1537,6 +1537,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // And where a statement is sent: a point read, a batch of them, a partition a filter or the declaration
             // leaves one value, and a key's text that a number also renders as, which pins nothing.
             .. Planning.CosmosPushdownProbeTests.RoutingProbes.Select(p => (p.Sql, p.Ordered)),
+
+            // Two containers in one statement, each filter read by its own declaration. Every container's rules see every
+            // operator, and a conversion decided under the kinds' declaration made typed's first filter the empty
+            // relation, losing all nine rows, and dropped its second, keeping nine too many (CosmosConvention.Owns).
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IS NULL UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IN ('a', 'b', 'c') UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
+            ("SELECT k.\"id\" FROM kinds AS k WHERE JSON_VALUE(k.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(k.\"DOC\", '$.label') = '30' UNION ALL SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
         ];
 
         /// <summary>

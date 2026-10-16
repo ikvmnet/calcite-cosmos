@@ -144,7 +144,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             // Everything has to render, and against the binding implementation will use.
-            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(inner.getInput(), out var fields, out _, out _, out var written, out var container) == false
+                || _convention.Owns(container) == false)
                 return null;
 
             // The node writes the whole SELECT itself, and ORDER BY RANK is the statement's one

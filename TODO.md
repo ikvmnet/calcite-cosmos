@@ -1639,8 +1639,8 @@ proved it has already excluded the row.
 
 **Built since: it costs no round trip.** The constant was reached inside the converter, so it landed
 on a `CosmosFilter`, and `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`, never
-saw it. The split rule now matches the logical filter, asks the predicate oracle whether it keeps
-anything, and puts the empty relation beside it, which a host with a rule for an empty `Values` answers
+saw it. `CosmosFilterReduceRule` now matches the logical filter, asks the predicate oracle whether it
+keeps anything, and puts the empty relation beside it, which a host with a rule for an empty `Values` answers
 with no request (`AContradictedPredicateIsReducedToTheConstant`). The paragraph below is what a planner
 without such a rule still does.
 
@@ -1663,7 +1663,7 @@ oracle decides: an `IN` covering a required enum, a `<>` outside one, `IS NOT NU
 scalar, a range a `CAST(… AS DOUBLE)` reads inside the declared bounds, a disjunction holding a sibling
 for a branch. `required` is still the whole of the argument: a declared value says what a path holds *if
 it holds anything*, and a document with no `kind` keeps no row of `kind = 'A'`. Where every conjunct
-goes, the split rule puts the filter's input in its place, and the statement has no `WHERE`.
+goes, `CosmosFilterReduceRule` puts the filter's input in its place, and the statement has no `WHERE`.
 
 **The payoff this was predicted to have, it does not have, and that is worth recording.** This entry
 said it would unblock a point read, on the reasoning that `TryExtractPointRead` refuses any conjunct
@@ -2070,8 +2070,8 @@ across documents* and *A join of a container to itself* is the record.
   documents; and facts carry across the paths. It wants path equality in the fact theory, whose atoms are `(path, claim)`
   today — and path equality is also what would let a contradiction like `foo = 1 AND bar = 2` over
   `foo == bar` be decided.
-- **A contradiction should send nothing** — *done.* The split rule puts the empty relation beside a filter the
-  oracle says keeps nothing, and a host with a rule for an empty `Values` sends no request.
+- **A contradiction should send nothing** — *done.* `CosmosFilterReduceRule` puts the empty relation beside a
+  filter the oracle says keeps nothing, and a host with a rule for an empty `Values` sends no request.
 - **A partition key pinned by both sides makes `id` alone unique** — *medium.* Both sides proving
   `pk = 'X'` puts every candidate document in one logical partition, where `id` is unique. A filter that is
   a function of the query rather than a constant, so it does not fit a `UNIQUE`'s fixed predicate and wants

@@ -70,6 +70,31 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </remarks>
         public CosmosContainerMetadata Container => _container;
 
+        /// <summary>
+        /// Determines whether the container a walk of an operator's input found is this convention's own: whether a
+        /// rule registered for it may convert the operator.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A rule set is registered per container, and every rule in it sees every operator in the plan</b>, whoever's
+        /// table it reads. A conversion decides under its own convention's declaration, so one that fired on another
+        /// container's operator rewrote that operator by facts about other documents — a filter over <c>customers</c>
+        /// made <c>FALSE</c> by what <c>orders</c> declares of <c>type</c> — and registered the result as equivalent to
+        /// what it converted. It could never be implemented, its input being another convention's scan, but it was a
+        /// member of the original's set all the same, and a rule reading that set read its condition as the filter's:
+        /// the filter became an empty relation, or its input (review of the oracle in the planner, two containers in a
+        /// <c>UNION</c>).
+        /// </para>
+        /// <para>
+        /// The rules that are not conversions find the scan beneath them and ask the same of its convention
+        /// (<c>CosmosFilterSplitRule.FindTable</c>). The lookup join and the write take no convention, and read the
+        /// container from the operator.
+        /// </para>
+        /// </remarks>
+        /// <param name="container">The container the walk found, or <c>null</c> where it found none.</param>
+        /// <returns><c>true</c> where the operator reads this convention's container.</returns>
+        internal bool Owns(CosmosContainerMetadata? container) => ReferenceEquals(container, _container);
+
         /// <inheritdoc />
         public override void register(RelOptPlanner planner)
         {
