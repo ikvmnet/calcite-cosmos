@@ -181,7 +181,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var below = AlreadyApplied(filter.getInput());
 
             // No weakening over a projection. FILTER_PROJECT_TRANSPOSE gives every such filter an
             // equivalent beneath the projection, where its weakenings are derived against the filters
@@ -208,6 +207,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
 
+            // What the statement will apply beside a weakening: every conjunct beneath, every one pushed,
+            // and the weakenings before it. A weakening they and the declaration already imply restricts
+            // nothing -- one beneath, applied by a filter the residual was split from, would be pushed under
+            // itself for ever -- and is not pushed.
+            List<RexNode>? applied = null;
+
             for (var i = 0; i < statement.Conjuncts.Count; i++)
             {
                 var conjunct = statement.Conjuncts[i];
@@ -229,10 +234,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // stratum a conjunct no round admitted is read in, which is never its own facts.
                 var translator = statement.TranslatorFor(i, new CosmosParameterList());
 
-                if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
-                    AlreadyBelow(weakened, below) == false &&
-                    translator.TryTranslate(weakened, out _))
+                if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is not RexNode weakened)
+                    continue;
+
+                applied ??= AlreadyApplied(filter.getInput()).Concat(statement.Conjuncts.Where((_, j) => statement.IsAdmitted(j))).ToList();
+
+                if (Metadata.CosmosFilterStatement.IsApplied(applied, weakened, fields, readings, container) == false && translator.TryTranslate(weakened, out _))
+                {
                     pushable.Add(weakened);
+                    applied.Add(weakened);
+                }
             }
 
             return (pushable, residual);
@@ -1164,12 +1175,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies.
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each by its
+        /// spelling.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A weakening is derived from a conjunct that stays in the residual, and the residual is what
-        /// the rule matches on next time round — so without this the same weakening would be pushed
-        /// under itself for ever.
+        /// the rule matches on next time round — so the weakening is asked whether these already apply
+        /// it (<see cref="Metadata.CosmosFilterStatement.IsApplied"/>), or the same weakening would be
+        /// pushed under itself for ever: measured, as a stack overflow with TryBindOutput recursing
+        /// through the filters it had built. A weakening of more than one term lands as several
+        /// conjuncts of the filter beneath, and is applied where all of them are.
+        /// </para>
         /// <para>
         /// Every equivalent form, not the one the set happens to name: a Volcano input is a set of
         /// equivalent expressions, and which of them <c>getOriginal</c> or <c>getBest</c> returns
@@ -1177,30 +1194,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// weakening has been pushed the filter carrying it stays in the set.
         /// </para>
         /// </remarks>
-        /// <summary>
-        /// Determines whether a weakening is already applied below, conjunct by conjunct.
-        /// </summary>
-        /// <remarks>
-        /// Conjunct by conjunct because that is how a filter stores it. A weakening of more than one
-        /// term is pushed as a conjunction and the filter it lands in reports its conjuncts, never the
-        /// whole thing — so comparing the composed node against what is below never matched, and the
-        /// same weakening was pushed under itself for ever. Measured, as a stack overflow with
-        /// TryBindOutput recursing through the filters it had built.
-        /// </remarks>
-        static bool AlreadyBelow(RexNode weakened, HashSet<string> below)
+        static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
         {
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(weakened);
-
-            for (var i = 0; i < conjuncts.size(); i++)
-                if (below.Contains(((RexNode)conjuncts.get(i)).toString()) == false)
-                    return false;
-
-            return true;
-        }
-
-        static HashSet<string> AlreadyApplied(RelNode? node)
-        {
-            var applied = new HashSet<string>(StringComparer.Ordinal);
+            var applied = new Dictionary<string, RexNode>(StringComparer.Ordinal);
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             // Through a stack of filters as well as across a set's members: a filter keeps its input's
@@ -1215,7 +1211,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
                 for (var i = 0; i < conjuncts.size(); i++)
-                    applied.Add(((RexNode)conjuncts.get(i)).toString());
+                    applied.TryAdd(((RexNode)conjuncts.get(i)).toString(), (RexNode)conjuncts.get(i));
 
                 foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
                     Collect(member);
@@ -1227,7 +1223,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
                 Collect(member);
 
-            return applied;
+            return applied.Values.ToArray();
         }
 
         /// <summary>

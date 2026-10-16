@@ -1957,9 +1957,9 @@ is the catalogue.
   arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
   strata over a declaration with no conditional rule read off `JsonFactOverlay`, and the planner's own graphs.
 - **`CosmosFilterStatement`**: a filter as the oracle reads it, remembered against its condition node, and the
-  questions each rule asks. `CosmosFactExtractor`, the split rule's two passes, the rewriter's fact half and every
-  `Derive` at a filter site are gone, and so are the translator's four questions of a type, now one. The split rule
-  still asks its digest test of what is beneath.
+  questions each rule asks. `CosmosFactExtractor`, the split rule's two passes and its digest test of what is
+  beneath, the rewriter's fact half and every `Derive` at a filter site are gone, and so are the translator's four
+  questions of a type, now one.
 - **Tests**: the oracle's unit tests; the population-D checker and the planted-bug suite, asking the arm and the whole
   filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`; and the kinds container in
   `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it did not to Calcite on the

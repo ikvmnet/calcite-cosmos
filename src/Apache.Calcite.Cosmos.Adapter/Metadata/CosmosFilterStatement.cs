@@ -34,6 +34,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, never the conjunct itself</description></item>
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
     /// deletions keep, and the conditions the arm is read under</description></item>
+    /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>the conjuncts beneath and
+    /// those pushed beside it, and the declaration</description></item>
     /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
     /// declaration</description></item>
     /// </list>
@@ -415,6 +417,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             var (scope, index) = Remaining;
             return scope.IsContradictory(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
+        }
+
+        // ── A weakening beneath ──────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Determines whether conjuncts a statement applies, beneath a filter or beside a weakening, already apply it:
+        /// whether, where they and the declaration hold, it always does.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The question redundancy asks, of a statement of the conjuncts applied with the weakening beside them, read in one
+        /// reading so that a weakening spelled as a conjunct beneath is that conjunct's term. A weakening is derived from a
+        /// conjunct left above, and the filter above is what the split rule matches next; answered no where it is applied,
+        /// the same weakening is pushed under itself for ever. And one the declaration implies — a definedness test of a
+        /// path every document holds — restricts nothing, and pushed it only makes a filter a host may plan in process,
+        /// where the service's test has no body.
+        /// </para>
+        /// <para>
+        /// So it rests on nothing the engine might not finish: a predicate a scope assumes is always true there, read off
+        /// what the scope assumes before any run (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row
+        /// is asked. What a run adds is what the conjuncts beneath imply beyond spelling the weakening themselves.
+        /// </para>
+        /// </remarks>
+        /// <param name="beneath">The conjuncts applied beside the weakening: those every member of the input applies, and
+        /// those pushed with it, over the same binding.</param>
+        /// <param name="weakening">The weakening.</param>
+        /// <param name="fields">The binding.</param>
+        /// <param name="readings">How each field is read.</param>
+        /// <param name="container">The container.</param>
+        /// <returns><c>true</c> where the weakening adds nothing to what is applied.</returns>
+        public static bool IsApplied(IReadOnlyList<RexNode> beneath, RexNode weakening, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container)
+        {
+            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), CosmosImplementor.DefaultRootAlias);
+            var statement = loading.Statement(beneath.Append(weakening).ToArray());
+            var verdict = CosmosOracle.For(container.Facts).Admit(statement).Judge(statement.Conjuncts[^1], OracleLicence.Redundant(statement.Conjuncts.Count - 1));
+            return verdict.AlwaysTrue || verdict.Contradictory;
         }
 
     }

@@ -1025,6 +1025,7 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
+| the split rule, whether a weakening is already applied | `IsApplied` | the conjuncts beneath, those pushed beside it, and the declaration |
 | `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings, one at a time (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
@@ -1034,10 +1035,9 @@ for them; and the questions a rule asks, each named for its licence rather than 
 
 What these replaced: a fact extractor reading a predicate's conjuncts by hand, and every `Derive` of what it read at a
 filter site — the filter rule's whole predicate, the implementor's, the rewriter's whole predicate and its
-declaration alone, the `CASE` arm's, the split rule's unaided pass; the split rule's two passes; and the translator's
-four questions of a type, two over what a filter established and two over the declaration alone, which existed
-because what a filter established included the conjunct being translated. The split rule still asks its digest test
-of what is beneath.
+declaration alone, the `CASE` arm's, the split rule's unaided pass; the split rule's two passes and its digest test
+of what is beneath; and the translator's four questions of a type, two over what a filter established and two over
+the declaration alone, which existed because what a filter established included the conjunct being translated.
 
 **Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
 implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered
@@ -1053,6 +1053,14 @@ only where something asks of every admitted conjunct, which a filter pushed whol
 whether it is redundant only where something could decide it — a sibling reading a path it reads, or one above or
 beneath it, or sharing a term with it, or a path the declaration speaks of — since nothing is always true of a path
 nothing is known of.
+
+**A weakening the rest already implies is not pushed.** Asked of what the statement will apply beside it — the
+conjuncts beneath, those pushed with it, the weakenings before it — and of the declaration. That is the digest test
+of what lies beneath, which kept the split rule from pushing a weakening under itself for ever, made general: the
+oracle reads a weakening spelled as a conjunct beneath as assumed, before any run, so the loop cannot return. And it
+is more: `IS_DEFINED(c.id)`, which a comparison over `id` implies, is true of every document by the service's own
+statement, and pushed it filtered nothing while making a filter a host could plan in process, where the service's
+test has no body.
 
 #### How the oracle is checked: population D
 
