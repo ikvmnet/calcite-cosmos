@@ -4486,6 +4486,8 @@ src/
   Apache.Calcite.Cosmos.Adapter/
     CosmosConvention.cs               ✔ Per-container calling convention
     CosmosImplementor.cs              ✔ Mutable SQL accumulator
+    CosmosQuery.cs, CosmosClauses.cs, CosmosOrdering.cs ✔ A rendered statement, the clauses a subtree wrote,
+                                        and what a sort may order an ordinal by
     CosmosRules.cs                    ✔ Rule set for a convention instance
     CosmosSchema.cs                   ✔ Calcite Schema over a database
     CosmosTable.cs                    ✔ Calcite Table over a container; Statistic
@@ -4505,15 +4507,18 @@ src/
                                         documents, knowing nothing of Calcite, Cosmos or the adapter
       JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
       JsonFactRule.cs               ✔ A guarded claim
-      JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what it knows for one query
+      JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what a set of facts knows
+      JsonFactDeclaration.cs, JsonFactUnconditional.cs ✔ The declaration in one generation, as the oracle reads it
       JsonFactTables.cs             ✔ What a set reads: a context's tables, or the overlay's
       JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
       JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
       JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
       Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal
-                                        PredicateRules.cs, PredicateAtom.cs, PathValues.cs: the predicate rules,
-                                        what an atom means, and what a path may hold, for the oracle
-      SqlPredicate.cs               ✔ The typed IR's predicate subset: readings, atoms, connectives, a statement
+                                        PredicateRules.cs (Val.cs, Pred.cs), PredicateAtom.cs (Truths.cs),
+                                        Renderings.cs, PathValues.cs: the predicate rules and their sorts, what an
+                                        atom means, the grammar a number renders in, and what a path may hold
+      SqlValue.cs, SqlPredicate.cs, PredicateStatement.cs ✔ The typed IR's predicate subset: readings, atoms and
+                                        connectives, and a statement of them
       CosmosOracle.cs               ✔ The predicate oracle: a declaration's statements, and the questions
       CosmosStatementScope.cs       ✔ One statement's strata, and the licence table that answers from them
       StatementTerms.cs             ✔ The contexts of one statement beneath a declaration, engine or overlay
@@ -4535,6 +4540,7 @@ src/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
+      Convert/CosmosFilterReduceRule.cs ✔ A filter the oracle says keeps nothing, or everything
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔
