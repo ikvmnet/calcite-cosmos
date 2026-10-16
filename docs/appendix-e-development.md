@@ -155,6 +155,19 @@ trial alone.
   catalogue of the theory a container's declared facts are reasoned in, and of the predicate rules the
   oracle beside it uses. The oracle runs in shadow: nothing a plan does depends on it yet.
 
+Two explicit measurements put a change to what planning reads beside the commit before it. Run each on both
+builds and compare:
+
+```sh
+COSMOS_PROBE_OUT=probes.txt Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only -class Apache.Calcite.Cosmos.Adapter.Tests.Planning.CosmosPushdownProbeTests
+Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only -showLiveOutput -class Apache.Calcite.Cosmos.Adapter.Tests.Planning.CosmosPlanningTimeTests
+```
+
+The first writes what every corpus statement, and a set of probes over a discriminated container, sends;
+the second prints how long the corpus and the self-join hierarchy take to plan, new and again, and the ten
+corpus statements slowest to plan new. A clock is the machine's, so interleave the two builds' runs and
+compare medians; a Debug build costs between one and three times a Release one.
+
 ---
 
 [← Previous: Cosmos SQL in brief](appendix-d-cosmos-sql.md) · [Contents](README.md) · [Appendix F: Glossary →](appendix-f-glossary.md)
