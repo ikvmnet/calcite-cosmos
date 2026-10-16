@@ -1999,10 +1999,24 @@ is the catalogue.
     union has exercised it.
   - **The corpus as population D's workload.** The 78 planner statements, loaded, over documents drawn from
     `PlannerSchema`'s declarations, is the C5 run the plan asks for per PR.
-- **The gate's measurements** — *medium.* The corpus and the hierarchy A/B against a frozen baseline, agreement with
-  today's answers, and the engine budget per statement. Per new statement the oracle costs between what `Derive` of
-  the same facts costs and about twice it; a question of a statement already asked about a millisecond. Measure both
-  again once Eggnog's idle rules allocate nothing, which is most of what a stratum's thirty iterations cost.
+- **What a new statement costs** — *small, and the lever is known.* Measured with `CosmosPlanningTimeTests`, Debug,
+  interleaved with `origin/main` (`1a55518`) on one busy workstation, six runs of the corpus and three of the
+  hierarchy; a run's own spread is as wide as the difference, so read the medians:
+  - **The corpus, each statement new** (78, planned and implemented over containers kept between statements): 8.8 s
+    in all on `main` and 11.3 s here; p50 53 ms against 59 ms, p90 203 ms against 360 ms. Planned again it costs what
+    it did, 5.3 s against 5.4 s, p90 84 ms against 74 ms.
+  - **The self-join hierarchy is faster**, through a connection: `MapLinks` 9.1–9.7 s on `main` and 8.0–9.4 s here
+    over containers built for each plan, 9.2–9.6 s and 6.9–7.6 s planned again on one connection; `MapLinksByMapName`
+    9.0–10.6 s and 7.1–8.3 s, 8.5–10.0 s and 7.2–7.5 s. Stage 1 projected half a second more. Not measured apart, the
+    likely reason: a filter is read once per condition node and Volcano matches one node many times, where `main`
+    extracted and derived its facts afresh at every match.
+  - **Where the new statement's cost lands**: statements of many conjuncts over a path the declaration states.
+    `Filter.DeepConjunction` costs 0.1–0.3 s on `main` and 0.7–1.0 s here, `Composite.TenantFunnel` about 0.1 s and
+    0.2–0.4 s. Timed inside, over the six plans the test makes of each, nearly all of it the first,
+    `DeepConjunction`'s oracle is 0.19 s of redundancy, 0.16 s of contradiction, 0.14 s of strata (0.10 s of it the
+    translator) and 0.14 s asking whether a weakening is applied; `TenantFunnel`'s is 0.30 s of redundancy. Each leave-one-out child of a redundancy question is read off `JsonFactOverlay` and then opened for
+    its verdict. A verdict of an atom over one path, read off the overlay as `PredicateAtom.Over` reads the path's met
+    values, would open none of them; an Eggnog whose idle rules allocate nothing would make each cheaper.
 
 **Decided conservatively, and worth deciding properly.**
 - **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
