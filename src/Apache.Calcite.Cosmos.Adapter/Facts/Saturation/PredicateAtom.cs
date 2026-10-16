@@ -727,9 +727,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 static readonly ValueSet<string> Converts = ValueSet.Of(StringType, IntegerType, FractionType, BooleanType);
 
-                readonly string _target;
                 readonly bool _overText;
                 readonly (decimal Min, decimal Max)? _saturates;
+
+                /// <summary>
+                /// Whether the conversion is the parse of a decimal: <c>RETURNING DECIMAL</c>, which compares the number the
+                /// rendering spells exactly, and types the value <c>DECIMAL(19, 0)</c>, so that Calcite casts a literal
+                /// compared with it to that scale.
+                /// </summary>
+                readonly bool _parsesDecimal;
 
                 /// <summary>
                 /// Where the conversion may move a stored number by a whole unit, beyond which no window holds: a double's,
@@ -744,8 +750,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public NumberCast(string target, bool overText)
                 {
-                    _target = target;
                     _overText = overText;
+                    _parsesDecimal = target == "DECIMAL";
                     _saturates = target switch
                     {
                         "INTEGER" => (int.MinValue, int.MaxValue),
@@ -765,10 +771,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     if (IsNumber(literal) == false)
                         return Truths.Any;
 
-                    // RETURNING DECIMAL types the value DECIMAL(19, 0), and Calcite casts a literal compared with it to that
-                    // scale: `= 2.5` is FALSE of a stored 2.5. What a literal with a fraction is compared as is not decided
-                    // here; the window around it holds either way.
-                    var rescaled = _target == "DECIMAL" && (TryNumberOf(literal, out var exact) == false || exact != decimal.Truncate(exact));
+                    // The parse of a decimal casts a literal compared with it to its scale of zero: `= 2.5` is FALSE of a
+                    // stored 2.5. What a literal with a fraction is compared as is not decided here; the window around it
+                    // holds either way.
+                    var rescaled = _parsesDecimal && (TryNumberOf(literal, out var exact) == false || exact != decimal.Truncate(exact));
 
                     return state switch
                     {
@@ -870,13 +876,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             return TryNumberOf(literal, out var bound) ? Satisfies(op, converted, bound) : (bool?)null;
                         }
 
-                        if (_target == "DECIMAL")
+                        if (_parsesDecimal)
                             return TryNumberOf(literal, out var parsed) ? Satisfies(op, exact, parsed) : (bool?)null;
 
                         return Satisfies(op, (double)exact, Renderings.DoubleOf(literal));
                     }
 
-                    if (_target == "DECIMAL")
+                    if (_parsesDecimal)
                         return null;
 
                     if (ApproximateOf(value) is double approximate)

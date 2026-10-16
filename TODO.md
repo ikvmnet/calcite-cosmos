@@ -1983,10 +1983,10 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   process on `main`; with the grouping reading the rows the filter kept, the `DISTINCT` pushes, and Volcano prefers
   one routed query with it to the batch. The rows are the same. Pricing `ReadMany` below a query where it reads a few
   ids would bring the batch back; nothing measured says which is cheaper for two documents.
-- **The atom's readers are strings, and `RETURNING DECIMAL` a target inside `NumberCast`** — *small, no behaviour.*
-  `typed:T` and `cast:T:inner` are parsed back by `Reading.Parse`, restating the IR's `SqlValue`; the decimal's
-  rescaled literal and exact comparison are branches on its target. A reader registered as a record value, and the
-  decimal parse a reading of its own, would state each once.
+- **The atom's readers are strings** — *small, no behaviour.* `typed:T` and `cast:T:inner` are parsed back by
+  `Reading.Parse`, restating the IR's `SqlValue`, because the rules carry a reader as a string value. A reader
+  registered as a record value would state it once. (What a conversion does is read off its target once, in
+  `NumberCast`'s constructor: saturation, rounding, a parse that raises, a decimal's exact parse.)
 - **A `DISTINCT`'s key binding reads the declaration** — *small, and it waits on the statement node.* The binding is
   asked by the sort's rule on its own walk and again at implementation, so only what holds of every document answers
   alike on both; a key only the filter proves present binds nothing, and a sort over the `DISTINCT` stays in process
