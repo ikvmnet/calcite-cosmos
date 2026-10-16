@@ -99,10 +99,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """);
 
             var purged = PlanToCosmos(string.Format(Status, "purged"), container, out _);
-            PlanText(purged).Should().Contain("condition=[false]", "no branch admits it: " + PlanText(purged));
+            PlanText(purged).Should().Contain(KeepsNothing, "no branch admits it: " + PlanText(purged));
 
             var archived = PlanToCosmos(string.Format(Status, "archived"), container, out _);
-            PlanText(archived).Should().NotContain("condition=[false]", "one branch admits it: " + PlanText(archived));
+            PlanText(archived).Should().NotContain(KeepsNothing, "one branch admits it: " + PlanText(archived));
         }
 
         const string N = """CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER)""";
@@ -125,14 +125,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
 
             var beyond = PlanToCosmos(Where($"{N} > 500"), integer, out _);
-            PlanText(beyond).Should().Contain("condition=[false]", "no integer is above 499 and at most 100: " + PlanText(beyond));
+            PlanText(beyond).Should().Contain(KeepsNothing, "no integer is above 499 and at most 100: " + PlanText(beyond));
 
             var within = PlanToCosmos(Where($"{N} > 50"), integer, out _);
-            PlanText(within).Should().NotContain("condition=[false]", "an integer of 60 is both: " + PlanText(within));
+            PlanText(within).Should().NotContain(KeepsNothing, "an integer of 60 is both: " + PlanText(within));
 
             var untyped = Declaring("""{ "type": "object", "properties": { "n": { "maximum": 100 } } }""");
             var strings = PlanToCosmos(Where($"{N} > 500"), untyped, out _);
-            PlanText(strings).Should().NotContain("condition=[false]", "a stored \"600\" passes the cast: " + PlanText(strings));
+            PlanText(strings).Should().NotContain(KeepsNothing, "a stored \"600\" passes the cast: " + PlanText(strings));
         }
 
         /// <summary>
@@ -147,18 +147,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var outside in new[] { $"{N} > 499 AND {N} < 501", $"{N} = 30" })
             {
                 var best = PlanToCosmos(Where(outside), enumerated, out _);
-                PlanText(best).Should().Contain("condition=[false]", $"no member of the enum satisfies {outside}: " + PlanText(best));
+                PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}: " + PlanText(best));
             }
 
             foreach (var inside in new[] { $"{N} = 2", $"{N} > 1" })
             {
                 var best = PlanToCosmos(Where(inside), enumerated, out _);
-                PlanText(best).Should().NotContain("condition=[false]", $"a member satisfies {inside}: " + PlanText(best));
+                PlanText(best).Should().NotContain(KeepsNothing, $"a member satisfies {inside}: " + PlanText(best));
             }
 
             var mixed = Declaring("""{ "type": "object", "properties": { "n": { "enum": ["600", 1] } } }""");
             var string600 = PlanToCosmos(Where($"{N} > 500"), mixed, out _);
-            PlanText(string600).Should().NotContain("condition=[false]", "the string \"600\" passes the cast: " + PlanText(string600));
+            PlanText(string600).Should().NotContain(KeepsNothing, "the string \"600\" passes the cast: " + PlanText(string600));
         }
 
         /// <summary>
@@ -177,10 +177,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """);
 
             var other = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE {Kind} = 'A'""", container, out _);
-            PlanText(other).Should().NotContain("condition=[false]", "a document without a status satisfies the declaration: " + PlanText(other));
+            PlanText(other).Should().NotContain(KeepsNothing, "a document without a status satisfies the declaration: " + PlanText(other));
 
             var status = PlanToCosmos(string.Format(Status, "open"), container, out _);
-            PlanText(status).Should().Contain("condition=[false]", "and none with one does: " + PlanText(status));
+            PlanText(status).Should().Contain(KeepsNothing, "and none with one does: " + PlanText(status));
         }
 
         /// <summary>
@@ -199,10 +199,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Text = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n') = '{0}'""";
 
             var five = PlanToCosmos(string.Format(Text, "5"), container, out _);
-            PlanText(five).Should().NotContain("condition=[false]", "a stored 5 reads as '5': " + PlanText(five));
+            PlanText(five).Should().NotContain(KeepsNothing, "a stored 5 reads as '5': " + PlanText(five));
 
             var word = PlanToCosmos(string.Format(Text, "five"), container, out _);
-            PlanText(word).Should().Contain("condition=[false]", "and no integer reads as 'five': " + PlanText(word));
+            PlanText(word).Should().Contain(KeepsNothing, "and no integer reads as 'five': " + PlanText(word));
         }
 
     }

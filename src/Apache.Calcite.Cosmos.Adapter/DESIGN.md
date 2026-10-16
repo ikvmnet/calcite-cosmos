@@ -1039,6 +1039,13 @@ declaration alone, the `CASE` arm's, the split rule's unaided pass; the split ru
 of what is beneath; and the translator's four questions of a type, two over what a filter established and two over
 the declaration alone, which existed because what a filter established included the conjunct being translated.
 
+**A filter that keeps nothing is no request, and one that keeps everything has no `WHERE`.** The rewrite answers
+`FALSE` where every conjunct together contradicts the declaration, and `TRUE` where it deleted every conjunct.
+Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
+`false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
+never sees. The split rule matches the logical filter too, and puts the empty relation, or the filter's input, beside
+it; a host with a rule for an empty `Values` answers the first with no request at all.
+
 **Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
 implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered
 against the node, with the binding it was read through — the binding, because one condition over two inputs is two

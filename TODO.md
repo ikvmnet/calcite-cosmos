@@ -1647,11 +1647,12 @@ query's own conjuncts cannot both hold, `CosmosFactRewriter` answers the constan
 answer by the argument it always uses: over a document the guard does not cover the conjunct that
 proved it has already excluded the row.
 
-**It still costs one round trip, and should not.** The constant is reached inside the converter, so it
-lands on a `CosmosFilter` — and `CoreRules.FILTER_REDUCE_EXPRESSIONS`, which turns an always-false
-filter into an empty `Values`, is configured for a `LogicalFilter` and does not match it. Registering
-it changes nothing; measured. Getting to no statement at all means detecting the contradiction on the
-*logical* filter, in a rule of its own that produces the empty relation, which is its own change.
+**Built since: it costs no round trip.** The constant was reached inside the converter, so it landed
+on a `CosmosFilter`, and `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`, never
+saw it. The split rule now matches the logical filter, asks the predicate oracle whether it keeps
+anything, and puts the empty relation beside it, which a host with a rule for an empty `Values` answers
+with no request (`AContradictedPredicateIsReducedToTheConstant`). The paragraph below is what a planner
+without such a rule still does.
 
 **And one thing is measured only on CI.** The constant renders as `WHERE @p0` with a boolean
 parameter, because the translator binds every literal rather than inlining — deliberately, so that
@@ -1671,7 +1672,8 @@ a time. It was an equality whose path the declaration made present and that valu
 oracle decides: an `IN` covering a required enum, a `<>` outside one, `IS NOT NULL` of a required
 scalar, a range a `CAST(… AS DOUBLE)` reads inside the declared bounds, a disjunction holding a sibling
 for a branch. `required` is still the whole of the argument: a declared value says what a path holds *if
-it holds anything*, and a document with no `kind` keeps no row of `kind = 'A'`.
+it holds anything*, and a document with no `kind` keeps no row of `kind = 'A'`. Where every conjunct
+goes, the split rule puts the filter's input in its place, and the statement has no `WHERE`.
 
 **The payoff this was predicted to have, it does not have, and that is worth recording.** This entry
 said it would unblock a point read, on the reasoning that `TryExtractPointRead` refuses any conjunct
@@ -2033,9 +2035,8 @@ across documents* and *A join of a container to itself* is the record.
   documents; and facts carry across the paths. It wants path equality in the fact theory, whose atoms are `(path, claim)`
   today — and path equality is also what would let a contradiction like `foo = 1 AND bar = 2` over
   `foo == bar` be decided.
-- **A contradiction should send nothing** — *small.* A predicate the facts contradict renders as
-  `WHERE @p0` with a bound `false`: one round trip for no rows. An empty `Values` in its place is no request
-  at all. Independent of the item above, which only adds contradictions for it to catch.
+- **A contradiction should send nothing** — *done.* The split rule puts the empty relation beside a filter the
+  oracle says keeps nothing, and a host with a rule for an empty `Values` sends no request.
 - **A partition key pinned by both sides makes `id` alone unique** — *medium.* Both sides proving
   `pk = 'X'` puts every candidate document in one logical partition, where `id` is unique. A filter that is
   a function of the query rather than a constant, so it does not fit a `UNIQUE`'s fixed predicate and wants

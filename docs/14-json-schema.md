@@ -147,7 +147,7 @@ with one           WHERE c.carrier = @p0
 The same holds of `<>` a value outside the enum, `IS NOT NULL` of a required path that is never null, a
 range through `CAST(… AS DOUBLE)` that the declared `minimum` and `maximum` already satisfy, and a
 disjunction one of whose branches another conjunct asserts: `kind = 'shipment' AND (kind = 'shipment'
-OR …)` sends the first conjunct alone.
+OR …)` sends the first conjunct alone. Where every conjunct goes, the statement has no `WHERE` at all.
 `required` matters: without it a document may lack the path, and a comparison over an absent path keeps
 no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
 Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTEGER`, which an
@@ -155,8 +155,8 @@ Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTE
 
 ### A predicate no document can satisfy
 
-A value the schema rules out keeps no row, and the plan says so: the predicate becomes `false`, and
-no comparison is sent.
+A value the schema rules out keeps no row, and the plan says so: the query is the empty result, and
+nothing is sent.
 
 ```sql
 -- "status": { "enum": ["active", "archived"] }
@@ -165,8 +165,12 @@ SELECT c."id" FROM "shipments" AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'del
 
 ```
 without a schema   WHERE c.status = @p0, which the service evaluates to find nothing
-with one           WHERE @p0, bound to false — one round trip that reads no document
+with one           no request: the plan is an empty Values
 ```
+
+That takes a rule in the host for an empty `Values`, which Calcite's own and the CLR convention's
+rule sets both have. A planner without one sends `WHERE @p0` bound to `false`: one round trip that
+reads no document.
 
 The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
 

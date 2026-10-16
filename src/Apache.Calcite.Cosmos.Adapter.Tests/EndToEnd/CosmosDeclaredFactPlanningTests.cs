@@ -124,6 +124,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
+        /// <summary>
+        /// What a plan for a filter no document satisfies is: the empty relation, sent nowhere. The rewrite answers
+        /// <c>FALSE</c> where the conjuncts contradict the declaration, and the split rule puts an empty <c>Values</c>
+        /// beside the filter, which the CLR convention answers with no request; a converted <c>CosmosFilter</c> carrying
+        /// the constant was a round trip for no rows (<c>TODO.md</c>, <em>A contradiction should send nothing</em>).
+        /// </summary>
+        const string KeepsNothing = "Values(tuples=[[]])";
+
         [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
         {
@@ -1309,13 +1317,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
 
         /// <summary>
-        /// A predicate the declaration contradicts keeps nothing, and the plan says so.
+        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is the empty
+        /// relation, and sends no request.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The container declares a domain and the query asks for a value outside it. A document
         /// satisfying the predicate would have to hold a value the declaration says it does not, so
-        /// there is none — and the equivalent predicate is the constant.
+        /// there is none — and the equivalent predicate is the constant. It used to be pushed as one,
+        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The split rule now puts the
+        /// empty relation beside the filter, which the CLR convention answers itself.
         /// </para>
         /// <para>
         /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a
@@ -1335,11 +1346,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var container = Declaring(schema);
                 var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
 
-                PlanText(best).Should().Contain("condition=[false]",
+                PlanText(best).Should().Contain(KeepsNothing,
                     "no document satisfies it, for " + schema + ": " + PlanText(best));
 
-                Query(FindCosmos(best), container).Sql.Should().NotContain("c.status =",
-                    "so the comparison itself is not worth sending, for " + schema);
+                FindCosmos(best).Should().BeNull("so nothing is sent at all, for " + schema);
             }
         }
 
@@ -1359,7 +1369,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().Contain("c.status = @",
                 "the value is in the declared domain, so nothing is settled by the declaration");
 
-            PlanText(best).Should().NotContain("condition=[false]", PlanText(best));
+            PlanText(best).Should().NotContain(KeepsNothing, PlanText(best));
         }
 
         /// <summary>
@@ -1371,7 +1381,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declared(false);
             var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
 
-            PlanText(best).Should().NotContain("condition=[false]",
+            PlanText(best).Should().NotContain(KeepsNothing,
                 "nothing says what the path holds, so nothing rules the value out");
         }
 
@@ -1461,7 +1471,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // 'Z' against a declared const of 'A' is the contradiction case, not the tautology one --
             // which is the other half of the same table, and settles to the constant instead.
-            PlanText(best).Should().Contain("condition=[false]",
+            PlanText(best).Should().Contain(KeepsNothing,
                 "a declared constant refutes every other value: " + PlanText(best));
         }
 
