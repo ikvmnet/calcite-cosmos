@@ -1962,15 +1962,14 @@ is the catalogue.
   questions each rule asks. `CosmosFactExtractor`, the split rule's two passes and its digest test of what is
   beneath, the rewriter's fact half and every `Derive` at a filter site are gone, and so are the translator's four
   questions of a type, now one.
-- **Tests**: the oracle's unit tests; the population-D checker and the planted-bug suite, asking the arm and the whole
-  filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`; and the kinds container in
-  `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it did not to Calcite on the
-  emulator. `CosmosPushdownProbeTests` and `CosmosPlanningTimeTests`, explicit, put a change beside the commit before
-  it.
+- **Tests**: the oracle's unit tests; `CosmosOracleReplayTests`, the family's defects answered by the general rules
+  through the planner's statement, two of the shadow's rows corrected; the population-D checker and the planted-bug
+  suite, asking the arm and the whole filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`;
+  and the kinds container in `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it
+  did not to Calcite on the emulator. `CosmosPushdownProbeTests` and `CosmosPlanningTimeTests`, explicit, put a
+  change beside the commit before it.
 
 **What is left.**
-- **The defect replay** — *medium.* #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4 and gaps
-  1–5, each answered by the general rules or counted as needing its own.
 - **Stage 3b: the clauses after the filter** — *medium.* A projection, a sort, a grouping, a point read and a key
   still read the declaration directly (`Derive(null)` at `CosmosProjectRule`, `CosmosProjectSplitRule`,
   `CosmosProjectResidualRule`, `CosmosProject`, `CosmosSortRule`, `CosmosSort`, `CosmosAggregate`,

@@ -375,6 +375,8 @@ verdicts.
   an incomplete run;
 - `CosmosPredicateLoaderTests`: the loader, `RETURNING DECIMAL` and the constants a conversion is compared with, and
   #117 through the translator;
+- `CosmosOracleReplayTests`: the fact family's defects, each answered by the general rules through the planner's
+  statement;
 - `JsonFactOverlayTests`: a stratum read off the overlay, against the engine's context for it;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
