@@ -2256,8 +2256,11 @@ number has the value 30 — so the value is that string or it is that number, an
 spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
 service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
 row crossing the wire is the whole cost, against a container read whole. The branches follow the
-rendering: a number-like literal takes the parsed number, or `IS_NUMBER` where the double cannot hold
-it; exactly `true` or `false` takes the boolean, since Calcite renders in lowercase and `'TRUE'`
+rendering: a number-like literal takes the parsed number — the whole number it spells, as a `BIGINT`,
+past where a double holds every whole number, since the service keeps a stored integer exactly and the
+double `'9007199254740993'` rounds to is another number there (measured on the emulator: it lost the
+document storing 2^53 + 1) — or `IS_NUMBER` where the double cannot hold it; exactly `true` or `false`
+takes the boolean, since Calcite renders in lowercase and `'TRUE'`
 matches only the string; and over a value typed `ANY`, whose cast renders an array as `[x, y]` and
 an object as `{x=1}`, a literal opening with that bracket takes `IS_ARRAY` or `IS_OBJECT`. `JSON_VALUE`
 answers null for those and for a JSON null, so under it no such literal is ambiguous at all and the

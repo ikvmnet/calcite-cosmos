@@ -1568,6 +1568,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC", true),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC FETCH NEXT 1 ROWS ONLY", true),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) IS NOT NULL ORDER BY 1", true),
+
+            // Text a whole number past 2^53 renders as, whose weakening sent the double it rounds to beside the string:
+            // the service keeps the integer exactly, the double is another number there, and the documents storing
+            // 2^53 + 1 and 2^60 + 1 were lost (the review's probes, run on the emulator).
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740993'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '1152921504606846977'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') IN ('9007199254740993', '1152921504606846977')", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740993 AND JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740993'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740992'", false),
         ];
 
         /// <summary>
@@ -1598,6 +1607,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
                 "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true,
+                "The same sort by a key the statement does not select. As the id above."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
                 "The same sort paged, where the order chooses the rows: a and U+1F600 in process, a and U+E000 at the service. As the id above."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true,

@@ -960,6 +960,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>IS_NUMBER</c> instead of a value.
         /// </para>
         /// <para>
+        /// <b>Past 2^53 a whole number is sent as the whole number it is</b>, as the translator sends a
+        /// literal of one (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>). The service keeps a
+        /// stored integer exactly, and Java renders it as its digits, so <c>'9007199254740993'</c> is the
+        /// rendering of the integer 9007199254740993 — which the double the text rounds to, 2^53, is not
+        /// equal to at the service. Measured on the emulator over the declared container, the double
+        /// lost the document storing it.
+        /// </para>
+        /// <para>
         /// <b>Which values render at all depends on the spelling.</b> The cast over <c>ANY</c> renders an
         /// array as <c>[x, y]</c> and an object as <c>{x=1}</c>, so a literal opening with that bracket
         /// takes <c>IS_ARRAY</c> or <c>IS_OBJECT</c> beside the string. <c>JSON_VALUE</c> answers null
@@ -1044,7 +1052,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
                 branches.add(double.IsFinite(number)
-                    ? EqualsOtherThanText(rexBuilder, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
+                    ? EqualsOtherThanText(rexBuilder, value, NumberRenderedAs(rexBuilder, text, number))
                     : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
 
             if (text is "true" or "false")
@@ -1057,6 +1065,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
 
             return RexUtil.composeDisjunction(rexBuilder, branches);
+        }
+
+        /// <summary>
+        /// Returns the number a stored value renders as text as: the whole number it spells where a
+        /// double cannot hold it, as a <c>BIGINT</c>, and the double otherwise.
+        /// </summary>
+        static RexLiteral NumberRenderedAs(RexBuilder rexBuilder, string text, double number)
+        {
+            var exact = new java.math.BigDecimal(text);
+
+            return CosmosRexTranslator.TryGetExactNumberValue(exact) is long whole
+                ? (RexLiteral)rexBuilder.makeExactLiteral(java.math.BigDecimal.valueOf(whole), rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.BIGINT))
+                : (RexLiteral)rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number));
         }
 
         /// <summary>
