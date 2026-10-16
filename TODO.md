@@ -1231,19 +1231,18 @@ the distribution the gate is sized for.
   `BETWEEN` costs exactly what its two comparisons do (7.90 RU). Neither form used an index on an
   unindexed path, so the reference's "index-friendly" is a property of the path rather than of the
   spelling. Emitting the native form would be a change with no effect.
-- **`DISTINCT` with `ORDER BY` reaches promoted columns and not unpromoted document paths** —
-  *small, and what is left of it waits on section 7.* The null-placement rule refuses a nullable sort
-  key, and a query that removes the nulls itself now satisfies it: `WHERE c.category IS NOT NULL
-  ORDER BY c.category` pushes, read from `RelMdPredicates` at the rule. That covers the promoted
-  columns. It does not reach an unpromoted document path, and not for want of a type — such a path
-  projects as an accessor call rather than as a reference, and `RelMdPredicates` carries a predicate
-  through a projection only where the projection is a reference. See `DESIGN.md` under *Ordering is
-  a total order over JSON types*, and section 7 below, whose case this sharpens. Over a `DISTINCT`
-  the placement is not the only gate: a key some documents lack is normalised and binds nothing, so
-  its sort stays in process under any placement, and only a declared `required` reaches it. Whether
-  `ORDER BY c.p` beside `SELECT DISTINCT VALUE { "p": IS_DEFINED(c.p) ? c.p : null }` orders the rows
-  the way the projected key would is unmeasured, and would be the way to recover it (`DESIGN.md`
-  under *Plan order is not clause order*).
+- **`DISTINCT` with `ORDER BY` over a key only the filter proves present** — *small, and it waits on
+  the statement node.* The null-placement rule refuses a nullable sort key, and a query that removes
+  the nulls itself satisfies it: `WHERE t IS NOT NULL ORDER BY t` pushes over any document path, the
+  sort reading what the filter beneath establishes (L1; `DESIGN.md` under *Ordering is a total order
+  over JSON types*). Over a `DISTINCT` the placement is not the only gate: the key a `DISTINCT` binds
+  is a question the sort's rule asks on its own walk and implementation asks again, so it reads the
+  declaration (`CosmosAggregate.DistinctKeyBinding`), and a key only the filter proves present binds
+  nothing and its sort stays in process — `CosmosDeclaredFactPlanningTests.ADistinctBindsItsKeyByTheDeclaration`.
+  A statement node carrying the scope it was decided in (#148) would let the binding read the rows too.
+  A key some documents lack is normalised, and whether `ORDER BY c.p` beside
+  `SELECT DISTINCT VALUE { "p": IS_DEFINED(c.p) ? c.p : null }` orders the rows the way the projected
+  key would is unmeasured (`DESIGN.md` under *Plan order is not clause order*).
 - **A grouping or `DISTINCT` over a text accessor of an undeclared path** — *medium, and the shape
   is known.* It runs in process now: the service groups the stored values and SQL the rendering, so a
   stored `30` and `"30"` were two groups of what SQL calls one (review probes J1, J2 and J13;
@@ -1276,17 +1275,6 @@ the distribution the gate is sized for.
   numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
   order, placed before or after them as the placement says. The cost model would have to know the
   second half's size, as there.
-- **A sort over a key a filter beneath it already confines** — *small, a pushdown not taken.*
-  `WHERE JSON_VALUE(c."DOC", '$.label') IN ('bikes', 'shoes', 'huge') ORDER BY 1` keeps the sort in
-  process, though the filter reaches the service exactly — unambiguous text matches a stored string
-  and nothing else — so every row the sort sees holds a string at the path and the service's order is
-  SQL's. Before the sort asked how its key was read it pushed, and agreed. `IsReadAsStored` asks the
-  facts the sort's translator is handed, and `CosmosSortRule` hands it the declaration alone,
-  `Derive(null)`. The licence table gives a sort the last stratum of the filter beneath it (L1), which
-  holds what every conjunct that reached the service establishes and nothing a weakening does — so
-  this is Stage 3b's sort site moving onto the oracle (*The predicate oracle*, below), and asking the
-  stratum for the type reaches a typed key under `IS NOT NULL` or a range too. The planner corpus has
-  no such statement.
 - **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
   to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
   does, and the service by code point, so the two part where a character above U+FFFF meets one
@@ -1583,10 +1571,12 @@ where the form says so. Binding it meant recording that an ordinal addresses a p
 only*, gated on `PreservesOrder`: the same two-bit question as the entry above, asked at a different
 site.
 
-**Built.** `CosmosImplementor.OrderingPaths` carries, per ordinal, a path a sort may order by where
-the ordinal binds to none — recorded by `CosmosProject.Implement` the way it already records
-`SortableExpressions`, and decided by `CosmosProject.OrderingPathOf`, which `CosmosSortRule` calls
-too so the rule and the implementation cannot drift apart. Measured, with a `FETCH`:
+**Built.** `CosmosImplementor.Orderings` carries, per ordinal, the candidate a sort may order by
+where the ordinal binds to none — recorded by `CosmosProject.Implement` as the binding walk derives
+it — and the sort licenses it (`CosmosSort.OrderingPaths`, through `CosmosProject.IsOrderable`), at
+the rule and again at implementation, of the facts the sort was decided under: what the filters
+beneath it establish (L1), so the rule and the implementation cannot drift apart, and a form only a
+kind declares licenses the order beneath a filter keeping that kind. Measured, with a `FETCH`:
 
 ```
 SELECT VALUE { "id": (IS_PRIMITIVE(c.ref) ? c.ref : null) } FROM items c ORDER BY c.ref ASC OFFSET 0 LIMIT 5
@@ -1694,10 +1684,10 @@ plain:     ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.kind'), 'A')])
 A plan node and a per-row test rather than a request. Smaller than this entry claimed, and still worth
 taking — and the statement sent is one predicate shorter either way.
 
-**Also built: a declared partition key routes.** `CosmosPartitionKeyExtractor` now seeds its pinned
-map from what the container declares outright, for the paths the predicate did not pin itself — so a
-query pinning only an `id` supplies the key and reaches a **point read**, which is the saving the
-tautology entry above was predicted to have and does not. Measured, over the same query:
+**Also built: a declared partition key routes.** `CosmosPartitionKeyExtractor` reads the key off
+what the container declares as well as what the predicate pins — so a query pinning only an `id`
+supplies the key and reaches a **point read**, which is the saving the tautology entry above was
+predicted to have and does not. Measured, over the same query:
 
 ```
 const + required:  pointRead=[x]  pk=[<value>]  complete=True
@@ -1711,13 +1701,17 @@ About 1 RU against 2.3 at best for the query, before the fan-out the query would
 does not filter*, so supplying a value some document does not hold does not return fewer rows — it
 returns rows from the wrong partitions, which is to say none of the right ones. A `const` without
 `required` still admits a document with no such property, which Cosmos places in its own partition,
-and routing past it would lose it. Outright only, and for a sharper reason than elsewhere too: the
-routing applies to the whole statement while a guarded fact holds only of the rows a sibling conjunct
-keeps, so a key pinned from one would route away documents the statement had not excluded.
+and routing past it would lose it.
 
-**What the predicate pinned still wins.** A declaration disagreeing with the predicate describes a
-document the predicate excludes, which is the contradiction `CosmosFactRewriter` settles rather than
-something to resolve by routing.
+**Now the oracle's, and a guarded fact routes too.** The pin is `Present` and one value in the facts
+of every conjunct and the declaration (`OracleLicence.Kept`): the statement routed still applies its
+whole predicate, so a partition it skips holds no row the predicate keeps, and a key a sibling's kind
+declares is as safe to route on as one the predicate names — `kind <> 'b' AND kind <> 'c'` over a
+required enum routes to `a`. A point read, a batch of them and a whole-partition delete apply no
+predicate and read only the conjuncts that pin their keys, with every other conjunct `Always` there
+(*The predicate oracle*, below; `DESIGN.md` under *The oracle in the planner*). A declaration
+disagreeing with the predicate describes a document the predicate excludes, which the oracle reads as
+a scope that keeps nothing and pins nothing, and the rewriter answers with the empty relation.
 
 **Which leaves the fan-out measurement below as the thing this is priced on, still untaken.** All
 three conclusions a declared value supports are now read; what none of them has is a number from a
@@ -1939,12 +1933,14 @@ holds. Three bugs planted in what was added were each caught by it.
 pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
 schema (*A declaration is trusted*).
 
-### The predicate oracle — *in the planner for filters; projections, sorts and groupings are left*
+### The predicate oracle — *in the planner; what is left is below*
 
 Eggnog decides what is true, the host what is written and what is legal, Volcano which plan. The oracle was built
-and measured in shadow (Stage 1), and now answers every question a filter's rules ask: the filter rule's whether it
-pushes whole, the implementor's rendering, the split rule's which conjuncts push and which weakening, the rewriter's
-contradiction, deletion and lowering, and the translator's every question of a type. `DESIGN.md`, from *Predicates
+and measured in shadow (Stage 1), and now answers every question the planner asks of a fact: the filter rule's whether
+it pushes whole, the implementor's rendering, the split rule's which conjuncts push and which weakening, the rewriter's
+contradiction, deletion and lowering, the translator's every question of a type; the clauses after a filter, what a
+statement pins and whether a read answers it, and a self-join's and a lookup join's keys. No `Derive` is left outside
+the oracle's own reading of the declaration (`JsonFactTheory.Derive`, now internal). `DESIGN.md`, from *Predicates
 as facts: the oracle* through *How the oracle is checked: population D*, is the record; `Facts/Saturation/README.md`
 is the catalogue.
 
@@ -1962,6 +1958,17 @@ is the catalogue.
   questions each rule asks. `CosmosFactExtractor`, the split rule's two passes and its digest test of what is
   beneath, the rewriter's fact half and every `Derive` at a filter site are gone, and so are the translator's four
   questions of a type, now one.
+- **The clauses after a filter** (`Metadata/CosmosRowFacts.cs`): a projection, a sort, a grouping and a lookup join's
+  key read the last stratum of the filters beneath (L1), decided once by the rule and carried on the node it builds.
+  Calcite's pulled-up `IS NOT NULL` (`FindNonNullFields`) and the `Derive(null)` at each site are gone. A `DISTINCT`'s
+  key binding, which another node asks on its own walk, reads the declaration.
+- **Pins** (`CosmosPartitionKeyExtractor`): `Present` and one value, of every conjunct for routing and a row count and
+  of the pins alone for a point read, a batch and a whole-partition delete, every other conjunct `Always` there. The
+  extractor's hand reading of equalities, its declared seed and its "says nothing else" walk are gone.
+- **The self-join's two documents**, the part of Stage 4 that fell out: a constraint's predicate decided `Always` in
+  each side's statement (`CosmosFilterStatement.Proves`), where Calcite's `RexImplicationChecker` over abstracted
+  terms decided it; a key's faithful reading asked of what both sides' filters establish, the oracle's split over
+  their disjunction.
 - **Tests**: the oracle's unit tests; `CosmosOracleReplayTests`, the family's defects answered by the general rules
   through the planner's statement, two of the shadow's rows corrected; the population-D checker and the planted-bug
   suite, asking the arm and the whole filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`;
@@ -1970,15 +1977,23 @@ is the catalogue.
   change beside the commit before it.
 
 **What is left.**
-- **Stage 3b: the clauses after the filter** — *medium.* A projection, a sort, a grouping, a point read and a key
-  still read the declaration directly (`Derive(null)` at `CosmosProjectRule`, `CosmosProjectSplitRule`,
-  `CosmosProjectResidualRule`, `CosmosProject`, `CosmosSortRule`, `CosmosSort`, `CosmosAggregate`,
-  `CosmosSelfJoinRule`, `CosmosLookupJoinRule`), where the licence table gives them the last stratum of the filters
-  beneath (L1): a sort over `category = 'bikes'` knows `category` is present, and a projection over `kind = 'B'`
-  knows `ref`'s form. The shadow counted 243 such decisions on the corpus alone.
-- **Deletions inside a conjunct** — *small, and a measurement first.* The rewriter deletes whole conjuncts, one at a
-  time. A merged view repeats its filter inside each `CASE` column, and the shadow found 2,263 copies on the hierarchy
-  that their sibling conjunct makes true; deleting them changes no row and may change what the planner explores.
+- **A `DISTINCT`'s key binding reads the declaration** — *small, and it waits on the statement node.* The binding is
+  asked by the sort's rule on its own walk and again at implementation, so only what holds of every document answers
+  alike on both; a key only the filter proves present binds nothing, and a sort over the `DISTINCT` stays in process
+  (`CosmosDeclaredFactPlanningTests.ADistinctBindsItsKeyByTheDeclaration`). A statement node carrying the scope it
+  was decided in (#148) lets it read the rows.
+- **A value aggregate over a path the filter proves present** — *small, a pushdown not taken.* `SUM`, `MIN`, `MAX`
+  and `AVG` push only over an input the plan types non-null (`CosmosAggregate.CanImplement`); the service answers
+  undefined where one row's value is null or absent, so `WHERE x IS NOT NULL` would settle it as it settles a sort's
+  null placement, and needs a type too (`IsAlwaysScalar` and the number the aggregate reads). The grouping reads L1
+  already; the calls do not.
+- **Deletions inside a conjunct** — *small, and the measurement says not yet.* The rewriter deletes whole conjuncts,
+  one at a time, and the shadow found 2,263 `CASE` conditions on the hierarchy that a sibling conjunct states.
+  Measured with a prototype that took a `CASE WHEN p THEN q ELSE FALSE END` as `q` where the kept siblings assume
+  `p`, read off the scope's premises with nothing opened: asked 624 times over `MapLinks` and 1,776 over
+  `MapLinksByMapName`, and taken none. So the copies are in shapes the flattening does not take apart — a `CASE` of
+  more than one arm, or one reached through a comparison or a null test, as the hierarchy's discriminator column is
+  written; not attributed further — and taking them wants a general arm selection in the rewriter. Not built.
 - **Two orderings lowered on each other** — *small, and a declaration has to be built for it.* The rewriter lowers a
   comparison onto its stored form by what its siblings establish (L3, of the conjuncts the deletions keep). An equality
   lowered so is a strengthening — a stored spelling that matches is a value the cast reads as the literal — but an
@@ -2017,6 +2032,13 @@ is the catalogue.
     translator) and 0.14 s asking whether a weakening is applied; `TenantFunnel`'s is 0.30 s of redundancy. Each leave-one-out child of a redundancy question is read off `JsonFactOverlay` and then opened for
     its verdict. A verdict of an atom over one path, read off the overlay as `PredicateAtom.Over` reads the path's met
     values, would open none of them; an Eggnog whose idle rules allocate nothing would make each cheaper.
+  - **The clauses, the pins and the keys added nothing the runs can see.** Interleaved with the commit that moved
+    the clauses (`115ad32`), the pins planned the corpus in 9.4–14.2 s against 12.6–14.6 s, three runs each, and the
+    pins and the self-join the hierarchy in `MapLinks` 5.4–6.3 s against 5.6–6.3 s and `MapLinksByMapName` 5.8–7.0 s
+    against 6.0–7.0 s, two runs each (p50s over five plans). The whole stage against `origin/main`, on a workstation
+    another suite was loading: the corpus new 5.2–11.4 s on `main` and 8.3–13.6 s here, medians 7.6 s and 9.3 s, p90
+    168 ms against 235 ms; planned again 4.0 s against 4.5 s; the hierarchy's p50s 3.5–12.1 s on both, which no
+    difference survives.
 
 **Decided conservatively, and worth deciding properly.**
 - **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
@@ -2063,8 +2085,8 @@ across documents* and *A join of a container to itself* is the record.
   Nothing has asked for them.
 - **A page under an inner join** — *small.* #192 takes a page after a left join, which keeps every row of
   it. An inner join keeps every row too where the page's own filter implies `M` — a link view joined to a
-  body view whose filter it already proves — and `CosmosConstraintCompiler.Implies` can say so; until then
-  it stays a join.
+  body view whose filter it already proves — and the oracle can say so (`CosmosFilterStatement.Proves`);
+  until then it stays a join.
 - **A filter through merged views, in the shapes #183 did not take** — *small each.* `CASE WHEN p THEN q
   ELSE FALSE` becomes `p AND q` once `q` cannot raise, which is the shape a host's simplifier leaves; a
   comparison over a merged column, directly or through a strict expression, is brought to that shape
@@ -2104,16 +2126,14 @@ across documents* and *A join of a container to itself* is the record.
   one the service can evaluate*. Each item that once named the declaration as its blocker still
   needs its own measurement. None of them needs a type the caller states.
 
-  **The sort key is no longer one of the four, and what it left behind reframes the other three.**
-  A nullable sort key is now reachable when the query itself removes the nulls — for a promoted
-  column. It is not reachable for a document path, and the obstacle turned out not to be the type
-  at all: `RelMdPredicates` carries a predicate through a projection only where the projection is a
-  `RexInputRef`, and a document path projects as an accessor call. So what a declared column buys is
-  not only a type the planner can see but a path that projects as a *reference*, at which point
-  Calcite's whole existing metadata layer — predicates, nullability, keys, distinctness — begins
-  working over it with no adapter code at all. That is a larger and more concrete account of what the
-  row model costs than "no type to work with". It is a cost the model accepts, not an argument to
-  reopen it. Measured; recorded in `DESIGN.md`.
+  **The sort key is no longer one of the four.** A nullable sort key is reachable when the query
+  itself removes the nulls, over any document path: the sort reads what the filter beneath
+  establishes off the predicate oracle (L1), which reaches the path the filter reads whatever projects
+  it. Calcite's metadata layer reached it only through a column — `RelMdPredicates` carries a
+  predicate through a projection only where the projection is a `RexInputRef` — and the account this
+  entry gave of what a declared column would buy, Calcite's predicates, nullability, keys and
+  distinctness working over a reference, is now the oracle's to give, over paths. Recorded in
+  `DESIGN.md` under *Ordering is a total order over JSON types*.
 
   **Paging a view by one of its own columns is the fourth thing it would buy, and the one with a
   measurement behind it.** A cast to text now projects — the value is sent as it stands and rendered

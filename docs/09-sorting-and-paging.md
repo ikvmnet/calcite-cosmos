@@ -220,22 +220,34 @@ A keyset over a declared UUID or timestamp path works the same way once the stor
 
 ## 9.6 A filter that removes the nulls
 
-A query that excludes nulls itself has no null placement left to disagree about. The adapter
-recognises an explicit `IS NOT NULL` on the sort key for this — but only where the key is a promoted
-column, because Calcite carries that knowledge through a plain column and not through a function
-call. Since the only nullable promoted columns are the partition key columns, which cannot be sort
-keys at all (9.3), in practice **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**
-rather than relying on a filter.
+A query that excludes nulls itself has no null placement left to disagree about. Where the statement's
+`WHERE` reaches the service and says the sort key is there and holds a value — `IS NOT NULL` on the
+key, or a comparison over it, which no null or absent property satisfies — the sort pushes under the
+default placement too:
+
+```sql
+SELECT JSON_VALUE(c."DOC", '$.title') FROM "books" AS c
+WHERE JSON_VALUE(c."DOC", '$.title') IS NOT NULL
+ORDER BY 1 FETCH NEXT 20 ROWS ONLY
+→ … WHERE (IS_DEFINED(c.title) AND NOT IS_NULL(c.title) AND IS_PRIMITIVE(c.title))
+    ORDER BY c.title ASC OFFSET 0 LIMIT 20      -- where the schema declares title a string
+```
+
+The key still has to be one the service orders the way SQL does (9.7, item 3): the filter settles where
+nulls go, and the schema says the text is the value. A filter that keeps one kind of document counts
+too, when that kind's branch of the schema declares the key's type (Chapter 14.4). For keys no filter
+settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
 
 ## 9.7 Checklist: why did my sort not push?
 
 1. Is `DefaultNullCollation` `LOW`, or does the query say `NULLS FIRST` ascending / `DESC NULLS LAST`?
-   (Not needed for `id`, `_ts`, `_etag`.)
+   (Not needed for `id`, `_ts`, `_etag`, or for a key the `WHERE` proves present — 9.6.)
 2. Is every key a document path — `JSON_VALUE`, `id`, `_ts`, `_etag` — and not a cast, function or
    the promoted partition key column?
 3. Does the container's schema declare the type the `JSON_VALUE` key reads? A string for a key
    without `RETURNING`; for `RETURNING INTEGER` and the other numbers an integer or a number; for
-   `RETURNING BOOLEAN` a boolean — each alone or with null. Anything less sorts in process. A
+   `RETURNING BOOLEAN` a boolean — each alone or with null, outright or in the branch of a kind the
+   `WHERE` keeps. Anything less sorts in process. A
    `JSON_QUERY`, `DOC` or array key never sorts at the service.
 4. Two or more keys? Does the container have a composite index matching their order and directions?
 5. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a

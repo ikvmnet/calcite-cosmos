@@ -63,7 +63,9 @@ the `WHERE` and the planner reads only what it needs.
 Cosmos keeps a document with no grouping property apart from one whose property is `null`, and omits
 the key from the result for the former. SQL has one `NULL` group. The adapter normalises the key —
 `IS_DEFINED(p) ? p : null` — so both land in SQL's single null group. The normalisation is skipped for
-`id`, `_ts` and `_etag`, which are always present.
+a key that is always present in the rows grouped: `id`, `_ts` and `_etag`, a property the schema
+declares `required`, and one the statement's `WHERE` proves present —
+`WHERE JSON_VALUE(c."DOC", '$.category') = 'bikes'` groups by `c.category` itself.
 
 ## 10.4 Grouping sets
 
@@ -104,9 +106,9 @@ and a stored string `"30"` are both the text `'30'`, one group. Cosmos groups th
 two — pushed, `SELECT DISTINCT JSON_VALUE(c."DOC", '$.price')` returned `'30'` twice, a grouping
 counted two groups of one, and `COUNT(DISTINCT …)` one too many. So a grouping key or a `DISTINCT`
 column that is `JSON_VALUE` read as text groups at the service only where the container's schema
-declares the path a string (`"type": "string"`, Chapter 14), where there is no second type to keep
-apart, and otherwise groups in process — the property is still extracted at the service, so the
-documents are not shipped whole:
+declares the path a string (`"type": "string"`, Chapter 14) — outright, or in the branch of the kind the
+`WHERE` keeps — where there is no second type to keep apart, and otherwise groups in process. The
+property is still extracted at the service, so the documents are not shipped whole:
 
 ```sql
 SELECT JSON_VALUE(c."DOC", '$.status') AS "status", COUNT(*) AS "n"

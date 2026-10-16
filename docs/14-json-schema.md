@@ -86,7 +86,9 @@ with one           ORDER BY c.carrier at the service, 20 documents returned
 ```
 
 The service sends the stored text and the adapter converts it back to a UUID as it is read — with the
-same function Calcite's own cast uses — so the column arrives in .NET as a `Guid`.
+same function Calcite's own cast uses — so the column arrives in .NET as a `Guid`. A form declared inside
+one kind's branch (14.4) is used the same way where the `WHERE` keeps that kind: `SELECT CAST(… AS UUID)
+… WHERE kind = 'shipment'` sends the stored text, and without the conjunct the cast is made in memory.
 
 Sorting *by* such a column (`ORDER BY 1` above) additionally needs the stored strings to sort the way
 the values do, which the form says too.
@@ -273,7 +275,9 @@ A fact declared inside a branch is used **only when the query has proved the bra
 `WHERE JSON_VALUE(c."DOC", '$.kind') = 'shipment' AND …` — because an order may not carry
 `trackingId` at all. Without that conjunct the adapter uses only what holds unconditionally. Proving
 the branch takes a conjunct the service will evaluate; it composes with point reads, so a guarded
-lookup by id still becomes one.
+lookup by id still becomes one. And what the proved branch declares is used by the rest of the
+statement too — the select list, `ORDER BY` and `GROUP BY` read the rows the `WHERE` kept — and by
+routing, where the filter and the schema together leave the partition key one value (Chapter 8.5).
 
 A query can also prove the branch in other ways:
 

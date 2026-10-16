@@ -40,7 +40,9 @@ document — the same dialect a view is written in:
 - The second says no two documents whose `type` is `Link` hold the same `linkId`. It is used only where
   **both** sides of a join are proved to be Links. Proved means implied, not spelled the same: a
   constraint scoped `WHERE JSON_VALUE(DOC, '$.type') IN ('Link', 'Other')` is proved by a view
-  filtered on `= 'Link'`.
+  filtered on `= 'Link'`. The schema (Chapter 14) proves it too: where every document is declared of
+  kind `k`, a constraint scoped `WHERE JSON_VALUE(DOC, '$.kind') = 'k'` is proved of a view filtered on
+  something else entirely.
 - The third says two emails differing only in case are one.
 
 The grammar is `UNIQUE (expression, …) [WHERE predicate]`. Column names are the table's: `DOC`, `id`,
@@ -58,7 +60,8 @@ The grammar is `UNIQUE (expression, …) [WHERE predicate]`. Column names are th
 Using a constraint also requires that the *query* reads the key faithfully. A text accessor reads the
 number `1` and the string `"1"` the same way, so a join on `JSON_VALUE` uses a stored-value
 constraint only where the container's facts (Chapter 14) give the path one scalar type; a join on a
-`UUID` cast uses it where the path has a declared UUID form. A declared expression key covers joins
+`UUID` cast uses it where the path has a declared UUID form. Either may be declared for one kind of
+document only: it counts where both sides' filters keep that kind. A declared expression key covers joins
 computed from what it names: `UNIQUE (LOWER(code))` covers a join on `code`, but `UNIQUE (code)` does
 not cover a join on `LOWER(code)`, since two codes can share a lowercase.
 
@@ -69,8 +72,8 @@ that does not parse or compile fails the model there, naming the container. `CHE
 read yet and are **refused by name**, not ignored — a constraint silently dropped is one you believe is
 in force. So is anything else in `constraints` the adapter does not understand.
 
-A constraint whose `WHERE` the adapter cannot prove from a query's own predicates is simply not used
-for that query. That costs a read, never a row.
+A constraint whose `WHERE` the adapter cannot prove from a query's own predicates and the schema is
+simply not used for that query. That costs a read, never a row.
 
 ## 16.5 This is a stronger promise than a schema, and nothing checks it
 

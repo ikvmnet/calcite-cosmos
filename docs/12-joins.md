@@ -50,8 +50,9 @@ answer a full join would:
   *text*: a stored number `30` is the key `'30'` and a stored `true` the key `'true'`. The fetch names
   the stored value, `c.x IN (@k0, …)`, and the service does not find the number `30` among the strings,
   so those rows would be lost. A text key therefore qualifies only where the container's schema
-  declares the path a string (`"type": "string"`, Chapter 14) — then the text is the stored value. Over
-  an undeclared path the join is the ordinary one. `p."id"` is always a string and always qualifies.
+  declares the path a string (`"type": "string"`, Chapter 14) — then the text is the stored value —
+  outright, or in the branch of a kind the container side's `WHERE` keeps. Over an undeclared path the
+  join is the ordinary one. `p."id"` is always a string and always qualifies.
 - **Both keys are of a type a parameter can carry**: a string, a number or a boolean. The promoted
   partition key column is `VARIANT` and does not qualify (Chapter 7), and `JSON_VALUE(p."DOC",
   '$.category')` is the text key of the rule above, so it qualifies only where the container's schema
@@ -61,7 +62,8 @@ answer a full join would:
   which match the stored numbers and nothing else, and a document holding anything else reads null
   there and matches no key.
 - **Or both keys are `UUID`s, and the container's side is `CAST(JSON_VALUE(p."DOC", '$.x') AS UUID)`
-  over a path the container's schema gives a UUID format** (Chapter 14). The path then holds one
+  over a path the container's schema gives a UUID format** (Chapter 14), outright or for the kind the
+  container side keeps. The path then holds one
   spelling per value, so each key is sent in that spelling — `c.x IN ('3f2a…', …)` — and matches exactly
   the documents whose cast equals it. Without the format, `ABC…` and `abc…` cast to the same key and no
   one spelling finds both, so the join is the ordinary one.
