@@ -8,28 +8,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
-    /// A SQL value a filter reads or names: a class of <c>text</c>, <c>raw</c>, <c>typed</c>, <c>cast</c>, <c>literal</c>
-    /// and <c>parameter</c> terms.
-    /// </summary>
-    internal readonly record struct Val(ClassId Id) : ISort<Val>
-    {
-
-        public static Val FromId(ClassId id) => new(id);
-
-    }
-
-    /// <summary>
-    /// A SQL predicate over a row: a class of <c>compare</c>, <c>in</c>, <c>is null</c>, <c>is defined</c>, <c>and</c>,
-    /// <c>or</c>, <c>not</c> and <c>opaque</c> terms.
-    /// </summary>
-    internal readonly record struct Pred(ClassId Id) : ISort<Pred>
-    {
-
-        public static Pred FromId(ClassId id) => new(id);
-
-    }
-
-    /// <summary>
     /// The rules of predicates over JSON documents, beside <see cref="JsonRules"/> in the same graph: what a filter that
     /// holds says of the paths it reads, and what the facts say of a filter.
     /// </summary>
