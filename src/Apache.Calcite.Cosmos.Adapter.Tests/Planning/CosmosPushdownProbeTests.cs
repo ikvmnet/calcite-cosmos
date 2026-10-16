@@ -83,6 +83,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             ("a guarded form under the other", $"{Kind} = 'b' AND {Ref} = UUID '{Canonical}'"),
         ];
 
+        /// <summary>
+        /// A container declaring what a sort asks: <c>t</c> a string or null, <c>s</c> and <c>u</c> strings, <c>k</c> an
+        /// integer or null, <c>b</c> a boolean; none of them required.
+        /// </summary>
+        internal const string OrderingSchema = """
+        { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" }, "k": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }
+        """;
+
+        const string T = """JSON_VALUE(c."DOC", '$.t')""";
+        const string K = """JSON_VALUE(c."DOC", '$.k' RETURNING INTEGER)""";
+
+        /// <summary>
+        /// The probes of the clauses after a filter, over the kinds and over <see cref="OrderingSchema"/>: what the rows
+        /// the filter kept let a projection, a sort and a grouping lean on, and a control for each that leans on nothing
+        /// the filter proves.
+        /// </summary>
+        internal static readonly (string Name, string Container, string Sql, bool Ordered)[] ClauseProbes =
+        [
+            ("a projection of a form the filter proves", "kinds", $"""SELECT {Ref} AS "Id" FROM kinds AS c WHERE {Kind} = 'a'""", false),
+            ("a projection of a form a kind lacks", "kinds", $"""SELECT {Ref} AS "Id" FROM kinds AS c WHERE {Kind} = 'b'""", false),
+            ("a sort of a string the filter proves present", "kinds", $"""SELECT {Label} FROM kinds AS c WHERE {Kind} = 'a' AND {Label} IS NOT NULL ORDER BY 1""", true),
+            ("a sort of a string an ordering proves present", "kinds", $"""SELECT {Label} FROM kinds AS c WHERE {Kind} = 'a' AND {Label} > 'm' ORDER BY 1""", true),
+            ("a sort of a string that may be absent", "kinds", $"""SELECT {Label} FROM kinds AS c WHERE {Kind} = 'a' ORDER BY 1""", true),
+            ("a grouping by a string the filter proves", "kinds", $"""SELECT {Label}, COUNT(*) FROM kinds AS c WHERE {Kind} = 'a' GROUP BY {Label}""", false),
+            ("a grouping by an integer's rendering", "kinds", $"""SELECT {Label}, COUNT(*) FROM kinds AS c WHERE {Kind} = 'b' GROUP BY {Label}""", false),
+            ("a distinct of a string the filter proves", "kinds", $"""SELECT DISTINCT {Label} FROM kinds AS c WHERE {Kind} = 'a'""", false),
+            ("a distinct of a string the filter proves present", "kinds", $"""SELECT DISTINCT {Label} FROM kinds AS c WHERE {Kind} = 'a' AND {Label} IS NOT NULL""", false),
+            ("a grouping by the required kind", "kinds", $"""SELECT {Kind}, COUNT(*) FROM kinds AS c GROUP BY {Kind}""", false),
+            ("a sort of a declared string the filter proves present", "ordering", $"""SELECT {T} FROM ordering AS c WHERE {T} IS NOT NULL ORDER BY 1""", true),
+            ("the same, descending", "ordering", $"""SELECT {T} FROM ordering AS c WHERE {T} IS NOT NULL ORDER BY 1 DESC""", true),
+            ("the same, paged", "ordering", $"""SELECT {T} FROM ordering AS c WHERE {T} IS NOT NULL ORDER BY 1 FETCH NEXT 3 ROWS ONLY""", true),
+            ("a sort of a declared string a comparison proves present", "ordering", $"""SELECT {T} FROM ordering AS c WHERE {T} > 'A' ORDER BY 1""", true),
+            ("a sort of a declared integer the filter proves present", "ordering", $"""SELECT {K} FROM ordering AS c WHERE {K} IS NOT NULL ORDER BY 1""", true),
+            ("a sort beside a filter over another path", "ordering", $"""SELECT {T} FROM ordering AS c WHERE c."id" IS NOT NULL ORDER BY 1""", true),
+            ("a distinct of a declared string the filter proves present", "ordering", $"""SELECT DISTINCT {T} FROM ordering AS c WHERE {T} IS NOT NULL""", false),
+            ("a grouping by a declared string the filter proves present", "ordering", $"""SELECT {T}, COUNT(*) FROM ordering AS c WHERE {T} IS NOT NULL GROUP BY {T}""", false),
+            ("a sort over a distinct the filter proves present", "ordering", $"""SELECT DISTINCT {T} FROM ordering AS c WHERE {T} IS NOT NULL ORDER BY 1""", true),
+        ];
+
         [Fact(Explicit = true)]
         public void WriteWhatEachStatementPushes()
         {
@@ -111,6 +150,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 try
                 {
                     output.AppendLine(Describe(Plan($"""SELECT c."id" FROM kinds AS c WHERE {where}""", kinds)));
+                }
+                catch (Exception e)
+                {
+                    output.AppendLine("  fails: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
+            var ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(OrderingSchema)));
+
+            foreach (var (name, container, sql, _) in ClauseProbes)
+            {
+                output.Append("## clauses ").AppendLine(name);
+                try
+                {
+                    output.AppendLine(Describe(Plan(sql, container == "kinds" ? kinds : ordering)));
                 }
                 catch (Exception e)
                 {

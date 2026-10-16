@@ -915,10 +915,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
+        /// <para>
         /// A <c>HAVING</c> on a grouping key is a filter above the aggregate, which cannot bind —
         /// aggregate output has no document paths. <c>FILTER_AGGREGATE_TRANSPOSE</c> moves it below,
         /// where it is an ordinary <c>WHERE</c> the service applies before grouping, and where a
         /// predicate on the partition key confines execution the way it does anywhere else.
+        /// </para>
+        /// <para>
+        /// And the <c>WHERE</c> says the key is there in every row grouped, so it is grouped as the
+        /// plain path: the normalisation <see cref="GroupByRendersTheWholeStatement"/> shows brings an
+        /// absent key and a null one together, and neither reaches the grouping. What the filter
+        /// beneath establishes is what a grouping reads (L1); <c>CosmosDifferentialTests</c> holds the
+        /// statement to Calcite, and its <c>&lt;&gt;</c> spelling.
+        /// </para>
         /// </remarks>
         [Fact]
         public void HavingOnAGroupingKeyIsPushedAsAWhere()
@@ -926,7 +935,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(PlanToCosmos(
                 "SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'"));
 
-            query.Sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            query.Sql.Should().Be("SELECT c.category AS \"$.category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY c.category");
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
@@ -1172,13 +1181,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // `category` is nullable and its placement conflicts with Cosmos in both directions, so
         // ordering by it is refused. A predicate that removes the nulls settles the conflict: with
         // none left there is nothing to place wrongly, whichever way each side would have placed
-        // one. The predicate reaches the node through `RelMdPredicates`, so this is the planner
-        // deciding rather than the renderer discovering.
+        // one. The predicate reaches the node as what the filter beneath establishes of the rows the
+        // sort orders (L1, Metadata.CosmosRowFacts), so this is the planner deciding rather than the
+        // renderer discovering.
         //
         // Suspended pending #165: `category` is now a VARIANT column, which CosmosSort declines to sort
         // outright — Calcite cannot order a VARIANT in process, so the placement question no longer
         // arises. The unlock tests below are skipped until a variant order lands upstream; the two
-        // controls stay green, since a VARIANT sort is refused either way.
+        // controls stay green, since a VARIANT sort is refused either way. The unlock over a document
+        // path the container declares is CosmosDeclaredFactPlanningTests' (Clauses), and the
+        // differential's over the ordering container.
 
         /// <remarks>
         /// The pair that carries the change. Both directions, both of Calcite's default placements,
@@ -1242,17 +1254,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// The <c>IS NOT NULL</c> that unlocks a nullable sort key does not reach the key when the key
-        /// is an unpromoted document path. The reason is structural: such a path projects as an accessor
-        /// call rather than as a reference, and <c>RelMdPredicates</c> carries a predicate through a
-        /// projection only where the projection is a reference. So the sort is refused for want of the
-        /// guarantee — <em>not</em> because the path cannot be ordered: a declared-shape sort over the
-        /// same path (a parse, a cast, a <c>RETURNING</c>) still pushes, binding through the rendering
-        /// projection. Recorded as the boundary of what this reaches — see <c>TODO.md</c> section 6,
-        /// where the fix is a column.
+        /// <para>
+        /// The <c>IS NOT NULL</c> reaches the key — what the filter establishes is read through the
+        /// projection that renders it, where Calcite's pulled-up predicates stopped at an accessor
+        /// call — and settles the placement. What is left is the order itself: the column is the
+        /// accessor's text, and the service orders the raw values, numbers numerically and before
+        /// strings, which is one order only where the path holds a string. <c>products</c> declares
+        /// nothing, so the sort stays in process.
+        /// </para>
+        /// <para>
+        /// Over a container declaring the path a string the same statement pushes — see
+        /// <c>CosmosDeclaredFactPlanningTests.AnIsNotNullMakesADeclaredStringASortKey</c>.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void AnIsNotNullOverAnUnpromotedPathDoesNotUnlockItsSort()
+        public void AnIsNotNullOverAnUndeclaredPathDoesNotUnlockItsSort()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
 

@@ -809,27 +809,27 @@ namespace Apache.Calcite.Cosmos.Adapter
                 _readings = Array.Empty<CosmosReading>();
                 _sortableExpressions = Array.Empty<string?>();
                 _renderedExpressions = Array.Empty<string?>();
-                _orderingPaths = Array.Empty<CosmosPath?>();
+                _orderings = Array.Empty<CosmosOrdering>();
             }
         }
 
         IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
         IReadOnlyList<string?> _renderedExpressions = Array.Empty<string?>();
-        IReadOnlyList<CosmosPath?> _orderingPaths = Array.Empty<CosmosPath?>();
+        IReadOnlyList<CosmosOrdering> _orderings = Array.Empty<CosmosOrdering>();
 
         /// <summary>
-        /// Gets or sets, per output field, the path a sort may order by where the field is computed
-        /// and so binds to none in <see cref="Fields"/>.
+        /// Gets or sets, per output field, how it may take part in an <c>ORDER BY</c> where it binds
+        /// to no path in <see cref="Fields"/>: what <see cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out IReadOnlyList{CosmosReading}, out IReadOnlyList{CosmosOrdering}, out CosmosClauses)"/>
+        /// derives for the same ordinal.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>A weaker claim than a binding, and deliberately so.</b> <see cref="Fields"/> says an
-        /// ordinal <em>is</em> a path, which licenses every operator that can name one. This says only
-        /// that ordering by the path orders the rows the way ordering by the column would — which is
-        /// true of a conversion the stored form preserves the order of, and of nothing else. A filter
-        /// or a partition key must not read it: <c>CAST(&lt;path&gt; AS UUID) = …</c> has its own
-        /// rewrite, and the guarded accessor the column renders as is not the raw value the path
-        /// holds.
+        /// ordinal <em>is</em> a path, which licenses every operator that can name one. A candidate's
+        /// path says only that ordering by it orders the rows the way ordering by the column would —
+        /// which is true of a conversion the stored form preserves the order of, and of nothing else. A
+        /// filter or a partition key must not read it: <c>CAST(&lt;path&gt; AS UUID) = …</c> has its own
+        /// rewrite, and the guarded accessor the column renders as is not the raw value the path holds.
         /// </para>
         /// <para>
         /// <b>Two conditions, and the second is easy to miss.</b> The path's form has to preserve
@@ -837,15 +837,21 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// the guard the projection renders has to be vacuous — measured, the column comes back as
         /// <c>IS_PRIMITIVE(c.ref) ? c.ref : null</c>, so over a document holding an object there the
         /// column is null while the path is the object, and Cosmos sorts an object above every scalar
-        /// while null sorts below them. A path declared present and a scalar has no such document, and
+        /// while null sorts below them. A path known present and a scalar has no such document, and
         /// that is the same claim the null-placement rule already makes of any sort key.
+        /// </para>
+        /// <para>
+        /// <b>Structural only.</b> Both conditions are asked by the sort, of the facts the sort was
+        /// decided under — the filters beneath it, which may be more than the projection's own — so
+        /// the projection records the candidate and the sort licenses it, as its rule licensed the
+        /// candidate the binding walk derived. See <see cref="Rel.CosmosProject.IsOrderable"/>.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>
-        public IReadOnlyList<CosmosPath?> OrderingPaths
+        public IReadOnlyList<CosmosOrdering> Orderings
         {
-            get => _orderingPaths;
-            set => _orderingPaths = value ?? throw new ArgumentNullException(nameof(value));
+            get => _orderings;
+            set => _orderings = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         /// <summary>
@@ -979,13 +985,15 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string Translate(RexNode node) => CreateTranslator().Translate(node);
 
         /// <summary>
-        /// The facts that hold of every document the container keeps, whatever a query says.
+        /// The facts that hold of every document the container keeps, whatever a query says (L0).
         /// </summary>
         /// <remarks>
-        /// What an expression that is not a predicate may lean on. A projection proves nothing — see
-        /// <see cref="TranslateCondition"/> for why the same expression means one thing there and
-        /// another in a <c>WHERE</c> — so the only facts open to it are the ones a declaration states
-        /// outright, with no guard left to discharge.
+        /// What a node built without the facts of the rows it reads may lean on. A clause after a
+        /// filter reads what its rule decided the filters beneath establish (L1), which it carries — see
+        /// <see cref="Metadata.CosmosRowFacts"/>; one built otherwise, by hand or by a host's own rule,
+        /// knows only what the declaration states outright. A projection proves nothing of its own —
+        /// see <see cref="TranslateCondition"/> for why the same expression means one thing there and
+        /// another in a <c>WHERE</c>.
         /// </remarks>
         public JsonFactSet UnconditionalFacts => _container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared;
 

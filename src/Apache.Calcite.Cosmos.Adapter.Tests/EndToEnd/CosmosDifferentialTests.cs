@@ -100,9 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// must go on answering as a container that says nothing does.
         /// </remarks>
         static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
-            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
-                { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" }, "k": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }
-                """)));
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.OrderingSchema)));
 
         /// <summary>
         /// A fourth container, declaring what a filter concludes from: <c>body</c> is a string and <c>n</c> an
@@ -878,6 +876,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\"", false),
             ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY ROLLUP(c.\"$.category\")", false),
             ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'", false),
+            ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" <> 'bikes'", false),
             ("SELECT AVG(c.\"_ts\") FROM products AS c", false),
 
             // LIKE's shapes: the prefix that becomes STARTSWITH, and the general form that stays LIKE.
@@ -1522,6 +1521,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // declaration guarantees, what it refutes, and a disjunction spelled per kind. The probes'
             // definedness test is the one left out, IS_DEFINED being no operator this validator knows.
             .. Planning.CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal) == false).Select(p => ($"SELECT c.\"id\" FROM kinds AS c WHERE {p.Where}", false)),
+            // And what the rows a filter kept let the clauses after it lean on: a projection of a form the filter
+            // proves, a sort of a key it proves present, a grouping by a rendering it proves a string; each beside a
+            // control that leans on nothing the filter proves.
+            .. Planning.CosmosPushdownProbeTests.ClauseProbes.Select(p => (p.Sql, p.Ordered)),
         ];
 
         /// <summary>

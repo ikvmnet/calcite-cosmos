@@ -36,6 +36,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>the conjuncts beneath and
     /// those pushed beside it, and the declaration</description></item>
+    /// <item><term>a clause after the filter: a projection, a sort, a grouping (<see cref="After"/>,
+    /// <see cref="CosmosRowFacts"/>)</term><description>the last stratum: every admitted conjunct, which the service applies
+    /// before the clause reads a row</description></item>
     /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
     /// declaration</description></item>
     /// </list>
@@ -269,6 +272,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Write(Condition);
             return builder.ToString();
         }
+
+        // ── The clauses after it: every admitted conjunct (L1) ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Gets the conjuncts a stratum admitted, in the IR: those the service applies.
+        /// </summary>
+        public IEnumerable<SqlPredicate> Admitted => Statement.Conjuncts.Where((_, i) => IsAdmitted(i));
+
+        /// <summary>
+        /// Returns what holds of every row the filter's admitted conjuncts keep, for a clause the service applies after
+        /// them: the last stratum.
+        /// </summary>
+        /// <param name="licence">The clause asking: a projection, a sort or a grouping.</param>
+        /// <returns>The facts.</returns>
+        public JsonFactSet After(OracleLicence licence) =>
+            licence.Question is OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy
+                ? Strata.Facts(licence)
+                : throw new ArgumentException("Only a projection, a sort or a grouping reads the rows a filter kept.", nameof(licence));
 
         // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
 

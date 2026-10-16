@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
 
@@ -183,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (project.getProjects().size() == 0)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _, out _, out var written, out var container) == false)
                 return false;
 
             // One SELECT per statement: the subtree under the filter must not have written one. This
@@ -191,7 +192,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
 
-            var facts = _convention.Container?.Facts.Derive(null) ?? JsonFactSet.Empty;
+            // What the filters beneath the residual establish of the rows the moved projection reads
+            // (L1): the residual is above it and applied in process, so it proves nothing here.
+            var facts = CosmosRowFacts.Of(filter.getInput(), container, OracleLicence.Select);
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
 
             // Only a filter that is wholly residual: one the filter split leaves nothing of to push. A

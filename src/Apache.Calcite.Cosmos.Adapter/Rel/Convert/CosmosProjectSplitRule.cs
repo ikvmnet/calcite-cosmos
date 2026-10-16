@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
-using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -199,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (project.getProjects().size() == 0)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out var written, out var container) == false)
                 return false;
 
             // A statement has one SELECT and Cosmos has no derived table to nest a second in, so a
@@ -210,7 +209,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The expressions the whole-projection rule would push, so that the two agree on what renders.
             var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
 
-            var facts = _convention.Container?.Facts.Derive(null) ?? JsonFactSet.Empty;
+            // And the facts it renders under: what the filters beneath establish of the rows this
+            // projection reads, which are the rows the inner one built over the same input reads.
+            var facts = CosmosProjectRule.Facts(project, container);
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
 
             for (var i = 0; i < projects.size(); i++)

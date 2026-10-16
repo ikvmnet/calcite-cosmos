@@ -38,15 +38,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="projects">The projected expressions.</param>
         /// <param name="rowType">The output row type.</param>
         public CosmosProject(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, List projects, RelDataType rowType) :
-            base(cluster, traitSet, ImmutableList.of(), input, projects, rowType, ImmutableSet.of())
+            this(cluster, traitSet, input, projects, rowType, null)
         {
 
         }
 
+        /// <summary>
+        /// Initializes a new instance carrying what the rows it reads are known to satisfy.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Decided where the rule decides, and never again.</b> What the filters beneath establish of every row the
+        /// projection reads (L1) is what it may lean on — a declared form proved by the filter renders as the value the plan
+        /// declared — and which filters a walk finds depends on which member of a set it reads, where implementation reads
+        /// the one tree the planner chose. So <see cref="Convert.CosmosProjectRule"/> hands over the facts it decided under,
+        /// and <see cref="Implement"/> renders under them. See <see cref="Metadata.CosmosRowFacts"/>.
+        /// </para>
+        /// <para>
+        /// It is sound to carry, for the reason <see cref="CosmosSort"/>'s guarantee is: every member of an equivalence set
+        /// yields the same rows, so what held of the input the rule saw holds of whichever input the planner picks.
+        /// </para>
+        /// </remarks>
+        /// <param name="cluster">The planner cluster.</param>
+        /// <param name="traitSet">The trait set, which must carry the Cosmos convention.</param>
+        /// <param name="input">The input node.</param>
+        /// <param name="projects">The projected expressions.</param>
+        /// <param name="rowType">The output row type.</param>
+        /// <param name="facts">What every row the projection reads is known to satisfy, or <c>null</c> for the declaration.</param>
+        internal CosmosProject(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, List projects, RelDataType rowType, JsonFactSet? facts) :
+            base(cluster, traitSet, ImmutableList.of(), input, projects, rowType, ImmutableSet.of())
+        {
+            Facts = facts;
+        }
+
+        /// <summary>
+        /// Gets what every row the projection reads is known to satisfy, as its rule decided; <c>null</c> where it was built
+        /// without, which reads what the container declares of every document.
+        /// </summary>
+        internal JsonFactSet? Facts { get; }
+
         /// <inheritdoc />
         public override Project copy(RelTraitSet traitSet, RelNode input, List projects, RelDataType rowType)
         {
-            return new CosmosProject(getCluster(), traitSet, input, projects, rowType);
+            return new CosmosProject(getCluster(), traitSet, input, projects, rowType, Facts);
         }
 
         /// <inheritdoc />
@@ -71,22 +105,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var names = getRowType().getFieldNames();
 
             // Bound to the input field bindings; the rebinding below happens only once every
-            // expression has been translated against them. Given the container's unconditional facts,
-            // because a projection may render a stored form as the value the plan declared -- a path
-            // declared a UUID spelling among them -- and has no predicate of its own to prove a
-            // guarded fact from.
-            var translator = implementor.CreateTranslator(null, implementor.UnconditionalFacts);
+            // expression has been translated against them. Given what the rows it reads are known to
+            // satisfy, as the rule decided: a projection may render a stored form as the value the plan
+            // declared -- a path declared a UUID spelling among them -- and the filters beneath may be
+            // what proves the form, where the declaration states it only under a guard they discharge.
+            // Nothing the projection says is among them: SELECT x = 'B' asserts nothing about x.
+            var translator = implementor.CreateTranslator(null, Facts);
 
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];
             var sortable = new string?[projects.size()];
             var rendered = new string?[projects.size()];
-            var ordering = new CosmosPath?[projects.size()];
-
-            // Only what holds outright. A projection carries no predicate of its own, so there is
-            // nothing here to prove a guarded fact from -- the same argument, and the same
-            // Derive(null), that CosmosSortRule makes for the null placement.
-            var facts = implementor.Container?.Facts.Derive(null);
+            var orderings = new CosmosOrdering[projects.size()];
 
             // Read before anything rebinds them. A column passed straight through keeps how it is
             // read: the JSON column projected under an alias is still the document, and reading it as
@@ -136,7 +166,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 // A computed column that converts a path the container confines to one stored shape
                 // may still be ordered by that path, even though it addresses none. A weaker claim
-                // than a binding and recorded apart from one -- see CosmosImplementor.OrderingPaths.
+                // than a binding and recorded apart from one -- see CosmosImplementor.Orderings. What is
+                // recorded is structural, as the binding walk derives it; whether the container licenses
+                // it is the sort's to ask, of the facts the sort was decided under.
                 string? chain = null;
                 var held = Metadata.CosmosTemporalParts.None;
                 var candidate = paths[i];
@@ -144,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (candidate is null)
                     candidate = OrderingCandidateOf(node, translator, implementor.RootAlias, out chain, out held);
 
-                ordering[i] = paths[i] is not null || IsOrderable(facts, candidate, chain, held) ? candidate : null;
+                orderings[i] = new CosmosOrdering(candidate, IsSortableAtTheService(node), SortableOperandsOf(node, translator, implementor.RootAlias), chain, held);
             }
 
             // Downstream clauses address the source document, not the projected object — Cosmos
@@ -158,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             implementor.Readings = readings;
             implementor.SortableExpressions = sortable;
             implementor.RenderedExpressions = rendered;
-            implementor.OrderingPaths = ordering;
+            implementor.Orderings = orderings;
         }
 
 
@@ -269,15 +301,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <para>
         /// <b>And the guard the projection renders has to be vacuous</b>, which is the condition a
         /// reading of <c>TODO.md</c> alone would miss — see
-        /// <see cref="CosmosImplementor.OrderingPaths"/> for what the column renders as and why an
+        /// <see cref="CosmosImplementor.Orderings"/> for what the column renders as and why an
         /// object at the path would otherwise sort on the wrong side of every scalar.
         /// </para>
         /// <para>
         /// A pure function of the path and the facts, which is what lets the rule and the
-        /// implementation each ask it without a walk between them.
+        /// implementation each ask it without a walk between them: the sort asks it, of the facts it
+        /// was decided under, of the candidates the binding walk and the projection record alike.
         /// </para>
         /// </remarks>
-        /// <param name="facts">What the container declares, already derived.</param>
+        /// <param name="facts">What every row the sort orders is known to satisfy.</param>
         /// <param name="path">The candidate path, or <c>null</c>.</param>
         /// <param name="format">
         /// The format a parse reads the path with, where the candidate is a chain rather than a cast;

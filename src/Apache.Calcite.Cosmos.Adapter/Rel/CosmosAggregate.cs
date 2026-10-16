@@ -143,10 +143,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </para>
         /// <para>
         /// The exception is theirs too, and the question is theirs, asked of the same method —
-        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, which a sort key asks as well: a container
-        /// that declares the path a string outright, where the rendering is the stored value and a
-        /// second JSON type cannot be there to be kept apart. Outright, as <see cref="GroupingKey"/>
-        /// reads the declaration, since a key is not a predicate and proves nothing. A
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, which a sort key asks as well: a path known
+        /// to hold a string, where the rendering is the stored value and a second JSON type cannot be
+        /// there to be kept apart. Known of the rows grouped, as <see cref="GroupingKey"/> reads them —
+        /// what the declaration states and what the filters beneath establish (L1) — since a key is
+        /// not a predicate and proves nothing of its own. A
         /// <c>JSON_QUERY</c> fragment has no such exception — its text is a serialisation, and whether
         /// the service holds two objects equal exactly where their compact texts are equal, in key
         /// order and number spelling, is not measured — so it is declined. The two readings a grouping
@@ -219,15 +220,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="groupSets">The grouping sets.</param>
         /// <param name="aggCalls">The aggregate calls.</param>
         public CosmosAggregate(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, ImmutableBitSet groupSet, List? groupSets, List aggCalls) :
-            base(cluster, traitSet, ImmutableList.of(), input, groupSet, groupSets, aggCalls)
+            this(cluster, traitSet, input, groupSet, groupSets, aggCalls, null)
         {
 
         }
 
+        /// <summary>
+        /// Initializes a new instance carrying what the rows it groups are known to satisfy.
+        /// </summary>
+        /// <remarks>
+        /// Decided where the rule decides and never again, for the reason <see cref="CosmosSort"/>'s are: what the filters
+        /// beneath establish of every row grouped (L1) says which keys are always there and which renderings are the
+        /// value, and which filters a walk finds depends on the member of a set it reads. See
+        /// <see cref="Metadata.CosmosRowFacts"/>.
+        /// </remarks>
+        /// <param name="cluster">The planner cluster.</param>
+        /// <param name="traitSet">The trait set, which must carry the Cosmos convention.</param>
+        /// <param name="input">The input node.</param>
+        /// <param name="groupSet">The grouping key ordinals.</param>
+        /// <param name="groupSets">The grouping sets.</param>
+        /// <param name="aggCalls">The aggregate calls.</param>
+        /// <param name="facts">What every row grouped is known to satisfy, or <c>null</c> for the declaration.</param>
+        internal CosmosAggregate(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, ImmutableBitSet groupSet, List? groupSets, List aggCalls, JsonFactSet? facts) :
+            base(cluster, traitSet, ImmutableList.of(), input, groupSet, groupSets, aggCalls)
+        {
+            Facts = facts;
+        }
+
+        /// <summary>
+        /// Gets what every row the aggregate groups is known to satisfy, as its rule decided; <c>null</c> where it was
+        /// built without, which reads what the container declares of every document.
+        /// </summary>
+        internal JsonFactSet? Facts { get; }
+
         /// <inheritdoc />
         public override Aggregate copy(RelTraitSet traitSet, RelNode input, ImmutableBitSet groupSet, List? groupSets, List aggCalls)
         {
-            return new CosmosAggregate(getCluster(), traitSet, input, groupSet, groupSets, aggCalls);
+            return new CosmosAggregate(getCluster(), traitSet, input, groupSet, groupSets, aggCalls, Facts);
         }
 
         /// <inheritdoc />
@@ -288,7 +317,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
-            var translator = implementor.CreateTranslator();
+            var facts = Facts ?? implementor.UnconditionalFacts;
+            var translator = implementor.CreateTranslator(null, facts);
             var output = 0;
 
             // Calcite orders an aggregate's output as the grouping keys followed by the calls.
@@ -303,7 +333,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 // reads as text while the path holds the raw value, so grouping by the path would
                 // group different values and return one the reader refuses.
                 var expression = index < rendered.Count ? rendered[index] : null;
-                var key = GroupingKey(fields[index]!, implementor.Container.Facts.Derive(null), expression);
+                var key = GroupingKey(fields[index]!, facts, expression);
 
                 readings[output] = index < inputReadings.Count ? inputReadings[index] : CosmosReading.Typed;
 
@@ -361,7 +391,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
-            var translator = implementor.CreateTranslator();
+            var facts = Facts ?? implementor.UnconditionalFacts;
+            var translator = implementor.CreateTranslator(null, facts);
 
             var groupKeys = getGroupSet().asList();
             var projected = new CosmosPath?[names.size()];
@@ -386,7 +417,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (GroupsAsTheColumnReads(translator, inputReadings, getInput().getRowType(), index) == false)
                     throw new CosmosTranslationException("A DISTINCT over a column read as text de-duplicates the rendering in Calcite and the value at the service, which differ wherever the path holds something other than a string.");
 
-                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, implementor.Container.Facts.Derive(null), expression));
+                implementor.Query.SelectProperty((string)names.get(i), GroupingKey(path, facts, expression));
 
                 projected[i] = DistinctKeyBinding(path, implementor.Container);
             }
@@ -419,12 +450,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// it — after the planner had committed to the plan, so the query failed rather than sorting
         /// in process (soundness probe P16). Each was right about its own encoding; there were two.
         /// </para>
+        /// <para>
+        /// <b>Of the declaration (L0), where the key itself reads the rows (L1).</b> The binding is a
+        /// question another node asks of this one, on its own walk of a set the rule read one member
+        /// of; implementation answers it of the one tree the planner chose. Only what holds of every
+        /// document answers it alike on both, so a key the filter beneath proves present is grouped as
+        /// the path (<see cref="GroupingKey"/>) and still bound to none: an operator above declines it,
+        /// which costs that operator and cannot fail the plan. A statement node carrying the scope it
+        /// was decided in (#148) would let the binding read the rows too.
+        /// </para>
         /// </remarks>
         /// <param name="key">The path the grouping key resolves to beneath the aggregate, if any.</param>
-        /// <param name="container">The container, whose unconditional facts say what is always present.</param>
+        /// <param name="container">The container, whose declaration says what is always present.</param>
         /// <returns>The path, or <c>null</c>.</returns>
         internal static CosmosPath? DistinctKeyBinding(CosmosPath? key, CosmosContainerMetadata? container) =>
-            key is not null && container is not null && IsAlwaysPresent(key, container.Facts.Derive(null)) ? key : null;
+            key is not null && container is not null && IsAlwaysPresent(key, CosmosOracle.For(container.Facts).Declared) ? key : null;
 
         /// <summary>
         /// The expression a grouping key is grouped and projected by.
@@ -444,12 +484,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// different absences.
         /// </para>
         /// <para>
-        /// <b>Only where it is needed.</b> A path known to be present on every document is never
-        /// absent, so normalising it would buy nothing and cost the plain path form that an index is
-        /// defined on. Those are grouped as they were. What is known comes from the container rather
-        /// than from a list here: the service guarantees <c>id</c>, <c>_ts</c> and <c>_etag</c>, and a
-        /// declared schema's <c>required</c> says the same of an application's own property — which
-        /// the list this replaced could never have reached.
+        /// <b>Only where it is needed.</b> A path known to be present on every row grouped is never
+        /// absent there, so normalising it would buy nothing and cost the plain path form that an
+        /// index is defined on. Those are grouped as they were. What is known comes from the container
+        /// and the filters beneath rather than from a list here: the service guarantees <c>id</c>,
+        /// <c>_ts</c> and <c>_etag</c>, a declared schema's <c>required</c> says the same of an
+        /// application's own property, and <c>WHERE x IS NOT NULL</c> of <c>x</c> in the rows it keeps.
         /// </para>
         /// </remarks>
         static string GroupingKey(CosmosPath path, JsonFactSet facts, string? rendered = null)

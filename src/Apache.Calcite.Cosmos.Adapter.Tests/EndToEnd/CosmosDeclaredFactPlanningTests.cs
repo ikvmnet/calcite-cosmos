@@ -750,18 +750,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A fact that holds only under a guard does not render a projection, even where the query
+        /// A fact that holds only under a guard renders a projection where the filter beneath
         /// discharges the guard.
         /// </summary>
         /// <remarks>
-        /// Where the scope line falls, and it falls short of what is provable. A projection carries no
-        /// predicate of its own, so what it may lean on is what the declaration states outright; the
-        /// <c>kind = 'B'</c> beneath it does discharge the guard for every row that arrives, and
-        /// reading that off the subtree is a further step this does not take. The filter still pushes,
-        /// and the projection stays in process.
+        /// <para>
+        /// A projection carries no predicate of its own, and what it may lean on is what holds of every
+        /// row it reads: the declaration, and what the filters beneath establish (L1). The
+        /// <c>kind = 'B'</c> beneath it discharges the guard for every row that arrives, so the declared
+        /// form is the column's, and the cast is the reader's to make from the stored spelling rather
+        /// than Calcite's to compute in process. The accessor's own guard stays — <c>ref</c> is not
+        /// required of kind B, and an absent one reads null — and nothing else is written: the column
+        /// is the path's text, read back as the <c>UUID</c> it spells.
+        /// </para>
+        /// <para>
+        /// The scope line used to fall at the declaration, short of what is provable, and the cast
+        /// stayed in process. <c>CosmosDifferentialTests</c> holds the shape to Calcite on the kinds
+        /// container (<c>CosmosPushdownProbeTests.ClauseProbes</c>, "a projection of a form the filter
+        /// proves"), beside the kind that declares no form.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void AGuardedFormDoesNotRenderAProjection()
+        public void AGuardedFormRendersAProjectionTheFilterDischarges()
         {
             var container = Declared(true);
 
@@ -769,12 +779,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'B'""",
                 container, out _);
 
-            // The accessor goes down on its own merits, which needs no declaration at all -- guarded,
-            // as any accessor is. What must not go down is the *declared* rendering, the bare path
-            // standing for the stored spelling, and that is what the guard being present shows.
             Query(FindCosmos(best), container).Sql
-                .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor")
-                .And.NotContain("\"Id\": c.ref", "and not as the form, which is declared only of the documents the guard admits");
+                .Should().Contain("\"Id\": (IS_PRIMITIVE(c.ref) ? c.ref : null)", "the column is the stored spelling, guarded as any accessor is");
+
+            PlanText(best).Should().NotContain("ClrCursorProject",
+                "so the cast is not computed in process: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// And not where the filter beneath keeps the kind the form is not declared of.
+        /// </summary>
+        [Fact]
+        public void AGuardedFormDoesNotRenderAProjectionOfAnotherKind()
+        {
+            var container = Declared(true);
+
+            var best = PlanToCosmos(
+                $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'A'""",
+                container, out _);
+
+            // The accessor goes down on its own merits, which needs no declaration at all -- guarded,
+            // as any accessor is -- and the cast stays above it.
+            Query(FindCosmos(best), container).Sql
+                .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor");
 
             PlanText(best).Should().Contain("ClrCursorProject(Id=[CAST($0)",
                 "so the cast is still computed in process: " + PlanText(best));

@@ -65,7 +65,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (project.getProjects().size() == 0)
                 return false;
 
-            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var written) == false)
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out var written, out var container) == false)
                 return false;
 
             if ((written & CosmosClauses.Projection) != 0)
@@ -75,8 +75,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // The same facts CosmosProject.Implement will translate against, for the same reason the
             // bindings are the ones it will use: a rule admitting a projection the node then refuses
-            // is a plan that fails at implementation rather than a plan that was never chosen.
-            var facts = convention.Container?.Facts.Derive(null) ?? JsonFactSet.Empty;
+            // is a plan that fails at implementation rather than a plan that was never chosen. What the
+            // filters beneath establish of every row it reads (L1), decided once for this projection
+            // and handed to the node convert builds.
+            var facts = Facts(project, container);
             var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, null, facts);
 
             // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the
@@ -90,6 +92,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Window functions have no Cosmos equivalent.
             return project.containsOver() == false;
         }
+
+        /// <summary>
+        /// Returns what every row a projection reads is known to satisfy: the filters beneath it (L1), the same each time
+        /// it is asked of the same projection. See <see cref="CosmosRowFacts"/>.
+        /// </summary>
+        internal static JsonFactSet Facts(Project project, CosmosContainerMetadata? container) =>
+            CosmosRowFacts.For(project, container, OracleLicence.Select);
 
         /// <summary>
         /// Creates a rule instance bound to the specified convention.
@@ -123,20 +132,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <inheritdoc />
-        public override RelNode convert(RelNode rel)
+        public override RelNode? convert(RelNode rel)
         {
             var project = (Project)rel;
 
-            var projects = @out is CosmosConvention convention && CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _)
-                ? Pushed(convention, project, fields)
-                : project.getProjects();
+            if (@out is not CosmosConvention convention || CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out _, out var container) == false)
+                return null;
 
+            // Built under the facts the legality test decided under, which the node renders with.
             return new CosmosProject(
                 project.getCluster(),
                 project.getTraitSet().replace(@out),
                 convert(project.getInput(), project.getInput().getTraitSet().replace(@out)),
-                projects,
-                project.getRowType());
+                Pushed(convention, project, fields),
+                project.getRowType(),
+                Facts(project, container));
         }
 
     }
