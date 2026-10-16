@@ -509,16 +509,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>
-        /// Everything that moves work to the service. Not the way out, which is what makes a pushed
-        /// subtree readable at all and which the oracle needs for the scan; and not Calcite's own
-        /// rewrites, which the convention registers because a bare Volcano planner has no logical rule
-        /// set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable by
-        /// the CLR convention in the first place.
+        /// Everything that moves work to the service, and everything that answers a filter by the
+        /// adapter's own reasoning: <see cref="CosmosFilterReduceRule"/> moves nothing, but the empty
+        /// relation or the bare input it puts in a filter's place is the predicate oracle's verdict, and
+        /// an oracle that applied it would agree with a wrong one. Not the way out, which is what makes
+        /// a pushed subtree readable at all and which the oracle needs for the scan; and not Calcite's
+        /// own rewrites, which the convention registers because a bare Volcano planner has no logical
+        /// rule set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable
+        /// by the CLR convention in the first place.
         /// </remarks>
         static bool IsPushdown(org.apache.calcite.plan.RelOptRule rule)
         {
             return rule is CosmosAggregateRule or CosmosAggregateSplitRule
-                or CosmosFilterRule or CosmosFilterSplitRule
+                or CosmosFilterRule or CosmosFilterSplitRule or CosmosFilterReduceRule
                 or CosmosProjectRule or CosmosRankRule or CosmosSortRule
                 or CosmosUnnestRule or CosmosLookupJoinRule;
         }
@@ -1607,6 +1610,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
                 "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true,
+                "The same sort descending. As the id above."),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true,
                 "The same sort by a key the statement does not select. As the id above."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
