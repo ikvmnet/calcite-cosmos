@@ -28,21 +28,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// for one no stratum admitted, the last: what its siblings applied beside it establish, never what it does</description></item>
     /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>every
     /// conjunct: a strengthening, which the conjuncts' own facts may justify</description></item>
-    /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>every sibling, never the
-    /// conjunct itself, one deletion at a time</description></item>
+    /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
+    /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
+    /// too</description></item>
     /// <item><term>a comparison lowered onto its stored form (<see cref="Siblings"/>)</term><description>every sibling the
     /// deletions keep, never the conjunct itself</description></item>
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
     /// deletions keep, and the conditions the arm is read under</description></item>
-    /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>the conjuncts beneath and
-    /// those pushed beside it, and the declaration</description></item>
+    /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
+    /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
     /// <see cref="CosmosRowFacts"/>)</term><description>the last stratum: every admitted conjunct, which the service applies
     /// before the clause reads a row, or beside the key's restriction</description></item>
     /// <item><term>what the rows the filter keeps satisfy, for a reader that rewrites nothing: a constraint's scope, a
     /// self-join's key (<see cref="Proves"/>, <see cref="Kept"/>)</term><description>every conjunct</description></item>
-    /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
-    /// declaration</description></item>
+    /// <item><term>what a side with no filter proves, and a reader that names no filter (<see cref="Declares"/>,
+    /// <see cref="CosmosOracle.Declared"/>)</term><description>the declaration</description></item>
     /// </list>
     /// <para>
     /// <b>Remembered by the condition itself.</b> A rule is asked the same filter many times — each time Volcano matches it,
@@ -51,8 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// oracle remembers beneath it is keyed by the statement's digest, so two nodes spelling one filter share contexts.
     /// </para>
     /// <para>
-    /// <b>Its strata are opened only where asked.</b> A rewrite asks deletions and contradictions and never renders; a
-    /// filter rule renders and asks nothing else. Each is computed the first time it is asked, and once.
+    /// <b>Its strata are opened only where asked.</b> A contradiction, a rewrite's siblings and a key's pins need no
+    /// stratum; a render, a deletion beside what reaches the service and a clause after the filter do. The statement has one
+    /// scope, whose rounds run the first time something asks of them, and a second only where the rewrite deletes a
+    /// conjunct: the statement the deletions leave, whose siblings a lowering reads.
     /// </para>
     /// </remarks>
     internal sealed class CosmosFilterStatement
@@ -71,8 +74,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
         readonly object _lock = new();
-        CosmosStatementScope? _plain;
-        CosmosStatementScope? _strata;
+        CosmosStatementScope? _scope;
         IReadOnlyList<int>? _redundant;
         bool? _contradictory;
         JsonFactSet?[]? _siblings;
@@ -146,8 +148,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var read = Read.GetValue(condition, _ => new List<CosmosFilterStatement>());
             lock (read)
             {
+                // The builder too: the strata render through it, and a statement a reader made over a builder of its own
+                // is no statement for a rule's translator to render.
                 foreach (var statement in read)
-                    if (ReferenceEquals(statement._container, container) && statement._rootAlias == rootAlias
+                    if (ReferenceEquals(statement._container, container) && ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
                         && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings))
                         return statement;
 
@@ -172,35 +176,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         public PredicateStatement Statement { get; }
 
-        /// <summary>
-        /// Gets a rewrite's answer for this condition, remembered here so that it is one node each time it is asked: the
-        /// node the rules then render is the statement remembered against it.
-        /// </summary>
-        internal RexNode? Rewritten { get; set; }
-
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
 
         /// <summary>
-        /// The statement with nothing admitted: the questions that do not render.
+        /// The statement, admitted by the translator stratum by stratum the first time a question asks of a stratum.
         /// </summary>
-        CosmosStatementScope Plain
+        CosmosStatementScope Scope
         {
             get
             {
                 lock (_lock)
-                    return _plain ??= Oracle.Admit(Statement);
-            }
-        }
-
-        /// <summary>
-        /// The statement admitted by the translator, stratum by stratum.
-        /// </summary>
-        CosmosStatementScope Strata
-        {
-            get
-            {
-                lock (_lock)
-                    return _strata ??= Oracle.Admit(Statement, (i, facts) => Translator(facts, new CosmosParameterList()).TryTranslate(Conjuncts[i], out _));
+                    return _scope ??= Oracle.Admit(Statement, (i, facts) => Translator(facts, new CosmosParameterList()).TryTranslate(Conjuncts[i], out _));
             }
         }
 
@@ -213,7 +199,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Gets whether every conjunct renders, each from the stratum before the one that admitted it: whether the filter
         /// pushes whole.
         /// </summary>
-        public bool Renders => Strata.Residual.Count == 0;
+        public bool Renders => Scope.Residual.Count == 0;
 
         /// <summary>
         /// Determines whether a stratum admitted a conjunct: whether it reaches the service.
@@ -224,13 +210,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Returns the round that admitted a conjunct, counting from one, or zero where none did: one renders from the
         /// declaration alone, and each round after from what the rounds before it admitted.
         /// </summary>
-        public int StratumOf(int conjunct) => Strata.StratumOf(conjunct);
+        public int StratumOf(int conjunct) => Scope.StratumOf(conjunct);
 
         /// <summary>
         /// Returns the facts a conjunct is rendered from: the stratum before the one that admitted it, or the last for one
         /// no stratum admitted. A weakening of a conjunct left above is rendered from them too, beside every admitted one.
         /// </summary>
-        public JsonFactSet FactsFor(int conjunct) => Strata.Facts(OracleLicence.RenderConjunct(conjunct));
+        public JsonFactSet FactsFor(int conjunct) => Scope.Facts(OracleLicence.RenderConjunct(conjunct));
 
         /// <summary>
         /// Returns a translator that renders a conjunct from the facts its licence admits.
@@ -266,8 +252,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return;
                 }
 
-                // Decompose reads a nested AND depth first, left to right: the order written here.
+                // Decompose reads a nested AND depth first, left to right: the order written here, which the node at
+                // each index says.
                 var conjunct = next++;
+                System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
                 builder.Append(TranslatorFor(conjunct, parameters).Translate(node));
             }
 
@@ -289,8 +277,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="licence">The clause asking: a projection, a sort, a grouping or a key.</param>
         /// <returns>The facts.</returns>
         public JsonFactSet After(OracleLicence licence) =>
-            licence.Question is OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key
-                ? Strata.Facts(licence)
+            licence.ReadsKeptRows
+                ? Scope.Facts(licence)
                 : throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
         // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
@@ -303,7 +291,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _contradictory ??= Plain.IsContradictory(OracleLicence.Kept);
+                    return _contradictory ??= Scope.IsContradictory(OracleLicence.Kept);
             }
         }
 
@@ -311,7 +299,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Gets what holds of every row the filter keeps, every conjunct assumed: what a strengthening may read, and a
         /// reader of those rows that rewrites nothing.
         /// </summary>
-        public JsonFactSet Kept => Plain.Facts(OracleLicence.Kept);
+        public JsonFactSet Kept => Scope.Facts(OracleLicence.Kept);
+
+        // ── A reader that rewrites nothing: routing, a point read's pins ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns the facts a licence admits, for a reader that rewrites nothing and names its licence: routing, every
+        /// conjunct; a point read, the pins alone.
+        /// </summary>
+        internal JsonFactSet FactsUnder(OracleLicence licence) => Scope.Facts(licence);
+
+        /// <summary>
+        /// Determines whether the facts a licence admits admit no document.
+        /// </summary>
+        internal bool KeepsNothingUnder(OracleLicence licence) => Scope.IsContradictory(licence);
+
+        /// <summary>
+        /// Decides one of the conjuncts from the facts a licence admits: whether a point read's pins make it true.
+        /// </summary>
+        internal Apache.Calcite.Cosmos.Facts.Saturation.Truth Decide(int conjunct, OracleLicence licence) => Scope.Decide(conjunct, licence);
 
         /// <summary>
         /// Determines whether every row the filter keeps satisfies a predicate: whether, where every conjunct and the
@@ -335,22 +341,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="predicate">The predicate, over the filter's binding.</param>
         /// <returns><c>true</c> where every row the filter keeps satisfies it.</returns>
         public bool Proves(RexNode predicate) =>
-            Plain.Judge(_loading.Read(predicate ?? throw new ArgumentNullException(nameof(predicate))), OracleLicence.Kept).AlwaysTrue;
+            Scope.Judge(_loading.Read(predicate ?? throw new ArgumentNullException(nameof(predicate))), OracleLicence.Kept).AlwaysTrue;
 
         /// <summary>
         /// Determines whether every document the container keeps satisfies a predicate: what a side with no filter
         /// proves, which is what the declaration does (L0).
         /// </summary>
+        /// <remarks>
+        /// Asked of the filter a side with none has, <c>TRUE</c>, under the declaration's licence: read through a loading of
+        /// the binding as any statement is, and remembered as one.
+        /// </remarks>
         /// <param name="predicate">The predicate, over the binding.</param>
         /// <param name="fields">The binding.</param>
         /// <param name="readings">How each field is read.</param>
         /// <param name="container">The container.</param>
+        /// <param name="rexBuilder">A builder over the predicate's types.</param>
         /// <returns><c>true</c> where every document satisfies it.</returns>
-        public static bool Declares(RexNode predicate, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container)
+        public static bool Declares(RexNode predicate, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder)
         {
-            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), CosmosImplementor.DefaultRootAlias);
-            var nothing = loading.Statement(Array.Empty<RexNode>());
-            return CosmosOracle.For(container.Facts).Admit(nothing).Judge(loading.Read(predicate), OracleLicence.Residual).AlwaysTrue;
+            var everything = Of(rexBuilder.makeLiteral(true), fields, readings, container, rexBuilder);
+            return everything.Scope.Judge(everything._loading.Read(predicate ?? throw new ArgumentNullException(nameof(predicate))), OracleLicence.Declaration).AlwaysTrue;
         }
 
         // ── Deletion, every sibling, and lowering, every sibling kept (L3) ───────────────────────────────────────────
@@ -360,10 +370,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// A conjunct is asked only where something could decide it: a sibling that reads a path it reads, or one above or
-        /// beneath it, or that shares a term with it; or a path the declaration speaks of. Elsewhere its siblings and the
-        /// declaration say nothing of what it reads, and nothing is always true of a path nothing is known of: asking would
-        /// open a context to learn that.
+        /// The oracle's own answer, which asks only where something could decide a conjunct
+        /// (<see cref="CosmosStatementScope.RedundantConjuncts"/>).
+        /// </para>
+        /// <para>
+        /// <b>What reaches the service is no weaker for a deletion.</b> A conjunct the strata admit is deleted only where the
+        /// admitted siblings imply it (<see cref="OracleLicence.DeleteConjunct"/>): deleted for a sibling left above, whose
+        /// weakening is all that goes down, an exact <c>label IS NOT NULL</c> beside <c>label &lt;&gt; 'zzz'</c> stopped
+        /// reaching the service, and the null, the array and the object it excludes crossed the wire for the recheck to
+        /// drop. The strata are the condition's as written: a sibling admitted only once the rewrite lowers it counts as one
+        /// left above, and the conjunct is kept, which is never wrong.
         /// </para>
         /// </remarks>
         public IReadOnlyList<int> Redundant
@@ -371,28 +387,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _redundant ??= Decidable().Any() ? Plain.RedundantConjuncts(Decidable()) : Array.Empty<int>();
-            }
-        }
-
-        IEnumerable<int> Decidable()
-        {
-            var conjuncts = Statement.Conjuncts;
-            var declared = _container.Facts.MentionedPaths;
-
-            bool Meet(JsonDocumentPath a, JsonDocumentPath b) => a.IsWithin(b) || b.IsWithin(a);
-
-            for (var i = 0; i < conjuncts.Count; i++)
-            {
-                var paths = conjuncts[i].Paths.ToArray();
-                var terms = conjuncts[i].Subterms.Select(t => t.Digest).ToHashSet(StringComparer.Ordinal);
-
-                var decidable = paths.Any(p => declared.Any(d => Meet(p, d)))
-                    || Enumerable.Range(0, conjuncts.Count).Any(j => j != i
-                        && (conjuncts[j].Paths.Any(q => paths.Any(p => Meet(p, q))) || conjuncts[j].Subterms.Any(t => terms.Contains(t.Digest))));
-
-                if (decidable)
-                    yield return i;
+                    return _redundant ??= Scope.RedundantConjuncts();
             }
         }
 
@@ -421,7 +416,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 var (scope, index) = Remaining;
                 _siblings ??= new JsonFactSet?[Conjuncts.Count];
-                return _siblings[conjunct] ??= scope.Facts(OracleLicence.DeleteConjunct(RemainingIndex(index, conjunct)));
+                return _siblings[conjunct] ??= scope.Facts(OracleLicence.Siblings(RemainingIndex(index, conjunct)));
             }
         }
 
@@ -450,7 +445,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     }
 
                     // Nothing deleted, nothing to read again: the statement is the one every question so far was asked of.
-                    var scope = redundant.Count == 0 ? Plain : Oracle.Admit(_loading.Statement(remaining));
+                    var scope = redundant.Count == 0 ? Scope : Oracle.Admit(_loading.Statement(remaining));
                     return (_remaining = (scope, index)).Value;
                 }
             }
@@ -483,39 +478,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return scope.IsContradictory(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
         }
 
-        // ── A weakening beneath ──────────────────────────────────────────────────────────────────────────────────────
+        // ── A weakening beside what is applied ───────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Determines whether conjuncts a statement applies, beneath a filter or beside a weakening, already apply it:
-        /// whether, where they and the declaration hold, it always does.
+        /// Determines whether a weakening pushed beside this statement adds nothing to what is applied there: its admitted
+        /// conjuncts, what the filters beneath apply and the weakenings pushed before it, and the declaration.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The question redundancy asks, of a statement of the conjuncts applied with the weakening beside them, read in one
-        /// reading so that a weakening spelled as a conjunct beneath is that conjunct's term. A weakening is derived from a
-        /// conjunct left above, and the filter above is what the split rule matches next; answered no where it is applied,
-        /// the same weakening is pushed under itself for ever. And one the declaration implies — a definedness test of a
-        /// path every document holds — restricts nothing, and pushed it only makes a filter a host may plan in process,
-        /// where the service's test has no body.
+        /// A weakening is derived from a conjunct left above, and the filter above is what the split rule matches next;
+        /// answered no where it is applied, the same weakening is pushed under itself for ever. And one the declaration
+        /// implies — a definedness test of a path every document holds — restricts nothing, and pushed it only makes a
+        /// filter a host may plan in process, where the service's test has no body.
         /// </para>
         /// <para>
-        /// So it rests on nothing the engine might not finish: a predicate a scope assumes is always true there, read off
-        /// what the scope assumes before any run (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row
-        /// is asked. What a run adds is what the conjuncts beneath imply beyond spelling the weakening themselves.
+        /// Which of this statement's conjuncts count is the licence's (<see cref="OracleLicence.Applied"/>): the admitted
+        /// ones. What lies beneath is the plan's, which the rule walks; it is read through this statement's loading, so a
+        /// weakening spelled as a conjunct beneath is that conjunct's term. So it rests on nothing the engine might not
+        /// finish: a predicate a scope assumes is always true there, read off what the scope assumes before any run
+        /// (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row is asked. What a run adds is what
+        /// the conjuncts beneath imply beyond spelling the weakening themselves.
         /// </para>
         /// </remarks>
-        /// <param name="beneath">The conjuncts applied beside the weakening: those every member of the input applies, and
-        /// those pushed with it, over the same binding.</param>
         /// <param name="weakening">The weakening.</param>
-        /// <param name="fields">The binding.</param>
-        /// <param name="readings">How each field is read.</param>
-        /// <param name="container">The container.</param>
+        /// <param name="beneath">What the filters beneath apply, and the weakenings pushed before this one, over the same
+        /// binding.</param>
         /// <returns><c>true</c> where the weakening adds nothing to what is applied.</returns>
-        public static bool IsApplied(IReadOnlyList<RexNode> beneath, RexNode weakening, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container)
+        public bool IsApplied(RexNode weakening, IReadOnlyList<RexNode> beneath)
         {
-            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), CosmosImplementor.DefaultRootAlias);
-            var statement = loading.Statement(beneath.Append(weakening).ToArray());
-            var verdict = CosmosOracle.For(container.Facts).Admit(statement).Judge(statement.Conjuncts[^1], OracleLicence.Redundant(statement.Conjuncts.Count - 1));
+            var verdict = Scope.Judge(_loading.Read(weakening), OracleLicence.Applied(beneath.Select(_loading.Read).ToArray()));
             return verdict.AlwaysTrue || verdict.Contradictory;
         }
 

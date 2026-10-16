@@ -10,11 +10,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>Whether a conjunct renders, and how: the stratum before the one that admitted it (L2).</summary>
         RenderConjunct,
 
-        /// <summary>Whether a conjunct can be deleted: every sibling, never itself (L3).</summary>
+        /// <summary>
+        /// Whether a conjunct can be deleted: the conjuncts kept beside it, never itself, and of those, where it reaches the
+        /// service, only the ones that reach it too (L3).
+        /// </summary>
         DeleteConjunct,
 
-        /// <summary>Whether a conjunct says nothing its siblings do not: every sibling, never itself (L3).</summary>
-        Redundant,
+        /// <summary>
+        /// What a rewrite inside a conjunct may lean on, a comparison lowered onto its stored form: every sibling, never
+        /// the conjunct itself (L3).
+        /// </summary>
+        Siblings,
 
         /// <summary>
         /// What holds of every row the filter keeps, which a strengthening may read — the filter made <c>FALSE</c> where
@@ -32,6 +38,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>What a point read may rely on, which applies no predicate: the pins alone.</summary>
         PointRead,
 
+        /// <summary>
+        /// Whether a weakening adds nothing to what the statement applies beside it: every admitted conjunct, and what
+        /// the filters beneath and the weakenings already pushed apply.
+        /// </summary>
+        Applied,
+
         /// <summary>A projection: the rows the pushed filter kept (L1).</summary>
         Select,
 
@@ -47,8 +59,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         Key,
 
-        /// <summary>A residual filter, evaluated in process: what holds of every document (L0).</summary>
-        Residual,
+        /// <summary>
+        /// What holds of every document whatever reads it (L0): a residual, evaluated in process, and a question one
+        /// node asks of another, which both walks of a plan must answer alike.
+        /// </summary>
+        Declaration,
 
     }
 

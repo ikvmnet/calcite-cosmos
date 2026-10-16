@@ -414,9 +414,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(scan, out var fields, out var readings, out _) == false)
                 return false;
 
+            // One source of facts for the method: what holds of every document either side reads, which the translator
+            // resolving the keys' paths is handed too.
             var container = table.Container;
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
             var facts = Either(f, g, fields, readings, container, rexBuilder);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
             var equated = new List<RexNode>();
             var paths = new List<JsonDocumentPath>();
 
@@ -489,7 +491,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static bool Proves(RexNode? side, RexNode predicate, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder) =>
             predicate.isAlwaysTrue()
             || (side is null
-                ? CosmosFilterStatement.Declares(predicate, fields, readings, container)
+                ? CosmosFilterStatement.Declares(predicate, fields, readings, container, rexBuilder)
                 : CosmosFilterStatement.Of(side, fields, readings, container, rexBuilder).Proves(predicate));
 
         /// <summary>

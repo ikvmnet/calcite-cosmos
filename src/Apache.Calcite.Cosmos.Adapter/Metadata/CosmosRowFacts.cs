@@ -42,19 +42,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// both walks, and reads the declaration (<see cref="CosmosAggregate.DistinctKeyBinding"/>).
     /// </para>
     /// <para>
-    /// <b>Several filters are read as one statement</b>, of the conjuncts each admitted, read apart and assumed together.
-    /// A conjunct holding an opaque term is left out of it: what is opaque is numbered per filter, and two numbered alike in
-    /// different filters are different predicates, which the oracle would take for one. Opaque terms prove nothing on their
-    /// own, so leaving them out loses only what one filter's opaque test and another's would have decided together.
+    /// <b>Several filters are read as one statement</b>, of the conjuncts each admitted, read apart and assumed together:
+    /// what every one of them keeps (<see cref="OracleLicence.Kept"/>), which is what each filter's last stratum keeps,
+    /// together. What is opaque is numbered per filter, each over its own binding, so each filter's opaque terms are
+    /// numbered apart from the others': two numbered alike in different filters are different predicates, which the oracle
+    /// would otherwise take for one.
     /// </para>
     /// </remarks>
     internal static class CosmosRowFacts
     {
 
         /// <summary>
-        /// What each clause a rule has asked about was decided under, by the clause.
+        /// What each clause a rule has asked about was decided under, by the clause, and by what it asked: the container,
+        /// the licence and which input.
         /// </summary>
-        static readonly ConditionalWeakTable<RelNode, JsonFactSet> Decided = new();
+        static readonly ConditionalWeakTable<RelNode, Dictionary<(CosmosContainerMetadata? Container, OracleQuestion Question, int Input), JsonFactSet>> Decided = new();
 
         /// <summary>
         /// Returns what holds of every row a clause reads, the same each time it is asked of the same clause.
@@ -70,8 +72,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="licence">The clause's licence, as <see cref="Of"/> takes it.</param>
         /// <param name="input">Which of the clause's inputs it reads: its one input, or the side a join restricts.</param>
         /// <returns>The facts.</returns>
-        public static JsonFactSet For(RelNode clause, CosmosContainerMetadata? container, OracleLicence licence, int input = 0) =>
-            Decided.GetValue(clause ?? throw new ArgumentNullException(nameof(clause)), c => Of(c.getInput(input), container, licence));
+        public static JsonFactSet For(RelNode clause, CosmosContainerMetadata? container, OracleLicence licence, int input = 0)
+        {
+            var decided = Decided.GetValue(clause ?? throw new ArgumentNullException(nameof(clause)), _ => new());
+            var key = (container, licence.Question, input);
+
+            lock (decided)
+            {
+                if (decided.TryGetValue(key, out var facts) == false)
+                    decided[key] = facts = Of(clause.getInput(input), container, licence);
+
+                return facts;
+            }
+        }
 
         /// <summary>
         /// Returns what holds of every row a relation yields, for a clause after it.
@@ -84,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <exception cref="ArgumentException"><paramref name="licence"/> is not a clause after a filter.</exception>
         public static JsonFactSet Of(RelNode? input, CosmosContainerMetadata? container, OracleLicence licence)
         {
-            if (licence.Question is not (OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key))
+            if (licence.ReadsKeptRows == false)
                 throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
             if (container is null)
@@ -97,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 0 => oracle.Declared,
                 1 => filters[0].After(licence),
-                _ => oracle.Admit(Together(filters), static (_, _) => true).Facts(licence),
+                _ => oracle.Admit(Together(filters)).Facts(OracleLicence.Kept),
             };
         }
 
@@ -146,13 +159,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// The conjuncts each filter admitted, as one statement: see the remarks for the opaque ones left out.
+        /// The conjuncts each filter admitted, as one statement, each filter's opaque terms numbered apart.
         /// </summary>
-        static PredicateStatement Together(IEnumerable<CosmosFilterStatement> filters) =>
-            new(filters
-                .SelectMany(filter => filter.Admitted)
-                .Where(conjunct => conjunct.Subterms.Any(term => term is SqlPredicate.Opaque) == false)
-                .ToArray());
+        static PredicateStatement Together(IReadOnlyList<CosmosFilterStatement> filters) =>
+            new(filters.SelectMany((filter, k) => filter.Admitted.Select(conjunct => Apart(conjunct, (long)k << 32))).ToArray());
+
+        /// <summary>
+        /// A predicate with every opaque term in it numbered from an offset.
+        /// </summary>
+        static SqlPredicate Apart(SqlPredicate predicate, long offset) => predicate switch
+        {
+            SqlPredicate.Opaque opaque => new SqlPredicate.Opaque(offset + opaque.Id),
+            SqlPredicate.Not not => new SqlPredicate.Not(Apart(not.Operand, offset)),
+            SqlPredicate.And and => SqlPredicate.AllOf(and.Arms.Select(arm => Apart(arm, offset))),
+            SqlPredicate.Or or => SqlPredicate.AnyOf(or.Arms.Select(arm => Apart(arm, offset))),
+            _ => predicate,
+        };
 
     }
 

@@ -77,6 +77,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     {
 
         /// <summary>
+        /// Each statement's rewrite, so that every rule asking of one condition gets one node back, and the statement read
+        /// off that node is remembered too; released with the statement.
+        /// </summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode> Rewrites = new();
+
+
+        /// <summary>
         /// Returns the predicate with every comparison the declared facts license lowered, or the
         /// predicate unchanged.
         /// </summary>
@@ -98,10 +105,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (container is null)
                 return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
 
-            // Remembered on the statement, so that every rule asking of this condition gets one node
-            // back, and the statement read off that node is remembered too.
             var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
-            return statement.Rewritten ??= Rewritten(condition, statement, fields, rootAlias, rexBuilder);
+            return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
         }
 
         /// <summary>

@@ -23,95 +23,51 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <list type="table">
     /// <item><term><see cref="OracleQuestion.RenderConjunct"/></term><description>the stratum before the one that admitted
     /// the conjunct; the last stratum for one never admitted, whose facts are its siblings' and never its own</description></item>
-    /// <item><term><see cref="OracleQuestion.DeleteConjunct"/>, <see cref="OracleQuestion.Redundant"/></term><description>every
-    /// conjunct but this one, admitted or not: the rows the rest of the filter keeps</description></item>
+    /// <item><term><see cref="OracleQuestion.DeleteConjunct"/></term><description>the conjuncts kept beside it; where it is
+    /// admitted, only the admitted ones, so that what the service applies is no weaker without it</description></item>
+    /// <item><term><see cref="OracleQuestion.Siblings"/></term><description>every conjunct but this one, admitted or not:
+    /// the rows the rest of the filter keeps, which a rewrite inside it may lean on</description></item>
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
     /// other: a point read applies no predicate</description></item>
+    /// <item><term><see cref="OracleQuestion.Applied"/></term><description>every admitted conjunct, and what lies beneath
+    /// and beside them: what the statement a weakening joins already applies</description></item>
     /// <item><term><see cref="OracleQuestion.Select"/>, <see cref="OracleQuestion.OrderBy"/>,
     /// <see cref="OracleQuestion.GroupBy"/>, <see cref="OracleQuestion.Key"/></term><description>the last stratum: every
     /// admitted conjunct, applied before the clause reads a row or beside the restriction a key writes</description></item>
-    /// <item><term><see cref="OracleQuestion.Residual"/></term><description>the declaration: what holds of every
+    /// <item><term><see cref="OracleQuestion.Declaration"/></term><description>the declaration: what holds of every
     /// document</description></item>
     /// </list>
     /// <para>
-    /// <b>Thread-safe.</b> The contexts are frozen and read freely; a context made for a question is made under the
-    /// statement's lock.
+    /// <b>Admitted when first asked.</b> The strata are the renderer's answers, and a question that names no stratum —
+    /// a contradiction, a rewrite's siblings, a point read's pins — needs none of them; so the rounds run the first time
+    /// something asks of a stratum or of what was admitted, and once.
+    /// </para>
+    /// <para>
+    /// <b>Thread-safe.</b> The contexts are frozen and read freely; the admission, and a context made for a question, are
+    /// made under the statement's lock.
     /// </para>
     /// </remarks>
     internal sealed class CosmosStatementScope
     {
 
         readonly StatementTerms _terms;
-        readonly int[] _round;
-        readonly StatementTerms.Node?[] _before;
-        readonly List<StatementTerms.Node> _chain = new();
+        readonly Func<int, JsonFactSet, bool>? _renders;
+        readonly Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? _renderedFrom;
+        readonly IReadOnlyCollection<JsonDocumentPath> _declared;
         readonly object _lock = new();
-        StatementTerms.Node _final;
+        Admission? _admission;
 
-        /// <summary>
-        /// The last round's stratum where every conjunct was admitted before it was opened: what it assumes beneath what,
-        /// opened only where a question asks of every admitted conjunct.
-        /// </summary>
-        (StatementTerms.Node Parent, SqlPredicate[] Assumed)? _pending;
-
-        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
+        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
         {
             _terms = terms;
+            _renders = renders;
+            _renderedFrom = renderedFrom;
+            _declared = declared ?? Array.Empty<JsonDocumentPath>();
             Statement = statement;
-
-            var count = statement.Conjuncts.Count;
-            _round = new int[count];
-            _before = new StatementTerms.Node?[count];
-
-            var strata = new List<IReadOnlyList<int>>();
-            var node = terms.Root;
-            _chain.Add(node);
-
-            if (renders is not null)
-            {
-                for (var round = 1; node.Contradictory == false; round++)
-                {
-                    var added = new List<int>();
-                    for (var i = 0; i < count; i++)
-                        if (_round[i] == 0 && renders(i, (renderedFrom?.Invoke(terms, node, statement.Conjuncts[i]) ?? node).View))
-                            added.Add(i);
-
-                    if (added.Count == 0)
-                        break;
-
-                    // Rendered from this stratum, every one of them; what they establish enters only the next.
-                    foreach (var i in added)
-                    {
-                        _round[i] = round;
-                        _before[i] = node;
-                    }
-
-                    strata.Add(added);
-
-                    // Once every conjunct is admitted no round reads another stratum, and a filter pushed whole asks
-                    // nothing of the last: it is opened when something asks of every admitted conjunct.
-                    if (strata.Sum(s => s.Count) == count)
-                    {
-                        _pending = (node, added.Select(i => statement.Conjuncts[i]).ToArray());
-                        break;
-                    }
-
-                    node = terms.Child(node, added.Select(i => statement.Conjuncts[i]));
-                    _chain.Add(node);
-
-                    // A stratum that knows nothing more than the one above it can admit nothing new.
-                    if (node.Complete == false)
-                        break;
-                }
-            }
-
-            _final = node;
-            Strata = strata;
-            Residual = Enumerable.Range(0, count).Where(i => _round[i] == 0).ToArray();
         }
 
         /// <summary>
@@ -122,60 +78,158 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Gets the conjuncts each round admitted, by index, in round order.
         /// </summary>
-        public IReadOnlyList<IReadOnlyList<int>> Strata { get; }
+        public IReadOnlyList<IReadOnlyList<int>> Strata => Admitted.Strata;
 
         /// <summary>
         /// Gets the conjuncts no round admitted.
         /// </summary>
-        public IReadOnlyList<int> Residual { get; }
+        public IReadOnlyList<int> Residual => Admitted.Residual;
 
         /// <summary>
         /// Gets whether every context the admission opened ran to completion or to a contradiction.
         /// </summary>
-        public bool Complete => Chain.All(node => node.Complete);
+        public bool Complete => Admitted.Chain.All(node => node.Complete);
 
         /// <summary>
         /// Gets the reports of the runs that opened each stratum, for measurement: a gate reads their stop reasons.
         /// </summary>
-        public IReadOnlyList<RunReport> Reports => Chain.Select(node => node.Report).OfType<RunReport>().ToArray();
-
-        /// <summary>
-        /// The last stratum: every admitted conjunct's facts, opened now if it was left until asked for.
-        /// </summary>
-        StatementTerms.Node Final
-        {
-            get
-            {
-                lock (_lock)
-                {
-                    if (_pending is { } pending)
-                    {
-                        _final = _terms.Child(pending.Parent, pending.Assumed);
-                        _chain.Add(_final);
-                        _pending = null;
-                    }
-
-                    return _final;
-                }
-            }
-        }
-
-        /// <summary>
-        /// The strata, the last opened.
-        /// </summary>
-        List<StatementTerms.Node> Chain
-        {
-            get
-            {
-                _ = Final;
-                return _chain;
-            }
-        }
+        public IReadOnlyList<RunReport> Reports => Admitted.Chain.Select(node => node.Report).OfType<RunReport>().ToArray();
 
         /// <summary>
         /// Returns the round that admitted a conjunct, counting from one, or zero where none did.
         /// </summary>
-        public int StratumOf(int conjunct) => _round[Check(conjunct)];
+        public int StratumOf(int conjunct) => Admitted.Round[Check(conjunct)];
+
+        /// <summary>
+        /// The strata, admitted the first time something asks of them.
+        /// </summary>
+        Admission Admitted
+        {
+            get
+            {
+                lock (_lock)
+                    return _admission ??= new Admission(this);
+            }
+        }
+
+        /// <summary>
+        /// The rounds of admission: each asks the renderer, of every conjunct not yet admitted, whether it renders given
+        /// the facts of the stratum so far, and those that do enter a stratum beneath together.
+        /// </summary>
+        sealed class Admission
+        {
+
+            readonly CosmosStatementScope _scope;
+            readonly List<StatementTerms.Node> _chain = new();
+
+            /// <summary>
+            /// The last round's stratum where every conjunct was admitted before it was opened: what it assumes beneath
+            /// what, opened only where a question asks of every admitted conjunct.
+            /// </summary>
+            (StatementTerms.Node Parent, SqlPredicate[] Assumed)? _pending;
+
+            StatementTerms.Node _final;
+
+            public Admission(CosmosStatementScope scope)
+            {
+                _scope = scope;
+
+                var terms = scope._terms;
+                var conjuncts = scope.Statement.Conjuncts;
+                var count = conjuncts.Count;
+                Round = new int[count];
+                Before = new StatementTerms.Node?[count];
+
+                var strata = new List<IReadOnlyList<int>>();
+                var node = terms.Root;
+                _chain.Add(node);
+
+                if (scope._renders is { } renders)
+                {
+                    for (var round = 1; node.Contradictory == false; round++)
+                    {
+                        var added = new List<int>();
+                        for (var i = 0; i < count; i++)
+                            if (Round[i] == 0 && renders(i, (scope._renderedFrom?.Invoke(terms, node, conjuncts[i]) ?? node).View))
+                                added.Add(i);
+
+                        if (added.Count == 0)
+                            break;
+
+                        // Rendered from this stratum, every one of them; what they establish enters only the next.
+                        foreach (var i in added)
+                        {
+                            Round[i] = round;
+                            Before[i] = node;
+                        }
+
+                        strata.Add(added);
+
+                        // Once every conjunct is admitted no round reads another stratum, and a filter pushed whole asks
+                        // nothing of the last: it is opened when something asks of every admitted conjunct.
+                        if (strata.Sum(s => s.Count) == count)
+                        {
+                            _pending = (node, added.Select(i => conjuncts[i]).ToArray());
+                            break;
+                        }
+
+                        node = terms.Child(node, added.Select(i => conjuncts[i]));
+                        _chain.Add(node);
+
+                        // A stratum that knows nothing more than the one above it can admit nothing new.
+                        if (node.Complete == false)
+                            break;
+                    }
+                }
+
+                _final = node;
+                Strata = strata;
+                Residual = Enumerable.Range(0, count).Where(i => Round[i] == 0).ToArray();
+            }
+
+            public int[] Round { get; }
+
+            public StatementTerms.Node?[] Before { get; }
+
+            public IReadOnlyList<IReadOnlyList<int>> Strata { get; }
+
+            public IReadOnlyList<int> Residual { get; }
+
+
+            /// <summary>
+            /// The strata, the last opened.
+            /// </summary>
+            public List<StatementTerms.Node> Chain
+            {
+                get
+                {
+                    _ = Final;
+                    return _chain;
+                }
+            }
+
+            /// <summary>
+            /// The last stratum: every admitted conjunct's facts, opened now if it was left until asked for.
+            /// </summary>
+            public StatementTerms.Node Final
+            {
+                get
+                {
+                    lock (_scope._lock)
+                    {
+                        if (_pending is { } pending)
+                        {
+                            _final = _scope._terms.Child(pending.Parent, pending.Assumed);
+                            _chain.Add(_final);
+                            _pending = null;
+                        }
+
+                        return _final;
+                    }
+                }
+            }
+
+        }
 
         /// <summary>
         /// Returns the conjuncts whose facts a licence's scope holds, by index.
@@ -186,18 +240,27 @@ namespace Apache.Calcite.Cosmos.Facts
         public IReadOnlyList<int> AssumedIn(OracleLicence licence)
         {
             var all = Enumerable.Range(0, Statement.Conjuncts.Count);
+            var admitted = all.Where(i => StratumOf(i) > 0);
+
+            if (licence.ReadsKeptRows)
+                return admitted.Where(i => Admitted.Chain.Count > StratumOf(i) && Admitted.Chain[StratumOf(i)].Complete).ToArray();
+
             return licence.Question switch
             {
-                OracleQuestion.RenderConjunct when _round[Check(licence.Conjunct)] > 0 =>
-                    all.Where(i => _round[i] > 0 && _round[i] < _round[licence.Conjunct]).ToArray(),
-                OracleQuestion.RenderConjunct or OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key =>
-                    all.Where(i => _round[i] > 0 && Chain.Count > _round[i] && Chain[_round[i]].Complete).ToArray(),
-                OracleQuestion.DeleteConjunct or OracleQuestion.Redundant or OracleQuestion.Arm =>
+                OracleQuestion.RenderConjunct when StratumOf(licence.Conjunct) > 0 =>
+                    admitted.Where(i => StratumOf(i) < StratumOf(licence.Conjunct)).ToArray(),
+                OracleQuestion.RenderConjunct =>
+                    admitted.Where(i => Admitted.Chain.Count > StratumOf(i) && Admitted.Chain[StratumOf(i)].Complete).ToArray(),
+                OracleQuestion.DeleteConjunct =>
+                    Beside(licence).ToArray(),
+                OracleQuestion.Siblings or OracleQuestion.Arm =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
                 OracleQuestion.Kept =>
                     all.ToArray(),
                 OracleQuestion.PointRead =>
                     all.Where(i => IsPin(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
+                OracleQuestion.Applied =>
+                    admitted.ToArray(),
                 _ => Array.Empty<int>(),
             };
         }
@@ -227,16 +290,6 @@ namespace Apache.Calcite.Cosmos.Facts
         public JsonFactSet Facts(OracleLicence licence) => ScopeFor(licence).View;
 
         /// <summary>
-        /// Determines whether a fact holds in the facts a licence admits.
-        /// </summary>
-        public bool Knows(JsonFact fact, OracleLicence licence) => Facts(licence).Knows(fact);
-
-        /// <summary>
-        /// Returns what the facts a licence admits say of a path, as claims.
-        /// </summary>
-        public IReadOnlyList<JsonClaim> FactsFor(JsonDocumentPath path, OracleLicence licence) => Facts(licence).ClaimsFor(path);
-
-        /// <summary>
         /// Determines whether the facts a licence admits admit no document: whatever the question, nothing is kept.
         /// </summary>
         public bool IsContradictory(OracleLicence licence) => ScopeFor(licence).Contradictory;
@@ -248,44 +301,35 @@ namespace Apache.Calcite.Cosmos.Facts
         internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Engine.Scope, _terms.Rules);
 
         /// <summary>
-        /// Decides a predicate given others assumed beside the declaration: "if these hold, does this?"
-        /// </summary>
-        /// <remarks>
-        /// The question redundancy asks of anything, conjunct or candidate: a predicate the given ones make always true
-        /// adds nothing to them. The given predicates are the caller's, and the licence is its: a conjunct's own facts are
-        /// among them only if the caller put the conjunct there.
-        /// </remarks>
-        public Truth DecideGiven(SqlPredicate predicate, IEnumerable<SqlPredicate> given) =>
-            _terms.Judge(_terms.Child(_terms.Root, given ?? throw new ArgumentNullException(nameof(given))), predicate).Truth;
-
-        /// <summary>
-        /// Determines whether a predicate adds nothing to others: whether, where they hold, it always does.
-        /// </summary>
-        public bool IsRedundant(SqlPredicate predicate, IEnumerable<SqlPredicate> given) => DecideGiven(predicate, given) == Truth.Always;
-
-        /// <summary>
         /// Returns the conjuncts that may be deleted, removing one at a time.
         /// </summary>
         /// <remarks>
-        /// In digest order, ties by index, each asked against the conjuncts still kept: so two duplicates do not delete
-        /// each other, the second being asked once the first is gone.
+        /// <para>
+        /// In digest order, ties by index, each asked against the conjuncts still kept
+        /// (<see cref="OracleLicence.DeleteConjunct"/>): so two duplicates do not delete each other, the second being asked
+        /// once the first is gone.
+        /// </para>
+        /// <para>
+        /// <b>Asked only where something could decide it</b>: a sibling that reads a path the conjunct reads, or one above
+        /// or beneath it, or that shares a term with it; or a path the declaration speaks of. Elsewhere its siblings and the
+        /// declaration say nothing of what it reads, and asking would open a context to learn that. It is the oracle's bound
+        /// on what it looks for, and costs what it bounds: a conjunct true of every document on its own, such as
+        /// <c>IS_DEFINED(x) OR NOT IS_DEFINED(x)</c> over a path nothing speaks of, is not deleted.
+        /// </para>
         /// </remarks>
-        public IReadOnlyList<int> RedundantConjuncts() => RedundantConjuncts(Enumerable.Range(0, Statement.Conjuncts.Count));
-
-        /// <summary>
-        /// Returns those of some conjuncts that may be deleted, removing one at a time; the rest are kept unasked.
-        /// </summary>
-        /// <param name="candidates">The conjuncts to ask about, which a caller knows to be the only ones anything could decide.</param>
-        public IReadOnlyList<int> RedundantConjuncts(IEnumerable<int> candidates)
+        public IReadOnlyList<int> RedundantConjuncts()
         {
             var conjuncts = Statement.Conjuncts;
+            var candidates = Decidable().ToArray();
+            if (candidates.Length == 0)
+                return Array.Empty<int>();
+
             var kept = Enumerable.Range(0, conjuncts.Count).ToList();
             var removed = new List<int>();
 
-            foreach (var i in candidates.Select(Check).Distinct().OrderBy(i => conjuncts[i].Digest, StringComparer.Ordinal).ThenBy(i => i))
+            foreach (var i in candidates.OrderBy(i => conjuncts[i].Digest, StringComparer.Ordinal).ThenBy(i => i))
             {
-                var siblings = kept.Where(j => j != i).Select(j => conjuncts[j]);
-                if (_terms.Judge(_terms.Child(_terms.Root, siblings), conjuncts[i]).Truth == Truth.Always)
+                if (Decide(i, OracleLicence.DeleteConjunct(i, kept.ToArray())) == Truth.Always)
                 {
                     kept.Remove(i);
                     removed.Add(i);
@@ -295,39 +339,82 @@ namespace Apache.Calcite.Cosmos.Facts
             return removed;
         }
 
+        IEnumerable<int> Decidable()
+        {
+            var conjuncts = Statement.Conjuncts;
+
+            static bool Meet(JsonDocumentPath a, JsonDocumentPath b) => a.IsWithin(b) || b.IsWithin(a);
+
+            for (var i = 0; i < conjuncts.Count; i++)
+            {
+                var paths = conjuncts[i].Paths.ToArray();
+                var terms = conjuncts[i].Subterms.Select(t => t.Digest).ToHashSet(StringComparer.Ordinal);
+
+                var decidable = paths.Any(p => _declared.Any(d => Meet(p, d)))
+                    || Enumerable.Range(0, conjuncts.Count).Any(j => j != i
+                        && (conjuncts[j].Paths.Any(q => paths.Any(p => Meet(p, q))) || conjuncts[j].Subterms.Any(t => terms.Contains(t.Digest))));
+
+                if (decidable)
+                    yield return i;
+            }
+        }
+
+        /// <summary>
+        /// The conjuncts a deletion is asked beside: those it names, never the conjunct itself, and where it is admitted,
+        /// only the admitted.
+        /// </summary>
+        IEnumerable<int> Beside(OracleLicence licence)
+        {
+            var conjunct = Check(licence.Conjunct);
+            var beside = (licence.Beside ?? Enumerable.Range(0, Statement.Conjuncts.Count).ToArray()).Where(j => j != conjunct);
+
+            return StratumOf(conjunct) > 0 ? beside.Where(j => StratumOf(Check(j)) > 0) : beside;
+        }
+
         /// <summary>
         /// The licence table: the scope a question's licence admits facts from.
         /// </summary>
         StatementTerms.Node ScopeFor(OracleLicence licence)
         {
+            var conjuncts = Statement.Conjuncts;
+
+            if (licence.ReadsKeptRows)
+                return Admitted.Final;
+
             switch (licence.Question)
             {
                 case OracleQuestion.RenderConjunct:
-                    return _before[Check(licence.Conjunct)] ?? Final;
+                    return Admitted.Before[Check(licence.Conjunct)] ?? Admitted.Final;
 
-                case OracleQuestion.DeleteConjunct or OracleQuestion.Redundant:
+                case OracleQuestion.DeleteConjunct:
+                    return _terms.Child(_terms.Root, Beside(licence).Select(j => conjuncts[j]));
+
+                case OracleQuestion.Siblings:
                 {
                     var conjunct = Check(licence.Conjunct);
-                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where((_, i) => i != conjunct));
+                    return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct));
                 }
 
                 case OracleQuestion.Arm:
                 {
                     var conjunct = Check(licence.Conjunct);
-                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where((_, i) => i != conjunct).Concat(licence.Given ?? Array.Empty<SqlPredicate>()));
+                    return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct).Concat(licence.Given ?? Array.Empty<SqlPredicate>()));
                 }
 
                 case OracleQuestion.Kept:
-                    return _terms.Child(_terms.Root, Statement.Conjuncts);
+                    return _terms.Child(_terms.Root, conjuncts);
 
                 case OracleQuestion.PointRead:
-                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => IsPin(c, licence.Pins!)));
+                    return _terms.Child(_terms.Root, conjuncts.Where(c => IsPin(c, licence.Pins!)));
 
-                case OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key:
-                    return Final;
+                case OracleQuestion.Applied:
+                    return _terms.Child(_terms.Root, conjuncts.Where((_, i) => StratumOf(i) > 0).Concat(licence.Given ?? Array.Empty<SqlPredicate>()));
+
+                case OracleQuestion.Declaration:
+                    return _terms.Root;
 
                 default:
-                    return _terms.Root;
+                    throw new ArgumentOutOfRangeException(nameof(licence), licence.Question, "No such question.");
             }
         }
 

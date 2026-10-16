@@ -203,6 +203,11 @@ namespace Apache.Calcite.Cosmos.Facts
         public bool IsEmpty => _rules.Length == 0;
 
         /// <summary>
+        /// Gets what the declaration states of every document: its own context, which every statement's lies beneath.
+        /// </summary>
+        internal JsonFactSet Declared => _rules.Length == 0 ? JsonFactSet.Empty : Compile().Outright;
+
+        /// <summary>
         /// Saturates a query's established facts beneath the container's declaration.
         /// </summary>
         /// <remarks>

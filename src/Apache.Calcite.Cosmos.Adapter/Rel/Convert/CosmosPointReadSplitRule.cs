@@ -116,8 +116,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// The classification is the extractor's own — see
-        /// <see cref="Metadata.CosmosPartitionKeyExtractor.IsPointReadConjunct"/> — so a conjunct this
-        /// puts in the pinned half is one the recovery would accept, and the two cannot drift apart.
+        /// <see cref="Metadata.CosmosPartitionKeyExtractor.PointReadConjuncts"/> — of the conjuncts the
+        /// oracle reads, so a conjunct this puts in the pinned half is one the recovery would accept, and
+        /// the two cannot drift apart.
         /// </remarks>
         static (List<RexNode> Pinned, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container)
         {
@@ -127,17 +128,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (pinned, residual);
 
-            var conjuncts = RelOptUtil.conjunctions(filter.getCondition());
-
-            for (var i = 0; i < conjuncts.size(); i++)
-            {
-                var conjunct = (RexNode)conjuncts.get(i);
-
-                if (Metadata.CosmosPartitionKeyExtractor.IsPointReadConjunct(conjunct, fields, readings, container, CosmosImplementor.DefaultRootAlias))
-                    pinned.Add(conjunct);
-                else
-                    residual.Add(conjunct);
-            }
+            foreach (var (conjunct, pins) in Metadata.CosmosPartitionKeyExtractor.PointReadConjuncts(filter.getCondition(), fields, readings, container, CosmosImplementor.DefaultRootAlias))
+                (pins ? pinned : residual).Add(conjunct);
 
             return (pinned, residual);
         }

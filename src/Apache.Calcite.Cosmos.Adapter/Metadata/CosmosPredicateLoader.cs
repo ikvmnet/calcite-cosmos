@@ -7,7 +7,6 @@ using Apache.Calcite.Cosmos.Facts;
 
 using Eggnog;
 
-using org.apache.calcite.rel.core;
 using org.apache.calcite.rex;
 using org.apache.calcite.sql;
 using org.apache.calcite.sql.type;
@@ -16,8 +15,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// Reads a filter condition into the typed IR's predicate subset, for the predicate oracle; and builds the renderer the
-    /// oracle's strata ask, out of today's translator.
+    /// Reads a filter condition into the typed IR's predicate subset, for the predicate oracle.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -48,66 +46,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </remarks>
     internal static class CosmosPredicateLoader
     {
-
-        /// <summary>
-        /// Reads a filter's condition, conjunct by conjunct.
-        /// </summary>
-        /// <param name="condition">The condition, over <paramref name="fields"/>.</param>
-        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
-        /// <param name="readings">How each field is read back, or <c>null</c> where every field is read as its type.</param>
-        /// <param name="rootAlias">The alias bound to the container.</param>
-        /// <param name="mentions">Paths a question will be asked about beside those the condition reads.</param>
-        /// <returns>The statement: one IR conjunct per top-level conjunct, each beside the node it was read from.</returns>
-        public static PredicateStatement Load(RexNode? condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, string rootAlias, IEnumerable<JsonDocumentPath>? mentions = null)
-        {
-            if (fields is null)
-                throw new ArgumentNullException(nameof(fields));
-
-            var loading = new Loading(fields, readings ?? Array.Empty<CosmosReading>(), rootAlias);
-            var conjuncts = new List<RexNode>();
-
-            if (condition is not null)
-            {
-                var list = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
-                for (var i = 0; i < list.size(); i++)
-                    conjuncts.Add((RexNode)list.get(i));
-            }
-
-            return loading.Statement(conjuncts, mentions);
-        }
-
-        /// <summary>
-        /// Reads a filter, binding its condition through the input the way the filter rules do.
-        /// </summary>
-        /// <param name="filter">The filter.</param>
-        /// <param name="statement">On success, the statement.</param>
-        /// <param name="fields">On success, the binding of the filter's input.</param>
-        /// <param name="readings">On success, how each field of the input is read back.</param>
-        /// <returns><c>true</c> where the input's binding could be derived.</returns>
-        public static bool TryLoad(Filter filter, out PredicateStatement statement, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings)
-        {
-            statement = new PredicateStatement(Array.Empty<SqlPredicate>());
-
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out fields, out readings, out _) == false)
-                return false;
-
-            statement = Load(filter.getCondition(), fields, readings, CosmosImplementor.DefaultRootAlias);
-            return true;
-        }
-
-        /// <summary>
-        /// Returns the renderability predicate the oracle's strata ask: today's <see cref="CosmosRexTranslator.TryTranslate"/>,
-        /// given the facts of the stratum it is asked in.
-        /// </summary>
-        /// <param name="statement">The statement, whose sources are the conjuncts as <see cref="RexNode"/>s.</param>
-        /// <param name="rexBuilder">A builder for the translator.</param>
-        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
-        /// <param name="readings">How each field is read back.</param>
-        /// <param name="container">What the container declares, which the translator consults for its own reasons.</param>
-        /// <returns>Whether conjunct <c>i</c> renders given a stratum's facts.</returns>
-        public static Func<int, JsonFactSet, bool> Renderer(PredicateStatement statement, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container) =>
-            (index, facts) => statement.Sources[index] is RexNode node
-                && new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts).TryTranslate(node, out _);
 
         /// <summary>
         /// Expands a <c>SEARCH</c> the way translation does, so that what is read is the shape a statement would carry.

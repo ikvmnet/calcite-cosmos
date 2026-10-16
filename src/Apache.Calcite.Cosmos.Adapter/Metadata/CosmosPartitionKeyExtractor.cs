@@ -83,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (container.PartitionKeyPaths.Count == 0)
                 return false;
 
-            var read = Read(Conjuncts(condition), fields, readings, container, rootAlias, container.PartitionKeyPaths);
+            var read = Read(condition, fields, readings, container, rootAlias, container.PartitionKeyPaths);
             return Complete(read.Pinned(PointRead(container.PartitionKeyPaths)), container, out values);
         }
 
@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (condition is null || fields is null || container is null || container.PartitionKeyPaths.Count == 0)
                 return false;
 
-            var pinned = Read(Conjuncts(condition), fields, readings, container, rootAlias, container.PartitionKeyPaths).Pinned(OracleLicence.Kept);
+            var pinned = Read(condition, fields, readings, container, rootAlias, container.PartitionKeyPaths).Pinned(OracleLicence.Kept);
             var prefix = new List<object?>();
 
             foreach (var path in container.PartitionKeyPaths)
@@ -184,7 +184,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return false;
 
             var keys = container.PartitionKeyPaths.Append(IdPolicy).ToArray();
-            var read = Read(Conjuncts(condition), fields, readings, container, rootAlias, keys);
+            var read = Read(condition, fields, readings, container, rootAlias, keys);
             var licence = PointRead(keys);
             var pinned = read.Pinned(licence);
 
@@ -214,11 +214,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// one the partition key's pins and the declaration make true.
         /// </para>
         /// <para>
-        /// An <c>IN</c> arrives as a <c>SEARCH</c> over a set and is expanded here the way
-        /// translation expands it, so the shapes this walks are the ones the statement would carry.
-        /// Duplicate <c>id</c>s collapse: <c>IN ('a', 'a')</c> asks for one document. The set is read
-        /// off the disjunction rather than off the oracle, which says the <c>id</c> is one of them and
-        /// not which ones to fetch.
+        /// An <c>IN</c> arrives as a <c>SEARCH</c> over a set, which the oracle's loading expands the
+        /// way translation does and reads back as one membership, of the <c>id</c> as stored or as its
+        /// text, which for a string is one; the set is that membership's points, each a string. Duplicate
+        /// <c>id</c>s collapse: <c>IN ('a', 'a')</c> asks for one document.
         /// </para>
         /// </remarks>
         /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
@@ -227,7 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="container">The container being read.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="values">On success, one value per declared partition key path, in order.</param>
-        /// <param name="ids">On success, the distinct pinned <c>id</c>s, in predicate order.</param>
+        /// <param name="ids">On success, the distinct pinned <c>id</c>s, in the order the membership holds them.</param>
         /// <returns><c>true</c> if the predicate is exactly a set of <c>id</c>s and a complete partition key.</returns>
         public static bool TryExtractPointReadSet(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, string rootAlias, out IReadOnlyList<object?> values, out IReadOnlyList<string> ids)
         {
@@ -237,8 +236,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (condition is null || fields is null || container is null || container.PartitionKeyPaths.Count == 0)
                 return false;
 
-            var conjuncts = Conjuncts(RexUtil.expandSearch(RexBuilderHolder.Value, null, condition));
-            var read = Read(conjuncts, fields, readings, container, rootAlias, container.PartitionKeyPaths.Append(IdPolicy));
+            var read = Read(condition, fields, readings, container, rootAlias, container.PartitionKeyPaths.Append(IdPolicy));
             var licence = PointRead(container.PartitionKeyPaths);
 
             if (Complete(read.Pinned(licence), container, out var partitionKey) == false)
@@ -246,10 +244,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             List<string>? set = null;
             var setAt = -1;
+            var conjuncts = read.Statement.Conjuncts;
 
             for (var i = 0; i < conjuncts.Count; i++)
             {
-                if (conjuncts[i] is not RexCall call || TryExtractIdSet(call, read.Statement.Conjuncts[i]) is not List<string> branchIds)
+                if (IdSet(conjuncts[i]) is not List<string> branchIds)
                     continue;
 
                 // Two id sets in one conjunction intersect, which this does not compute.
@@ -269,60 +268,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Recognises a disjunction in which every branch pins <c>id</c> to a string, and returns the strings.
+        /// Returns the strings a membership of the <c>id</c> holds it to, or <c>null</c> where the conjunct is no such
+        /// membership.
         /// </summary>
-        /// <param name="call">The conjunct.</param>
-        /// <param name="read">The conjunct as the oracle reads it, whose branches are asked which path they compare.</param>
-        static List<string>? TryExtractIdSet(RexCall call, SqlPredicate read)
+        /// <remarks>
+        /// Of the <c>id</c> as stored or as its text, which for a string is one; not through a cast. Cosmos types the
+        /// <c>id</c> a string, so a point holding anything else makes the membership a predicate rather than a set of
+        /// documents.
+        /// </remarks>
+        static List<string>? IdSet(SqlPredicate conjunct)
         {
-            if ((SqlKind.__Enum)call.getKind().ordinal() != SqlKind.__Enum.OR)
-                return null;
-
-            // Read as the membership an IN is, of the id as stored or as its text, which for a string is one; not
-            // through a cast.
-            if (read is not SqlPredicate.In { Value: var value, Points: var points } || value is SqlValue.Cast
-                || value.PathRead is not JsonDocumentPath path || path != JsonDocumentPath.Root.Property(CosmosContainerMetadata.IdPropertyName))
+            if (conjunct is not SqlPredicate.In { Value: var value, Points: var points } || value is SqlValue.Cast
+                || value.PathRead != JsonDocumentPath.Root.Property(CosmosContainerMetadata.IdPropertyName))
                 return null;
 
             var ids = new List<string>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-
-            for (var i = 0; i < call.getOperands().size(); i++)
+            foreach (var point in points)
             {
-                // Cosmos types id as a string; a branch pinning anything else makes the disjunction a
-                // predicate rather than a set of documents.
-                if (call.getOperands().get(i) is not RexCall branch || branch.getOperands().size() != 2
-                    || Constant(branch) is not string id)
+                if (JsonFactEncoding.TryScalar(point, out var scalar) == false || scalar.ToClrValue() is not string id)
                     return null;
 
-                if (seen.Add(id))
-                    ids.Add(id);
+                ids.Add(id);
             }
 
-            return ids.Count > 0 && ids.Count == points.Count ? ids : null;
-        }
-
-        /// <summary>
-        /// The literal one side of an equality compares with, as the translator sends it.
-        /// </summary>
-        static object? Constant(RexCall equality)
-        {
-            foreach (var side in new[] { 0, 1 })
-            {
-                if (CosmosRexTranslator.StripVariantCoercion((RexNode)equality.getOperands().get(side)) is not RexLiteral literal)
-                    continue;
-
-                try
-                {
-                    return CosmosRexTranslator.GetLiteralValue(literal);
-                }
-                catch (CosmosTranslationException)
-                {
-                    return null;
-                }
-            }
-
-            return null;
+            return ids.Count > 0 ? ids : null;
         }
 
         /// <summary>
@@ -352,7 +321,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (condition is null || fields is null || container is null || container.PartitionKeyPaths.Count == 0)
                 return false;
 
-            var read = Read(Conjuncts(condition), fields, readings, container, rootAlias, container.PartitionKeyPaths);
+            var read = Read(condition, fields, readings, container, rootAlias, container.PartitionKeyPaths);
             var licence = PointRead(container.PartitionKeyPaths);
 
             if (Complete(read.Pinned(licence), container, out var partitionKey) == false || read.SaysNothingElse(licence) == false)
@@ -394,37 +363,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (condition is null || fields is null || container is null || container.PartitionKeyPaths.Count == 0)
                 return false;
 
-            var pinned = Read(Conjuncts(condition), fields, readings, container, rootAlias, container.PartitionKeyPaths.Append(IdPolicy)).Pinned(OracleLicence.Kept);
+            var pinned = Read(condition, fields, readings, container, rootAlias, container.PartitionKeyPaths.Append(IdPolicy)).Pinned(OracleLicence.Kept);
 
             return pinned.TryGetValue(IdPolicy, out var value) && value is string && Complete(pinned, container, out _);
         }
 
         /// <summary>
-        /// Determines whether a single conjunct is one a point read accounts for — an equality pinning
+        /// Returns a predicate's top-level conjuncts, each with whether a point read accounts for it — an equality pinning
         /// <c>id</c> or one of the container's declared partition key paths.
         /// </summary>
         /// <remarks>
-        /// The pins-only scope's own question asked of one conjunct (<see cref="CosmosStatementScope.IsPin"/>), so that a
-        /// caller can <em>partition</em> a conjunction into the part a point read answers and the part it does not, instead
-        /// of only being told that a rest exists. Exposed for <c>CosmosPointReadSplitRule</c>, which uses it to build a
-        /// pushed predicate that then satisfies <see cref="TryExtractPointRead"/> unchanged — the rule relaxes nothing
-        /// here, it restructures the plan so that this rule's existing standard is met.
+        /// The pins-only scope's own question asked of each conjunct (<see cref="CosmosStatementScope.IsPin"/>), of the
+        /// conjuncts the oracle reads, so that a caller can <em>partition</em> a conjunction into the part a point read
+        /// answers and the part it does not, instead of only being told that a rest exists. For
+        /// <c>CosmosPointReadSplitRule</c>, which builds of the first part a pushed predicate that then satisfies
+        /// <see cref="TryExtractPointRead"/> unchanged — the rule relaxes nothing here, it restructures the plan so that
+        /// this rule's existing standard is met.
         /// </remarks>
-        /// <param name="conjunct">One top-level conjunct of a predicate.</param>
+        /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
         /// <param name="readings">How each field is read back, or <c>null</c> where every field is read as its type.</param>
         /// <param name="container">The container being read.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
-        /// <returns><c>true</c> where a point read accounts for the conjunct.</returns>
-        public static bool IsPointReadConjunct(RexNode conjunct, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, string rootAlias)
+        /// <returns>Each conjunct, in order, and whether a point read accounts for it.</returns>
+        internal static IReadOnlyList<(RexNode Conjunct, bool Pins)> PointReadConjuncts(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, string rootAlias)
         {
-            if (conjunct is null || fields is null || container is null)
-                return false;
-
             var keys = container.PartitionKeyPaths.Append(IdPolicy).Select(DocumentPathOf).OfType<JsonDocumentPath>().ToArray();
-            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), rootAlias);
+            var read = CosmosFilterStatement.Of(condition, fields, readings, container, RexBuilderHolder.Value, rootAlias);
 
-            return CosmosStatementScope.IsPin(loading.Read(conjunct), keys);
+            return read.Conjuncts.Select((conjunct, i) => (conjunct, CosmosStatementScope.IsPin(read.Statement.Conjuncts[i], keys))).ToArray();
         }
 
         /// <summary>
@@ -455,41 +422,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Takes a predicate apart into its top-level conjuncts, every <c>AND</c> taken apart.
-        /// </summary>
-        static IReadOnlyList<RexNode> Conjuncts(RexNode condition)
-        {
-            var conjuncts = new List<RexNode>();
-            Flatten(condition, conjuncts);
-            return conjuncts;
-        }
-
-        static void Flatten(RexNode node, List<RexNode> conjuncts)
-        {
-            if (node is RexCall call && (SqlKind.__Enum)call.getKind().ordinal() == SqlKind.__Enum.AND)
-            {
-                for (var i = 0; i < call.getOperands().size(); i++)
-                    Flatten((RexNode)call.getOperands().get(i), conjuncts);
-
-                return;
-            }
-
-            conjuncts.Add(node);
-        }
-
-        /// <summary>
-        /// Reads conjuncts through their binding into a statement the oracle answers.
+        /// Reads a predicate as the statement the oracle answers.
         /// </summary>
         /// <remarks>
-        /// Read as <see cref="CosmosFilterStatement"/> reads a filter — the same conjuncts, in order, through a loading of
-        /// the same binding — so a filter's condition is one statement to the oracle whoever asks, and its contexts are
-        /// remembered once. What the declaration states of a key no conjunct reads is read through the scope's parent.
+        /// <see cref="CosmosFilterStatement"/>'s, remembered against the condition as every reader's is: a cost estimate
+        /// asks of one filter many times. Over a builder of its own, since this renders nothing and a rule's statement
+        /// renders through the rule's builder; the oracle remembers one tree for both, by the statement's digest.
         /// </remarks>
-        static Reading Read(IReadOnlyList<RexNode> conjuncts, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, string rootAlias, IEnumerable<string> keys)
-        {
-            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), rootAlias);
-            return new Reading(CosmosOracle.For(container.Facts).Admit(loading.Statement(conjuncts)), keys.ToArray());
-        }
+        static Reading Read(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, string rootAlias, IEnumerable<string> keys) =>
+            new(CosmosFilterStatement.Of(condition, fields, readings, container, RexBuilderHolder.Value, rootAlias), keys.ToArray());
 
         /// <summary>
         /// A predicate as the oracle reads it, and the key paths asked about.
@@ -497,16 +438,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         sealed class Reading
         {
 
-            readonly CosmosStatementScope _scope;
+            readonly CosmosFilterStatement _statement;
             readonly string[] _keys;
 
-            public Reading(CosmosStatementScope scope, string[] keys)
+            public Reading(CosmosFilterStatement statement, string[] keys)
             {
-                _scope = scope;
+                _statement = statement;
                 _keys = keys;
             }
 
-            public PredicateStatement Statement => _scope.Statement;
+            public PredicateStatement Statement => _statement.Statement;
 
             /// <summary>
             /// Returns each key path the facts a licence admits pin — there in every document they keep, and holding
@@ -517,10 +458,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var pinned = new Dictionary<string, object?>(StringComparer.Ordinal);
 
                 // A scope no document satisfies pins every path to everything; nothing is to be routed on it.
-                if (_scope.IsContradictory(licence))
+                if (_statement.KeepsNothingUnder(licence))
                     return pinned;
 
-                var facts = _scope.Facts(licence);
+                var facts = _statement.FactsUnder(licence);
 
                 foreach (var key in _keys)
                     if (DocumentPathOf(key) is JsonDocumentPath path
@@ -552,7 +493,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             public bool SaysNothingElse(OracleLicence licence, int except = -1)
             {
                 for (var i = 0; i < Statement.Conjuncts.Count; i++)
-                    if (i != except && _scope.Decide(i, licence) != Truth.Always)
+                    if (i != except && _statement.Decide(i, licence) != Truth.Always)
                         return false;
 
                 return true;
@@ -584,7 +525,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// A builder used only for expanding a search, which constructs nothing a statement carries.
+        /// A builder for the statements this reads, which render nothing.
         /// </summary>
         static class RexBuilderHolder
         {

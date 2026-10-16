@@ -207,11 +207,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
 
-            // What the statement will apply beside a weakening: every conjunct beneath, every one pushed,
-            // and the weakenings before it. A weakening they and the declaration already imply restricts
-            // nothing -- one beneath, applied by a filter the residual was split from, would be pushed under
-            // itself for ever -- and is not pushed.
-            List<RexNode>? applied = null;
+            // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
+            // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
+            // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
+            // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
+            List<RexNode>? beneath = null;
 
             for (var i = 0; i < statement.Conjuncts.Count; i++)
             {
@@ -237,12 +237,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is not RexNode weakened)
                     continue;
 
-                applied ??= AlreadyApplied(filter.getInput()).Concat(statement.Conjuncts.Where((_, j) => statement.IsAdmitted(j))).ToList();
+                beneath ??= AlreadyApplied(filter.getInput()).ToList();
 
-                if (Metadata.CosmosFilterStatement.IsApplied(applied, weakened, fields, readings, container) == false && translator.TryTranslate(weakened, out _))
+                if (statement.IsApplied(weakened, beneath) == false && translator.TryTranslate(weakened, out _))
                 {
                     pushable.Add(weakened);
-                    applied.Add(weakened);
+                    beneath.Add(weakened);
                 }
             }
 
@@ -1175,8 +1175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies, once each by its
-        /// spelling.
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -1196,7 +1195,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
         {
-            var applied = new Dictionary<string, RexNode>(StringComparer.Ordinal);
+            // Once each by Calcite's equality, which compares types where the digest prints none.
+            var applied = new List<RexNode>();
+            var once = new HashSet<RexNode>();
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             // Through a stack of filters as well as across a set's members: a filter keeps its input's
@@ -1209,9 +1210,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
-                var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
-                for (var i = 0; i < conjuncts.size(); i++)
-                    applied.TryAdd(((RexNode)conjuncts.get(i)).toString(), (RexNode)conjuncts.get(i));
+                foreach (var conjunct in Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()))
+                    if (once.Add(conjunct))
+                        applied.Add(conjunct);
 
                 foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
                     Collect(member);
@@ -1223,7 +1224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
                 Collect(member);
 
-            return applied.Values.ToArray();
+            return applied;
         }
 
         /// <summary>

@@ -55,9 +55,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// has always read such a query; the engine's context is opened only if a verdict is asked of it.
     /// </para>
     /// <para>
-    /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader</c> reads one off a
-    /// <c>RexNode</c>, or build one from <see cref="SqlPredicate"/>s), then <see cref="Admit"/> it with a renderer — the
-    /// translator's <c>TryTranslate</c> over the facts it is handed, which <c>CosmosPredicateLoader.Renderer</c> builds —
+    /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader.Loading</c> reads one
+    /// off a <c>RexNode</c>, or build one from <see cref="SqlPredicate"/>s), then <see cref="Admit"/> it with a renderer —
+    /// the translator's <c>TryTranslate</c> over the facts it is handed, as <c>CosmosFilterStatement</c> admits a filter —
     /// and ask the <see cref="CosmosStatementScope"/> that comes back.
     /// </para>
     /// </remarks>
@@ -110,10 +110,10 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactTheory Theory => _theory;
 
         /// <summary>
-        /// Gets what the declaration states of every document (L0): what routing reads, and what a consumer that names no
-        /// statement may lean on. It holds whatever a query keeps, so no licence is needed to read it.
+        /// Gets what the declaration states of every document (L0): the facts <see cref="OracleLicence.Declaration"/> admits,
+        /// read without a statement, for a consumer that names none. It holds whatever a query keeps.
         /// </summary>
-        public JsonFactSet Declared => _theory.Derive(null);
+        public JsonFactSet Declared => _theory.Declared;
 
         /// <summary>
         /// Gets or sets, for a checker, the stratum a conjunct is handed to the renderer from in a round, given the round's:
@@ -143,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (statement is null)
                 throw new ArgumentNullException(nameof(statement));
 
-            return new CosmosStatementScope(Terms(statement), statement, renders, RenderedFrom);
+            return new CosmosStatementScope(Terms(statement), statement, renders, _theory.MentionedPaths, RenderedFrom);
         }
 
         /// <summary>

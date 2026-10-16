@@ -306,8 +306,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var always = Declared(Theory(Outright(Kind, Present), Outright(Kind, Value("A"))));
             var sometimes = Declared(Theory(Outright(Kind, Value("A"))));
 
-            always.Decide(Eq(Text(Kind), "A"), OracleLicence.Residual).Should().Be(Truth.Always);
-            sometimes.Decide(Eq(Text(Kind), "A"), OracleLicence.Residual).Should().Be(Truth.Unknown, "a document without kind keeps no row for it");
+            always.Decide(Eq(Text(Kind), "A"), OracleLicence.Declaration).Should().Be(Truth.Always);
+            sometimes.Decide(Eq(Text(Kind), "A"), OracleLicence.Declaration).Should().Be(Truth.Unknown, "a document without kind keeps no row for it");
         }
 
         [Fact]
@@ -315,9 +315,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(Kind, Present), Outright(Kind, Enum("a", "b"))));
 
-            scope.Decide(In(Text(Kind), "a", "b", "c"), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(In(Text(Kind), "a"), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(In(Text(Kind), "c", "d"), OracleLicence.Residual).Should().Be(Truth.Never);
+            scope.Decide(In(Text(Kind), "a", "b", "c"), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(In(Text(Kind), "a"), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(In(Text(Kind), "c", "d"), OracleLicence.Declaration).Should().Be(Truth.Never);
         }
 
         [Fact]
@@ -325,8 +325,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(Kind, Present), Outright(Kind, Enum("a", "b"))));
 
-            scope.Decide(Ne(Text(Kind), "c"), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(Ne(Text(Kind), "a"), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(Ne(Text(Kind), "c"), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(Ne(Text(Kind), "a"), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 
         [Fact]
@@ -334,8 +334,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(A, Present), Outright(A, Type(JsonType.String))));
 
-            scope.Decide(IsNotNull(Text(A)), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(IsNull(Text(A)), OracleLicence.Residual).Should().Be(Truth.Never);
+            scope.Decide(IsNotNull(Text(A)), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(IsNull(Text(A)), OracleLicence.Declaration).Should().Be(Truth.Never);
         }
 
         /// <summary>
@@ -348,13 +348,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(N, Present), Outright(N, Type(JsonType.Integer)), Outright(N, new JsonClaim.LowerBound(0m))));
 
-            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Always);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), ">", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
 
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 
         [Fact]
@@ -362,8 +362,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(Kind, Present), Outright(Kind, Enum("a", "b"))));
 
-            scope.Judge(Eq(Text(Kind), "z"), OracleLicence.Residual).AlwaysFalse.Should().BeTrue();
-            scope.Decide(Not(Eq(Text(Kind), "z")), OracleLicence.Residual).Should().Be(Truth.Always);
+            scope.Judge(Eq(Text(Kind), "z"), OracleLicence.Declaration).AlwaysFalse.Should().BeTrue();
+            scope.Decide(Not(Eq(Text(Kind), "z")), OracleLicence.Declaration).Should().Be(Truth.Always);
         }
 
         /// <summary>
@@ -377,10 +377,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var scope = Declared(Theory(Outright(A, Type(JsonType.String))));
             var beneath = Eq(Text(P("a", "b")), "x");
 
-            var verdict = scope.Judge(beneath, OracleLicence.Residual);
+            var verdict = scope.Judge(beneath, OracleLicence.Declaration);
             verdict.NeverTrue.Should().BeTrue();
             verdict.AlwaysFalse.Should().BeFalse();
-            scope.Decide(Not(beneath), OracleLicence.Residual).Should().NotBe(Truth.Always);
+            scope.Decide(Not(beneath), OracleLicence.Declaration).Should().NotBe(Truth.Always);
         }
 
         /// <summary>
@@ -392,10 +392,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(A, Present), Outright(A, Type(JsonType.Object))));
 
-            scope.Decide(IsNotNull(Text(A)), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(IsNull(Text(A)), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Judge(Eq(Text(A), "x"), OracleLicence.Residual).AlwaysFalse.Should().BeFalse();
-            scope.Decide(Not(Eq(Text(A), "x")), OracleLicence.Residual).Should().NotBe(Truth.Always);
+            scope.Decide(IsNotNull(Text(A)), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(IsNull(Text(A)), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Judge(Eq(Text(A), "x"), OracleLicence.Declaration).AlwaysFalse.Should().BeFalse();
+            scope.Decide(Not(Eq(Text(A), "x")), OracleLicence.Declaration).Should().NotBe(Truth.Always);
         }
 
         [Fact]
@@ -406,14 +406,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var never = Eq(Text(Kind), "z");
             var unknown = Eq(Text(Kind), "a");
 
-            scope.Decide(And(always, always), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(And(always, unknown), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(And(unknown, never), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(Or(unknown, always), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(Or(unknown, never), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(Or(never, Not(always)), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(Not(Or(never, Not(always))), OracleLicence.Residual).Should().Be(Truth.Always, "both sides are FALSE, not UNKNOWN");
-            scope.Decide(Not(And(always, never)), OracleLicence.Residual).Should().Be(Truth.Always);
+            scope.Decide(And(always, always), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(And(always, unknown), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(And(unknown, never), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Or(unknown, always), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(Or(unknown, never), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(Or(never, Not(always)), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Not(Or(never, Not(always))), OracleLicence.Declaration).Should().Be(Truth.Always, "both sides are FALSE, not UNKNOWN");
+            scope.Decide(Not(And(always, never)), OracleLicence.Declaration).Should().Be(Truth.Always);
         }
 
         [Fact]
@@ -423,11 +423,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var always = In(Text(Kind), "a", "b");
             var never = Eq(Text(Kind), "z");
 
-            scope.Decide(Opaque(0), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(Or(Opaque(0), always), OracleLicence.Residual).Should().Be(Truth.Always);
-            scope.Decide(And(Opaque(0), always), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(And(Opaque(0), never), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(Not(Opaque(0)), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(Opaque(0), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(Or(Opaque(0), always), OracleLicence.Declaration).Should().Be(Truth.Always);
+            scope.Decide(And(Opaque(0), always), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(And(Opaque(0), never), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Not(Opaque(0)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 
         [Fact]
@@ -435,9 +435,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var scope = Declared(Theory(Outright(N, Present), Outright(N, Value(30m)), Outright(A, Present), Outright(A, Value("x"))));
 
-            scope.Decide(Eq(Raw(N), 30m), OracleLicence.Residual).Should().Be(Truth.Unknown);
-            scope.Decide(Eq(Raw(N), 31m), OracleLicence.Residual).Should().Be(Truth.Never);
-            scope.Decide(Eq(Raw(A), "x"), OracleLicence.Residual).Should().Be(Truth.Always);
+            scope.Decide(Eq(Raw(N), 30m), OracleLicence.Declaration).Should().Be(Truth.Unknown);
+            scope.Decide(Eq(Raw(N), 31m), OracleLicence.Declaration).Should().Be(Truth.Never);
+            scope.Decide(Eq(Raw(A), "x"), OracleLicence.Declaration).Should().Be(Truth.Always);
         }
 
         [Fact]
@@ -457,7 +457,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var scope = Admitted(Theory(), Eq(Text(Kind), "a"));
 
             scope.Decide(In(Text(Kind), "a", "b"), OracleLicence.Select).Should().Be(Truth.Always);
-            scope.Decide(In(Text(Kind), "a", "b"), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(In(Text(Kind), "a", "b"), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 
     }

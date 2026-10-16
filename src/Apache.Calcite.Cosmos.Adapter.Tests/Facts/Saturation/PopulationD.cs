@@ -123,7 +123,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var admitted = Enumerable.Range(0, conjuncts.Count).Where(i => stratum[i] > 0).ToArray();
             var licences = new List<(string Name, OracleLicence Licence, int[] Assumed)>
             {
-                ("the declaration", OracleLicence.Residual, Array.Empty<int>()),
+                ("the declaration", OracleLicence.Declaration, Array.Empty<int>()),
                 ("the last stratum", OracleLicence.Select, admitted),
             };
 
@@ -131,7 +131,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var before = stratum[i] > 0 ? admitted.Where(j => stratum[j] < stratum[i]).ToArray() : admitted;
                 licences.Add(($"rendering conjunct {i}", OracleLicence.RenderConjunct(i), before));
-                licences.Add(($"deleting conjunct {i}", OracleLicence.DeleteConjunct(i), Enumerable.Range(0, conjuncts.Count).Where(j => j != i).ToArray()));
+                var others = Enumerable.Range(0, conjuncts.Count).Where(j => j != i).ToArray();
+                licences.Add(($"deleting conjunct {i}", OracleLicence.DeleteConjunct(i), stratum[i] > 0 ? others.Where(j => stratum[j] > 0).ToArray() : others));
+                licences.Add(($"rewriting inside conjunct {i}", OracleLicence.Siblings(i), others));
             }
 
             // Every conjunct, for a strengthening; and an arm of a CASE inside one, read under a condition the trial
@@ -143,6 +145,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var siblings = Enumerable.Range(0, conjuncts.Count).Where(j => j != arm).ToArray();
             check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }),
                 Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray(), siblings);
+
+            // And a weakening beside the statement, read beside what a filter beneath applies, drawn the same way.
+            var beneath = questions[random.Next(questions.Length)];
+            check.Scope($"a weakening beside what is applied, {beneath} beneath", scope, OracleLicence.Applied(new[] { beneath }),
+                Keeping(admitted).Where(d => IrEval.Truth(beneath, d, world) == Truths.True).ToArray(), admitted);
 
             var pins = conjuncts.Select(Pin).OfType<JsonDocumentPath>().Distinct().ToArray();
             if (pins.Length > 0)
@@ -181,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var y = questions[random.Next(questions.Length)];
                 var given = Enumerable.Range(0, 1 + random.Next(2)).Select(_ => questions[random.Next(questions.Length)]).ToArray();
-                var truth = scope.DecideGiven(y, given);
+                var truth = oracle.Admit(new PredicateStatement(given)).Decide(y, OracleLicence.Kept);
                 var keeping = documents.Where(d => given.All(x => IrEval.Truth(x, d, world) == Truths.True)).ToArray();
                 check.Decided($"{y} given {string.Join(" and ", given)}", truth, y, keeping);
             }

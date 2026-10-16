@@ -1448,6 +1448,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// backlog claimed and still worth taking.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// A conjunct that reaches the service is deleted only for siblings that reach it too: <c>label &lt;&gt; 'zzz'</c>
+        /// over a path declared nothing goes down only as its weakening, which does not imply the null test, so the exact
+        /// test stays and the null, the array and the object it excludes do not cross the wire.
+        /// </summary>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') <> 'zzz'""")]
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') > 'a'""")]
+        public void AnExactNullTestIsNotDeletedForASiblingLeftAbove(string sibling)
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.label') IS NOT NULL AND {sibling}""", container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().Contain("NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)",
+                "the null test is exact, and its sibling goes down only as a weakening: " + PlanText(best));
+        }
+
         [Fact]
         public void ADeclaredTautologyIsNotAsked()
         {

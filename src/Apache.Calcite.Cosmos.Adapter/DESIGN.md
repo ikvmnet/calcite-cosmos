@@ -942,18 +942,28 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | the question | the facts it may use |
 | --- | --- |
 | whether a conjunct renders | the stratum before the one that admitted it; for one never admitted, the last stratum, which holds its siblings and never itself (L2) |
-| whether a conjunct can be deleted, or is redundant | every other conjunct, admitted or not (L3) |
+| whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
 | a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
 | inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
 | whether the filter keeps nothing | every conjunct, admitted or not: a strengthening, which a conjunct's own facts may justify |
 | routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
+| whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
 | a projection, a sort, a grouping, a key a lookup restricts | the last stratum: every admitted conjunct, applied before the clause reads a row or beside the key's restriction (L1) |
-| a residual, a key another node asks of a clause | the declaration (L0) |
+| a residual, a side with no filter, a key another node asks of a clause | the declaration (L0) |
 
 **Redundancy is asked one conjunct at a time**, in digest order, each against the conjuncts still kept, so two
-duplicates do not delete each other. "If I add X, is Y irrelevant?" is `DecideGiven(Y, X)`: Y always true where X
-holds.
+duplicates do not delete each other. "If I add X, is Y irrelevant?" is a statement of X asked of Y under `Kept`: Y
+always true where X holds.
+
+**A deletion keeps what the service applies.** Deleting a conjunct its siblings imply changes no row, whichever
+siblings imply it; it changes what reaches the service where the sibling does not. `label IS NOT NULL AND label <>
+'zzz'` over a path declared nothing renders the first exactly and the second only as a weakening, which does not
+imply the first, and deleted for the second the exact test stopped reaching the service: the null, the array and the
+object it excludes crossed the wire for the recheck to drop. So a conjunct the strata admit is asked only of the
+admitted siblings, and one left above of every sibling, as before. The strata are those of the condition as written,
+before a lowering: a sibling admitted only once lowered counts as left above, and the conjunct is kept, which costs a
+redundant test and never a row.
 
 **A lowering is asked of the statement the deletions leave**, for the same reason two duplicates are not both
 deleted: each rewrite is sound on the statement it is asked of, and the rewrite does two in turn. A conjunct deleted
@@ -1026,9 +1036,9 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
-| the split rule, whether a weakening is already applied | `IsApplied` | the conjuncts beneath, those pushed beside it, and the declaration |
+| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
 | `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
-| the rewriter, a conjunct deleted | `Redundant` | its siblings, one at a time (L3) |
+| the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
 | the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence; the declaration where it named none (L0) |
@@ -1036,7 +1046,7 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosSortRule`, `CosmosSort` | the null placement, a computed column's ordering licence, a key read as stored, a temporal key's order | L1, carried |
 | `CosmosAggregateRule`, `CosmosAggregate` | a grouping key normalised, a key read as stored | L1, carried; the key a `DISTINCT` binds, which another node asks, L0 |
 | `CosmosLookupJoinRule`, `CosmosLookupJoin`, the probe's key restricted as stored | a text key's path a string, a `UUID` key's one spelling | L1 of the probe side (`Key`), carried |
-| `CosmosSelfJoinRule`, a constraint's predicate proved of a side | `Proves`, `Declares` | every conjunct of the side's filter; the declaration where it has none |
+| `CosmosSelfJoinRule`, a constraint's predicate proved of a side | `Proves`, `Declares` | every conjunct of the side's filter; the declaration where it has none (`Declaration`) |
 | `CosmosSelfJoinRule`, a key read faithfully | one scalar type, one `UUID` spelling | every conjunct of the two sides' filters' disjunction |
 | `CosmosPartitionKeyExtractor`, the partition a statement is routed to, and whether it matches one document | the key there and holding one value | every conjunct |
 | the extractor, a point read, a batch of them, a whole-partition delete | the same, and every other conjunct `Always` | the conjuncts that pin the keys, and no other |
@@ -1056,8 +1066,9 @@ what the pushed conjuncts establish holds of every row a clause reads: a sort ov
 place, a grouping over `x IS NOT NULL` no absent key to tell from a null one, and a projection over `kind = 'B'` reads
 `ref` in the form kind `B` declares. `Metadata/CosmosRowFacts.cs` reads it through the input as the binding is read —
 a set's original member, through filters, projections and sorts, each keeping the rows it is given or fewer — and
-stops at anything that is a relation of other rows. Several filters are one statement of what each admitted, less the
-conjuncts holding an opaque term, which is numbered per filter. Asked once per clause, by its rule, and carried on the
+stops at anything that is a relation of other rows. Several filters are one statement of what each admitted, asked
+under `Kept`, each filter's opaque terms numbered apart from the others', since each is numbered over its own binding.
+Asked once per clause, by its rule — remembered by the clause, the container, the licence and the input — and carried on the
 node it builds, as the sort's non-null fields always were: which filters a walk finds depends on the member of a set
 it reads, and implementation reads the one tree the planner chose, whose filter may be the same condition rewritten.
 A question another node asks of a clause — the key a `DISTINCT` binds, which a sort above asks — is answered on both
@@ -1103,12 +1114,15 @@ translator — and released with it. The rewrite's answer is remembered on the s
 one node each time, and the statement of the rewritten condition is remembered too. Beneath them the oracle
 remembers its contexts by the statement's digest.
 
-**Asked only where something could answer.** A rewrite asks for deletions and a contradiction and never renders;
-a filter rule renders and asks nothing else; each is computed the first time it is asked. The last stratum is opened
-only where something asks of every admitted conjunct, which a filter pushed whole never does. And a conjunct is asked
-whether it is redundant only where something could decide it — a sibling reading a path it reads, or one above or
-beneath it, or sharing a term with it, or a path the declaration speaks of — since nothing is always true of a path
-nothing is known of.
+**Asked only where something could answer.** A statement has one scope, whose rounds of admission run the first time
+a question names a stratum — a render, a deletion beside what reaches the service, a clause after the filter, a
+weakening — and never for a contradiction, a lowering's siblings or a key's pins; a second scope exists only where the
+rewrite deletes, for the statement the deletions leave. The last stratum is opened only where something asks of every
+admitted conjunct, which a filter pushed whole never does. And the oracle asks a conjunct whether it is redundant only
+where something could decide it — a sibling reading a path it reads, or one above or beneath it, or sharing a term
+with it, or a path the declaration speaks of (`CosmosStatementScope.RedundantConjuncts`). That is the oracle's own
+bound on what it looks for, and it costs what it bounds: `IS_DEFINED(x) OR NOT IS_DEFINED(x)` over a path nothing
+speaks of is true of every document and is not deleted.
 
 **A weakening the rest already implies is not pushed.** Asked of what the statement will apply beside it — the
 conjuncts beneath, those pushed with it, the weakenings before it — and of the declaration. That is the digest test

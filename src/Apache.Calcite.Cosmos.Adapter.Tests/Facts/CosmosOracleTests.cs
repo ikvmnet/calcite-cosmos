@@ -168,13 +168,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.AssumedIn(OracleLicence.RenderConjunct(0)).Should().BeEmpty();
             scope.AssumedIn(OracleLicence.RenderConjunct(2)).Should().Equal(0, 1);
             scope.AssumedIn(OracleLicence.RenderConjunct(3)).Should().Equal(0, 1, 2);
-            scope.AssumedIn(OracleLicence.DeleteConjunct(1)).Should().Equal(0, 2, 3);
-            scope.AssumedIn(OracleLicence.Redundant(3)).Should().Equal(0, 1, 2);
+            scope.AssumedIn(OracleLicence.DeleteConjunct(1)).Should().Equal(new[] { 0, 2 }, "an admitted conjunct is deleted only for what reaches the service with it");
+            scope.AssumedIn(OracleLicence.DeleteConjunct(3)).Should().Equal(0, 1, 2);
+            scope.AssumedIn(OracleLicence.DeleteConjunct(1, new[] { 1, 2, 3 })).Should().Equal(2);
+            scope.AssumedIn(OracleLicence.Siblings(1)).Should().Equal(0, 2, 3);
+            scope.AssumedIn(OracleLicence.Siblings(3)).Should().Equal(0, 1, 2);
+            scope.AssumedIn(OracleLicence.Applied(new[] { Opaque(7) })).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.PointRead(new[] { Id })).Should().Equal(0);
             scope.AssumedIn(OracleLicence.Select).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.OrderBy).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.GroupBy).Should().Equal(0, 1, 2);
-            scope.AssumedIn(OracleLicence.Residual).Should().BeEmpty();
+            scope.AssumedIn(OracleLicence.Declaration).Should().BeEmpty();
 
             // And the facts each scope holds are those of the conjuncts it names.
             Knows(scope.Facts(OracleLicence.RenderConjunct(1)), Kind, Value("a")).Should().BeFalse();
@@ -184,7 +188,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(scope.Facts(OracleLicence.PointRead(new[] { Id })), Id, Value("1")).Should().BeTrue();
             Knows(scope.Facts(OracleLicence.PointRead(new[] { Id })), Kind, Present).Should().BeFalse("a point read applies no predicate");
             Knows(scope.Facts(OracleLicence.Select), X, Present).Should().BeTrue();
-            Knows(scope.Facts(OracleLicence.Residual), Kind, Present).Should().BeFalse();
+            Knows(scope.Facts(OracleLicence.Declaration), Kind, Present).Should().BeFalse();
         }
 
         /// <summary>
@@ -197,7 +201,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             scope.Decide(0, OracleLicence.Select).Should().Be(Truth.Always, "beneath itself it holds, which licenses nothing");
             scope.Decide(0, OracleLicence.DeleteConjunct(0)).Should().Be(Truth.Unknown);
-            scope.Decide(0, OracleLicence.Redundant(0)).Should().Be(Truth.Unknown);
+            scope.Decide(0, OracleLicence.Siblings(0)).Should().Be(Truth.Unknown);
         }
 
         [Fact]
@@ -224,10 +228,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var raw = Eq(Raw(X), 30m);
             var scope = Declared(Theory(), Opaque(0), Opaque(0), raw);
 
-            scope.IsRedundant(Opaque(0), new[] { Opaque(0) }).Should().BeTrue("what is given holds of every row");
-            scope.IsRedundant(raw, new[] { raw }).Should().BeTrue();
-            scope.DecideGiven(Not(Opaque(0)), new[] { Opaque(0) }).Should().Be(Truth.Never, "and its negation of none");
-            scope.DecideGiven(Opaque(1), new[] { Opaque(0) }).Should().Be(Truth.Unknown, "another opaque predicate is another predicate");
+            Given(Opaque(0)).Decide(Opaque(0), OracleLicence.Kept).Should().Be(Truth.Always, "what is given holds of every row");
+            Given(raw).Decide(raw, OracleLicence.Kept).Should().Be(Truth.Always);
+            Given(Opaque(0)).Decide(Not(Opaque(0)), OracleLicence.Kept).Should().Be(Truth.Never, "and its negation of none");
+            Given(Opaque(0)).Decide(Opaque(1), OracleLicence.Kept).Should().Be(Truth.Unknown, "another opaque predicate is another predicate");
             scope.RedundantConjuncts().Should().Equal(0);
             scope.Decide(0, OracleLicence.DeleteConjunct(0)).Should().Be(Truth.Always, "its duplicate is a sibling");
             scope.Decide(2, OracleLicence.DeleteConjunct(2)).Should().Be(Truth.Unknown, "and nothing licenses a conjunct's deletion by itself");
@@ -239,10 +243,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var scope = Declared(Theory(), Eq(Text(Kind), "a"), In(Text(Kind), "a", "b"), Cmp(Text(X), ">", Lit("m")));
 
             scope.RedundantConjuncts().Should().Equal(1);
-            scope.IsRedundant(In(Text(Kind), "a", "b"), new[] { Eq(Text(Kind), "a") }).Should().BeTrue();
-            scope.IsRedundant(Eq(Text(Kind), "a"), new[] { In(Text(Kind), "a", "b") }).Should().BeFalse();
-            scope.DecideGiven(Eq(Text(Kind), "c"), new[] { In(Text(Kind), "a", "b") }).Should().Be(Truth.Never);
+            Given(Eq(Text(Kind), "a")).Decide(In(Text(Kind), "a", "b"), OracleLicence.Kept).Should().Be(Truth.Always);
+            Given(In(Text(Kind), "a", "b")).Decide(Eq(Text(Kind), "a"), OracleLicence.Kept).Should().NotBe(Truth.Always);
+            Given(In(Text(Kind), "a", "b")).Decide(Eq(Text(Kind), "c"), OracleLicence.Kept).Should().Be(Truth.Never);
         }
+
+        /// <summary>
+        /// A conjunct the strata admit is deleted only where what the service still applies implies it: beside a sibling
+        /// left above, whose weakening is all that goes down, the exact test stays.
+        /// </summary>
+        [Fact]
+        public void AnAdmittedConjunctIsDeletedOnlyForWhatReachesTheServiceWithIt()
+        {
+            // The null test renders; the disequality over a rendering does not, and implies it.
+            var statement = new PredicateStatement(new[] { IsNotNull(Text(X)), Ne(Text(X), "zzz") });
+
+            Oracle(Theory()).Admit(statement, (i, _) => i == 0).RedundantConjuncts().Should().BeEmpty("the sibling that implies it is left above");
+            Oracle(Theory()).Admit(statement).RedundantConjuncts().Should().Equal(new[] { 0 }, "a conjunct left above is deleted for any sibling");
+            Oracle(Theory()).Admit(statement, (_, _) => true).RedundantConjuncts().Should().Equal(new[] { 0 }, "and an admitted one for an admitted sibling");
+        }
+
+        /// <summary>
+        /// A weakening beside a statement is asked against what it applies: the admitted conjuncts, and what lies beneath.
+        /// </summary>
+        [Fact]
+        public void AWeakeningIsAskedAgainstWhatTheStatementApplies()
+        {
+            var statement = new PredicateStatement(new[] { Eq(Text(Kind), "a"), Opaque(0) });
+            var scope = Oracle(Theory()).Admit(statement, (i, _) => i == 0);
+
+            scope.Decide(In(Text(Kind), "a", "b"), OracleLicence.Applied(Array.Empty<SqlPredicate>())).Should().Be(Truth.Always, "the admitted equality implies it");
+            scope.Decide(Opaque(0), OracleLicence.Applied(Array.Empty<SqlPredicate>())).Should().NotBe(Truth.Always, "a conjunct left above is not applied");
+            scope.Decide(Opaque(1), OracleLicence.Applied(new[] { Opaque(1) })).Should().Be(Truth.Always, "what lies beneath is");
+        }
+
+        static CosmosStatementScope Given(params SqlPredicate[] given) => Oracle(Theory()).Admit(new PredicateStatement(given));
 
         [Fact]
         public void APredicateTheStatementDoesNotHoldIsDecidedInTheScopeItsLicenceNames()
@@ -250,7 +285,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var scope = Admitted(Theory(), Eq(Text(Kind), "a"));
 
             scope.Decide(Ne(Text(Kind), "b"), OracleLicence.Select).Should().Be(Truth.Always);
-            scope.Decide(Ne(Text(Kind), "b"), OracleLicence.Residual).Should().Be(Truth.Unknown);
+            scope.Decide(Ne(Text(Kind), "b"), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 
         [Fact]
@@ -260,7 +295,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var first = oracle.Admit(new PredicateStatement(new[] { Eq(Text(Kind), "a"), IsNotNull(Text(A)) }));
             var second = oracle.Admit(new PredicateStatement(new[] { IsNotNull(Text(A)), Eq(Text(Kind), "a") }));
 
-            second.Facts(OracleLicence.Residual).Should().BeSameAs(first.Facts(OracleLicence.Residual));
+            second.Facts(OracleLicence.Declaration).Should().BeSameAs(first.Facts(OracleLicence.Declaration));
             second.Facts(OracleLicence.DeleteConjunct(0)).Should().BeSameAs(first.Facts(OracleLicence.DeleteConjunct(1)));
         }
 
@@ -296,8 +331,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var weakening = And(Opaque(0), Opaque(1));
             var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
 
-            scope.Decide(3, OracleLicence.Redundant(3)).Should().Be(Truth.Always);
-            scope.Decide(And(Opaque(0), Opaque(2)), OracleLicence.Redundant(3)).Should().NotBe(Truth.Always, "opaque#2 is not assumed");
+            scope.Decide(3, OracleLicence.Siblings(3)).Should().Be(Truth.Always);
+            scope.Decide(And(Opaque(0), Opaque(2)), OracleLicence.Siblings(3)).Should().NotBe(Truth.Always, "opaque#2 is not assumed");
         }
 
         [Fact]

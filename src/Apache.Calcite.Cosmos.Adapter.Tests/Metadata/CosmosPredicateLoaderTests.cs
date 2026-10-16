@@ -76,7 +76,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         RexNode Call(org.apache.calcite.sql.SqlOperator op, params RexNode[] operands) => _rex.makeCall(op, operands);
 
-        PredicateStatement Load(RexNode condition) => CosmosPredicateLoader.Load(condition, _fields, _readings, "c");
+        PredicateStatement Load(RexNode condition) =>
+            new CosmosPredicateLoader.Loading(_fields, _readings, "c").Statement(CosmosFilterStatement.ConjunctsOf(condition));
 
         SqlPredicate One(RexNode condition) => Load(condition).Conjuncts.Should().ContainSingle().Subject;
 
@@ -226,6 +227,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             statement.Conjuncts.Should().Equal(Opaque(0), new SqlPredicate.Not(Opaque(1)));
             Oracle(Theory()).Admit(statement).IsContradictory(OracleLicence.Kept).Should().BeFalse(
                 "a stored \" 2 \" and a stored 2 are one number and two texts");
+
+            // And two nodes that are one predicate are one term, however they were built: a weakening spelled as a
+            // conjunct beneath is that conjunct.
+            var again = Load(_rex.makeCall(SqlStdOperatorTable.AND,
+                Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%")), Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"))));
+            again.Conjuncts.Should().Equal(Opaque(0), Opaque(0));
         }
 
         [Fact]
@@ -253,14 +260,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         const string StringLabel = """{ "properties": { "label": { "type": "string" } } }""";
 
-        CosmosStatementScope Admit(RexNode condition, string? schema)
+        /// <summary>
+        /// A filter as the planner reads it, its conjuncts loaded as these tests load them and rendered by today's
+        /// translator.
+        /// </summary>
+        CosmosFilterStatement Admit(RexNode condition, string? schema)
         {
             var container = schema is null
                 ? new CosmosContainerMetadata("items", new[] { "/pk" })
                 : new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
-            var statement = Load(condition);
-            return CosmosOracle.For(container.Facts).Admit(statement, CosmosPredicateLoader.Renderer(statement, _rex, _fields, _readings, container));
+            return CosmosFilterStatement.Of(condition, _fields, _readings, container, _rex);
         }
 
         /// <summary>
@@ -274,8 +284,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var thirty = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), Str("30"));
 
             var undeclared = Admit(thirty, null);
-            undeclared.Residual.Should().Equal(0);
-            undeclared.Facts(OracleLicence.RenderConjunct(0)).Knows(new JsonFact(Label, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeFalse();
+            undeclared.IsAdmitted(0).Should().BeFalse();
+            undeclared.FactsFor(0).Knows(new JsonFact(Label, new JsonClaim.OfType(JsonType.String, OrNull: true))).Should().BeFalse();
 
             Admit(thirty, StringLabel).StratumOf(0).Should().Be(1);
         }
@@ -288,7 +298,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Call(SqlStdOperatorTable.LIKE, JsonValue("kind"), Str("%a%"))), null);
 
             scope.StratumOf(0).Should().Be(1);
-            scope.Facts(OracleLicence.Select).Knows(new JsonFact(Label, new JsonClaim.EqualTo("bikes"))).Should().BeTrue();
+            scope.After(OracleLicence.Select).Knows(new JsonFact(Label, new JsonClaim.EqualTo("bikes"))).Should().BeTrue();
         }
 
     }

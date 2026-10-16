@@ -134,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var oracle = Oracle(theory);
 
             // The first statement compiles the declaration into the oracle's generation, which is not a question's cost.
-            oracle.Admit(new PredicateStatement(new[] { Eq(Text(Kind), "k0") })).Decide(0, OracleLicence.Residual);
+            oracle.Admit(new PredicateStatement(new[] { Eq(Text(Kind), "k0") })).Decide(0, OracleLicence.Declaration);
             Report($"{kinds} kinds x {properties} properties: {heads:N0} conditional facts, declaration compiled and first statement answered in {watch.Elapsed.TotalMilliseconds:F0} ms");
 
             var p0 = IsNotNull(Text(Property(0)));
