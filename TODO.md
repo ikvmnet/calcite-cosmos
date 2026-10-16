@@ -2053,8 +2053,10 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
     licence table's, a deletion asked beside what reaches the service, required translator facts. Interleaved with
     the review's tip (`14d6d46`) rebuilt, four runs each: the corpus new 4.33–4.53 s there and 4.24–4.61 s here, p50
     20–22 ms against 17–19 ms, p90 130–150 ms against 157–164 ms; planned again 1.99–2.09 s against 1.89–2.08 s. The
-    hierarchy, three runs each, planned again on one connection: `MapLinks` p50 2.8–3.5 s against 2.8–3.2 s,
-    `MapLinksByMapName` 2.9–3.6 s against 2.8–3.1 s.
+    hierarchy here, three runs, planned again on one connection: `MapLinks` p50 2.8–3.2 s, `MapLinksByMapName`
+    2.8–3.1 s; over containers built for each plan 2.9–3.3 s and 2.9–3.6 s. (A first build of the tip in a fresh
+    worktree planned the corpus new in 2.5–3.1 s, and rebuilt in the same worktree in 4.3–4.5 s; unexplained, and not
+    the follow-up's, which the rebuilt tip matches.)
 
 **Decided conservatively, and worth deciding properly.**
 - **A row Calcite raises on** is no truth value: it supports no verdict, and an assumption establishes nothing about
