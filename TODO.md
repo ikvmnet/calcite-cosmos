@@ -1446,6 +1446,22 @@ old wording did not allow for.
   paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
+### Two weakenings over one path still share one raw value — *small, found beside the alternatives*
+
+A connection's planner simplifies every filter the split rule makes — `RelOptUtil.registerDefaultRules`
+adds `FILTER_REDUCE_EXPRESSIONS` — and Calcite's simplifier takes every literal one expression is
+compared with in a condition to be of one class. The alternatives a refused text equality pushes broke
+that inside one weakening and no longer do: their number and boolean read the accessor re-typed, or a
+literal boxed as `VARIANT` (`DESIGN.md`, beside *What a refused text equality implies*). Two weakenings
+in one filter still meet on the accessor typed `ANY`, the numeric window's bound being a `DECIMAL` and
+the text comparison's guard a string, so `CAST(JSON_VALUE(DOC, '$.label') AS INTEGER) > 10 AND
+JSON_VALUE(DOC, '$.label') > 'bikes'` fails to plan through a connection with a `ClassCastException`,
+on `main` too, and so does the same bound beside `= '30'`. Measured through the host's prepare, offline
+and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for it
+wants a connection, as `CosmosConnectionFunctionTests` opens one. The fix is the same one, the bound
+reading the value in its own type — but the bound's literal is the type `f9c159e` chose so that the
+service reads it as itself, so it wants that measurement redone rather than a re-typing done blind.
+
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
 `CosmosToClrCursorConverter` is the wire, and since #125 it costs rows times the width it

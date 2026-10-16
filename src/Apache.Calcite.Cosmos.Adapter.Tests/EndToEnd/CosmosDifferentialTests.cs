@@ -1161,6 +1161,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", false),
             ("SELECT CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER), COUNT(*) FROM typed AS c GROUP BY CAST(CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) AS INTEGER)", false),
 
+            // The key against text a boolean renders as, whose alternative compares the key with a
+            // boolean boxed as VARIANT -- the box the number beside '30' takes too, a column having no
+            // call to re-type. Nothing here stores one, so what this checks is that the statement the
+            // box writes runs at the service and loses nothing.
+            ("SELECT c.\"id\" FROM typed AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", false),
+
 
             // ── The probes of the soundness review, kept ─────────────────────────────
             //

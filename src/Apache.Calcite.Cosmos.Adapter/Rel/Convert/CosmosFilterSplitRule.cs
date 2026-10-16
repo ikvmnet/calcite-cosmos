@@ -980,7 +980,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <para>
         /// The branches are written against the value with its type discarded, so that the translator
         /// renders each as the path and does not apply the test it applies to the conjunct: what is
-        /// pushed here is never evaluated by Calcite, only sent.
+        /// pushed here is never evaluated by Calcite, only sent. It is still simplified by Calcite
+        /// wherever a host reduces expressions, so the number and the boolean read the value in their
+        /// own type rather than beside the string in one — see <see cref="EqualsOtherThanText"/>.
         /// </para>
         /// </remarks>
         static RexNode? TryTextEqualityAlternatives(RexNode node, CosmosRexTranslator translator, RexBuilder rexBuilder, string rootAlias)
@@ -1053,11 +1055,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
                 branches.add(double.IsFinite(number)
-                    ? rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
+                    ? EqualsOtherThanText(rexBuilder, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
                     : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
 
             if (text is "true" or "false")
-                branches.add(rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeLiteral(text == "true")));
+                branches.add(EqualsOtherThanText(rexBuilder, value, rexBuilder.makeLiteral(text == "true")));
 
             if (scalarOnly == false && text.Length > 0 && text[0] == '[')
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsArray, new[] { value }));
@@ -1066,6 +1068,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
 
             return RexUtil.composeDisjunction(rexBuilder, branches);
+        }
+
+        /// <summary>
+        /// Writes an alternative that compares the raw value with a number or a boolean, as a
+        /// comparison Calcite's own rules can read beside the one with the string.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>One expression, one kind of literal.</b> Calcite's simplifier takes every literal an
+        /// expression is compared with in one condition to be of one class: it gathers the comparisons
+        /// on an expression into one range set, and it reads each branch of a disjunction under the
+        /// negation of the branches before it, and both compare the literals with each other. The
+        /// alternatives written over one raw value compared a string with a double, or with a boolean,
+        /// and the comparison threw — so <c>JSON_VALUE(DOC, '$.label') = '30'</c> and <c>= 'true'</c>
+        /// failed to plan wherever <c>FILTER_REDUCE_EXPRESSIONS</c> is registered, which a connection
+        /// does by default: Calcite's <c>RelOptUtil.registerDefaultRules</c> adds it last. The bare
+        /// planner this adapter's tests mostly use never simplified the condition, so nothing saw it.
+        /// </para>
+        /// <para>
+        /// <b>So the value is read in the type the comparison needs.</b> An accessor is re-typed to the
+        /// literal's type, which is the accessor with a <c>RETURNING</c> of that type: another
+        /// expression to the simplifier, and to the translator the typed read of the path, which a
+        /// positive equality writes as the path — <c>c.label = 30</c>, as before. Under a host that
+        /// reduces, the boolean's equality folds to the read itself and is written <c>c.label</c> or
+        /// <c>NOT c.label</c>, which the service holds true of that boolean and of nothing else.
+        /// </para>
+        /// <para>
+        /// A field has no call to re-type — a view's column bound to the accessor, or a document-value
+        /// column under a cast to text — and a cast of one to a number is the conversion the translator
+        /// refuses, rightly. Its literal is boxed as <c>VARIANT</c> instead, the box Calcite's own
+        /// coercion puts around a literal compared with a raw value: the translator writes it as the
+        /// literal, and the simplifier does not read it as one. The box costs what Calcite charges for
+        /// every comparison with a <c>VARIANT</c>: the simplifier hands the cast to the executor, which
+        /// compiles it, each time it simplifies the filter — nine compilations and between one and a
+        /// half and three seconds of planning for <c>CAST(c."$.category" AS VARCHAR) = '30'</c>,
+        /// measured through a connection. The accessor is the spelling nearly every caller writes and
+        /// costs nothing, which is why the two are not one.
+        /// </para>
+        /// </remarks>
+        /// <param name="rexBuilder">Builds the comparison.</param>
+        /// <param name="value">The raw value: an accessor typed <c>ANY</c>, or a field.</param>
+        /// <param name="literal">A number or a boolean.</param>
+        static RexNode EqualsOtherThanText(RexBuilder rexBuilder, RexNode value, RexLiteral literal)
+        {
+            var types = rexBuilder.getTypeFactory();
+
+            if (value is RexCall accessor && accessor.getOperator().getName() == "JSON_VALUE")
+                return rexBuilder.makeCall(
+                    SqlStdOperatorTable.EQUALS,
+                    rexBuilder.makeCall(types.createTypeWithNullability(literal.getType(), true), accessor.getOperator(), accessor.getOperands()),
+                    literal);
+
+            var variant = types.createSqlType(org.apache.calcite.sql.type.SqlTypeName.VARIANT);
+            return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, value, rexBuilder.makeAbstractCast(variant, literal, false));
         }
 
         /// <summary>

@@ -5,41 +5,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
     /// <summary>
-    /// Where a measured axiom was measured.
-    /// </summary>
-    [Flags]
-    internal enum CosmosAxiomTarget
-    {
-
-        /// <summary>
-        /// The Cosmos DB emulator, <c>vnext-preview</c>.
-        /// </summary>
-        Emulator = 1,
-
-        /// <summary>
-        /// A real Azure Cosmos DB account.
-        /// </summary>
-        Azure = 2,
-
-        /// <summary>
-        /// Calcite's own runtime at the version the adapter pins, with no service involved.
-        /// </summary>
-        Calcite = 4,
-
-    }
-
-    /// <summary>
-    /// One measured fact a pushdown relies on.
-    /// </summary>
-    /// <param name="Id">A stable name, <c>Service.</c> or <c>Calcite.</c> by what was measured.</param>
-    /// <param name="Statement">What holds, in a sentence or two, as the measurement asserts it.</param>
-    /// <param name="MeasuredOn">Every target the measurement has been run against and passed.</param>
-    /// <param name="Measured">When it was first measured.</param>
-    /// <param name="PinnedBy">The test that measures it, relative to the test assembly's root
-    /// namespace: <c>Measurements.CosmosJsonTypeMeasurementTests.IsPrimitiveIsFalseOverAnAbsentPath</c>.</param>
-    internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy);
-
-    /// <summary>
     /// The measured facts about the service and about Calcite's runtime that a pushdown relies on,
     /// one row each, with where and when each was measured and the test that pins it.
     /// </summary>

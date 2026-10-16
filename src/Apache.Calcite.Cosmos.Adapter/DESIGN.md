@@ -2078,6 +2078,23 @@ translator pushes it exactly — its literal test is the narrower one, `IsUnambi
 branches are written against the accessor with its type discarded, which is how the translator is
 told to render the path without applying the conjunct's test to a branch that is not the conjunct.
 
+**And each branch reads the value in its own literal's type, because Calcite simplifies what it is
+never asked to evaluate.** The branches were first written over one raw value, a string beside a
+double or a boolean, and a connection could not plan them: `RelOptUtil.registerDefaultRules` adds
+`FILTER_REDUCE_EXPRESSIONS` to every connection's planner, and its simplifier takes the literals one
+expression is compared with to be of one class — it gathers them into one range set, and reads each
+branch of a disjunction under the negation of those before it. `= '30'` and `= 'true'` threw a
+`ClassCastException` there, measured through a connection against the emulator; the bare planner most
+tests use never simplified the filter. So the string branch compares the accessor typed `ANY`, and the number and
+the boolean compare it re-typed to the literal's type, which is the accessor with a `RETURNING` of
+that type and a separate expression to the simplifier. The statement is unchanged — `c.x = 30` — but
+for the boolean under a reducing host, whose equality with `TRUE` folds to the read and is written
+`c.x`, true of the stored `true` and of nothing else. A column has no call to re-type, and a cast of
+one to a number is a conversion the translator refuses, so its literal is boxed as `VARIANT` instead,
+the box Calcite's own coercion uses. That box is not free — the simplifier hands a cast of a literal
+to the executor, which compiles it every time — which is why the accessor, the spelling nearly every
+caller writes, is not boxed too.
+
 The literal is what carries the argument, so the literal is what is checked. Anything that parses as a
 number, `true`, `false`, `null`, and anything opening with a bracket or a quote are refused, because a
 non-string value could have rendered as them. This is not caution for its own sake: in the differential
