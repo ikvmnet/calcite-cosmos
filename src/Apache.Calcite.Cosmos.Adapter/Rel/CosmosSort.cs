@@ -78,9 +78,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </para>
         /// <para>
         /// So the sort asks what the lookup join's restriction and a grouping key ask —
-        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, whose one exception for text is a path the
-        /// container declares a string outright — and the rule and the node each ask it of the binding
-        /// their own walk produced, so that the two cannot disagree.
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/>, whose one exception for text is a path what
+        /// is known of the rows says holds a string — and the rule and the node each ask it of the
+        /// binding their own walk produced and of the facts the rule decided under, so that the two
+        /// cannot disagree.
         /// </para>
         /// <para>
         /// <b>A typed accessor is asked too, and it is the sort that needs it.</b> A <c>RETURNING</c>
@@ -90,8 +91,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// three came back <c>[null, null, 30]</c> where SQL answers three nulls, and <c>RETURNING
         /// BOOLEAN</c> <c>[null, null, true]</c>. Unpaged, the same order failed the read on the object
         /// before the projection was guarded, and with the guard it would have answered in the wrong
-        /// order. So the key is the stored value only where the container declares the path the type
-        /// the clause names, or null, outright. The grouping and the lookup take a typed accessor
+        /// order. So the key is the stored value only where what is known of the rows sorted gives the
+        /// path the type the clause names, or null. The grouping and the lookup take a typed accessor
         /// before asking, the one grouping by its guard and the other restricting by a typed parameter;
         /// ordering has nothing to take it by, the service ordering only a path.
         /// </para>

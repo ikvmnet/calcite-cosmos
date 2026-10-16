@@ -2060,8 +2060,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// over the differential suite's typed container,
         /// <c>JSON_VALUE(DOC, '$.label' RETURNING INTEGER)</c> ordered <c>NULLS FIRST</c> under a page
         /// of three came back <c>[null, null, 30]</c> where SQL answers three nulls, the array and the
-        /// object that read null having sorted last. So it is the stored value where the container
-        /// declares the path the type its test names, or null, outright — the test a null test and a
+        /// object that read null having sorted last. So it is the stored value where the facts the
+        /// caller was handed give the path the type its test names, or null — the test a null test and a
         /// comparison read the field by too (<see cref="TypedFieldTest"/>), and none for the service's
         /// own <c>id</c>, <c>_ts</c> and <c>_etag</c> or a promoted <c>VARIANT</c> column, each being
         /// the raw value.

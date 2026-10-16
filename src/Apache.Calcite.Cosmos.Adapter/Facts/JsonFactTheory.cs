@@ -206,14 +206,23 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Saturates a query's established facts beneath the container's declaration.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The facts a query establishes are read off its predicate — an equality pins a value and says the path is
         /// there, an <c>IN</c> a domain, an <c>IS NOT NULL</c> a presence. What comes back knows those and everything the
         /// rules of JSON, of JSON Schema and of the declaration prove from them beside what the declaration states.
         /// Asked with nothing, it is the declaration's own context, which every query's lies beneath.
+        /// </para>
+        /// <para>
+        /// <b>The oracle's to ask, and nobody else's.</b> The planner reads every fact through the predicate oracle,
+        /// which asks this of nothing — the declaration's own context, <see cref="CosmosOracle.Declared"/> — and puts
+        /// contexts of its own beneath it for what a filter establishes, chosen by the question's licence. A call site
+        /// asking this of a filter's facts or of none was a call site choosing facts, which the licence table exists to
+        /// forbid, and none is left. What still asks it of facts are the theory's own tests.
+        /// </para>
         /// </remarks>
         /// <param name="established">What the query proved, which may be empty.</param>
         /// <returns>What is known.</returns>
-        public JsonFactSet Derive(IEnumerable<JsonFact>? established)
+        internal JsonFactSet Derive(IEnumerable<JsonFact>? established)
         {
             var facts = Distinct(established);
             if (facts.Length == 0 && _rules.Length == 0)

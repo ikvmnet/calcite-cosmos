@@ -60,8 +60,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <item><description>
     /// <b>A key whose column holds the stored value.</b> The restriction compares the raw value, and a
     /// column reading a <c>JSON_VALUE</c> as text carries its rendering: a stored number matches the
-    /// key <c>'30'</c> in process and not at the service. Such a key is restricted only where the
-    /// container declares the path a string. See <see cref="IsRestrictedAsStored"/>.
+    /// key <c>'30'</c> in process and not at the service. Such a key is restricted only where what is
+    /// known of the probe's rows says the path holds a string. See <see cref="IsRestrictedAsStored"/>.
     /// </description></item>
     /// </list>
     /// </remarks>
