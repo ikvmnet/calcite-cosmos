@@ -376,8 +376,15 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly StatementTerms _terms;
         readonly int[] _round;
         readonly StatementTerms.Node?[] _before;
-        readonly StatementTerms.Node _final;
         readonly List<StatementTerms.Node> _chain = new();
+        readonly object _lock = new();
+        StatementTerms.Node _final;
+
+        /// <summary>
+        /// The last round's stratum where every conjunct was admitted before it was opened: what it assumes beneath what,
+        /// opened only where a question asks of every admitted conjunct.
+        /// </summary>
+        (StatementTerms.Node Parent, SqlPredicate[] Assumed)? _pending;
 
         internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<int, JsonFactSet, bool>? renders, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null)
         {
@@ -412,6 +419,15 @@ namespace Apache.Calcite.Cosmos.Facts
                     }
 
                     strata.Add(added);
+
+                    // Once every conjunct is admitted no round reads another stratum, and a filter pushed whole asks
+                    // nothing of the last: it is opened when something asks of every admitted conjunct.
+                    if (strata.Sum(s => s.Count) == count)
+                    {
+                        _pending = (node, added.Select(i => statement.Conjuncts[i]).ToArray());
+                        break;
+                    }
+
                     node = terms.Child(node, added.Select(i => statement.Conjuncts[i]));
                     _chain.Add(node);
 
@@ -444,12 +460,45 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Gets whether every context the admission opened ran to completion or to a contradiction.
         /// </summary>
-        public bool Complete => _chain.All(node => node.Complete);
+        public bool Complete => Chain.All(node => node.Complete);
 
         /// <summary>
         /// Gets the reports of the runs that opened each stratum, for measurement: a gate reads their stop reasons.
         /// </summary>
-        public IReadOnlyList<RunReport> Reports => _chain.Select(node => node.Report).OfType<RunReport>().ToArray();
+        public IReadOnlyList<RunReport> Reports => Chain.Select(node => node.Report).OfType<RunReport>().ToArray();
+
+        /// <summary>
+        /// The last stratum: every admitted conjunct's facts, opened now if it was left until asked for.
+        /// </summary>
+        StatementTerms.Node Final
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    if (_pending is { } pending)
+                    {
+                        _final = _terms.Child(pending.Parent, pending.Assumed);
+                        _chain.Add(_final);
+                        _pending = null;
+                    }
+
+                    return _final;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The strata, the last opened.
+        /// </summary>
+        List<StatementTerms.Node> Chain
+        {
+            get
+            {
+                _ = Final;
+                return _chain;
+            }
+        }
 
         /// <summary>
         /// Returns the round that admitted a conjunct, counting from one, or zero where none did.
@@ -470,7 +519,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 OracleQuestion.RenderConjunct when _round[Check(licence.Conjunct)] > 0 =>
                     all.Where(i => _round[i] > 0 && _round[i] < _round[licence.Conjunct]).ToArray(),
                 OracleQuestion.RenderConjunct or OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy =>
-                    all.Where(i => _round[i] > 0 && _chain.Count > _round[i] && _chain[_round[i]].Complete).ToArray(),
+                    all.Where(i => _round[i] > 0 && Chain.Count > _round[i] && Chain[_round[i]].Complete).ToArray(),
                 OracleQuestion.DeleteConjunct or OracleQuestion.Redundant or OracleQuestion.Arm =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
                 OracleQuestion.Kept =>
@@ -582,7 +631,7 @@ namespace Apache.Calcite.Cosmos.Facts
             switch (licence.Question)
             {
                 case OracleQuestion.RenderConjunct:
-                    return _before[Check(licence.Conjunct)] ?? _final;
+                    return _before[Check(licence.Conjunct)] ?? Final;
 
                 case OracleQuestion.DeleteConjunct or OracleQuestion.Redundant:
                 {
@@ -603,7 +652,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => Pins(c, licence.Pins!)));
 
                 case OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy:
-                    return _final;
+                    return Final;
 
                 default:
                     return _terms.Root;

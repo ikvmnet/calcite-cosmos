@@ -114,6 +114,12 @@ the path holds an object, an array or a string, and the service sorts those afte
 than with the nulls; `"type": "integer"` or `"number"` (or `"boolean"` for `RETURNING BOOLEAN`), alone
 or with `"null"`, says nothing else is there, and the sort is sent (Chapter 9.3).
 
+A declaration inside one kind's branch (14.4) does the same once another conjunct proves the branch:
+`kind = 'shipment' AND carrier = 'DHL'` sends the second comparison exactly where the shipment branch
+declares `carrier` a string. Each conjunct is sent on what the conjuncts sent beside it prove, and never
+on what it proves itself — `carrier = '30'` alone proves only that the path renders as `30`, which a
+stored number does too.
+
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
 would otherwise send only for the recheck to discard. So does a path the query itself compares: a
 comparison keeps only documents that have the path, so `c.carrier = 'x'` beside a weakened comparison on

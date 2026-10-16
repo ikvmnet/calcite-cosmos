@@ -135,6 +135,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }""")!));
 
         /// <summary>
+        /// A fifth container, of three kinds, whose declaration is conditional: <c>label</c> a string in kind <c>a</c>
+        /// and an integer in kind <c>b</c>, a canonical UUID <c>ref</c> in kinds <c>a</c> and <c>c</c>, and <c>kind</c>
+        /// required and one of the three — <see cref="Planning.CosmosPushdownProbeTests.KindsSchema"/>.
+        /// </summary>
+        /// <remarks>
+        /// What a filter's siblings prove, rather than the declaration alone, is what the predicate oracle decides that
+        /// the planner before it did not: an equality over <c>label</c> exact beside <c>kind = 'a'</c>, a membership
+        /// covering the required enum deleted, a kind the enum has not kept nothing, a UUID lowered under each kind a
+        /// disjunction spells. Every document keeps the declaration, as <c>declared</c>'s do.
+        /// </remarks>
+        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.KindsSchema)!));
+
+        /// <summary>
+        /// The documents <see cref="Kinds"/> holds: each kind with and without what it declares, a string <c>"30"</c> and
+        /// an integer 30 at <c>label</c> in the two kinds that differ there.
+        /// </summary>
+        static readonly string[] KindsDocuments =
+        [
+            """{"id":"1","category":"k","kind":"a","label":"30","ref":"123e4567-e89b-12d3-a456-426614174000","n":1}""",
+            """{"id":"2","category":"k","kind":"a","label":"zebra","ref":"223e4567-e89b-12d3-a456-426614174000"}""",
+            """{"id":"3","category":"k","kind":"a","label":"x","ref":"123e4567-e89b-12d3-a456-426614174000","n":2}""",
+            """{"id":"4","category":"k","kind":"b","label":30,"n":1}""",
+            """{"id":"5","category":"k","kind":"b","label":7}""",
+            """{"id":"6","category":"k","kind":"c","ref":"123e4567-e89b-12d3-a456-426614174000","n":1}""",
+            """{"id":"7","category":"k","kind":"c","ref":"323e4567-e89b-12d3-a456-426614174000"}""",
+            """{"id":"8","category":"k","kind":"a"}""",
+            """{"id":"9","category":"k","kind":"b"}""",
+        ];
+
+        /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
         /// category and one with none, which land in different groups than either expects; names for
         /// the LIKE shapes; a nested object and arrays.
@@ -228,6 +259,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static Container? _typedContainer;
         static Container? _orderingContainer;
         static Container? _declaredContainer;
+        static Container? _kindsContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -256,6 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
                 _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
                 _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
+                _kindsContainer = await Seed(database, "kinds", KindsDocuments, cts.Token);
 
                 _client = client;
             }
@@ -268,6 +301,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _typedContainer = null;
                 _orderingContainer = null;
                 _declaredContainer = null;
+                _kindsContainer = null;
             }
         }
 
@@ -305,6 +339,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _typedContainer = null;
             _orderingContainer = null;
             _declaredContainer = null;
+            _kindsContainer = null;
         }
 
         sealed class TestDataContext : DataContext
@@ -343,12 +378,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
             var ordering = new CosmosTable(Ordering, Recorded(new CosmosQueryExecutor(_orderingContainer!), sent));
             var declared = new CosmosTable(Declared, Recorded(new CosmosQueryExecutor(_declaredContainer!), sent));
+            var kinds = new CosmosTable(Kinds, Recorded(new CosmosQueryExecutor(_kindsContainer!), sent));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
             rootSchema.add("typed", typed);
             rootSchema.add("ordering", ordering);
             rootSchema.add("declared", declared);
+            rootSchema.add("kinds", kinds);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -381,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention })
+            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention, kinds.Convention })
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -1473,6 +1510,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
             ("SELECT c.\"id\" FROM products AS c WHERE CAST((c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') AS VARCHAR) = 'FALSE'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" IN ('bikes', INITCAP(JSON_VALUE(c.\"DOC\", '$.name'))) OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'B-2') AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A'))", false),
+
+            // ── What the predicate oracle decides, and the planner before it did not ─
+            //
+            // Over the kinds, a declaration each kind states differently: what a sibling conjunct proves, what the
+            // declaration guarantees, what it refutes, and a disjunction spelled per kind. The probes'
+            // definedness test is the one left out, IS_DEFINED being no operator this validator knows.
+            .. Planning.CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal) == false).Select(p => ($"SELECT c.\"id\" FROM kinds AS c WHERE {p.Where}", false)),
         ];
 
         /// <summary>

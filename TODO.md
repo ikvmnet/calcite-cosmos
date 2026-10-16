@@ -1281,12 +1281,12 @@ the distribution the gate is sized for.
   process, though the filter reaches the service exactly — unambiguous text matches a stored string
   and nothing else — so every row the sort sees holds a string at the path and the service's order is
   SQL's. Before the sort asked how its key was read it pushed, and agreed. `IsReadAsStored` asks the
-  declaration alone, `Derive(null)`, for the reason `IsDeclaredStringOutright` gives: a fact the
-  query proved certifies the conjunct it came from. A sibling filter is not that conjunct, and the
-  remarks there say the ordering may use it. Recovering it means handing the sort the facts a filter
-  *pushed beneath it* entails — only those that reached the service exactly, so not a weakening's,
-  which keeps the comparison above — and asking them for the type, which reaches a typed key under
-  `IS NOT NULL` or a range too. The planner corpus has no such statement.
+  facts the sort's translator is handed, and `CosmosSortRule` hands it the declaration alone,
+  `Derive(null)`. The licence table gives a sort the last stratum of the filter beneath it (L1), which
+  holds what every conjunct that reached the service establishes and nothing a weakening does — so
+  this is Stage 3b's sort site moving onto the oracle (*The predicate oracle*, below), and asking the
+  stratum for the type reaches a typed key under `IS NOT NULL` or a range too. The planner corpus has
+  no such statement.
 - **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
   to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
   does, and the service by code point, so the two part where a character above U+FFFF meets one
@@ -1938,41 +1938,48 @@ holds. Three bugs planted in what was added were each caught by it.
 pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
 schema (*A declaration is trusted*).
 
-### The predicate oracle — *Stage 1's core and its checker built, in shadow; its gate is not run*
+### The predicate oracle — *in the planner for rendering a filter; its rewrite and the clauses after it are left*
 
-Stage 1 of moving the pushdown reasoning onto Eggnog, on the family where its closure is used most: which facts may
-justify which rewrite of a `WHERE` conjunct. Eggnog decides what is true, the host what is written and what is legal,
-Volcano which plan. `DESIGN.md`, from *Predicates as facts: the oracle, in shadow* through *How the oracle is
-checked: population D*, is the record; `Facts/Saturation/README.md` is the catalogue. Nothing in the planner calls it.
+Eggnog decides what is true, the host what is written and what is legal, Volcano which plan. The oracle was built
+and measured in shadow (Stage 1), and now answers what rendering a filter asks: the filter rule's whether it pushes
+whole, the implementor's rendering, the split rule's which conjuncts push and from what a weakening is rendered, and
+the translator's every question of a type. `DESIGN.md`, from *Predicates as facts: the oracle* through *How the
+oracle is checked: population D*, is the record; `Facts/Saturation/README.md` is the catalogue.
 
 **What is built.**
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
   the text accessor, the raw value, `RETURNING`, the numeric cast and the cast to text as readings of their own;
-  comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `AND`, `OR`, `NOT`; everything else opaque.
-- **`PredicateRules`**, 44 rules and a split beside `JsonRules`: analysis, what a predicate taking a truth value
-  establishes (the rendering preimage and the numeric window among it), the split over a junction's arms, and the
-  verdicts with twelve connectives. Every constructor is unextractable.
-- **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata a conjunct is admitted in, the
-  licence table, and the questions (`Judge`, `Decide`, `Facts`, `Knows`, `FactsFor`, `IsContradictory`,
-  `DecideGiven`, `IsRedundant`, `RedundantConjuncts`). The renderer is today's `TryTranslate`.
-- **Tests**: 82 unit tests in `Tests/Facts` and `Tests/Metadata`, among them #117's self-certification shown
-  underivable three ways, and a property test holding what an atom establishes to what it decides. A measurement at
-  `MeasureTests`' sizes, beside the planner's `Derive` of the same facts.
-- **The population-D checker** (`Tests/Facts/Saturation/PopulationD.cs`): random declarations with a
-  discriminator, `required`, `const`, enums, types and bounds; random filters over their paths in the IR; 64
-  documents drawn from each declaration, with renderings that collide; and every fact, claim, verdict, row, atom,
-  e-node and handed stratum checked on the documents its scope admits, against `IrEval`, an evaluator of the IR
-  written from measurements. `IrEvalCalciteTests` holds the evaluator to Calcite's runtime. It found two rows of
-  the table wrong — an integer cast of the accessor, and `RETURNING DECIMAL` — both fixed.
-- **The planted-bug suite** (`PlantedBugTests`): the six faults the plan names and a union only C5 sees, each caught
-  within a run's 200 trials.
+  comparisons with a literal or a parameter, `IN`, `IS [NOT] NULL`, `IS_DEFINED`, `AND`, `OR`, `NOT`; everything else
+  opaque. `RETURNING DECIMAL` and the constants a conversion is compared with are read as the translator and
+  `CosmosNumericWindow` read them.
+- **`PredicateRules`**, 45 rules and a split beside `JsonRules`. Every constructor is unextractable.
+- **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata, the licence table with the
+  arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
+  strata over a declaration with no conditional rule read off `JsonFactOverlay`, and the planner's own graphs.
+- **`CosmosFilterStatement`**: a filter as the oracle reads it, remembered against its condition node, and the
+  questions the rules that render it ask. The split rule's two passes and every `Derive` at a site that renders a
+  filter are gone, and so are the translator's four questions of a type, now one.
+- **Tests**: the oracle's unit tests; the population-D checker and the planted-bug suite, asking the arm and the whole
+  filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`; and the kinds container in
+  `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it did not to Calcite on the
+  emulator. `CosmosPushdownProbeTests` and `CosmosPlanningTimeTests`, explicit, put a change beside the commit before
+  it.
 
-**What is left of the stage.**
-- **The shadow harness** — *medium.* At each `Derive` site, at the rewriter's TRUE, FALSE and lowering decisions,
-  at `Establish`, guard deletion and `AlreadyBelow`: the question, today's answer, the oracle's, and the time.
-  `CosmosPredicateLoader.TryLoad` and `Renderer` are the entry from a `Filter`.
+**What is left.**
+- **The rewriter's fact half** — *medium, the next step.* Its contradiction, its deletion of a conjunct the
+  declaration guarantees, its lowering onto a stored form and its `CASE` arms still read `CosmosFactExtractor` and
+  `Derive`; the licence table has a row for each. So does the split rule's digest test of what is beneath.
 - **The defect replay** — *medium.* #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4 and gaps
   1–5, each answered by the general rules or counted as needing its own.
+- **Stage 3b: the clauses after the filter** — *medium.* A projection, a sort, a grouping, a point read and a key
+  still read the declaration directly (`Derive(null)` at `CosmosProjectRule`, `CosmosProjectSplitRule`,
+  `CosmosProjectResidualRule`, `CosmosProject`, `CosmosSortRule`, `CosmosSort`, `CosmosAggregate`,
+  `CosmosSelfJoinRule`, `CosmosLookupJoinRule`), where the licence table gives them the last stratum of the filters
+  beneath (L1): a sort over `category = 'bikes'` knows `category` is present, and a projection over `kind = 'B'`
+  knows `ref`'s form. The shadow counted 243 such decisions on the corpus alone.
+- **The translator over the IR** — *large, Stage 3a's other half.* The weakening's window is
+  `CosmosNumericWindow`'s and the atom's both, agreeing through one constant and one reading of a literal, until a
+  translator over the IR takes it from the one.
 - **What the checker does not reach yet** — *small each.*
   - **The raw readings against Calcite.** A `VARIANT` is the adapter reader's, so C2 needs the reader's
     materialisation of a document, or the emulator; until then the evaluator draws them from the table, which tests
@@ -1999,9 +2006,9 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   `Measurements/` would let the table read it.
 - **`NOT` of what is only ever UNKNOWN** is not decided to keep nothing. A fourth verdict, never-false, would decide
   it, at six connectives more.
-- **The numeric window's arithmetic** is in `CosmosNumericWindow` and in `PredicateAtom` both, until the translator
-  over the IR takes the window from the one.
-- **`IS_DEFINED`, `CASE`, `LIKE` and the string functions** load as opaque.
+- **A literal under a cast to `FLOAT` or `REAL`** is not read, the cast changing it; nor a `DECIMAL` cast that drops
+  its scale, except against `RETURNING DECIMAL`, whose atom knows the literal moves.
+- **`CASE`, `LIKE` and the string functions** load as opaque.
 
 ### Constraints beyond `UNIQUE`, and what the self-join merge does not reach yet
 

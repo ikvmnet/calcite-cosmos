@@ -561,7 +561,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (DocumentPathOf(policy) is not JsonDocumentPath path)
                     continue;
 
-                outright ??= container.Facts.Derive(null);
+                // The oracle's route licence: what holds of every document (L0).
+                outright ??= CosmosOracle.For(container.Facts).Declared;
 
                 if (outright.Knows(new JsonFact(path, new JsonClaim.Present())) == false)
                     continue;

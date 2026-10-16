@@ -310,9 +310,10 @@ and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1â€
 ## Predicates, for the oracle
 
 `PredicateRules` is defined beside `JsonRules` in the same graph, for the predicate oracle (`Facts/CosmosOracle.cs`),
-which nothing in the planner calls yet. It is defined in a generation's graph the first time the oracle asks, and the
-oracle reasons in generations of its own, so a graph the planner reads never holds it. `DESIGN.md`, under *Predicates
-as facts* and the two sections after it, is the record.
+which the rules that render a filter ask through `Metadata/CosmosFilterStatement.cs`. It is defined in a generation's
+graph the first time the oracle asks, in the generations the declaration compiles into, and its rulesets run only in
+the oracle's schedules, so a query context the planner opens for itself pays nothing for them. `DESIGN.md`, under
+*Predicates as facts* and the sections after it, is the record.
 
 **Vocabulary.** Two sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute.
 
@@ -323,7 +324,7 @@ as facts* and the two sections after it, is the record.
 | `typed(p, T)` | `JSON_VALUE(â€¦ RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
 | `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
 | `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
-| `compare(op, v, w)`, `in(v, S)`, `is null(v)` | the atoms |
+| `compare(op, v, w)`, `in(v, S)`, `is null(v)`, `is defined(v)` | the atoms; `is defined` asks of the document, whatever the reading |
 | `and`, `or`, `not`, `opaque(n)` | the connectives, right-nested in digest order; what the loader does not read |
 
 | table | means |
@@ -340,9 +341,9 @@ questions, each an over-approximation: what a row on which the atom takes a trut
 (`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
 on is no truth value: it is no row a predicate keeps, and it supports no verdict.
 
-**The rules**, 44 of them and a split.
-- **Analysis** (8): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
-  parameter, a membership and a null test are each an atom of what they read.
+**The rules**, 45 of them and a split.
+- **Analysis** (9): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
+  parameter, a membership, a null test and a definedness test are each an atom of what they read.
 - **What a predicate taking a truth value establishes** (12):
   - a conjunction that holds holds on both sides, and a disjunction that fails fails on both;
   - a negation takes the other truth value of its operand;
@@ -370,8 +371,11 @@ verdicts.
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
   lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
-- `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, and an incomplete run;
-- `CosmosPredicateLoaderTests`: the loader, and #117 through today's translator;
+- `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, what a scope assumes, and
+  an incomplete run;
+- `CosmosPredicateLoaderTests`: the loader, `RETURNING DECIMAL` and the constants a conversion is compared with, and
+  #117 through the translator;
+- `JsonFactOverlayTests`: a stratum read off the overlay, against the engine's context for it;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
   their paths, and 64 documents drawn from each declaration and not from its filter. Every fact a context holds, row

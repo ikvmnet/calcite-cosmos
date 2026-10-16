@@ -807,17 +807,27 @@ disequality with null rules out, changes no answer a set gives. An undeclared co
 context now, and plans as fast as it did on the closure: 8–16 ms a plan against 11–14 ms, over three
 runs alternating the two on one workstation, where the engine had taken about twice the closure's time.
 
+The predicate oracle's strata are read off it the same way (*The oracle in the planner*, below). What a stratum
+assumes is read path by path as `PredicateAtom.Kept` reads each conjunct, met in `PathValues`' lattice, and the
+rules of JSON that apply on one path are written out — a domain is of its own types, a JSON null excluded leaves
+every other type, types of booleans or of null alone are a domain — and two bounds, or several values excluded
+beside no domain, go to the engine. `AStratumReadOffTheOverlayAnswersAsItsContextDoes` holds six hundred
+generated statements to the engine's context for the same stratum.
+
 **Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
 is invented.
 
-#### Predicates as facts: the oracle, in shadow
+#### Predicates as facts: the oracle
 
 The planner reads a filter's facts through a dozen sites, each deciding for itself which conjuncts to read and what
-they prove: `CosmosFactExtractor`'s dispatch, the split rule's `Establish`, the rewriter's tautology test, the
+they prove: `CosmosFactExtractor`'s dispatch, the split rule's two passes, the rewriter's tautology test, the
 translator's choice between outright and established facts. A defect in that family has usually been the same
-knowledge reaching one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement, built in
-shadow: nothing the planner runs calls it, and it exists to be measured against what the planner decides.
+knowledge reaching one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement: one
+statement per filter, every question about it answered from the facts its licence admits, and no site choosing facts.
+It was built in shadow and measured beside the sites it replaces, 97.3 % of 114,922 decisions agreeing and every other
+one explained, and a filter is now rendered from it (*The oracle in the planner*, below). The rewriter still reads
+what the extractor reads.
 
 **Eggnog decides what is true; the host decides what is written and what is legal; Volcano decides which plan.**
 The oracle loads a filter's conjuncts into the theory of JSON as terms, beside `JsonRules` in the same graph
@@ -836,7 +846,15 @@ into the typed IR's predicate subset (`SqlValue`, `SqlPredicate`):
 - `cast(T, v)` is a numeric cast, or the cast to text over a raw value, which renders an object and an array too.
 
 Comparisons with a literal or a parameter, `IN` (a `SEARCH` expanded and read back as one membership),
-`IS [NOT] NULL`, `AND`, `OR` and `NOT` are read. Everything else is `opaque`, which proves nothing and decides nothing.
+`IS [NOT] NULL`, `IS_DEFINED`, `AND`, `OR` and `NOT` are read. Everything else is `opaque`, which proves nothing and
+decides nothing. `IS_DEFINED` asks of the document whatever the reading, as the service and the in-process body do:
+true where the path is there, a JSON null included, and never unknown. Opaque, a definedness test established
+nothing, and a weakening beside one kept a test the presence it states would have deleted.
+
+`RETURNING DECIMAL` addresses no path: it is the cast of the rendering written as a clause, and
+`CosmosRexTranslator.TryNumericCastOperand` reads it so, returning the text it converts. The loader asks that, and
+names the reading whose meaning is that parse, `typed(p, DECIMAL)`; a cast is read the same way, so what a
+conversion is and what it is compared with are the translator's to recognise and the atom's to say, once each.
 
 **What an atom means is written once.** `PredicateAtom` is a reading, a test and an operand, and it answers two
 questions. `Kept` is what a row on which the atom takes a truth value can hold at its path, which is what an assumed
@@ -888,7 +906,9 @@ shape and per table. These give tautology the shapes `IsAlwaysTrue` lacks: an `I
 one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy.
 
 **What a context assumes, it has decided.** A predicate holding with a truth value on every row a context admits has
-that verdict there, whatever its atoms can be said to mean. Without the two rules that say so, a predicate given was
+that verdict there, whatever its atoms can be said to mean. The host reads the same of a predicate a context assumes,
+and of a conjunction of what it assumes, off the assumptions themselves and before any run, so that the answer rests
+on no run the engine might not finish. Without the two rules that say so, a predicate given was
 decided only where its atoms decided it, so an opaque one — a definedness test beside a type test, which is what the
 split rule pushes as a weakening — was never redundant beside itself, and a planner asking the oracle whether a
 weakening is already beneath a filter would push it under itself for ever. Two opaque duplicates were both kept. The
@@ -896,7 +916,8 @@ verdicts are read after the splits, and what holds inside a case is never lifted
 
 #### Which facts may justify what
 
-The soundness review's statement of the criterion, which the planner approximates per site:
+The soundness review's statement of the criterion, which the planner once approximated per site and now asks of
+one table:
 
 - facts from siblings or from the declaration may justify any rewrite;
 - a conjunct's own facts may justify only a strengthening, and the oracle never offers them;
@@ -908,7 +929,8 @@ stratum below. So nothing a conjunct establishes is ever among the facts it was 
 conjuncts cannot license each other: the later one was rendered from the earlier one's facts, never the reverse.
 #117 had a conjunct certify its own exactness from a fact its own rendering established; in the strata it cannot be
 written, and `TheSelfCertificationOf117CannotBeDerived` shows each way it could have been. The first stratum is the
-declaration; today's `Establish` hands its unaided pass nothing at all.
+declaration. The split rule's two passes were the strata cut at two rounds, the first handed nothing at all; a
+conjunct the second round's facts would admit, and which admits a third, was left above.
 
 **The licence table**, in one place (`CosmosStatementScope.ScopeFor`), so that no call site chooses facts:
 
@@ -924,9 +946,8 @@ declaration; today's `Establish` hands its unaided pass nothing at all.
 duplicates do not delete each other. "If I add X, is Y irrelevant?" is `DecideGiven(Y, X)`: Y always true where X
 holds.
 
-The planner's own choices, described under *A guard exists to admit what a fact would have excluded* and *What makes
-a split sound*, still decide every plan. The table is what they would be replaced by, and the shadow harness the
-next stage builds compares the two at each site.
+The rewriter's own choices, described under *A deletion reads only the declaration*, still decide what a filter is
+rewritten to. The table's rows for a deletion are what they will be replaced by.
 
 #### What the oracle promises, and what it costs
 
@@ -941,9 +962,11 @@ under hash-consing. The only unions in the graph are `JsonRules`', of paths.
 the engine cannot open, is released, and the stratum it would have been reads the one above it, whose facts hold of
 the fewer documents below. A contradiction is no failure: it is the answer that nothing is kept.
 
-**Its own graphs.** A theory is bound to the oracle's own generations, apart from those the planner reasons in, and
-`PredicateRules` is defined in a graph only when the oracle first asks of it. Asking the oracle defines nothing in a
-graph a plan reads.
+**The planner's graphs.** `CosmosOracle.For` reasons in the generations the declaration compiles into, so a
+declaration compiles once whoever asks: the oracle, and the clauses that still read the declaration directly.
+`PredicateRules` is defined in a graph when the oracle first asks of it, and its rulesets run only in the oracle's
+schedules, so a query context the planner opens for itself pays nothing for them. A test makes an oracle in graphs
+of its own, so that no test reads another's memo.
 
 **One tree of contexts per statement**, remembered by a digest that ignores the conjuncts' order, beneath the
 declaration's frozen context. The strata and the leave-one-out children each hold the statement's terms and their
@@ -969,6 +992,36 @@ is frozen; what `Derive` cannot do at all — the disjunction per kind — costs
 statement already asked costs about a millisecond. Stage 1's gate asks p50 within 2 ms and p95 within 11 ms per
 distinct question: a new statement is outside it, a question of an existing one inside, and what each costs once
 Eggnog's idle rules allocate nothing is the measurement still owed.
+
+#### The oracle in the planner
+
+**One statement per filter, asked by every rule that renders it.** `Metadata/CosmosFilterStatement.cs` is a
+filter as the oracle reads it: its conjuncts, loaded once through the input's binding; the statement the oracle holds
+for them; and the questions a rule asks, each named for its licence rather than for the rule that asks it.
+
+| who asks | what | the licence |
+| --- | --- | --- |
+| `CosmosFilterRule`, whether the filter pushes whole | `Renders` | each conjunct from the stratum before the one that admitted it (L2) |
+| `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
+| `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
+| the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
+| the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence; the declaration where it named none (L0) |
+| routing, the partition key's declared value | `CosmosOracle.Declared` | L0 |
+
+What these replaced: a fact extractor reading a predicate's conjuncts by hand, and the `Derive` of what it read at
+every site that renders a filter — the filter rule's whole predicate, the implementor's, the split rule's unaided
+pass; the split rule's two passes; and the translator's four questions of a type, two over what a filter established
+and two over the declaration alone, which existed because what a filter established included the conjunct being
+translated. The rewriter still reads the extractor, and the split rule still asks its digest test of what is beneath.
+
+**Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
+implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered
+against the node, with the binding it was read through — the binding, because one condition over two inputs is two
+statements, and the container, because two containers declaring nothing share one declaration and not one
+translator — and released with it. Beneath it the oracle remembers its contexts by the statement's digest.
+
+**Asked only where something could answer.** The strata are computed the first time a rule asks, and once. The last
+stratum is opened only where something asks of every admitted conjunct, which a filter pushed whole never does.
 
 #### How the oracle is checked: population D
 
@@ -1210,6 +1263,11 @@ because the disjunction it guards is *true* of an absent path — `IS_STRING` of
 the negation is true — and without it the weakening would admit every document lacking the property.
 So it exists for the type guard's sake, and dropping the type guard drops the need for it. A declared
 `required` drops it independently.
+
+**Which facts delete one is the oracle's licence table.** A weakening is pushed beside every conjunct the
+strata admitted, so its guards are deleted by what those establish beside the declaration — the last stratum,
+which the conjunct it weakens is never in. A guard a sibling left above would have proved stays: the service would
+decide rows that sibling exists to exclude.
 
 **What this buys is not a shorter statement.** Each guard admits documents the service returns for the
 recheck to throw away, so deleting one is fewer documents over the wire. And a conjunct that needed
@@ -2689,7 +2747,7 @@ distinct, counted six where SQL counts five. `CosmosAggregate.GroupsAsTheColumnR
 each grouping key what the other two ask, and the rule's `CanPush` and implementation both ask it, each
 of the binding its own walk produced: a key read as its declared type groups as it reads (a typed
 accessor's key being the guard its projection writes, null exactly where the column is), a key read as
-text only where `IsDeclaredStringOutright` holds of its path, and a `JSON_QUERY` fragment not at all —
+text only where `IsDeclaredString` holds of its path, and a `JSON_QUERY` fragment not at all —
 its text is a serialisation, and whether the service holds two objects equal exactly where their
 compact texts are equal, in key order and number spelling, is unmeasured. The document column groups
 nothing either way, no two documents being equal. The grouping then runs in process over the column
@@ -2727,12 +2785,13 @@ same question with SQL's element-wise order on the other side, and the service p
 **So the sort asks what the other three readers ask, and the question is asked once.** The filter
 translator refuses a comparison against the rendering over an undeclared path; the lookup join a text
 key, since its restriction is the raw `path IN (@k…)`; a grouping a text key, since the service groups
-the stored values. The last two each wrapped `IsDeclaredStringOutright` in a dispatch on the reading
+the stored values. The last two each wrapped the declared-string test in a dispatch on the reading
 of their own, which differed only over the document column — the second encoding the rule against
 encodings is for. `CosmosRexTranslator.IsReadAsStored` is that dispatch: a field read as declared is
 the stored value, a typed accessor only where its type is declared (below); read as text, only where
-`IsDeclaredStringOutright` holds of its path, the container declaring it a string or null outright and
-nothing else; read as JSON, never. The lookup join and the grouping ask it now — each taking an
+`IsDeclaredString` holds of its path, what is known saying it holds a string or null and nothing else —
+which for these readers, naming no filter's licence, is what the container declares of every document; read as
+JSON, never. The lookup join and the grouping ask it now — each taking an
 exception of its own first, the grouping for the document column, no two documents being equal — and
 `CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
 readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
@@ -4309,7 +4368,7 @@ src/
                                         PredicateRules.cs, PredicateAtom.cs, PathValues.cs: the predicate rules,
                                         what an atom means, and what a path may hold, for the oracle
       SqlPredicate.cs               ✔ The typed IR's predicate subset: readings, atoms, connectives, a statement
-      CosmosOracle.cs               ✔ The predicate oracle, in shadow: strata, the licence table, the questions
+      CosmosOracle.cs               ✔ The predicate oracle: strata, the licence table, the questions
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
@@ -4319,7 +4378,8 @@ src/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
       CosmosContainerMetadataReader.cs ✔ ContainerProperties → CosmosContainerMetadata
-      CosmosPredicateLoader.cs        ✔ A filter → the IR, for the oracle; today's translator as its renderer
+      CosmosPredicateLoader.cs        ✔ A filter → the IR, for the oracle
+      CosmosFilterStatement.cs        ✔ A filter as the oracle reads it, and every question a rule asks of it
     Rel/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔
@@ -4829,9 +4889,9 @@ the document storing `30`, and to `VALUES ('true'), ('huge')` the one storing `t
 first spelling agreed, and only because `VALUES` types its literals `CHAR` of the longest, so `'30'`
 beside `'bikes'` was the padded `'30   '`, which matched nothing on either side.
 
-`CosmosLookupJoinRule.IsRestrictedAsStored` asks the translator's own question,
-`IsDeclaredStringOutright`, and takes its one exception: a container that declares the path a string,
-outright and not under a guard, where the rendering is the value. The translator's other exception,
+`CosmosLookupJoinRule.IsRestrictedAsStored` asks the translator's own question, `IsDeclaredString`, of
+the declaration — the licence of a reader that names no filter — and takes its one exception: a container
+that declares the path a string, outright and not under a guard, where the rendering is the value. The translator's other exception,
 text no number or boolean renders as, is a fact about a literal, and a batch's keys are parameters.
 The document column and a `JSON_QUERY` column are declined outright. A guarded restriction —
 `path IN (@k…) OR IS_NUMBER(path) OR IS_BOOL(path)`, rechecked by the join's own comparison — would be

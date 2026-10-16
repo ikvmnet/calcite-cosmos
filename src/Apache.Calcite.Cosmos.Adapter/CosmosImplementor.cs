@@ -987,7 +987,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// another in a <c>WHERE</c> — so the only facts open to it are the ones a declaration states
         /// outright, with no guard left to discharge.
         /// </remarks>
-        public JsonFactSet UnconditionalFacts => _container?.Facts.Derive(null) ?? JsonFactSet.Empty;
+        public JsonFactSet UnconditionalFacts => _container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared;
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
@@ -1024,20 +1024,26 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// documents it keeps.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Separate from <see cref="Translate(RexNode)"/> because the facts a node establishes are
         /// only established by a predicate. The equality in <c>SELECT x = 'B'</c> asserts nothing
         /// about <c>x</c>; the same equality in a <c>WHERE</c> asserts it of every row that survives,
         /// and reading the first as the second would prove things the query never said.
+        /// </para>
+        /// <para>
+        /// Each conjunct is rendered from the facts its siblings applied beside it establish — the
+        /// stratum the filter rule admitted it from, read off the same statement
+        /// (<see cref="Metadata.CosmosFilterStatement"/>) — so what was pushed is what renders.
+        /// </para>
         /// </remarks>
         /// <param name="condition">The predicate.</param>
         /// <returns>The rendered condition.</returns>
         public string TranslateCondition(RexNode condition)
         {
-            var facts = _container is null
-                ? JsonFactSet.Empty
-                : _container.Facts.Derive(Metadata.CosmosFactExtractor.Extract(condition, _fields, RootAlias));
+            if (_container is null)
+                return CreateTranslator().Translate(condition);
 
-            return CreateTranslator(null, facts).Translate(condition);
+            return Metadata.CosmosFilterStatement.Of(condition, _fields, _readings, _container, _rexBuilder, RootAlias).Translate(_parameters);
         }
 
         /// <summary>

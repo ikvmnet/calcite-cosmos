@@ -52,6 +52,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// while the conjunct that proves the condition is still beside the one it licenses. See
     /// <see cref="Metadata.CosmosFactRewriter"/>.
     /// </para>
+    /// <para>
+    /// <b>Which conjuncts push is the oracle's strata</b> (<see cref="Metadata.CosmosFilterStatement"/>):
+    /// a conjunct is pushed where it renders from what the conjuncts already pushed establish, round
+    /// after round, and its own facts enter only the round after it. So a guard pushed beside what it
+    /// licenses is the only kind of help a conjunct gets, to any depth, and none is its own. A
+    /// weakening of a conjunct left above is rendered from everything pushed, and is pushed beside it.
+    /// </para>
     /// </remarks>
     public class CosmosFilterSplitRule : RelOptRule
     {
@@ -191,24 +198,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var condition = Metadata.CosmosFactRewriter.Rewrite(
                 filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
 
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
-
-            // What the container knows, closed under the conjuncts that reach the service on their
-            // own. Those and no others, because a fact licenses a comparison only where the conjunct
-            // that proved it is applied beside it: a guard left above in the residual would leave the
-            // service deciding rows the guard was meant to have excluded. Admitting more can only
-            // grow the pushable half, so every conjunct this pass is derived from is still pushed.
-            var facts = Establish(conjuncts, fields, container, rexBuilder, readings);
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
+            // Admitted stratum by stratum: a conjunct pushes where it renders from what the conjuncts
+            // pushed before it establish. A fact licenses a comparison only where the conjunct that
+            // proved it is applied beside it -- a guard left above in the residual would leave the
+            // service deciding rows the guard was meant to have excluded -- and only a conjunct pushed
+            // beside it is in a stratum it is rendered from.
+            var statement = Metadata.CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder);
 
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
 
-            for (var i = 0; i < conjuncts.size(); i++)
+            for (var i = 0; i < statement.Conjuncts.Count; i++)
             {
-                var conjunct = (RexNode)conjuncts.get(i);
+                var conjunct = statement.Conjuncts[i];
 
-                if (translator.TryTranslate(conjunct, out _))
+                if (statement.IsAdmitted(i))
                 {
                     pushable.Add(conjunct);
                     continue;
@@ -218,46 +222,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // replacement for the predicate, so the original is still rechecked above.
                 residual.Add(conjunct);
 
-                if (weakens &&
-                    TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
+                if (weakens == false)
+                    continue;
+
+                // Rendered, and its guards deleted, from what every pushed conjunct establishes: the
+                // stratum a conjunct no round admitted is read in, which is never its own facts.
+                var translator = statement.TranslatorFor(i, new CosmosParameterList());
+
+                if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
                     AlreadyBelow(weakened, below) == false &&
                     translator.TryTranslate(weakened, out _))
                     pushable.Add(weakened);
             }
 
             return (pushable, residual);
-        }
-
-
-        /// <summary>
-        /// Closes the container's facts under the conjuncts that translate unaided.
-        /// </summary>
-        /// <remarks>
-        /// The first of two passes, and the reason there are two. A conjunct may translate only
-        /// <em>because</em> of a fact, and that fact may hold only because of another conjunct — so
-        /// the facts have to be established before the split and from conjuncts that are certain to be
-        /// pushed. One that translates with no help is certain; one that needed help is not, until the
-        /// split says so. Deriving from the whole predicate instead would push a comparison whose
-        /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
-        /// </remarks>
-        static JsonFactSet Establish(
-            java.util.List conjuncts,
-            IReadOnlyList<CosmosPath?> fields,
-            Metadata.CosmosContainerMetadata container,
-            RexBuilder rexBuilder,
-            IReadOnlyList<CosmosReading>? readings)
-        {
-            if (container.Facts.IsEmpty)
-                return JsonFactSet.Empty;
-
-            var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-            var established = new List<JsonFact>();
-
-            for (var i = 0; i < conjuncts.size(); i++)
-                if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
-                    established.AddRange(Metadata.CosmosFactExtractor.Extract((RexNode)conjuncts.get(i), fields, CosmosImplementor.DefaultRootAlias));
-
-            return container.Facts.Derive(established);
         }
 
         /// <summary>

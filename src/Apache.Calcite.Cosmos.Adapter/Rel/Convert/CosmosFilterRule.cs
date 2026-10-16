@@ -2,7 +2,6 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
-using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 
@@ -63,19 +62,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
-            var condition = Pushed(convention, filter, fields);
-
-            // What the container knows, closed under what this predicate proves. Safe to hand over
-            // here and not in the split rule: this rule pushes the condition whole, so a conjunct that
-            // licensed another is applied at the service beside it. Where only part of a predicate is
-            // pushed that no longer holds, and the split rule is left alone until it can say which
-            // conjuncts reached the service.
-            var facts = convention.Container is CosmosContainerMetadata container
-                ? container.Facts.Derive(CosmosFactExtractor.Extract(condition, fields, CosmosImplementor.DefaultRootAlias))
-                : JsonFactSet.Empty;
-
-            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings, facts);
-            return translator.TryTranslate(condition, out _);
+            // Whole where every conjunct renders from the stratum before the one that admitted it:
+            // what its siblings applied beside it establish, and never what it does itself. So a
+            // conjunct may lean on another that reaches the service with it, to any depth, and no
+            // conjunct certifies itself (#117). The same strata render it at implementation.
+            return CosmosFilterStatement.Of(Pushed(convention, filter, fields), fields, readings, convention.Container, filter.getCluster().getRexBuilder()).Renders;
         }
 
         /// <summary>
