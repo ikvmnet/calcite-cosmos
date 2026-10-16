@@ -1939,37 +1939,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         static bool IsUnambiguousScalarText(string text)
         {
-            return TryParseRenderedNumber(text, out _) == false && text is not ("true" or "false");
+            return Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false && text is not ("true" or "false");
         }
 
         /// <summary>
         /// Parses text as the number Calcite renders one as, where it is one.
         /// </summary>
         /// <remarks>
-        /// Java's <c>BigDecimal</c> grammar, which every rendering a stored number can take —
-        /// <c>30</c>, <c>30.7</c>, <c>1.0E30</c>, <c>1E+30</c> — satisfies, and which admits nothing
-        /// that is not a number. Read as a double because that is what the service holds; a literal
-        /// the type cannot represent exactly rounds as the stored text rounds, to the same double. A
-        /// value beyond the double range parses and comes back infinite, which the caller decides.
         /// <para>
-        /// Text holding an ASCII character the grammar has no place for is refused before it is parsed.
-        /// Most text asked about is a string literal — a discriminator, a type name — and the parse refuses
-        /// it by throwing, which under IKVM captures a stack trace each time; the planner asks this of
-        /// every equality it considers pushing, and the throws were a measured share of planning (#201).
-        /// Only ASCII is refused early: the grammar's digits are whatever Java calls a digit, and that
-        /// question is left to the parse.
+        /// <b>Whether text is a number's is the oracle's grammar</b> (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>),
+        /// the one the rendering preimage is written in, so the translator and the oracle cannot part on which text a
+        /// stored number can render as: digits, a point, an exponent, a sign. Java's <c>BigDecimal</c> reads the value,
+        /// and read alone it was a second grammar, accepting digits of every script, which no number renders in.
+        /// </para>
+        /// <para>
+        /// Read as a double because that is what the service holds; a literal the type cannot represent exactly rounds as
+        /// the stored text rounds, to the same double. A value beyond the double range parses and comes back infinite,
+        /// which the caller decides; an exponent beyond the parse's range is no number at all. Text out of the grammar is
+        /// refused before it is parsed, so the parse never refuses by throwing, which under IKVM captures a stack trace
+        /// each time and was a measured share of planning (#201).
         /// </para>
         /// </remarks>
         internal static bool TryParseRenderedNumber(string text, out double number)
         {
             number = 0;
 
-            if (text.Length == 0)
+            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false)
                 return false;
-
-            foreach (var c in text)
-                if (c < 128 && c is not ((>= '0' and <= '9') or '+' or '-' or '.' or 'e' or 'E'))
-                    return false;
 
             try
             {
@@ -3272,17 +3268,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// Conservative on purpose, and each refusal is a value that could have come from somewhere
-        /// else: anything that parses as a number, because a stored number renders as digits and which
-        /// spelling Calcite produces is not something this decides; <c>true</c>, <c>false</c> and
-        /// <c>null</c>; and anything opening with a bracket or a quote, which is how an array or an
-        /// object would arrive. The empty string is refused as well, having nothing to distinguish.
+        /// else: anything in the grammar a stored number renders in, because which spelling Calcite
+        /// produces is not something this decides (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>,
+        /// the oracle's grammar and the scalar test's); <c>true</c>, <c>false</c> and <c>null</c>; and
+        /// anything opening with a bracket or a quote, which is how an array or an object would arrive.
+        /// The empty string is refused as well, having nothing to distinguish. Number text padded with
+        /// spaces is refused too: the cast over a value is Calcite's own conversion, whose treatment
+        /// of padding beside a number nothing here has measured, where the accessor's padded text was
+        /// measured to match nothing on either side.
         /// </remarks>
         internal static bool IsUnambiguousText(string value)
         {
             if (string.IsNullOrEmpty(value))
                 return false;
 
-            if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(value.Trim()))
                 return false;
 
             if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||

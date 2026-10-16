@@ -113,6 +113,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             equal.AlwaysFalse(Absent).Should().BeFalse("NOT of it keeps no row either");
         }
 
+        /// <summary>
+        /// The translator reads text as a number's exactly where the oracle's grammar does, over generated text of digits,
+        /// points, exponents and signs, spaces, words and digits of another script, which <c>BigDecimal</c> alone reads as a
+        /// number and no stored number renders in.
+        /// </summary>
+        [Fact]
+        public void TheTranslatorReadsNumberTextByTheOraclesGrammar()
+        {
+            var random = new Random(20261016);
+            var alphabet = new[] { "0", "1", "9", ".", "e", "E", "+", "-", " ", "a", "\u0663", "Infinity", "true" };
+
+            for (var i = 0; i < 20000; i++)
+            {
+                var text = string.Concat(Enumerable.Range(0, random.Next(0, 6)).Select(_ => alphabet[random.Next(alphabet.Length)]));
+
+                Adapter.Sql.CosmosRexTranslator.TryParseRenderedNumber(text, out _).Should().Be(Renderings.MayBeNumberText(text), $"\"{text}\"");
+                if (Renderings.MayBeNumberText(text))
+                    Adapter.Sql.CosmosRexTranslator.IsUnambiguousText(text).Should().BeFalse($"\"{text}\" may be a number's rendering");
+            }
+        }
+
         [Fact]
         public void ANumberWhoseValueTheTextSpellsMayRenderOtherwise()
         {
