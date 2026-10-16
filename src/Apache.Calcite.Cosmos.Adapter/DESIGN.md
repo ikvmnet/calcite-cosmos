@@ -4414,7 +4414,10 @@ src/
                                         PredicateRules.cs, PredicateAtom.cs, PathValues.cs: the predicate rules,
                                         what an atom means, and what a path may hold, for the oracle
       SqlPredicate.cs               ✔ The typed IR's predicate subset: readings, atoms, connectives, a statement
-      CosmosOracle.cs               ✔ The predicate oracle: strata, the licence table, the questions
+      CosmosOracle.cs               ✔ The predicate oracle: a declaration's statements, and the questions
+      CosmosStatementScope.cs       ✔ One statement's strata, and the licence table that answers from them
+      StatementTerms.cs             ✔ The contexts of one statement beneath a declaration, engine or overlay
+      OracleQuestion.cs, OracleLicence.cs, OracleVerdict.cs ✔ What a question is for, its licence, its answer
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
