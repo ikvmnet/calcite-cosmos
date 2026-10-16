@@ -159,18 +159,39 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Normalises a state of knowledge: a domain keeps only what may be the value, and absorbs the exclusions.
+        /// Normalises a state of knowledge by what the rules of JSON say of one path's values: a JSON null excluded
+        /// leaves every other type; types of booleans or of null alone are a domain of their values; a domain keeps only
+        /// what may be the value, absorbs the exclusions, and is of its own types.
         /// </summary>
-        static PathValues Normal(PathValues x)
+        /// <remarks>
+        /// Each step says the same set of documents another way, so a state and its normal form are one state; and the
+        /// normal form is what a reader of one path's values reads — the overlay, which answers a stratum without the
+        /// engine, among them — so no reader restates any of it.
+        /// </remarks>
+        internal static PathValues Normal(PathValues x)
         {
-            if (x.Values is null)
-                return x;
+            var kinds = x.Excluded.Contains(NullValue) ? x.Kinds.Remove(NullType) : x.Kinds;
+            var types = kinds.Remove(AbsentKind);
 
-            var values = x.Values.Where(v => x.Kinds.Contains(TypeOf(v))
+            var domain = x.Values;
+            if (domain is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(BooleanType)))
+                domain = ValueSet.Of(Of(true), Of(false));
+            else if (domain is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(NullType)))
+                domain = ValueSet.Of(NullValue);
+
+            if (domain is null)
+                return ReferenceEquals(kinds, x.Kinds) ? x : x with { Kinds = kinds };
+
+            var values = ValueSet.From(domain.Where(v => kinds.Contains(TypeOf(v))
                 && x.Excluded.Contains(v) == false
-                && (TryNumberOf(v, out var n) == false || (x.Lower is not Bound l || l.AdmitsAbove(n)) && (x.Upper is not Bound u || u.AdmitsBelow(n))));
+                && (TryNumberOf(v, out var n) == false || (x.Lower is not Bound l || l.AdmitsAbove(n)) && (x.Upper is not Bound u || u.AdmitsBelow(n)))));
 
-            return x with { Values = values, Excluded = ValueSet<string>.Empty };
+            return x with
+            {
+                Kinds = ValueSet.From(kinds.Where(kind => kind == AbsentKind || values.Any(v => TypeOf(v) == kind))),
+                Values = values,
+                Excluded = ValueSet<string>.Empty,
+            };
         }
 
         static Bound? Stricter(Bound? a, Bound? b, System.Func<Bound, Bound, Bound> stricter) =>

@@ -44,10 +44,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// more.
     /// </para>
     /// <para>
-    /// <b>Two ways in.</b> Facts, as a test or <see cref="JsonFactTheory.Derive"/> states them; and what a predicate
-    /// oracle's stratum assumes, read path by path as <c>PredicateAtom.Kept</c> reads each conjunct and met — a meet that
-    /// is the theory's own lattice (<see cref="PathValues"/>), so that one path may carry several claims. The gate is the
-    /// same for both, and so is the engine it is checked against.
+    /// <b>What it reads</b> is what a predicate oracle's stratum assumes, read path by path as <c>PredicateAtom.Kept</c>
+    /// reads each conjunct and met — a meet that is the theory's own lattice (<see cref="PathValues"/>), so that one path
+    /// may carry several claims.
     /// </para>
     /// </remarks>
     internal sealed class JsonFactOverlay : JsonFactTables
@@ -83,81 +82,15 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns tables reading <paramref name="established"/> beside <paramref name="outright"/>, or <c>null</c> where
-        /// the engine could derive something they would not.
-        /// </summary>
-        /// <param name="established">What the query established.</param>
-        /// <param name="stated">Every path the declaration states a fact about.</param>
-        /// <param name="outright">The tables of the declaration's own context.</param>
-        /// <returns>The tables, or <c>null</c>.</returns>
-        public static JsonFactOverlay? TryOpen(IReadOnlyList<JsonFact> established, IReadOnlyList<JsonDocumentPath> stated, JsonFactTables outright)
-        {
-            var entries = new Dictionary<JsonDocumentPath, Entry>();
-            var claimed = new HashSet<JsonDocumentPath>();
-
-            foreach (var fact in established)
-            {
-                if (fact.Path.IsRoot)
-                    return null;
-
-                if (entries.TryGetValue(fact.Path, out var entry) == false)
-                    entries[fact.Path] = entry = new Entry();
-
-                if (fact.Claim is JsonClaim.Present)
-                {
-                    entry.Present = true;
-                    continue;
-                }
-
-                // One claim beside the presence. Two meet, and what they make of each other is the engine's to say.
-                if (claimed.Add(fact.Path) == false)
-                    return null;
-
-                switch (fact.Claim)
-                {
-                    case JsonClaim.EqualTo equal:
-                        entry.Dom = ValueSet.Of(JsonFactEncoding.Value(equal.Value));
-                        entry.Types = TypesOf(entry.Dom);
-                        break;
-
-                    case JsonClaim.OneOf domain when domain.Values.Count > 0:
-                        entry.Dom = JsonFactEncoding.Domain(domain.Values);
-                        entry.Types = TypesOf(entry.Dom);
-                        break;
-
-                    case JsonClaim.NotEqualTo unequal:
-                        entry.Ne = JsonFactEncoding.Value(unequal.Value);
-                        if (entry.Ne == NullValue)
-                            entry.Types = AllTypesBut(NullType);
-                        break;
-
-                    case JsonClaim.LowerBound lower:
-                        entry.Lo = new Bound(lower.Value, lower.Exclusive);
-                        break;
-
-                    case JsonClaim.UpperBound upper:
-                        entry.Hi = new Bound(upper.Value, upper.Exclusive);
-                        break;
-
-                    default:
-                        return null;
-                }
-            }
-
-            return Open(entries, stated, outright);
-        }
-
-        /// <summary>
         /// Returns tables reading what each path may hold, as a stratum's assumed predicates say it, beside
         /// <paramref name="outright"/>; or <c>null</c> where the engine could derive something they would not.
         /// </summary>
         /// <remarks>
         /// <para>
         /// Already met, so one path may say several things: a rendering's preimage is types and a domain, an inequality
-        /// over text is types and a value excluded. What the rules of JSON add to them on one path is written here, and
-        /// nothing else is: <see cref="PathValues"/>' normal form keeps a domain within its types and bounds and folds its
-        /// exclusions in; a domain is of its own types; a value excluded that is a JSON null leaves every other type; and
-        /// types of booleans or of null alone are a domain of their values.
+        /// over text is types and a value excluded. What the rules of JSON add to them on one path is
+        /// <see cref="PathValues"/>' normal form, read here as it stands: a domain within its types and bounds and of its
+        /// own types, a JSON null excluded leaving every other type, booleans or null alone a domain of their values.
         /// </para>
         /// <para>
         /// Refused where the rules would say more: two bounds, which may cross or close on a few integers; more than one
@@ -172,38 +105,22 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             var entries = new Dictionary<JsonDocumentPath, Entry>();
 
-            foreach (var (path, values) in established)
+            foreach (var (path, known) in established)
             {
+                var values = PathValues.Normal(known);
                 if (path.IsRoot || values.Excluded.Count > 1 || values.Lower is not null && values.Upper is not null)
                     return null;
 
-                var ne = values.Excluded.Count == 1 ? values.Excluded.First() : null;
                 var types = values.Types;
-                var dom = values.Values;
-
-                if (ne == NullValue)
-                    types = types.Remove(NullType);
-
-                if (dom is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(BooleanType)))
-                    dom = ValueSet.Of(Of(true), Of(false));
-                else if (dom is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(NullType)))
-                    dom = ValueSet.Of(NullValue);
-
-                if (dom is not null)
-                {
-                    dom = ValueSet.From(dom.Where(v => v != ne && values.Admits(v)));
-                    types = ValueSet.From(Intersect(TypesOf(dom), types));
-                }
-
-                if (types.Count == 0 || dom is { Count: 0 })
+                if (types.Count == 0 || values.Values is { Count: 0 })
                     return null;
 
                 entries[path] = new Entry
                 {
                     Present = values.IsPresent,
                     Types = types.Count < AllTypes.Count ? types : null,
-                    Dom = dom,
-                    Ne = ne,
+                    Dom = values.Values,
+                    Ne = values.Excluded.Count == 1 ? values.Excluded.First() : null,
                     Lo = values.Lower,
                     Hi = values.Upper,
                 };
@@ -213,7 +130,7 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The gate both ways in share: no path the root, beneath another or meeting one the declaration states.
+        /// The gate: no path the root, beneath another or meeting one the declaration states.
         /// </summary>
         static JsonFactOverlay? Open(Dictionary<JsonDocumentPath, Entry> entries, IReadOnlyList<JsonDocumentPath> stated, JsonFactTables outright)
         {

@@ -151,8 +151,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var none = Time(n => Admitted(Eq(Text(Kind), "nope" + n)).Decide(p0, OracleLicence.Select), Truth.Never,
                 "no document is of that kind");
 
-            // The planner's own Derive of what the first two statements establish, on the engine and remembering nothing:
-            // the cost the oracle would replace, measured beside it.
+            // A query context of what the first two statements establish, on the engine and remembering nothing: how the
+            // planner read a filter before the oracle, measured beside it (JsonFactDerivation).
             JsonFact Is(JsonDocumentPath path, JsonClaim claim) => new(path, claim);
             theory.DeriveOnEngine(new[] { Is(Kind, Present) }, new[] { Property(0) });
             var deriveOne = Time(n => theory.DeriveOnEngine(new[] { Is(Kind, Present), Is(Kind, Value("k0")), Is(Q, Present), Is(Q, Value("v" + n)) }, new[] { Property(0) })
@@ -173,8 +173,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Report($"   a distinct statement, a kind without    {Percentiles(control)}");
             Report($"   a distinct statement, no such kind      {Percentiles(none)}");
             Report($"   per distinct question, all of the above {Percentiles(oneKind.Concat(twoKinds).Concat(perKind).Concat(control).Concat(none).ToList())}");
-            Report($"   the planner's Derive, one kind          {Percentiles(deriveOne)}");
-            Report($"   the planner's Derive, two kinds         {Percentiles(deriveTwo)}");
+            Report($"   a query context, one kind               {Percentiles(deriveOne)}");
+            Report($"   a query context, two kinds              {Percentiles(deriveTwo)}");
             Report($"   of a tree that exists, a deletion       {Percentiles(deletion)}");
             Report($"   of a tree that exists, a candidate      {Percentiles(candidate)}");
         }

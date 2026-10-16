@@ -1006,7 +1006,8 @@ nothing, and so splits on nothing: the context above has lifted what a split the
 split stratum with the split allowed, the same question cost 45 ms where it now costs about 5.
 
 **What it costs**, measured by `CosmosOracleMeasureTests` at `MeasureTests`' sizes, in a Debug build on a busy
-workstation, beside the planner's own `Derive` of what the same statements establish:
+workstation, beside a query context of what the same statements establish, which is how the planner read a filter
+before the oracle (`Derive`, since deleted; the test assembly keeps it as a reference for the theory's own tests):
 
 | | 5,069 conditional facts | 47,502 conditional facts |
 | --- | --- | --- |

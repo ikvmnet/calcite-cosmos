@@ -51,8 +51,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </para>
     /// <para>
     /// <b>Not every stratum needs the engine.</b> Over a declaration with no conditional rule, a stratum whose
-    /// conjuncts touch nothing it states is read off <see cref="JsonFactOverlay"/>, as <see cref="JsonFactTheory.Derive"/>
-    /// has always read such a query; the engine's context is opened only if a verdict is asked of it.
+    /// conjuncts touch nothing it states is read off <see cref="JsonFactOverlay"/>; the engine's context is opened only if
+    /// a verdict is asked of it.
     /// </para>
     /// <para>
     /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader.Loading</c> reads one

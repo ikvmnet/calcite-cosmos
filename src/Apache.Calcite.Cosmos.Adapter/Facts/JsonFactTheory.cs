@@ -14,10 +14,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Three layers above it, and one per query below.</b> The rules of JSON are the graph's own, frozen in its root;
+    /// <b>Three layers above it, and a statement's beneath.</b> The rules of JSON are the graph's own, frozen in its root;
     /// the rules of JSON Schema are local to a frozen child of the root; and this declaration is a frozen context beneath
-    /// that, holding its unconditional facts as facts and its conditional ones as rows a fixed interpreter reads. Asking
-    /// it is <see cref="Derive"/>: what a query established becomes a context beneath this one, saturated, and read.
+    /// that, holding its unconditional facts as facts and its conditional ones as rows a fixed interpreter reads. What a
+    /// filter establishes is the predicate oracle's to read: its strata are contexts beneath this one
+    /// (<see cref="Declaration"/>), and <see cref="Declared"/> is this one read as a fact set.
     /// </para>
     /// <para>
     /// <b>A conditional rule is a row, not a rule of the engine.</b> One engine rule per declared rule costs every query
@@ -31,13 +32,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <para>
     /// <b>Compiled when first asked, and again in each generation.</b> The graph a declaration compiles into is retired
     /// once it has interned enough (see <see cref="JsonFactGenerations"/>), and the next question compiles it into the
-    /// one that replaced it. A statement asks a dozen times and a context costs milliseconds, so what a query
-    /// established is remembered for the statements that follow: an established set is answered by one context.
-    /// </para>
-    /// <para>
-    /// <b>Not every question needs the engine.</b> A declaration with no conditional rule, asked about paths it says
-    /// nothing of, cannot meet what the query established, and the answer is read off the two directly: see
-    /// <see cref="JsonFactOverlay"/>. That is every filter over a container that declares no schema.
+    /// one that replaced it.
     /// </para>
     /// </remarks>
     public sealed class JsonFactTheory
@@ -48,16 +43,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public static readonly JsonFactTheory Empty = new(Array.Empty<JsonFactRule>());
 
-        /// <summary>
-        /// How many established sets a compiled theory remembers the answers to.
-        /// </summary>
-        const int Remembered = 256;
 
-        /// <summary>
-        /// How a query's context runs: it stops once it is contradictory, there being nothing more to know of a predicate
-        /// that keeps no row.
-        /// </summary>
-        static readonly RunOptions QueryRun = new() { StopOnContradiction = true };
 
         readonly JsonFactRule[] _rules;
         readonly bool _conditional;
@@ -68,7 +54,6 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly List<JsonPathSpec> _paths = new();
         readonly List<JsonDocumentPath> _statedPaths = new();
         readonly HashSet<JsonDocumentPath> _mentionedPaths = new();
-        readonly bool _splits;
         readonly object _compiling = new();
         Compiled? _compiled;
 
@@ -159,7 +144,6 @@ namespace Apache.Calcite.Cosmos.Facts
                 _stated.Add(new Saturation.JsonFact.Discriminates(discriminator));
 
             _paths.AddRange(paths);
-            _splits = discriminators.Count > 0;
         }
 
         /// <summary>
@@ -208,48 +192,8 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactSet Declared => _rules.Length == 0 ? JsonFactSet.Empty : Compile().Outright;
 
         /// <summary>
-        /// Saturates a query's established facts beneath the container's declaration.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// The facts a query establishes are read off its predicate — an equality pins a value and says the path is
-        /// there, an <c>IN</c> a domain, an <c>IS NOT NULL</c> a presence. What comes back knows those and everything the
-        /// rules of JSON, of JSON Schema and of the declaration prove from them beside what the declaration states.
-        /// Asked with nothing, it is the declaration's own context, which every query's lies beneath.
-        /// </para>
-        /// <para>
-        /// <b>The oracle's to ask, and nobody else's.</b> The planner reads every fact through the predicate oracle,
-        /// which asks this of nothing — the declaration's own context, <see cref="CosmosOracle.Declared"/> — and puts
-        /// contexts of its own beneath it for what a filter establishes, chosen by the question's licence. A call site
-        /// asking this of a filter's facts or of none was a call site choosing facts, which the licence table exists to
-        /// forbid, and none is left. What still asks it of facts are the theory's own tests.
-        /// </para>
-        /// </remarks>
-        /// <param name="established">What the query proved, which may be empty.</param>
-        /// <returns>What is known.</returns>
-        internal JsonFactSet Derive(IEnumerable<JsonFact>? established)
-        {
-            var facts = Distinct(established);
-            if (facts.Length == 0 && _rules.Length == 0)
-                return JsonFactSet.Empty;
-
-            var compiled = Compile();
-            return facts.Length == 0 ? compiled.Outright : compiled.Derive(facts);
-        }
-
-        /// <summary>
-        /// Saturates a query's established facts on the engine, whatever they are, remembering nothing: what
-        /// <see cref="Derive"/> answers is held to it.
-        /// </summary>
-        /// <param name="established">What the query proved.</param>
-        /// <param name="mentioned">Paths for the context to know of beside those it established.</param>
-        /// <returns>What is known.</returns>
-        internal JsonFactSet DeriveOnEngine(IEnumerable<JsonFact> established, IEnumerable<JsonDocumentPath> mentioned) =>
-            Compile().Open(Distinct(established), mentioned);
-
-        /// <summary>
-        /// Returns this declaration compiled into the current generation, for a reasoner that asks more of it than
-        /// <see cref="Derive"/> does: the predicate oracle, which puts contexts of its own beneath it.
+        /// Returns this declaration compiled into the current generation, for the predicate oracle, which puts contexts of
+        /// its own beneath it: what a filter establishes is a stratum of its statement, never a context made here.
         /// </summary>
         /// <returns>The compiled declaration, or <c>null</c> where the engine could not compile it, which states nothing.</returns>
         internal JsonFactDeclaration? Declaration()
@@ -267,20 +211,6 @@ namespace Apache.Calcite.Cosmos.Facts
         internal static bool IsEngineFailure(Exception e) =>
             e is RuleEvaluationException or FactConflictException or ScopeContradictedException
                 or InvalidOperationException or ObjectDisposedException;
-
-        static JsonFact[] Distinct(IEnumerable<JsonFact>? established)
-        {
-            if (established is null)
-                return Array.Empty<JsonFact>();
-
-            var seen = new HashSet<JsonFact>();
-            var list = new List<JsonFact>();
-            foreach (var fact in established)
-                if (seen.Add(fact))
-                    list.Add(fact);
-
-            return list.ToArray();
-        }
 
         /// <summary>
         /// Returns this declaration compiled into the current generation, compiling it where it is not.
@@ -306,19 +236,15 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The declaration in one generation: its frozen context, and the answers it has given.
+        /// The declaration in one generation: its frozen context.
         /// </summary>
         sealed class Compiled
         {
 
-            readonly JsonFactTheory _theory;
             readonly Scope? _schema;
-            readonly Dictionary<Key, LinkedListNode<KeyValuePair<Key, JsonFactSet>>> _memo = new();
-            readonly LinkedList<KeyValuePair<Key, JsonFactSet>> _recent = new();
 
             public Compiled(JsonFactTheory theory, JsonFactGenerations.Generation generation)
             {
-                _theory = theory;
                 Generation = generation;
 
                 var contexts = generation.Contexts;
@@ -348,123 +274,6 @@ namespace Apache.Calcite.Cosmos.Facts
             /// Gets what holds of every document, whatever a query proved.
             /// </summary>
             public JsonFactSet Outright { get; }
-
-            public JsonFactSet Derive(JsonFact[] established)
-            {
-                if (_schema is null)
-                    return Outright;
-
-                // Where nothing the engine derives could change an answer, it is not asked.
-                if (_theory._conditional == false
-                    && JsonFactOverlay.TryOpen(established, _theory._statedPaths, Outright.Tables!) is JsonFactOverlay overlay)
-                    return new JsonFactSet(overlay, _theory._vocabulary);
-
-                var key = new Key(established);
-
-                lock (_memo)
-                {
-                    if (_memo.TryGetValue(key, out var node))
-                    {
-                        _recent.Remove(node);
-                        _recent.AddFirst(node);
-                        return node.Value.Value;
-                    }
-                }
-
-                var set = Open(established);
-
-                lock (_memo)
-                {
-                    // Another thread may have answered the same set meanwhile; one answer is kept, so that a statement
-                    // asking twice reads one context.
-                    if (_memo.TryGetValue(key, out var raced))
-                        return raced.Value.Value;
-
-                    _memo[key] = _recent.AddFirst(new KeyValuePair<Key, JsonFactSet>(key, set));
-
-                    while (_recent.Count > Remembered)
-                    {
-                        var last = _recent.Last!;
-                        _recent.RemoveLast();
-                        _memo.Remove(last.Value.Key);
-                    }
-                }
-
-                return set;
-            }
-
-            /// <summary>
-            /// Makes a query's context beneath the declaration's, holding what it established.
-            /// </summary>
-            /// <param name="established">What the query established.</param>
-            /// <param name="mentioned">Paths for the context to know of beside those, which a test asks about.</param>
-            public JsonFactSet Open(JsonFact[] established, IEnumerable<JsonDocumentPath>? mentioned = null)
-            {
-                if (_schema is null)
-                    return Outright;
-
-                var contexts = Generation.Contexts;
-                var facts = new List<Saturation.JsonFact>();
-                var paths = new HashSet<JsonPathSpec>();
-
-                foreach (var path in mentioned ?? Array.Empty<JsonDocumentPath>())
-                    paths.Add(JsonFactEncoding.Path(path));
-
-                foreach (var fact in established)
-                {
-                    paths.Add(JsonFactEncoding.Path(fact.Path));
-                    facts.AddRange(JsonFactEncoding.Statement(fact, _theory._vocabulary, register: false));
-                }
-
-                try
-                {
-                    var scope = contexts.Open(_schema, facts, paths, rules: null, split: _theory._splits, options: QueryRun);
-                    return new JsonFactSet(contexts.Rules, _theory._vocabulary, scope, owned: true);
-                }
-                catch (Exception e) when (IsEngineFailure(e))
-                {
-                    // What holds of every document holds of the ones the query keeps.
-                    return Outright;
-                }
-            }
-
-        }
-
-        /// <summary>
-        /// An established set as a memo key: the facts, compared as a set.
-        /// </summary>
-        readonly struct Key : IEquatable<Key>
-        {
-
-            readonly JsonFact[] _facts;
-            readonly int _hash;
-
-            public Key(JsonFact[] facts)
-            {
-                _facts = facts;
-
-                var hash = facts.Length;
-                foreach (var fact in facts)
-                    hash ^= fact.GetHashCode();
-
-                _hash = hash;
-            }
-
-            public bool Equals(Key other)
-            {
-                if (_facts.Length != other._facts.Length || _hash != other._hash)
-                    return false;
-
-                foreach (var fact in _facts)
-                    if (Array.IndexOf(other._facts, fact) < 0)
-                        return false;
-
-                return true;
-            }
-
-            public override bool Equals(object? obj) => obj is Key other && Equals(other);
-
-            public override int GetHashCode() => _hash;
 
         }
 
