@@ -1513,6 +1513,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // ── What the predicate oracle decides, and the planner before it did not ─
             //
+            // A weakening every document satisfies restricts nothing, and is not pushed: the service states id and
+            // _etag of every document, so the definedness each branch implies of them is true everywhere.
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint'", false),
             // Over the kinds, a declaration each kind states differently: what a sibling conjunct proves, what the
             // declaration guarantees, what it refutes, and a disjunction spelled per kind. The probes'
             // definedness test is the one left out, IS_DEFINED being no operator this validator knows.

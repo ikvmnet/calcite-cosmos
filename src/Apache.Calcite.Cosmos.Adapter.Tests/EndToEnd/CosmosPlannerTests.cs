@@ -3437,12 +3437,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ADisjunctionWithAnUntranslatableBranchIsWeakened()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'");
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'X'");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosFilter", "something should reach the service: " + plan);
             plan.Should().Contain("IS_DEFINED", "the untranslatable branch implies its path is defined: " + plan);
             plan.Should().Contain("INITCAP", "and the original is still rechecked: " + plan);
+        }
+
+        /// <summary>
+        /// A weakening every document satisfies restricts nothing, and is not pushed.
+        /// </summary>
+        /// <remarks>
+        /// The service states <c>_etag</c> of every document, so the branch's implication — that the path is defined
+        /// — makes the weakened disjunction true of every document, and the oracle decides it so: the filter the split
+        /// rule pushed is rewritten to nothing. The container is read whole either way, and the original is rechecked.
+        /// This weakening used to be pushed, filtering nothing; <c>CosmosDifferentialTests</c> holds the answer to
+        /// Calcite's.
+        /// </remarks>
+        [Fact]
+        public void AWeakeningEveryDocumentSatisfiesIsNotPushed()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'")));
+
+            sql.Should().NotContain("IS_DEFINED", "every document has an _etag: " + sql);
         }
 
         /// <summary>
@@ -3544,7 +3562,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var compared = Render(FindCosmos(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')")));
 
-            compared.Should().EndWith("WHERE IS_DEFINED(c.id)");
+            // What is left is the id, which the service states of every document: IS_DEFINED(c.id), which this pushed
+            // before the oracle decided it true of every document, restricts nothing.
+            compared.Should().NotContain("WHERE", "neither category nor price is implied, and id is defined everywhere: " + compared);
 
             var negated = Render(FindCosmos(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE")));
@@ -3777,19 +3797,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The pushed half carries the renderable conjunct and whatever the other one implies, never
         /// the other one itself. <c>INITCAP</c> has no Cosmos form, so it stays above and is rechecked;
         /// that it is a comparison at all says the path it reads is defined, and that much the service
-        /// can apply. The partition key is still recovered from the conjunct that pins it.
+        /// can apply — over a path no document is sure to hold. Over <c>id</c>, which the service holds
+        /// of every document, the implication restricts nothing and the oracle drops it. The partition
+        /// key is still recovered from the conjunct that pins it.
         /// </remarks>
         [Fact]
         public void ThePushedHalfCarriesTheRenderableConjunctAndWhatTheOtherImplies()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
-            var cosmos = FindCosmos(best);
-
-            var query = Query(cosmos);
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'X'")));
             query.Sql.Should().Contain("(c.category = @p0)");
-            query.Sql.Should().Contain("IS_DEFINED(c.id)");
+            query.Sql.Should().Contain("IS_DEFINED(c.name)");
             query.Sql.Should().NotContain("INITCAP");
             query.PartitionKeyValues.Should().Equal("bikes");
+
+            var overId = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'")));
+            overId.Sql.Should().Contain("(c.category = @p0)");
+            overId.Sql.Should().NotContain("IS_DEFINED", "every document has an id");
+            overId.PartitionKeyValues.Should().Equal("bikes");
         }
 
         /// <remarks>

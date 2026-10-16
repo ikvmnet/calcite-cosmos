@@ -611,10 +611,11 @@ parameter work found.
 
 A container's declaration is reasoned about by a theory of JSON written as an
 [Eggnog](https://github.com/alethic/eggnog) e-graph, under `Facts/Saturation/`. What a query established is
-saturated beneath the declaration, and a question is a read of what saturation proved. The front end is
-unchanged: `JsonSchemaFacts` reads a schema into `JsonFactRule`s of `(path, claim)` atoms, and
-`CosmosFactExtractor` reads a predicate into the same atoms. `JsonFactTheory` compiles the rules into the
-theory, and `JsonFactSet` answers in the old vocabulary, so a consumer asks what it always asked.
+saturated beneath the declaration, and a question is a read of what saturation proved. `JsonSchemaFacts`
+reads a schema into `JsonFactRule`s of `(path, claim)` atoms, and `JsonFactTheory` compiles the rules into the
+theory. A filter's predicate is loaded beside them as terms by the predicate oracle (*Predicates as facts*,
+below), which every rule that reads a filter's facts asks; `JsonFactSet` answers in the old vocabulary, so a
+consumer asks what it always asked.
 
 **Four contexts, three of them frozen.**
 
@@ -665,15 +666,17 @@ avoided only half of that mistake, and was right only for a theory that could no
 
 **The query supplies the presence.** A comparison is undefined at the service over an absent path and
 unknown in process, and a filter keeps no row for either. So every row a comparison keeps has its path, and
-`CosmosFactExtractor` states `Present` beside every equality, disequality and `IN` it reads (F4). That
-presence is what turns `status = 'deleted'` against a declared `enum` into a contradiction rather than a
+what an assumed comparison establishes (`PredicateAtom.Kept`) says so beside what it says of the value (F4).
+That presence is what turns `status = 'deleted'` against a declared `enum` into a contradiction rather than a
 proof that `status` is absent. It is also why an `IS_DEFINED` guard beside a comparison on the same path is
 deleted.
 
 **A range supplies a bound, and binds only numbers.** A comparison through a numeric cast puts the raw
-value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the extractor states that
-window as two bound claims beside the presence (`CosmosNumericWindow`, the one the split rule pushes). A
-bound binds numbers only, because the cast converts a stored string too: `> 500` keeps `"600"`. So a range
+value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the atom states that window as
+two bounds beside the presence, the window `CosmosNumericWindow` gives the split rule to push: one window,
+read through the casts of the literal the window reads through, refusing a bound past 2^52 for a cast to
+`DOUBLE` as the window does. A bound binds numbers only, because the cast converts a stored string too:
+`> 500` keeps `"600"`. So a range
 beyond a declared `maximum` leaves the path no number, which contradicts the presence only where the
 declaration leaves it nothing else, a `type: integer` (gap 4, `ARangeBeyondADeclaredBoundKeepsNoNumber`).
 A range no member of an integer `enum` lies in empties the domain (gap 5, `ARangeOutsideAnEnumKeepsNothing`).
@@ -737,10 +740,12 @@ a relevant path. Every path a body reads a value of is marked a discriminator. A
 splits on each one that is present, so that what every branch implies holds outright, and a query splits on
 the relevant ones. A case may split again, to a depth of two.
 
-**A deletion reads only the declaration.** `CosmosFactRewriter.IsAlwaysTrue` deletes a conjunct only where
-the declaration's own context proves it. A fact a query proved may rest on the very conjunct being deleted,
-and the predicate left behind would prove less than it did. Eggnog's `RulesetOptions.Licence` says the same
-thing inside the engine, for a rewrite done there; here it is the choice of which context to ask.
+**A deletion reads its siblings, and never itself.** The rewrite deletes a conjunct only where every other
+conjunct and the declaration make it always true (L3, *Which facts may justify what*). A fact the conjunct
+itself proved may be what made it look redundant, and the predicate left behind would prove less than it did;
+and of two conjuncts that each imply the other only one goes, asked one at a time. Eggnog's
+`RulesetOptions.Licence` says the same thing inside the engine, for a rewrite done there; here it is the choice
+of which context to ask.
 
 #### Values, and one spelling each
 
@@ -820,14 +825,13 @@ is invented.
 
 #### Predicates as facts: the oracle
 
-The planner reads a filter's facts through a dozen sites, each deciding for itself which conjuncts to read and what
-they prove: `CosmosFactExtractor`'s dispatch, the split rule's two passes, the rewriter's tautology test, the
-translator's choice between outright and established facts. A defect in that family has usually been the same
-knowledge reaching one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement: one
-statement per filter, every question about it answered from the facts its licence admits, and no site choosing facts.
-It was built in shadow and measured beside the sites it replaces, 97.3 % of 114,922 decisions agreeing and every other
-one explained, and a filter is now rendered from it (*The oracle in the planner*, below). The rewriter still reads
-what the extractor reads.
+The planner read a filter's facts through a dozen sites, each deciding for itself which conjuncts to read and what
+they prove: a fact extractor's dispatch, the split rule's two passes, the rewriter's tautology test, the translator's
+choice between outright and established facts. A defect in that family had usually been the same knowledge reaching
+one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement: one statement per filter,
+every question about it answered from the facts its licence admits, and no site choosing facts. It was built in
+shadow and measured beside the sites it replaced, 97.3 % of 114,922 decisions agreeing and every other one
+explained, and now every rule that reads a filter's facts asks it (*The oracle in the planner*, below).
 
 **Eggnog decides what is true; the host decides what is written and what is legal; Volcano decides which plan.**
 The oracle loads a filter's conjuncts into the theory of JSON as terms, beside `JsonRules` in the same graph
@@ -902,8 +906,9 @@ iterations and 0.7 s a statement, against 19 iterations without.
 path keeps no row, and neither does its negation. What is always false is never true; nothing reads never-true
 beneath a `NOT`. An atom's verdict reads one value per path — `possible(p)`, what the path may hold, gathered from
 presence, types, a domain, disequalities and bounds — so that three rules decide every atom rather than one rule per
-shape and per table. These give tautology the shapes `IsAlwaysTrue` lacks: an `IN` covering an enum, a `<>` outside
-one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy.
+shape and per table. These give tautology the shapes the equality test before them lacked: an `IN` covering an
+enum, a `<>` outside one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy, a disjunction
+with a sibling for a branch.
 
 **What a context assumes, it has decided.** A predicate holding with a truth value on every row a context admits has
 that verdict there, whatever its atoms can be said to mean. The host reads the same of a predicate a context assumes,
@@ -938,6 +943,9 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | --- | --- |
 | whether a conjunct renders | the stratum before the one that admitted it; for one never admitted, the last stratum, which holds its siblings and never itself (L2) |
 | whether a conjunct can be deleted, or is redundant | every other conjunct, admitted or not (L3) |
+| a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
+| inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
+| whether the filter keeps nothing | every conjunct, admitted or not: a strengthening, which a conjunct's own facts may justify |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate |
 | a projection, a sort, a grouping | the last stratum: every admitted conjunct, applied before the clause reads a row (L1) |
 | a residual, a route | the declaration (L0) |
@@ -946,8 +954,20 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 duplicates do not delete each other. "If I add X, is Y irrelevant?" is `DecideGiven(Y, X)`: Y always true where X
 holds.
 
-The rewriter's own choices, described under *A deletion reads only the declaration*, still decide what a filter is
-rewritten to. The table's rows for a deletion are what they will be replaced by.
+**A lowering is asked of the statement the deletions leave**, for the same reason two duplicates are not both
+deleted: each rewrite is sound on the statement it is asked of, and the rewrite does two in turn. A conjunct deleted
+because another implies it holds wherever the other does; lent to that other as a sibling's facts, it would let the
+other be lowered on what the other itself establishes — #117's self-certification one step removed — and the lowered
+form would be the original only where a conjunct the filter no longer applies holds. An ordering onto a stored form
+is no strengthening, so a row the original drops could be kept.
+
+**The arm of a `CASE` is a licence of its own**, which the plan's table lacked and the shadow's judge found it
+needed. A merged view's column is `CASE WHEN <that view's filter> THEN … END`, and what its arm is lowered by is what
+the filter proves of the rows the arm is read for, beside what the conjunct's siblings prove of the rows the
+conjunct is decided for: over a row where the condition is not true the `CASE` answers its `ELSE` however the arm
+reads. The conjunct the `CASE` is part of is not among them, for the reason a deletion's own facts are not. A
+condition spelled as a sibling is that sibling's term, so the copies a merged view repeats in each column are one
+child each.
 
 #### What the oracle promises, and what it costs
 
@@ -995,7 +1015,7 @@ Eggnog's idle rules allocate nothing is the measurement still owed.
 
 #### The oracle in the planner
 
-**One statement per filter, asked by every rule that renders it.** `Metadata/CosmosFilterStatement.cs` is a
+**One statement per filter, asked by every rule that reads its facts.** `Metadata/CosmosFilterStatement.cs` is a
 filter as the oracle reads it: its conjuncts, loaded once through the input's binding; the statement the oracle holds
 for them; and the questions a rule asks, each named for its licence rather than for the rule that asks it.
 
@@ -1005,23 +1025,34 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
+| `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
+| the rewriter, a conjunct deleted | `Redundant` | its siblings, one at a time (L3) |
+| the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
+| the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence; the declaration where it named none (L0) |
 | routing, the partition key's declared value | `CosmosOracle.Declared` | L0 |
 
-What these replaced: a fact extractor reading a predicate's conjuncts by hand, and the `Derive` of what it read at
-every site that renders a filter — the filter rule's whole predicate, the implementor's, the split rule's unaided
-pass; the split rule's two passes; and the translator's four questions of a type, two over what a filter established
-and two over the declaration alone, which existed because what a filter established included the conjunct being
-translated. The rewriter still reads the extractor, and the split rule still asks its digest test of what is beneath.
+What these replaced: a fact extractor reading a predicate's conjuncts by hand, and every `Derive` of what it read at a
+filter site — the filter rule's whole predicate, the implementor's, the rewriter's whole predicate and its
+declaration alone, the `CASE` arm's, the split rule's unaided pass; the split rule's two passes; and the translator's
+four questions of a type, two over what a filter established and two over the declaration alone, which existed
+because what a filter established included the conjunct being translated. The split rule still asks its digest test
+of what is beneath.
 
 **Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
 implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered
 against the node, with the binding it was read through — the binding, because one condition over two inputs is two
 statements, and the container, because two containers declaring nothing share one declaration and not one
-translator — and released with it. Beneath it the oracle remembers its contexts by the statement's digest.
+translator — and released with it. The rewrite's answer is remembered on the statement, so the node it returns is
+one node each time, and the statement of the rewritten condition is remembered too. Beneath them the oracle
+remembers its contexts by the statement's digest.
 
-**Asked only where something could answer.** The strata are computed the first time a rule asks, and once. The last
-stratum is opened only where something asks of every admitted conjunct, which a filter pushed whole never does.
+**Asked only where something could answer.** A rewrite asks for deletions and a contradiction and never renders;
+a filter rule renders and asks nothing else; each is computed the first time it is asked. The last stratum is opened
+only where something asks of every admitted conjunct, which a filter pushed whole never does. And a conjunct is asked
+whether it is redundant only where something could decide it — a sibling reading a path it reads, or one above or
+beneath it, or sharing a term with it, or a path the declaration speaks of — since nothing is always true of a path
+nothing is known of.
 
 #### How the oracle is checked: population D
 
@@ -4187,7 +4218,7 @@ Written as the path it was wrong three ways. The translator sent `= 2` as `c.bod
 every document storing `"2"`, and the null test and the guard under a `NOT` took `IS_NUMBER` as its
 null set and lost them too. A column, and a sort or a grouping over one, was sent back as the stored
 string where the plan declared a number, and failed to read where Calcite answers the number the
-string spells. And `CosmosFactExtractor` read the equality as exact, the path holding the
+string spells. And the fact extractor of the day read the equality as exact, the path holding the
 number 2, which beside a declared `"type": "string"` is a contradiction: the filter was rewritten to
 `FALSE`. Over a container declared so, holding `"2"`, `" 2 "`, `"3"` and `"2.0"`, `= 2` returned
 nothing where Calcite returns three documents, and `> 2` nothing where it returns one.
@@ -4434,8 +4465,9 @@ schema reader walks its tree and resolves references itself. Two things a JSON f
   JSON's terms — an object, and one that is there.
 
 Where the adapter meets it: `CosmosDocumentPaths.From` turns a statement's path into a document path,
-and everything that turns a predicate into facts or facts into a rewrite — `CosmosFactExtractor`,
-`CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in `Metadata/`, being about `RexNode`.
+and everything that turns a predicate into terms or facts into a rewrite — `CosmosPredicateLoader`,
+`CosmosFilterStatement`, `CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in `Metadata/`, being about
+`RexNode`.
 Constraints stay too: a `UNIQUE` is SQL compiled by Calcite and says what holds across documents,
 which is not what the theory is about.
 

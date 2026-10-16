@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -62,6 +63,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// rewritten comparison decides nothing. That is the sibling-conjunct case; a sort or a point read
     /// needs the stronger statement-wide argument, and neither is rewritten here.
     /// </para>
+    /// <para>
+    /// <b>What is true is the oracle's; what is written is this.</b> Every fact a rewrite reads is
+    /// asked of <see cref="CosmosFilterStatement"/> under the licence the rewrite has: the filter is
+    /// <c>FALSE</c> where every conjunct together contradicts the declaration, a strengthening; a
+    /// conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered on what
+    /// its siblings establish, never what it does; and inside the arm of a <c>CASE</c>, on that and the
+    /// conditions the arm is read under. What is left here is the shapes, the stored spellings and the
+    /// licence a form gives an operator.
+    /// </para>
     /// </remarks>
     public static class CosmosFactRewriter
     {
@@ -75,52 +85,134 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="container">The container, carrying whatever the model declared.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
         /// <param name="rexBuilder">Builds the replacement nodes.</param>
+        /// <param name="readings">How each field is read back, where the caller knows: a field read as text compares
+        /// its rendering, and establishes what a rendering does.</param>
         /// <returns>The rewritten predicate, or <paramref name="condition"/> where nothing applied.</returns>
-        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder)
+        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null)
         {
             if (condition is null || fields is null || rexBuilder is null)
                 return condition!;
 
-            // The ordinary case, and the one that has to cost nothing: a container that declares
-            // nothing proves nothing, and asking is a field read. A CASE is the one shape rewritten
-            // without a fact -- see TryFlattenCase -- and looking for one is a walk of the tree.
-            var declares = container is not null && container.Facts.IsEmpty == false;
-            if (declares == false && ContainsCase(condition) == false)
-                return condition;
+            // A CASE is the one shape rewritten without a fact -- see TryFlattenCase -- and where
+            // there is no container it is all there is to look for.
+            if (container is null)
+                return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
 
-            IReadOnlyList<JsonFact> established = declares ? CosmosFactExtractor.Extract(condition, fields, rootAlias) : Array.Empty<JsonFact>();
-            var known = declares ? container!.Facts.Derive(established) : JsonFactSet.Empty;
+            // Remembered on the statement, so that every rule asking of this condition gets one node
+            // back, and the statement read off that node is remembered too.
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
+            return statement.Rewritten ??= Rewritten(condition, statement, fields, rootAlias, rexBuilder);
+        }
 
-            // Where the query's own conjuncts and the container's declaration cannot both hold, no
-            // document satisfies the predicate -- so the equivalent predicate is the constant, and
-            // every rule that reduces one takes it from there. See JsonFactSet.IsContradictory.
-            if (known.IsContradictory)
+        /// <summary>
+        /// Rewrites a condition conjunct by conjunct, each under the licence its rewrite has.
+        /// </summary>
+        static RexNode Rewritten(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder)
+        {
+            // Where the conjuncts and the container's declaration cannot all hold, no document
+            // satisfies the predicate -- so the equivalent predicate is the constant, and every rule
+            // that reduces one takes it from there. A strengthening, which every conjunct's own facts
+            // may justify.
+            if (statement is { IsContradictory: true })
                 return rexBuilder.makeLiteral(false);
 
-            // An IN arrives folded into a SEARCH over a Sarg, which is one node rather than the
-            // equalities it stands for, so nothing below would recognise it. Expanded, it is the
-            // disjunction translation would have rendered anyway -- and the expansion is kept only if
-            // something was actually lowered, so a predicate this has no opinion about reaches the
-            // planner in the shape it arrived.
-            RexNode expanded;
+            var conjuncts = statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition);
+
+            // A conjunct the rest of the filter implies decides nothing, so the equivalent predicate is
+            // the one without it -- asked of its siblings and never of itself, and one at a time, so
+            // that two conjuncts implying each other do not both go.
+            var redundant = statement?.Redundant ?? Array.Empty<int>();
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
+
+            var operands = new java.util.ArrayList();
+            var changed = redundant.Count > 0;
+
+            for (var i = 0; i < conjuncts.Count; i++)
+            {
+                if (redundant.Contains(i))
+                    continue;
+
+                // An IN arrives folded into a SEARCH over a Sarg, which is one node rather than the
+                // equalities it stands for, so nothing below would recognise it. Expanded, it is the
+                // disjunction translation would have rendered anyway -- and the expansion is kept only
+                // if something was actually lowered, so a conjunct this has no opinion about reaches
+                // the planner in the shape it arrived.
+                var rewritten = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), translator, rexBuilder, fields, rootAlias));
+
+                operands.add(rewritten ?? conjuncts[i]);
+                changed |= rewritten is not null;
+            }
+
+            return changed ? RexUtil.composeConjunction(rexBuilder, operands) : condition;
+        }
+
+        static RexNode Expand(RexNode node, RexBuilder rexBuilder)
+        {
             try
             {
-                expanded = RexUtil.expandSearch(rexBuilder, null, condition);
+                return RexUtil.expandSearch(rexBuilder, null, node);
             }
             catch (Exception)
             {
-                expanded = condition;
+                return node;
+            }
+        }
+
+        /// <summary>
+        /// Where a rewrite stands: the conjunct it is inside, and the conditions of the <c>CASE</c> arms
+        /// it has descended into, which together say what it may lean on.
+        /// </summary>
+        /// <remarks>
+        /// The facts are asked the first time a lowering's shape is found, and not before: most
+        /// conjuncts lower nothing.
+        /// </remarks>
+        sealed class Rewriting
+        {
+
+            readonly CosmosFilterStatement? _statement;
+            readonly int _conjunct;
+            readonly IReadOnlyList<RexNode> _conditions;
+            JsonFactSet? _known;
+
+            public Rewriting(CosmosFilterStatement? statement, int conjunct, IReadOnlyList<RexNode> conditions, CosmosRexTranslator translator, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, string rootAlias)
+            {
+                _statement = statement;
+                _conjunct = conjunct;
+                _conditions = conditions;
+                Translator = translator;
+                RexBuilder = rexBuilder;
+                Fields = fields;
+                RootAlias = rootAlias;
             }
 
-            // What holds of every document in the container, whatever this query proved. A
-            // conjunct is redundant only against that, never against a fact the query's own
-            // conjuncts unlocked -- see IsAlwaysTrue.
-            var outright = declares ? container!.Facts.Derive(null) : JsonFactSet.Empty;
+            public CosmosRexTranslator Translator { get; }
 
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
-            var rewritten = Apply(expanded, translator, known, rootAlias, rexBuilder, fields, outright, declares ? container : null, established);
+            public RexBuilder RexBuilder { get; }
 
-            return rewritten ?? condition;
+            public IReadOnlyList<CosmosPath?> Fields { get; }
+
+            public string RootAlias { get; }
+
+            /// <summary>
+            /// Gets what the rewrite may lean on: every sibling of its conjunct, and the conditions of
+            /// the arms it is inside.
+            /// </summary>
+            public JsonFactSet Known => _known ??= _statement is null ? JsonFactSet.Empty
+                : _conditions.Count == 0 ? _statement.Siblings(_conjunct)
+                : _statement.Within(_conjunct, _conditions);
+
+            /// <summary>
+            /// Gets whether the arm the rewrite is inside is never read: its conditions contradict
+            /// what its siblings establish.
+            /// </summary>
+            public bool NeverRead => _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
+
+            /// <summary>
+            /// Returns where a rewrite stands inside the arm a condition guards.
+            /// </summary>
+            public Rewriting Within(RexNode condition) =>
+                new(_statement, _conjunct, _conditions.Append(condition).ToArray(), Translator, RexBuilder, Fields, RootAlias);
+
         }
 
         /// <summary>
@@ -227,16 +319,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// batch point read becomes reachable through a typed column.
         /// </para>
         /// </remarks>
-        static RexNode? Apply(RexNode node, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
+        static RexNode? Apply(RexNode node, Rewriting at)
         {
             if (node is not RexCall call)
                 return null;
-
-            // A comparison the container already guarantees decides nothing, so the equivalent
-            // predicate is the one without it. RexUtil drops a TRUE from a conjunction and collapses a
-            // disjunction carrying one, so answering the constant here is the whole of it.
-            if (IsAlwaysTrue(call, fields, rootAlias, outright))
-                return rexBuilder.makeLiteral(true);
 
             // By name rather than by ordinal: a kind's position among SqlKind's 355 values is
             // not an API, and a cast from the ordinal keeps compiling when one is inserted.
@@ -250,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 for (var i = 0; i < call.getOperands().size(); i++)
                 {
                     var operand = (RexNode)call.getOperands().get(i);
-                    var rewritten = Apply(operand, translator, known, rootAlias, rexBuilder, fields, outright, container, established);
+                    var rewritten = Apply(operand, at);
 
                     operands.add(rewritten ?? operand);
                     changed |= rewritten is not null;
@@ -260,20 +346,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return null;
 
                 return kind == nameof(SqlKind.__Enum.AND)
-                    ? RexUtil.composeConjunction(rexBuilder, operands)
-                    : RexUtil.composeDisjunction(rexBuilder, operands);
+                    ? RexUtil.composeConjunction(at.RexBuilder, operands)
+                    : RexUtil.composeDisjunction(at.RexBuilder, operands);
             }
 
             if (kind == nameof(SqlKind.__Enum.IS_NULL) || kind == nameof(SqlKind.__Enum.IS_NOT_NULL))
-                return TryLowerUuidNullTest(call, translator, known, rootAlias, rexBuilder);
+                return TryLowerUuidNullTest(call, at);
 
             if (kind == nameof(SqlKind.__Enum.CASE))
-                return TryFlattenCase(call, translator, known, rootAlias, rexBuilder, fields, outright, container, established);
+                return TryFlattenCase(call, at);
 
             // A merged view's column inside a comparison, rather than the comparison itself -- see
             // TryLiftStrictCase. Before the lowering below, which reads a comparison's operands as
             // written and would find a CASE where it looks for a path.
-            if (TryLiftStrictCase(call, translator, known, rootAlias, rexBuilder, fields, outright, container, established) is RexNode lifted)
+            if (TryLiftStrictCase(call, at) is RexNode lifted)
                 return lifted;
 
             if (call.getOperands().size() != 2)
@@ -289,12 +375,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (ComparisonOf(kind) is not SqlOperator comparison)
                 return null;
 
-            return TryLowerUuid(left, right, comparison, translator, known, rootAlias, rexBuilder)
-                ?? TryLowerUuid(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
-                ?? TryLowerInstant(left, right, comparison, translator, known, rootAlias, rexBuilder)
-                ?? TryLowerInstant(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder)
-                ?? TryLowerNumber(left, right, comparison, translator, known, rootAlias, rexBuilder)
-                ?? TryLowerNumber(right, left, Reverse(comparison), translator, known, rootAlias, rexBuilder);
+            return TryLowerUuid(left, right, comparison, at)
+                ?? TryLowerUuid(right, left, Reverse(comparison), at)
+                ?? TryLowerInstant(left, right, comparison, at)
+                ?? TryLowerInstant(right, left, Reverse(comparison), at)
+                ?? TryLowerNumber(left, right, comparison, at)
+                ?? TryLowerNumber(right, left, Reverse(comparison), at);
         }
 
         /// <summary>
@@ -325,10 +411,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b><c>q</c> is read only where <c>p</c> holds, so what <c>p</c> proves is in force there.</b>
         /// A merged view's filter is exactly the discriminator that makes its columns mean what they
-        /// do, so <c>q</c> is lowered against the facts <c>p</c> establishes beside the ones the query's
-        /// own conjuncts do — the sibling-conjunct argument, one level down: over a row where <c>p</c>
-        /// is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. And where those
-        /// facts cannot hold together <c>p</c> is never true, so the <c>CASE</c> is the constant.
+        /// do, so <c>q</c> is lowered against the facts <c>p</c> establishes beside the ones the
+        /// conjunct's siblings do — the sibling-conjunct argument, one level down: over a row where
+        /// <c>p</c> is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. And where
+        /// those facts cannot hold together <c>p</c> is never true, so the <c>CASE</c> is the constant.
+        /// That is <see cref="OracleLicence.Arm"/>: the siblings and the arm's conditions, never the
+        /// conjunct the <c>CASE</c> is part of.
         /// </para>
         /// <para>
         /// <b>Only where <c>q</c> cannot raise, which is the condition Calcite's own simplifier keeps
@@ -347,7 +435,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// ternary it already rendered as.
         /// </para>
         /// </remarks>
-        static RexNode? TryFlattenCase(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
+        static RexNode? TryFlattenCase(RexCall call, Rewriting at)
         {
             if (call.getOperands().size() != 3 || (RexNode)call.getOperands().get(2) is not RexLiteral otherwise || (otherwise.isNull() || otherwise.isAlwaysFalse()) == false)
                 return null;
@@ -355,34 +443,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var condition = (RexNode)call.getOperands().get(0);
             var value = (RexNode)call.getOperands().get(1);
 
-            var loweredCondition = Apply(condition, translator, known, rootAlias, rexBuilder, fields, outright, container, established) ?? condition;
+            var loweredCondition = Apply(condition, at) ?? condition;
 
-            // What the arm may lean on: everything the query proved, and what the condition proves of
-            // the rows the arm is read for.
-            var guarded = known;
-            var within = established;
+            // What the arm may lean on: what the conjunct's siblings prove, and what the condition
+            // proves of the rows the arm is read for.
+            var within = at.Within(loweredCondition);
+            if (within.NeverRead)
+                return at.RexBuilder.makeLiteral(false);
 
-            if (container is not null)
-            {
-                var proved = new List<JsonFact>(established);
-                proved.AddRange(CosmosFactExtractor.Extract(loweredCondition, fields, rootAlias));
-
-                guarded = container.Facts.Derive(proved);
-                within = proved;
-
-                if (guarded.IsContradictory)
-                    return rexBuilder.makeLiteral(false);
-            }
-
-            var loweredValue = Apply(value, translator, guarded, rootAlias, rexBuilder, fields, outright, container, within) ?? value;
+            var loweredValue = Apply(value, within) ?? value;
 
             if (IsSafe(loweredValue))
-                return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList { loweredCondition, loweredValue });
+                return RexUtil.composeConjunction(at.RexBuilder, new java.util.ArrayList { loweredCondition, loweredValue });
 
             if (ReferenceEquals(loweredCondition, condition) && ReferenceEquals(loweredValue, value))
                 return null;
 
-            return rexBuilder.makeCall(call.getType(), call.getOperator(), new java.util.ArrayList { loweredCondition, loweredValue, otherwise });
+            return at.RexBuilder.makeCall(call.getType(), call.getOperator(), new java.util.ArrayList { loweredCondition, loweredValue, otherwise });
         }
 
         /// <summary>
@@ -428,7 +505,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the same rows.
         /// </para>
         /// </remarks>
-        static RexNode? TryLiftStrictCase(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, JsonFactSet outright, CosmosContainerMetadata? container, IReadOnlyList<JsonFact> established)
+        static RexNode? TryLiftStrictCase(RexCall call, Rewriting at)
         {
             if (ComparisonOf(call.getKind().name()) is null)
                 return null;
@@ -440,12 +517,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var value = (RexNode)found.getOperands().get(1);
 
             var replaced = Replace(call, found, value);
-            var guarded = (RexCall)rexBuilder.makeCall(SqlStdOperatorTable.CASE, condition, replaced, rexBuilder.makeLiteral(false));
+            var guarded = (RexCall)at.RexBuilder.makeCall(SqlStdOperatorTable.CASE, condition, replaced, at.RexBuilder.makeLiteral(false));
 
-            var flattened = TryFlattenCase(guarded, translator, known, rootAlias, rexBuilder, fields, outright, container, established) ?? guarded;
+            var flattened = TryFlattenCase(guarded, at) ?? guarded;
 
             if (flattened is RexCall still && still.getKind().name() == nameof(SqlKind.__Enum.CASE))
-                return RexUtil.composeConjunction(rexBuilder, new java.util.ArrayList { (RexNode)still.getOperands().get(0), still });
+                return RexUtil.composeConjunction(at.RexBuilder, new java.util.ArrayList { (RexNode)still.getOperands().get(0), still });
 
             return flattened;
         }
@@ -589,52 +666,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Determines whether a comparison is one every document in the container satisfies, so that
-        /// asking it decides nothing.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Two claims, and the second is what makes it an equivalence rather than a weakening.</b>
-        /// A declared value says what a path holds <em>if it holds anything</em> — the same reading
-        /// <see cref="JsonFact.Entails"/> is careful about, where nothing entails
-        /// <see cref="JsonClaim.Present"/>. So a container declaring <c>kind</c> is <c>"A"</c> and
-        /// nothing more still admits a document with no <c>kind</c> at all, over which
-        /// <c>kind = 'A'</c> is unknown and the row is dropped. Removing the conjunct would keep that
-        /// row. Only a path declared <em>present</em> as well has no such document, and only then is
-        /// the comparison true of everything.
-        /// </para>
-        /// <para>
-        /// <b>Outright, never under a guard.</b> A guarded fact holds of the rows a sibling conjunct
-        /// keeps, which is enough to <em>rewrite</em> a comparison and not enough to delete one: the
-        /// conjunct being deleted may be the very one that proved the guard, and the predicate left
-        /// behind would then prove less than it did. Asking only what
-        /// <c>Derive(null)</c> knows sidesteps the question rather than reasoning about it.
-        /// </para>
-        /// <para>
-        /// <b>Exactly an equality, and nothing looser.</b> The shape is read here rather than through
-        /// <see cref="CosmosFactExtractor"/>, which is deliberately incomplete — it reports what a
-        /// predicate <em>proves</em>, and under-reporting is harmless when proving a guard and fatal
-        /// when deleting a conjunct, since the part it did not report still constrains.
-        /// </para>
-        /// </remarks>
-        /// <param name="call">The conjunct.</param>
-        /// <param name="fields">The ordinal-to-path binding.</param>
-        /// <param name="rootAlias">The alias bound to the container.</param>
-        /// <param name="outright">What holds of every document, whatever the query proved.</param>
-        /// <returns><c>true</c> where every document satisfies it.</returns>
-        static bool IsAlwaysTrue(RexCall call, IReadOnlyList<CosmosPath?> fields, string rootAlias, JsonFactSet outright)
-        {
-            if (call.getKind().name() != nameof(SqlKind.__Enum.EQUALS) || call.getOperands().size() != 2)
-                return false;
-
-            if (CosmosFactExtractor.TryComparison(call, fields, rootAlias, out var path, out var value) == false || path is null)
-                return false;
-
-            return outright.Knows(new JsonFact(path.Value, new JsonClaim.Present()))
-                && outright.Knows(new JsonFact(path.Value, new JsonClaim.EqualTo(value)));
-        }
-
-        /// <summary>
         /// Maps a comparison kind onto the operator that rebuilds it, or <c>null</c> where the kind is
         /// not one an ordering lowers.
         /// </summary>
@@ -729,7 +760,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// every merged self-join on such a key carries this conjunct. #177.
         /// </para>
         /// </remarks>
-        static RexNode? TryLowerUuidNullTest(RexCall call, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerUuidNullTest(RexCall call, Rewriting at)
         {
             if (call.getOperands().size() != 1 || (RexNode)call.getOperands().get(0) is not RexCall cast)
                 return null;
@@ -743,29 +774,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var operand = (RexNode)cast.getOperands().get(0);
 
-            if (translator.TryResolvePath(operand, out var path) == false || path is null)
+            if (at.Translator.TryResolvePath(operand, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+            if (string.Equals(path.Alias, at.RootAlias, StringComparison.Ordinal) == false)
                 return null;
 
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
+            if (at.Known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
                 return null;
 
-            return rexBuilder.makeCall(call.getOperator(), operand);
+            return at.RexBuilder.makeCall(call.getOperator(), operand);
         }
 
-        static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerUuid(RexNode castNode, RexNode literalNode, SqlOperator comparison, Rewriting at)
         {
             if (literalNode is not RexLiteral literal || UuidOf(literal) is not Guid value)
                 return null;
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredUuid(castNode, ordering, translator, known, rootAlias, out var representation) is not RexNode operand)
+            if (TryStoredUuid(castNode, ordering, at.Translator, () => at.Known, at.RootAlias, out var representation) is not RexNode operand)
                 return null;
 
             // And the form has to be one whose stored spelling this knows how to write. A
@@ -774,7 +805,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosStoredForms.RenderUuid(representation, value) is not string stored)
                 return null;
 
-            return rexBuilder.makeCall(comparison, operand, rexBuilder.makeLiteral(stored));
+            return at.RexBuilder.makeCall(comparison, operand, at.RexBuilder.makeLiteral(stored));
         }
 
         /// <summary>
@@ -791,11 +822,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="castNode">The expression that may read a path as a UUID.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
         /// <param name="translator">Resolves the path underneath.</param>
-        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredUuid(RexNode castNode, bool ordering, CosmosRexTranslator translator, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -820,7 +851,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
+            if (known().RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
                 return null;
 
             if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
@@ -857,20 +888,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// where that is decided and where the measurements behind it are recorded.
         /// </para>
         /// </remarks>
-        static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, Rewriting at)
         {
             if (literalNode is not RexLiteral literal || InstantOf(literal) is not DateTime value)
                 return null;
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (TryStoredInstant(temporalNode, ordering, translator, known, rootAlias, out var representation) is not RexNode accessor)
+            if (TryStoredInstant(temporalNode, ordering, at.Translator, () => at.Known, at.RootAlias, out var representation) is not RexNode accessor)
                 return null;
 
             if (CosmosStoredForms.RenderDateTime(representation, value) is not string stored)
                 return null;
 
-            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+            return at.RexBuilder.makeCall(comparison, accessor, at.RexBuilder.makeLiteral(stored));
         }
 
         /// <summary>
@@ -896,11 +927,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="temporalNode">The expression that may read a path as an instant.</param>
         /// <param name="ordering">Whether the comparison is an ordering rather than an equality or an inequality.</param>
         /// <param name="translator">Resolves the path underneath.</param>
-        /// <param name="known">What the container has been shown to hold.</param>
+        /// <param name="known">What the container has been shown to hold, asked only once the shape is found.</param>
         /// <param name="rootAlias">The alias a path must be rooted at.</param>
         /// <param name="representation">On success, the path's declared form.</param>
         /// <returns>The text accessor, or <c>null</c>.</returns>
-        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, out CosmosRepresentation representation)
+        internal static RexNode? TryStoredInstant(RexNode temporalNode, bool ordering, CosmosRexTranslator translator, Func<JsonFactSet> known, string rootAlias, out CosmosRepresentation representation)
         {
             representation = default;
 
@@ -916,7 +947,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation declared)
+            if (known().RepresentationOf(document) is not CosmosRepresentation declared)
                 return null;
 
             if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
@@ -966,12 +997,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="numericNode">The operand that may read a path as a number.</param>
         /// <param name="literalNode">The operand that may be the literal.</param>
         /// <param name="comparison">The operator, already reversed where the operands were read backwards.</param>
-        /// <param name="translator">Resolves the path underneath.</param>
-        /// <param name="known">What the container has been shown to hold.</param>
-        /// <param name="rootAlias">The alias a path must be rooted at.</param>
-        /// <param name="rexBuilder">Builds the lowered comparison.</param>
+        /// <param name="at">Where the rewrite stands, which says what is known.</param>
         /// <returns>The lowered comparison, or <c>null</c>.</returns>
-        static RexNode? TryLowerNumber(RexNode numericNode, RexNode literalNode, SqlOperator comparison, CosmosRexTranslator translator, JsonFactSet known, string rootAlias, RexBuilder rexBuilder)
+        static RexNode? TryLowerNumber(RexNode numericNode, RexNode literalNode, SqlOperator comparison, Rewriting at)
         {
             if (literalNode is not RexLiteral literal || IntegerOf(literal) is not long value)
                 return null;
@@ -979,16 +1007,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (NumericAccessorOf(numericNode) is not RexNode accessor)
                 return null;
 
-            if (translator.TryResolvePath(accessor, out var path) == false || path is null)
+            if (at.Translator.TryResolvePath(accessor, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
+            if (string.Equals(path.Alias, at.RootAlias, StringComparison.Ordinal) == false)
                 return null;
 
             if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
                 return null;
 
-            if (known.RepresentationOf(document) is not CosmosRepresentation representation)
+            if (at.Known.RepresentationOf(document) is not CosmosRepresentation representation)
                 return null;
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
@@ -999,7 +1027,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (CosmosStoredForms.RenderInteger(representation, value) is not string stored)
                 return null;
 
-            return rexBuilder.makeCall(comparison, accessor, rexBuilder.makeLiteral(stored));
+            return at.RexBuilder.makeCall(comparison, accessor, at.RexBuilder.makeLiteral(stored));
         }
 
         /// <summary>

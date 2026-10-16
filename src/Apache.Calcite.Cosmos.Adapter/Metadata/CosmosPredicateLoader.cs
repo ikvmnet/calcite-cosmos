@@ -36,9 +36,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// lose a pushdown.
     /// </para>
     /// <para>
-    /// <b>A literal is a JSON scalar</b>, converted once as <see cref="CosmosFactExtractor"/> converts it, and a literal of a
-    /// kind a reading is never compared with — a number against a text accessor, say, which Calcite would have cast — makes
-    /// the comparison opaque rather than guessed at.
+    /// <b>A literal is a JSON scalar</b>, converted once, as the translator would send it (<see cref="JsonScalar"/>), and a
+    /// literal of a kind a reading is never compared with — a number against a text accessor, say, which Calcite would have
+    /// cast — makes the comparison opaque rather than guessed at.
     /// </para>
     /// <para>
     /// <b>What a statement asks of later is read the same way.</b> A <c>CASE</c> condition a rewrite descends to, or a

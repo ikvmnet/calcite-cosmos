@@ -153,7 +153,9 @@ trial alone.
 - [`TODO.md`](../TODO.md) — what is left, sized and reasoned.
 - [`Facts/Saturation/README.md`](../src/Apache.Calcite.Cosmos.Adapter/Facts/Saturation/README.md) — the
   catalogue of the theory a container's declared facts are reasoned in, and of the predicate rules the
-  oracle beside it uses. The oracle runs in shadow: nothing a plan does depends on it yet.
+  oracle beside it uses. Every fact a plan reads off a filter is the oracle's, through
+  `Metadata/CosmosFilterStatement.cs`; `DESIGN.md`, under *The oracle in the planner*, says which rule asks
+  which question, and the licence each question is answered under.
 
 Two explicit measurements put a change to what planning reads beside the commit before it. Run each on both
 builds and compare:

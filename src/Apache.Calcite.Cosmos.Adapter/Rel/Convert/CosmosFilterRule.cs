@@ -34,9 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// string comparison mean the same thing, the lowered form is what both the legality test and
         /// the conversion see, so the rest of the rule needs no knowledge of any of it.
         /// </remarks>
-        static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields) =>
+        static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings) =>
             CosmosFactRewriter.Rewrite(
-                filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder());
+                filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder(), readings);
 
         /// <summary>
         /// Determines whether a filter's condition can be rendered as Cosmos SQL.
@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // what its siblings applied beside it establish, and never what it does itself. So a
             // conjunct may lean on another that reaches the service with it, to any depth, and no
             // conjunct certifies itself (#117). The same strata render it at implementation.
-            return CosmosFilterStatement.Of(Pushed(convention, filter, fields), fields, readings, convention.Container, filter.getCluster().getRexBuilder()).Renders;
+            return CosmosFilterStatement.Of(Pushed(convention, filter, fields, readings), fields, readings, convention.Container, filter.getCluster().getRexBuilder()).Renders;
         }
 
         /// <summary>
@@ -107,8 +107,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The converted filter carries the lowered condition, which is what puts a plain equality
             // where the rest of the adapter can already use it: the translator renders it, and
             // CosmosPartitionKeyExtractor recovers a partition key from it.
-            var condition = _convention is CosmosConvention convention && CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _, out _)
-                ? Pushed(convention, filter, fields)
+            var condition = _convention is CosmosConvention convention && CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _)
+                ? Pushed(convention, filter, fields, readings)
                 : filter.getCondition();
 
             return new CosmosFilter(

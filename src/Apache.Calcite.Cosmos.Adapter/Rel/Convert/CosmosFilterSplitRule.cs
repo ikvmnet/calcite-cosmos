@@ -196,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // first and each conjunct would be weighed on its own, with nothing left to prove the
             // guard from.
             var condition = Metadata.CosmosFactRewriter.Rewrite(
-                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
+                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
 
             // Admitted stratum by stratum: a conjunct pushes where it renders from what the conjuncts
             // pushed before it establish. A fact licenses a comparison only where the conjunct that

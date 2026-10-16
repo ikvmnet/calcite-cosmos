@@ -26,6 +26,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>whether a conjunct renders, and how (<see cref="Renders"/>, <see cref="IsAdmitted"/>,
     /// <see cref="FactsFor"/>, <see cref="Translate"/>)</term><description>the stratum before the one that admitted it, or
     /// for one no stratum admitted, the last: what its siblings applied beside it establish, never what it does</description></item>
+    /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>every
+    /// conjunct: a strengthening, which the conjuncts' own facts may justify</description></item>
+    /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>every sibling, never the
+    /// conjunct itself, one deletion at a time</description></item>
+    /// <item><term>a comparison lowered onto its stored form (<see cref="Siblings"/>)</term><description>every sibling the
+    /// deletions keep, never the conjunct itself</description></item>
+    /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
+    /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
     /// declaration</description></item>
     /// </list>
@@ -34,6 +42,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// and again when it is implemented — and a condition is an immutable node the planner hands back unchanged, so a
     /// statement is remembered against the node, with the binding it was read through, and released with it. What the
     /// oracle remembers beneath it is keyed by the statement's digest, so two nodes spelling one filter share contexts.
+    /// </para>
+    /// <para>
+    /// <b>Its strata are opened only where asked.</b> A rewrite asks deletions and contradictions and never renders; a
+    /// filter rule renders and asks nothing else. Each is computed the first time it is asked, and once.
     /// </para>
     /// </remarks>
     internal sealed class CosmosFilterStatement
@@ -52,7 +64,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
         readonly object _lock = new();
+        CosmosStatementScope? _plain;
         CosmosStatementScope? _strata;
+        IReadOnlyList<int>? _redundant;
+        bool? _contradictory;
+        JsonFactSet?[]? _siblings;
+        (CosmosStatementScope Scope, int[] Index)? _remaining;
 
         CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias)
         {
@@ -148,7 +165,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         public PredicateStatement Statement { get; }
 
+        /// <summary>
+        /// Gets a rewrite's answer for this condition, remembered here so that it is one node each time it is asked: the
+        /// node the rules then render is the statement remembered against it.
+        /// </summary>
+        internal RexNode? Rewritten { get; set; }
+
         CosmosOracle Oracle => CosmosOracle.For(_container.Facts);
+
+        /// <summary>
+        /// The statement with nothing admitted: the questions that do not render.
+        /// </summary>
+        CosmosStatementScope Plain
+        {
+            get
+            {
+                lock (_lock)
+                    return _plain ??= Oracle.Admit(Statement);
+            }
+        }
 
         /// <summary>
         /// The statement admitted by the translator, stratum by stratum.
@@ -231,6 +266,155 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             Write(Condition);
             return builder.ToString();
+        }
+
+        // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Gets whether the conjuncts and the declaration cannot all hold of one document, so that the filter keeps nothing.
+        /// </summary>
+        public bool IsContradictory
+        {
+            get
+            {
+                lock (_lock)
+                    return _contradictory ??= Plain.IsContradictory(OracleLicence.Kept);
+            }
+        }
+
+        /// <summary>
+        /// Gets what holds of every row the filter keeps, every conjunct assumed: what only a strengthening may read.
+        /// </summary>
+        public JsonFactSet Kept => Plain.Facts(OracleLicence.Kept);
+
+        // ── Deletion, every sibling, and lowering, every sibling kept (L3) ───────────────────────────────────────────
+
+        /// <summary>
+        /// Gets the conjuncts that may be deleted, removed one at a time so that two duplicates do not delete each other.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A conjunct is asked only where something could decide it: a sibling that reads a path it reads, or one above or
+        /// beneath it, or that shares a term with it; or a path the declaration speaks of. Elsewhere its siblings and the
+        /// declaration say nothing of what it reads, and nothing is always true of a path nothing is known of: asking would
+        /// open a context to learn that.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<int> Redundant
+        {
+            get
+            {
+                lock (_lock)
+                    return _redundant ??= Decidable().Any() ? Plain.RedundantConjuncts(Decidable()) : Array.Empty<int>();
+            }
+        }
+
+        IEnumerable<int> Decidable()
+        {
+            var conjuncts = Statement.Conjuncts;
+            var declared = _container.Facts.MentionedPaths;
+
+            bool Meet(JsonDocumentPath a, JsonDocumentPath b) => a.IsWithin(b) || b.IsWithin(a);
+
+            for (var i = 0; i < conjuncts.Count; i++)
+            {
+                var paths = conjuncts[i].Paths.ToArray();
+                var terms = conjuncts[i].Subterms.Select(t => t.Digest).ToHashSet(StringComparer.Ordinal);
+
+                var decidable = paths.Any(p => declared.Any(d => Meet(p, d)))
+                    || Enumerable.Range(0, conjuncts.Count).Any(j => j != i
+                        && (conjuncts[j].Paths.Any(q => paths.Any(p => Meet(p, q))) || conjuncts[j].Subterms.Any(t => terms.Contains(t.Digest))));
+
+                if (decidable)
+                    yield return i;
+            }
+        }
+
+        /// <summary>
+        /// Returns what every conjunct but one establishes, beside the declaration, of those the rewrite keeps: the facts
+        /// a comparison inside that conjunct is lowered onto its stored form by.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A lowering is an equivalence where its fact holds, and the facts hold wherever the siblings do — which is every
+        /// row the filter keeps, since the conjunct is decided only where they hold. The conjunct's own facts are not
+        /// among them: a comparison never certifies its own stored form.
+        /// </para>
+        /// <para>
+        /// <b>The siblings the rewrite keeps, not every sibling.</b> A deletion and a lowering are each sound on the
+        /// statement they are asked of, and the rewrite does both: the second is asked of the statement the first leaves.
+        /// Asked of every sibling, a conjunct deleted because this one implies it would lend this one
+        /// its facts — the conjunct certifying itself through a sibling it had made redundant, the shape #117 forbids one
+        /// step removed — and the lowering would be an equivalence only where a conjunct no longer applied holds.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The rewrite deletes the conjunct, and lowers nothing in it.</exception>
+        public JsonFactSet Siblings(int conjunct)
+        {
+            lock (_lock)
+            {
+                var (scope, index) = Remaining;
+                _siblings ??= new JsonFactSet?[Conjuncts.Count];
+                return _siblings[conjunct] ??= scope.Facts(OracleLicence.DeleteConjunct(RemainingIndex(index, conjunct)));
+            }
+        }
+
+        /// <summary>
+        /// The statement the rewrite leaves: every conjunct <see cref="Redundant"/> does not delete, and where each of the
+        /// condition's conjuncts stands in it.
+        /// </summary>
+        (CosmosStatementScope Scope, int[] Index) Remaining
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    if (_remaining is { } remains)
+                        return remains;
+
+                    var redundant = Redundant;
+                    var index = new int[Conjuncts.Count];
+                    var remaining = new List<RexNode>();
+
+                    for (var i = 0; i < Conjuncts.Count; i++)
+                    {
+                        index[i] = redundant.Contains(i) ? -1 : remaining.Count;
+                        if (index[i] >= 0)
+                            remaining.Add(Conjuncts[i]);
+                    }
+
+                    // Nothing deleted, nothing to read again: the statement is the one every question so far was asked of.
+                    var scope = redundant.Count == 0 ? Plain : Oracle.Admit(_loading.Statement(remaining));
+                    return (_remaining = (scope, index)).Value;
+                }
+            }
+        }
+
+        static int RemainingIndex(int[] index, int conjunct) =>
+            index[conjunct] >= 0 ? index[conjunct] : throw new ArgumentOutOfRangeException(nameof(conjunct), conjunct, "The rewrite deletes the conjunct, and lowers nothing in it.");
+
+        // ── Inside a CASE: the kept siblings and the arm's conditions ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns what holds where an arm of a <c>CASE</c> inside a conjunct is read: every sibling the rewrite keeps, and
+        /// the conditions the arm is read under.
+        /// </summary>
+        /// <param name="conjunct">The conjunct the <c>CASE</c> is part of.</param>
+        /// <param name="conditions">The conditions of the arms it is nested in, outermost first.</param>
+        public JsonFactSet Within(int conjunct, IReadOnlyList<RexNode> conditions)
+        {
+            var (scope, index) = Remaining;
+            return scope.Facts(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
+        }
+
+        /// <summary>
+        /// Determines whether an arm of a <c>CASE</c> is read under conditions its kept siblings contradict, so that it is
+        /// never read and the <c>CASE</c> answers its <c>ELSE</c>.
+        /// </summary>
+        public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions)
+        {
+            var (scope, index) = Remaining;
+            return scope.IsContradictory(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
         }
 
     }

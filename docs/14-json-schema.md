@@ -123,7 +123,35 @@ stored number does too.
 Similarly, a path declared `required` needs no `IS_DEFINED` guard, which removes documents the service
 would otherwise send only for the recheck to discard. So does a path the query itself compares: a
 comparison keeps only documents that have the path, so `c.carrier = 'x'` beside a weakened comparison on
-`$.carrier` makes the second one's guard redundant.
+`$.carrier` makes the second one's guard redundant. And a guard the service already guarantees is never
+sent: every document has an `id`, an `_etag` and a `_ts`, so what a comparison over one of them implies
+of its presence restricts nothing.
+
+### A conjunct the schema already guarantees is not sent
+
+A conjunct that every document the schema admits satisfies — given the other conjuncts — decides
+nothing, and is dropped from what is sent:
+
+```sql
+-- "required": ["status"], "properties": { "status": { "enum": ["active", "archived"] } }
+SELECT c."id" FROM "shipments" AS c
+WHERE JSON_VALUE(c."DOC", '$.status') IN ('active', 'archived')
+  AND JSON_VALUE(c."DOC", '$.carrier') = 'DHL'
+```
+
+```
+without a schema   WHERE (c.status = @p0 OR c.status = @p1) AND c.carrier = @p2
+with one           WHERE c.carrier = @p0
+```
+
+The same holds of `<>` a value outside the enum, `IS NOT NULL` of a required path that is never null, a
+range through `CAST(… AS DOUBLE)` that the declared `minimum` and `maximum` already satisfy, and a
+disjunction one of whose branches another conjunct asserts: `kind = 'shipment' AND (kind = 'shipment'
+OR …)` sends the first conjunct alone.
+`required` matters: without it a document may lack the path, and a comparison over an absent path keeps
+no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
+Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTEGER`, which an
+`"integer"` declaration admits, and dropping the conjunct would answer where the query fails.
 
 ### A predicate no document can satisfy
 
@@ -251,6 +279,9 @@ A query can also prove the branch in other ways:
   about `trackingId`, nothing is concluded.
 - **By ruling the other kinds out.** In a container of orders and shipments, `kind <> 'order'` leaves
   only shipments, and the shipment branch's facts apply.
+- **One kind per branch of a disjunction.** `(kind = 'order' AND …) OR (kind = 'shipment' AND …)` keeps
+  each row by one branch or the other, and whatever both kinds declare holds of every row it keeps, as
+  it does of `kind IN ('order', 'shipment')`.
 
 What **every** branch implies holds without any conjunct, because every document is in some branch.
 That includes a fact branches state differently but compatibly: if `trackingId` is a canonical UUID in

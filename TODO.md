@@ -1664,15 +1664,14 @@ Both need a service and report inconclusive without one, which means the `linux-
 actually run. The failure mode being guarded against is narrow but real: the rewrite turns a query
 that was merely slow into one that does not run.
 
-**Also built: a declared tautology is not asked.** Where the container guarantees both that a path is
-present and what value it holds, a query comparing that path to that value decides nothing, and
-`CosmosFactRewriter` answers the constant — which `RexUtil` then drops from a conjunction. Two claims
-are needed and the second is the whole of the argument: a declared value says what a path holds *if it
-holds anything*, so a container declaring `kind` is `"A"` and nothing more still admits a document
-with no `kind`, over which `kind = 'A'` is unknown and the row is dropped. Removing the conjunct would
-keep that row. Only `required` beside the `const` rules that document out. It is read from
-`Derive(null)` and never from a guarded fact, because the conjunct being deleted may be the one that
-proved the guard.
+**Also built: a declared tautology is not asked.** Where the declaration and the other conjuncts make
+a conjunct true of every document, it decides nothing, and `CosmosFactRewriter` deletes it — asked of
+the predicate oracle under the deletion's licence, every sibling and never the conjunct itself, one at
+a time. It was an equality whose path the declaration made present and that value; it is any shape the
+oracle decides: an `IN` covering a required enum, a `<>` outside one, `IS NOT NULL` of a required
+scalar, a range a `CAST(… AS DOUBLE)` reads inside the declared bounds, a disjunction holding a sibling
+for a branch. `required` is still the whole of the argument: a declared value says what a path holds *if
+it holds anything*, and a document with no `kind` keeps no row of `kind = 'A'`.
 
 **The payoff this was predicted to have, it does not have, and that is worth recording.** This entry
 said it would unblock a point read, on the reasoning that `TryExtractPointRead` refuses any conjunct
@@ -1895,9 +1894,9 @@ holds. Three bugs planted in what was added were each caught by it.
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
   rest, and the adapter has no claim for them, so the reader states none.
-- **Gap 1 spelled per kind** — *medium.* `(type = 'park' AND …) OR (type = 'map' AND …)` wants a derivation per
-  disjunct. `CosmosFactRewriter.Apply` reaches into an `OR` with the top-level facts only. The predicate oracle,
-  below, derives it by a split over the arms; nothing in the planner asks it yet.
+- **Gap 1 spelled per kind** — *done.* `(type = 'park' AND …) OR (type = 'map' AND …)` proves what both kinds
+  declare, by the predicate oracle's split over the arms, which the rewriter asks; a UUID comparison beside it is
+  lowered (`CosmosPushdownProbeTests`' "each kind spelled per arm", held to Calcite by `CosmosDifferentialTests`).
 - **The schema reader emits splits rather than a meet** — *large.* A hidden discriminator per undiscriminated
   `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
@@ -1938,13 +1937,14 @@ holds. Three bugs planted in what was added were each caught by it.
 pinned by a test and only grows. A wrong lift drops rows with no error, which is the same blast radius as a wrong
 schema (*A declaration is trusted*).
 
-### The predicate oracle — *in the planner for rendering a filter; its rewrite and the clauses after it are left*
+### The predicate oracle — *in the planner for filters; projections, sorts and groupings are left*
 
 Eggnog decides what is true, the host what is written and what is legal, Volcano which plan. The oracle was built
-and measured in shadow (Stage 1), and now answers what rendering a filter asks: the filter rule's whether it pushes
-whole, the implementor's rendering, the split rule's which conjuncts push and from what a weakening is rendered, and
-the translator's every question of a type. `DESIGN.md`, from *Predicates as facts: the oracle* through *How the
-oracle is checked: population D*, is the record; `Facts/Saturation/README.md` is the catalogue.
+and measured in shadow (Stage 1), and now answers every question a filter's rules ask: the filter rule's whether it
+pushes whole, the implementor's rendering, the split rule's which conjuncts push and which weakening, the rewriter's
+contradiction, deletion and lowering, and the translator's every question of a type. `DESIGN.md`, from *Predicates
+as facts: the oracle* through *How the oracle is checked: population D*, is the record; `Facts/Saturation/README.md`
+is the catalogue.
 
 **What is built.**
 - **The typed IR's predicate subset** (`Facts/SqlPredicate.cs`) and its loader (`Metadata/CosmosPredicateLoader.cs`):
@@ -1957,8 +1957,9 @@ oracle is checked: population D*, is the record; `Facts/Saturation/README.md` is
   arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
   strata over a declaration with no conditional rule read off `JsonFactOverlay`, and the planner's own graphs.
 - **`CosmosFilterStatement`**: a filter as the oracle reads it, remembered against its condition node, and the
-  questions the rules that render it ask. The split rule's two passes and every `Derive` at a site that renders a
-  filter are gone, and so are the translator's four questions of a type, now one.
+  questions each rule asks. `CosmosFactExtractor`, the split rule's two passes, the rewriter's fact half and every
+  `Derive` at a filter site are gone, and so are the translator's four questions of a type, now one. The split rule
+  still asks its digest test of what is beneath.
 - **Tests**: the oracle's unit tests; the population-D checker and the planted-bug suite, asking the arm and the whole
   filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`; and the kinds container in
   `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it did not to Calcite on the
@@ -1966,9 +1967,6 @@ oracle is checked: population D*, is the record; `Facts/Saturation/README.md` is
   it.
 
 **What is left.**
-- **The rewriter's fact half** — *medium, the next step.* Its contradiction, its deletion of a conjunct the
-  declaration guarantees, its lowering onto a stored form and its `CASE` arms still read `CosmosFactExtractor` and
-  `Derive`; the licence table has a row for each. So does the split rule's digest test of what is beneath.
 - **The defect replay** — *medium.* #99, #105, #114, #117, #172, #175, #182, #187, #198, #207, #217, F2–F4 and gaps
   1–5, each answered by the general rules or counted as needing its own.
 - **Stage 3b: the clauses after the filter** — *medium.* A projection, a sort, a grouping, a point read and a key
@@ -1977,6 +1975,17 @@ oracle is checked: population D*, is the record; `Facts/Saturation/README.md` is
   `CosmosSelfJoinRule`, `CosmosLookupJoinRule`), where the licence table gives them the last stratum of the filters
   beneath (L1): a sort over `category = 'bikes'` knows `category` is present, and a projection over `kind = 'B'`
   knows `ref`'s form. The shadow counted 243 such decisions on the corpus alone.
+- **Deletions inside a conjunct** — *small, and a measurement first.* The rewriter deletes whole conjuncts, one at a
+  time. A merged view repeats its filter inside each `CASE` column, and the shadow found 2,263 copies on the hierarchy
+  that their sibling conjunct makes true; deleting them changes no row and may change what the planner explores.
+- **Two orderings lowered on each other** — *small, and a declaration has to be built for it.* The rewriter lowers a
+  comparison onto its stored form by what its siblings establish (L3, of the conjuncts the deletions keep). An equality
+  lowered so is a strengthening — a stored spelling that matches is a value the cast reads as the literal — but an
+  ordering is not: text past the stored form's bound need not be a value of the form at all. So two conjuncts whose
+  facts each prove the other's stored form could each be lowered on the other, and a row both originals drop pass both
+  lowered forms. It wants a declaration in which each path's form hangs on the other's value, which nothing in the
+  corpus or the tests has; the strata would settle it as they settle rendering, an ordering lowered only on the
+  conjuncts lowered before it.
 - **The translator over the IR** — *large, Stage 3a's other half.* The weakening's window is
   `CosmosNumericWindow`'s and the atom's both, agreeing through one constant and one reading of a literal, until a
   translator over the IR takes it from the one.
