@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -38,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         CosmosRexTranslator Translator()
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters);
+            return new CosmosRexTranslator(_rex, _fields, _parameters, JsonFactSet.Empty);
         }
 
         /// <summary>
@@ -48,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         CosmosRexTranslator TranslatorOverARendering()
         {
             _parameters = new CosmosParameterList();
-            return new CosmosRexTranslator(_rex, _fields, _parameters, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
+            return new CosmosRexTranslator(_rex, _fields, _parameters, JsonFactSet.Empty, readings: new[] { CosmosReading.Text, CosmosReading.Typed, CosmosReading.Json });
         }
 
         RexNode Any(RexNode node) => _rex.makeCast(_types.createSqlType(SqlTypeName.ANY), node);

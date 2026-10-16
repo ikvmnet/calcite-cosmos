@@ -140,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Walked rather than read off the left's row type: above a projection those names are
             // aliases, and the array expression would resolve against paths the container has not got.
-            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out _, out _, out var written, out var container) == false
+            if (CosmosImplementor.TryBindOutput(correlate.getLeft(), out var fields, out var readings, out _, out var written, out var container) == false
                 || convention.Owns(container) == false)
                 return false;
 
@@ -155,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // The correlate's own id: this is a lateral traversal, so the variable its array
             // expression is written against stands for the very row being scanned.
-            var translator = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), fields, new CosmosParameterList(), correlate.getCorrelationId(), convention.Container);
+            var translator = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), fields, new CosmosParameterList(), Facts.JsonFactSet.Empty, correlate.getCorrelationId(), convention.Container);
 
             if (translator.TryResolvePath(array, out _) == false)
                 return false;
@@ -169,13 +169,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // name that is not the container's will do.
                 var bound = new List<CosmosPath?>(fields) { CosmosPath.Root("t") };
 
-                // No correlation id, mirroring CosmosFilter.Implement. A predicate comparing the
-                // element to the document being traversed is expressible at the service and is not
-                // expressible by that node, so it is declined rather than rendered against bindings
-                // it does not have.
-                var predicate = new CosmosRexTranslator(correlate.getCluster().getRexBuilder(), bound, new CosmosParameterList(), null, convention.Container);
+                // As the CosmosFilter convert builds over the traversal renders it: a statement of the
+                // element's predicate, each conjunct from the stratum before the one that admitted it
+                // (CosmosImplementor.TranslateCondition). No correlation id, mirroring that node: a
+                // predicate comparing the element to the document being traversed is expressible at
+                // the service and is not expressible by that node, so it is declined rather than
+                // rendered against bindings it does not have.
+                var boundReadings = new List<CosmosReading>(readings) { CosmosReading.Typed };
 
-                if (predicate.TryTranslate(condition, out _) == false)
+                if (Metadata.CosmosFilterStatement.Of(condition, bound, boundReadings, convention.Container, correlate.getCluster().getRexBuilder()).Renders == false)
                     return false;
             }
 

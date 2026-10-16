@@ -195,7 +195,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // What the filters beneath the residual establish of the rows the moved projection reads
             // (L1): the residual is above it and applied in process, so it proves nothing here.
             var facts = CosmosRowFacts.Of(filter.getInput(), container, OracleLicence.Select);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
+            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, _convention.Container);
 
             // Only a filter that is wholly residual: one the filter split leaves nothing of to push. A
             // filter with a part that renders is split first, and the projection is moved past what

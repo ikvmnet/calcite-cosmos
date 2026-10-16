@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -223,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static bool ReferencesUnindexedPath(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
             var unindexed = false;
 
             void Walk(RexNode node)
@@ -277,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> where a full text function reads an undeclared path.</returns>
         internal static bool ReferencesUndeclaredFullTextPath(RexNode node, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
             var undeclared = false;
 
             void Walk(RexNode current)

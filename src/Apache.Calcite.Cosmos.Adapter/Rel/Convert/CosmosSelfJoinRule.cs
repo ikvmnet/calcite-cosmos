@@ -418,7 +418,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // resolving the keys' paths is handed too.
             var container = table.Container;
             var facts = Either(f, g, fields, readings, container, rexBuilder);
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), facts, null, container, readings);
             var equated = new List<RexNode>();
             var paths = new List<JsonDocumentPath>();
 

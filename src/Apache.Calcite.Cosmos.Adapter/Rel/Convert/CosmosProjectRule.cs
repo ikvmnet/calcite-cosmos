@@ -80,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // filters beneath establish of every row it reads (L1), decided once for this projection
             // and handed to the node convert builds.
             var facts = Facts(project, container);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, null, facts);
+            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, convention.Container);
 
             // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the
             // expressions CosmosProject.Implement can render — including the cast to text it sends the

@@ -1,6 +1,7 @@
 using System;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using com.google.common.collect;
 
@@ -56,14 +57,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="rank">The scoring function to rank by, over the input's row type.</param>
         /// <param name="fetch">The row limit, or <c>null</c> for none.</param>
         public CosmosRank(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, java.util.List projects, RelDataType rowType, RexNode rank, RexNode? fetch) :
+            this(cluster, traitSet, input, projects, rowType, rank, fetch, null)
+        {
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance carrying what the rows it reads are known to satisfy, as
+        /// <see cref="CosmosProject"/> carries them and for its reason: its projections are a projection's.
+        /// </summary>
+        /// <param name="cluster">The planner cluster.</param>
+        /// <param name="traitSet">The trait set, which must carry the Cosmos convention.</param>
+        /// <param name="input">The input node.</param>
+        /// <param name="projects">The projected expressions, over the input's row type.</param>
+        /// <param name="rowType">The output row type.</param>
+        /// <param name="rank">The scoring function to rank by, over the input's row type.</param>
+        /// <param name="fetch">The row limit, or <c>null</c> for none.</param>
+        /// <param name="facts">What every row the projections read is known to satisfy, or <c>null</c> for the declaration.</param>
+        internal CosmosRank(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, java.util.List projects, RelDataType rowType, RexNode rank, RexNode? fetch, JsonFactSet? facts) :
             base(cluster, traitSet, input)
         {
             _projects = projects ?? throw new ArgumentNullException(nameof(projects));
             _rank = rank ?? throw new ArgumentNullException(nameof(rank));
             _fetch = fetch;
+            Facts = facts;
 
             this.rowType = rowType ?? throw new ArgumentNullException(nameof(rowType));
         }
+
+        /// <summary>
+        /// Gets what every row the projections read is known to satisfy, as the rule decided (L1); <c>null</c> where it
+        /// was built without, which reads what the container declares of every document.
+        /// </summary>
+        internal JsonFactSet? Facts { get; }
 
         /// <summary>
         /// Gets the projected expressions.
@@ -83,7 +109,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <inheritdoc />
         public override RelNode copy(RelTraitSet traitSet, java.util.List inputs)
         {
-            return new CosmosRank(getCluster(), traitSet, (RelNode)sole(inputs), _projects, getRowType(), _rank, _fetch);
+            return new CosmosRank(getCluster(), traitSet, (RelNode)sole(inputs), _projects, getRowType(), _rank, _fetch, Facts);
         }
 
         /// <inheritdoc />
@@ -129,7 +155,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (implementor.Query.HasOrderBy || implementor.Query.HasGroupBy)
                 throw new CosmosTranslationException("ORDER BY RANK cannot be combined with an ordinary ORDER BY or with GROUP BY.");
 
-            var translator = implementor.CreateTranslator();
+            var translator = implementor.CreateTranslator(Facts);
             var names = getRowType().getFieldNames();
 
             for (var i = 0; i < _projects.size(); i++)

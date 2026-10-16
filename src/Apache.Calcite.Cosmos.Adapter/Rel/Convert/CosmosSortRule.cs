@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Whether each column is the value the service orders by is asked of the walk's own binding,
             // readings and container -- what the node asks of the implementor the same walk built.
-            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings, facts);
+            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), facts, null, container, readings);
             var stored = CosmosSort.StoredFields(translator, sort.getInput().getRowType());
 
             if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(facts, sort, fields, candidates), SortableFields(candidates), facts, CosmosSort.OrderingPaths(facts, candidates), stored, out var keys, out _) == false)

@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// against.
         /// </summary>
         readonly Metadata.CosmosContainerMetadata? _container;
-        JsonFactSet? _facts;
+        readonly JsonFactSet _facts;
 
         /// <summary>
         /// Gets what is known of the documents this expression is evaluated over: the facts the
@@ -85,12 +85,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// what the conjunct establishes, so no comparison certifies itself (#117).
         /// </para>
         /// <para>
-        /// The declaration is what a consumer that names no licence may read (L0): it holds of every
-        /// document whatever reads it. Derived the first time it is asked, as most translations ask
-        /// nothing.
+        /// <b>Every caller names them.</b> A translator built without facts read the declaration, and a site that left them
+        /// out read L0 by omission — a projection under a rank and an unnest's predicate did, where the clauses beside them
+        /// read the rows' facts. A caller that only resolves paths asks nothing of them, and says so with
+        /// <see cref="JsonFactSet.Empty"/>.
         /// </para>
         /// </remarks>
-        internal JsonFactSet Facts => _facts ??= _container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared;
+        internal JsonFactSet Facts => _facts;
 
         /// <summary>
         /// Initializes a new instance.
@@ -98,6 +99,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="rexBuilder">Used to expand <c>SEARCH</c> nodes back into comparison trees.</param>
         /// <param name="fields">Maps input field ordinals onto document paths.</param>
         /// <param name="parameters">Receives bound literal values.</param>
+        /// <param name="facts">
+        /// What is known of the documents this expression will be evaluated over, which a rewrite may
+        /// lean on: that a path holds a string, that it is always there, that its text spells a value
+        /// of some other type. Which facts a caller may pass is its licence's — a filter's conjunct
+        /// those of the stratum before its own, never its own; a clause after a filter what the rows it
+        /// kept satisfy — so the decision is the caller's and not this one's. A caller that only
+        /// resolves paths passes <see cref="JsonFactSet.Empty"/>.
+        /// </param>
         /// <param name="ownRow">
         /// The correlation variable that stands for the very row <paramref name="fields"/> describes,
         /// where one is in scope. A lateral traversal is correlated on its own input, so its array
@@ -119,24 +128,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <see cref="IsTextRendering"/>. Where it is <c>null</c> or shorter than the binding every
         /// field not covered is read as its declared type, which is what a scan's fields are.
         /// </param>
-        /// <param name="facts">
-        /// What is known of the documents this expression will be evaluated over, which a rewrite may
-        /// lean on: that a path holds a string, that it is always there, that its text spells a value
-        /// of some other type. Which facts a caller may pass is its licence's — a filter's conjunct
-        /// those of the stratum before its own, never its own — so the decision is the caller's and not
-        /// this one's. Where it is <c>null</c>, what the container declares of every document, and
-        /// nothing where there is no container.
-        /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, JsonFactSet? facts = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, JsonFactSet facts, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+            _facts = facts ?? throw new ArgumentNullException(nameof(facts));
             _ownRow = ownRow;
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
-            _facts = facts;
         }
 
         /// <summary>
@@ -4214,15 +4215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var operand = Operand(call, 0);
 
-            if (IsRenderedDocumentValue(operand) == false)
-                return null;
-
-            if (TryResolvePath(operand, out var path) == false || DocumentOf(path) is not JsonDocumentPath document || document.IsRoot)
-                return null;
-
-            return Facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.Boolean, OrNull: true)))
-                ? operand
-                : null;
+            return IsRenderedDocumentValue(operand) && IsDeclared(operand, JsonType.Boolean) ? operand : null;
         }
 
         /// <summary>

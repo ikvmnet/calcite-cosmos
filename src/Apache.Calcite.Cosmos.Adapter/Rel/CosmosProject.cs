@@ -110,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // declared -- a path declared a UUID spelling among them -- and the filters beneath may be
             // what proves the form, where the declaration states it only under a guard they discharge.
             // Nothing the projection says is among them: SELECT x = 'B' asserts nothing about x.
-            var translator = implementor.CreateTranslator(null, Facts);
+            var translator = implementor.CreateTranslator(Facts);
 
             var paths = new CosmosPath?[projects.size()];
             var readings = new CosmosReading[projects.size()];

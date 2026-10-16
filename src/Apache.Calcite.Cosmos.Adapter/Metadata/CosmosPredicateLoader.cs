@@ -79,7 +79,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 // Resolution reuses the translator so the accepted path forms are the ones a statement would address.
                 // Parameters are discarded; only the shape matters.
-                _paths = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), null, null, readings);
+                _paths = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty, null, null, readings);
                 _readings = readings;
                 _rootAlias = rootAlias;
             }

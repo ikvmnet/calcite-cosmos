@@ -609,7 +609,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     written |= CosmosClauses.Projection;
 
-                    var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList());
+                    var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList(), JsonFactSet.Empty);
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
@@ -949,15 +949,35 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string CreateUnnestAlias() => "t" + (_unnestAliases++).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         /// <summary>
-        /// Creates a translator bound to the current field bindings and parameter list.
+        /// Creates a translator bound to the current field bindings and parameter list, under the facts a node carries.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A fresh translator is returned each time so that it always reflects the current
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
+        /// </para>
+        /// <para>
+        /// <b>The facts are the node's, said each time.</b> A clause renders under what its rule decided the rows it reads
+        /// satisfy (L1), which it carries; one built otherwise, by hand or by a host's own rule, carries nothing and reads
+        /// what the container declares of every document (L0), which holds whatever reads it. That fallback is spelled
+        /// here and nowhere else. A projection proves nothing of its own — see <see cref="TranslateCondition"/> for why the
+        /// same expression means one thing there and another in a <c>WHERE</c>.
+        /// </para>
         /// </remarks>
+        /// <param name="carried">The facts the node carries, or <c>null</c> for one built without them.</param>
+        /// <param name="ownRow">The correlation variable that stands for the row being bound, where one is in scope.</param>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null, JsonFactSet? facts = null) =>
-            new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings, facts);
+        public CosmosRexTranslator CreateTranslator(JsonFactSet? carried, org.apache.calcite.rel.core.CorrelationId? ownRow = null) =>
+            new(_rexBuilder, _fields, _parameters, FactsOf(carried), ownRow, _container, _readings);
+
+        /// <summary>
+        /// Returns the facts a node renders under: those it carries, or for one built without, what the container
+        /// declares of every document (L0).
+        /// </summary>
+        /// <param name="carried">The facts the node carries, or <c>null</c>.</param>
+        /// <returns>The facts.</returns>
+        internal JsonFactSet FactsOf(JsonFactSet? carried) =>
+            carried ?? (_container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared);
 
         /// <summary>
         /// Visits an input node, allowing it to contribute to this implementor.
@@ -982,20 +1002,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="node">The expression to translate.</param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node) => CreateTranslator().Translate(node);
-
-        /// <summary>
-        /// The facts that hold of every document the container keeps, whatever a query says (L0).
-        /// </summary>
-        /// <remarks>
-        /// What a node built without the facts of the rows it reads may lean on. A clause after a
-        /// filter reads what its rule decided the filters beneath establish (L1), which it carries — see
-        /// <see cref="Metadata.CosmosRowFacts"/>; one built otherwise, by hand or by a host's own rule,
-        /// knows only what the declaration states outright. A projection proves nothing of its own —
-        /// see <see cref="TranslateCondition"/> for why the same expression means one thing there and
-        /// another in a <c>WHERE</c>.
-        /// </remarks>
-        public JsonFactSet UnconditionalFacts => _container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared;
+        public string Translate(RexNode node) => CreateTranslator(null).Translate(node);
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
@@ -1049,7 +1056,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string TranslateCondition(RexNode condition)
         {
             if (_container is null)
-                return CreateTranslator().Translate(condition);
+                return CreateTranslator(JsonFactSet.Empty).Translate(condition);
 
             return Metadata.CosmosFilterStatement.Of(condition, _fields, _readings, _container, _rexBuilder, RootAlias).Translate(_parameters);
         }

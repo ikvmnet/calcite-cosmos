@@ -541,8 +541,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 sortable[i] = implementor.SortableExpressions[i] is not null;
 
             // Every question the rule asked, asked again of the facts it decided under.
-            var facts = Facts ?? implementor.UnconditionalFacts;
-            var stored = StoredFields(implementor.CreateTranslator(null, facts), getInput().getRowType());
+            var facts = implementor.FactsOf(Facts);
+            var stored = StoredFields(implementor.CreateTranslator(facts), getInput().getRowType());
 
             if (TryResolveSortKeys(getCollation(), implementor.Fields, getInput().getRowType(), implementor.RootAlias, _nonNullFields, sortable, facts, OrderingPaths(facts, implementor.Orderings), stored, out var keys, out var paths) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to document paths.");

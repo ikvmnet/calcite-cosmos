@@ -212,7 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // And the facts it renders under: what the filters beneath establish of the rows this
             // projection reads, which are the rows the inner one built over the same input reads.
             var facts = CosmosProjectRule.Facts(project, container);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container, null, facts);
+            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, _convention.Container);
 
             for (var i = 0; i < projects.size(); i++)
             {

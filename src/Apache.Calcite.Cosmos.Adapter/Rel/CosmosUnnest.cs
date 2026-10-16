@@ -95,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (implementor.Query.Distinct)
                 throw new CosmosTranslationException("An array traversal cannot be applied above a pushed-down DISTINCT.");
 
-            if (implementor.CreateTranslator(_correlationId).TryResolvePath(_array, out var path) == false)
+            if (implementor.CreateTranslator(Apache.Calcite.Cosmos.Facts.JsonFactSet.Empty, _correlationId).TryResolvePath(_array, out var path) == false)
                 throw new CosmosTranslationException($"The traversed array '{_array}' does not resolve to a document path.");
 
             var alias = implementor.CreateUnnestAlias();

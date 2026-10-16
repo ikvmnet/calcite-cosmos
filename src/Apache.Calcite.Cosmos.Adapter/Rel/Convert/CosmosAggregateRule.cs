@@ -86,7 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // the rows grouped are known to satisfy, which the node is handed. See
             // CosmosAggregate.GroupsAsTheColumnReads.
             var known = facts?.Invoke(container) ?? Metadata.CosmosRowFacts.Of(input, container, OracleLicence.GroupBy);
-            var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings, known);
+            var translator = new Sql.CosmosRexTranslator(input.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), known, null, container, readings);
 
             var groupKeys = groupSet.asList();
             for (var i = 0; i < groupKeys.size(); i++)

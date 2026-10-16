@@ -242,7 +242,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) == CosmosReading.Typed)
                 return true;
 
-            var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, container, readings, facts);
+            var translator = new CosmosRexTranslator(probe.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, container, readings);
 
             return translator.IsReadAsStored(RexInputRef.of(ordinal, probe.getRowType()));
         }
@@ -299,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _) == false)
                 return null;
 
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), JsonFactSet.Empty, null, container);
             if (translator.TryResolvePath(text, out var path) == false || path is null)
                 return null;
 

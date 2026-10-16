@@ -317,8 +317,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
-            var facts = Facts ?? implementor.UnconditionalFacts;
-            var translator = implementor.CreateTranslator(null, facts);
+            var facts = implementor.FactsOf(Facts);
+            var translator = implementor.CreateTranslator(facts);
             var output = 0;
 
             // Calcite orders an aggregate's output as the grouping keys followed by the calls.
@@ -391,8 +391,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var rendered = implementor.RenderedExpressions;
             var inputReadings = implementor.Readings;
             var readings = new CosmosReading[names.size()];
-            var facts = Facts ?? implementor.UnconditionalFacts;
-            var translator = implementor.CreateTranslator(null, facts);
+            var facts = implementor.FactsOf(Facts);
+            var translator = implementor.CreateTranslator(facts);
 
             var groupKeys = getGroupSet().asList();
             var projected = new CosmosPath?[names.size()];

@@ -1042,8 +1042,11 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
 | the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
-| the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence; the declaration where it named none (L0) |
+| the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
+| a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
+| `CosmosRankRule`, `CosmosRank` | the projections a rank writes | L1, carried, as a projection's |
+| `CosmosUnnestRule`, the predicate over a traversed element | `Renders` of its statement | the strata, as the `CosmosFilter` it builds renders it |
 | `CosmosSortRule`, `CosmosSort` | the null placement, a computed column's ordering licence, a key read as stored, a temporal key's order | L1, carried |
 | `CosmosAggregateRule`, `CosmosAggregate` | a grouping key normalised, a key read as stored | L1, carried; the key a `DISTINCT` binds, which another node asks, L0 |
 | `CosmosLookupJoinRule`, `CosmosLookupJoin`, the probe's key restricted as stored | a text key's path a string, a `UUID` key's one spelling | L1 of the probe side (`Key`), carried |

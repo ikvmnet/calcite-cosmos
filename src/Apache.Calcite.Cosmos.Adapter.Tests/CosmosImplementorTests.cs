@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -233,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             implementor.Fields = new[] { CosmosPath.Root("c").Property("name") };
 
             var node = _rex.makeCall(SqlStdOperatorTable.INITCAP, Ref(0, SqlTypeName.VARCHAR));
-            implementor.CreateTranslator().TryTranslate(node, out _).Should().BeFalse();
+            implementor.CreateTranslator(null).TryTranslate(node, out _).Should().BeFalse();
         }
 
         // ── Page size ─────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel.core;
@@ -86,13 +87,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 match.Projects,
                 ((Project)call.rel(0)).getRowType(),
                 match.Rank,
-                match.Fetch));
+                match.Fetch,
+                match.Facts));
         }
 
         /// <summary>
-        /// What the matched shape amounts to, or <c>null</c> where it is not one this can render.
+        /// What the matched shape amounts to, or <c>null</c> where it is not one this can render: and the facts it was
+        /// decided under, which the node renders with.
         /// </summary>
-        sealed record Match(java.util.List Projects, RexNode Rank, RexNode? Fetch);
+        sealed record Match(java.util.List Projects, RexNode Rank, RexNode? Fetch, JsonFactSet Facts);
 
         /// <summary>
         /// Reads the three nodes and decides whether they are an ordering by a scoring function that
@@ -154,7 +157,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return null;
 
-            var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, _convention.Container);
+            // What the rows the projections read satisfy (L1), as a projection's own rule reads them: a form the filter
+            // beneath proves renders under a rank as it does in a plain projection. Decided once for the inner projection,
+            // whose input the rows are, and handed to the node.
+            var facts = Metadata.CosmosRowFacts.For(inner, container, OracleLicence.Select);
+            var translator = new CosmosRexTranslator(inner.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, _convention.Container);
 
             for (var i = 0; i < projects.size(); i++)
                 if (translator.TryTranslateValue((RexNode)projects.get(i), out _) == false)
@@ -169,7 +176,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
             }
 
-            return new Match(projects, rank, sort.fetch);
+            return new Match(projects, rank, sort.fetch, facts);
         }
 
     }

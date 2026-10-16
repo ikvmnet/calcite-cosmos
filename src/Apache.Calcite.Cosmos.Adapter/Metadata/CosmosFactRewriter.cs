@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // the one without it -- asked of its siblings and never of itself, and one at a time, so
             // that two conjuncts implying each other do not both go.
             var redundant = statement?.Redundant ?? Array.Empty<int>();
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             var operands = new java.util.ArrayList();
             var changed = redundant.Count > 0;

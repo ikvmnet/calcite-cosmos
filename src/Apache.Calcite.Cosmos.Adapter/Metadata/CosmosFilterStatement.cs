@@ -191,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         CosmosRexTranslator Translator(JsonFactSet facts, CosmosParameterList parameters) =>
-            new(_rexBuilder, _fields, parameters, null, _container, _readings, facts);
+            new(_rexBuilder, _fields, parameters, facts, null, _container, _readings);
 
         // ── Rendering (L2) ───────────────────────────────────────────────────────────────────────────────────────────
 

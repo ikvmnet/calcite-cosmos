@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.FullText.Sql;
 
 using FluentAssertions;
@@ -44,13 +45,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 };
             }
 
-            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList());
+            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             /// <summary>
             /// A translator that knows what the container declares, which is what gates the full text
             /// functions.
             /// </summary>
-            CosmosRexTranslator Translator(CosmosContainerMetadata container) => new(_rex, _fields, new CosmosParameterList(), null, container);
+            CosmosRexTranslator Translator(CosmosContainerMetadata container) => new(_rex, _fields, new CosmosParameterList(), CosmosOracle.For(container.Facts).Declared, null, container);
 
             RexNode Text() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 0);
 
@@ -153,7 +154,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                     .Should().Be("FULLTEXTCONTAINS(c.text, @p0)");
 
                 var parameters = new CosmosParameterList();
-                new CosmosRexTranslator(_rex, _fields, parameters).Translate(
+                new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty).Translate(
                     _rex.makeCall(FullTextOperatorTable.ClrFtContains, Text(),
                         _rex.makeCall(FullTextOperatorTable.ClrFtPhrase, Keyword("red bicycle"))));
 
@@ -173,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void AFuzzyTermIsTheObjectTheServiceDocuments()
             {
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
 
                 translator.Translate(_rex.makeCall(FullTextOperatorTable.ClrFtContains, Text(),
                     _rex.makeCall(FullTextOperatorTable.ClrFtFuzzy, Keyword("bycycle"),
@@ -219,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void KeywordsAreBoundRatherThanInlined()
             {
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
 
                 translator.Translate(_rex.makeCall(CosmosOperators.FullTextContains, Text(), Keyword("phrase")));
 
