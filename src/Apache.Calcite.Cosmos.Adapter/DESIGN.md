@@ -2844,6 +2844,14 @@ Over a container that declares nothing this is a loss of pushdown by design, and
 down, and the fold is Calcite's. `CosmosDeclaredFactPlanningTests.Renderings` pins each declared case
 beside its undeclared control.
 
+**Every rendering a comparison reads has to be a string's, not one of them.** Against a literal or a
+parameter one string path suffices, there being one stored value to compare. Two renderings are two
+stored values: `JSON_VALUE(a) = JSON_VALUE(b)` keeps a document holding `"3"` and `3` in Calcite, which
+compares `'3'` with `'3'`, and not at the service, which compares a string with a number. Either side
+sufficed once, which was already wrong over a container declaring one of the two a string and nothing of
+the other; once a conjunct's facts were its stratum's, a sibling proving one path a string by its kind
+pushed the raw comparison too (`RendersOnlyStrings`).
+
 **A guard keeps the value, not the rendering, and a grouping is where that shows.** The guard makes
 the service answer null where `JSON_VALUE` does, and passes every scalar through as itself; the text
 the column carries is the reader's rendering of it. So an operator that *compares* the guarded value

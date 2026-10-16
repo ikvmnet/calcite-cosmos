@@ -133,6 +133,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        /// <summary>
+        /// A comparison of two renderings is the comparison of what is stored only where both paths hold strings: a
+        /// document holding <c>"3"</c> and <c>3</c> is kept by Calcite, comparing <c>'3'</c> with <c>'3'</c>, and not by the
+        /// service, which compares a string with a number. One path known to be a string, by the declaration or by a
+        /// sibling's kind, pushed the raw comparison.
+        /// </summary>
+        [Theory]
+        [InlineData("""{ "type": "object", "properties": { "label": { "type": "string" }, "n": { "type": "integer" } } }""", "")]
+        [InlineData(Planning.CosmosPushdownProbeTests.KindsSchema, """JSON_VALUE(c."DOC", '$.kind') = 'a' AND """)]
+        public void AComparisonOfTwoRenderingsIsExactOnlyWhereBothAreStrings(string schema, string sibling)
+        {
+            var container = Declaring(schema);
+
+            foreach (var op in new[] { "=", ">", "<=" })
+            {
+                var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {sibling}{Label} {op} JSON_VALUE(c."DOC", '$.n')""", container, out _);
+
+                Query(FindCosmos(best), container).Sql.Should().NotContain($"(c.label {(op == "=" ? "=" : op)} c.n)",
+                    "n holds a number, and a stored 3 renders as '3': " + PlanText(best));
+                PlanText(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's: " + PlanText(best));
+            }
+
+            var strings = Declaring("""{ "type": "object", "properties": { "label": { "type": "string" }, "n": { "type": "string" } } }""");
+            var both = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {Label} = JSON_VALUE(c."DOC", '$.n')""", strings, out _);
+
+            Query(FindCosmos(both), strings).Sql.Should().Contain("(c.label = c.n)", "two strings compare as stored: " + PlanText(both));
+        }
+
     }
 
 }

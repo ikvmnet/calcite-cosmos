@@ -155,7 +155,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The documents <see cref="Kinds"/> holds: each kind with and without what it declares, a string <c>"30"</c> and
-        /// an integer 30 at <c>label</c> in the two kinds that differ there.
+        /// an integer 30 at <c>label</c> in the two kinds that differ there, and a string <c>"1"</c> beside an integer
+        /// <c>n</c> of 1, which render alike.
         /// </summary>
         static readonly string[] KindsDocuments =
         [
@@ -168,6 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"7","category":"k","kind":"c","ref":"323e4567-e89b-12d3-a456-426614174000"}""",
             """{"id":"8","category":"k","kind":"a"}""",
             """{"id":"9","category":"k","kind":"b"}""",
+            """{"id":"10","category":"k","kind":"a","label":"1","n":1}""",
         ];
 
         /// <summary>
@@ -1550,6 +1552,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // were X AND NOT X and the plan the empty relation, where Calcite keeps 2 and 4, " 2 " and "2.0" beside 2.
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) AND NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n'))", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n')) AND JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL)", false),
+
+            // Two renderings compared, one path a string and the other a number: Calcite keeps a document holding "3"
+            // and 3, the two rendering alike, and the service compares a string with a number. One string side, by the
+            // declaration or by a sibling's kind, pushed the raw comparison.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') >= JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') = JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <= JSON_VALUE(c.\"DOC\", '$.n')", false),
         ];
 
         /// <summary>

@@ -3681,16 +3681,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     right = unwrappedRight;
                 else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
                     || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
-                    // Unless what is known says the path holds a string and nothing else, in which
-                    // case the rendering *is* the stored value and the comparand need not be inspected
-                    // at all -- which is what lets a parameter through. Known from the facts this
-                    // conjunct is rendered from, which never hold what it establishes itself.
-                    && (IsDeclaredString(leftValue) || IsDeclaredString(rightValue)) == false)
+                    // Unless what is known says every rendering here holds a string and nothing else, in
+                    // which case each is the stored value and the comparand need not be inspected at all
+                    // -- which is what lets a parameter through. Known from the facts this conjunct is
+                    // rendered from, which never hold what it establishes itself.
+                    && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
-                && (IsDeclaredString(leftValue) || IsDeclaredString(rightValue)) == false)
+                && RendersOnlyStrings(leftValue, rightValue) == false)
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,
@@ -3713,6 +3713,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             WriteBinary(builder, left, right, op);
         }
+
+        /// <summary>
+        /// Determines whether every side of a comparison that is a rendering is the rendering of a
+        /// string, so that the comparison of the renderings is the comparison of what is stored.
+        /// </summary>
+        /// <remarks>
+        /// Every side, not either. A literal or a parameter is no rendering, and against one a string
+        /// path suffices; but two renderings are two stored values, and where only one is known to be a
+        /// string the other may be a number: <c>JSON_VALUE(a) = JSON_VALUE(b)</c> keeps a document
+        /// holding <c>"3"</c> and <c>3</c> in Calcite, which compares <c>'3'</c> with <c>'3'</c>, and
+        /// not at the service, which compares a string with a number. Either side sufficed once, and a
+        /// sibling proving one path a string pushed the raw comparison (review of the oracle in the
+        /// planner).
+        /// </remarks>
+        bool RendersOnlyStrings(RexNode left, RexNode right) =>
+            (IsTextRendering(left) == false || IsDeclaredString(left)) && (IsTextRendering(right) == false || IsDeclaredString(right));
 
         /// <summary>
         /// Writes a comparison between an instant read out of a path and a parameter, the parameter
