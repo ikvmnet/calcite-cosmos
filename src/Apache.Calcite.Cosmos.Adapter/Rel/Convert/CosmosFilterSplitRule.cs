@@ -52,6 +52,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// while the conjunct that proves the condition is still beside the one it licenses. See
     /// <see cref="Metadata.CosmosFactRewriter"/>.
     /// </para>
+    /// <para>
+    /// <b>Which conjuncts push is the oracle's strata</b> (<see cref="Metadata.CosmosFilterStatement"/>):
+    /// a conjunct is pushed where it renders from what the conjuncts already pushed establish, round
+    /// after round, and its own facts enter only the round after it. So a guard pushed beside what it
+    /// licenses is the only kind of help a conjunct gets, to any depth, and none is its own. A
+    /// weakening of a conjunct left above is rendered from everything pushed, and is pushed beside it.
+    /// </para>
     /// </remarks>
     public class CosmosFilterSplitRule : RelOptRule
     {
@@ -174,7 +181,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return (new List<RexNode>(), new List<RexNode>());
 
             var rexBuilder = filter.getCluster().getRexBuilder();
-            var below = AlreadyApplied(filter.getInput());
 
             // No weakening over a projection. FILTER_PROJECT_TRANSPOSE gives every such filter an
             // equivalent beneath the projection, where its weakenings are derived against the filters
@@ -189,26 +195,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // first and each conjunct would be weighed on its own, with nothing left to prove the
             // guard from.
             var condition = Metadata.CosmosFactRewriter.Rewrite(
-                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
+                filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
 
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(condition);
-
-            // What the container knows, closed under the conjuncts that reach the service on their
-            // own. Those and no others, because a fact licenses a comparison only where the conjunct
-            // that proved it is applied beside it: a guard left above in the residual would leave the
-            // service deciding rows the guard was meant to have excluded. Admitting more can only
-            // grow the pushable half, so every conjunct this pass is derived from is still pushed.
-            var facts = Establish(conjuncts, fields, container, rexBuilder, readings);
-            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings, facts);
+            // Admitted stratum by stratum: a conjunct pushes where it renders from what the conjuncts
+            // pushed before it establish. A fact licenses a comparison only where the conjunct that
+            // proved it is applied beside it -- a guard left above in the residual would leave the
+            // service deciding rows the guard was meant to have excluded -- and only a conjunct pushed
+            // beside it is in a stratum it is rendered from.
+            var statement = Metadata.CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder);
 
             var pushable = new List<RexNode>();
             var residual = new List<RexNode>();
 
-            for (var i = 0; i < conjuncts.size(); i++)
-            {
-                var conjunct = (RexNode)conjuncts.get(i);
+            // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
+            // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
+            // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
+            // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
+            List<RexNode>? beneath = null;
 
-                if (translator.TryTranslate(conjunct, out _))
+            for (var i = 0; i < statement.Conjuncts.Count; i++)
+            {
+                var conjunct = statement.Conjuncts[i];
+
+                if (statement.IsAdmitted(i))
                 {
                     pushable.Add(conjunct);
                     continue;
@@ -218,46 +227,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // replacement for the predicate, so the original is still rechecked above.
                 residual.Add(conjunct);
 
-                if (weakens &&
-                    TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is RexNode weakened &&
-                    AlreadyBelow(weakened, below) == false &&
-                    translator.TryTranslate(weakened, out _))
+                if (weakens == false)
+                    continue;
+
+                // Rendered, and its guards deleted, from what every pushed conjunct establishes: the
+                // stratum a conjunct no round admitted is read in, which is never its own facts.
+                var translator = statement.TranslatorFor(i, new CosmosParameterList());
+
+                if (TryWeakenConjunct(conjunct, translator, rexBuilder, CosmosImplementor.DefaultRootAlias) is not RexNode weakened)
+                    continue;
+
+                beneath ??= AlreadyApplied(filter.getInput()).ToList();
+
+                if (statement.IsApplied(weakened, beneath) == false && translator.TryTranslate(weakened, out _))
+                {
                     pushable.Add(weakened);
+                    beneath.Add(weakened);
+                }
             }
 
             return (pushable, residual);
-        }
-
-
-        /// <summary>
-        /// Closes the container's facts under the conjuncts that translate unaided.
-        /// </summary>
-        /// <remarks>
-        /// The first of two passes, and the reason there are two. A conjunct may translate only
-        /// <em>because</em> of a fact, and that fact may hold only because of another conjunct — so
-        /// the facts have to be established before the split and from conjuncts that are certain to be
-        /// pushed. One that translates with no help is certain; one that needed help is not, until the
-        /// split says so. Deriving from the whole predicate instead would push a comparison whose
-        /// guard stayed above it, and the service would decide rows the guard was meant to exclude.
-        /// </remarks>
-        static JsonFactSet Establish(
-            java.util.List conjuncts,
-            IReadOnlyList<CosmosPath?> fields,
-            Metadata.CosmosContainerMetadata container,
-            RexBuilder rexBuilder,
-            IReadOnlyList<CosmosReading>? readings)
-        {
-            if (container.Facts.IsEmpty)
-                return JsonFactSet.Empty;
-
-            var unaided = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container, readings);
-            var established = new List<JsonFact>();
-
-            for (var i = 0; i < conjuncts.size(); i++)
-                if (unaided.TryTranslate((RexNode)conjuncts.get(i), out _))
-                    established.AddRange(Metadata.CosmosFactExtractor.Extract((RexNode)conjuncts.get(i), fields, CosmosImplementor.DefaultRootAlias));
-
-            return container.Facts.Derive(established);
         }
 
         /// <summary>
@@ -971,6 +960,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>IS_NUMBER</c> instead of a value.
         /// </para>
         /// <para>
+        /// <b>Past 2^53 a whole number is sent as the whole number it is</b>, as the translator sends a
+        /// literal of one (<see cref="CosmosRexTranslator.TryGetExactNumberValue"/>). The service keeps a
+        /// stored integer exactly, and Java renders it as its digits, so <c>'9007199254740993'</c> is the
+        /// rendering of the integer 9007199254740993 — which the double the text rounds to, 2^53, is not
+        /// equal to at the service. Measured on the emulator over the declared container, the double
+        /// lost the document storing it.
+        /// </para>
+        /// <para>
         /// <b>Which values render at all depends on the spelling.</b> The cast over <c>ANY</c> renders an
         /// array as <c>[x, y]</c> and an object as <c>{x=1}</c>, so a literal opening with that bracket
         /// takes <c>IS_ARRAY</c> or <c>IS_OBJECT</c> beside the string. <c>JSON_VALUE</c> answers null
@@ -1055,7 +1052,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             if (CosmosRexTranslator.TryParseRenderedNumber(text, out var number))
                 branches.add(double.IsFinite(number)
-                    ? EqualsOtherThanText(rexBuilder, value, rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number)))
+                    ? EqualsOtherThanText(rexBuilder, value, NumberRenderedAs(rexBuilder, text, number))
                     : rexBuilder.makeCall(CosmosOperators.IsNumber, new[] { value }));
 
             if (text is "true" or "false")
@@ -1068,6 +1065,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 branches.add(rexBuilder.makeCall(CosmosOperators.IsObject, new[] { value }));
 
             return RexUtil.composeDisjunction(rexBuilder, branches);
+        }
+
+        /// <summary>
+        /// Returns the number a stored value renders as text as: the whole number it spells where a
+        /// double cannot hold it, as a <c>BIGINT</c>, and the double otherwise.
+        /// </summary>
+        static RexLiteral NumberRenderedAs(RexBuilder rexBuilder, string text, double number)
+        {
+            var exact = new java.math.BigDecimal(text);
+
+            return CosmosRexTranslator.TryGetExactNumberValue(exact) is long whole
+                ? (RexLiteral)rexBuilder.makeExactLiteral(java.math.BigDecimal.valueOf(whole), rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.BIGINT))
+                : (RexLiteral)rexBuilder.makeApproxLiteral(new java.math.BigDecimal(number));
         }
 
         /// <summary>
@@ -1186,12 +1196,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies.
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A weakening is derived from a conjunct that stays in the residual, and the residual is what
-        /// the rule matches on next time round — so without this the same weakening would be pushed
-        /// under itself for ever.
+        /// the rule matches on next time round — so the weakening is asked whether these already apply
+        /// it (<see cref="Metadata.CosmosFilterStatement.IsApplied"/>), or the same weakening would be
+        /// pushed under itself for ever: measured, as a stack overflow with TryBindOutput recursing
+        /// through the filters it had built. A weakening of more than one term lands as several
+        /// conjuncts of the filter beneath, and is applied where all of them are.
+        /// </para>
         /// <para>
         /// Every equivalent form, not the one the set happens to name: a Volcano input is a set of
         /// equivalent expressions, and which of them <c>getOriginal</c> or <c>getBest</c> returns
@@ -1199,30 +1214,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// weakening has been pushed the filter carrying it stays in the set.
         /// </para>
         /// </remarks>
-        /// <summary>
-        /// Determines whether a weakening is already applied below, conjunct by conjunct.
-        /// </summary>
-        /// <remarks>
-        /// Conjunct by conjunct because that is how a filter stores it. A weakening of more than one
-        /// term is pushed as a conjunction and the filter it lands in reports its conjuncts, never the
-        /// whole thing — so comparing the composed node against what is below never matched, and the
-        /// same weakening was pushed under itself for ever. Measured, as a stack overflow with
-        /// TryBindOutput recursing through the filters it had built.
-        /// </remarks>
-        static bool AlreadyBelow(RexNode weakened, HashSet<string> below)
+        static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
         {
-            var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(weakened);
-
-            for (var i = 0; i < conjuncts.size(); i++)
-                if (below.Contains(((RexNode)conjuncts.get(i)).toString()) == false)
-                    return false;
-
-            return true;
-        }
-
-        static HashSet<string> AlreadyApplied(RelNode? node)
-        {
-            var applied = new HashSet<string>(StringComparer.Ordinal);
+            // Once each by Calcite's equality, which compares types where the digest prints none.
+            var applied = new List<RexNode>();
+            var once = new HashSet<RexNode>();
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             // Through a stack of filters as well as across a set's members: a filter keeps its input's
@@ -1235,9 +1231,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
-                var conjuncts = org.apache.calcite.plan.RelOptUtil.conjunctions(filter.getCondition());
-                for (var i = 0; i < conjuncts.size(); i++)
-                    applied.Add(((RexNode)conjuncts.get(i)).toString());
+                foreach (var conjunct in Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()))
+                    if (once.Add(conjunct))
+                        applied.Add(conjunct);
 
                 foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
                     Collect(member);

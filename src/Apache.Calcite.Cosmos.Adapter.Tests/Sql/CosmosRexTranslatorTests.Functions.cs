@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -42,7 +43,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 };
             }
 
-            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList());
+            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             RexNode Str() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.VARCHAR), 0);
 

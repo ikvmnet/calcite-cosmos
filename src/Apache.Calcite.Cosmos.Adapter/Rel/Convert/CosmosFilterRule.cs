@@ -2,7 +2,6 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
-using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 
@@ -35,9 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// string comparison mean the same thing, the lowered form is what both the legality test and
         /// the conversion see, so the rest of the rule needs no knowledge of any of it.
         /// </remarks>
-        static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields) =>
+        static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings) =>
             CosmosFactRewriter.Rewrite(
-                filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder());
+                filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder(), readings);
 
         /// <summary>
         /// Determines whether a filter's condition can be rendered as Cosmos SQL.
@@ -53,7 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out var written) == false)
+            // Only a filter over this convention's own container, which is the declaration its condition is
+            // rewritten and rendered under (CosmosConvention.Owns).
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // WHERE is evaluated before OFFSET/LIMIT, so onto a subtree that has taken a page this
@@ -63,19 +65,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
-            var condition = Pushed(convention, filter, fields);
-
-            // What the container knows, closed under what this predicate proves. Safe to hand over
-            // here and not in the split rule: this rule pushes the condition whole, so a conjunct that
-            // licensed another is applied at the service beside it. Where only part of a predicate is
-            // pushed that no longer holds, and the split rule is left alone until it can say which
-            // conjuncts reached the service.
-            var facts = convention.Container is CosmosContainerMetadata container
-                ? container.Facts.Derive(CosmosFactExtractor.Extract(condition, fields, CosmosImplementor.DefaultRootAlias))
-                : JsonFactSet.Empty;
-
-            var translator = new CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new CosmosParameterList(), null, convention.Container, readings, facts);
-            return translator.TryTranslate(condition, out _);
+            // Whole where every conjunct renders from the stratum before the one that admitted it:
+            // what its siblings applied beside it establish, and never what it does itself. So a
+            // conjunct may lean on another that reaches the service with it, to any depth, and no
+            // conjunct certifies itself (#117). The same strata render it at implementation.
+            return CosmosFilterStatement.Of(Pushed(convention, filter, fields, readings), fields, readings, convention.Container, filter.getCluster().getRexBuilder()).Renders;
         }
 
         /// <summary>
@@ -116,8 +110,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The converted filter carries the lowered condition, which is what puts a plain equality
             // where the rest of the adapter can already use it: the translator renders it, and
             // CosmosPartitionKeyExtractor recovers a partition key from it.
-            var condition = _convention is CosmosConvention convention && CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _, out _)
-                ? Pushed(convention, filter, fields)
+            var condition = _convention is CosmosConvention convention && CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _)
+                ? Pushed(convention, filter, fields, readings)
                 : filter.getCondition();
 
             return new CosmosFilter(

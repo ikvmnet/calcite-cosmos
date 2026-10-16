@@ -611,10 +611,11 @@ parameter work found.
 
 A container's declaration is reasoned about by a theory of JSON written as an
 [Eggnog](https://github.com/alethic/eggnog) e-graph, under `Facts/Saturation/`. What a query established is
-saturated beneath the declaration, and a question is a read of what saturation proved. The front end is
-unchanged: `JsonSchemaFacts` reads a schema into `JsonFactRule`s of `(path, claim)` atoms, and
-`CosmosFactExtractor` reads a predicate into the same atoms. `JsonFactTheory` compiles the rules into the
-theory, and `JsonFactSet` answers in the old vocabulary, so a consumer asks what it always asked.
+saturated beneath the declaration, and a question is a read of what saturation proved. `JsonSchemaFacts`
+reads a schema into `JsonFactRule`s of `(path, claim)` atoms, and `JsonFactTheory` compiles the rules into the
+theory. A filter's predicate is loaded beside them as terms by the predicate oracle (*Predicates as facts*,
+below), which every rule that reads a filter's facts asks; `JsonFactSet` answers in the old vocabulary, so a
+consumer asks what it always asked.
 
 **Four contexts, three of them frozen.**
 
@@ -665,15 +666,17 @@ avoided only half of that mistake, and was right only for a theory that could no
 
 **The query supplies the presence.** A comparison is undefined at the service over an absent path and
 unknown in process, and a filter keeps no row for either. So every row a comparison keeps has its path, and
-`CosmosFactExtractor` states `Present` beside every equality, disequality and `IN` it reads (F4). That
-presence is what turns `status = 'deleted'` against a declared `enum` into a contradiction rather than a
+what an assumed comparison establishes (`PredicateAtom.Kept`) says so beside what it says of the value (F4).
+That presence is what turns `status = 'deleted'` against a declared `enum` into a contradiction rather than a
 proof that `status` is absent. It is also why an `IS_DEFINED` guard beside a comparison on the same path is
 deleted.
 
 **A range supplies a bound, and binds only numbers.** A comparison through a numeric cast puts the raw
-value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the extractor states that
-window as two bound claims beside the presence (`CosmosNumericWindow`, the one the split rule pushes). A
-bound binds numbers only, because the cast converts a stored string too: `> 500` keeps `"600"`. So a range
+value in a window — `CAST(n AS INTEGER) > 500` keeps numbers above 499 — and the atom states that window as
+two bounds beside the presence, the window `CosmosNumericWindow` gives the split rule to push: one window,
+read through the casts of the literal the window reads through, refusing a bound past 2^52 for a cast to
+`DOUBLE` as the window does. A bound binds numbers only, because the cast converts a stored string too:
+`> 500` keeps `"600"`. So a range
 beyond a declared `maximum` leaves the path no number, which contradicts the presence only where the
 declaration leaves it nothing else, a `type: integer` (gap 4, `ARangeBeyondADeclaredBoundKeepsNoNumber`).
 A range no member of an integer `enum` lies in empties the domain (gap 5, `ARangeOutsideAnEnumKeepsNothing`).
@@ -737,10 +740,12 @@ a relevant path. Every path a body reads a value of is marked a discriminator. A
 splits on each one that is present, so that what every branch implies holds outright, and a query splits on
 the relevant ones. A case may split again, to a depth of two.
 
-**A deletion reads only the declaration.** `CosmosFactRewriter.IsAlwaysTrue` deletes a conjunct only where
-the declaration's own context proves it. A fact a query proved may rest on the very conjunct being deleted,
-and the predicate left behind would prove less than it did. Eggnog's `RulesetOptions.Licence` says the same
-thing inside the engine, for a rewrite done there; here it is the choice of which context to ask.
+**A deletion reads its siblings, and never itself.** The rewrite deletes a conjunct only where every other
+conjunct and the declaration make it always true (L3, *Which facts may justify what*). A fact the conjunct
+itself proved may be what made it look redundant, and the predicate left behind would prove less than it did;
+and of two conjuncts that each imply the other only one goes, asked one at a time. Eggnog's
+`RulesetOptions.Licence` says the same thing inside the engine, for a rewrite done there; here it is the choice
+of which context to ask.
 
 #### Values, and one spelling each
 
@@ -807,9 +812,400 @@ disequality with null rules out, changes no answer a set gives. An undeclared co
 context now, and plans as fast as it did on the closure: 8–16 ms a plan against 11–14 ms, over three
 runs alternating the two on one workstation, where the engine had taken about twice the closure's time.
 
+The predicate oracle's strata are read off it the same way (*The oracle in the planner*, below). What a stratum
+assumes is read path by path as `PredicateAtom.Kept` reads each conjunct, met in `PathValues`' lattice, and the
+rules of JSON that apply on one path are written out — a domain is of its own types, a JSON null excluded leaves
+every other type, types of booleans or of null alone are a domain — and two bounds, or several values excluded
+beside no domain, go to the engine. `AStratumReadOffTheOverlayAnswersAsItsContextDoes` holds six hundred
+generated statements to the engine's context for the same stratum.
+
 **Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
 is invented.
+
+#### Predicates as facts: the oracle
+
+The planner read a filter's facts through a dozen sites, each deciding for itself which conjuncts to read and what
+they prove: a fact extractor's dispatch, the split rule's two passes, the rewriter's tautology test, the translator's
+choice between outright and established facts. A defect in that family had usually been the same knowledge reaching
+one more site. The predicate oracle (`Facts/CosmosOracle.cs`) is the other arrangement: one statement per filter,
+every question about it answered from the facts its licence admits, and no site choosing facts. It was built in
+shadow and measured beside the sites it replaced, 97.3 % of 114,922 decisions agreeing and every other one
+explained, and now every rule that reads a filter's facts asks it (*The oracle in the planner*, below).
+
+**Eggnog decides what is true; the host decides what is written and what is legal; Volcano decides which plan.**
+The oracle loads a filter's conjuncts into the theory of JSON as terms, beside `JsonRules` in the same graph
+(`PredicateRules`), and answers with values: a verdict, a fact about a path, whether anything is left. It never
+answers with a term. Whether a conjunct renders is asked of today's translator, handed a `JsonFactSet` of the facts
+that question may use, and the translator's answer is the host's.
+
+**A reading is a constructor, not a SQL type used as a tag.** `CosmosPredicateLoader` decodes Calcite's types once,
+into the typed IR's predicate subset (`SqlValue`, `SqlPredicate`):
+
+- `text(p)` is `JSON_VALUE` read as text, SQL null for an absent path, a null, an object and an array;
+- `raw(p)` is the value the service holds: a promoted `VARIANT` column, the accessor the split rule re-types `ANY`;
+- `typed(p, T)` is a `RETURNING`, which asserts its type and raises on anything else — but for `DECIMAL`, which
+  parses the rendering, a stored string of digits among what it reads, and is compared with a literal cast to its
+  scale of zero, so that `= 2.5` keeps a stored 2 and not a stored 2.5;
+- `cast(T, v)` is a numeric cast, or the cast to text over a raw value, which renders an object and an array too.
+
+Comparisons with a literal or a parameter, `IN` (a `SEARCH` expanded and read back as one membership),
+`IS [NOT] NULL`, `IS_DEFINED`, `AND`, `OR` and `NOT` are read. Everything else is `opaque`, which proves nothing and
+decides nothing. `IS_DEFINED` asks of the document whatever the reading, as the service and the in-process body do:
+true where the path is there, a JSON null included, and never unknown. Opaque, a definedness test established
+nothing, and a weakening beside one kept a test the presence it states would have deleted.
+
+`RETURNING DECIMAL` addresses no path: it is the cast of the rendering written as a clause, and
+`CosmosRexTranslator.TryNumericCastOperand` reads it so, returning the text it converts. The loader asks that, and
+names the reading whose meaning is that parse, `typed(p, DECIMAL)`; a cast is read the same way, so what a
+conversion is and what it is compared with are the translator's to recognise and the atom's to say, once each.
+
+**What an atom means is written once.** `PredicateAtom` is a reading, a test and an operand, and it answers two
+questions. `Kept` is what a row on which the atom takes a truth value can hold at its path, which is what an assumed
+predicate establishes. `Over` is which truth values the documents a path's knowledge admits can give it, which is
+what a verdict is read from. Both over-approximate, in opposite directions of safety, and a property test holds them
+to each other on every reading, test and kind of stored value. No rule names a reading or an operator: the rules read
+atoms, and the table of what a stored value does under each reading is the one place a measured axiom lives.
+
+**The rendering preimage.** `JSON_VALUE(…) = '30'` keeps a document storing the string and one storing the number,
+so it establishes both — `{string|30, integer|30}` — and nothing narrower. A declared `type: string` then leaves the
+string alone, which is the deletion of the stored-number disjunct `TODO.md` records as open. It took one rule the
+theory of JSON never needed: a domain keeps only values of a type its path may hold. The planner never states a
+domain beside a narrower type; a preimage does.
+
+**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.0`, and a numeric cast on
+a string it cannot parse. Such a row is no row a predicate keeps, so it constrains nothing an assumed predicate
+establishes — the asymmetry *Reading a value back* records for `RETURNING`, the caller's declaration held rather than
+checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
+a pushdown may do is not settled.
+
+An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
+INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
+truncated or held it at the limit. The theory spells `30` and `30.0` alike, so a number there may always raise, and
+nothing is decided of one; a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
+every rendering, and of a cast of the raw value, and not of this. The first table said otherwise, and the population-D
+checker found it.
+
+**A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
+a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
+or a conjunction that fails, splits: one case per arm, each assuming its arm takes the value, and what every live
+case proves is lifted. The cases cover the context, because a row a disjunction keeps is kept by some arm. That is
+gap 1 spelled per kind: `(kind = 'order' AND …) OR (kind = 'invoice' AND …)` proves what both kinds declare.
+
+Arms split before discriminators. Split together, the discriminator `kind` opened a case for each of the sixty
+kinds a declaration had beside the two arms, 0.8 s a statement; split after the arms, it opens one for each kind they
+lifted, and the statement costs 60 ms.
+
+**A context mentions what it assumes**, as a query's context mentions what it established, so a split opens only
+on a discriminator something there narrows. A first version mentioned every path the statement read in a context
+holding its terms and nothing else, and split thirty-two ways on a discriminator nothing had narrowed yet: 1,171
+iterations and 0.7 s a statement, against 19 iterations without.
+
+**Three verdicts, and twelve connectives.** `always true`, `always false` and `never true`, in Kleene's logic.
+`always false` and `never true` are kept apart because UNKNOWN is not FALSE under `NOT`: a comparison over an absent
+path keeps no row, and neither does its negation. What is always false is never true; nothing reads never-true
+beneath a `NOT`. An atom's verdict reads one value per path — `possible(p)`, what the path may hold, gathered from
+presence, types, a domain, disequalities and bounds — so that three rules decide every atom rather than one rule per
+shape and per table. These give tautology the shapes the equality test before them lacked: an `IN` covering an
+enum, a `<>` outside one, `IS NOT NULL` of a required scalar, a range its declared bounds satisfy, a disjunction
+with a sibling for a branch.
+
+**What a context assumes, it has decided.** A predicate holding with a truth value on every row a context admits has
+that verdict there, whatever its atoms can be said to mean. The host reads the same of a predicate a context assumes,
+and of a conjunction of what it assumes, off the assumptions themselves and before any run, so that the answer rests
+on no run the engine might not finish. Without the two rules that say so, a predicate given was
+decided only where its atoms decided it, so an opaque one — a definedness test beside a type test, which is what the
+split rule pushes as a weakening — was never redundant beside itself, and a planner asking the oracle whether a
+weakening is already beneath a filter would push it under itself for ever. Two opaque duplicates were both kept. The
+verdicts are read after the splits, and what holds inside a case is never lifted to be read there.
+
+#### Which facts may justify what
+
+The soundness review's statement of the criterion, which the planner once approximated per site and now asks of
+one table:
+
+- facts from siblings or from the declaration may justify any rewrite;
+- a conjunct's own facts may justify only a strengthening, and the oracle never offers them;
+- a deletion or a weakening needs facts from outside the conjunct;
+- a consumer that is not a filter needs facts that hold of every row it touches.
+
+**The strata.** A conjunct is admitted in the first stratum that renders it, and its own facts enter only the
+stratum below. So nothing a conjunct establishes is ever among the facts it was rendered from, to any depth, and two
+conjuncts cannot license each other: the later one was rendered from the earlier one's facts, never the reverse.
+#117 had a conjunct certify its own exactness from a fact its own rendering established; in the strata it cannot be
+written, and `TheSelfCertificationOf117CannotBeDerived` shows each way it could have been. The first stratum is the
+declaration. The split rule's two passes were the strata cut at two rounds, the first handed nothing at all; a
+conjunct the second round's facts would admit, and which admits a third, was left above.
+
+**The licence table**, in one place (`CosmosStatementScope.ScopeFor`), so that no call site chooses facts:
+
+| the question | the facts it may use |
+| --- | --- |
+| whether a conjunct renders | the stratum before the one that admitted it; for one never admitted, the last stratum, which holds its siblings and never itself (L2) |
+| whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
+| a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
+| inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
+| whether the filter keeps nothing | every conjunct, admitted or not: a strengthening, which a conjunct's own facts may justify |
+| routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
+| what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
+| whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
+| a projection, a sort, a grouping, a key a lookup restricts | the last stratum: every admitted conjunct, applied before the clause reads a row or beside the key's restriction (L1) |
+| a residual, a side with no filter, a key another node asks of a clause | the declaration (L0) |
+
+**Redundancy is asked one conjunct at a time**, in digest order, each against the conjuncts still kept, so two
+duplicates do not delete each other. "If I add X, is Y irrelevant?" is a statement of X asked of Y under `Kept`: Y
+always true where X holds.
+
+**A deletion keeps what the service applies.** Deleting a conjunct its siblings imply changes no row, whichever
+siblings imply it; it changes what reaches the service where the sibling does not. `label IS NOT NULL AND label <>
+'zzz'` over a path declared nothing renders the first exactly and the second only as a weakening, which does not
+imply the first, and deleted for the second the exact test stopped reaching the service: the null, the array and the
+object it excludes crossed the wire for the recheck to drop. So a conjunct the strata admit is asked only of the
+admitted siblings, and one left above of every sibling, as before. The strata are those of the condition as written,
+before a lowering: a sibling admitted only once lowered counts as left above, and the conjunct is kept, which costs a
+redundant test and never a row.
+
+**A lowering is asked of the statement the deletions leave**, for the same reason two duplicates are not both
+deleted: each rewrite is sound on the statement it is asked of, and the rewrite does two in turn. A conjunct deleted
+because another implies it holds wherever the other does; lent to that other as a sibling's facts, it would let the
+other be lowered on what the other itself establishes — #117's self-certification one step removed — and the lowered
+form would be the original only where a conjunct the filter no longer applies holds. An ordering onto a stored form
+is no strengthening, so a row the original drops could be kept.
+
+**The arm of a `CASE` is a licence of its own**, which the plan's table lacked and the shadow's judge found it
+needed. A merged view's column is `CASE WHEN <that view's filter> THEN … END`, and what its arm is lowered by is what
+the filter proves of the rows the arm is read for, beside what the conjunct's siblings prove of the rows the
+conjunct is decided for: over a row where the condition is not true the `CASE` answers its `ELSE` however the arm
+reads. The conjunct the `CASE` is part of is not among them, for the reason a deletion's own facts are not. A
+condition spelled as a sibling is that sibling's term, so the copies a merged view repeats in each column are one
+child each.
+
+#### What the oracle promises, and what it costs
+
+**It returns values, never a term to execute.** Every constructor `PredicateRules` defines is unextractable, and
+`NothingIsExtractableAndTheRulesStayWithinTheirBudget` holds it so.
+
+**The only unions are path unions and congruence.** No predicate rule unions two predicates or two values: an
+implication is a verdict in a scope, never a merge of classes, which is the trap a filter-truth equivalence becomes
+under hash-consing. The only unions in the graph are `JsonRules`', of paths.
+
+**A run that does not complete knows nothing it did not know before.** A context whose run stops on a limit, or that
+the engine cannot open, is released, and the stratum it would have been reads the one above it, whose facts hold of
+the fewer documents below. A contradiction is no failure: it is the answer that nothing is kept.
+
+**The planner's graphs.** `CosmosOracle.For` reasons in the generations the declaration compiles into, so a
+declaration compiles once whoever asks: the oracle, and the clauses that still read the declaration directly.
+`PredicateRules` is defined in a graph when the oracle first asks of it, and its rulesets run only in the oracle's
+schedules, so a query context the planner opens for itself pays nothing for them. A test makes an oracle in graphs
+of its own, so that no test reads another's memo.
+
+**One tree of contexts per statement**, remembered by a digest that ignores the conjuncts' order, beneath the
+declaration's frozen context. The strata and the leave-one-out children each hold the statement's terms and their
+verdicts. A question about a predicate a context does not hold is answered in a child made for it that assumes
+nothing, and so splits on nothing: the context above has lifted what a split there proves. Asked in a child of a
+split stratum with the split allowed, the same question cost 45 ms where it now costs about 5.
+
+**What it costs**, measured by `CosmosOracleMeasureTests` at `MeasureTests`' sizes, in a Debug build on a busy
+workstation, beside a query context of what the same statements establish, which is how the planner read a filter
+before the oracle (`Derive`, since deleted; the test assembly keeps it as a reference for the theory's own tests):
+
+| | 5,069 conditional facts | 47,502 conditional facts |
+| --- | --- | --- |
+| a new statement, `kind = 'k0'` | 7.4 ms (`Derive` 3.8) | 12.4 ms (`Derive` 8.8) |
+| a new statement, `kind IN` two kinds | 15.6 ms (`Derive` 10.6) | 24.6 ms (`Derive` 24.2) |
+| a new statement, one kind per arm of an `OR` | 51 ms | 57 ms |
+| a new statement no document satisfies | 1.2 ms | 1.3 ms |
+| a deletion's question, of a statement already asked | 5.1 ms | 9.9 ms |
+| a predicate the statement does not hold | 0.7 ms | 0.6 ms |
+
+The figures are p50s; the p95s are two to four times them, and the machine was shared. A new statement costs between
+what the planner's `Derive` of the same facts costs and about twice it, because a stratum also runs the verdicts and
+is frozen; what `Derive` cannot do at all — the disjunction per kind — costs a split per arm. A question of a
+statement already asked costs about a millisecond. Stage 1's gate asks p50 within 2 ms and p95 within 11 ms per
+distinct question: a new statement is outside it, a question of an existing one inside, and what each costs once
+Eggnog's idle rules allocate nothing is the measurement still owed.
+
+#### The oracle in the planner
+
+**One statement per filter, asked by every rule that reads its facts.** `Metadata/CosmosFilterStatement.cs` is a
+filter as the oracle reads it: its conjuncts, loaded once through the input's binding; the statement the oracle holds
+for them; and the questions a rule asks, each named for its licence rather than for the rule that asks it.
+
+| who asks | what | the licence |
+| --- | --- | --- |
+| `CosmosFilterRule`, whether the filter pushes whole | `Renders` | each conjunct from the stratum before the one that admitted it (L2) |
+| `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
+| `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
+| the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
+| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
+| `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
+| the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
+| the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
+| the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
+| the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
+| a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
+| `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
+| `CosmosRankRule`, `CosmosRank` | the projections a rank writes | L1, carried, as a projection's |
+| `CosmosUnnestRule`, the predicate over a traversed element | `Renders` of its statement | the strata, as the `CosmosFilter` it builds renders it |
+| `CosmosSortRule`, `CosmosSort` | the null placement, a computed column's ordering licence, a key read as stored, a temporal key's order | L1, carried |
+| `CosmosAggregateRule`, `CosmosAggregate` | a grouping key normalised, a key read as stored | L1, carried; the key a `DISTINCT` binds, which another node asks, L0 |
+| `CosmosLookupJoinRule`, `CosmosLookupJoin`, the probe's key restricted as stored | a text key's path a string, a `UUID` key's one spelling | L1 of the probe side (`Key`), carried |
+| `CosmosSelfJoinRule`, a constraint's predicate proved of a side | `Proves`, `Declares` | every conjunct of the side's filter; the declaration where it has none (`Declaration`) |
+| `CosmosSelfJoinRule`, a key read faithfully | one scalar type, one `UUID` spelling | every conjunct of the two sides' filters' disjunction |
+| `CosmosPartitionKeyExtractor`, the partition a statement is routed to, and whether it matches one document | the key there and holding one value | every conjunct |
+| the extractor, a point read, a batch of them, a whole-partition delete | the same, and every other conjunct `Always` | the conjuncts that pin the keys, and no other |
+
+What these replaced: a fact extractor reading a predicate's conjuncts by hand, and every `Derive` of what it read at a
+filter site — the filter rule's whole predicate, the implementor's, the rewriter's whole predicate and its
+declaration alone, the `CASE` arm's, the split rule's unaided pass; the split rule's two passes and its digest test
+of what is beneath; and the translator's four questions of a type, two over what a filter established and two over
+the declaration alone, which existed because what a filter established included the conjunct being translated.
+After the filter, a `Derive(null)` at every projection, sort and grouping site, which read the declaration alone
+where the rows had passed a `WHERE`; Calcite's pulled-up `IS NOT NULL` for a sort's null placement; and the
+partition-key extractor's own reading of a predicate, its equalities by hand and a seed of what the declaration
+states outright, with a second walk asking whether anything else was said.
+
+**The clauses after a filter read the rows it kept (L1).** `WHERE` runs before `SELECT`, `ORDER BY` and `GROUP BY`, so
+what the pushed conjuncts establish holds of every row a clause reads: a sort over `t IS NOT NULL` has no null to
+place, a grouping over `x IS NOT NULL` no absent key to tell from a null one, and a projection over `kind = 'B'` reads
+`ref` in the form kind `B` declares. `Metadata/CosmosRowFacts.cs` reads it through the input as the binding is read —
+a set's original member, through filters, projections and sorts, each keeping the rows it is given or fewer — and
+stops at anything that is a relation of other rows. Several filters are one statement of what each admitted, asked
+under `Kept`, each filter's opaque terms numbered apart from the others', since each is numbered over its own binding.
+Asked once per clause, by its rule — remembered by the clause, the container, the licence and the input — and carried on the
+node it builds, as the sort's non-null fields always were: which filters a walk finds depends on the member of a set
+it reads, and implementation reads the one tree the planner chose, whose filter may be the same condition rewritten.
+A question another node asks of a clause — the key a `DISTINCT` binds, which a sort above asks — is answered on both
+walks, and reads the declaration: a key only the filter proves present is grouped as the path and bound to none, which
+costs the sort above and cannot fail the plan.
+
+**A key is pinned where the oracle says it holds one value.** `CosmosPartitionKeyExtractor` reads a filter's condition
+as a statement and asks, of the key's path, `Present` and one value in its domain (`JsonFactSet.TryGetValue`).
+Routing a statement that still applies its predicate reads every conjunct, a strengthening's argument: a partition it
+skips holds no row the predicate keeps, so a key a sibling's kind declares routes as surely as one the predicate names
+— `kind <> 'b' AND kind <> 'c'` over a required enum routes to `a`. A point read, a batch of them and a
+whole-partition delete apply no predicate, so they read only the conjuncts that pin their keys
+(`CosmosStatementScope.IsPin`: an equality of what the path holds or reads as, with one literal, never through a
+cast), and every other conjunct has to be `Always` in that scope or the operation answers another question than the
+query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
+`'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
+whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
+
+**A filter that keeps nothing is no request, and one that keeps everything has no `WHERE`.** The rewrite answers
+`FALSE` where every conjunct together contradicts the declaration, and `TRUE` where it deleted every conjunct.
+Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
+`false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
+never sees. `CosmosFilterReduceRule` matches the logical filter, over its own convention's container only, and puts
+the empty relation, or the filter's input, beside it; a host with a rule for an empty `Values` answers the first with
+no request at all. Only the logical filter: a converted one carries a condition some convention already rewrote, and
+a filter in a host's convention is not the adapter's to reduce.
+
+**Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
+sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and
+declined another convention's (`CosmosFilterSplitRule.FindTable`); the conversions did not, and decided under their
+own convention's declaration. Unimplementable, the converted filter was still a member of the original's set, and
+once a converted filter carried a constant, the reduction read it there: in `SELECT … FROM typed WHERE kind IS NULL
+UNION ALL SELECT … FROM kinds`, the kinds' required `kind` made typed's filter `FALSE`, and nine rows were lost; `kind
+IN ('a', 'b', 'c')`, which the kinds' enum covers, dropped typed's filter and kept nine too many. Every conversion now
+asks whether the walk of its input found its own container (`CosmosConvention.Owns`), and the reduction reads only
+the logical filter. It also takes the oracle's work for a filter from once per registered container to once.
+
+**Remembered against the condition node.** A rule is asked the same filter each time Volcano matches it and again at
+implementation, and a condition is an immutable node the planner hands back unchanged. So a statement is remembered
+against the node, with the binding it was read through — the binding, because one condition over two inputs is two
+statements, and the container, because two containers declaring nothing share one declaration and not one
+translator — and released with it. The rewrite's answer is remembered on the statement, so the node it returns is
+one node each time, and the statement of the rewritten condition is remembered too. Beneath them the oracle
+remembers its contexts by the statement's digest.
+
+**Asked only where something could answer.** A statement has one scope, whose rounds of admission run the first time
+a question names a stratum — a render, a deletion beside what reaches the service, a clause after the filter, a
+weakening — and never for a contradiction, a lowering's siblings or a key's pins; a second scope exists only where the
+rewrite deletes, for the statement the deletions leave. The last stratum is opened only where something asks of every
+admitted conjunct, which a filter pushed whole never does. And the oracle asks a conjunct whether it is redundant only
+where something could decide it — a sibling reading a path it reads, or one above or beneath it, or sharing a term
+with it, or a path the declaration speaks of (`CosmosStatementScope.RedundantConjuncts`). That is the oracle's own
+bound on what it looks for, and it costs what it bounds: `IS_DEFINED(x) OR NOT IS_DEFINED(x)` over a path nothing
+speaks of is true of every document and is not deleted.
+
+**A weakening the rest already implies is not pushed.** Asked of what the statement will apply beside it — the
+conjuncts beneath, those pushed with it, the weakenings before it — and of the declaration. That is the digest test
+of what lies beneath, which kept the split rule from pushing a weakening under itself for ever, made general: the
+oracle reads a weakening spelled as a conjunct beneath as assumed, before any run, so the loop cannot return. And it
+is more: `IS_DEFINED(c.id)`, which a comparison over `id` implies, is true of every document by the service's own
+statement, and pushed it filtered nothing while making a filter a host could plan in process, where the service's
+test has no body.
+
+#### How the oracle is checked: population D
+
+`SoundnessTests` states facts true of one document and checks that what follows is true of the same document. That
+is the right test of a theory of facts, and blind to the mistake a theory of predicates makes most: a conjunct
+licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
+never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
+discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
+declaration**, not from the filter. A random filter over its paths is admitted with a random renderer, and every
+scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
+the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
+
+**The ground truth is an evaluator of the IR, and it is not `PredicateAtom`.** `IrEval` takes a predicate to TRUE,
+FALSE, UNKNOWN, or a raise, written from what Calcite was measured to do, and a checker that read the table would
+only agree with it. It is held to Calcite's runtime itself (`IrEvalCalciteTests`): one statement per random predicate,
+`CASE WHEN p THEN 'T' WHEN NOT p THEN 'F' ELSE 'U' END` over two hundred documents in a `VALUES`, and the documents it
+says raise asked one at a time. The raw readings cannot be asked that way — a `VARIANT` is what the adapter's reader
+makes of the service's JSON, and no expression over a JSON literal produces one — so where nothing was measured the
+evaluator draws from what the table admits, a coin per question tossed once a trial. That tests the reasoning over
+the table and not the table, which only a measurement can.
+
+**What is checked.** Every fact of JSON a context holds, read row by row from its tables; every claim and
+disequality its fact set answers a consumer; every verdict, of every term of every conjunct and of predicates the
+statement does not hold; every `holds`, verdict and `possible` row; the facts each conjunct was handed to render
+from, on the documents the conjuncts admitted before it keep; and that a conjunct called redundant drops no row the
+rest keep. Two checks look at every declared document, kept or not, because what they check is a property of a term:
+each `atom` row's meaning — the truth value the evaluator gives is among those `Over` names, and the document is among
+those `Kept` admits for it — and C5, every e-node of the predicate, value and path sorts evaluated over its
+children's representatives against its class's. Where nothing was ever unioned every class has one node and C5 has
+nothing to compare; it is the only check that sees a union, and it is there for the day one is written.
+
+**A raise is held at the atoms, not at the verdicts.** The connectives' rules do not model a raise, and whether an
+answer may stand where Calcite fails is the refinement order still to settle; so a verdict is checked on the rows
+Calcite answers, and the connectives decide first, as Calcite may: a conjunction with a FALSE arm is FALSE whatever
+the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so.
+
+**What it found**: two rows of the table that contradicted Calcite. An integer cast of the accessor is a parse of the
+rendering, which raises on a stored `30.0`, and the table converted the number; `RETURNING DECIMAL` parses the
+rendering, a string of digits included, and the table asserted a number. Both are fixed, and measured in
+`CalciteJsonValueMeasurementTests`. Holding the evaluator to Calcite found two things the measurements had not
+written down, and the evaluator follows both: the null test of a cast is simplified to its operand's where it stands
+alone, so the parse that would raise is never made — beside other conjuncts it sometimes is, and those rows are left
+out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
+compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
+
+**What it is worth is what it catches.** `PlantedBugTests` plants seven faults, each in a graph of its own — a rule
+added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
+scheduled without its guard; the renderer handed the wrong stratum — and requires each caught within the trials a run
+pays for:
+
+| planted | caught in trial | by |
+| --- | --- | --- |
+| a too-wide preimage: an equality with text decided true where the path holds only its preimage | 54 | a verdict |
+| establishing from a weakening: a disjunction that holds read as each arm holding | 6 | a `holds` row |
+| never-true read beneath `NOT` | 3 | a verdict |
+| the arm split without its `holds` guard | 0 | a contradiction |
+| an axiom row contradicting the measurement: `IS NULL` of the accessor false of an object | 18 | a fact |
+| a stratum handing a conjunct its own facts | 0 | the strata |
+| a union of a conjunction with its other arm where one arm is always true | 60 | C5 |
+
+The three seams the plants go through are internal and set by nothing else: `PredicateRules.ScheduleWith` schedules
+the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stratum a conjunct is handed, and
+`CosmosStatementScope.ContextFor` gives a checker the context a licence reads, to read every row of it.
+
+**What it costs**, in a Debug build on a shared workstation: 200 trials a run, which take 27 to 41 seconds, 110 to
+150 ms a trial at the median and 350 to 560 at the 95th percentile; the plants another minute, most of it the two
+caught latest; and the comparison with Calcite 24 predicates, 54 statements and 3,135 answers in 21 to 34 seconds. The
+long runs are explicit (`-explicit only`), for a change to the rules, the table or the strata, or a Calcite or IKVM
+upgrade: 5,000 trials took 19 minutes — 3.1 million facts, 261,250 verdicts of which 145,317 decided something, 20,048
+atoms and 149,789 e-nodes over 320,000 documents, and nothing false — and 400 predicates against Calcite four to six,
+54,141 answers and 491 raises, and no disagreement.
 
 #### A schema is one source of facts, and not the only one
 
@@ -981,6 +1377,11 @@ the negation is true — and without it the weakening would admit every document
 So it exists for the type guard's sake, and dropping the type guard drops the need for it. A declared
 `required` drops it independently.
 
+**Which facts delete one is the oracle's licence table.** A weakening is pushed beside every conjunct the
+strata admitted, so its guards are deleted by what those establish beside the declaration — the last stratum,
+which the conjunct it weakens is never in. A guard a sibling left above would have proved stays: the service would
+decide rows that sibling exists to exclude.
+
 **What this buys is not a shorter statement.** Each guard admits documents the service returns for the
 recheck to throw away, so deleting one is fewer documents over the wire. And a conjunct that needed
 none of them is *exact*, which is what lets a row limit travel with it — a weakening cannot carry a
@@ -1051,10 +1452,13 @@ strings is the order Calcite compares the values in is therefore never consulted
 forms are admitted here on the same terms as the rest. Ordering *by* such a column needs the column to
 address something, which is a different piece of work.
 
-**And only an unconditional fact.** A projection carries no predicate, so it can discharge no guard.
-Where a form is declared inside a branch the cast stays in process even for a query whose filter does
-prove the branch — reading that off the subtree is a further step, and the filter half pushes either
-way.
+**And a fact of the rows the projection reads.** A projection carries no predicate, so it discharges no
+guard of its own; the filters beneath it can. What their pushed conjuncts establish holds of every row the
+projection reads (L1, *The oracle in the planner*), so where a form is declared inside a branch and the
+filter proves the branch — `kind = 'B'` beneath `CAST(ref AS UUID)` — the column is the stored spelling,
+guarded as any accessor is, and the reader makes the `UUID` of it rather than Calcite in process. A filter
+keeping another kind, or none, leaves the cast above. `CosmosDifferentialTests` holds both to Calcite over
+the kinds container (`CosmosPushdownProbeTests.ClauseProbes`).
 
 #### A declaration is trusted, and that is a change in kind
 
@@ -1079,9 +1483,9 @@ proves it is usually a sibling of the one it licenses. For a filter rewrite that
 the guard conjunct stays in the predicate, so over a document the fact was never claimed for, it has
 already excluded the row. For anything decided before a row is seen — a sort, routing, a point read, a
 pushed `LIMIT` — nothing rechecks, and the condition becomes that the statement's *pushed* predicate
-entails the guard. `CosmosFilterSplitRule` therefore establishes facts only from the conjuncts that
-translate unaided, those being the ones certain to be pushed; taking them from the whole predicate
-would push a comparison whose guard stayed above it in the residual.
+entails the guard. So a clause after a filter reads the filter's last stratum, what the admitted
+conjuncts establish — those the service applies — and never a residual's; routing reads every conjunct
+of a filter the service applies; and a point read reads only its pins (*The oracle in the planner*).
 
 #### A constraint says what holds across documents
 
@@ -1138,11 +1542,16 @@ whose partition key is null. Whether Azure keeps them apart is not measured, and
 **A predicate scopes the claim, and a consumer has to prove it of every document it compares.** A
 constraint on `linkId` among Links says nothing about a Link and a document of another kind sharing a
 `linkId`, so a join can use it only where *both* sides' predicates imply it — proving it of one side is not
-enough. Implication is Calcite's `RexImplicationChecker`, the checker materialized-view matching uses, which
-answers no where it cannot tell. It reasons about comparisons of columns, so each distinct accessor term in
-the two predicates is first stood for by a column of its own — sound, because a deterministic term is one
-function of the document. A predicate it cannot prove leaves the constraint unused for that query, which
-costs a read and never a row; one that does not *compile* is refused when the model is read.
+enough. Implication is the oracle's: the constraint's predicate decided `Always` in each side's statement,
+every conjunct of the side's filter assumed beside the declaration (`CosmosFilterStatement.Proves`), and in
+the declaration alone for a side with no filter. The side's filter and the predicate are read through one
+loading, so a term they share is one term whether the oracle can take it apart or not, and a view writing the
+very predicate the constraint names proves it before any run; `type = 'A'` proves `type IN ('A', 'B')` by
+what `type` may then hold, and a container declaring every document of kind `k` proves `kind = 'k'` of a side
+that says nothing of it. Calcite's `RexImplicationChecker` decided it before, each distinct accessor term
+stood for by a column of its own, and knew nothing a declaration says. A predicate the oracle cannot prove
+leaves the constraint unused for that query, which costs a read and never a row; one that does not *compile*
+is refused when the model is read.
 
 **`UNIQUE` contributes no facts.** It says nothing about any one document. `CHECK (data.id = linkId)` —
 a constraint relating two paths of one document — would: it is checkable per document, the same trust as a
@@ -1319,8 +1728,8 @@ declining sorts on arbitrary document paths.
 because the two sides disagree about where nulls go; a predicate that leaves none in the rows being
 sorted leaves nothing to disagree about, whichever way each side would have placed one. So under
 Calcite's default placement — `NullCollation.HIGH`, ascending meaning nulls last —
-`WHERE c.category IS NOT NULL ORDER BY c.category` pushes in both directions where
-`ORDER BY c.category` alone is refused.
+`WHERE t IS NOT NULL ORDER BY t` over a path declared a string pushes in both directions where
+`ORDER BY t` alone is refused.
 
 That default is a connection setting rather than a fact, and the other value worth knowing is
 `LOW` — nulls first ascending, last descending, which is Cosmos's own order and SQL Server's. A
@@ -1333,40 +1742,45 @@ measurements and the trade.
 Two things make it sound rather than merely plausible. **Both senses of absent go.** Cosmos
 distinguishes a property holding JSON `null` from a property that is not there, and sorts
 `undefined` below `null` below everything else — so excluding only one of them would leave the
-other to arrive first ascending and the guarantee would be false. SQL `IS NOT NULL` renders as
-`IS_DEFINED(p) AND NOT IS_NULL(p)`, which excludes exactly the two. And **the predicate and the
-ordering leave as one statement**, so the guarantee holds at the service and not only in the plan.
+other to arrive first ascending and the guarantee would be false. What the placement asks of a key is
+that it is there and holds a scalar (`JsonFactSet.IsAlwaysScalar`), which rules out both. And **the
+predicate and the ordering leave as one statement**, so the guarantee holds at the service and not
+only in the plan: it is read off the conjuncts the service applies.
 
-Only the explicit `IS NOT NULL` form is read. A comparison such as `c.v > 'a'` also drops nulls
-under SQL's three-valued logic, and appears to under Cosmos's rule that a comparison across types
-yields `undefined` — but that rule is unmeasured here, and over a path typed `ANY` the values
-compared are whatever the documents hold. A wrong answer is the failure mode, so the wider form
-waits on evidence.
+**The guarantee is the filter's last stratum (L1).** `WHERE` runs before `ORDER BY`, so what the
+pushed conjuncts establish holds of every row the sort orders, and the oracle reads it off the filters
+beneath the sort (`Metadata.CosmosRowFacts`) through whatever projects the key. `IS NOT NULL` says the
+path is there and not null; so does a comparison over its text, an atom that takes a truth value only
+where the path holds a scalar — `WHERE t > 'A' ORDER BY t` pushes over a declared string, where the
+wider form used to wait on evidence that Cosmos's undefined for a comparison across types drops the
+row. `CosmosDifferentialTests` holds both, a typed key under `IS NOT NULL` and a page of each, to
+Calcite on the emulator (`CosmosPushdownProbeTests.ClauseProbes`). What stops a key then is its
+order: the text of a path not declared a string orders as text in Calcite and as the value at the
+service (*Ordering a sort key the way it reads*).
 
-**It reaches promoted columns and not unpromoted document paths, and the reason is structural.**
-The guarantee is read from `RelMdPredicates`, which carries a predicate through a projection only
-where the projection is a `RexInputRef`. A promoted column projects as a plain reference and its
-predicate survives; a document path projects as an accessor call — not a reference, and over an
-input the projection does not output — so the predicate is dropped.
-Measured, at rule-firing time, against a live planner:
+**It used to reach promoted columns only.** The guarantee was read from `RelMdPredicates`, which
+carries a predicate through a projection only where the projection is a `RexInputRef`: a document path
+projects as an accessor call, over an input the projection does not output, and the predicate was
+dropped. Measured, at rule-firing time, against a live planner:
 
 ```
 WHERE c."category" IS NOT NULL        →  {pulled[IS NOT NULL($1)]}
 WHERE JSON_VALUE(c."DOC", '$.name') IS NOT NULL    →  {}
 ```
 
-That is worth stating plainly, because it says something about the typed-column question that the
-question does not say about itself: what a declared column buys is not only a type the planner can
-see, but a path that projects as a *reference*, at which point Calcite's existing metadata layer
-starts working over it with no adapter code at all. Nullability in particular then needs nobody's
-declaration — the query already carries it.
+Once a promoted column was a `VARIANT`, which no sort pushes (#165), it reached nothing at all. The
+oracle reads the path the filter reads whatever projects it, so a key needs no column.
 
-**The guarantee is taken once, in the rule, and carried on the node.** What the metadata answers
-depends on which equivalent of the input is asked: measured, the same query answers with the
-predicate while the input is still logical and with nothing once the input has been converted.
-Re-deriving it during implementation would therefore throw on a plan the planner had already
-chosen, which is the rule-and-renderer disagreement `CosmosSortRule` exists to prevent. Carrying it
-is sound because every member of an equivalence set produces the same rows.
+**The guarantee is taken once, in the rule, and carried on the node.** Which filters a walk of the
+input finds depends on which member of a set it reads, and implementation reads the one tree the
+planner chose: the pulled-up predicates were measured to answer while the input was logical and with
+nothing once it had been converted, and a walk can meet a filter spelled another way. Re-deriving it
+during implementation would therefore throw on a plan the planner had already chosen, which is the
+rule-and-renderer disagreement `CosmosSortRule` exists to prevent. So the rule hands the node the
+non-null fields and the facts they came from (`CosmosSort.Facts`), and every question it asked — the
+placement, a computed column's ordering licence, a key read as stored, a temporal key's lexical order —
+is asked again of them. Carrying it is sound because every member of an equivalence set produces the
+same rows.
 
 **Declaring the provided collation as a trait was considered and does not pay.** The idea is to
 declare the order the adapter actually delivers and let the planner insert a corrective sort. It
@@ -1623,7 +2037,9 @@ rule's own walks did not: the container a text key's declaration is read from, a
 over a declared string and a `UUID` key through a traversal still planned a lookup `Prepare` then
 refused (review of the K fix, reproduced on the stub executor). Every walk now sees through a
 traversal by `CosmosImplementor.TraversedInput`, and `TryProbeKey` takes the container from the
-binding walk itself rather than from a second walk that could reach a different answer.
+binding walk itself rather than from a second walk that could reach a different answer. The facts it
+asks of are the rule's, carried on the join (`CosmosLookupJoin.Facts`): what the probe's filters
+establish, which a walk reads off whichever member it finds.
 `CosmosLookupJoinTests.ADeclaredKeyOverATraversalIsRestrictedAsTheRuleDecided` asks `TryProbeKey` of
 the logical and the converted subtree and holds the two answers equal.
 
@@ -1804,7 +2220,8 @@ whatever its width, where the projection side had always refused one. Measured o
 `CAST(label AS VARCHAR(3)) = 'bik'` was dropped to `c.label = 'bik'` and lost the stored `bikes`, which
 Calcite truncates and keeps; and because the fact and partition-key extractors read a value through the
 same recogniser, the same statement over `category` routed the read to a partition named `bik`, which
-holds nothing. `TryTextCastValue` now asks for a `VARCHAR` with no precision, and all three stop there.
+holds nothing. `TryTextCastValue` now asks for a `VARCHAR` with no precision, and the translator and the
+oracle's loader, which every fact and every pin is now read through, stop there.
 
 **The same cast over `JSON_VALUE` is the same cast.** A view over `DOC` writes
 `CAST(JSON_VALUE(doc, '$.x') AS VARCHAR)`, whose operand is not typed `ANY`: Calcite types a
@@ -1839,8 +2256,11 @@ number has the value 30 — so the value is that string or it is that number, an
 spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
 service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
 row crossing the wire is the whole cost, against a container read whole. The branches follow the
-rendering: a number-like literal takes the parsed number, or `IS_NUMBER` where the double cannot hold
-it; exactly `true` or `false` takes the boolean, since Calcite renders in lowercase and `'TRUE'`
+rendering: a number-like literal takes the parsed number — the whole number it spells, as a `BIGINT`,
+past where a double holds every whole number, since the service keeps a stored integer exactly and the
+double `'9007199254740993'` rounds to is another number there (measured on the emulator: it lost the
+document storing 2^53 + 1) — or `IS_NUMBER` where the double cannot hold it; exactly `true` or `false`
+takes the boolean, since Calcite renders in lowercase and `'TRUE'`
 matches only the string; and over a value typed `ANY`, whose cast renders an array as `[x, y]` and
 an object as `{x=1}`, a literal opening with that bracket takes `IS_ARRAY` or `IS_OBJECT`. `JSON_VALUE`
 answers null for those and for a JSON null, so under it no such literal is ambiguous at all and the
@@ -1873,9 +2293,9 @@ boolean, and both would have gone missing.
 
 **What it recovers.** A view exposing the partition key as text routes to one partition again, which is
 the largest cost lever there is and the one that was being lost in silence. Recovered for routing only:
-`TryExtractPrefix` admits the cast form and `TryExtract` does not, so the point read and the
-whole-partition delete — each of which replaces the predicate with an operation that applies none —
-keep the cast opaque. Routing narrows which partitions are visited and filters nothing, so the rows are
+`TryExtractPrefix` reads every conjunct, the cast's among them, where `TryExtract` reads only the
+equalities over the path itself, so the point read and the whole-partition delete — each of which
+replaces the predicate with an operation that applies none — keep the cast opaque. Routing narrows which partitions are visited and filters nothing, so the rows are
 decided by the same comparison either way.
 
 **A numeric comparison states a bound even though it has no form.** `CAST(price AS INTEGER) > 10`
@@ -2445,6 +2865,14 @@ Over a container that declares nothing this is a loss of pushdown by design, and
 down, and the fold is Calcite's. `CosmosDeclaredFactPlanningTests.Renderings` pins each declared case
 beside its undeclared control.
 
+**Every rendering a comparison reads has to be a string's, not one of them.** Against a literal or a
+parameter one string path suffices, there being one stored value to compare. Two renderings are two
+stored values: `JSON_VALUE(a) = JSON_VALUE(b)` keeps a document holding `"3"` and `3` in Calcite, which
+compares `'3'` with `'3'`, and not at the service, which compares a string with a number. Either side
+sufficed once, which was already wrong over a container declaring one of the two a string and nothing of
+the other; once a conjunct's facts were its stratum's, a sibling proving one path a string by its kind
+pushed the raw comparison too (`RendersOnlyStrings`).
+
 **A guard keeps the value, not the rendering, and a grouping is where that shows.** The guard makes
 the service answer null where `JSON_VALUE` does, and passes every scalar through as itself; the text
 the column carries is the reader's rendering of it. So an operator that *compares* the guarded value
@@ -2459,7 +2887,7 @@ distinct, counted six where SQL counts five. `CosmosAggregate.GroupsAsTheColumnR
 each grouping key what the other two ask, and the rule's `CanPush` and implementation both ask it, each
 of the binding its own walk produced: a key read as its declared type groups as it reads (a typed
 accessor's key being the guard its projection writes, null exactly where the column is), a key read as
-text only where `IsDeclaredStringOutright` holds of its path, and a `JSON_QUERY` fragment not at all —
+text only where `IsDeclaredString` holds of its path, and a `JSON_QUERY` fragment not at all —
 its text is a serialisation, and whether the service holds two objects equal exactly where their
 compact texts are equal, in key order and number spelling, is unmeasured. The document column groups
 nothing either way, no two documents being equal. The grouping then runs in process over the column
@@ -2497,12 +2925,14 @@ same question with SQL's element-wise order on the other side, and the service p
 **So the sort asks what the other three readers ask, and the question is asked once.** The filter
 translator refuses a comparison against the rendering over an undeclared path; the lookup join a text
 key, since its restriction is the raw `path IN (@k…)`; a grouping a text key, since the service groups
-the stored values. The last two each wrapped `IsDeclaredStringOutright` in a dispatch on the reading
+the stored values. The last two each wrapped the declared-string test in a dispatch on the reading
 of their own, which differed only over the document column — the second encoding the rule against
 encodings is for. `CosmosRexTranslator.IsReadAsStored` is that dispatch: a field read as declared is
 the stored value, a typed accessor only where its type is declared (below); read as text, only where
-`IsDeclaredStringOutright` holds of its path, the container declaring it a string or null outright and
-nothing else; read as JSON, never. The lookup join and the grouping ask it now — each taking an
+`IsDeclaredString` holds of its path, what is known saying it holds a string or null and nothing else —
+of what is known of the rows each reads — the declaration, or a filter beneath keeping a kind that declares it (L1,
+*The oracle in the planner*); read as
+JSON, never. The lookup join and the grouping ask it now — each taking an
 exception of its own first, the grouping for the document column, no two documents being equal — and
 `CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
 readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
@@ -2527,7 +2957,8 @@ container, `label` holding 30, an array, an object, null and nothing among the f
 Unpaged the same order failed the read on the object, and with the column guarded it would have
 answered in the wrong order instead: `null, null, 30, null, null`. So `IsReadAsStored` asks of a
 nullable field read as declared what it asks of text, of the type the clause names
-(`CosmosRexTranslator.TypeTestOf`): the container must declare the path that type, or null, outright.
+(`CosmosRexTranslator.TypeTestOf`): what is known of the rows the clause reads — the declaration, and
+the filters beneath (L1) — must give the path that type, or null.
 `JSON_VALUE(… '$.price' RETURNING INTEGER)` over products, which agreed pushed because no document there
 holds anything but a number, now sorts in process; over a path declared an integer it pushes, and
 agrees — the differential suite's `ordering` container. A field that cannot be null is the service's
@@ -2548,6 +2979,8 @@ statements that could.
 **A declared string is then ordered by code point, which is SQL's order only below the surrogates.**
 With the reading settled, a sort over a declared string compares strings at the service — by code
 point, measured on the vnext-preview emulator, where Calcite compares UTF-16 code units as Java does.
+A string the rows' filter proves, a kind's branch or a list of literals, is ordered the same way, and so
+is a key the filter proves present under Calcite's own placement, which once reached only `NULLS FIRST`.
 The two part where a character above U+FFFF meets one between U+E000 and U+FFFF: the service put
 U+E000, U+FF21 and U+FFFD below U+1F600, and Calcite above it. The reading has nothing to do with it,
 and declining the declared sort would not cure it: `ORDER BY c.id`, a comparison pushed exactly between
@@ -3548,7 +3981,9 @@ holds across documents*.
   reads the number `1` and the string `"1"` as the same text, and a cast to `UUID` reads `ABC…` and `abc…` as
   the same value. So a text accessor or a promoted column counts where the facts give the path one scalar
   type, and a `UUID` cast counts where they give it a canonical UUID form — the same fact that makes the cast
-  push. The facts asked are the unconditional ones.
+  push. The facts asked are those of every document either side reads: the two sides' filters' disjunction,
+  which the oracle splits over its arms and keeps what both prove, and the declaration alone where a side has
+  no filter — so a form both sides' kind declares is the key's, and one only a side's kind declares is not.
 - **Any other constraint key counts where it is computed from the equated expressions alone**, since equal
   inputs make equal outputs. `UNIQUE (LOWER(code))` covers a join on `code`. It does not work the other way
   round: `UNIQUE (code)` does not cover a join on `LOWER(code)`, because two codes can share a lowercase. The
@@ -3898,7 +4333,7 @@ Written as the path it was wrong three ways. The translator sent `= 2` as `c.bod
 every document storing `"2"`, and the null test and the guard under a `NOT` took `IS_NUMBER` as its
 null set and lost them too. A column, and a sort or a grouping over one, was sent back as the stored
 string where the plan declared a number, and failed to read where Calcite answers the number the
-string spells. And `CosmosFactExtractor` read the equality as exact, the path holding the
+string spells. And the fact extractor of the day read the equality as exact, the path holding the
 number 2, which beside a declared `"type": "string"` is a contradiction: the filter was rewritten to
 `FALSE`. Over a container declared so, holding `"2"`, `" 2 "`, `"3"` and `"2.0"`, `= 2` returned
 nothing where Calcite returns three documents, and `> 2` nothing where it returns one.
@@ -3987,9 +4422,10 @@ service holds with the runtime type its JSON shape names (`VariantSqlValue.creat
 Calcite cannot sort the column in process, no oracle can measure a pushed sort, and `CosmosSort`
 declines a sort keyed on a `VARIANT` column rather than push one on faith. A caller orders by
 `JSON_VALUE` over the path instead, which is text and sorts as text in process — and at the service
-only where the container declares the path a string, the service ordering the stored value rather than
-its text; a `RETURNING` likewise only where the container declares its type (*Ordering a sort key the
-way it reads*). This waits on an upstream Calcite decision about a canonical variant order; see #165.
+only where what is known of the rows says the path holds a string, the declaration or a filter keeping a
+kind that declares it, the service ordering the stored value rather than its text; a `RETURNING` likewise
+only where the rows are known to hold its type (*Ordering a sort key the way it reads*). This waits on an
+upstream Calcite decision about a canonical variant order; see #165.
 
 **Only declared or guaranteed paths may be promoted. Never a sampled one.** Sampling a
 container to guess its shape is fine as an opt-in convenience for projection ergonomics, but it
@@ -4027,13 +4463,15 @@ incorrect plan, not a slow one.
     enclosing comparison — is a different question (*A predicate's value is not its truth*).
   - **A grouping key.** The service groups an absent property apart from a present-and-null one, and
     SQL has one `NULL`. The key is therefore grouped and projected as `IS_DEFINED(p) ? p : null`,
-    which is SQL's reading of both — except for `id`, `_ts` and `_etag`, which the service guarantees
-    are present, where normalising would buy nothing and cost the plain path form an index is defined
-    on. See `CosmosAggregate.GroupingKey`.
+    which is SQL's reading of both — except where the key is known present in every row grouped: `id`,
+    `_ts` and `_etag`, which the service guarantees, a path a schema requires, and one the filter
+    beneath proves present (`WHERE x IS NOT NULL`, `x = 'bikes'`), where normalising would buy nothing
+    and cost the plain path form an index is defined on. See `CosmosAggregate.GroupingKey`.
 
     A key read as text is grouped by its rendering in Calcite and by the value at the service, and
     those part wherever a path holds more than one type, `30` and `"30"` being one group or two. It
-    groups at the service only where the container declares the path a string, outright, and a key
+    groups at the service only where what is known of the rows grouped says the path holds a string —
+    the declaration, or a filter keeping a kind that declares it one — and a key
     read as a fragment's text never does — measured, and said once, under *An accessor keeps its guard
     wherever it is written*.
 - **Heterogeneous types per path.** The same path may be a string in one item and a number in
@@ -4051,6 +4489,8 @@ src/
   Apache.Calcite.Cosmos.Adapter/
     CosmosConvention.cs               ✔ Per-container calling convention
     CosmosImplementor.cs              ✔ Mutable SQL accumulator
+    CosmosQuery.cs, CosmosClauses.cs, CosmosOrdering.cs ✔ A rendered statement, the clauses a subtree wrote,
+                                        and what a sort may order an ordinal by
     CosmosRules.cs                    ✔ Rule set for a convention instance
     CosmosSchema.cs                   ✔ Calcite Schema over a database
     CosmosTable.cs                    ✔ Calcite Table over a container; Statistic
@@ -4070,12 +4510,22 @@ src/
                                         documents, knowing nothing of Calcite, Cosmos or the adapter
       JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
       JsonFactRule.cs               ✔ A guarded claim
-      JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what it knows for one query
+      JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what a set of facts knows
+      JsonFactDeclaration.cs, JsonFactUnconditional.cs ✔ The declaration in one generation, as the oracle reads it
       JsonFactTables.cs             ✔ What a set reads: a context's tables, or the overlay's
       JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
       JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
       JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
       Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal
+                                        PredicateRules.cs (Val.cs, Pred.cs), PredicateAtom.cs (Truths.cs),
+                                        Renderings.cs, PathValues.cs: the predicate rules and their sorts, what an
+                                        atom means, the grammar a number renders in, and what a path may hold
+      SqlValue.cs, SqlPredicate.cs, PredicateStatement.cs ✔ The typed IR's predicate subset: readings, atoms and
+                                        connectives, and a statement of them
+      CosmosOracle.cs               ✔ The predicate oracle: a declaration's statements, and the questions
+      CosmosStatementScope.cs       ✔ One statement's strata, and the licence table that answers from them
+      StatementTerms.cs             ✔ The contexts of one statement beneath a declaration, engine or overlay
+      OracleQuestion.cs, OracleLicence.cs, OracleVerdict.cs ✔ What a question is for, its licence, its answer
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it
       IJsonStoredForm.cs            ✔ A stored form, as a token the theory carries and never reads
@@ -4085,10 +4535,15 @@ src/
       CosmosCompositeIndex.cs         ✔ Composite index and sort-key matching
       CosmosContainerMetadata.cs      ✔ Declared container facts; sort legality
       CosmosContainerMetadataReader.cs ✔ ContainerProperties → CosmosContainerMetadata
+      CosmosPredicateLoader.cs        ✔ A filter → the IR, for the oracle
+      CosmosFilterStatement.cs        ✔ A filter as the oracle reads it, and every question a rule asks of it
+      CosmosRowFacts.cs               ✔ What the rows a clause reads satisfy: the filters beneath, last stratum (L1)
+      CosmosPartitionKeyExtractor.cs  ✔ What a predicate pins, and whether a read answers it, asked of the oracle
     Rel/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
+      Convert/CosmosFilterReduceRule.cs ✔ A filter the oracle says keeps nothing, or everything
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔
@@ -4139,8 +4594,9 @@ schema reader walks its tree and resolves references itself. Two things a JSON f
   JSON's terms — an object, and one that is there.
 
 Where the adapter meets it: `CosmosDocumentPaths.From` turns a statement's path into a document path,
-and everything that turns a predicate into facts or facts into a rewrite — `CosmosFactExtractor`,
-`CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in `Metadata/`, being about `RexNode`.
+and everything that turns a predicate into terms or facts into a rewrite — `CosmosPredicateLoader`,
+`CosmosFilterStatement`, `CosmosRowFacts`, `CosmosFactRewriter`, `CosmosPartitionKeyExtractor` — stays in
+`Metadata/`, being about `RexNode`.
 Constraints stay too: a `UNIQUE` is SQL compiled by Calcite and says what holds across documents,
 which is not what the theory is about.
 
@@ -4252,10 +4708,12 @@ statement is one, and the executor reads instead of querying.
 
 **A point read applies no predicate**, and that governs when it is offered. Under
 `WHERE id = 'x' AND pk = 'y' AND price > 100` a read would return a document the query excludes — a
-wrong answer, not a slow one. So every top-level conjunct must be one of the equalities pinning `id`
-or a partition key path, and all of them must be pinned. `CosmosPartitionKeyExtractor` answers that
-question in the direction its name does not suggest: `Collect` records what a predicate pins and
-ignores the rest, and `CoversExactly` asks whether there *is* a rest.
+wrong answer, not a slow one. So `id` and every partition key path must be pinned by conjuncts that
+are equalities over them, and every other conjunct must be true of whatever those pins and the
+declaration admit. `CosmosPartitionKeyExtractor` asks the oracle both, in a scope that assumes the
+pins and nothing else: each key there and holding one value, and each other conjunct `Always` — a
+`kind` the container declares required and constant asks nothing of the document read, and
+`price > 100` asks what the read would not (*The oracle in the planner*).
 
 **A predicate is the statement's, and a filter holds only part of one.** The extractor is asked
 of one `CosmosFilter`'s condition, and a statement can carry two: a view's `WHERE`, queried from
@@ -4570,7 +5028,8 @@ that never sees them. Those, and semi and anti joins, stay joins.
 
 **A `UUID` key is restricted where the container stores one spelling per value.** The key column is a
 cast, which binds to no path and has no parameter type, and that used to be the end of it. But the cast
-is of a text accessor, and where the container's unconditional facts give that path a UUID form, the
+is of a text accessor, and where what is known of the probe's rows gives that path a UUID form — the
+declaration, or the probe's filter keeping a kind that declares it (`OracleLicence.Key`, L1) — the
 stored text is one spelling of each value: `CosmosUuidForms.Render` writes a key in it, and
 `path IN (@k0, …)` matches exactly the documents whose cast equals the key. The same fact lowers a
 comparison against a literal and makes a self-join's key count; here the key is data rather than a
@@ -4580,7 +5039,8 @@ one a confined form's sign class excludes — names no document, and is answered
 request. Both sides compare as a `Guid` once fetched, whichever of `UuidValue`, `java.util.UUID` or
 `Guid` carried them.
 
-**A key read as text is restricted only where the container says the path holds a string.** The
+**A key read as text is restricted only where what is known of the probe's rows says the path holds a
+string** — the declaration, or the probe's filter keeping a kind that declares it (L1). The
 restriction names the stored value, `path IN (@k0, …)`, and the join then matches the fetched rows to
 the build side's keys in process, by the key *as the column reads it*. So the fetch may return more
 than matches and never less, and whether it can return less is a question about the column's reading,
@@ -4594,9 +5054,11 @@ the document storing `30`, and to `VALUES ('true'), ('huge')` the one storing `t
 first spelling agreed, and only because `VALUES` types its literals `CHAR` of the longest, so `'30'`
 beside `'bikes'` was the padded `'30   '`, which matched nothing on either side.
 
-`CosmosLookupJoinRule.IsRestrictedAsStored` asks the translator's own question,
-`IsDeclaredStringOutright`, and takes its one exception: a container that declares the path a string,
-outright and not under a guard, where the rendering is the value. The translator's other exception,
+`CosmosLookupJoinRule.IsRestrictedAsStored` asks the translator's own question, `IsDeclaredString`, of
+what the probe's filters establish (L1, `OracleLicence.Key`): the restriction is written beside the probe's
+`WHERE` and has to be exact only on the rows that keeps. It takes the one exception: what is known of
+those rows says the path holds a string — the declaration, or a filter keeping a kind that declares it
+one — where the rendering is the value. The translator's other exception,
 text no number or boolean renders as, is a fact about a literal, and a batch's keys are parameters.
 The document column and a `JSON_QUERY` column are declined outright. A guarded restriction —
 `path IN (@k…) OR IS_NUMBER(path) OR IS_BOOL(path)`, rechecked by the join's own comparison — would be
@@ -4940,8 +5402,8 @@ Two properties of a predicate dominate what a Cosmos query costs, and neither is
 shape of the plan, so `CosmosFilter.computeSelfCost` reflects both:
 
 - **Naming the partition key** confines execution to one physical partition rather than fanning
-  out across every one and merging. `CosmosPartitionKeyExtractor` recovers the value from a
-  conjunction of equalities against constants; a disjunction or a range predicate does not
+  out across every one and merging. `CosmosPartitionKeyExtractor` recovers the value where the
+  predicate and the declaration leave the key one value; a disjunction of values or a range does not
   qualify, since either may span partitions. What it recovers also reaches the executor, so such
   a query becomes single-partition without the caller asking.
 - **Filtering on an unindexed path** forces a scan of it. `CosmosContainerMetadata.IsPathIndexed`

@@ -40,18 +40,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <returns>A configured rule.</returns>
         public static CosmosSortRule Create(CosmosConvention convention)
         {
-            var rule = (CosmosSortRule)Config.INSTANCE
+            return (CosmosSortRule)Config.INSTANCE
                 .withConversion(typeof(Sort), new DelegatePredicate<Sort>(s => IsSupported(convention, s)), Convention.NONE, convention, "CosmosSortRule")
                 .withRuleFactory(new DelegateFunction<Config, CosmosSortRule>(c => new CosmosSortRule(c)))
                 .toRule(typeof(CosmosSortRule));
-
-            // Conversion needs the container the same way the legality test does, and the out trait
-            // carries it only behind a cast at every use. A rule is created per convention.
-            rule._convention = convention;
-            return rule;
         }
-
-        CosmosConvention? _convention;
 
         /// <summary>
         /// Determines whether a sort can be pushed into the given container.
@@ -66,7 +59,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsSupported(CosmosConvention convention, Sort sort)
         {
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out var written, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out var written, out var container) == false
+                || convention.Owns(container) == false)
                 return false;
 
             // A statement has one ORDER BY, and its OFFSET/LIMIT is applied after it rather than
@@ -78,16 +72,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
                 return false;
 
+            // What every row the sort orders is known to satisfy: what the filters beneath establish
+            // (L1), the ORDER BY being applied to the rows the WHERE kept. Decided once for this sort
+            // and handed to the node, which asks every question below again of the same facts.
+            var facts = Facts(sort, container);
+
             // Whether each column is the value the service orders by is asked of the walk's own binding,
             // readings and container -- what the node asks of the implementor the same walk built.
-            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), null, container, readings);
+            var translator = new Sql.CosmosRexTranslator(sort.getCluster().getRexBuilder(), fields, new Sql.CosmosParameterList(), facts, null, container, readings);
             var stored = CosmosSort.StoredFields(translator, sort.getInput().getRowType());
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(convention, sort), SortableFields(candidates), convention.Container, OrderingPaths(convention, candidates), stored, out var keys, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, NonNullFields(facts, sort, fields, candidates), SortableFields(candidates), facts, CosmosSort.OrderingPaths(facts, candidates), stored, out var keys, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
         }
+
+        /// <summary>
+        /// Returns what every row a sort orders is known to satisfy: the filters beneath it (L1), the same each time it is
+        /// asked of the same sort. See <see cref="Metadata.CosmosRowFacts"/>.
+        /// </summary>
+        static JsonFactSet Facts(Sort sort, Metadata.CosmosContainerMetadata? container) =>
+            Metadata.CosmosRowFacts.For(sort, container, OracleLicence.OrderBy);
 
         /// <summary>
         /// Reads which output ordinals hold an expression the service will order by.
@@ -121,76 +127,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Reads which output ordinals the container licenses ordering by, where the ordinal binds to
-        /// no path of its own.
+        /// Reads the fields the rows being sorted are known never to hold null in, over the sort's
+        /// input.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>No walk of its own, and that is the point.</b> Which ordinal holds which candidate is
-        /// derived on the one walk <see cref="CosmosImplementor.TryBindOutput"/> makes — the walk being
-        /// the part that depends on which member of a <c>RelSubset</c> is looked at, and therefore the
-        /// part a second traversal could answer differently from the first. An earlier version of this
-        /// did walk, and unwrapped a subset a second time on a justification weaker than the one
-        /// <c>TryBindOutput</c> states: that any member <em>binds</em> the same because members are
-        /// equivalent, which is a claim about the binding and not about which expressions one
-        /// representative happens to carry.
+        /// Asked here and handed to the node, rather than asked twice — see
+        /// <see cref="CosmosSort.NonNullFields"/>. The facts are the rows' (L1): a key the filter
+        /// beneath proves present and a scalar has no null for the two placements to disagree about,
+        /// which is what lets <c>WHERE t IS NOT NULL ORDER BY t</c> push under either collation. A
+        /// sort carries no predicate of its own, and nothing it says is among them.
         /// </para>
         /// <para>
-        /// What is left here is a pure lookup, which cannot disagree with the same lookup made during
-        /// implementation however the planner has moved on.
+        /// This used to start from Calcite's pulled-up predicates (<c>RelMdPredicates</c>), an
+        /// <c>IS NOT NULL</c> over a field reference, which reached a promoted column and nothing
+        /// else: a document path projects as an accessor call, not a reference, and the predicate was
+        /// dropped there. Once a promoted column was a <c>VARIANT</c>, which no sort pushes, it reached
+        /// nothing. What the oracle reads off the filter reaches every path the filter reads, through
+        /// whatever projects it.
         /// </para>
         /// </remarks>
-        /// <param name="convention">The convention, carrying the container.</param>
-        /// <param name="candidates">The candidates the binding derived.</param>
-        /// <returns>The path per ordinal, or <c>null</c> where the container licenses none.</returns>
-        static IReadOnlyList<Sql.CosmosPath?> OrderingPaths(CosmosConvention? convention, IReadOnlyList<CosmosOrdering> candidates)
+        /// <param name="facts">What every row the sort orders is known to satisfy.</param>
+        /// <param name="sort">The sort.</param>
+        /// <param name="fields">The binding the walk derived of its input.</param>
+        /// <param name="candidates">The ordering candidates the same walk derived.</param>
+        /// <returns>The ordinals, in order.</returns>
+        static IReadOnlyList<int> NonNullFields(JsonFactSet facts, Sort sort, IReadOnlyList<Sql.CosmosPath?> fields, IReadOnlyList<CosmosOrdering> candidates)
         {
-            var ordering = new Sql.CosmosPath?[candidates.Count];
-
-            if (convention?.Container is not Metadata.CosmosContainerMetadata container || container.Facts.IsEmpty)
-                return ordering;
-
-            // Only what holds outright, for the reason NonNullFields gives: a sort carries no
-            // predicate of its own to prove a guarded fact from.
-            var facts = container.Facts.Derive(null);
-
-            for (var i = 0; i < candidates.Count; i++)
-                ordering[i] = CosmosProject.IsOrderable(facts, candidates[i].Path, candidates[i].Format, candidates[i].Held)
-                    ? candidates[i].Path
-                    : null;
-
-            return ordering;
-        }
-
-        /// <summary>
-        /// Reads the fields the plan guarantees are never null over the sort's input.
-        /// </summary>
-        /// <remarks>
-        /// Asked here and handed to the node, rather than asked twice. The answer depends on which
-        /// equivalent of the input the metadata is asked about, so the rule and the node have to be
-        /// deciding on the same one — the same reason the binding above is derived by walking the
-        /// input rather than read off its row type.
-        /// </remarks>
-        static IReadOnlyList<int> NonNullFields(CosmosConvention? convention, Sort sort)
-        {
-            var guaranteed = CosmosSort.FindNonNullFields(sort.getInput(), sort.getCluster().getMetadataQuery());
-
-            if (convention?.Container is not Metadata.CosmosContainerMetadata container)
-                return guaranteed;
-
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _) == false)
-                return guaranteed;
-
-            // Only what holds outright. A sort carries no predicate of its own, so there is nothing
-            // here to prove a guarded fact from, and a fact conditional on a filter below would need
-            // that filter to have reached the service before it could be leaned on.
-            var facts = container.Facts.Derive(null);
-            var all = new List<int>(guaranteed);
+            var all = new List<int>();
             var rowFields = sort.getInput().getRowType().getFieldList();
 
             for (var i = 0; i < fields.Count; i++)
             {
-                if (all.Contains(i) || fields[i] is not Sql.CosmosPath path)
+                if (fields[i] is not Sql.CosmosPath path)
                     continue;
 
                 // A field the plan already types as non-nullable needs nothing said about it, and
@@ -210,11 +179,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // And the computed case, which binds to no path and could therefore never qualify above.
             // See AlwaysDefined: a geodesic distance over declared geographies is neither null nor
             // undefined, which is what the placement needs and the only thing that gives it.
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out _, out _, out var candidates, out _))
-                for (var i = 0; i < candidates.Count; i++)
-                    if (all.Contains(i) == false && AlwaysDefined(facts, candidates[i]))
-                        all.Add(i);
+            for (var i = 0; i < candidates.Count; i++)
+                if (all.Contains(i) == false && AlwaysDefined(facts, candidates[i]))
+                    all.Add(i);
 
+            all.Sort();
             return all;
         }
 
@@ -299,9 +268,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <inheritdoc />
-        public override RelNode convert(RelNode rel)
+        public override RelNode? convert(RelNode rel)
         {
             var sort = (Sort)rel;
+
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out _, out var candidates, out _, out var container) == false)
+                return null;
+
+            // Built under the facts the legality test decided under, which the node asks again.
+            var facts = Facts(sort, container);
 
             return new CosmosSort(
                 sort.getCluster(),
@@ -310,7 +285,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 sort.getCollation(),
                 sort.offset,
                 sort.fetch,
-                NonNullFields(_convention, sort));
+                NonNullFields(facts, sort, fields, candidates),
+                facts);
         }
 
     }

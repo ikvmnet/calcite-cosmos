@@ -14,149 +14,6 @@ namespace Apache.Calcite.Cosmos.Adapter
 {
 
     /// <summary>
-    /// A rendered Cosmos SQL statement together with the values bound to its parameters.
-    /// </summary>
-    /// <param name="Sql">The statement text.</param>
-    /// <param name="Parameters">The bound parameter values.</param>
-    /// <param name="PartitionKeyValues">
-    /// The leading partition key values the predicate pinned, outermost first, or <c>null</c> where it
-    /// pinned none. Supplying them restricts execution to the partitions holding that prefix instead of
-    /// fanning out across every one — a complete key reaches a single logical partition, and a prefix of
-    /// a hierarchical key reaches the subset under it. Either way it routes and does not filter.
-    /// </param>
-    /// <param name="PartitionKeyIsComplete">
-    /// Whether <paramref name="PartitionKeyValues"/> covers every declared path. A prefix routes but
-    /// does not identify a document, so a point read requires this and a query does not.
-    /// </param>
-    /// <param name="MaxItemCount">
-    /// The most rows the statement can return, when the statement says so, otherwise <c>null</c>.
-    /// <para>
-    /// A page size rather than a limit: it caps how many rows a single round trip brings back and
-    /// cannot change which rows the query yields. Without it a statement ending in <c>LIMIT 5</c>
-    /// still fetches a full default page, and pays for the rows it then discards.
-    /// </para>
-    /// </param>
-    /// <param name="PointReadId">
-    /// The <c>id</c> to read directly when the statement is exactly a lookup by <c>id</c> and a
-    /// complete partition key, otherwise <c>null</c>.
-    /// <para>
-    /// A point read costs about 1 RU where the same fetch as a query costs 2.3 at best and goes through
-    /// the query engine. It applies no predicate and returns the document rather than a projection, so
-    /// it is offered only where the statement asks for nothing a read cannot answer — a
-    /// <c>DISTINCT</c>, an ordering, a page, a grouping, an aggregate, a traversal, or a conjunct
-    /// the pinning filter did not write; see <see cref="CosmosImplementor.Build"/>, and
-    /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> for the predicate condition.
-    /// </para>
-    /// </param>
-    /// <param name="PointReadIds">
-    /// The distinct <c>id</c>s to read as a batch of point reads when the statement is exactly a
-    /// lookup by a set of <c>id</c>s and a complete partition key, otherwise <c>null</c>.
-    /// <para>
-    /// <c>ReadManyItemsAsync</c> is charged as point reads and, like one, applies no predicate and
-    /// returns documents rather than a projection — so the same conditions gate it, one level up.
-    /// Never set together with <see cref="PointReadId"/>.
-    /// </para>
-    /// </param>
-    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null);
-
-    /// <summary>
-    /// The clauses a subtree has already written into the statement it is building.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// A statement has one of each and Cosmos has no derived table to nest a second in, so what a
-    /// subtree has written is what decides which operators may still be folded onto it. Derived on
-    /// the same walk as the binding and for the same reason: a rule answering this some other way
-    /// converts an operator the implementor then refuses — after the planner has chosen the plan,
-    /// so the query fails rather than falling back — or, where the clauses merely reorder instead
-    /// of colliding, one it renders into a statement that answers a different question.
-    /// </para>
-    /// <para>
-    /// There is no member for <c>GROUP BY</c>. A grouping aggregate's output is computed and binds
-    /// nothing, so the walk declines it and no subtree that binds at all can be carrying one; an
-    /// aggregate that computes nothing is a <c>DISTINCT</c>, which has its own member.
-    /// </para>
-    /// </remarks>
-    [Flags]
-    public enum CosmosClauses
-    {
-
-        /// <summary>
-        /// The subtree has written nothing; anything may still be folded onto it.
-        /// </summary>
-        None = 0,
-
-        /// <summary>
-        /// The <c>SELECT</c> list, written by a projection or by a <c>DISTINCT</c>.
-        /// </summary>
-        Projection = 1 << 0,
-
-        /// <summary>
-        /// <c>SELECT DISTINCT</c>, which de-duplicates what that <c>SELECT</c> constructs and so
-        /// implies <see cref="Projection"/>.
-        /// </summary>
-        Distinct = 1 << 1,
-
-        /// <summary>
-        /// <c>ORDER BY</c>.
-        /// </summary>
-        OrderBy = 1 << 2,
-
-        /// <summary>
-        /// <c>OFFSET</c>/<c>LIMIT</c>, applied after <c>ORDER BY</c> and before nothing.
-        /// </summary>
-        RowLimit = 1 << 3,
-
-    }
-
-    /// <summary>
-    /// How one output ordinal may take part in an <c>ORDER BY</c>, where it binds to no path of its
-    /// own.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Both members answer a question about <em>which expression sits at this ordinal</em>, which is
-    /// the part that depends on which tree is looked at. Deriving them on the one walk
-    /// <see cref="CosmosImplementor.TryBindOutput"/> makes is what keeps a rule and the implementation
-    /// from answering differently — a rule that read one member of a <c>RelSubset</c> while
-    /// implementation read another would fire on a key implementation then refused, after the planner
-    /// had committed to the plan.
-    /// </para>
-    /// <para>
-    /// Neither says whether the container <em>licenses</em> anything. That is a pure lookup over the
-    /// path and the declared facts, which cannot disagree with itself, and each site makes it for
-    /// itself — see <see cref="Rel.CosmosProject.IsOrderable"/>.
-    /// </para>
-    /// </remarks>
-    /// <param name="Path">
-    /// The path a sort may order by, where the ordinal projects a conversion over one; otherwise
-    /// <c>null</c>. Structural only — see <see cref="Rel.CosmosProject.OrderingCandidateOf"/>.
-    /// </param>
-    /// <param name="Expression">
-    /// Whether the ordinal holds an expression the service will order by, written out a second time
-    /// rather than referred to. Only a geodesic distance qualifies — see
-    /// <see cref="CosmosImplementor.SortableExpressions"/> for what was measured and refused.
-    /// </param>
-    /// <param name="Operands">
-    /// The document paths that expression reads, where every operand is one the structure accounts
-    /// for; <c>null</c> otherwise, and empty where the expression reads none. What it is for is the
-    /// null placement: a distance is null only where an operand is, so a container declaring these
-    /// paths always present makes the key non-nullable and the placement moot. See
-    /// <see cref="Rel.CosmosProject.SortableOperandsOf"/>.
-    /// </param>
-    /// <param name="Format">
-    /// The format a parse reads <paramref name="Path"/> with, where the ordinal holds a chain rather
-    /// than a cast; <c>null</c> otherwise. Structural, like the path — which format the query wrote is
-    /// a question about the expression at this ordinal, and whether it reads the declared shape is the
-    /// caller's pure lookup. See <see cref="Rel.CosmosProject.OrderingCandidateOf"/>.
-    /// </param>
-    /// <param name="Held">
-    /// The halves of an instant the conversion's value holds, which is what says whether the parse
-    /// truncates. See <see cref="Metadata.CosmosTemporalParts"/>.
-    /// </param>
-    public readonly record struct CosmosOrdering(Sql.CosmosPath? Path, bool Expression, IReadOnlyList<Sql.CosmosPath>? Operands = null, string? Format = null, Metadata.CosmosTemporalParts Held = Metadata.CosmosTemporalParts.None);
-
-    /// <summary>
     /// Accumulates the state contributed by a tree of <see cref="CosmosRel"/> nodes and renders
     /// the resulting Cosmos SQL statement.
     /// </summary>
@@ -609,7 +466,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     written |= CosmosClauses.Projection;
 
-                    var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList());
+                    var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), input, new CosmosParameterList(), JsonFactSet.Empty);
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
@@ -809,27 +666,27 @@ namespace Apache.Calcite.Cosmos.Adapter
                 _readings = Array.Empty<CosmosReading>();
                 _sortableExpressions = Array.Empty<string?>();
                 _renderedExpressions = Array.Empty<string?>();
-                _orderingPaths = Array.Empty<CosmosPath?>();
+                _orderings = Array.Empty<CosmosOrdering>();
             }
         }
 
         IReadOnlyList<string?> _sortableExpressions = Array.Empty<string?>();
         IReadOnlyList<string?> _renderedExpressions = Array.Empty<string?>();
-        IReadOnlyList<CosmosPath?> _orderingPaths = Array.Empty<CosmosPath?>();
+        IReadOnlyList<CosmosOrdering> _orderings = Array.Empty<CosmosOrdering>();
 
         /// <summary>
-        /// Gets or sets, per output field, the path a sort may order by where the field is computed
-        /// and so binds to none in <see cref="Fields"/>.
+        /// Gets or sets, per output field, how it may take part in an <c>ORDER BY</c> where it binds
+        /// to no path in <see cref="Fields"/>: what <see cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out IReadOnlyList{CosmosReading}, out IReadOnlyList{CosmosOrdering}, out CosmosClauses)"/>
+        /// derives for the same ordinal.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>A weaker claim than a binding, and deliberately so.</b> <see cref="Fields"/> says an
-        /// ordinal <em>is</em> a path, which licenses every operator that can name one. This says only
-        /// that ordering by the path orders the rows the way ordering by the column would — which is
-        /// true of a conversion the stored form preserves the order of, and of nothing else. A filter
-        /// or a partition key must not read it: <c>CAST(&lt;path&gt; AS UUID) = …</c> has its own
-        /// rewrite, and the guarded accessor the column renders as is not the raw value the path
-        /// holds.
+        /// ordinal <em>is</em> a path, which licenses every operator that can name one. A candidate's
+        /// path says only that ordering by it orders the rows the way ordering by the column would —
+        /// which is true of a conversion the stored form preserves the order of, and of nothing else. A
+        /// filter or a partition key must not read it: <c>CAST(&lt;path&gt; AS UUID) = …</c> has its own
+        /// rewrite, and the guarded accessor the column renders as is not the raw value the path holds.
         /// </para>
         /// <para>
         /// <b>Two conditions, and the second is easy to miss.</b> The path's form has to preserve
@@ -837,15 +694,21 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// the guard the projection renders has to be vacuous — measured, the column comes back as
         /// <c>IS_PRIMITIVE(c.ref) ? c.ref : null</c>, so over a document holding an object there the
         /// column is null while the path is the object, and Cosmos sorts an object above every scalar
-        /// while null sorts below them. A path declared present and a scalar has no such document, and
+        /// while null sorts below them. A path known present and a scalar has no such document, and
         /// that is the same claim the null-placement rule already makes of any sort key.
+        /// </para>
+        /// <para>
+        /// <b>Structural only.</b> Both conditions are asked by the sort, of the facts the sort was
+        /// decided under — the filters beneath it, which may be more than the projection's own — so
+        /// the projection records the candidate and the sort licenses it, as its rule licensed the
+        /// candidate the binding walk derived. See <see cref="Rel.CosmosProject.IsOrderable"/>.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>
-        public IReadOnlyList<CosmosPath?> OrderingPaths
+        public IReadOnlyList<CosmosOrdering> Orderings
         {
-            get => _orderingPaths;
-            set => _orderingPaths = value ?? throw new ArgumentNullException(nameof(value));
+            get => _orderings;
+            set => _orderings = value ?? throw new ArgumentNullException(nameof(value));
         }
 
         /// <summary>
@@ -943,15 +806,35 @@ namespace Apache.Calcite.Cosmos.Adapter
         public string CreateUnnestAlias() => "t" + (_unnestAliases++).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         /// <summary>
-        /// Creates a translator bound to the current field bindings and parameter list.
+        /// Creates a translator bound to the current field bindings and parameter list, under the facts a node carries.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A fresh translator is returned each time so that it always reflects the current
         /// <see cref="Fields"/>; parameters continue to accumulate into the shared list.
+        /// </para>
+        /// <para>
+        /// <b>The facts are the node's, said each time.</b> A clause renders under what its rule decided the rows it reads
+        /// satisfy (L1), which it carries; one built otherwise, by hand or by a host's own rule, carries nothing and reads
+        /// what the container declares of every document (L0), which holds whatever reads it. That fallback is spelled
+        /// here and nowhere else. A projection proves nothing of its own — see <see cref="TranslateCondition"/> for why the
+        /// same expression means one thing there and another in a <c>WHERE</c>.
+        /// </para>
         /// </remarks>
+        /// <param name="carried">The facts the node carries, or <c>null</c> for one built without them.</param>
+        /// <param name="ownRow">The correlation variable that stands for the row being bound, where one is in scope.</param>
         /// <returns>The translator.</returns>
-        public CosmosRexTranslator CreateTranslator(org.apache.calcite.rel.core.CorrelationId? ownRow = null, JsonFactSet? facts = null) =>
-            new(_rexBuilder, _fields, _parameters, ownRow, _container, _readings, facts);
+        public CosmosRexTranslator CreateTranslator(JsonFactSet? carried, org.apache.calcite.rel.core.CorrelationId? ownRow = null) =>
+            new(_rexBuilder, _fields, _parameters, FactsOf(carried), ownRow, _container, _readings);
+
+        /// <summary>
+        /// Returns the facts a node renders under: those it carries, or for one built without, what the container
+        /// declares of every document (L0).
+        /// </summary>
+        /// <param name="carried">The facts the node carries, or <c>null</c>.</param>
+        /// <returns>The facts.</returns>
+        internal JsonFactSet FactsOf(JsonFactSet? carried) =>
+            carried ?? (_container is null ? JsonFactSet.Empty : CosmosOracle.For(_container.Facts).Declared);
 
         /// <summary>
         /// Visits an input node, allowing it to contribute to this implementor.
@@ -976,18 +859,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="node">The expression to translate.</param>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="CosmosTranslationException">The expression has no Cosmos equivalent.</exception>
-        public string Translate(RexNode node) => CreateTranslator().Translate(node);
-
-        /// <summary>
-        /// The facts that hold of every document the container keeps, whatever a query says.
-        /// </summary>
-        /// <remarks>
-        /// What an expression that is not a predicate may lean on. A projection proves nothing — see
-        /// <see cref="TranslateCondition"/> for why the same expression means one thing there and
-        /// another in a <c>WHERE</c> — so the only facts open to it are the ones a declaration states
-        /// outright, with no guard left to discharge.
-        /// </remarks>
-        public JsonFactSet UnconditionalFacts => _container?.Facts.Derive(null) ?? JsonFactSet.Empty;
+        public string Translate(RexNode node) => CreateTranslator(null).Translate(node);
 
         /// <summary>
         /// Reads a row limit written into the plan, binding a parameter where the count is one.
@@ -1024,20 +896,26 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// documents it keeps.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Separate from <see cref="Translate(RexNode)"/> because the facts a node establishes are
         /// only established by a predicate. The equality in <c>SELECT x = 'B'</c> asserts nothing
         /// about <c>x</c>; the same equality in a <c>WHERE</c> asserts it of every row that survives,
         /// and reading the first as the second would prove things the query never said.
+        /// </para>
+        /// <para>
+        /// Each conjunct is rendered from the facts its siblings applied beside it establish — the
+        /// stratum the filter rule admitted it from, read off the same statement
+        /// (<see cref="Metadata.CosmosFilterStatement"/>) — so what was pushed is what renders.
+        /// </para>
         /// </remarks>
         /// <param name="condition">The predicate.</param>
         /// <returns>The rendered condition.</returns>
         public string TranslateCondition(RexNode condition)
         {
-            var facts = _container is null
-                ? JsonFactSet.Empty
-                : _container.Facts.Derive(Metadata.CosmosFactExtractor.Extract(condition, _fields, RootAlias));
+            if (_container is null)
+                return CreateTranslator(JsonFactSet.Empty).Translate(condition);
 
-            return CreateTranslator(null, facts).Translate(condition);
+            return Metadata.CosmosFilterStatement.Of(condition, _fields, _readings, _container, _rexBuilder, RootAlias).Translate(_parameters);
         }
 
         /// <summary>

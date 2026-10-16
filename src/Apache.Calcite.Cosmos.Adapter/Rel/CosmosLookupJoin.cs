@@ -4,6 +4,7 @@ using System.Linq.Expressions;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
+using Apache.Calcite.Cosmos.Facts;
 
 using Apache.Calcite.Extensions.Adapter.Cursor;
 
@@ -114,6 +115,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// but a plan that cannot be implemented at all.
         /// </remarks>
         public CosmosLookupJoin(RelOptCluster cluster, RelTraitSet traitSet, RelNode build, RelNode probe, RexNode condition, int buildKey, int probeKey, JoinRelType? joinType = null, int batchSize = DefaultBatchSize) :
+            this(cluster, traitSet, build, probe, condition, buildKey, probeKey, joinType, batchSize, null)
+        {
+
+        }
+
+        /// <summary>
+        /// Initializes a new instance carrying what the probe side's rows are known to satisfy.
+        /// </summary>
+        /// <remarks>
+        /// Decided where the rule decides, and asked again of the same facts when the join is implemented, for the
+        /// reason <see cref="CosmosSort"/>'s are: whether the key can be restricted reads what the probe's filters
+        /// establish (L1), and which filters a walk finds depends on the member of a set it reads. See
+        /// <see cref="CosmosLookupJoinRule.TryProbeKey"/>.
+        /// </remarks>
+        /// <param name="cluster">The planner cluster.</param>
+        /// <param name="traitSet">The trait set, which must carry the cursor convention.</param>
+        /// <param name="build">The side whose keys are pushed down, in <see cref="ClrCursorConvention"/>.</param>
+        /// <param name="probe">The container subtree being restricted, in <see cref="CosmosConvention"/>.</param>
+        /// <param name="condition">The join condition, which is one equality on the keys below.</param>
+        /// <param name="buildKey">The ordinal of the join key in <paramref name="build"/>'s row.</param>
+        /// <param name="probeKey">The ordinal of the join key in <paramref name="probe"/>'s row.</param>
+        /// <param name="joinType"><see cref="JoinRelType.INNER"/>, or <see cref="JoinRelType.LEFT"/>.</param>
+        /// <param name="batchSize">How many build rows one fetch serves.</param>
+        /// <param name="facts">What every row of the probe side is known to satisfy, or <c>null</c> for the declaration.</param>
+        internal CosmosLookupJoin(RelOptCluster cluster, RelTraitSet traitSet, RelNode build, RelNode probe, RexNode condition, int buildKey, int probeKey, JoinRelType? joinType, int batchSize, JsonFactSet? facts) :
             base(cluster, traitSet, com.google.common.collect.ImmutableList.of(), build, probe, condition, java.util.Collections.emptySet(), joinType ?? JoinRelType.INNER)
         {
             if (getJoinType() != JoinRelType.INNER && getJoinType() != JoinRelType.LEFT)
@@ -122,7 +148,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             _buildKey = buildKey;
             _probeKey = probeKey;
             _batchSize = batchSize > 0 ? batchSize : throw new ArgumentOutOfRangeException(nameof(batchSize));
+            Facts = facts;
         }
+
+        /// <summary>
+        /// Gets what every row of the probe side is known to satisfy, as the rule decided; <c>null</c> where it was built
+        /// without, which reads what the container declares of every document.
+        /// </summary>
+        internal JsonFactSet? Facts { get; }
 
         /// <summary>Gets the ordinal of the join key in the build side's row.</summary>
         public int BuildKey => _buildKey;
@@ -136,7 +169,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <inheritdoc />
         public override Join copy(RelTraitSet traitSet, RexNode conditionExpr, RelNode left, RelNode right, JoinRelType joinType, bool semiJoinDone)
         {
-            return new CosmosLookupJoin(getCluster(), traitSet, left, right, conditionExpr, _buildKey, _probeKey, joinType, _batchSize);
+            return new CosmosLookupJoin(getCluster(), traitSet, left, right, conditionExpr, _buildKey, _probeKey, joinType, _batchSize, Facts);
         }
 
         /// <inheritdoc />
@@ -282,7 +315,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var probePhysType = ClrPhysTypeImpl.Of(implementor.TypeFactory, probe.getRowType(), pref.PreferArray());
             var physType = ClrPhysTypeImpl.Of(implementor.TypeFactory, getRowType(), pref.PreferArray());
 
-            if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, out var key) == false)
+            if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, container => Facts ?? CosmosOracle.For(container.Facts).Declared, out var key) == false)
                 throw new Sql.CosmosTranslationException("The lookup key can no longer be restricted.");
 
             var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);

@@ -12,63 +12,6 @@ using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
-    /// <summary>A JSON value, small enough to enumerate and generate.</summary>
-    abstract record J
-    {
-
-        public sealed record Null : J;
-
-        public sealed record Bool(bool Value) : J;
-
-        public sealed record Num(decimal Value) : J;
-
-        /// <summary>A number a decimal cannot hold, which the theory carries approximately.</summary>
-        public sealed record Huge(double Value) : J;
-
-        public sealed record Str(string Value) : J;
-
-        public sealed record Obj(SortedDictionary<string, J> Properties) : J;
-
-        public sealed record Arr(List<J> Elements) : J;
-
-        public string Type => this switch
-        {
-            Null => JsonValues.NullType,
-            Bool => JsonValues.BooleanType,
-            Num n => n.Value == decimal.Truncate(n.Value) ? IntegerType : FractionType,
-            Huge h => Math.Floor(h.Value) == h.Value ? IntegerType : FractionType,
-            Str => JsonValues.StringType,
-            Obj => JsonValues.ObjectType,
-            _ => JsonValues.ArrayType,
-        };
-
-        public bool IsScalar => this is not (Obj or Arr);
-
-        /// <summary>The scalar's tagged spelling, as the theory writes it.</summary>
-        public string Encoded => this switch
-        {
-            Null => NullValue,
-            Bool b => Of(b.Value),
-            Num n => Of(n.Value),
-            Huge h => Of(h.Value),
-            Str s => Of(s.Value),
-            _ => throw new InvalidOperationException("not a scalar"),
-        };
-
-        public sealed override string ToString() => this switch
-        {
-            Null => "null",
-            Bool b => b.Value ? "true" : "false",
-            Num n => n.Value.ToString(CultureInfo.InvariantCulture),
-            Huge h => h.Value.ToString("R", CultureInfo.InvariantCulture),
-            Str s => "\"" + s.Value + "\"",
-            Obj o => "{" + string.Join(", ", o.Properties.Select(kv => $"\"{kv.Key}\": {kv.Value}")) + "}",
-            Arr a => "[" + string.Join(", ", a.Elements) + "]",
-            _ => "?",
-        };
-
-    }
-
     /// <summary>
     /// Documents, the values a path holds in one, and whether a fact or a predicate is true of one: the ground truth
     /// the theory is checked against.
@@ -78,9 +21,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         public static readonly string[] Keys = { "a", "b", "c", "dd" };
 
-        static readonly decimal[] NumbersSeen = { -1m, 0m, 1m, 2m, 2.5m, 10m, 499.5m, 500m };
+        /// <summary>
+        /// Numbers a document holds. <c>30</c> and <c>30.0</c> are one value to the theory and two renderings to the text
+        /// accessor, which is the collision a predicate over the rendering has to keep apart.
+        /// </summary>
+        static readonly decimal[] NumbersSeen = { -1m, 0m, 1m, 2m, 2.5m, 10m, 499.5m, 500m, 30m, 30.0m };
 
-        static readonly string[] StringsSeen = { "", "x", "yy", "abc" };
+        /// <summary>
+        /// Strings a document holds, among them those whose text a number or a boolean also renders as, and those that
+        /// only look like a number.
+        /// </summary>
+        static readonly string[] StringsSeen = { "", "x", "yy", "abc", "30", "30.0", "true", "1e30" };
 
         /// <summary>Numbers beyond a decimal's range and below its precision, which the theory holds approximately.</summary>
         static readonly double[] HugeSeen = { 1e30, -1e30, 1.5e-30 };
@@ -97,6 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 .Concat(NumbersSeen.Concat(new[] { 3m, 7.5m }).Select(Of))
                 .Concat(HugeSeen.Select(Of))
                 .Concat(StringsSeen.Concat(new[] { "zz" }).Select(Of))
+                .Distinct()
                 .ToArray();
 
         public static J Generate(Random random, int depth = 0)
@@ -210,6 +162,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>A value's identity under JSON equality.</summary>
         public static string Key(J value) => value.IsScalar ? value.Encoded : value.ToString();
+
+        /// <summary>
+        /// A value as JSON text, compactly, with a number spelled as it is held: <c>30.0</c> stays <c>30.0</c>, which is
+        /// what a reader of the text — Calcite's <c>JSON_VALUE</c> — renders it from.
+        /// </summary>
+        public static string Json(J value) => value switch
+        {
+            J.Null => "null",
+            J.Bool b => b.Value ? "true" : "false",
+            J.Num n => n.Value.ToString(CultureInfo.InvariantCulture),
+            J.Huge h => h.Value.ToString("R", CultureInfo.InvariantCulture),
+            J.Str s => System.Text.Json.JsonSerializer.Serialize(s.Value),
+            J.Obj o => "{" + string.Join(",", o.Properties.Select(kv => System.Text.Json.JsonSerializer.Serialize(kv.Key) + ":" + Json(kv.Value))) + "}",
+            J.Arr a => "[" + string.Join(",", a.Elements.Select(Json)) + "]",
+            _ => throw new NotSupportedException(value.GetType().Name),
+        };
 
         /// <summary>Whether a conditional rule is true of a document: its body false of it, or its head true.</summary>
         public static bool IsTrue(J document, JsonGuardedRule rule) =>

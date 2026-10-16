@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -65,8 +66,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public override double estimateRowCount(RelMetadataQuery mq)
         {
             if (getConvention() is CosmosConvention convention &&
-                CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) &&
-                CosmosPartitionKeyExtractor.PinsAtMostOneDocument(getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias))
+                CosmosImplementor.TryBindOutput(getInput(), out var fields, out var readings, out _) &&
+                CosmosPartitionKeyExtractor.PinsAtMostOneDocument(getCondition(), fields, readings, convention.Container, CosmosImplementor.DefaultRootAlias))
                 return 1d;
 
             return base.estimateRowCount(mq);
@@ -103,7 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // Cost only, so an input whose binding cannot be derived costs as the base does rather than
             // declining anything — but it is the walked binding, so the discount is decided on the paths
             // the statement will actually address.
-            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out var readings, out _) == false)
                 return cost.multiplyBy(CosmosConvention.CostMultiplier);
 
             var multiplier = CosmosConvention.CostMultiplier;
@@ -112,7 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // cross-partition query costs roughly one single-partition query per physical partition, so
             // on a two-partition container this saves little and on a two-hundred-partition container it
             // saves nearly everything. Where the service was not asked, the old constant stands.
-            if (CosmosPartitionKeyExtractor.TryExtractPrefix(getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, out var prefix, out var complete))
+            if (CosmosPartitionKeyExtractor.TryExtractPrefix(getCondition(), fields, readings, container, CosmosImplementor.DefaultRootAlias, out var prefix, out var complete))
                 multiplier *= PartitionDiscount(container, prefix.Count, complete);
 
             if (ReferencesUnindexedPath(getCondition(), fields, container))
@@ -169,8 +170,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         {
             var size = CosmosRequestUnitModel.AverageDocumentSizeInBytes(container);
 
-            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out _) &&
-                CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, out _, out _))
+            if (CosmosImplementor.TryBindOutput(getInput(), out var fields, out var readings, out _) &&
+                CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), fields, readings, container, CosmosImplementor.DefaultRootAlias, out _, out _))
                 return CosmosRequestUnitModel.PointRead(size);
 
             return CosmosRequestUnitModel.Query(mq.getRowCount(this).doubleValue(), size);
@@ -223,7 +224,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         static bool ReferencesUnindexedPath(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
             var unindexed = false;
 
             void Walk(RexNode node)
@@ -277,7 +278,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <returns><c>true</c> where a full text function reads an undeclared path.</returns>
         internal static bool ReferencesUndeclaredFullTextPath(RexNode node, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata container)
         {
-            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList());
+            var translator = new CosmosRexTranslator(RexBuilderHolder.Value, fields, new CosmosParameterList(), JsonFactSet.Empty);
             var undeclared = false;
 
             void Walk(RexNode current)
@@ -334,7 +335,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // Recovered before translation, from the same bindings, so that a query naming its
             // partition key can be executed against one partition instead of fanned out.
             if (implementor.PartitionKeyValues is null &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPrefix(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out var partitionKey, out var complete))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPrefix(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out var partitionKey, out var complete))
             {
                 implementor.PartitionKeyValues = partitionKey;
                 implementor.PartitionKeyIsComplete = complete;
@@ -356,13 +357,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             IReadOnlyList<string>? pointReadIds = null;
 
             if (whole &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var id))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var id))
                 pointReadId = id;
 
             // Or a set of ids — the same shape for several documents, which ReadManyItemsAsync
             // answers charged as point reads. Asked second: a single id is the single read's.
             else if (whole &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Container, implementor.RootAlias, out _, out var ids))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var ids))
                 pointReadIds = ids;
 
             var condition = implementor.TranslateCondition(getCondition());

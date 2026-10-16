@@ -171,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>Absence is not a contradiction.</b> Two claims that no one value satisfies — a string and an object, an
         /// enum and a value outside it — prove that the path is absent, which a document satisfies by not having it. Only
         /// beside a presence do they contradict, and a comparison the query keeps a row for is such a presence: see
-        /// <c>CosmosFactExtractor</c>.
+        /// <c>PredicateAtom.Kept</c>.
         /// </para>
         /// <para>
         /// <b>A guarded declaration reaches the same answer by the argument it always uses.</b> Over

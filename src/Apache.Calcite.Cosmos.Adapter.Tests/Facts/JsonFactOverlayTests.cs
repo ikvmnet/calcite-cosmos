@@ -12,15 +12,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 {
 
     /// <summary>
-    /// What a query established, read without the engine where the engine could add nothing, held to what the engine
-    /// answers.
+    /// What a statement's stratum assumes, read without the engine where the engine could add nothing, held to what the
+    /// engine answers.
     /// </summary>
     /// <remarks>
     /// The overlay is a claim that a handful of rules of JSON are all that apply when its gate passes. That is checked the
-    /// only way it can be: generated sets go through both, and every question a consumer asks is asked of both, about
-    /// every path either could know something of. The engine is told of the paths beneath what was established, so that
-    /// it proves them absent as the overlay does; told of none, it knows less of them, and never more. It is told of no
-    /// other path, since what it then knows is what a query naming none of them gets.
+    /// only way it can be: generated statements go through both, and every question a consumer asks of a fact set is asked
+    /// of both, about every path either could know something of.
     /// </remarks>
     public class JsonFactOverlayTests
     {
@@ -57,14 +55,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
         static JsonFact Fact(JsonDocumentPath path, JsonClaim claim) => new(path, claim);
 
+        /// <summary>
+        /// What a statement's conjuncts all keep, read off the overlay or the engine's context for it.
+        /// </summary>
+        static JsonFactSet Kept(JsonFactTheory theory, params SqlPredicate[] conjuncts) =>
+            OracleFixture.Oracle(theory).Admit(new PredicateStatement(conjuncts)).Facts(OracleLicence.Kept);
+
+        static SqlPredicate Equal(JsonDocumentPath path, JsonScalar value) => new SqlPredicate.Compare("=", new SqlValue.Raw(path), SqlValue.Of(value));
+
+        static SqlPredicate Defined(JsonDocumentPath path) => new SqlPredicate.IsDefined(new SqlValue.Raw(path));
+
+        /// <summary>The cast to a number that reads every rendering, which is what bounds a path.</summary>
+        static SqlValue Number(JsonDocumentPath path) => new SqlValue.Cast("DOUBLE", new SqlValue.Text(path));
+
         [Fact]
         public void ACommonFilterOverAnUndeclaredContainerIsAnsweredWithoutTheEngine()
         {
-            var set = Undeclared.Derive(new[]
-            {
-                Fact(A, new JsonClaim.Present()), Fact(A, new JsonClaim.EqualTo("k0")),
-                Fact(B, new JsonClaim.Present()), Fact(B, new JsonClaim.LowerBound(500, Exclusive: true)),
-            });
+            var set = Kept(Undeclared, Equal(A, "k0"), new SqlPredicate.Compare(">", Number(B), SqlValue.Of(500m)));
 
             set.Tables.Should().BeOfType<JsonFactOverlay>();
             set.Knows(Fact(A, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
@@ -76,20 +83,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         [Theory]
-        [MemberData(nameof(WhatTheGateRefuses))]
-        public void WhatTheGateRefusesGoesToTheEngine(string why, JsonFact[] established)
+        [InlineData("two bounds may cross")]
+        [InlineData("a path beneath another meets it")]
+        [InlineData("the service states id")]
+        [InlineData("a path beneath one the service states meets it")]
+        [InlineData("a claim about the root meets every path")]
+        [InlineData("an assumed disjunction is cases")]
+        public void WhatTheGateRefusesGoesToTheEngine(string why)
         {
-            Undeclared.Derive(established).Tables.Should().BeOfType<JsonScopeTables>(why);
+            Kept(Undeclared, WhatTheGateRefuses[why]).Tables.Should().NotBeOfType<JsonFactOverlay>(why);
         }
 
-        public static TheoryData<string, JsonFact[]> WhatTheGateRefuses => new()
+        static readonly Dictionary<string, SqlPredicate[]> WhatTheGateRefuses = new()
         {
-            { "two claims beside a presence meet", new[] { Fact(A, new JsonClaim.LowerBound(1)), Fact(A, new JsonClaim.UpperBound(5)) } },
-            { "an empty domain is a claim no value satisfies", new[] { Fact(A, new JsonClaim.OneOf(Array.Empty<JsonScalar>())) } },
-            { "a path beneath another meets it", new[] { Fact(A, new JsonClaim.EqualTo(5m)), Fact(Ax, new JsonClaim.Present()) } },
-            { "the service states id", new[] { Fact(Id, new JsonClaim.EqualTo("x")) } },
-            { "a path beneath one the service states meets it", new[] { Fact(Id.Property("q"), new JsonClaim.Present()) } },
-            { "a claim about the root meets every path", new[] { Fact(JsonDocumentPath.Root, new JsonClaim.Present()) } },
+            { "two bounds may cross", new[] { new SqlPredicate.Compare(">=", Number(A), SqlValue.Of(1m)), new SqlPredicate.Compare("<=", Number(A), SqlValue.Of(5m)) } },
+            { "a path beneath another meets it", new[] { Equal(A, 5m), Defined(Ax) } },
+            { "the service states id", new[] { Equal(Id, "x") } },
+            { "a path beneath one the service states meets it", new[] { Defined(Id.Property("q")) } },
+            { "a claim about the root meets every path", new[] { Defined(JsonDocumentPath.Root) } },
+            { "an assumed disjunction is cases", new[] { new SqlPredicate.Or(new[] { Equal(A, "s"), Equal(B, "t") }) } },
         };
 
         [Fact]
@@ -101,131 +113,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 new JsonFactRule(new[] { Fact(kind, new JsonClaim.EqualTo("order")) }, Fact(A, new JsonClaim.Present())),
             });
 
-            theory.Derive(new[] { Fact(B, new JsonClaim.Present()) }).Tables.Should().BeOfType<JsonScopeTables>();
+            Kept(theory, Defined(B)).Tables.Should().NotBeOfType<JsonFactOverlay>();
         }
 
         [Fact]
         public void APathBeneathAServicePathTheGateRefusesTheEngineContradicts()
         {
             // The case the gate exists for: a property of id is the property of a string.
-            Undeclared.Derive(new[] { Fact(Id.Property("q"), new JsonClaim.Present()) }).IsContradictory.Should().BeTrue();
+            Kept(Undeclared, Defined(Id.Property("q"))).IsContradictory.Should().BeTrue();
         }
 
         /// <summary>
-        /// Generated sets, every one the gate passes answered exactly as the engine answers it.
+        /// A predicate oracle's stratum read off the overlay, over generated statements, answers as the engine's context for
+        /// the same stratum does, on every path the statement reads; and knows no less anywhere else.
         /// </summary>
+        /// <remarks>
+        /// The overlay reads each conjunct as <c>PredicateAtom.Kept</c> does and meets them path by path; the engine reads
+        /// the same atoms through the analysis rules and meets them in the theory's tables. This holds the two readings to
+        /// each other. Beneath a path that holds no object the overlay says absent where the engine, not told of the path,
+        /// knows nothing — so elsewhere it is held only to knowing at least as much.
+        /// </remarks>
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public void TheOverlayAnswersAsTheEngineDoes(bool stated)
+        public void AStratumReadOffTheOverlayAnswersAsItsContextDoes(bool stated)
         {
             var theory = stated ? Stated : Undeclared;
-            var random = new Random(20261014);
+            var random = new Random(20261015);
             var overlaid = 0;
 
-            for (var i = 0; i < 1500; i++)
+            for (var i = 0; i < 600; i++)
             {
-                var established = Generate(random);
-                var fast = theory.Derive(established);
+                var conjuncts = Enumerable.Range(0, random.Next(1, 4)).Select(_ => Conjunct(random)).ToArray();
+                var scope = OracleFixture.Oracle(theory).Admit(new PredicateStatement(conjuncts), (_, _) => true);
+                var fast = scope.Facts(OracleLicence.Select);
                 if (fast.Tables is not JsonFactOverlay)
                     continue;
 
                 overlaid++;
 
-                var beneath = Beneath(established).ToList();
-                var engine = theory.DeriveOnEngine(established, beneath);
-                var probes = beneath.Concat(Paths).Append(JsonDocumentPath.Root).Distinct().ToList();
-                var described = string.Join(" ; ", established);
+                var described = string.Join(" ; ", conjuncts.Select(c => c.Digest));
+                var (context, rules) = scope.ContextFor(OracleLicence.Select);
+                context.Should().NotBeNull($"the overlay is never contradictory, and nor is the engine under {described}");
+                var engine = new JsonFactSet(new JsonScopeTables(rules!.Json, context!, owned: false), fast.Vocabulary);
 
-                fast.IsContradictory.Should().Be(engine.IsContradictory, described);
+                fast.IsContradictory.Should().BeFalse(described);
+                engine.IsContradictory.Should().BeFalse(described);
 
-                foreach (var path in probes)
+                var read = conjuncts.SelectMany(c => c.Paths).ToHashSet();
+                foreach (var path in Paths.Append(JsonDocumentPath.Root).Concat(read).Distinct())
                 {
-                    fast.IsAlwaysScalar(path).Should().Be(engine.IsAlwaysScalar(path), $"IsAlwaysScalar({path}) under {described}");
-                    fast.HasOneScalarType(path).Should().Be(engine.HasOneScalarType(path), $"HasOneScalarType({path}) under {described}");
+                    // What a consumer asks of a fact set beside a claim, on every path the statement reads.
+                    if (read.Contains(path))
+                    {
+                        fast.IsAlwaysScalar(path).Should().Be(engine.IsAlwaysScalar(path), $"IsAlwaysScalar({path}) under {described}");
+                        fast.HasOneScalarType(path).Should().Be(engine.HasOneScalarType(path), $"HasOneScalarType({path}) under {described}");
 
-                    var fastFound = fast.TryGetValue(path, out var fastValue);
-                    var engineFound = engine.TryGetValue(path, out var engineValue);
-                    fastFound.Should().Be(engineFound, $"TryGetValue({path}) under {described}");
-                    if (fastFound)
-                        fastValue.Should().Be(engineValue);
+                        var fastFound = fast.TryGetValue(path, out var fastValue);
+                        fastFound.Should().Be(engine.TryGetValue(path, out var engineValue), $"TryGetValue({path}) under {described}");
+                        if (fastFound)
+                            fastValue.Should().Be(engineValue, $"TryGetValue({path}) under {described}");
 
-                    Describe(fast.ClaimsFor(path)).Should().Equal(Describe(engine.ClaimsFor(path)), $"ClaimsFor({path}) under {described}");
+                        Describe(fast.ClaimsFor(path)).Should().Equal(Describe(engine.ClaimsFor(path)), $"ClaimsFor({path}) under {described}");
+                    }
 
                     foreach (var claim in Questions())
-                        fast.Knows(Fact(path, claim)).Should().Be(engine.Knows(Fact(path, claim)), $"Knows({path}, {Describe(claim)}) under {described}");
+                    {
+                        var known = engine.Knows(Fact(path, claim));
+                        if (read.Contains(path))
+                            fast.Knows(Fact(path, claim)).Should().Be(known, $"Knows({path}, {Describe(claim)}) under {described}");
+                        else if (known)
+                            fast.Knows(Fact(path, claim)).Should().BeTrue($"Knows({path}, {Describe(claim)}) under {described}, which the engine knows");
+                    }
                 }
+
+                // The context is the scope's, and is read here past the scope's last use: in Release the JIT lets the
+                // scope go at ContextFor, and its lease's finalizer disposes the context, which then answers less.
+                GC.KeepAlive(scope);
             }
 
-            overlaid.Should().BeGreaterThan(300, "or the comparison says little about the overlay");
+            overlaid.Should().BeGreaterThan(150, "or the comparison says little about the overlay");
         }
 
         /// <summary>
-        /// One to four paths, most with a presence, most with one claim beside it and some with two, now and then one the
-        /// gate refuses.
+        /// A verdict asked of a stratum read off the overlay is read off the engine's context for it, opened then.
         /// </summary>
-        static JsonFact[] Generate(Random random)
+        [Fact]
+        public void AVerdictOfAStratumReadOffTheOverlayIsTheEngines()
         {
-            var facts = new List<JsonFact>();
-            var count = random.Next(1, 5);
+            var equal = new SqlPredicate.Compare("=", new SqlValue.Raw(A), SqlValue.Of("s"));
+            var within = new SqlPredicate.In(new SqlValue.Raw(A), Eggnog.ValueSet.Of(SqlValue.Of("s").Value, SqlValue.Of("t").Value));
+            var scope = OracleFixture.Oracle(Undeclared).Admit(new PredicateStatement(new SqlPredicate[] { equal, within }), (i, _) => i == 0);
 
-            foreach (var path in Paths.OrderBy(_ => random.Next()).Take(count))
-            {
-                if (random.NextDouble() < 0.8)
-                    facts.Add(Fact(path, new JsonClaim.Present()));
-
-                var claims = random.NextDouble() switch
-                {
-                    < 0.15 => 0,
-                    < 0.9 => 1,
-                    _ => 2,
-                };
-
-                for (var c = 0; c < claims; c++)
-                    facts.Add(Fact(path, Claim(random)));
-            }
-
-            return facts.ToArray();
+            scope.Facts(OracleLicence.RenderConjunct(1)).Tables.Should().BeOfType<JsonFactOverlay>();
+            scope.Decide(1, OracleLicence.RenderConjunct(1)).Should().Be(Apache.Calcite.Cosmos.Facts.Saturation.Truth.Always, "a = 's' is what the stratum assumes");
         }
 
-        static JsonClaim Claim(Random random)
-        {
-            JsonScalar Value() => Values[random.Next(Values.Length)];
-            decimal Edge() => Edges[random.Next(Edges.Length)];
+        static readonly JsonDocumentPath[] Read = { A, B, Ax, MetaX, Id };
 
-            return random.Next(5) switch
+        static readonly SqlValue.Literal[] Literals =
+        {
+            SqlValue.Of("s"), SqlValue.Of("30"), SqlValue.Of("true"), SqlValue.Of(30m), SqlValue.Of(2.5m), SqlValue.Of(true),
+        };
+
+        /// <summary>
+        /// A conjunct of one atom over a path, or its negation: a comparison with a literal or a parameter, a membership, a
+        /// null test or a definedness test, through any reading.
+        /// </summary>
+        static SqlPredicate Conjunct(Random random)
+        {
+            var path = Read[random.Next(Read.Length)];
+            SqlValue reading = random.Next(8) switch
             {
-                0 => new JsonClaim.EqualTo(Value()),
-                1 => new JsonClaim.OneOf(Enumerable.Range(0, random.Next(1, 4)).Select(_ => Value()).Distinct().ToArray()),
-                2 => new JsonClaim.NotEqualTo(Value()),
-                3 => new JsonClaim.LowerBound(Edge(), random.Next(2) == 0),
-                _ => new JsonClaim.UpperBound(Edge(), random.Next(2) == 0),
+                < 3 => new SqlValue.Text(path),
+                < 5 => new SqlValue.Raw(path),
+                5 => new SqlValue.Typed(path, new[] { "INTEGER", "DOUBLE", "DECIMAL", "BOOLEAN" }[random.Next(4)]),
+                6 => new SqlValue.Cast(new[] { "INTEGER", "DOUBLE" }[random.Next(2)], new SqlValue.Text(path)),
+                _ => new SqlValue.Cast("VARCHAR", new SqlValue.Raw(path)),
             };
-        }
 
-        /// <summary>
-        /// Every path above an established one, which the query names by naming it; two levels beneath each; and every
-        /// path of the pool beneath one.
-        /// </summary>
-        static IEnumerable<JsonDocumentPath> Beneath(IEnumerable<JsonFact> established)
-        {
-            var paths = new HashSet<JsonDocumentPath>();
-
-            foreach (var fact in established)
+            SqlPredicate atom = random.Next(10) switch
             {
-                var path = JsonDocumentPath.Root;
-                foreach (var name in fact.Path.Names)
-                    paths.Add(path = path.Property(name));
+                0 => new SqlPredicate.IsNull(reading),
+                1 => new SqlPredicate.IsDefined(new SqlValue.Raw(path)),
+                2 => new SqlPredicate.In(reading, Eggnog.ValueSet.From(Enumerable.Range(0, 2).Select(_ => Literals[random.Next(Literals.Length)].Value))),
+                3 => new SqlPredicate.Compare("=", reading, new SqlValue.Parameter(0, "VARCHAR")),
+                _ => new SqlPredicate.Compare(new[] { "=", "<>", "<", ">=" }[random.Next(4)], reading, Literals[random.Next(Literals.Length)]),
+            };
 
-                paths.Add(fact.Path.Property("d"));
-                paths.Add(fact.Path.Property("d").Property("e"));
-
-                foreach (var pooled in Paths)
-                    if (pooled.Depth > fact.Path.Depth && pooled.Names.Take(fact.Path.Depth).SequenceEqual(fact.Path.Names))
-                        paths.Add(pooled);
-            }
-
-            return paths;
+            return random.Next(4) == 0 ? new SqlPredicate.Not(atom) : atom;
         }
 
         static IEnumerable<JsonClaim> Questions()

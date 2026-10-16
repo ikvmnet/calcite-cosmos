@@ -915,10 +915,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
+        /// <para>
         /// A <c>HAVING</c> on a grouping key is a filter above the aggregate, which cannot bind —
         /// aggregate output has no document paths. <c>FILTER_AGGREGATE_TRANSPOSE</c> moves it below,
         /// where it is an ordinary <c>WHERE</c> the service applies before grouping, and where a
         /// predicate on the partition key confines execution the way it does anywhere else.
+        /// </para>
+        /// <para>
+        /// And the <c>WHERE</c> says the key is there in every row grouped, so it is grouped as the
+        /// plain path: the normalisation <see cref="GroupByRendersTheWholeStatement"/> shows brings an
+        /// absent key and a null one together, and neither reaches the grouping. What the filter
+        /// beneath establishes is what a grouping reads (L1); <c>CosmosDifferentialTests</c> holds the
+        /// statement to Calcite, and its <c>&lt;&gt;</c> spelling.
+        /// </para>
         /// </remarks>
         [Fact]
         public void HavingOnAGroupingKeyIsPushedAsAWhere()
@@ -926,7 +935,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(PlanToCosmos(
                 "SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'"));
 
-            query.Sql.Should().Be("SELECT (IS_DEFINED(c.category) ? c.category : null) AS \"$.category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY (IS_DEFINED(c.category) ? c.category : null)");
+            query.Sql.Should().Be("SELECT c.category AS \"$.category\", COUNT(1) AS \"n\" FROM products c WHERE (c.category = @p0) GROUP BY c.category");
             query.PartitionKeyValues.Should().Equal("bikes");
         }
 
@@ -1172,13 +1181,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         // `category` is nullable and its placement conflicts with Cosmos in both directions, so
         // ordering by it is refused. A predicate that removes the nulls settles the conflict: with
         // none left there is nothing to place wrongly, whichever way each side would have placed
-        // one. The predicate reaches the node through `RelMdPredicates`, so this is the planner
-        // deciding rather than the renderer discovering.
+        // one. The predicate reaches the node as what the filter beneath establishes of the rows the
+        // sort orders (L1, Metadata.CosmosRowFacts), so this is the planner deciding rather than the
+        // renderer discovering.
         //
         // Suspended pending #165: `category` is now a VARIANT column, which CosmosSort declines to sort
         // outright — Calcite cannot order a VARIANT in process, so the placement question no longer
         // arises. The unlock tests below are skipped until a variant order lands upstream; the two
-        // controls stay green, since a VARIANT sort is refused either way.
+        // controls stay green, since a VARIANT sort is refused either way. The unlock over a document
+        // path the container declares is CosmosDeclaredFactPlanningTests' (Clauses), and the
+        // differential's over the ordering container.
 
         /// <remarks>
         /// The pair that carries the change. Both directions, both of Calcite's default placements,
@@ -1242,21 +1254,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// The <c>IS NOT NULL</c> that unlocks a nullable sort key does not reach the key when the key
-        /// is an unpromoted document path. The reason is structural: such a path projects as an accessor
-        /// call rather than as a reference, and <c>RelMdPredicates</c> carries a predicate through a
-        /// projection only where the projection is a reference. So the sort is refused for want of the
-        /// guarantee — <em>not</em> because the path cannot be ordered: a declared-shape sort over the
-        /// same path (a parse, a cast, a <c>RETURNING</c>) still pushes, binding through the rendering
-        /// projection. Recorded as the boundary of what this reaches — see <c>TODO.md</c> section 6,
-        /// where the fix is a column.
+        /// <para>
+        /// The <c>IS NOT NULL</c> reaches the key — what the filter establishes is read through the
+        /// projection that renders it, where Calcite's pulled-up predicates stopped at an accessor
+        /// call — and settles the placement. What is left is the order itself: the column is the
+        /// accessor's text, and the service orders the raw values, numbers numerically and before
+        /// strings, which is one order only where the path holds a string. <c>products</c> declares
+        /// nothing, so the sort stays in process.
+        /// </para>
+        /// <para>
+        /// Over a container declaring the path a string the same statement pushes — see
+        /// <c>CosmosDeclaredFactPlanningTests.AnIsNotNullMakesADeclaredStringASortKey</c>.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void AnIsNotNullOverAnUnpromotedPathDoesNotUnlockItsSort()
+        public void AnIsNotNullOverAnUndeclaredPathDoesNotUnlockItsSort()
         {
             var act = () => PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.name')");
 
             act.Should().Throw<Exception>();
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A filter that confines the key to text only a string renders as says what the declaration
+        /// would have: every row the sort reads holds a string there, so the service's order is SQL's,
+        /// and holds one at all, so there is no null to place. The sort reads what the filter beneath
+        /// establishes (L1), and the membership reaches the service exactly — unambiguous text matches a
+        /// stored string and nothing else.
+        /// </para>
+        /// <para>
+        /// It pushed once before, before the sort asked how its key was read, and stayed in process
+        /// while the sort read the declaration alone. <c>CosmosDifferentialTests</c> holds it to Calcite
+        /// over products.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFilterConfiningAKeyToStringsUnlocksItsSort()
+        {
+            var query = Query(PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IN ('Sprint', 'Marathon', 'Slipper') ORDER BY JSON_VALUE(c.\"DOC\", '$.name')"));
+
+            query.Sql.Should().EndWith("ORDER BY c.name ASC");
         }
 
         // ── Binding through a projection ────────────────────────
@@ -3437,12 +3475,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ADisjunctionWithAnUntranslatableBranchIsWeakened()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'");
+            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'X'");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosFilter", "something should reach the service: " + plan);
             plan.Should().Contain("IS_DEFINED", "the untranslatable branch implies its path is defined: " + plan);
             plan.Should().Contain("INITCAP", "and the original is still rechecked: " + plan);
+        }
+
+        /// <summary>
+        /// A weakening every document satisfies restricts nothing, and is not pushed.
+        /// </summary>
+        /// <remarks>
+        /// The service states <c>_etag</c> of every document, so the branch's implication — that the path is defined
+        /// — makes the weakened disjunction true of every document, and the oracle decides it so: the filter the split
+        /// rule pushed is rewritten to nothing. The container is read whole either way, and the original is rechecked.
+        /// This weakening used to be pushed, filtering nothing; <c>CosmosDifferentialTests</c> holds the answer to
+        /// Calcite's.
+        /// </remarks>
+        [Fact]
+        public void AWeakeningEveryDocumentSatisfiesIsNotPushed()
+        {
+            var sql = Render(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'")));
+
+            sql.Should().NotContain("IS_DEFINED", "every document has an _etag: " + sql);
         }
 
         /// <summary>
@@ -3544,7 +3600,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var compared = Render(FindCosmos(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) <> (c.\"id\" = '5')")));
 
-            compared.Should().EndWith("WHERE IS_DEFINED(c.id)");
+            // What is left is the id, which the service states of every document: IS_DEFINED(c.id), which this pushed
+            // before the oracle decided it true of every document, restricts nothing.
+            compared.Should().NotContain("WHERE", "neither category nor price is implied, and id is defined everywhere: " + compared);
 
             var negated = Render(FindCosmos(PlanToAsync(
                 "SELECT c.\"id\" FROM products AS c WHERE (c.\"$.category\" = 'bikes' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100) = FALSE")));
@@ -3777,19 +3835,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The pushed half carries the renderable conjunct and whatever the other one implies, never
         /// the other one itself. <c>INITCAP</c> has no Cosmos form, so it stays above and is rechecked;
         /// that it is a comparison at all says the path it reads is defined, and that much the service
-        /// can apply. The partition key is still recovered from the conjunct that pins it.
+        /// can apply — over a path no document is sure to hold. Over <c>id</c>, which the service holds
+        /// of every document, the implication restricts nothing and the oracle drops it. The partition
+        /// key is still recovered from the conjunct that pins it.
         /// </remarks>
         [Fact]
         public void ThePushedHalfCarriesTheRenderableConjunctAndWhatTheOtherImplies()
         {
-            var best = PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'");
-            var cosmos = FindCosmos(best);
-
-            var query = Query(cosmos);
+            var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'X'")));
             query.Sql.Should().Contain("(c.category = @p0)");
-            query.Sql.Should().Contain("IS_DEFINED(c.id)");
+            query.Sql.Should().Contain("IS_DEFINED(c.name)");
             query.Sql.Should().NotContain("INITCAP");
             query.PartitionKeyValues.Should().Equal("bikes");
+
+            var overId = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'")));
+            overId.Sql.Should().Contain("(c.category = @p0)");
+            overId.Sql.Should().NotContain("IS_DEFINED", "every document has an id");
+            overId.PartitionKeyValues.Should().Equal("bikes");
         }
 
         /// <remarks>

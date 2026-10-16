@@ -53,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             new("products", partitionKeyPaths);
 
         static bool Extract(RexNode condition, CosmosContainerMetadata container, out IReadOnlyList<object?> values) =>
-            CosmosPartitionKeyExtractor.TryExtract(condition, Fields, container, "c", out values);
+            CosmosPartitionKeyExtractor.TryExtract(condition, Fields, null, container, "c", out values);
 
         // ── Recovered ─────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         RexNode TextCast(RexNode operand) => _rex.makeAbstractCast(_types.createSqlType(SqlTypeName.VARCHAR), operand, false);
 
         static bool ExtractPrefix(RexNode condition, CosmosContainerMetadata container, out IReadOnlyList<object?> values) =>
-            CosmosPartitionKeyExtractor.TryExtractPrefix(condition, Fields, container, "c", out values, out _);
+            CosmosPartitionKeyExtractor.TryExtractPrefix(condition, Fields, null, container, "c", out values, out _);
 
         /// <summary>
         /// A view exposing the partition key gives it a SQL type, which over this row model means a
@@ -127,11 +127,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             Extract(condition, Container("/category"), out _).Should().BeFalse();
 
-            CosmosPartitionKeyExtractor.TryExtractWholePartition(condition, Fields, Container("/category"), "c", out _)
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(condition, Fields, null, Container("/category"), "c", out _)
                 .Should().BeFalse();
 
             CosmosPartitionKeyExtractor.TryExtractPointRead(
-                And(condition, Eq(Ref(3), Str("x"))), Fields, Container("/category"), "c", out _, out _)
+                And(condition, Eq(Ref(3), Str("x"))), Fields, null, Container("/category"), "c", out _, out _)
                 .Should().BeFalse();
         }
 
@@ -172,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         // ── A set of point reads ──────────────────────────────────────────────────
 
         static bool ExtractSet(RexNode condition, CosmosContainerMetadata container, out IReadOnlyList<object?> values, out IReadOnlyList<string> ids) =>
-            CosmosPartitionKeyExtractor.TryExtractPointReadSet(condition, Fields, container, "c", out values, out ids);
+            CosmosPartitionKeyExtractor.TryExtractPointReadSet(condition, Fields, null, container, "c", out values, out ids);
 
         /// <remarks>
         /// The shape <c>pk = 'x' AND id IN ('a', 'b')</c>, after <c>IN</c> has expanded to the
@@ -235,6 +235,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var condition = And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("a")));
 
             ExtractSet(condition, Container("/category"), out _, out _).Should().BeFalse();
+        }
+
+        // ── What the oracle says the conjuncts pin ────────────────────────────────
+
+        /// <summary>
+        /// A column read as text: <c>category</c>, at ordinal 1, as the accessor renders it.
+        /// </summary>
+        static readonly CosmosReading[] TextAtCategory = { CosmosReading.Typed, CosmosReading.Text, CosmosReading.Typed, CosmosReading.Typed, CosmosReading.Typed };
+
+        RexNode Text(int index) => _rex.makeInputRef(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true), index);
+
+        /// <summary>
+        /// An equality over a key's text pins the key only where one stored value renders as the text.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A key is pinned where the facts the question's licence admits say it is there and holds one value. Text no
+        /// number renders as is a string's, and only a string's, so the equality pins the string. <c>'30'</c> is the
+        /// rendering of a stored <c>"30"</c> and of a stored <c>30</c>, which are two partitions: routing on either would
+        /// skip a partition holding a row the predicate keeps, and a point read would answer for one document of two.
+        /// </para>
+        /// <para>
+        /// The recovery before the oracle read the literal off the comparison and pinned <c>"30"</c> whatever the
+        /// column's reading. The planner sends the weakening of both spellings in its place, which pins nothing either way.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AnEqualityOverTextPinsTheKeyOnlyWhereOneValueRendersAsIt()
+        {
+            var container = Container("/category");
+
+            CosmosPartitionKeyExtractor.TryExtractPrefix(Eq(Text(1), Str("bikes")), Fields, TextAtCategory, container, "c", out var values, out _)
+                .Should().BeTrue("only a string renders as 'bikes'");
+            values.Should().Equal("bikes");
+
+            CosmosPartitionKeyExtractor.TryExtractPrefix(Eq(Text(1), Str("30")), Fields, TextAtCategory, container, "c", out _, out _)
+                .Should().BeFalse("a stored 30 renders as '30' too, and lives in another partition");
+
+            CosmosPartitionKeyExtractor.TryExtractPointRead(And(Eq(Text(1), Str("30")), Eq(Ref(3), Str("x"))), Fields, TextAtCategory, container, "c", out _, out _)
+                .Should().BeFalse("so there is no one partition for a read to look in");
+        }
+
+        static CosmosContainerMetadata Declaring(string schema, params string[] partitionKeyPaths) =>
+            new CosmosContainerMetadata("products", partitionKeyPaths).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!));
+
+        /// <summary>
+        /// A point read applies no predicate, so every conjunct beside its pins has to be one the pins and the declaration
+        /// already make true: there, it asks nothing of the document the read returns.
+        /// </summary>
+        /// <remarks>
+        /// Asked of the oracle in a scope that assumes the pins and nothing else, as <c>Always</c>: a <c>kind</c> the
+        /// container declares required and constant is true of every document, so the read answers the query. The
+        /// control is a conjunct over a path the declaration says nothing of, which a point read would ignore.
+        /// </remarks>
+        [Fact]
+        public void APointReadAllowsAConjunctThePinsAndTheDeclarationMakeTrue()
+        {
+            var container = Declaring("{ \"type\": \"object\", \"required\": [\"kind\"], \"properties\": { \"kind\": { \"const\": \"bike\" } } }", "/category");
+            var kind = _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("kind"));
+            var price = _rex.makeCall(SqlStdOperatorTable.ITEM, Ref(0), Str("price"));
+
+            CosmosPartitionKeyExtractor.TryExtractPointRead(And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("x")), Eq(kind, Str("bike"))), Fields, null, container, "c", out var values, out var id)
+                .Should().BeTrue("every document holds kind 'bike', so the conjunct asks nothing of the one read");
+            values.Should().Equal("bikes");
+            id.Should().Be("x");
+
+            CosmosPartitionKeyExtractor.TryExtractPointRead(And(Eq(Ref(1), Str("bikes")), Eq(Ref(3), Str("x")), Eq(price, Str("5"))), Fields, null, container, "c", out _, out _)
+                .Should().BeFalse("nothing says what price the document holds, and the read would not ask");
+        }
+
+        /// <summary>
+        /// A number pinned is sent as the client sends a literal of it: a whole one as a <see cref="long"/>, which a
+        /// whole-partition delete takes, and any other as a <see cref="double"/>.
+        /// </summary>
+        /// <remarks>
+        /// The oracle holds a number as a <see cref="decimal"/>, which no partition key component is.
+        /// </remarks>
+        [Fact]
+        public void ANumberPinnedIsSentAsTheClientSendsOne()
+        {
+            var container = Container("/category");
+
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, container, "c", out var whole)
+                .Should().BeTrue();
+            whole.Should().Equal(5L);
+
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal("5.5"))), Fields, null, container, "c", out var fraction)
+                .Should().BeTrue();
+            fraction.Should().Equal(5.5d);
         }
 
         // ── Not recovered ─────────────────────────────────────────────────────────

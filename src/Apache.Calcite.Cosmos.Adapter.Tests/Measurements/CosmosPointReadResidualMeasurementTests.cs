@@ -25,8 +25,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> declines whenever <c>CoversExactly</c>
-    /// finds a conjunct that is not one of the pinned equalities, so
+    /// <c>CosmosPartitionKeyExtractor.TryExtractPointRead</c> declines whenever a conjunct is not
+    /// always true where the pinned equalities and the declaration are, so
     /// <c>id = 'X' AND k = 'Y' AND deleteUtcTime IS NULL</c> — every by-id lookup through a
     /// soft-delete view — answers through the query engine for what is at most one document. The
     /// question is whether that default is the expensive one.
@@ -385,7 +385,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// carry from the single document to the set: the per-document charge it dismisses is the
         /// whole cost at scale. Part of the gap is that read-then-filter must transport every
         /// document the residual will discard — here half of them — where the query never returns
-        /// them. Relaxing <c>CoversExactly</c> for <c>TryExtractPointReadSet</c> on the strength of
+        /// them. Relaxing that check for <c>TryExtractPointReadSet</c> on the strength of
         /// the single-document result would make the batch path worse at every size but one.
         /// </para>
         /// </remarks>

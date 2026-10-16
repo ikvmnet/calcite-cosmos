@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -38,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 _fields = new List<CosmosPath?> { CosmosPath.Root("c").Property("embedding") };
             }
 
-            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList());
+            CosmosRexTranslator Translator() => new(_rex, _fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             RexNode Path() => _rex.makeInputRef(_types.createSqlType(SqlTypeName.ANY), 0);
 
@@ -66,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             public void TheCastLiteralIsBound()
             {
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
                 var distance = _rex.makeCall(CosmosOperators.VectorDistance, Path(), Path());
 
                 translator.Translate(_rex.makeCall(SqlStdOperatorTable.LESS_THAN, distance, Bound(0.5)));

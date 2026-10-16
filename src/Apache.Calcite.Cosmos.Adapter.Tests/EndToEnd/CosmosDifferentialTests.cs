@@ -100,9 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// must go on answering as a container that says nothing does.
         /// </remarks>
         static readonly CosmosContainerMetadata Ordering = new CosmosContainerMetadata("ordering", new[] { "/category" })
-            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
-                { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "s": { "type": "string" }, "u": { "type": "string" }, "k": { "type": ["integer", "null"] }, "b": { "type": "boolean" } } }
-                """)));
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.OrderingSchema)));
 
         /// <summary>
         /// A fourth container, declaring what a filter concludes from: <c>body</c> is a string and <c>n</c> an
@@ -133,6 +131,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly CosmosContainerMetadata Declared = new CosmosContainerMetadata("declared", new[] { "/category" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
                 """{ "type": "object", "properties": { "body": { "type": "string" }, "n": { "type": "integer" }, "v": { "type": "integer" } } }""")!));
+
+        /// <summary>
+        /// A fifth container, of three kinds, whose declaration is conditional: <c>label</c> a string in kind <c>a</c>
+        /// and an integer in kind <c>b</c>, a canonical UUID <c>ref</c> in kinds <c>a</c> and <c>c</c>, and <c>kind</c>
+        /// required and one of the three — <see cref="Planning.CosmosPushdownProbeTests.KindsSchema"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What a filter's siblings prove, rather than the declaration alone, is what the predicate oracle decides that
+        /// the planner before it did not: an equality over <c>label</c> exact beside <c>kind = 'a'</c>, a membership
+        /// covering the required enum deleted, a kind the enum has not kept nothing, a UUID lowered under each kind a
+        /// disjunction spells. Every document keeps the declaration, as <c>declared</c>'s do.
+        /// </para>
+        /// <para>
+        /// Partitioned on <c>kind</c>, the one container that is, so that every statement over it is routed on what its
+        /// filter and the declaration say of the key: a partition skipped that holds a row the statement keeps is a row
+        /// lost, which the comparison with Calcite sees.
+        /// </para>
+        /// </remarks>
+        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/kind" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.KindsSchema)!));
+
+        /// <summary>
+        /// The documents <see cref="Kinds"/> holds: each kind with and without what it declares, a string <c>"30"</c> and
+        /// an integer 30 at <c>label</c> in the two kinds that differ there, and a string <c>"1"</c> beside an integer
+        /// <c>n</c> of 1, which render alike.
+        /// </summary>
+        static readonly string[] KindsDocuments =
+        [
+            """{"id":"1","category":"k","kind":"a","label":"30","ref":"123e4567-e89b-12d3-a456-426614174000","n":1}""",
+            """{"id":"2","category":"k","kind":"a","label":"zebra","ref":"223e4567-e89b-12d3-a456-426614174000"}""",
+            """{"id":"3","category":"k","kind":"a","label":"x","ref":"123e4567-e89b-12d3-a456-426614174000","n":2}""",
+            """{"id":"4","category":"k","kind":"b","label":30,"n":1}""",
+            """{"id":"5","category":"k","kind":"b","label":7}""",
+            """{"id":"6","category":"k","kind":"c","ref":"123e4567-e89b-12d3-a456-426614174000","n":1}""",
+            """{"id":"7","category":"k","kind":"c","ref":"323e4567-e89b-12d3-a456-426614174000"}""",
+            """{"id":"8","category":"k","kind":"a"}""",
+            """{"id":"9","category":"k","kind":"b"}""",
+            """{"id":"10","category":"k","kind":"a","label":"1","n":1}""",
+        ];
 
         /// <summary>
         /// The documents both plans read: prices present, null and absent; a document with a null
@@ -228,6 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static Container? _typedContainer;
         static Container? _orderingContainer;
         static Container? _declaredContainer;
+        static Container? _kindsContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -256,6 +295,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
                 _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
                 _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
+                _kindsContainer = await Seed(database, "kinds", KindsDocuments, cts.Token, "kind");
 
                 _client = client;
             }
@@ -268,23 +308,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _typedContainer = null;
                 _orderingContainer = null;
                 _declaredContainer = null;
+                _kindsContainer = null;
             }
         }
 
         /// <summary>
         /// Recreates a container and writes the given documents into it.
         /// </summary>
-        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken)
+        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category")
         {
             try { await database.GetContainer(name).DeleteContainerAsync(cancellationToken: cancellationToken); } catch (CosmosException) { }
-            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/category"), cancellationToken: cancellationToken)).Container;
+            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/" + key), cancellationToken: cancellationToken)).Container;
 
             foreach (var json in documents)
             {
                 using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
                 using var document = System.Text.Json.JsonDocument.Parse(json);
 
-                var partitionKey = document.RootElement.TryGetProperty("category", out var category)
+                var partitionKey = document.RootElement.TryGetProperty(key, out var category)
                     ? category.ValueKind == System.Text.Json.JsonValueKind.Null ? PartitionKey.Null : new PartitionKey(category.GetString())
                     : PartitionKey.None;
 
@@ -305,6 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _typedContainer = null;
             _orderingContainer = null;
             _declaredContainer = null;
+            _kindsContainer = null;
         }
 
         sealed class TestDataContext : DataContext
@@ -343,12 +385,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
             var ordering = new CosmosTable(Ordering, Recorded(new CosmosQueryExecutor(_orderingContainer!), sent));
             var declared = new CosmosTable(Declared, Recorded(new CosmosQueryExecutor(_declaredContainer!), sent));
+            var kinds = new CosmosTable(Kinds, Recorded(new CosmosQueryExecutor(_kindsContainer!), sent));
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", table);
             rootSchema.add("typed", typed);
             rootSchema.add("ordering", ordering);
             rootSchema.add("declared", declared);
+            rootSchema.add("kinds", kinds);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -381,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention })
+            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention, kinds.Convention })
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -465,16 +509,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>
-        /// Everything that moves work to the service. Not the way out, which is what makes a pushed
-        /// subtree readable at all and which the oracle needs for the scan; and not Calcite's own
-        /// rewrites, which the convention registers because a bare Volcano planner has no logical rule
-        /// set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable by
-        /// the CLR convention in the first place.
+        /// Everything that moves work to the service, and everything that answers a filter by the
+        /// adapter's own reasoning: <see cref="CosmosFilterReduceRule"/> moves nothing, but the empty
+        /// relation or the bare input it puts in a filter's place is the predicate oracle's verdict, and
+        /// an oracle that applied it would agree with a wrong one. Not the way out, which is what makes
+        /// a pushed subtree readable at all and which the oracle needs for the scan; and not Calcite's
+        /// own rewrites, which the convention registers because a bare Volcano planner has no logical
+        /// rule set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable
+        /// by the CLR convention in the first place.
         /// </remarks>
         static bool IsPushdown(org.apache.calcite.plan.RelOptRule rule)
         {
             return rule is CosmosAggregateRule or CosmosAggregateSplitRule
-                or CosmosFilterRule or CosmosFilterSplitRule
+                or CosmosFilterRule or CosmosFilterSplitRule or CosmosFilterReduceRule
                 or CosmosProjectRule or CosmosRankRule or CosmosSortRule
                 or CosmosUnnestRule or CosmosLookupJoinRule;
         }
@@ -841,6 +888,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY c.\"$.category\"", false),
             ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY ROLLUP(c.\"$.category\")", false),
             ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'", false),
+            ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" <> 'bikes'", false),
+            // A sort over a key the filter confines to strings, which says what a declaration would.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IN ('Sprint', 'Marathon', 'Slipper') ORDER BY JSON_VALUE(c.\"DOC\", '$.name')", true),
             ("SELECT AVG(c.\"_ts\") FROM products AS c", false),
 
             // LIKE's shapes: the prefix that becomes STARTSWITH, and the general form that stays LIKE.
@@ -1473,6 +1523,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) <> 'Zzz' AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 OR NOT (c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2'))", false),
             ("SELECT c.\"id\" FROM products AS c WHERE CAST((c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) = 'B-2') AS VARCHAR) = 'FALSE'", false),
             ("SELECT c.\"id\" FROM products AS c WHERE NOT ((c.\"$.category\" IN ('bikes', INITCAP(JSON_VALUE(c.\"DOC\", '$.name'))) OR INITCAP(JSON_VALUE(c.\"DOC\", '$.metadata.sku')) <> 'B-2') AND (JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 100 AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) > 'A'))", false),
+
+            // ── What the predicate oracle decides, and the planner before it did not ─
+            //
+            // A weakening every document satisfies restricts nothing, and is not pushed: the service states id and
+            // _etag of every document, so the definedness each branch implies of them is true everywhere.
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(c.\"id\") = 'X'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' OR INITCAP(c.\"_etag\") = 'X'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE c.\"$.category\" = 'bikes' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Sprint'", false),
+            // Over the kinds, a declaration each kind states differently: what a sibling conjunct proves, what the
+            // declaration guarantees, what it refutes, and a disjunction spelled per kind. The probes'
+            // definedness test is the one left out, IS_DEFINED being no operator this validator knows.
+            .. Planning.CosmosPushdownProbeTests.KindProbes.Where(p => p.Where.Contains("IS_DEFINED", StringComparison.Ordinal) == false).Select(p => ($"SELECT c.\"id\" FROM kinds AS c WHERE {p.Where}", false)),
+            // And what the rows a filter kept let the clauses after it lean on: a projection of a form the filter
+            // proves, a sort of a key it proves present, a grouping by a rendering it proves a string; each beside a
+            // control that leans on nothing the filter proves.
+            .. Planning.CosmosPushdownProbeTests.ClauseProbes.Select(p => (p.Sql, p.Ordered)),
+            // And where a statement is sent: a point read, a batch of them, a partition a filter or the declaration
+            // leaves one value, and a key's text that a number also renders as, which pins nothing.
+            .. Planning.CosmosPushdownProbeTests.RoutingProbes.Select(p => (p.Sql, p.Ordered)),
+
+            // Two containers in one statement, each filter read by its own declaration. Every container's rules see every
+            // operator, and a conversion decided under the kinds' declaration made typed's first filter the empty
+            // relation, losing all nine rows, and dropped its second, keeping nine too many (CosmosConvention.Owns).
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IS NULL UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
+            ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IN ('a', 'b', 'c') UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
+            ("SELECT k.\"id\" FROM kinds AS k WHERE JSON_VALUE(k.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(k.\"DOC\", '$.label') = '30' UNION ALL SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
+
+            // Two predicates that print alike: a comparison of the numbers RETURNING DECIMAL parses, and the negated
+            // comparison of the same renderings. Read as one opaque term, Calcite's digest naming no call's type, they
+            // were X AND NOT X and the plan the empty relation, where Calcite keeps 2 and 4, " 2 " and "2.0" beside 2.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) AND NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n'))", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n')) AND JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL)", false),
+
+            // Two renderings compared, one path a string and the other a number: Calcite keeps a document holding "3"
+            // and 3, the two rendering alike, and the service compares a string with a number. One string side, by the
+            // declaration or by a sibling's kind, pushed the raw comparison.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') >= JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') = JSON_VALUE(c.\"DOC\", '$.n')", false),
+            ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <= JSON_VALUE(c.\"DOC\", '$.n')", false),
+
+            // A sort of an integer beyond 2^53 that a filter proves present, which the service now takes: 2^53 and
+            // 2^53 + 1, 2^60 and 2^60 + 1 are one double each, and only an order of the integers themselves tells them
+            // apart, paged as unpaged.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC FETCH NEXT 1 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) IS NOT NULL ORDER BY 1", true),
+
+            // Text a whole number past 2^53 renders as, whose weakening sent the double it rounds to beside the string:
+            // the service keeps the integer exactly, the double is another number there, and the documents storing
+            // 2^53 + 1 and 2^60 + 1 were lost (the review's probes, run on the emulator).
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740993'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '1152921504606846977'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') IN ('9007199254740993', '1152921504606846977')", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740993 AND JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740993'", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740992'", false),
         ];
 
         /// <summary>
@@ -1484,7 +1591,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// five statements here — negation over a null-valued property, grouping and dedup over one, and
         /// an <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each was fixed and
         /// promoted into the corpus. What it holds now is one open defect, the order of strings beyond
-        /// the BMP, witnessed four ways.
+        /// the BMP, witnessed in a sort, a comparison and an aggregate: over <c>id</c>, over a path
+        /// declared a string, and over one a filter proves present, which lets the service take the
+        /// sort under Calcite's own placement.
         /// </para>
         /// <para>
         /// A statement belongs here only while it is an open defect with a witness, never as a
@@ -1499,6 +1608,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "The service orders strings by code point and Calcite by UTF-16 code unit, measured on the vnext-preview emulator: U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process, a supplementary character being encoded from 0xD800; below the surrogates the two orders are one. Whatever order the service computes is its own -- a sort, a range comparison, a MAX -- over id as over a declared string. Open: TODO.md section 4, DESIGN.md under Ordering a sort key the way it reads."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true,
                 "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
+                "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true,
+                "The same sort descending. As the id above."),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true,
+                "The same sort by a key the statement does not select. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
+                "The same sort paged, where the order chooses the rows: a and U+1F600 in process, a and U+E000 at the service. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true,
+                "The same sort over a key a comparison proves present; the comparison itself agrees, its literal lying below the surrogates. As the id above."),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false,
                 "The same order in a comparison, which a declared string pushes exactly: U+E000 < U+1F600 is true at the service and false in process. As the id above."),
             ("SELECT MAX(c.\"id\") FROM ordering AS c", false,

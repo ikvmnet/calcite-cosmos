@@ -273,9 +273,17 @@ range or a disjunction names no single value and does not route — though the s
 `IN` list over the partition key to the partitions that hold its values. With a hierarchical key,
 pinning a prefix of the paths routes to the partitions under that prefix.
 
-**Point reads.** A lookup by `id` and a complete partition key, with nothing else in the predicate,
-is not run as a query at all. It is a point read — `ReadItem`, about 1 RU, no query engine — against
-the 2.3 RU or more a query costs at best:
+Through `JSON_VALUE` the comparison is with the key's text, and text a number also renders as names two
+partitions: `JSON_VALUE(c."DOC", '$.category') = '30'` matches a stored `"30"` and a stored `30`, so it
+is not routed unless the container's schema declares the key a string (Chapter 14). A schema can route a
+statement whose filter names no value at all: where the filter and the schema together leave the key one
+value — `kind <> 'b' AND kind <> 'c'` over a required `kind` declared `enum: ["a", "b", "c"]` — the
+statement goes to that partition.
+
+**Point reads.** A lookup by `id` and a complete partition key, with nothing else in the predicate —
+nothing the schema does not already make true of every document — is not run as a query at all. It
+is a point read — `ReadItem`, about 1 RU, no query engine — against the 2.3 RU or more a query costs
+at best:
 
 ```sql
 SELECT c."id", c."_ts" FROM "products" AS c

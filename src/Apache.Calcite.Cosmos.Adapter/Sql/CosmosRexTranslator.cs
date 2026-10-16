@@ -67,15 +67,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// against.
         /// </summary>
         readonly Metadata.CosmosContainerMetadata? _container;
-        readonly JsonFactSet _facts = JsonFactSet.Empty;
+        readonly JsonFactSet _facts;
 
         /// <summary>
-        /// Gets what is known about the container's documents, closed under what the predicate proved.
+        /// Gets what is known of the documents this expression is evaluated over: the facts the
+        /// caller's licence admits, or where it named none, what the container declares of every
+        /// document.
         /// </summary>
         /// <remarks>
-        /// Read by the rules that weaken a conjunct this declines, so that a guard is injected only
-        /// where a fact has not already ruled out what it exists to admit. Empty where a caller
-        /// supplied nothing, which is every site but the filter rules.
+        /// <para>
+        /// <b>The one place a translation asks what is true.</b> Whether a rendering is the value it
+        /// renders, whether an equality over text is exact, whether an ordering over it is, whether a
+        /// typed field is the stored value: each is "does the path hold this type, or null, here", and
+        /// each is asked of these facts and nothing else (<see cref="IsDeclared"/>). Which facts those
+        /// are is the licence's, chosen by the caller once — for a filter's conjunct, the stratum before
+        /// the one that admitted it (<see cref="Metadata.CosmosFilterStatement"/>), which never holds
+        /// what the conjunct establishes, so no comparison certifies itself (#117).
+        /// </para>
+        /// <para>
+        /// <b>Every caller names them.</b> A translator built without facts read the declaration, and a site that left them
+        /// out read L0 by omission — a projection under a rank and an unnest's predicate did, where the clauses beside them
+        /// read the rows' facts. A caller that only resolves paths asks nothing of them, and says so with
+        /// <see cref="JsonFactSet.Empty"/>.
+        /// </para>
         /// </remarks>
         internal JsonFactSet Facts => _facts;
 
@@ -85,6 +99,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="rexBuilder">Used to expand <c>SEARCH</c> nodes back into comparison trees.</param>
         /// <param name="fields">Maps input field ordinals onto document paths.</param>
         /// <param name="parameters">Receives bound literal values.</param>
+        /// <param name="facts">
+        /// What is known of the documents this expression will be evaluated over, which a rewrite may
+        /// lean on: that a path holds a string, that it is always there, that its text spells a value
+        /// of some other type. Which facts a caller may pass is its licence's — a filter's conjunct
+        /// those of the stratum before its own, never its own; a clause after a filter what the rows it
+        /// kept satisfy — so the decision is the caller's and not this one's. A caller that only
+        /// resolves paths passes <see cref="JsonFactSet.Empty"/>.
+        /// </param>
         /// <param name="ownRow">
         /// The correlation variable that stands for the very row <paramref name="fields"/> describes,
         /// where one is in scope. A lateral traversal is correlated on its own input, so its array
@@ -106,24 +128,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <see cref="IsTextRendering"/>. Where it is <c>null</c> or shorter than the binding every
         /// field not covered is read as its declared type, which is what a scan's fields are.
         /// </param>
-        /// <param name="facts">
-        /// What is known of the documents this expression will be evaluated over, which a rewrite may
-        /// lean on: that a path holds a string, that it is always there, that its text spells a value
-        /// of some other type. Which facts a caller may pass depends on what the expression is — a
-        /// predicate establishes its own and a projection establishes none — so the decision is the
-        /// caller's and not this one's. Where it is <c>null</c> nothing is known and every rewrite
-        /// resting on one declines.
-        /// </param>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null, JsonFactSet? facts = null)
+        public CosmosRexTranslator(RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, CosmosParameterList parameters, JsonFactSet facts, org.apache.calcite.rel.core.CorrelationId? ownRow = null, Metadata.CosmosContainerMetadata? container = null, IReadOnlyList<CosmosReading>? readings = null)
         {
             _rexBuilder = rexBuilder ?? throw new ArgumentNullException(nameof(rexBuilder));
             _fields = fields ?? throw new ArgumentNullException(nameof(fields));
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+            _facts = facts ?? throw new ArgumentNullException(nameof(facts));
             _ownRow = ownRow;
             _container = container;
             _readings = readings ?? Array.Empty<CosmosReading>();
-            _facts = facts ?? JsonFactSet.Empty;
         }
 
         /// <summary>
@@ -677,7 +691,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             if (IsRendering(node))
             {
-                if (permitted == false && IsStringRendering(node) == false)
+                if (permitted == false && IsDeclaredString(node) == false)
                     throw new CosmosTranslationException("JSON_VALUE read as text is the rendering of the value at the path, and an operator over it reads the text: the service hands the operator the value, which renders differently wherever the path does not hold a string.");
 
                 return;
@@ -711,25 +725,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return IsTextRendering(node);
         }
 
-        /// <summary>
-        /// Determines whether an expression is a scalar rendering of a path what is known of the
-        /// container says holds a string, where it holds anything.
-        /// </summary>
-        bool IsStringRendering(RexNode node)
-        {
-            if (IsScalarRendering(node) == false)
-                return false;
-
-            if (TryResolvePath(node, out var path) == false || path is null)
-                return false;
-
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
-                return false;
-
-            // OrNull, because a JSON null renders nothing on either side: the accessor answers SQL
-            // null for it, and the service's string functions are undefined over it.
-            return _facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
-        }
 
         /// <summary>
         /// Determines whether an expression renders a scalar: a <c>JSON_VALUE</c> read as text, or a
@@ -1855,7 +1850,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
         /// right, what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not, and
-        /// what the fact and partition-key extractors read a value through.
+        /// what the oracle's loader reads a value through (<see cref="Metadata.CosmosPredicateLoader"/>),
+        /// and so every fact a filter establishes and every key it pins.
         /// </para>
         /// <para>
         /// <b>Only an undecorated <c>VARCHAR</c></b>, which is what <see cref="TryRenderedTextOperand"/>
@@ -1943,37 +1939,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         static bool IsUnambiguousScalarText(string text)
         {
-            return TryParseRenderedNumber(text, out _) == false && text is not ("true" or "false");
+            return Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false && text is not ("true" or "false");
         }
 
         /// <summary>
         /// Parses text as the number Calcite renders one as, where it is one.
         /// </summary>
         /// <remarks>
-        /// Java's <c>BigDecimal</c> grammar, which every rendering a stored number can take —
-        /// <c>30</c>, <c>30.7</c>, <c>1.0E30</c>, <c>1E+30</c> — satisfies, and which admits nothing
-        /// that is not a number. Read as a double because that is what the service holds; a literal
-        /// the type cannot represent exactly rounds as the stored text rounds, to the same double. A
-        /// value beyond the double range parses and comes back infinite, which the caller decides.
         /// <para>
-        /// Text holding an ASCII character the grammar has no place for is refused before it is parsed.
-        /// Most text asked about is a string literal — a discriminator, a type name — and the parse refuses
-        /// it by throwing, which under IKVM captures a stack trace each time; the planner asks this of
-        /// every equality it considers pushing, and the throws were a measured share of planning (#201).
-        /// Only ASCII is refused early: the grammar's digits are whatever Java calls a digit, and that
-        /// question is left to the parse.
+        /// <b>Whether text is a number's is the oracle's grammar</b> (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>),
+        /// the one the rendering preimage is written in, so the translator and the oracle cannot part on which text a
+        /// stored number can render as: digits, a point, an exponent, a sign. Java's <c>BigDecimal</c> reads the value,
+        /// and read alone it was a second grammar, accepting digits of every script, which no number renders in.
+        /// </para>
+        /// <para>
+        /// Read as a double because that is what the service holds; a literal the type cannot represent exactly rounds as
+        /// the stored text rounds, to the same double. A value beyond the double range parses and comes back infinite,
+        /// which the caller decides; an exponent beyond the parse's range is no number at all. Text out of the grammar is
+        /// refused before it is parsed, so the parse never refuses by throwing, which under IKVM captures a stack trace
+        /// each time and was a measured share of planning (#201).
         /// </para>
         /// </remarks>
         internal static bool TryParseRenderedNumber(string text, out double number)
         {
             number = 0;
 
-            if (text.Length == 0)
+            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(text) == false)
                 return false;
-
-            foreach (var c in text)
-                if (c < 128 && c is not ((>= '0' and <= '9') or '+' or '-' or '.' or 'e' or 'E'))
-                    return false;
 
             try
             {
@@ -1988,84 +1980,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether the <em>container</em> says this path holds a string, taking nothing
-        /// the query established.
+        /// Determines whether what is known of the documents says the path an expression resolves to
+        /// holds one JSON type or null.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>The difference from <see cref="IsDeclaredString"/> is not caution, it is soundness, and
-        /// it was measured.</b> The fact set a translator carries is the declaration closed under what
-        /// the query's own conjuncts proved, and <see cref="JsonFact.Entails"/> reads
-        /// <c>EqualTo v</c> as <c>OfType</c> of <c>v</c>'s type. So over
-        /// <c>JSON_VALUE(…, '$.label') = '30'</c> the extractor records <c>EqualTo "30"</c>, that
-        /// entails <c>OfType String</c>, and the comparison certifies <em>itself</em> exact — which
-        /// is precisely the conflation this guard exists to prevent, the stored number <c>30</c>
-        /// rendering as <c>'30'</c> and matching at Calcite where it would not at the service.
+        /// <b>One question, asked of the licensed facts.</b> There were four — a string asked of the
+        /// facts a filter established, the same asked of the declaration alone, any type asked of the
+        /// declaration alone, and a rendering's string asked of the established facts again — and the
+        /// split between "established" and "outright" existed only because the facts a filter
+        /// established included the conjunct being translated: <c>JSON_VALUE(…, '$.label') = '30'</c>
+        /// established <c>EqualTo "30"</c>, which entails a string, and certified itself exact while a
+        /// stored number 30 renders as <c>'30'</c> and matches at Calcite and not at the service. The
+        /// facts a translation is handed now never hold what the expression establishes
+        /// (<see cref="Facts"/>), so the question is one.
         /// </para>
         /// <para>
-        /// <b>Which is not an argument against the derived set generally, and the ordering branch is
-        /// right to use it.</b> There the fact would come from a <em>sibling</em> conjunct —
-        /// <c>label = 'x' AND label &gt; 'bikes'</c> — and the sibling reaches the service too, so the
-        /// rows the ordering sees are rows the equality already confined to a string. The circularity
-        /// here is that the fact comes from the conjunct <em>being translated</em>, which cannot
-        /// confine anything it is itself the test of.
+        /// <c>OrNull</c>, because a JSON null and an absent path are both SQL's null, which every
+        /// accessor reads as one and the service places together, below every value.
         /// </para>
-        /// <para>
-        /// Asking <c>Derive(null)</c> takes the declaration alone, which no conjunct can have
-        /// contributed to — the same "outright, never under a guard" discipline
-        /// <c>CosmosFactRewriter</c> and <c>CosmosPartitionKeyExtractor</c> apply wherever a fact
-        /// licenses something the predicate cannot re-establish.
-        /// </para>
-        /// <para>
-        /// <b>The lookup join asks it too</b>, of a key column the probe side reads as text: its
-        /// restriction is the raw <c>path IN (@k…)</c>, which is this equality against a parameter
-        /// once per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>. So do a grouping key and a sort
-        /// key, which group and order the stored value where SQL groups and orders the column — all
-        /// three through <see cref="IsReadAsStored"/>.
-        /// </para>
-        /// </remarks>
-        /// <param name="node">The expression.</param>
-        /// <returns><c>true</c> where the container declares the path a string.</returns>
-        internal bool IsDeclaredStringOutright(RexNode node)
-        {
-            // A scalar rendering only: a JSON_QUERY is null for a string, so the fact that makes the
-            // accessor's text the value makes the fragment's nothing -- see IsScalarRendering.
-            return IsScalarRendering(node) && IsDeclaredOutright(node, JsonType.String);
-        }
-
-        /// <summary>
-        /// Determines whether the container declares, outright, that the path an expression resolves
-        /// to holds one JSON type or null.
-        /// </summary>
-        /// <remarks>
-        /// The declaration alone, by <c>Derive(null)</c>, for the reason
-        /// <see cref="IsDeclaredStringOutright"/> gives. <c>OrNull</c>, because a JSON null and an
-        /// absent path are both SQL's null, which every accessor reads as one and the service places
-        /// together, below every value.
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <param name="type">The type.</param>
-        /// <returns><c>true</c> where the container declares the path that type, or null.</returns>
-        bool IsDeclaredOutright(RexNode node, JsonType type)
+        /// <returns><c>true</c> where the facts say the path holds that type, or null.</returns>
+        bool IsDeclared(RexNode node, JsonType type)
         {
-            if (_container is null || _container.Facts.IsEmpty)
+            if (TryResolvePath(node, out var path) == false || DocumentOf(path) is not JsonDocumentPath document)
                 return false;
 
-            if (TryResolvePath(node, out var path) == false || path is null)
-                return false;
-
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
-                return false;
-
-            _declared ??= _container.Facts.Derive(null);
-
-            return _declared.Knows(new JsonFact(document, new JsonClaim.OfType(type, OrNull: true)));
+            return Facts.Knows(new JsonFact(document, new JsonClaim.OfType(type, OrNull: true)));
         }
 
         /// <summary>
-        /// What the container declares outright, derived once per translator and only where asked.
+        /// Returns the document path a statement's path reads, where it reads the container's document.
         /// </summary>
-        JsonFactSet? _declared;
+        /// <remarks>
+        /// Rooted at the container only: a traversal alias addresses an element, and what is known is of
+        /// the document. <see cref="Metadata.CosmosDocumentPaths.From"/> drops the alias, so asked of an
+        /// element's <c>t.x</c> it answers the document's <c>x</c>. Every translator reads the declaration
+        /// where its caller named no licence (<see cref="Facts"/>), the one predicate an unnest renders over
+        /// its element among them.
+        /// </remarks>
+        /// <param name="path">The statement's path.</param>
+        /// <returns>The document path, or <c>null</c>.</returns>
+        static JsonDocumentPath? DocumentOf(CosmosPath? path) =>
+            path is not null && string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal)
+                ? Metadata.CosmosDocumentPaths.From(path)
+                : null;
 
         /// <summary>
         /// Determines whether a field, as it is read back, is the value the service holds at the path
@@ -2083,6 +2044,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// cannot answer it three ways.
         /// </para>
         /// <para>
+        /// <b>The lookup join asks it</b>, of a key column the probe side reads as text: its
+        /// restriction is the raw <c>path IN (@k…)</c>, which is an equality against a parameter once
+        /// per key. See <c>CosmosLookupJoinRule.TryProbeKey</c>. So do a grouping key and a sort key.
+        /// Each asks <see cref="IsDeclared"/> of the facts it was handed.
+        /// </para>
+        /// <para>
         /// <b>Read as declared</b>, the column is the stored value — unless a <c>RETURNING</c> asserted
         /// a type. Such a field reads null wherever the path holds anything else, an object and an
         /// array as surely as an absent path (see <see cref="WriteGuardedAccessor"/>), while the
@@ -2090,8 +2057,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// over the differential suite's typed container,
         /// <c>JSON_VALUE(DOC, '$.label' RETURNING INTEGER)</c> ordered <c>NULLS FIRST</c> under a page
         /// of three came back <c>[null, null, 30]</c> where SQL answers three nulls, the array and the
-        /// object that read null having sorted last. So it is the stored value where the container
-        /// declares the path the type its test names, or null, outright — the test a null test and a
+        /// object that read null having sorted last. So it is the stored value where the facts the
+        /// caller was handed give the path the type its test names, or null — the test a null test and a
         /// comparison read the field by too (<see cref="TypedFieldTest"/>), and none for the service's
         /// own <c>id</c>, <c>_ts</c> and <c>_etag</c> or a promoted <c>VARIANT</c> column, each being
         /// the raw value.
@@ -2100,8 +2067,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <b>Read as text</b>, it is a rendering: a stored <c>30</c> and a stored <c>"30"</c> are one
         /// value as text and two at the service, a stored <c>true</c> renders as <c>'true'</c> and
         /// sorts below every number there, and a stored number sorts numerically where its digits sort
-        /// as text. The exception is <see cref="IsDeclaredStringOutright"/>'s, a container declaring
-        /// the path a string and nothing else, where the rendering is the value. <b>Read as JSON</b> —
+        /// as text. The exception is <see cref="IsDeclaredString"/>'s, what is known saying the path
+        /// holds a string and nothing else, where the rendering is the value. <b>Read as JSON</b> —
         /// the document column, or a <c>JSON_QUERY</c> fragment — it is a serialisation of an object or
         /// an array, which the service orders by rules of its own, measured to differ from their text's
         /// order (<c>DESIGN.md</c>, under <em>Ordering a sort key the way it reads</em>), and equates
@@ -2127,47 +2094,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return (index >= 0 && index < _readings.Count ? _readings[index] : CosmosReading.Typed) switch
             {
                 CosmosReading.Typed => TypedFieldTest(reference) is not SqlFunction test
-                    || TypeTestedBy(test) is JsonType tested && IsDeclaredOutright(reference, tested),
-                CosmosReading.Text => IsDeclaredStringOutright(reference),
+                    || TypeTestedBy(test) is JsonType tested && IsDeclared(reference, tested),
+                CosmosReading.Text => IsDeclaredString(reference),
                 _ => false,
             };
         }
 
         /// <summary>
-        /// Determines whether what is known about the container says this path holds a string.
+        /// Determines whether an expression is a scalar rendering of a path what is known says holds a
+        /// string, where it holds anything: the rendering of a string is the string.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// What the refusal above rests on is that the service orders raw values <em>across</em> JSON
-        /// types while Calcite orders their renderings, so the two disagree wherever a path holds more
-        /// than one type. Where the container says it holds a string and nothing else, there is no
-        /// second type for them to disagree over: the rendering of a string is the string, and the
-        /// comparison is exact rather than a weakening.
+        /// What the refusals over a rendering rest on is that the service orders and compares raw
+        /// values <em>across</em> JSON types while Calcite compares their renderings, and that a
+        /// service function over a number is undefined where Calcite's over its text is not. Where the
+        /// path holds a string and nothing else, there is no second type for them to disagree over, and
+        /// the comparison, the equality and the function are exact rather than a weakening.
         /// </para>
         /// <para>
-        /// Told, not assumed. An empty fact set is every container that declares nothing, and the
-        /// comparison is refused there exactly as it was.
+        /// A scalar rendering only: a <c>JSON_QUERY</c> is null for a string, so the fact that makes
+        /// the accessor's text the value makes the fragment's nothing — see
+        /// <see cref="IsScalarRendering"/>. <c>OrNull</c>, because a JSON null is dropped by the
+        /// service and answered SQL null by the accessor alike.
         /// </para>
         /// </remarks>
-        bool IsDeclaredString(RexNode node)
-        {
-            // A scalar rendering only: a JSON_QUERY is null for a string, so the fact that makes the
-            // accessor's text the value makes the fragment's nothing -- see IsScalarRendering.
-            if (IsScalarRendering(node) == false)
-                return false;
-
-            if (TryResolvePath(node, out var path) == false || path is null)
-                return false;
-
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
-                return false;
-
-            // OrNull, because a null need not be excluded for the two orders to agree: a JSON null at
-            // the path is dropped by the service, which orders it before every string, and dropped by
-            // Calcite, whose accessor answers SQL null for it. What the guard existed to admit is a
-            // value of some *other* type, and that is what the claim rules out.
-            return _facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.String, OrNull: true)));
-        }
+        internal bool IsDeclaredString(RexNode node) => IsScalarRendering(node) && IsDeclared(node, JsonType.String);
 
         /// <summary>
         /// Determines whether an expression is a document value that a cast to text renders rather
@@ -2802,10 +2754,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(operand, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (DocumentOf(path) is not JsonDocumentPath document)
                 return false;
 
-            if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
+            if (Facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
                 return false;
 
             if (Metadata.CosmosUuidForms.IsUuid(representation) == false)
@@ -2854,8 +2806,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (held == Metadata.CosmosTemporalParts.None)
                 return;
 
-            if (Metadata.CosmosDocumentPaths.From(path) is JsonDocumentPath document
-                && _facts.RepresentationOf(document) is Metadata.CosmosRepresentation representation
+            if (DocumentOf(path) is JsonDocumentPath document
+                && Facts.RepresentationOf(document) is Metadata.CosmosRepresentation representation
                 && Metadata.CosmosStoredForms.EngineReads(representation, held))
                 return;
 
@@ -2916,10 +2868,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (TryResolvePath(operand, out var path) == false || path is null)
                 return false;
 
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (DocumentOf(path) is not JsonDocumentPath document)
                 return false;
 
-            if (_facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
+            if (Facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation)
                 return false;
 
             if (Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
@@ -3306,7 +3258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             else if (target == SqlTypeName.BIGINT)
                 saturates = (new java.math.BigDecimal(long.MinValue), new java.math.BigDecimal(long.MaxValue));
             else
-                roundsFrom = new java.math.BigDecimal(1L << 52);
+                roundsFrom = new java.math.BigDecimal(Apache.Calcite.Cosmos.Facts.Saturation.Renderings.DoubleUnitFrom);
 
             return operand;
         }
@@ -3316,17 +3268,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// Conservative on purpose, and each refusal is a value that could have come from somewhere
-        /// else: anything that parses as a number, because a stored number renders as digits and which
-        /// spelling Calcite produces is not something this decides; <c>true</c>, <c>false</c> and
-        /// <c>null</c>; and anything opening with a bracket or a quote, which is how an array or an
-        /// object would arrive. The empty string is refused as well, having nothing to distinguish.
+        /// else: anything in the grammar a stored number renders in, because which spelling Calcite
+        /// produces is not something this decides (<see cref="Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText"/>,
+        /// the oracle's grammar and the scalar test's); <c>true</c>, <c>false</c> and <c>null</c>; and
+        /// anything opening with a bracket or a quote, which is how an array or an object would arrive.
+        /// The empty string is refused as well, having nothing to distinguish. Number text padded with
+        /// spaces is refused too: the cast over a value is Calcite's own conversion, whose treatment
+        /// of padding beside a number nothing here has measured, where the accessor's padded text was
+        /// measured to match nothing on either side.
         /// </remarks>
         internal static bool IsUnambiguousText(string value)
         {
             if (string.IsNullOrEmpty(value))
                 return false;
 
-            if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+            if (Apache.Calcite.Cosmos.Facts.Saturation.Renderings.MayBeNumberText(value.Trim()))
                 return false;
 
             if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
@@ -3726,15 +3682,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     right = unwrappedRight;
                 else if ((IsTextRendering(leftValue) && IsUnambiguousTextEquality(leftValue, rightValue) == false
                     || IsTextRendering(rightValue) && IsUnambiguousTextEquality(rightValue, leftValue) == false)
-                    // Unless the container itself says the path holds a string and nothing else, in
-                    // which case the rendering *is* the stored value and the comparand need not be
-                    // inspected at all -- which is what lets a parameter through.
-                    && (IsDeclaredStringOutright(leftValue) || IsDeclaredStringOutright(rightValue)) == false)
+                    // Unless what is known says every rendering here holds a string and nothing else, in
+                    // which case each is the stored value and the comparand need not be inspected at all
+                    // -- which is what lets a parameter through. Known from the facts this conjunct is
+                    // rendered from, which never hold what it establishes itself.
+                    && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
             else if (IsOrdering(KindOf(call))
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
-                && (IsDeclaredString(leftValue) || IsDeclaredString(rightValue)) == false)
+                && RendersOnlyStrings(leftValue, rightValue) == false)
             {
                 // The same gap the equality has, with no exact case to carve out of it. An equality
                 // against text no non-string renders as is exact; an ordering comparison never is,
@@ -3757,6 +3714,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             WriteBinary(builder, left, right, op);
         }
+
+        /// <summary>
+        /// Determines whether every side of a comparison that is a rendering is the rendering of a
+        /// string, so that the comparison of the renderings is the comparison of what is stored.
+        /// </summary>
+        /// <remarks>
+        /// Every side, not either. A literal or a parameter is no rendering, and against one a string
+        /// path suffices; but two renderings are two stored values, and where only one is known to be a
+        /// string the other may be a number: <c>JSON_VALUE(a) = JSON_VALUE(b)</c> keeps a document
+        /// holding <c>"3"</c> and <c>3</c> in Calcite, which compares <c>'3'</c> with <c>'3'</c>, and
+        /// not at the service, which compares a string with a number. Either side sufficed once, and a
+        /// sibling proving one path a string pushed the raw comparison (review of the oracle in the
+        /// planner).
+        /// </remarks>
+        bool RendersOnlyStrings(RexNode left, RexNode right) =>
+            (IsTextRendering(left) == false || IsDeclaredString(left)) && (IsTextRendering(right) == false || IsDeclaredString(right));
 
         /// <summary>
         /// Writes a comparison between an instant read out of a path and a parameter, the parameter
@@ -3805,7 +3778,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var ordering = op is not ("=" or "!=");
 
-            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, this, _facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+            if (Metadata.CosmosFactRewriter.TryStoredInstant(temporal, ordering, this, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
                 return false;
 
             var rounding = op switch
@@ -3857,7 +3830,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         {
             var ordering = op is not ("=" or "!=");
 
-            if (Metadata.CosmosFactRewriter.TryStoredUuid(uuid, ordering, this, _facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
+            if (Metadata.CosmosFactRewriter.TryStoredUuid(uuid, ordering, this, () => Facts, CosmosImplementor.DefaultRootAlias, out var representation) is not RexNode accessor)
                 return false;
 
             if (ordering && Metadata.CosmosUuidForms.OrdersEveryValue(representation) == false)
@@ -4218,13 +4191,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// and there the cast is written over the accessor itself.
         /// </para>
         /// <para>
-        /// <b>Which facts.</b> The ones this translator was given, which in a filter are the
-        /// declaration closed under the predicate's own conjuncts — the sibling-conjunct argument
+        /// <b>Which facts.</b> The ones this translator was given, which for a filter's conjunct are
+        /// the stratum it was admitted from: the declaration closed under what the conjuncts pushed
+        /// beside it establish, and never what it does — the sibling-conjunct argument
         /// <see cref="Metadata.CosmosFactRewriter"/> makes, a guard proving the type being applied
-        /// beside the comparison it licenses. A conjunct cannot certify itself here, because the cast
-        /// resolves to no path and <see cref="Metadata.CosmosFactExtractor"/> reads nothing from a
-        /// comparison over one. Rooted at the container only: a traversal alias addresses an element,
-        /// and the schema describes the document.
+        /// beside the comparison it licenses. Rooted at the container only: a traversal alias
+        /// addresses an element, and the schema describes the document.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
@@ -4243,21 +4215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var operand = Operand(call, 0);
 
-            if (IsRenderedDocumentValue(operand) == false)
-                return null;
-
-            if (TryResolvePath(operand, out var path) == false || path is null)
-                return null;
-
-            if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document || document.IsRoot)
-                return null;
-
-            return _facts.Knows(new JsonFact(document, new JsonClaim.OfType(JsonType.Boolean, OrNull: true)))
-                ? operand
-                : null;
+            return IsRenderedDocumentValue(operand) && IsDeclared(operand, JsonType.Boolean) ? operand : null;
         }
 
         /// <summary>

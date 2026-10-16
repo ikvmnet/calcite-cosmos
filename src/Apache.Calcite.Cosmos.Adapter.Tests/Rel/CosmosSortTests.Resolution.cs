@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 
@@ -113,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             // ── Path resolution ───────────────────────────────────────────────────────
 
-            CosmosRexTranslator Translator() => new(_rex, Fields, new CosmosParameterList());
+            CosmosRexTranslator Translator() => new(_rex, Fields, new CosmosParameterList(), JsonFactSet.Empty);
 
             [Fact]
             public void FieldReferenceResolvesToAPath()
@@ -271,7 +272,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     if (schema is not null)
                         container = container.WithFacts(Adapter.Metadata.CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)));
 
-                    return CosmosSort.StoredFields(new CosmosRexTranslator(_rex, fields, new CosmosParameterList(), null, container, readings), rowType);
+                    return CosmosSort.StoredFields(new CosmosRexTranslator(_rex, fields, new CosmosParameterList(), CosmosOracle.For(container.Facts).Declared, null, container, readings), rowType);
                 }
 
                 Stored(null).Should().Equal(true, true, false, false);

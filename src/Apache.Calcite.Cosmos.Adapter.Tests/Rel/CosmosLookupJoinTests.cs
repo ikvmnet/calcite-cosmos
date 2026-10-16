@@ -549,14 +549,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
             text.Should().Contain("CosmosUnnest", "and traversed at the service: " + text);
 
-            // The rule asked the logical subtree; Prepare asks the converted one. Both must say the key
-            // is restricted, and restricted the same way.
+            // The rule asked the logical subtree; Prepare asks the converted one, of the facts the rule
+            // decided under. Both must say the key is restricted, and restricted the same way.
             var logical = Find<org.apache.calcite.rel.core.Join>(PlanLogical(sql))!;
             var probe = ((java.lang.Integer)logical.analyzeCondition().rightKeys.get(0)).intValue();
-            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(logical.getRight(), probe, out var ruleKey).Should().BeTrue("the rule restricts the logical subtree");
+            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(logical.getRight(), probe, container => CosmosRowFacts.Of(logical.getRight(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.Key), out var ruleKey).Should().BeTrue("the rule restricts the logical subtree");
 
             var lookup = Find<CosmosLookupJoin>(plan)!;
-            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(lookup.getRight(), lookup.ProbeKey, out var nodeKey).Should().BeTrue("the node restricts the converted one: " + RelOptUtil.toString(lookup.getRight()));
+            lookup.Facts.Should().NotBeNull("the rule hands the join the facts it decided under");
+            Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.TryProbeKey(lookup.getRight(), lookup.ProbeKey, _ => lookup.Facts!, out var nodeKey).Should().BeTrue("the node restricts the converted one: " + RelOptUtil.toString(lookup.getRight()));
             nodeKey.Should().Be(ruleKey);
 
             var rows = await Execute(plan);

@@ -124,6 +124,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
+        /// <summary>
+        /// What a plan for a filter no document satisfies is: the empty relation, sent nowhere. The rewrite answers
+        /// <c>FALSE</c> where the conjuncts contradict the declaration, and <c>CosmosFilterReduceRule</c> puts an empty <c>Values</c>
+        /// beside the filter, which the CLR convention answers with no request; a converted <c>CosmosFilter</c> carrying
+        /// the constant was a round trip for no rows (<c>TODO.md</c>, <em>A contradiction should send nothing</em>).
+        /// </summary>
+        const string KeepsNothing = "Values(tuples=[[]])";
+
         [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
         {
@@ -742,18 +750,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A fact that holds only under a guard does not render a projection, even where the query
+        /// A fact that holds only under a guard renders a projection where the filter beneath
         /// discharges the guard.
         /// </summary>
         /// <remarks>
-        /// Where the scope line falls, and it falls short of what is provable. A projection carries no
-        /// predicate of its own, so what it may lean on is what the declaration states outright; the
-        /// <c>kind = 'B'</c> beneath it does discharge the guard for every row that arrives, and
-        /// reading that off the subtree is a further step this does not take. The filter still pushes,
-        /// and the projection stays in process.
+        /// <para>
+        /// A projection carries no predicate of its own, and what it may lean on is what holds of every
+        /// row it reads: the declaration, and what the filters beneath establish (L1). The
+        /// <c>kind = 'B'</c> beneath it discharges the guard for every row that arrives, so the declared
+        /// form is the column's, and the cast is the reader's to make from the stored spelling rather
+        /// than Calcite's to compute in process. The accessor's own guard stays — <c>ref</c> is not
+        /// required of kind B, and an absent one reads null — and nothing else is written: the column
+        /// is the path's text, read back as the <c>UUID</c> it spells.
+        /// </para>
+        /// <para>
+        /// The scope line used to fall at the declaration, short of what is provable, and the cast
+        /// stayed in process. <c>CosmosDifferentialTests</c> holds the shape to Calcite on the kinds
+        /// container (<c>CosmosPushdownProbeTests.ClauseProbes</c>, "a projection of a form the filter
+        /// proves"), beside the kind that declares no form.
+        /// </para>
         /// </remarks>
         [Fact]
-        public void AGuardedFormDoesNotRenderAProjection()
+        public void AGuardedFormRendersAProjectionTheFilterDischarges()
         {
             var container = Declared(true);
 
@@ -761,12 +779,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'B'""",
                 container, out _);
 
-            // The accessor goes down on its own merits, which needs no declaration at all -- guarded,
-            // as any accessor is. What must not go down is the *declared* rendering, the bare path
-            // standing for the stored spelling, and that is what the guard being present shows.
             Query(FindCosmos(best), container).Sql
-                .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor")
-                .And.NotContain("\"Id\": c.ref", "and not as the form, which is declared only of the documents the guard admits");
+                .Should().Contain("\"Id\": (IS_PRIMITIVE(c.ref) ? c.ref : null)", "the column is the stored spelling, guarded as any accessor is");
+
+            PlanText(best).Should().NotContain("ClrCursorProject",
+                "so the cast is not computed in process: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// And not where the filter beneath keeps the kind the form is not declared of.
+        /// </summary>
+        [Fact]
+        public void AGuardedFormDoesNotRenderAProjectionOfAnotherKind()
+        {
+            var container = Declared(true);
+
+            var best = PlanToCosmos(
+                $"""SELECT {Ref} AS "Id" FROM items AS c WHERE {Kind} = 'A'""",
+                container, out _);
+
+            // The accessor goes down on its own merits, which needs no declaration at all -- guarded,
+            // as any accessor is -- and the cast stays above it.
+            Query(FindCosmos(best), container).Sql
+                .Should().Contain("(IS_PRIMITIVE(c.ref) ? c.ref : null)", "the accessor renders as an accessor");
 
             PlanText(best).Should().Contain("ClrCursorProject(Id=[CAST($0)",
                 "so the cast is still computed in process: " + PlanText(best));
@@ -1309,13 +1344,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
 
         /// <summary>
-        /// A predicate the declaration contradicts keeps nothing, and the plan says so.
+        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is the empty
+        /// relation, and sends no request.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The container declares a domain and the query asks for a value outside it. A document
         /// satisfying the predicate would have to hold a value the declaration says it does not, so
-        /// there is none — and the equivalent predicate is the constant.
+        /// there is none — and the equivalent predicate is the constant. It used to be pushed as one,
+        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The split rule now puts the
+        /// empty relation beside the filter, which the CLR convention answers itself.
         /// </para>
         /// <para>
         /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a
@@ -1335,11 +1373,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var container = Declaring(schema);
                 var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
 
-                PlanText(best).Should().Contain("condition=[false]",
+                PlanText(best).Should().Contain(KeepsNothing,
                     "no document satisfies it, for " + schema + ": " + PlanText(best));
 
-                Query(FindCosmos(best), container).Sql.Should().NotContain("c.status =",
-                    "so the comparison itself is not worth sending, for " + schema);
+                FindCosmos(best).Should().BeNull("so nothing is sent at all, for " + schema);
             }
         }
 
@@ -1359,7 +1396,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().Contain("c.status = @",
                 "the value is in the declared domain, so nothing is settled by the declaration");
 
-            PlanText(best).Should().NotContain("condition=[false]", PlanText(best));
+            PlanText(best).Should().NotContain(KeepsNothing, PlanText(best));
         }
 
         /// <summary>
@@ -1371,7 +1408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declared(false);
             var best = PlanToCosmos(string.Format(Status, "deleted"), container, out _);
 
-            PlanText(best).Should().NotContain("condition=[false]",
+            PlanText(best).Should().NotContain(KeepsNothing,
                 "nothing says what the path holds, so nothing rules the value out");
         }
 
@@ -1411,6 +1448,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// backlog claimed and still worth taking.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// A conjunct that reaches the service is deleted only for siblings that reach it too: <c>label &lt;&gt; 'zzz'</c>
+        /// over a path declared nothing goes down only as its weakening, which does not imply the null test, so the exact
+        /// test stays and the null, the array and the object it excludes do not cross the wire.
+        /// </summary>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') <> 'zzz'""")]
+        [InlineData("""JSON_VALUE(c."DOC", '$.label') > 'a'""")]
+        public void AnExactNullTestIsNotDeletedForASiblingLeftAbove(string sibling)
+        {
+            var container = Declared(false);
+            var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.label') IS NOT NULL AND {sibling}""", container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().Contain("NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)",
+                "the null test is exact, and its sibling goes down only as a weakening: " + PlanText(best));
+        }
+
         [Fact]
         public void ADeclaredTautologyIsNotAsked()
         {
@@ -1461,7 +1515,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             // 'Z' against a declared const of 'A' is the contradiction case, not the tautology one --
             // which is the other half of the same table, and settles to the constant instead.
-            PlanText(best).Should().Contain("condition=[false]",
+            PlanText(best).Should().Contain(KeepsNothing,
                 "a declared constant refutes every other value: " + PlanText(best));
         }
 

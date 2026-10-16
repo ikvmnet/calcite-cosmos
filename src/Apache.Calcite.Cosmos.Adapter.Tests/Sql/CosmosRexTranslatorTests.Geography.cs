@@ -2,6 +2,7 @@
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Geography.Rel.Type;
 using Apache.Calcite.Geography.Sql;
 
@@ -51,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 };
             }
 
-            CosmosRexTranslator Translator(CosmosContainerMetadata? container = null) => new(_rex, _fields, new CosmosParameterList(), container: container);
+            CosmosRexTranslator Translator(CosmosContainerMetadata? container = null) => new(_rex, _fields, new CosmosParameterList(), container is null ? JsonFactSet.Empty : CosmosOracle.For(container.Facts).Declared, container: container);
 
             string Translate(SqlOperator op, params RexNode[] operands) => Translator().Translate(_rex.makeCall(op, operands));
 
@@ -125,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 var parameter = _rex.makeDynamicParam(geometry, 0);
 
                 var parameters = new CosmosParameterList();
-                var translator = new CosmosRexTranslator(_rex, _fields, parameters);
+                var translator = new CosmosRexTranslator(_rex, _fields, parameters, JsonFactSet.Empty);
 
                 translator.Translate(_rex.makeCall(GeographyOperatorTable.ClrStGeogDistance, Geo(), _rex.makeAbstractCast(geometry, parameter)))
                     .Should().Be("ST_DISTANCE(c.location, @p0)");

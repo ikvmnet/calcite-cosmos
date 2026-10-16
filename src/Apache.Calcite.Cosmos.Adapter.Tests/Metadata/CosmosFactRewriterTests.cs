@@ -362,12 +362,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var rewritten = CosmosFactRewriter.Rewrite(UuidEquality(), _fields, Container(Unconditional), "c", _rex);
 
-            CosmosPartitionKeyExtractor.TryExtract(rewritten, _fields, Container(Unconditional), "c", out var values)
+            CosmosPartitionKeyExtractor.TryExtract(rewritten, _fields, null, Container(Unconditional), "c", out var values)
                 .Should().BeTrue("a plain string equality on the partition key path is what pins a partition");
 
             values.Should().ContainSingle().Which.Should().Be(Canonical);
 
-            CosmosPartitionKeyExtractor.TryExtract(UuidEquality(), _fields, Container(Unconditional), "c", out _)
+            CosmosPartitionKeyExtractor.TryExtract(UuidEquality(), _fields, null, Container(Unconditional), "c", out _)
                 .Should().BeFalse("and the cast form pins nothing, which is the state of things today");
         }
 
@@ -405,9 +405,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(disjunction, Discriminated).Should().Contain("CAST",
                 "nothing proved the branch applies, so there is no fact to lower with");
 
-            Rewrite(And(KindIs("B"), disjunction), Discriminated).Should().Be(
-                $"AND(=($1, 'B'), OR(=($0, '{Canonical}'), =($1, 'B')))",
+            var other = _rex.makeCall(SqlStdOperatorTable.OR, UuidEquality(), _rex.makeCall(SqlStdOperatorTable.EQUALS, Ref(2, SqlTypeName.VARCHAR), Str("x")));
+            Rewrite(And(KindIs("B"), other), Discriminated).Should().Be(
+                $"AND(=($1, 'B'), OR(=($0, '{Canonical}'), =($2, 'x')))",
                 "and the conjunct that proves it holds of every row the predicate keeps, branch or no branch");
+        }
+
+        /// <summary>
+        /// A conjunct its siblings imply decides nothing, and is deleted: a disjunction holding one of them as a branch is
+        /// true wherever they are.
+        /// </summary>
+        /// <remarks>
+        /// The old tautology test was an equality the declaration alone guaranteed, and missed this; the oracle's is any
+        /// conjunct every sibling and the declaration make always true, asked one at a time so that two conjuncts implying
+        /// each other do not both go. <c>CosmosDifferentialTests</c> holds the deletion to Calcite's answer.
+        /// </remarks>
+        [Fact]
+        public void AConjunctItsSiblingsImplyIsDeleted()
+        {
+            var disjunction = _rex.makeCall(SqlStdOperatorTable.OR, UuidEquality(), KindIs("B"));
+
+            Rewrite(And(KindIs("B"), disjunction), Discriminated).Should().Be("=($1, 'B')");
+            Rewrite(And(KindIs("A"), disjunction), Discriminated).Should().Contain("OR", "kind = 'A' implies neither branch");
         }
 
         [Fact]

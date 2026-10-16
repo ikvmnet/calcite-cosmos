@@ -78,8 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         {
             if (rel is CosmosFilter filter &&
                 filter.getConvention() is CosmosConvention convention &&
-                CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) &&
-                CosmosPartitionKeyExtractor.PinsAtMostOneDocument(filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias))
+                CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) &&
+                CosmosPartitionKeyExtractor.PinsAtMostOneDocument(filter.getCondition(), fields, readings, convention.Container, CosmosImplementor.DefaultRootAlias))
                 return java.lang.Double.valueOf(1d);
 
             if (rel is CosmosLookupJoin lookup && base.getRowCount(rel) is java.lang.Double estimate)

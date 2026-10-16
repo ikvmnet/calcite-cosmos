@@ -386,21 +386,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// A statement asking twice reads one context: the same established set is answered by the same set.
-        /// </summary>
-        [Fact]
-        public void TheSameEstablishedSetIsAnsweredOnce()
-        {
-            var theory = new JsonFactTheory(new[] { new JsonFactRule(new[] { Equals(Type, "ParkMap") }, Represents(ParkId, EqualityOnly)) });
-
-            var first = theory.Derive(new[] { Equals(Type, "ParkMap"), Present(Type) });
-            var again = theory.Derive(new[] { Present(Type), Equals(Type, "ParkMap"), Present(Type) });
-
-            again.Should().BeSameAs(first, "the order of the facts and a repeated one say nothing new");
-            theory.Derive(new[] { Equals(Type, "Park") }).Should().NotBeSameAs(first);
-        }
-
-        /// <summary>
         /// A generation that has interned enough is retired, a theory compiles itself into the next, and its answers
         /// do not change; one given out by the retired generation still answers.
         /// </summary>

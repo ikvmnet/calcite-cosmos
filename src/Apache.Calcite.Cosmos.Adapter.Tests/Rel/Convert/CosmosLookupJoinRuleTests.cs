@@ -62,6 +62,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 { "type": "object", "properties": { "label": { "type": "string" } } }
                 """)));
 
+        /// <summary>
+        /// A container of two kinds: <c>label</c> a string in kind <c>a</c> and an integer in kind <c>b</c>.
+        /// </summary>
+        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                { "type": "object",
+                  "required": ["kind"],
+                  "properties": { "kind": { "enum": ["a", "b"] } },
+                  "oneOf": [
+                    { "properties": { "kind": { "const": "a" }, "label": { "type": "string" } } },
+                    { "properties": { "kind": { "const": "b" }, "label": { "type": "integer" } } } ] }
+                """)));
+
+        CosmosTable _kinds = null!;
         CosmosTable _products = null!;
         CosmosTable _orders = null!;
         CosmosTable _archive = null!;
@@ -75,6 +89,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             _archive = new CosmosTable(Archive);
             _parks = new CosmosTable(Parks);
             _labels = new CosmosTable(Labels);
+            _kinds = new CosmosTable(Kinds);
         }
 
         RelNode PlanLogical(string sql, bool expand = false)
@@ -87,6 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             rootSchema.add("archive", _archive);
             rootSchema.add("parks", _parks);
             rootSchema.add("labels", _labels);
+            rootSchema.add("kinds", _kinds);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -145,6 +161,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 planner.addRule(rule);
 
             foreach (var rule in CosmosRules.GetRules(_labels.Convention))
+                planner.addRule(rule);
+
+            foreach (var rule in CosmosRules.GetRules(_kinds.Convention))
                 planner.addRule(rule);
 
             foreach (var rule in ClrCursorRules.Rules())
@@ -349,6 +368,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var lookup = Find<CosmosLookupJoin>(plan);
             lookup.Should().NotBeNull("the labels are fetched by the orders' keys:\n" + Text(plan));
             lookup!.getRight().getConvention().Should().BeSameAs(_labels.Convention);
+        }
+
+        /// <summary>
+        /// A view of one kind, its text column over <c>label</c>, joined on that column to a list of keys.
+        /// </summary>
+        const string ByKindLabel = """
+            SELECT p."id"
+            FROM (VALUES ('30'), ('31')) AS v(k)
+            JOIN (SELECT c."id", JSON_VALUE(c."DOC", '$.label') AS "Label" FROM kinds AS c WHERE JSON_VALUE(c."DOC", '$.kind') = {0}) AS p
+              ON v.k = p."Label"
+            """;
+
+        /// <summary>
+        /// A key read as text is restricted on the stored value where what the probe's filter keeps says the value is a
+        /// string: kind <c>a</c> declares <c>label</c> one, and kind <c>b</c> an integer, whose rendering is not its value.
+        /// </summary>
+        /// <remarks>
+        /// The restriction is written beside the probe's <c>WHERE</c>, so it has to be exact only on the rows that keeps
+        /// (L1). Read off the declaration alone, as it was, neither kind's view was a lookup.
+        /// </remarks>
+        [Fact]
+        public void ATextKeyOverAPathTheProbesKindDeclaresAStringIsALookup()
+        {
+            var plan = Plan(string.Format(ByKindLabel, "'a'"));
+
+            var lookup = Find<CosmosLookupJoin>(plan);
+            lookup.Should().NotBeNull("the kind a documents are fetched by key:\n" + Text(plan));
+            lookup!.getRight().getConvention().Should().BeSameAs(_kinds.Convention);
+
+            var integers = Plan(string.Format(ByKindLabel, "'b'"));
+            FindAll<CosmosLookupJoin>(integers).Should().NotContain(j => ReferenceEquals(j.getRight().getConvention(), _kinds.Convention),
+                "a stored 30 renders as '30', and the restriction compares the raw value:\n" + Text(integers));
         }
 
         // ── Not chosen, and each for a reason ─────────────────────────────────────

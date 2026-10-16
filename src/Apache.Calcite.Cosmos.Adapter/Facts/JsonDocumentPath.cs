@@ -120,6 +120,18 @@ namespace Apache.Calcite.Cosmos.Facts
             return new JsonDocumentPath(new Node(_last, name));
         }
 
+        /// <summary>
+        /// Determines whether this path is <paramref name="ancestor"/> or lies beneath it.
+        /// </summary>
+        public bool IsWithin(JsonDocumentPath ancestor)
+        {
+            var node = _last;
+            while (node is not null && node.Depth > ancestor.Depth)
+                node = node.Parent;
+
+            return (node is null ? Root : new JsonDocumentPath(node)).Equals(ancestor);
+        }
+
         /// <inheritdoc />
         public bool Equals(JsonDocumentPath other)
         {

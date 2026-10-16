@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declaring(Bodies);
             var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {Body} {comparison}""", container, out _);
 
-            PlanText(best).Should().NotContain("condition=[false]", "a stored \"2\" is 2 to the clause: " + PlanText(best));
+            PlanText(best).Should().NotContain(KeepsNothing, "a stored \"2\" is 2 to the clause: " + PlanText(best));
             PlanText(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + PlanText(best));
 
             Query(FindCosmos(best), container).Sql.Should().Contain("(NOT IS_NUMBER(c.body)) OR",
@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declaring(Bodies);
             var view = PlanToCosmos($"""SELECT p."id" FROM (SELECT c."id", {Body} AS "B" FROM items AS c) AS p WHERE p."B" = 2""", container, out _);
 
-            PlanText(view).Should().NotContain("condition=[false]", PlanText(view));
+            PlanText(view).Should().NotContain(KeepsNothing, PlanText(view));
 
             var keyed = Declaring("""{ "type": "object", "properties": { "ref": { "type": "string" } } }""");
             var routed = Query(FindCosmos(PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING DECIMAL) = 2""", keyed, out _)), keyed);
@@ -97,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declaring("""{ "type": "object", "properties": { "body": { "type": "integer", "maximum": 10 } } }""");
             var best = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL(19, 18)) > 50""", container, out _);
 
-            PlanText(best).Should().NotContain("condition=[false]", "the engine raises rather than answering nothing: " + PlanText(best));
+            PlanText(best).Should().NotContain(KeepsNothing, "the engine raises rather than answering nothing: " + PlanText(best));
             Query(FindCosmos(best), container).Sql.Should().NotContain("c.body >", "and no bound is read from the literal");
 
             var fits = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL(19, 18)) > 5""", container, out _);
@@ -119,7 +119,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Declaring(Bodies);
             var best = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2""", container, out _);
 
-            PlanText(best).Should().Contain("condition=[false]", PlanText(best));
+            PlanText(best).Should().Contain(KeepsNothing, PlanText(best));
+        }
+
+        /// <summary>
+        /// A comparison of two numbers <c>RETURNING DECIMAL</c> parses beside the negated comparison of the same two
+        /// renderings is no contradiction: <c>" 2 "</c> and <c>2</c> are one number and two texts. The two print alike,
+        /// Calcite's digest naming no call's type, and read as one opaque term they were <c>X AND NOT X</c>, a filter
+        /// keeping rows made the empty relation.
+        /// </summary>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = JSON_VALUE(c."DOC", '$.n' RETURNING DECIMAL) AND NOT (JSON_VALUE(c."DOC", '$.body') = JSON_VALUE(c."DOC", '$.n'))""")]
+        [InlineData("""NOT (JSON_VALUE(c."DOC", '$.body') = JSON_VALUE(c."DOC", '$.n')) AND JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = JSON_VALUE(c."DOC", '$.n' RETURNING DECIMAL)""")]
+        public void TwoPredicatesThatPrintAlikeAreTwo(string where)
+        {
+            var container = Declaring(Bodies);
+            var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {where}""", container, out _);
+
+            PlanText(best).Should().NotContain(KeepsNothing, "a stored \" 2 \" beside a stored 2 is kept: " + PlanText(best));
         }
 
     }
