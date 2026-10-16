@@ -160,7 +160,8 @@ after `[1, 5]`, `{"b":1}` before `{"a":2}` — which are not the order of their 
 Calcite by UTF-16 code unit. The two agree everywhere except where a character above U+FFFF — an
 emoji, say — meets one between U+E000 and U+FFFF, such as a fullwidth letter or U+FFFD: the service
 puts the second first, Calcite the first. A sort the service performs, on `id` as much as on a declared
-string, returns the service's order. Measured on the emulator, and an open defect (Chapter 23).
+string or one a filter proves, returns the service's order; with a row limit, the order chooses which
+rows come back. Measured on the emulator, and an open defect (Chapter 23).
 
 Through a view, the adapter can move a sort and its row limit beneath a projection it cannot push, so
 that the page is still taken at the service and the projection computed over it. That works whenever

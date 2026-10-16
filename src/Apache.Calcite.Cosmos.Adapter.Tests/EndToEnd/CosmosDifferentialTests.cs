@@ -1560,6 +1560,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body') >= JSON_VALUE(c.\"DOC\", '$.n')", false),
             ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') = JSON_VALUE(c.\"DOC\", '$.n')", false),
             ("SELECT c.\"id\" FROM kinds AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(c.\"DOC\", '$.label') <= JSON_VALUE(c.\"DOC\", '$.n')", false),
+
+            // A sort of an integer beyond 2^53 that a filter proves present, which the service now takes: 2^53 and
+            // 2^53 + 1, 2^60 and 2^60 + 1 are one double each, and only an order of the integers themselves tells them
+            // apart, paged as unpaged.
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) > 0 ORDER BY 1 DESC FETCH NEXT 1 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) IS NOT NULL ORDER BY 1", true),
         ];
 
         /// <summary>
@@ -1571,7 +1579,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// five statements here — negation over a null-valued property, grouping and dedup over one, and
         /// an <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each was fixed and
         /// promoted into the corpus. What it holds now is one open defect, the order of strings beyond
-        /// the BMP, witnessed four ways.
+        /// the BMP, witnessed in a sort, a comparison and an aggregate: over <c>id</c>, over a path
+        /// declared a string, and over one a filter proves present, which lets the service take the
+        /// sort under Calcite's own placement.
         /// </para>
         /// <para>
         /// A statement belongs here only while it is an open defect with a witness, never as a
@@ -1586,6 +1596,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "The service orders strings by code point and Calcite by UTF-16 code unit, measured on the vnext-preview emulator: U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process, a supplementary character being encoded from 0xD800; below the surrogates the two orders are one. Whatever order the service computes is its own -- a sort, a range comparison, a MAX -- over id as over a declared string. Open: TODO.md section 4, DESIGN.md under Ordering a sort key the way it reads."),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true,
                 "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
+                "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
+                "The same sort paged, where the order chooses the rows: a and U+1F600 in process, a and U+E000 at the service. As the id above."),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true,
+                "The same sort over a key a comparison proves present; the comparison itself agrees, its literal lying below the surrogates. As the id above."),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false,
                 "The same order in a comparison, which a declared string pushes exactly: U+E000 < U+1F600 is true at the service and false in process. As the id above."),
             ("SELECT MAX(c.\"id\") FROM ordering AS c", false,

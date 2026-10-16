@@ -1279,11 +1279,16 @@ the distribution the gate is sized for.
   to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
   does, and the service by code point, so the two part where a character above U+FFFF meets one
   between U+E000 and U+FFFF — private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
-  Measured on the vnext-preview emulator, and witnessed four ways in `CosmosDifferentialTests`'
-  divergences: `ORDER BY c.id`, a sort over a declared string, a comparison between two declared
-  strings, and `MAX(c.id)` (`DESIGN.md` under *Ordering a sort key the way it reads*). Everything the
-  service orders strings for is exposed, the keyset page on `id` that chapter 9 recommends among them,
-  which is why declining is not the cheap answer it usually is here. Closing it is two pieces: a
+  Measured on the vnext-preview emulator, and witnessed in `CosmosDifferentialTests`' divergences:
+  `ORDER BY c.id`, a sort over a declared string, a comparison between two declared strings, and
+  `MAX(c.id)` (`DESIGN.md` under *Ordering a sort key the way it reads*). Everything the service orders
+  strings for is exposed, the keyset page on `id` that chapter 9 recommends among them, which is why
+  declining is not the cheap answer it usually is here. **The oracle widened the exposure, not its
+  kind:** a sort reads what the rows a filter kept prove (L1), so `WHERE s IS NOT NULL ORDER BY s`
+  pushes under Calcite's own placement, where only `NULLS FIRST` did, and a kind's string sorts at the
+  service as a declared one does; three more divergences record it, paged among them, where the order
+  chooses the rows. Kept rather than declined because the decline is the one already waiting on this
+  decision, in one place: the text exception of `IsReadAsStored`, which every one of these goes through. Closing it is two pieces: a
   `pattern` that keeps a path to one side of the line — an ASCII identifier, a UUID — read as a
   licence, the way `PreservesOrder` licenses a stored form; and string order declined everywhere no
   licence reaches, `id` included, unless the connection says its strings stay in the BMP. Measure

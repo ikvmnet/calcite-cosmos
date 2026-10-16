@@ -2957,6 +2957,8 @@ statements that could.
 **A declared string is then ordered by code point, which is SQL's order only below the surrogates.**
 With the reading settled, a sort over a declared string compares strings at the service — by code
 point, measured on the vnext-preview emulator, where Calcite compares UTF-16 code units as Java does.
+A string the rows' filter proves, a kind's branch or a list of literals, is ordered the same way, and so
+is a key the filter proves present under Calcite's own placement, which once reached only `NULLS FIRST`.
 The two part where a character above U+FFFF meets one between U+E000 and U+FFFF: the service put
 U+E000, U+FF21 and U+FFFD below U+1F600, and Calcite above it. The reading has nothing to do with it,
 and declining the declared sort would not cure it: `ORDER BY c.id`, a comparison pushed exactly between
