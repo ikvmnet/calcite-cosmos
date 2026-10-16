@@ -411,12 +411,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsKeyJoin(RexNode condition, IReadOnlyList<RexNode> p, IReadOnlyList<RexNode> q, RexNode? f, RexNode? g, TableScan scan, CosmosTable table, RexBuilder rexBuilder)
         {
-            if (CosmosImplementor.TryBindOutput(scan, out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(scan, out var fields, out var readings, out _) == false)
                 return false;
 
             var container = table.Container;
             var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), null, container);
-            var facts = container.Facts.Derive(null);
+            var facts = Either(f, g, fields, readings, container, rexBuilder);
             var equated = new List<RexNode>();
             var paths = new List<JsonDocumentPath>();
 
@@ -472,13 +472,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // Scoped by a predicate, the constraint holds among the documents it admits, and a join pairs
                 // a document of one side with one of the other — so both sides have to be proved inside it.
                 if (compiled.Filter is RexNode filter
-                    && (CosmosConstraintCompiler.Implies(rexBuilder, f, filter) == false || CosmosConstraintCompiler.Implies(rexBuilder, g, filter) == false))
+                    && (Proves(f, filter, fields, readings, container, rexBuilder) == false || Proves(g, filter, fields, readings, container, rexBuilder) == false))
                     continue;
 
                 return true;
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether every document a side reads satisfies a constraint's predicate: what the side's
+        /// filter and the declaration prove, or the declaration alone where the side has none. See
+        /// <see cref="CosmosFilterStatement.Proves"/>.
+        /// </summary>
+        static bool Proves(RexNode? side, RexNode predicate, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder) =>
+            predicate.isAlwaysTrue()
+            || (side is null
+                ? CosmosFilterStatement.Declares(predicate, fields, readings, container)
+                : CosmosFilterStatement.Of(side, fields, readings, container, rexBuilder).Proves(predicate));
+
+        /// <summary>
+        /// Returns what holds of every document either side reads: the declaration, and what both sides' filters
+        /// establish.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A pair is a document each side reads, and a key reads faithfully where it does in both. So the facts are
+        /// those of the two filters' disjunction, every row either keeps satisfying it: the oracle splits the
+        /// disjunction over its arms and keeps what both prove, so a form the left side's kind and the right side's
+        /// kind each declare is the key's, and a form only one declares is not. A side with no filter reads every
+        /// document, and leaves the declaration.
+        /// </para>
+        /// <para>
+        /// The unconditional facts were asked before, which could not tell two sides of one kind from a container of
+        /// many: a key whose form a discriminator states was no key, whatever both sides filtered on.
+        /// </para>
+        /// </remarks>
+        static JsonFactSet Either(RexNode? f, RexNode? g, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder)
+        {
+            if (f is null || g is null)
+                return CosmosOracle.For(container.Facts).Declared;
+
+            var either = f.equals(g) ? f : rexBuilder.makeCall(SqlStdOperatorTable.OR, f, g);
+            return CosmosFilterStatement.Of(either, fields, readings, container, rexBuilder).Kept;
         }
 
         /// <summary>
@@ -615,8 +652,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// canonical UUID spelling, so that the one value has one spelling.
         /// </para>
         /// <para>
-        /// The facts asked are the unconditional ones. A fact stated under a discriminator holds of the
-        /// documents one side proves it for and not necessarily of the documents the other side reads.
+        /// The facts asked are those of every document either side reads (see <see cref="Either"/>). A fact
+        /// stated under a discriminator holds of the documents one side proves it for and not necessarily of
+        /// the documents the other side reads, unless that side proves it too.
         /// </para>
         /// </remarks>
         static bool TryKeyPath(RexNode node, CosmosRexTranslator translator, JsonFactSet facts, out JsonDocumentPath? path)

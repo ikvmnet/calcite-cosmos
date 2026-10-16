@@ -249,6 +249,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// <see cref="Schema"/> with <c>kind</c> required and constant: every document is of kind <c>k</c>.
+        /// </summary>
+        static readonly string OneKind = $$"""
+            { "type": "object",
+              "required": ["kind"],
+              "properties": {
+                "type": { "type": "string" },
+                "kind": { "const": "k" },
+                "linkId": { "type": "integer" },
+                "code": { "type": "string" },
+                "guid": { "type": "string", "pattern": "{{Uuid}}" },
+                "ref": { "type": "string" } } }
+            """;
+
+        /// <summary>
+        /// A constraint's predicate is proved by the declaration as well as by a side's filter: where every
+        /// document is of kind <c>k</c>, every document either side reads is inside <c>WHERE kind = 'k'</c>.
+        /// </summary>
+        /// <remarks>
+        /// The oracle decides it, the predicate always true where the side's filter and the declaration hold.
+        /// Calcite's implication checker, which decided it before, reasoned over the two predicates alone and
+        /// knew nothing a declaration says — the control, over a container that does not declare the kind.
+        /// </remarks>
+        [Fact]
+        public void TheDeclarationProvesAConstraintsPredicate()
+        {
+            var declared = Plan(Views("INNER"), Container(schema: OneKind).WithConstraints(new[] { Unique("/guid", "/kind", "k") }));
+            Scans(declared).Should().Be(1, Text(declared));
+
+            var undeclared = Plan(Views("INNER"), Container().WithConstraints(new[] { Unique("/guid", "/kind", "k") }));
+            Scans(undeclared).Should().Be(2, Text(undeclared));
+        }
+
+        /// <summary>
+        /// A schema giving <c>guid</c> a canonical UUID form in documents of type <c>A</c> and none in those of type
+        /// <c>B</c>.
+        /// </summary>
+        static readonly string PerType = $$"""
+            { "type": "object",
+              "required": ["type"],
+              "properties": { "type": { "enum": ["A", "B"] }, "code": { "type": "string" }, "ref": { "type": "string" } },
+              "oneOf": [
+                { "properties": { "type": { "const": "A" }, "guid": { "type": "string", "pattern": "{{Uuid}}" } } },
+                { "properties": { "type": { "const": "B" }, "guid": { "type": "string" } } } ] }
+            """;
+
+        /// <summary>
+        /// A key's form one kind declares is the key's where both sides read that kind, and not where one side
+        /// reads another.
+        /// </summary>
+        /// <remarks>
+        /// A pair is a document each side reads, so the facts a key is read by are those of every document either
+        /// side keeps: the oracle's reading of the two filters' disjunction, which keeps what both prove. Two views
+        /// of type <c>A</c> read one form of the UUID; a view of type <c>B</c> may read <c>ABC…</c> where the
+        /// other reads <c>abc…</c>, one value the cast makes of two documents. Read off the declaration alone, as
+        /// it was, neither merged.
+        /// </remarks>
+        [Fact]
+        public void AFormBothSidesKindsDeclareMakesAKey()
+        {
+            var container = Container(schema: PerType).WithConstraints(new[] { Unique("/guid") });
+
+            var same = Plan(Views("INNER"), container);
+            Scans(same).Should().Be(1, Text(same));
+
+            var other = Plan(Views("LEFT", right: "'B'"), container);
+            Scans(other).Should().Be(2, Text(other));
+        }
+
+        /// <summary>
         /// A key may be an expression: two codes differing in case are one under
         /// <c>UNIQUE (LOWER(code))</c>, so a join on the code itself — whose equal values have equal
         /// lowercase — pairs a document only with itself.

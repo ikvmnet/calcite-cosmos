@@ -26,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 {
 
     /// <summary>
-    /// Compiles a constraint's SQL against a container, and answers what a compiled one licenses.
+    /// Compiles a constraint's SQL against a container.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -157,140 +157,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             {
                 throw new ArgumentException($"'{unique.Text}' does not compile against container '{table.Container.Name}': {e.Message}", e);
             }
-        }
-
-        /// <summary>
-        /// Determines whether a predicate proves another, over a container's documents.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Calcite's <see cref="RexImplicationChecker"/> decides it — the checker materialized-view matching
-        /// uses, which answers no where it cannot tell. It reasons about comparisons of columns, and a
-        /// predicate over a document compares accessor calls, so each distinct term is first stood for by a
-        /// column of its own, the same column wherever the same term appears in either predicate. That is
-        /// sound because a deterministic term is one function of the document: two equal terms are one value.
-        /// </para>
-        /// <para>
-        /// A premise of <c>null</c> is every document, which proves only what is always true.
-        /// </para>
-        /// </remarks>
-        /// <param name="rexBuilder">The builder.</param>
-        /// <param name="premise">What is known, or <c>null</c>.</param>
-        /// <param name="conclusion">What is to be proved.</param>
-        /// <returns><c>true</c> where every document satisfying the premise satisfies the conclusion.</returns>
-        public static bool Implies(RexBuilder rexBuilder, RexNode? premise, RexNode conclusion)
-        {
-            if (conclusion.isAlwaysTrue())
-                return true;
-
-            if (premise is null)
-                return false;
-
-            premise = RexUtil.expandSearch(rexBuilder, null, premise);
-            conclusion = RexUtil.expandSearch(rexBuilder, null, conclusion);
-
-            // Every conjunct of the conclusion already among the premise's is the common case — the
-            // view writes the very predicate the constraint names — and needs no checker.
-            var known = new HashSet<string>(StringComparer.Ordinal);
-            foreach (RexNode conjunct in RelOptUtil.conjunctions(premise).toArray())
-                known.Add(conjunct.ToString());
-
-            var all = true;
-            foreach (RexNode conjunct in RelOptUtil.conjunctions(conclusion).toArray())
-                all &= known.Contains(conjunct.ToString());
-
-            if (all)
-                return true;
-
-            var terms = new Abstract(rexBuilder);
-            var p = (RexNode)premise.accept(terms);
-            var c = (RexNode)conclusion.accept(terms);
-
-            if (terms.Failed)
-                return false;
-
-            try
-            {
-                return new RexImplicationChecker(rexBuilder, RexUtil.EXECUTOR, terms.RowType()).implies(p, c);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Replaces each maximal term under a comparison by a column standing for it.
-        /// </summary>
-        sealed class Abstract : RexShuttle
-        {
-
-            readonly RexBuilder _rexBuilder;
-            readonly Dictionary<string, RexInputRef> _columns = new(StringComparer.Ordinal);
-            readonly List<RelDataType> _types = new();
-
-            public Abstract(RexBuilder rexBuilder)
-            {
-                _rexBuilder = rexBuilder;
-            }
-
-            public bool Failed { get; private set; }
-
-            public RelDataType RowType()
-            {
-                var builder = _rexBuilder.getTypeFactory().builder();
-                for (var i = 0; i < _types.Count; i++)
-                    builder.add("t" + i, _types[i]);
-
-                return builder.build();
-            }
-
-            public override RexNode visitCall(RexCall call)
-            {
-                var kind = call.getKind();
-
-                if (kind == SqlKind.AND || kind == SqlKind.OR || kind == SqlKind.NOT)
-                    return base.visitCall(call);
-
-                if (kind == SqlKind.EQUALS || kind == SqlKind.NOT_EQUALS || kind == SqlKind.LESS_THAN || kind == SqlKind.LESS_THAN_OR_EQUAL
-                    || kind == SqlKind.GREATER_THAN || kind == SqlKind.GREATER_THAN_OR_EQUAL || kind == SqlKind.IS_NULL || kind == SqlKind.IS_NOT_NULL)
-                {
-                    var operands = new java.util.ArrayList();
-                    for (var i = 0; i < call.getOperands().size(); i++)
-                        operands.add(Term((RexNode)call.getOperands().get(i)));
-
-                    return call.clone(call.getType(), operands);
-                }
-
-                // Anything else as a whole condition is a term that is true or not, which the checker
-                // cannot reason about but can still match against itself.
-                return Term(call);
-            }
-
-            public override RexNode visitInputRef(RexInputRef inputRef) => Term(inputRef);
-
-            RexNode Term(RexNode node)
-            {
-                if (node is RexLiteral)
-                    return node;
-
-                if (RexUtil.isDeterministic(node) == false)
-                {
-                    Failed = true;
-                    return node;
-                }
-
-                var digest = node.ToString() + ":" + node.getType().getFullTypeString();
-                if (_columns.TryGetValue(digest, out var column) == false)
-                {
-                    column = _rexBuilder.makeInputRef(node.getType(), _types.Count);
-                    _types.Add(node.getType());
-                    _columns[digest] = column;
-                }
-
-                return column;
-            }
-
         }
 
     }

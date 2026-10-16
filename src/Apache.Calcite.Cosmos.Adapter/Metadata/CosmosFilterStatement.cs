@@ -39,6 +39,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>a clause after the filter: a projection, a sort, a grouping (<see cref="After"/>,
     /// <see cref="CosmosRowFacts"/>)</term><description>the last stratum: every admitted conjunct, which the service applies
     /// before the clause reads a row</description></item>
+    /// <item><term>what the rows the filter keeps satisfy, for a reader that rewrites nothing: a constraint's scope, a
+    /// self-join's key (<see cref="Proves"/>, <see cref="Kept"/>)</term><description>every conjunct</description></item>
     /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
     /// declaration</description></item>
     /// </list>
@@ -306,9 +308,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Gets what holds of every row the filter keeps, every conjunct assumed: what only a strengthening may read.
+        /// Gets what holds of every row the filter keeps, every conjunct assumed: what a strengthening may read, and a
+        /// reader of those rows that rewrites nothing.
         /// </summary>
         public JsonFactSet Kept => Plain.Facts(OracleLicence.Kept);
+
+        /// <summary>
+        /// Determines whether every row the filter keeps satisfies a predicate: whether, where every conjunct and the
+        /// declaration hold, it always does.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What a self-join asks of a constraint scoped by a predicate: the constraint holds among the documents its
+        /// predicate admits, and a pair of documents is inside it only where each side's filter proves the predicate of
+        /// the document it reads. Nothing is rewritten, so the conjuncts' own facts are among those asked: the question
+        /// is about the rows the filter keeps (<see cref="OracleLicence.Kept"/>).
+        /// </para>
+        /// <para>
+        /// Read through the filter's own loading, so that a term the two share is one term, whether the oracle can take
+        /// it apart or not: a filter proves a conjunct it holds before any run, <c>UPPER(x) = 'A'</c> among them. The
+        /// implication checker this replaced reached that by standing a column for each term, and decided
+        /// <c>type = 'A'</c> proves <c>type IN ('A', 'B')</c> by Calcite's reading of a comparison of columns; the
+        /// oracle decides it by what <c>type</c> may hold, which reaches the declaration too.
+        /// </para>
+        /// </remarks>
+        /// <param name="predicate">The predicate, over the filter's binding.</param>
+        /// <returns><c>true</c> where every row the filter keeps satisfies it.</returns>
+        public bool Proves(RexNode predicate) =>
+            Plain.Judge(_loading.Read(predicate ?? throw new ArgumentNullException(nameof(predicate))), OracleLicence.Kept).AlwaysTrue;
+
+        /// <summary>
+        /// Determines whether every document the container keeps satisfies a predicate: what a side with no filter
+        /// proves, which is what the declaration does (L0).
+        /// </summary>
+        /// <param name="predicate">The predicate, over the binding.</param>
+        /// <param name="fields">The binding.</param>
+        /// <param name="readings">How each field is read.</param>
+        /// <param name="container">The container.</param>
+        /// <returns><c>true</c> where every document satisfies it.</returns>
+        public static bool Declares(RexNode predicate, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container)
+        {
+            var loading = new CosmosPredicateLoader.Loading(fields, readings ?? Array.Empty<CosmosReading>(), CosmosImplementor.DefaultRootAlias);
+            var nothing = loading.Statement(Array.Empty<RexNode>());
+            return CosmosOracle.For(container.Facts).Admit(nothing).Judge(loading.Read(predicate), OracleLicence.Residual).AlwaysTrue;
+        }
 
         // ── Deletion, every sibling, and lowering, every sibling kept (L3) ───────────────────────────────────────────
 
