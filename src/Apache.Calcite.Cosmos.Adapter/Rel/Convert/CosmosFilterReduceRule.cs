@@ -17,7 +17,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// may justify, and <c>TRUE</c> where every conjunct is one the rest and the declaration imply, deleted one at a
     /// time. A converted filter carrying <c>FALSE</c> is a round trip for no rows, and one carrying <c>TRUE</c> a
     /// <c>WHERE</c> that restricts nothing. <c>CoreRules.FILTER_REDUCE_EXPRESSIONS</c>, which makes an always-false
-    /// filter an empty <c>Values</c>, matches the logical filter, and the constant exists only after the rewrite.
+    /// filter an empty <c>Values</c>, matches the logical filter, and the constant exists only after the rewrite. A
+    /// condition Calcite itself reads as never true is reduced too: <c>(x IS NULL) IS NULL</c> tests for null what its
+    /// type says never is, and is the constant whatever the declaration.
     /// </para>
     /// <para>
     /// <b>Only a logical filter, over this convention's own container.</b> A converted filter's condition has been
@@ -66,7 +68,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosFilterSplitRule.FindTable(filter.getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
-            return Rewritten(filter) is RexLiteral literal && (literal.isAlwaysFalse() || literal.isAlwaysTrue());
+            return Rewritten(filter) is RexNode rewritten && (KeepsNothing(rewritten) || KeepsEverything(rewritten));
         }
 
         /// <inheritdoc />
@@ -78,17 +80,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             {
                 // No document satisfies the filter, so the relation is the empty one, and no request at all is what
                 // answers it: a host with a rule for an empty Values plans none.
-                case RexLiteral literal when literal.isAlwaysFalse():
+                case RexNode rewritten when KeepsNothing(rewritten):
                     call.transformTo(LogicalValues.createEmpty(filter.getCluster(), filter.getRowType()));
                     break;
 
                 // Every conjunct is one the rest of the filter and the declaration make true of every document: the
                 // filter is its input, and the statement needs no WHERE.
-                case RexLiteral literal when literal.isAlwaysTrue():
+                case RexNode rewritten when KeepsEverything(rewritten):
                     call.transformTo(filter.getInput());
                     break;
             }
         }
+
+        /// <summary>
+        /// Determines whether a rewritten condition keeps no row: the oracle's <c>FALSE</c>, or a condition Calcite reads
+        /// as never true on its own — <c>(x IS NULL) IS NULL</c>, a null test of what its type says is never null, which
+        /// keeps nothing whatever the declaration says.
+        /// </summary>
+        static bool KeepsNothing(RexNode rewritten) => rewritten.isAlwaysFalse();
+
+        /// <summary>
+        /// Determines whether a rewritten condition keeps every row: every conjunct deleted, which the rewrite answers
+        /// with <c>TRUE</c>.
+        /// </summary>
+        static bool KeepsEverything(RexNode rewritten) => rewritten is RexLiteral literal && literal.isAlwaysTrue();
 
         /// <summary>
         /// The filter's condition as the filter rule pushes it, rewritten under this convention's declaration;

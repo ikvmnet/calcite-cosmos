@@ -73,6 +73,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A filter Calcite reads as never true, a null test of a predicate that is never null, keeps nothing over a
+        /// container that declares nothing too, and reads it not at all: it is reduced as the oracle's contradiction is.
+        /// </summary>
+        [Theory]
+        [InlineData("(c.\"$.category\" IS NULL) IS NULL")]
+        [InlineData("(c.\"id\" IN ('huge', 'b')) IS NULL")]
+        [InlineData("(NOT (c.\"id\" = 'BIKES')) IS NULL")]
+        public void AFilterCalciteReadsAsNeverTrueKeepsNothing(string where)
+        {
+            var products = new CosmosContainerMetadata("products", new[] { "/category" });
+            var planned = Planning.CosmosPushdownProbeTests.Plan($"SELECT c.\"id\" FROM products AS c WHERE {where}", products);
+
+            PlanText(planned).Should().Contain(KeepsNothing, PlanText(planned));
+        }
+
+        /// <summary>
         /// And the other way round: a filter over the declared container plans by its declaration beside one that declares
         /// nothing, the empty relation where the declaration admits no such document.
         /// </summary>
