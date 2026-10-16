@@ -122,6 +122,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             ("a sort over a distinct the filter proves present", "ordering", $"""SELECT DISTINCT {T} FROM ordering AS c WHERE {T} IS NOT NULL ORDER BY 1""", true),
         ];
 
+        const string Category = """JSON_VALUE(c."DOC", '$.category')""";
+
+        /// <summary>
+        /// The probes of routing and of the operations that apply no predicate: what a statement pins, over the kinds,
+        /// partitioned on <c>kind</c>, and over a container partitioned on a <c>category</c> it declares nothing of,
+        /// whose partitions are <c>a</c>, <c>b</c> and the string <c>30</c> — the differential suite's <c>typed</c>.
+        /// </summary>
+        /// <remarks>
+        /// Routing changes no row, and a wrong one loses rows: a stored <c>30</c> and a stored <c>"30"</c> are two
+        /// partitions and one text. The ids are the differential's documents, so that a read reaches one.
+        /// </remarks>
+        internal static readonly (string Name, string Container, string Sql, bool Ordered)[] RoutingProbes =
+        [
+            ("a point read", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} = 'a' AND c."id" = '1'""", false),
+            ("a point read of a document in another partition", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} = 'a' AND c."id" = '4'""", false),
+            ("a point read beside a conjunct the pins do not make true", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} = 'a' AND c."id" = '1' AND {Label} = '30'""", false),
+            ("a batch of point reads", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} = 'a' AND c."id" IN ('1', '2', '4')""", false),
+            ("routing on a key the filter pins", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} = 'b' AND {Label} = '30'""", false),
+            ("routing on a key the declaration leaves one value", "kinds", $"""SELECT c."id" FROM kinds AS c WHERE {Kind} <> 'b' AND {Kind} <> 'c'""", false),
+            ("routing on text only a string renders as", "typed", $"""SELECT c."id" FROM typed AS c WHERE {Category} = 'a'""", false),
+            ("routing on text a number renders as", "typed", $"""SELECT c."id" FROM typed AS c WHERE {Category} = '30'""", false),
+            ("a point read on text a number renders as", "typed", $"""SELECT c."id" FROM typed AS c WHERE {Category} = '30' AND c."id" = '8'""", false),
+            ("a point read on text only a string renders as", "typed", $"""SELECT c."id" FROM typed AS c WHERE {Category} = 'a' AND c."id" = '1'""", false),
+        ];
+
         [Fact(Explicit = true)]
         public void WriteWhatEachStatementPushes()
         {
@@ -173,6 +198,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 }
             }
 
+            var typed = new CosmosContainerMetadata("typed", new[] { "/category" });
+
+            foreach (var (name, container, sql, _) in RoutingProbes)
+            {
+                output.Append("## routing ").AppendLine(name);
+                try
+                {
+                    output.AppendLine(Describe(Plan(sql, container == "kinds" ? kinds : typed)));
+                }
+                catch (Exception e)
+                {
+                    output.AppendLine("  fails: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
             File.WriteAllText(Environment.GetEnvironmentVariable("COSMOS_PROBE_OUT") ?? Path.Combine(Path.GetTempPath(), "cosmos-probes.txt"), output.ToString());
         }
 
@@ -193,6 +233,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 {
                     var query = PlannerHarness.Implement(cosmos, table.Container);
                     text.Append("  sends: ").AppendLine(query.Sql);
+
+                    // Where it is sent, which changes no row and is what a key is for: the partition, a point read's id,
+                    // a batch's ids. Each value with its type, a stored 30 and a stored "30" being two partitions.
+                    if (query.PartitionKeyValues is { } key)
+                        text.Append("  routes: ").Append(string.Join(", ", key.Select(v => v is null ? "null" : v.GetType().Name + " " + v)))
+                            .AppendLine(query.PartitionKeyIsComplete ? "" : " (a prefix)");
+                    if (query.PointReadId is { } id)
+                        text.Append("  reads: ").AppendLine(id);
+                    if (query.PointReadIds is { Count: > 0 } ids)
+                        text.Append("  reads many: ").AppendLine(string.Join(", ", ids));
                 }
                 catch (Exception e)
                 {

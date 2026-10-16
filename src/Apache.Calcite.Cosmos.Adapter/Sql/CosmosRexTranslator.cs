@@ -1849,7 +1849,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// The shape without the literal: what <see cref="TryTextCastOperand"/> admits once the text is
         /// right, what <see cref="Rel.Convert.CosmosFilterSplitRule"/> weakens when it is not, and
-        /// what the fact and partition-key extractors read a value through.
+        /// what the oracle's loader reads a value through (<see cref="Metadata.CosmosPredicateLoader"/>),
+        /// and so every fact a filter establishes and every key it pins.
         /// </para>
         /// <para>
         /// <b>Only an undecorated <c>VARCHAR</c></b>, which is what <see cref="TryRenderedTextOperand"/>

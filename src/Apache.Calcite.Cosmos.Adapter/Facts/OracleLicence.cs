@@ -25,7 +25,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>Whether a conjunct is redundant: from every sibling, never from itself.</summary>
         public static OracleLicence Redundant(int conjunct) => new(OracleQuestion.Redundant, conjunct, null);
 
-        /// <summary>What holds of every row the filter keeps: every conjunct, for a strengthening.</summary>
+        /// <summary>What holds of every row the filter keeps: every conjunct, for a strengthening and for routing.</summary>
         public static OracleLicence Kept { get; } = new(OracleQuestion.Kept, -1, null);
 
         /// <summary>
@@ -53,9 +53,6 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>A residual filter: what holds of every document.</summary>
         public static OracleLicence Residual { get; } = new(OracleQuestion.Residual, -1, null);
-
-        /// <summary>Routing: what holds of every document.</summary>
-        public static OracleLicence Route { get; } = new(OracleQuestion.Route, -1, null);
 
     }
 

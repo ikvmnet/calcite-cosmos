@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var pinned = new List<RexNode>();
             var residual = new List<RexNode>();
 
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (pinned, residual);
 
             var conjuncts = RelOptUtil.conjunctions(filter.getCondition());
@@ -133,7 +133,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             {
                 var conjunct = (RexNode)conjuncts.get(i);
 
-                if (Metadata.CosmosPartitionKeyExtractor.IsPointReadConjunct(conjunct, fields, container, CosmosImplementor.DefaultRootAlias))
+                if (Metadata.CosmosPartitionKeyExtractor.IsPointReadConjunct(conjunct, fields, readings, container, CosmosImplementor.DefaultRootAlias))
                     pinned.Add(conjunct);
                 else
                     residual.Add(conjunct);
@@ -153,13 +153,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         static bool IsCompletePointRead(Filter filter, List<RexNode> pinned, Metadata.CosmosContainerMetadata container)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out _) == false)
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return false;
 
             var composed = Compose(filter.getCluster().getRexBuilder(), pinned);
 
             return Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(
-                composed, fields, container, CosmosImplementor.DefaultRootAlias, out _, out _);
+                composed, fields, readings, container, CosmosImplementor.DefaultRootAlias, out _, out _);
         }
 
         /// <summary>

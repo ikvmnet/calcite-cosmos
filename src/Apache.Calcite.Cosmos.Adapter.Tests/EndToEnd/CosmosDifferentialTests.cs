@@ -138,12 +138,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// required and one of the three — <see cref="Planning.CosmosPushdownProbeTests.KindsSchema"/>.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// What a filter's siblings prove, rather than the declaration alone, is what the predicate oracle decides that
         /// the planner before it did not: an equality over <c>label</c> exact beside <c>kind = 'a'</c>, a membership
         /// covering the required enum deleted, a kind the enum has not kept nothing, a UUID lowered under each kind a
         /// disjunction spells. Every document keeps the declaration, as <c>declared</c>'s do.
+        /// </para>
+        /// <para>
+        /// Partitioned on <c>kind</c>, the one container that is, so that every statement over it is routed on what its
+        /// filter and the declaration say of the key: a partition skipped that holds a row the statement keeps is a row
+        /// lost, which the comparison with Calcite sees.
+        /// </para>
         /// </remarks>
-        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/category" })
+        static readonly CosmosContainerMetadata Kinds = new CosmosContainerMetadata("kinds", new[] { "/kind" })
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.KindsSchema)!));
 
         /// <summary>
@@ -286,7 +293,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _typedContainer = await Seed(database, "typed", TypedDocuments, cts.Token);
                 _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
                 _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
-                _kindsContainer = await Seed(database, "kinds", KindsDocuments, cts.Token);
+                _kindsContainer = await Seed(database, "kinds", KindsDocuments, cts.Token, "kind");
 
                 _client = client;
             }
@@ -306,17 +313,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Recreates a container and writes the given documents into it.
         /// </summary>
-        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken)
+        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category")
         {
             try { await database.GetContainer(name).DeleteContainerAsync(cancellationToken: cancellationToken); } catch (CosmosException) { }
-            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/category"), cancellationToken: cancellationToken)).Container;
+            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/" + key), cancellationToken: cancellationToken)).Container;
 
             foreach (var json in documents)
             {
                 using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
                 using var document = System.Text.Json.JsonDocument.Parse(json);
 
-                var partitionKey = document.RootElement.TryGetProperty("category", out var category)
+                var partitionKey = document.RootElement.TryGetProperty(key, out var category)
                     ? category.ValueKind == System.Text.Json.JsonValueKind.Null ? PartitionKey.Null : new PartitionKey(category.GetString())
                     : PartitionKey.None;
 
@@ -1525,6 +1532,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // proves, a sort of a key it proves present, a grouping by a rendering it proves a string; each beside a
             // control that leans on nothing the filter proves.
             .. Planning.CosmosPushdownProbeTests.ClauseProbes.Select(p => (p.Sql, p.Ordered)),
+            // And where a statement is sent: a point read, a batch of them, a partition a filter or the declaration
+            // leaves one value, and a key's text that a number also renders as, which pins nothing.
+            .. Planning.CosmosPushdownProbeTests.RoutingProbes.Select(p => (p.Sql, p.Ordered)),
         ];
 
         /// <summary>

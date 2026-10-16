@@ -362,12 +362,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var rewritten = CosmosFactRewriter.Rewrite(UuidEquality(), _fields, Container(Unconditional), "c", _rex);
 
-            CosmosPartitionKeyExtractor.TryExtract(rewritten, _fields, Container(Unconditional), "c", out var values)
+            CosmosPartitionKeyExtractor.TryExtract(rewritten, _fields, null, Container(Unconditional), "c", out var values)
                 .Should().BeTrue("a plain string equality on the partition key path is what pins a partition");
 
             values.Should().ContainSingle().Which.Should().Be(Canonical);
 
-            CosmosPartitionKeyExtractor.TryExtract(UuidEquality(), _fields, Container(Unconditional), "c", out _)
+            CosmosPartitionKeyExtractor.TryExtract(UuidEquality(), _fields, null, Container(Unconditional), "c", out _)
                 .Should().BeFalse("and the cast form pins nothing, which is the state of things today");
         }
 

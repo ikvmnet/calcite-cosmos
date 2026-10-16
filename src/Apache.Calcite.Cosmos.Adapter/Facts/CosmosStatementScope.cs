@@ -26,7 +26,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item><term><see cref="OracleQuestion.DeleteConjunct"/>, <see cref="OracleQuestion.Redundant"/></term><description>every
     /// conjunct but this one, admitted or not: the rows the rest of the filter keeps</description></item>
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
-    /// filter keeps, which only a strengthening may read</description></item>
+    /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
@@ -34,8 +34,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item><term><see cref="OracleQuestion.Select"/>, <see cref="OracleQuestion.OrderBy"/>,
     /// <see cref="OracleQuestion.GroupBy"/></term><description>the last stratum: every admitted conjunct, applied before
     /// the clause reads a row</description></item>
-    /// <item><term><see cref="OracleQuestion.Residual"/>, <see cref="OracleQuestion.Route"/></term><description>the
-    /// declaration: what holds of every document</description></item>
+    /// <item><term><see cref="OracleQuestion.Residual"/></term><description>the declaration: what holds of every
+    /// document</description></item>
     /// </list>
     /// <para>
     /// <b>Thread-safe.</b> The contexts are frozen and read freely; a context made for a question is made under the
@@ -197,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 OracleQuestion.Kept =>
                     all.ToArray(),
                 OracleQuestion.PointRead =>
-                    all.Where(i => Pins(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
+                    all.Where(i => IsPin(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
                 _ => Array.Empty<int>(),
             };
         }
@@ -321,7 +321,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _terms.Child(_terms.Root, Statement.Conjuncts);
 
                 case OracleQuestion.PointRead:
-                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => Pins(c, licence.Pins!)));
+                    return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => IsPin(c, licence.Pins!)));
 
                 case OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy:
                     return Final;
@@ -335,7 +335,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Determines whether a conjunct pins one of a point read's keys: an equality of what the path holds, or reads as,
         /// with one literal.
         /// </summary>
-        static bool Pins(SqlPredicate conjunct, IReadOnlyList<JsonDocumentPath> pins) => conjunct switch
+        /// <remarks>
+        /// Which conjuncts a pins-only scope assumes, and what <c>CosmosPartitionKeyExtractor</c> splits a filter by: one
+        /// recogniser, so a conjunct the split rule calls a pin is one the point read's scope assumes. What value it pins,
+        /// if any, is the scope's to say — an equality over text a number renders as pins nothing.
+        /// </remarks>
+        internal static bool IsPin(SqlPredicate conjunct, IReadOnlyList<JsonDocumentPath> pins) => conjunct switch
         {
             SqlPredicate.Compare { Op: SqlPredicate.Compare.Equal, Left: var value, Right: SqlValue.Literal } =>
                 value is not SqlValue.Cast && value.PathRead is JsonDocumentPath p && pins.Contains(p),

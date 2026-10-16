@@ -18,7 +18,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// What holds of every row the filter keeps, which a strengthening may read — the filter made <c>FALSE</c> where
-        /// nothing satisfies it: every conjunct, admitted or not.
+        /// nothing satisfies it, a statement that applies it routed to the partitions that can hold such a row, and
+        /// counted as one document where it pins one: every conjunct, admitted or not.
         /// </summary>
         Kept,
 
@@ -42,9 +43,6 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>A residual filter, evaluated in process: what holds of every document (L0).</summary>
         Residual,
-
-        /// <summary>Routing to partitions: what holds of every document (L0).</summary>
-        Route,
 
     }
 

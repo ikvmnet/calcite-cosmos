@@ -175,7 +175,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.AssumedIn(OracleLicence.OrderBy).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.GroupBy).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.Residual).Should().BeEmpty();
-            scope.AssumedIn(OracleLicence.Route).Should().BeEmpty();
 
             // And the facts each scope holds are those of the conjuncts it names.
             Knows(scope.Facts(OracleLicence.RenderConjunct(1)), Kind, Value("a")).Should().BeFalse();
