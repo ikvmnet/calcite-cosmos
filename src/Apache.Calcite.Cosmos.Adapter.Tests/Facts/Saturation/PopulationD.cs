@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var given = Enumerable.Range(0, 1 + random.Next(2)).Select(_ => questions[random.Next(questions.Length)]).ToArray();
                 var truth = oracle.Admit(new PredicateStatement(given)).Decide(y, OracleLicence.Kept);
                 var keeping = documents.Where(d => given.All(x => IrEval.Truth(x, d, world) == Truths.True)).ToArray();
-                check.Decided($"{y} given {string.Join(" and ", given)}", truth, y, keeping);
+                check.Decided($"{y} given {string.Join(" and ", given.AsEnumerable())}", truth, y, keeping);
             }
 
             report.Elapsed = clock.Elapsed;
