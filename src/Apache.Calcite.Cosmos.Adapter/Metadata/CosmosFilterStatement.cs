@@ -36,9 +36,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>the conjuncts beneath and
     /// those pushed beside it, and the declaration</description></item>
-    /// <item><term>a clause after the filter: a projection, a sort, a grouping (<see cref="After"/>,
+    /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
     /// <see cref="CosmosRowFacts"/>)</term><description>the last stratum: every admitted conjunct, which the service applies
-    /// before the clause reads a row</description></item>
+    /// before the clause reads a row, or beside the key's restriction</description></item>
     /// <item><term>what the rows the filter keeps satisfy, for a reader that rewrites nothing: a constraint's scope, a
     /// self-join's key (<see cref="Proves"/>, <see cref="Kept"/>)</term><description>every conjunct</description></item>
     /// <item><term>a reader that names no filter: routing, a key (<see cref="CosmosOracle.Declared"/>)</term><description>the
@@ -286,12 +286,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Returns what holds of every row the filter's admitted conjuncts keep, for a clause the service applies after
         /// them: the last stratum.
         /// </summary>
-        /// <param name="licence">The clause asking: a projection, a sort or a grouping.</param>
+        /// <param name="licence">The clause asking: a projection, a sort, a grouping or a key.</param>
         /// <returns>The facts.</returns>
         public JsonFactSet After(OracleLicence licence) =>
-            licence.Question is OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy
+            licence.Question is OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key
                 ? Strata.Facts(licence)
-                : throw new ArgumentException("Only a projection, a sort or a grouping reads the rows a filter kept.", nameof(licence));
+                : throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
         // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
 

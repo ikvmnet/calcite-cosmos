@@ -14,7 +14,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
     /// <summary>
     /// What the rows a relation yields are known to satisfy: the last stratum of every filter they have passed, which is
-    /// what a projection, a sort and a grouping over them may lean on (L1).
+    /// what a projection, a sort and a grouping over them may lean on, and a key a lookup restricts them by (L1).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -65,26 +65,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// of the clause rather than of its input, the answer is the first one, so the node is built under the facts it
         /// was accepted under.
         /// </remarks>
-        /// <param name="clause">The projection, sort or grouping, whose one input is what it reads.</param>
+        /// <param name="clause">The projection, sort or grouping, or the join whose key restricts a side.</param>
         /// <param name="container">The container its input reads, or <c>null</c>.</param>
         /// <param name="licence">The clause's licence, as <see cref="Of"/> takes it.</param>
+        /// <param name="input">Which of the clause's inputs it reads: its one input, or the side a join restricts.</param>
         /// <returns>The facts.</returns>
-        public static JsonFactSet For(RelNode clause, CosmosContainerMetadata? container, OracleLicence licence) =>
-            Decided.GetValue(clause ?? throw new ArgumentNullException(nameof(clause)), c => Of(c.getInput(0), container, licence));
+        public static JsonFactSet For(RelNode clause, CosmosContainerMetadata? container, OracleLicence licence, int input = 0) =>
+            Decided.GetValue(clause ?? throw new ArgumentNullException(nameof(clause)), c => Of(c.getInput(input), container, licence));
 
         /// <summary>
         /// Returns what holds of every row a relation yields, for a clause after it.
         /// </summary>
         /// <param name="input">The relation the clause reads: its input, which may be an equivalence set.</param>
         /// <param name="container">The container the relation reads, or <c>null</c>, which knows nothing.</param>
-        /// <param name="licence">The clause asking: <see cref="OracleLicence.Select"/>, <see cref="OracleLicence.OrderBy"/>
-        /// or <see cref="OracleLicence.GroupBy"/>.</param>
+        /// <param name="licence">The clause asking: <see cref="OracleLicence.Select"/>, <see cref="OracleLicence.OrderBy"/>,
+        /// <see cref="OracleLicence.GroupBy"/> or <see cref="OracleLicence.Key"/>.</param>
         /// <returns>The facts.</returns>
         /// <exception cref="ArgumentException"><paramref name="licence"/> is not a clause after a filter.</exception>
         public static JsonFactSet Of(RelNode? input, CosmosContainerMetadata? container, OracleLicence licence)
         {
-            if (licence.Question is not (OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy))
-                throw new ArgumentException("Only a projection, a sort or a grouping reads the rows a filter kept.", nameof(licence));
+            if (licence.Question is not (OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key))
+                throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
             if (container is null)
                 return JsonFactSet.Empty;

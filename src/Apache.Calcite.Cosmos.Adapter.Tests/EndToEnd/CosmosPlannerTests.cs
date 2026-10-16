@@ -1275,6 +1275,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             act.Should().Throw<Exception>();
         }
 
+        /// <remarks>
+        /// <para>
+        /// A filter that confines the key to text only a string renders as says what the declaration
+        /// would have: every row the sort reads holds a string there, so the service's order is SQL's,
+        /// and holds one at all, so there is no null to place. The sort reads what the filter beneath
+        /// establishes (L1), and the membership reaches the service exactly — unambiguous text matches a
+        /// stored string and nothing else.
+        /// </para>
+        /// <para>
+        /// It pushed once before, before the sort asked how its key was read, and stayed in process
+        /// while the sort read the declaration alone. <c>CosmosDifferentialTests</c> holds it to Calcite
+        /// over products.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AFilterConfiningAKeyToStringsUnlocksItsSort()
+        {
+            var query = Query(PlanToCosmos("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IN ('Sprint', 'Marathon', 'Slipper') ORDER BY JSON_VALUE(c.\"DOC\", '$.name')"));
+
+            query.Sql.Should().EndWith("ORDER BY c.name ASC");
+        }
+
         // ── Binding through a projection ────────────────────────
 
         /// <remarks>

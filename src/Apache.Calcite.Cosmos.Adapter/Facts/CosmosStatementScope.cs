@@ -32,8 +32,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
     /// other: a point read applies no predicate</description></item>
     /// <item><term><see cref="OracleQuestion.Select"/>, <see cref="OracleQuestion.OrderBy"/>,
-    /// <see cref="OracleQuestion.GroupBy"/></term><description>the last stratum: every admitted conjunct, applied before
-    /// the clause reads a row</description></item>
+    /// <see cref="OracleQuestion.GroupBy"/>, <see cref="OracleQuestion.Key"/></term><description>the last stratum: every
+    /// admitted conjunct, applied before the clause reads a row or beside the restriction a key writes</description></item>
     /// <item><term><see cref="OracleQuestion.Residual"/></term><description>the declaration: what holds of every
     /// document</description></item>
     /// </list>
@@ -190,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 OracleQuestion.RenderConjunct when _round[Check(licence.Conjunct)] > 0 =>
                     all.Where(i => _round[i] > 0 && _round[i] < _round[licence.Conjunct]).ToArray(),
-                OracleQuestion.RenderConjunct or OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy =>
+                OracleQuestion.RenderConjunct or OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key =>
                     all.Where(i => _round[i] > 0 && Chain.Count > _round[i] && Chain[_round[i]].Complete).ToArray(),
                 OracleQuestion.DeleteConjunct or OracleQuestion.Redundant or OracleQuestion.Arm =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
@@ -323,7 +323,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 case OracleQuestion.PointRead:
                     return _terms.Child(_terms.Root, Statement.Conjuncts.Where(c => IsPin(c, licence.Pins!)));
 
-                case OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy:
+                case OracleQuestion.Select or OracleQuestion.OrderBy or OracleQuestion.GroupBy or OracleQuestion.Key:
                     return Final;
 
                 default:

@@ -51,6 +51,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>A grouping, over the rows the pushed filter kept.</summary>
         public static OracleLicence GroupBy { get; } = new(OracleQuestion.GroupBy, -1, null);
 
+        /// <summary>A key a join restricts the rows the pushed filter kept by.</summary>
+        public static OracleLicence Key { get; } = new(OracleQuestion.Key, -1, null);
+
         /// <summary>A residual filter: what holds of every document.</summary>
         public static OracleLicence Residual { get; } = new(OracleQuestion.Residual, -1, null);
 

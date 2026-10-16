@@ -884,6 +884,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"$.category\", COUNT(*) FROM products AS c GROUP BY ROLLUP(c.\"$.category\")", false),
             ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" = 'bikes'", false),
             ("SELECT c.\"$.category\", COUNT(*) AS n FROM products AS c GROUP BY c.\"$.category\" HAVING c.\"$.category\" <> 'bikes'", false),
+            // A sort over a key the filter confines to strings, which says what a declaration would.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IN ('Sprint', 'Marathon', 'Slipper') ORDER BY JSON_VALUE(c.\"DOC\", '$.name')", true),
             ("SELECT AVG(c.\"_ts\") FROM products AS c", false),
 
             // LIKE's shapes: the prefix that becomes STARTSWITH, and the general form that stays LIKE.

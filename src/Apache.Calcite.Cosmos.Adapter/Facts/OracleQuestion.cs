@@ -41,6 +41,12 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>A grouping: the rows the pushed filter kept (L1).</summary>
         GroupBy,
 
+        /// <summary>
+        /// A key a join restricts the rows by, written beside the pushed filter: the rows it kept (L1). The restriction
+        /// has to keep every row the filter keeps whose key a batch could match, and nothing it drops is asked about.
+        /// </summary>
+        Key,
+
         /// <summary>A residual filter, evaluated in process: what holds of every document (L0).</summary>
         Residual,
 
