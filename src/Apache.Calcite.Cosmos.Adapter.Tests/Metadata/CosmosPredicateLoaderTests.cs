@@ -209,6 +209,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             statement.Conjuncts.Should().Equal(Opaque(0), Or(Opaque(1), Opaque(0)));
         }
 
+        /// <summary>
+        /// Two predicates that print alike and are not alike are two terms: the text accessor and <c>RETURNING DECIMAL</c>
+        /// both print <c>JSON_VALUE($0, '$.a')</c>, and a comparison of two of either is a different predicate, the one of
+        /// renderings and the other of the numbers they parse as.
+        /// </summary>
+        [Fact]
+        public void WhatIsNotReadIsNumberedByItsTypeAsWellAsItsSpelling()
+        {
+            var texts = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), JsonValue("n"));
+            var numbers = Call(SqlStdOperatorTable.EQUALS, JsonValue("label", SqlTypeName.DECIMAL), JsonValue("n", SqlTypeName.DECIMAL));
+            texts.toString().Should().Be(numbers.toString(), "Calcite's digest prints no call's type");
+
+            var statement = Load(_rex.makeCall(SqlStdOperatorTable.AND, numbers, Call(SqlStdOperatorTable.NOT, texts)));
+
+            statement.Conjuncts.Should().Equal(Opaque(0), new SqlPredicate.Not(Opaque(1)));
+            Oracle(Theory()).Admit(statement).IsContradictory(OracleLicence.Kept).Should().BeFalse(
+                "a stored \" 2 \" and a stored 2 are one number and two texts");
+        }
+
         [Fact]
         public void ADisjunctionOverTwoPathsIsNoMembership()
         {

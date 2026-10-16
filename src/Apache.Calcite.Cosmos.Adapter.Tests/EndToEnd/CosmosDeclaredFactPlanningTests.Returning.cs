@@ -122,6 +122,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().Contain(KeepsNothing, PlanText(best));
         }
 
+        /// <summary>
+        /// A comparison of two numbers <c>RETURNING DECIMAL</c> parses beside the negated comparison of the same two
+        /// renderings is no contradiction: <c>" 2 "</c> and <c>2</c> are one number and two texts. The two print alike,
+        /// Calcite's digest naming no call's type, and read as one opaque term they were <c>X AND NOT X</c>, a filter
+        /// keeping rows made the empty relation.
+        /// </summary>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = JSON_VALUE(c."DOC", '$.n' RETURNING DECIMAL) AND NOT (JSON_VALUE(c."DOC", '$.body') = JSON_VALUE(c."DOC", '$.n'))""")]
+        [InlineData("""NOT (JSON_VALUE(c."DOC", '$.body') = JSON_VALUE(c."DOC", '$.n')) AND JSON_VALUE(c."DOC", '$.body' RETURNING DECIMAL) = JSON_VALUE(c."DOC", '$.n' RETURNING DECIMAL)""")]
+        public void TwoPredicatesThatPrintAlikeAreTwo(string where)
+        {
+            var container = Declaring(Bodies);
+            var best = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {where}""", container, out _);
+
+            PlanText(best).Should().NotContain(KeepsNothing, "a stored \" 2 \" beside a stored 2 is kept: " + PlanText(best));
+        }
+
     }
 
 }

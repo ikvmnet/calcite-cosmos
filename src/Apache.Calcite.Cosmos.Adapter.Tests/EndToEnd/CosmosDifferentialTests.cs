@@ -1544,6 +1544,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IS NULL UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') IN ('a', 'b', 'c') UNION ALL SELECT k.\"id\" FROM kinds AS k", false),
             ("SELECT k.\"id\" FROM kinds AS k WHERE JSON_VALUE(k.\"DOC\", '$.kind') = 'a' AND JSON_VALUE(k.\"DOC\", '$.label') = '30' UNION ALL SELECT c.\"id\" FROM typed AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", false),
+
+            // Two predicates that print alike: a comparison of the numbers RETURNING DECIMAL parses, and the negated
+            // comparison of the same renderings. Read as one opaque term, Calcite's digest naming no call's type, they
+            // were X AND NOT X and the plan the empty relation, where Calcite keeps 2 and 4, " 2 " and "2.0" beside 2.
+            ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) AND NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n'))", false),
+            ("SELECT c.\"id\" FROM declared AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.body') = JSON_VALUE(c.\"DOC\", '$.n')) AND JSON_VALUE(c.\"DOC\", '$.body' RETURNING DECIMAL) = JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL)", false),
         ];
 
         /// <summary>

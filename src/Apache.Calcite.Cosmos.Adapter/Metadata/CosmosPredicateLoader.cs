@@ -134,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosRexTranslator _paths;
             readonly IReadOnlyList<CosmosReading> _readings;
             readonly string _rootAlias;
-            readonly Dictionary<string, long> _opaque = new(StringComparer.Ordinal);
+            readonly Dictionary<RexNode, long> _opaque = new();
             readonly object _lock = new();
 
             public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
@@ -525,13 +525,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 _ => null,
             };
 
+            /// <summary>
+            /// Numbers what is not read by the node itself, so that one predicate is one term and two are two.
+            /// </summary>
+            /// <remarks>
+            /// By Calcite's equality, which compares a call's type at every level, and not by its digest, which prints
+            /// none: the text accessor and <c>RETURNING DECIMAL</c> over one path both print <c>JSON_VALUE($0, '$.a')</c>,
+            /// so <c>a RETURNING DECIMAL = b RETURNING DECIMAL AND NOT (a = b)</c> read as <c>X AND NOT X</c>, and the
+            /// filter keeping the rows that spell one number two ways was made the empty relation. Whatever rests on a
+            /// term's identity read the same two predicates as one: a deletion as implied, a <c>CASE</c> arm as never
+            /// read, a constraint's scope as proved.
+            /// </remarks>
             SqlPredicate Opaque(RexNode node)
             {
-                var digest = node.toString();
-                if (_opaque.TryGetValue(digest, out var id) == false)
+                if (_opaque.TryGetValue(node, out var id) == false)
                 {
                     id = _opaque.Count;
-                    _opaque[digest] = id;
+                    _opaque[node] = id;
                 }
 
                 return new SqlPredicate.Opaque(id);
