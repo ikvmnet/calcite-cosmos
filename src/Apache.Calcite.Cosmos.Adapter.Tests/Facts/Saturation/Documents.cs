@@ -147,6 +147,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 JsonFact.Form f => v is J.Null || v is J.Str s && (f.Name != "short" || s.Value.Length <= 1) && (f.Name != "ascii" || s.Value.All(c => c < 0x80)),
                 JsonFact.Characters f => v is not J.Str s || s.Value.All(unit =>
                     (char.IsSurrogate(unit) == false || f.Bands.Contains(SurrogateBand)) && (unit < 0xE000 || f.Bands.Contains(HighBand))),
+                // A document here is as written and as stored: none holds a lone surrogate the service would replace.
+                JsonFact.Written f => v is not J.Str s || s.Value.All(unit =>
+                    (char.IsSurrogate(unit) == false || f.Bands.Contains(SurrogateBand)) && (unit < 0xE000 || f.Bands.Contains(HighBand))),
                 JsonFact.Extension f => f.Key == "object" && v is J.Obj,
                 JsonFact.MinLength f => v is not J.Str s || s.Value.Length >= f.Length,
                 JsonFact.MaxLength f => v is not J.Str s || s.Value.Length <= f.Length,

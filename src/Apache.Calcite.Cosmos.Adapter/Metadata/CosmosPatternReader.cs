@@ -79,10 +79,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// form, is about every string the pattern admits, and only a reading of the language gives it.
     /// </para>
     /// <para>
-    /// <b>What a written string becomes when it is stored.</b> Measured on the probe account, a lone surrogate written
-    /// as a JSON escape is stored as U+FFFD, a high unit. A pattern that admits a surrogate admits a lone one wherever
-    /// a validator reads by unit, so what it admits as written is not what the service orders: a pattern that lets a
-    /// string hold a surrogate proves nothing about the high band either (<see cref="Claims"/>).
+    /// <b>What a written string becomes when it is stored is not the reader's.</b> Measured on the probe account, a lone
+    /// surrogate written as a JSON escape is stored as U+FFFD, a high unit. A pattern that admits a surrogate admits a
+    /// lone one wherever a validator reads by unit, so what it admits as written is not what the service orders. The
+    /// reader states what was written (<see cref="JsonClaim.Written"/>), and the theory derives what is stored, by a rule
+    /// that reads the measured behaviour as data: a pattern that lets a string hold a surrogate proves nothing about the
+    /// high band of what is stored.
     /// </para>
     /// </remarks>
     static class CosmosPatternReader
@@ -112,33 +114,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         const int Count = 100_000;
 
         /// <summary>
-        /// Returns the claims a declared <c>pattern</c> makes about the characters of the strings at its path, as the
-        /// service stores them.
+        /// Returns the claims a declared <c>pattern</c> makes about the characters of the strings at its path, as they
+        /// were written.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// A <see cref="JsonClaim.Characters"/> naming the bands the strings the pattern admits may hold units of, which
-        /// the theory states of the path as declared: an input read into a fact, and nothing decided here about what
-        /// the fact is for. Like the pattern, it is about a string if there is one, and holds of anything else.
+        /// A <see cref="JsonClaim.Written"/> naming the bands the strings the pattern admits may hold units of, which the
+        /// theory states of the path as declared: an input read into a fact, and nothing decided here about what the fact
+        /// is for. Like the pattern, it is about a string if there is one, and holds of anything else.
         /// </para>
         /// <para>
-        /// <b>What the service stores, not what was written.</b> A pattern admitting a surrogate admits a lone one under
-        /// the reading by unit, which the service stores as U+FFFD, so its strings as stored may hold the high band too,
-        /// and it claims nothing.
+        /// <b>What was written, which a validator saw, and not what the service stores.</b> A pattern admitting a surrogate
+        /// admits a lone one under the reading by unit, which the service stores as U+FFFD; what that makes of the high
+        /// band is the theory's to say, by its rule of what is stored, and not this reader's.
         /// </para>
         /// </remarks>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
-        /// <returns>The claim, or none where the pattern is refused or its strings may hold either band.</returns>
+        /// <returns>The claim, or none where the pattern is refused or its strings may hold both bands.</returns>
         public static IReadOnlyList<JsonClaim> Claims(string? pattern)
         {
-            if (pattern is null || Absent(pattern) is not { } absent || absent.Contains(JsonCharacterBand.Surrogates) == false)
+            if (pattern is null || Absent(pattern) is not { Count: > 0 } absent)
                 return Array.Empty<JsonClaim>();
 
             var held = JsonCharacterBand.Any;
             foreach (var band in absent)
                 held &= ~band;
 
-            return new JsonClaim[] { new JsonClaim.Characters(held) };
+            return new JsonClaim[] { new JsonClaim.Written(held) };
         }
 
         /// <summary>

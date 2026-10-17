@@ -234,6 +234,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             return Bands(surrogates, high);
         }
 
+        /// <summary>
+        /// Returns the bands a string written in some bands may hold once it is stored: the same, and the high band too
+        /// where it was written with a surrogate, which may have been a lone one.
+        /// </summary>
+        /// <remarks>
+        /// The service's measured behaviour, read as data by one rule of the theory: a lone surrogate written as a JSON
+        /// escape is stored as U+FFFD (<c>Service.LoneSurrogateIsStoredAsReplacement</c>, measured on the probe account;
+        /// the emulator refuses the write). A surrogate pair is stored as it is.
+        /// </remarks>
+        public static ValueSet<string> Stored(ValueSet<string> written) =>
+            written.Contains(SurrogateBand) ? AllBands : written;
+
         static ValueSet<string> Bands(bool surrogates, bool high) =>
             surrogates ? high ? AllBands : Surrogates : high ? High : NoBand;
 

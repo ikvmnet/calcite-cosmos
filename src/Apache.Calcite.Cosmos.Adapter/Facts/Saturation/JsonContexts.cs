@@ -174,6 +174,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     JsonFact.ClosedTo f => r.HeadClosed.Of(id, p, f.Properties),
                     JsonFact.Form f => r.HeadForm.Of(id, p, f.Name),
                     JsonFact.Characters f => r.HeadChars.Of(id, p, f.Bands),
+                    JsonFact.Written f => r.HeadWritten.Of(id, p, f.Bands),
                     JsonFact.Extension f => r.HeadExtension.Of(id, p, f.Key),
                     _ => throw new NotSupportedException("a head of " + head.GetType().Name),
                 };

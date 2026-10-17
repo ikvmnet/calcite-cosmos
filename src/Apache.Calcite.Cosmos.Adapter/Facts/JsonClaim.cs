@@ -216,6 +216,25 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
         public sealed record Characters(JsonCharacterBand Bands) : JsonClaim;
 
+        /// <summary>
+        /// The value at the path, where it is a string, was written with UTF-16 units only below U+D800 and in these bands.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What a validator saw, which is not always what the service stores.</b> A declared <c>pattern</c> constrains
+        /// a document as it was written, and measured on the probe account a lone surrogate written as a JSON escape is
+        /// stored as U+FFFD, a unit of the high band. So the pattern's reader states this, the bands its strings were
+        /// written in, and the theory derives what the stored strings hold from it by a rule that reads the service's
+        /// measured behaviour as data (<c>JsonRules</c>, "a string is stored as it was written, a lone surrogate as
+        /// U+FFFD"). Nothing reads it but that rule.
+        /// </para>
+        /// <para>
+        /// <b>Silent about anything but a string</b>, as <see cref="Characters"/> is.
+        /// </para>
+        /// </remarks>
+        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        public sealed record Written(JsonCharacterBand Bands) : JsonClaim;
+
     }
 
 }

@@ -173,6 +173,10 @@ namespace Apache.Calcite.Cosmos.Facts
                     yield return new Saturation.JsonFact.Characters(path, Members(characters.Bands));
                     break;
 
+                case JsonClaim.Written written:
+                    yield return new Saturation.JsonFact.Written(path, Members(written.Bands));
+                    break;
+
                 case JsonClaim.Extension extension:
                     if (register)
                         yield return new Saturation.JsonFact.Extension(path, vocabulary.Extension(extension));

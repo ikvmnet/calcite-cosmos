@@ -668,6 +668,7 @@ namespace Apache.Calcite.Cosmos.Facts
                 JsonClaim.LowerBound bound => bound,
                 JsonClaim.UpperBound bound => bound,
                 JsonClaim.Characters characters => characters,
+                JsonClaim.Written written => written,
                 _ => null,
             };
 

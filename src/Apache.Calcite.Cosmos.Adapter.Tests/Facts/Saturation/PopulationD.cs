@@ -507,6 +507,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var (p, row) in Of(r.Hi))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Upper(p, (Bound)row.Output!);
 
+                foreach (var (p, row) in Of(r.Written))
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Written(p, (ValueSet<string>)row.Output!);
+
                 // One value in every document: the path there in each, and holding the value.
                 foreach (var (p, row) in Of(r.Constant))
                 {

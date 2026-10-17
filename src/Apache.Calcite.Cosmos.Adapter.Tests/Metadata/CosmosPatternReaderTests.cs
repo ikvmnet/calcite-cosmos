@@ -37,10 +37,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
 
-        /// <summary>The bands the pattern's claim says its strings hold no unit of, as <see cref="Absent(string)"/> lists them.</summary>
-        static JsonCharacterBand[] Claimed(string pattern) =>
-            CosmosPatternReader.Claims(pattern).Cast<JsonClaim.Characters>()
-                .SelectMany(c => new[] { S, H }.Where(band => (c.Bands & band) == JsonCharacterBand.None)).ToArray();
+        /// <summary>
+        /// The bands the theory says a path's stored strings hold no unit of, the pattern's claim of what was written the
+        /// one thing stated of it, as <see cref="Absent(string)"/> lists them.
+        /// </summary>
+        static JsonCharacterBand[] Claimed(string pattern)
+        {
+            var at = JsonDocumentPath.Root.Property("s");
+            var stored = new JsonFactTheory(CosmosPatternReader.Claims(pattern).Select(claim => JsonFactRule.Unconditional(new JsonFact(at, claim))).ToList())
+                .Derive(null).CharactersOf(at);
+
+            return new[] { S, H }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
+        }
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────
 
@@ -123,7 +131,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void ASurrogateAdmittedIsAHighUnitStored()
         {
             Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H);
-            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().BeEmpty();
+            CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S) },
+                "the reader states what was written, a surrogate and nothing from U+E000");
+            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().BeEmpty("and the theory derives that what is stored may hold a high unit");
+            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S }, "one written without a surrogate is stored as it was written");
         }
 
         /// <remarks>

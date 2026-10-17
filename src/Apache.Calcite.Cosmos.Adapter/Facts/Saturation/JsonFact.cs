@@ -73,6 +73,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public sealed record Characters(JsonPathSpec Path, ValueSet<string> Bands) : JsonFact(Path);
 
         /// <summary>
+        /// If the path holds a string, it was written with UTF-16 units below U+D800 or in these bands: what a validator
+        /// saw, from which the theory derives what is stored.
+        /// </summary>
+        public sealed record Written(JsonPathSpec Path, ValueSet<string> Bands) : JsonFact(Path);
+
+        /// <summary>
         /// A stored form's strings hold units below U+D800 or in these bands: a statement about how the form is
         /// written, and so about no path, which rides on the root. Says nothing about any document.
         /// </summary>
@@ -114,6 +120,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 NameMaxLength f => r.NameMaxLength.Of(p).Is(f.Length),
                 Form f => r.Form.Of(p, f.Name),
                 Characters f => r.Chars.Of(p).Is(f.Bands),
+                Written f => r.Written.Of(p).Is(f.Bands),
                 FormCharacters f => r.FormChars.Of(f.Name).Is(f.Bands),
                 Extension f => r.Extension.Of(p, f.Key),
                 Discriminates => r.Discriminator.Of(p),

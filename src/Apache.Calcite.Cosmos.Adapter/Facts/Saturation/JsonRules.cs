@@ -74,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Form = graph.DefineRelation<JPath, string>("form");
             Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
+            Written = graph.DefineFunction<JPath, ValueSet<string>>("written", ValueLattice.Intersect<string>());
             Extension = graph.DefineRelation<JPath, string>("extension");
             Constant = graph.DefineRelation<JPath, string>("constant");
 
@@ -201,6 +202,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// written, and about no document, stated beside the forms a declaration names.
         /// </summary>
         public Function<string, ValueSet<string>> FormChars { get; }
+
+        /// <summary>
+        /// If the path holds a string, the bands its UTF-16 units were written in: what a declared <c>pattern</c> says,
+        /// which is of the document a validator checked, and from which <see cref="Chars"/>, what is stored, is derived.
+        /// </summary>
+        public Function<JPath, ValueSet<string>> Written { get; }
 
         /// <summary>
         /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing
@@ -384,6 +391,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
                 r.When(d.Is(Dom.Of(p)));
                 r.Then(Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain))));
+            });
+            // What a validator checked is the string as written, and the service does not store every string as it was
+            // written: measured on the probe account, a lone surrogate written as a JSON escape is stored as U+FFFD, a unit
+            // of the high band (Service.LoneSurrogateIsStoredAsReplacement). A string written with a surrogate may have
+            // had a lone one, so what is stored may hold a high unit too; one written without holds what it was written
+            // with.
+            Rule("a string is stored as it was written, a lone surrogate as U+FFFD", r =>
+            {
+                var (p, w) = r.Vars<JPath, ValueSet<string>>("p", "w");
+                r.When(w.Is(Written.Of(p)));
+                r.Then(Chars.Of(p).Is(Compute.Of(w, Stored)));
             });
             SchemaRule("a stored form holds the characters it is written in", r =>
             {
@@ -912,6 +930,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         internal Relation<long, JPath, ValueSet<string>> HeadClosed { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadForm { get; private set; } = null!;
         internal Relation<long, JPath, ValueSet<string>> HeadChars { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadWritten { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadExtension { get; private set; } = null!;
 
         /// <summary>
@@ -954,6 +973,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
             HeadForm = g.DefineRelation<long, JPath, string>("head_form", local);
             HeadChars = g.DefineRelation<long, JPath, ValueSet<string>>("head_chars", local);
+            HeadWritten = g.DefineRelation<long, JPath, ValueSet<string>>("head_written", local);
             HeadExtension = g.DefineRelation<long, JPath, string>("head_extension", local);
 
             SchemaRule("a singleton domain pins its value", r =>
@@ -1047,6 +1067,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
             Head("a stored form", HeadForm, (p, v) => Form.Of(p, v));
             Head("characters", HeadChars, (p, v) => Chars.Of(p).Is(v));
+            Head("written characters", HeadWritten, (p, v) => Written.Of(p).Is(v));
             Head("a host's claim", HeadExtension, (p, v) => Extension.Of(p, v));
 
             // What a query mentions is relevant, and so is what bears on it: a path's parent and array, the patterns it

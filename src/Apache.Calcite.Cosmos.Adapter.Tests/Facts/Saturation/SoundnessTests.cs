@@ -140,6 +140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new JsonFact.MaxLength(path, maxLength);
                 if (scope.TryGet(r.Chars.Of(p), out var chars))
                     yield return new JsonFact.Characters(path, chars);
+                if (scope.TryGet(r.Written.Of(p), out var written))
+                    yield return new JsonFact.Written(path, written);
                 if (scope.TryGet(r.MinItems.Of(p), out var minItems))
                     yield return new JsonFact.MinItems(path, minItems);
                 if (scope.TryGet(r.MaxItems.Of(p), out var maxItems))

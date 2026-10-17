@@ -90,6 +90,14 @@ namespace Apache.Calcite.Cosmos.Facts
                 (JsonClaim.OneOf a, JsonClaim.Characters b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~b.Bands) == JsonCharacterBand.None),
                 (JsonClaim.Represents a, JsonClaim.Characters b) => (a.Form.Characters & ~b.Bands) == JsonCharacterBand.None,
 
+                // And what a string was written in, which a pattern says, by the same rows: a value or a form is written as
+                // it is stored, none of them holding a lone surrogate.
+                (JsonClaim.Written a, JsonClaim.Written b) => (a.Bands & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.OfType a, JsonClaim.Written) => a.Type != JsonType.String,
+                (JsonClaim.EqualTo a, JsonClaim.Written b) => (JsonFactEncoding.Characters(a.Value) & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.OneOf a, JsonClaim.Written b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~b.Bands) == JsonCharacterBand.None),
+                (JsonClaim.Represents a, JsonClaim.Written b) => (a.Form.Characters & ~b.Bands) == JsonCharacterBand.None,
+
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how
                 // the strings are written and nothing about whether one is there (#175). Without
