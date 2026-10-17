@@ -316,9 +316,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Recreates a container and writes the given documents into it.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Created with the service's default indexing policy unless a <c>policy</c> is given: the
         /// <c>ORDER BY</c> yardstick names the composite indexes its metadata declares, so that the
         /// policy Azure would hold a statement to is the one the container has.
+        /// </para>
+        /// <para>
+        /// <b>A write the service throttles is written again</b>, after the interval the response
+        /// asks for. The client retries nothing on a 429, so that a statement the service throttles
+        /// shows as one; a seed is not what the class tests. Measured on the probe account, a document
+        /// in a container carrying the yardstick's 84 composite indexes costs about 25 RU to write,
+        /// so 48 of them in a second and a half ran past a container's 400 RU/s and failed the seed
+        /// before a statement was judged.
+        /// </para>
         /// </remarks>
         static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category", IndexingPolicy? policy = null)
         {
@@ -332,15 +342,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             foreach (var json in documents)
             {
-                using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
                 using var document = System.Text.Json.JsonDocument.Parse(json);
 
                 var partitionKey = document.RootElement.TryGetProperty(key, out var category)
                     ? category.ValueKind == System.Text.Json.JsonValueKind.Null ? PartitionKey.Null : new PartitionKey(category.GetString())
                     : PartitionKey.None;
 
-                using var response = await container.CreateItemStreamAsync(stream, partitionKey, cancellationToken: cancellationToken);
-                response.EnsureSuccessStatusCode();
+                while (true)
+                {
+                    using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var response = await container.CreateItemStreamAsync(stream, partitionKey, cancellationToken: cancellationToken);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        await Task.Delay(response.Headers.RetryAfter ?? TimeSpan.FromMilliseconds(100), cancellationToken);
+                        continue;
+                    }
+
+                    response.EnsureSuccessStatusCode();
+                    break;
+                }
             }
 
             return container;

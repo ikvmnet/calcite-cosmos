@@ -128,7 +128,10 @@ parameter — and judges each by whether Calcite's semantics *allow* its answer,
 the answer Calcite's own run gave: ties are free, and a `FETCH` may take any of a tie's rows. It also
 holds every `ORDER BY` a plan sends to what Azure accepts, which the emulator does not: no excluded path
 (`_etag` is excluded by default), and a composite index for every order of more than one key. Its three
-containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs.
+containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs. On
+an account, a document in a container with the yardstick's composite indexes costs about 25 RU to write,
+more than a 400 RU/s container takes in the time the seed writes them: the seed writes a throttled
+document again after the interval the service asks for, and a statement the service throttles still fails.
 
 It runs with the class, and fails on any answer Calcite does not allow. Two families of wrong answer
 that are no order's — a projected double printed two ways, and `CHAR_LENGTH` pushed as `LENGTH` — are
