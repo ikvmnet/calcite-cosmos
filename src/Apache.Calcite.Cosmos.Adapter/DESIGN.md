@@ -806,8 +806,8 @@ it can push, the pushed half with the cast weakened to a presence, and the resid
 each, which doubled what a single-container plan cost. `JsonFactOverlay` is the plan's demand gate for the
 case it covers: a declaration with no conditional rule, and a query whose facts are each one claim beside a
 presence on a path that neither lies beneath another nor meets one the declaration states. Then the rules
-of JSON add only what one claim says of its own path's types, the present objects above it, and the
-absence of what lies beneath a scalar, and the answer is read off the query's facts and the declaration's
+of JSON add only what one claim says of its own path's types and characters, the present objects above it, and
+the absence of what lies beneath a scalar, and the answer is read off the query's facts and the declaration's
 own context without opening one. Anything else goes to the engine. `JsonFactOverlayTests` holds it to the
 engine over generated sets, and catches each of three bugs planted in it; a fourth, dropping the types a
 disequality with null rules out, changes no answer a set gives. An undeclared container opens no

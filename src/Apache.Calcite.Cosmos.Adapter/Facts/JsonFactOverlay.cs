@@ -31,11 +31,11 @@ namespace Apache.Calcite.Cosmos.Facts
     /// Anything else goes to the engine.
     /// </para>
     /// <para>
-    /// <b>What the rules of JSON add, in that case, and nothing else.</b> A value or a domain is of its own types. A path
-    /// that is not null is of every other type. A present path has present objects for its ancestors, the root among
-    /// them. A path beneath one that holds no object is absent, and has no possible type and so no possible value. Every
-    /// other path is what the declaration's own context says it is. Nothing contradicts: one claim with a presence is
-    /// satisfiable, and an object above a scalar is the one meeting the gate keeps out.
+    /// <b>What the rules of JSON add, in that case, and nothing else.</b> A value or a domain is of its own types, and
+    /// holds its own characters. A path that is not null is of every other type. A present path has present objects for
+    /// its ancestors, the root among them. A path beneath one that holds no object is absent, and has no possible type
+    /// and so no possible value. Every other path is what the declaration's own context says it is. Nothing contradicts:
+    /// one claim with a presence is satisfiable, and an object above a scalar is the one meeting the gate keeps out.
     /// </para>
     /// <para>
     /// <b>Checked against the engine.</b> <c>JsonFactOverlayTests</c> runs generated sets through both and compares every
