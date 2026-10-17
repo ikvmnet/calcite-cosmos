@@ -120,6 +120,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// The adapter's reader completes the merge to Calcite's order: the stream re-sorted between anchors, every
+        /// window <c>OFFSET o LIMIT f</c> either certified by its edges or read again unpaged, and the <c>MAX</c> read
+        /// again to the first anchor — each statement through the adapter's own executor, one iterator from its start.
+        /// </summary>
+        /// <remarks>
+        /// What the probe account measured of the certificate, run through <c>CosmosOrderedCursor</c> itself: theorems 1
+        /// to 3 held on every one-iterator stream and window there, and this holds the code that relies on them to the
+        /// same streams.
+        /// </remarks>
+        [Fact]
+        public async Task TheReaderCompletesTheMergeToCalcitesOrder()
+        {
+            await using var probe = await Probe.Open();
+
+            var executor = new Adapter.Client.CosmosQueryExecutor(probe.Container);
+            var all = Low.Concat(Low).Concat(First).Concat(Second).ToList();
+            IReadOnlyList<Adapter.Sql.CosmosParameter> parameters = [new("@probe", probe.Tag)];
+
+            async Task<List<string>> Read(string sql, Adapter.CosmosOrderProgram program, int? size = null)
+            {
+                var cursor = await Adapter.Client.CosmosCursors.OpenAsync(executor, null!, new CosmosQuery(sql, parameters, MaxItemCount: size, Order: program), row => row.GetProperty("s").GetString()!, CancellationToken.None);
+                var rows = new List<string>();
+
+                await using (cursor)
+                    while (await cursor.ReadAsync(CancellationToken.None))
+                        rows.Add(cursor.Current);
+
+                return rows;
+            }
+
+            foreach (var descending in new[] { false, true })
+            {
+                var direction = descending ? "DESC" : "ASC";
+                var calcite = all.OrderBy(s => s, Comparer<string>.Create((a, b) => descending ? -string.CompareOrdinal(a, b) : string.CompareOrdinal(a, b))).ToList();
+                var unpaged = $"SELECT VALUE {{ \"s\": c.s, \"$k0\": c.s }} FROM c WHERE c.probe = @probe AND IS_STRING(c.s) ORDER BY c.s {direction}";
+                var key = new Adapter.CosmosOrderedKey("$k0", Adapter.CosmosOrderedKeyKind.Text, descending, false, Adapter.Metadata.CosmosOrderAnchor.Text);
+
+                (await Read(unpaged, new([key], false, null, null, unpaged, [], []))).Should().Equal(calcite, $"the reader's stream is Calcite's order ({direction})");
+
+                for (var offset = 0; offset < all.Count; offset += 3)
+                    foreach (var fetch in new[] { 3, 4 })
+                    {
+                        var window = await Read($"{unpaged} OFFSET {offset} LIMIT {fetch}", new([key], false, offset, fetch, unpaged, [], []), offset + fetch);
+                        window.Should().Equal(calcite.Skip(offset).Take(fetch), $"OFFSET {offset} LIMIT {fetch} {direction}");
+                    }
+            }
+
+            var max = "SELECT MAX(c.s) AS \"s\" FROM c WHERE c.probe = @probe AND IS_STRING(c.s)";
+            var extreme = new Adapter.CosmosOrderExtreme("s", true, Adapter.CosmosOrderedKeyKind.Text, Adapter.Metadata.CosmosOrderAnchor.Text, "SELECT VALUE c.s FROM c WHERE c.probe = @probe AND IS_STRING(c.s) ORDER BY c.s DESC", true);
+            (await Read(max, new([], false, null, null, max, [], [extreme]))).Should().Equal([all.Max(StringComparer.Ordinal)!], "Calcite's MAX");
+        }
+
+        /// <summary>
         /// The documents of one test, written into the caller's container across its first two feed
         /// ranges, and deleted when the test ends.
         /// </summary>
@@ -142,6 +195,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             /// <summary>The two feed ranges the documents were placed in, the first first.</summary>
             public IReadOnlyList<FeedRange> Ranges { get; }
+
+            /// <summary>The container the documents were written to.</summary>
+            public Container Container => _container;
+
+            /// <summary>The tag every document of this test carries in <c>probe</c>.</summary>
+            public string Tag => _tag;
 
             /// <summary>
             /// Connects, finds two keys in each of the first two feed ranges, and writes the arrangement:
