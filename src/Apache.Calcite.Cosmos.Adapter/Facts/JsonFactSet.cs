@@ -126,12 +126,35 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _vocabulary!.TryForm(represents.Form, out var form) && t.Form(p, form);
 
                 case JsonClaim.Extension extension:
-                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key);
+                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key)
+                        || IsEntailedByWhatIsKnown(t, p, extension);
 
                 default:
                     return false;
             }
         });
+
+        /// <summary>
+        /// Determines whether an extension follows from the rest of what is known of a path: a domain every value of
+        /// which satisfies it, or a stored form that establishes it.
+        /// </summary>
+        /// <remarks>
+        /// The theory knows an extension only as it was stated. What JSON's own claims establish of it is the
+        /// extension's to say (<see cref="JsonClaim.Extension.IsEntailedBy"/>), and is read here the way a bound is read
+        /// off a domain: so a filter's <c>IN</c> or a schema's <c>enum</c> says the characters of the strings it lists,
+        /// and a stored form says that it is ASCII, through the claim's own reading of each and nowhere else.
+        /// </remarks>
+        bool IsEntailedByWhatIsKnown(JsonFactTables t, JsonDocumentPath path, JsonClaim.Extension extension)
+        {
+            if (t.TryDom(path, out var dom) && Decode(dom) is { } values && extension.IsEntailedBy(new JsonClaim.OneOf(values)))
+                return true;
+
+            foreach (var (form, token) in _vocabulary!.Forms)
+                if (t.Form(path, token) && extension.IsEntailedBy(new JsonClaim.Represents(form)))
+                    return true;
+
+            return false;
+        }
 
         /// <summary>
         /// Returns every stored form known for a path, which may be none.

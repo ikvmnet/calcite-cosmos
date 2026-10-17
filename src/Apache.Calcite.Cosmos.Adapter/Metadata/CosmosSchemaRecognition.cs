@@ -41,13 +41,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Reads a subschema as the adapter's own claims about the value at its path.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A pattern's characters are read beside any declared type, or none: a pattern is vacuous for
         /// anything but a string, and so is what it says of the characters. A stored form is not, since it
         /// says the value is a string, which is why that one waits for <c>"type": "string"</c>.
+        /// </para>
+        /// <para>
+        /// <b>Where the pattern is a stored form, the form says it.</b> Every registered form is ASCII, and a form
+        /// establishes the characters through the claim's own reading of it
+        /// (<see cref="CosmosCharacters.IsEntailedBy"/>); read again here, one pattern would say them twice. A form
+        /// is stated beside a declared string only, so a form's pattern beside no type is read here as any other.
+        /// </para>
         /// </remarks>
         static IReadOnlyList<JsonClaim> Recognise(JsonNode node)
         {
-            var characters = CosmosPatternAlphabet.Claims(node.Get("pattern").Text());
+            var pattern = node.Get("pattern").Text();
+
+            var characters = JsonSchemaFacts.ReadType(node) is (JsonType.String, _) && CosmosStoredForms.Recognise(pattern) is not null
+                ? System.Array.Empty<JsonClaim>()
+                : CosmosPatternAlphabet.Claims(pattern);
 
             if (CosmosGeographyForms.Recognise(node) == false)
                 return characters;

@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (Read(pattern, unicode: false) is not { } units || Read(pattern, unicode: true) is not { } points)
                 return null;
 
-            return Bands(units.Surrogates || points.Surrogates, units.High || points.High);
+            return Bands(units | points);
         }
 
         /// <summary>
@@ -124,23 +124,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
         /// <returns>The bands, or <c>null</c> where the reading refuses the pattern.</returns>
         internal static IReadOnlyList<CosmosCharacterBand>? Absent(string pattern, bool unicode) =>
-            Read(pattern, unicode) is { } read ? Bands(read.Surrogates, read.High) : null;
+            Read(pattern, unicode) is { } read ? Bands(read) : null;
 
-        static IReadOnlyList<CosmosCharacterBand> Bands(bool surrogates, bool high)
+        /// <summary>
+        /// Returns the bands a set does not hold, one by one.
+        /// </summary>
+        static IReadOnlyList<CosmosCharacterBand> Bands(CosmosCharacterBand held)
         {
             var absent = new List<CosmosCharacterBand>(2);
-            if (surrogates == false)
+            if ((held & CosmosCharacterBand.Surrogates) == CosmosCharacterBand.None)
                 absent.Add(CosmosCharacterBand.Surrogates);
-            if (high == false)
+            if ((held & CosmosCharacterBand.HighBmp) == CosmosCharacterBand.None)
                 absent.Add(CosmosCharacterBand.HighBmp);
 
             return absent;
         }
 
-        static (bool Surrogates, bool High)? Read(string pattern, bool unicode)
+        static CosmosCharacterBand? Read(string pattern, bool unicode)
         {
             var reader = new Reader(pattern, unicode);
-            return reader.Pattern() ? (reader.Surrogates, reader.High) : null;
+            return reader.Pattern() ? reader.Bands : null;
         }
 
         /// <summary>
@@ -173,11 +176,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 _unicode = unicode;
             }
 
-            /// <summary>Gets whether a character an atom consumes may be, or be written in, a surrogate unit.</summary>
-            public bool Surrogates { get; private set; }
-
-            /// <summary>Gets whether a character an atom consumes may be a unit from U+E000.</summary>
-            public bool High { get; private set; }
+            /// <summary>Gets the bands of the units a character an atom consumes may be, or be written in.</summary>
+            public CosmosCharacterBand Bands { get; private set; }
 
             bool AtEnd => _at >= _source.Length;
 
@@ -559,14 +559,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Records the bands of every character in a span: of each unit, or, read by code point, of the units each
             /// code point is written in, everything past U+FFFF being a surrogate pair.
             /// </summary>
-            void Add(int lo, int hi)
-            {
-                if (lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF)
-                    Surrogates = true;
-
-                if (lo <= 0xFFFF && hi >= 0xE000)
-                    High = true;
-            }
+            void Add(int lo, int hi) => Bands |= CosmosCharacters.BandsOf(lo, hi);
 
             /// <summary>
             /// Returns the characters from zero to <paramref name="last"/> that no member holds.

@@ -57,16 +57,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Determines whether a value satisfies the claim: it is no string, or a string with no unit in the band.
         /// </summary>
-        bool Admits(JsonScalar value)
+        bool Admits(JsonScalar value) => value.Type != JsonType.String || (BandsOf((string)value.ToClrValue()!) & Band) == CosmosCharacterBand.None;
+
+        /// <summary>
+        /// Returns the band a UTF-16 code unit is in: <see cref="CosmosCharacterBand.None"/> below U+D800.
+        /// </summary>
+        /// <remarks>
+        /// The one place a unit's band is decided: a string's, a range's in a pattern, a literal's and a parameter's
+        /// anchor are each read through it.
+        /// </remarks>
+        /// <param name="unit">The unit.</param>
+        /// <returns>Its band.</returns>
+        public static CosmosCharacterBand BandOf(char unit) =>
+            unit < '\uD800' ? CosmosCharacterBand.None : unit <= '\uDFFF' ? CosmosCharacterBand.Surrogates : CosmosCharacterBand.HighBmp;
+
+        /// <summary>
+        /// Returns the bands a string's units are in.
+        /// </summary>
+        /// <param name="text">The string.</param>
+        /// <returns>The bands; <see cref="CosmosCharacterBand.None"/> where every unit is below U+D800.</returns>
+        public static CosmosCharacterBand BandsOf(string text)
         {
-            if (value.Type != JsonType.String)
-                return true;
+            var bands = CosmosCharacterBand.None;
+            foreach (var unit in text)
+                bands |= BandOf(unit);
 
-            foreach (var c in (string)value.ToClrValue()!)
-                if (Band == CosmosCharacterBand.Surrogates ? char.IsSurrogate(c) : c >= '\uE000')
-                    return false;
+            return bands;
+        }
 
-            return true;
+        /// <summary>
+        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point: a code
+        /// point past U+FFFF is written in surrogates.
+        /// </summary>
+        /// <param name="lo">The first character.</param>
+        /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
+        /// <returns>The bands of the units the characters are written in.</returns>
+        public static CosmosCharacterBand BandsOf(int lo, int hi)
+        {
+            var bands = CosmosCharacterBand.None;
+
+            if (lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF)
+                bands |= CosmosCharacterBand.Surrogates;
+
+            if (lo <= 0xFFFF && hi >= 0xE000)
+                bands |= CosmosCharacterBand.HighBmp;
+
+            return bands;
         }
 
     }

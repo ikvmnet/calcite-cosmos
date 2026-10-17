@@ -1,9 +1,11 @@
+using System;
+
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// A band of UTF-16 code units a path's strings may be known to hold none of: the two bands whose order
-    /// the service's comparison and Calcite's part over.
+    /// The bands of UTF-16 code units whose order the service's comparison and Calcite's part over: a set of them, which
+    /// a string, a range of characters or a path's strings may hold units of.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -15,22 +17,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// of what decides whether the orders agree over them. See <see cref="CosmosServiceOrder"/>.
     /// </para>
     /// <para>
-    /// The band below U+D800 has no member here: nothing is gained by knowing a path lacks it.
+    /// The band below U+D800 has no member here: nothing is gained by knowing a path lacks it, and a string all of
+    /// whose units lie in it holds <see cref="None"/>. Which band a unit is in is decided in one place,
+    /// <see cref="CosmosCharacters.BandOf"/>.
     /// </para>
     /// </remarks>
+    [Flags]
     public enum CosmosCharacterBand
     {
+
+        /// <summary>
+        /// Neither band: every unit below U+D800.
+        /// </summary>
+        None = 0,
 
         /// <summary>
         /// U+D800 to U+DFFF: the units of a surrogate pair, which is how a character beyond U+FFFF is
         /// written, and of a lone surrogate.
         /// </summary>
-        Surrogates,
+        Surrogates = 1,
 
         /// <summary>
         /// U+E000 to U+FFFF: the private use area and everything above it in the basic plane.
         /// </summary>
-        HighBmp,
+        HighBmp = 2,
 
     }
 

@@ -945,7 +945,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <param name="node">The schema node.</param>
         /// <returns>The type and whether a null is admitted, or <c>null</c> where none is stated or two types are.</returns>
-        static (JsonType Type, bool OrNull)? ReadType(JsonNode node)
+        internal static (JsonType Type, bool OrNull)? ReadType(JsonNode node)
         {
             // OpenAPI 3.0 writes nullability beside the type; 2020-12 writes it inside, as a union with
             // "null". Both are the same statement and neither is an absence of type -- a nullable

@@ -3017,11 +3017,14 @@ the three agree over the values the facts admit.
 **Four rules decide every reading.**
 - **R1, characters.** Code point order and UTF-16 order part only where a surrogate meets a unit from U+E000: at the
   first unit two strings differ in, a unit below U+D800 orders alike against anything. So two sets of strings order
-  alike unless one may hold a surrogate and the other a high unit. A path's characters are those of its domain
-  (`JsonFactSet.TryGetDomain`: an `enum`, a `const`, or a filter's list), of a stored form — every registered form
-  is ASCII — of a declared `pattern` (*Reading a pattern as characters*), or of a service fact (`_etag`'s, which
-  the HTTP entity tag grammar fixes), and otherwise anything: Azure allows every character in an `id` but `/` and
-  `\`. A literal's are its own. A parameter's are anything.
+  alike unless one may hold a surrogate and the other a high unit. A path's characters are asked of the facts as
+  one claim per band, `CosmosCharacters`, which a declared `pattern` states (*Reading a pattern as characters*), a
+  service fact states (`_etag`'s, which the HTTP entity tag grammar fixes), and a domain — an `enum`, a `const`, a
+  filter's list — or a stored form establishes through the claim's own reading of it (`JsonFactSet.Knows`, as a
+  bound is read off a domain; every registered form is ASCII, which `CosmosStoredFormsTests` holds each to). So a
+  pattern recognised as a stored form is not read for its characters too. Otherwise anything: Azure allows every
+  character in an `id` but `/` and `\`. A literal's are its own. A parameter's are anything. Which band a unit is
+  in is decided once, `CosmosCharacters.BandOf`, for a path's strings, a pattern's ranges, a literal and an anchor.
 - **R2, readings.** Calcite orders what the column reads and the service the stored value: text over strings is the
   strings, a rendering of a number is not; a typed accessor over its declared type is exact; a `BIGINT` read back is
   the stored order within int64, a `DOUBLE` within ±2^53 and refines past it. A comparison reads the document, not a
