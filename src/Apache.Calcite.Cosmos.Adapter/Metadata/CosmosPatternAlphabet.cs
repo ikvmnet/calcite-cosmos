@@ -51,8 +51,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><description>refused, because they bound nothing or are read differently, or not at all, by one reading:
     /// <c>.</c>, <c>\s</c> (which matches U+FEFF), <c>\S</c>, <c>\D</c>, <c>\W</c>, <c>\p{…}</c>, <c>\P{…}</c>,
     /// <c>\u{…}</c>, a back-reference, <c>\k</c>, a lookaround, a named group, an inline flag, a legacy octal escape, an
-    /// identity escape of anything but a syntax character, and a lone <c>]</c>, <c>{</c> or <c>}</c> — each of the last
-    /// group a literal read by unit and an error read by code point.</description></item>
+    /// identity escape of anything but a syntax character or a solidus, a class escape ending a range, and a lone
+    /// <c>]</c>, <c>{</c> or <c>}</c> — each of the last group a literal read by unit and an error read by code
+    /// point.</description></item>
     /// </list>
     /// <para>
     /// <b>A refused pattern proves nothing</b>, which is always correct: a path the schema says nothing readable about
@@ -86,8 +87,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <remarks>
         /// A <see cref="CosmosCharacters"/> for each band no string the pattern admits holds a unit of. A pattern
         /// admitting a surrogate admits a lone one under the reading by unit, which the service stores as U+FFFD, so it
-        /// says nothing of the high band; and a claim of neither band is the only kind it can then make. Like the
-        /// pattern, each claim is about a string if there is one, and holds of anything else.
+        /// says nothing of the high band either, and makes no claim at all. Like the pattern, each claim is about a
+        /// string if there is one, and holds of anything else.
         /// </remarks>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
         /// <returns>The claims, which are empty where the pattern is refused or excludes nothing.</returns>
