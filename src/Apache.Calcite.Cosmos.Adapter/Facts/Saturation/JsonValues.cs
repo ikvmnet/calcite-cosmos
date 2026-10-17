@@ -196,6 +196,94 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static ValueSet<string> LengthAtMost(ValueSet<string> values, long most) =>
             ValueSet.From(values.Where(v => IsString(v) == false || StringOf(v).Length <= most));
 
+        // ── Characters ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The band of the UTF-16 units of a surrogate pair, U+D800 to U+DFFF: how a character beyond U+FFFF is written,
+        /// and a lone surrogate.
+        /// </summary>
+        public const string SurrogateBand = "surrogate";
+
+        /// <summary>The band of the units from U+E000 to U+FFFF: the private use area and the rest of the basic plane.</summary>
+        public const string HighBand = "high";
+
+        /// <summary>
+        /// Both bands: what a string nothing states the characters of may hold units of. A unit below U+D800 is in
+        /// neither, and a string all of whose units are holds <see cref="NoBand"/>.
+        /// </summary>
+        public static readonly ValueSet<string> AllBands = ValueSet.Of(SurrogateBand, HighBand);
+
+        /// <summary>Neither band: every unit below U+D800.</summary>
+        public static readonly ValueSet<string> NoBand = ValueSet.Of<string>();
+
+        static readonly ValueSet<string> Surrogates = ValueSet.Of(SurrogateBand);
+
+        static readonly ValueSet<string> High = ValueSet.Of(HighBand);
+
+        /// <summary>
+        /// Returns the band a UTF-16 code unit is in, or <c>null</c> below U+D800, where it is in neither.
+        /// </summary>
+        /// <remarks>
+        /// The one place a unit's band is decided: a value's characters, a pattern's ranges, a parameter's at run time
+        /// and a row's as it arrives are each read through it.
+        /// </remarks>
+        public static string? BandOf(char unit) =>
+            unit < '\uD800' ? null : unit <= '\uDFFF' ? SurrogateBand : HighBand;
+
+        /// <summary>
+        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point: a code
+        /// point past U+FFFF is written in surrogates.
+        /// </summary>
+        /// <param name="lo">The first character.</param>
+        /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
+        public static ValueSet<string> BandsOf(int lo, int hi)
+        {
+            var surrogates = lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF;
+            var high = lo <= 0xFFFF && hi >= 0xE000;
+            return Bands(surrogates, high);
+        }
+
+        /// <summary>
+        /// Returns the bands a text's units are in: <see cref="NoBand"/> where every one is below U+D800.
+        /// </summary>
+        public static ValueSet<string> BandsOfText(string text)
+        {
+            bool surrogates = false, high = false;
+            foreach (var unit in text)
+            {
+                var band = BandOf(unit);
+                surrogates |= band == SurrogateBand;
+                high |= band == HighBand;
+            }
+
+            return Bands(surrogates, high);
+        }
+
+        /// <summary>
+        /// Returns the bands a value holds units of: a string's own, and none for any other value, which holds no
+        /// character. An attribute of the value, read off its spelling, as its type is.
+        /// </summary>
+        public static ValueSet<string> CharactersOf(string value) => IsString(value) ? BandsOfText(StringOf(value)) : NoBand;
+
+        /// <summary>
+        /// Returns the bands the strings of a domain hold units of, together.
+        /// </summary>
+        public static ValueSet<string> CharactersOf(ValueSet<string> values)
+        {
+            bool surrogates = false, high = false;
+            foreach (var value in values)
+            {
+                var bands = CharactersOf(value);
+                surrogates |= bands.Contains(SurrogateBand);
+                high |= bands.Contains(HighBand);
+            }
+
+            return Bands(surrogates, high);
+        }
+
+        static ValueSet<string> Bands(bool surrogates, bool high) =>
+            surrogates ? high ? AllBands : Surrogates : high ? High : NoBand;
+
     }
 
 }

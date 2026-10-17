@@ -21,9 +21,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// a disequality is one; a bound is a bound, binding numbers in both.
     /// </para>
     /// <para>
-    /// <b>A stored form and an extension are tokens.</b> The theory reads nothing of either beyond the one thing every
-    /// form shares — it is a way of writing strings — so each is named by a token from <see cref="JsonFactVocabulary"/>,
-    /// and the object it stands for is found again by the token.
+    /// <b>A stored form and an extension are tokens.</b> The theory reads nothing of either beyond what every form says
+    /// of itself — it is a way of writing strings, in the characters it names — so each is named by a token from
+    /// <see cref="JsonFactVocabulary"/>, and the object it stands for is found again by the token. A string's characters
+    /// are a set of bands, as a type is a set of types.
     /// </para>
     /// </remarks>
     internal static class JsonFactEncoding
@@ -169,6 +170,10 @@ namespace Apache.Calcite.Cosmos.Facts
 
                     break;
 
+                case JsonClaim.Characters characters:
+                    yield return new Saturation.JsonFact.Characters(path, Members(characters.Bands));
+                    break;
+
                 case JsonClaim.Extension extension:
                     if (register)
                         yield return new Saturation.JsonFact.Extension(path, vocabulary.Extension(extension));
@@ -221,6 +226,57 @@ namespace Apache.Calcite.Cosmos.Facts
 
             return ValueSet.From(encoded);
         }
+
+        /// <summary>
+        /// Returns the theory's members for a set of bands: <see cref="Saturation.JsonValues.SurrogateBand"/> and
+        /// <see cref="Saturation.JsonValues.HighBand"/>.
+        /// </summary>
+        public static ValueSet<string> Members(JsonCharacterBand bands) => bands switch
+        {
+            JsonCharacterBand.None => NoBand,
+            JsonCharacterBand.Surrogates => ValueSet.Of(SurrogateBand),
+            JsonCharacterBand.HighBmp => ValueSet.Of(HighBand),
+            _ => AllBands,
+        };
+
+        /// <summary>
+        /// Reads the theory's members back as a set of bands.
+        /// </summary>
+        public static JsonCharacterBand Bands(ValueSet<string> members) =>
+            (members.Contains(SurrogateBand) ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
+            | (members.Contains(HighBand) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None);
+
+        /// <summary>
+        /// Returns the bands a value holds units of, as the theory reads a value's characters when it reasons with one: a
+        /// string's own, and none for any other value.
+        /// </summary>
+        /// <remarks>
+        /// The one reader of a value's characters, for a literal or a parameter a consumer holds, a row as it arrives and a
+        /// value a declaration or a filter names, which the theory reads through <see cref="Saturation.JsonValues.CharactersOf(string)"/>
+        /// itself: so what a consumer asks of a value is what the theory knows of it.
+        /// </remarks>
+        public static JsonCharacterBand Characters(JsonScalar value) => Bands(CharactersOf(Value(value)));
+
+        /// <summary>
+        /// Returns the bands a text's units are in.
+        /// </summary>
+        public static JsonCharacterBand Characters(string text) => Bands(BandsOfText(text));
+
+        /// <summary>
+        /// Returns the band one UTF-16 unit is in: <see cref="JsonCharacterBand.None"/> below U+D800.
+        /// </summary>
+        public static JsonCharacterBand Characters(char unit) => BandOf(unit) switch
+        {
+            null => JsonCharacterBand.None,
+            SurrogateBand => JsonCharacterBand.Surrogates,
+            _ => JsonCharacterBand.HighBmp,
+        };
+
+        /// <summary>
+        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point, a code point
+        /// past U+FFFF being written in surrogates: what a pattern's reader reads a range as.
+        /// </summary>
+        public static JsonCharacterBand Characters(int lo, int hi) => Bands(BandsOf(lo, hi));
 
         /// <summary>
         /// Returns the narrowest set of types an extension settles, or <c>null</c> where it settles none.

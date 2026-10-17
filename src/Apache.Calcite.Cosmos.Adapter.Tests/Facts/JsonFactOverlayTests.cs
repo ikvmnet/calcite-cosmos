@@ -29,6 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath Ay = A.Property("y");
         static readonly JsonDocumentPath Bzw = B.Property("z").Property("w");
         static readonly JsonDocumentPath Id = JsonDocumentPath.Root.Property("id");
+        static readonly JsonDocumentPath ETag = JsonDocumentPath.Root.Property("_etag");
         static readonly JsonDocumentPath Ts = JsonDocumentPath.Root.Property("_ts");
         static readonly JsonDocumentPath Meta = JsonDocumentPath.Root.Property("meta");
         static readonly JsonDocumentPath MetaOwner = Meta.Property("owner");
@@ -37,18 +38,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <summary>The service's facts alone: the theory of every container that declares no schema.</summary>
         static readonly JsonFactTheory Undeclared = new(CosmosServiceFacts.Rules);
 
-        /// <summary>The service's facts and an unconditional one beneath a path a query can also name a sibling of.</summary>
+        /// <summary>
+        /// The service's facts and unconditional ones beneath a path a query can also name a sibling of: a string, of
+        /// characters a pattern would declare.
+        /// </summary>
         static readonly JsonFactTheory Stated = new(CosmosServiceFacts.Rules.Concat(new[]
         {
             JsonFactRule.Unconditional(new JsonFact(MetaOwner, new JsonClaim.Present())),
             JsonFactRule.Unconditional(new JsonFact(MetaOwner, new JsonClaim.OfType(JsonType.String))),
+            JsonFactRule.Unconditional(new JsonFact(MetaOwner, new JsonClaim.Characters(JsonCharacterBand.HighBmp))),
         }));
 
-        static readonly JsonDocumentPath[] Paths = { A, B, Ax, Ay, Bzw, MetaX, Id, Ts, Id.Property("q"), MetaOwner };
+        static readonly JsonDocumentPath[] Paths = { A, B, Ax, Ay, Bzw, MetaX, Id, Ts, ETag, Id.Property("q"), MetaOwner };
+
+        /// <summary>
+        /// Strings from all three bands a string's characters are known by: a high unit, a supplementary character, both,
+        /// and a character below U+D800 that is no ASCII.
+        /// </summary>
+        static readonly string[] Banded = { "\uE000", "a\uD83D\uDE00", "\uFF21\uD83D\uDE00", "\u4E2D" };
 
         static readonly JsonScalar[] Values =
         {
-            "s", "t", "", 0m, 1m, 5m, -3m, 2.5m, 1e20m, 1e300, true, false, JsonScalar.Null,
+            "s", "t", "", 0m, 1m, 5m, -3m, 2.5m, 1e20m, 1e300, true, false, JsonScalar.Null, "\uE000", "a\uD83D\uDE00",
         };
 
         static readonly decimal[] Edges = { -3m, 0m, 1m, 2.5m, 5m, 100m };
@@ -130,8 +141,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <remarks>
         /// The overlay reads each conjunct as <c>PredicateAtom.Kept</c> does and meets them path by path; the engine reads
         /// the same atoms through the analysis rules and meets them in the theory's tables. This holds the two readings to
-        /// each other. Beneath a path that holds no object the overlay says absent where the engine, not told of the path,
-        /// knows nothing — so elsewhere it is held only to knowing at least as much.
+        /// each other, the characters of a path's strings among them: literals from all three bands, and a service fact and
+        /// a declaration stating them. Beneath a path that holds no object the overlay says absent where the engine, not
+        /// told of the path, knows nothing — so elsewhere it is held only to knowing at least as much.
         /// </remarks>
         [Theory]
         [InlineData(false)]
@@ -174,7 +186,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                             fastValue.Should().Be(engineValue, $"TryGetValue({path}) under {described}");
 
                         Describe(fast.ClaimsFor(path)).Should().Equal(Describe(engine.ClaimsFor(path)), $"ClaimsFor({path}) under {described}");
+                        fast.CharactersOf(path).Should().Be(engine.CharactersOf(path), $"CharactersOf({path}) under {described}");
                     }
+                    else if (engine.CharactersOf(path) is var bands && bands != JsonCharacterBand.Any)
+                        (fast.CharactersOf(path) & ~bands).Should().Be(JsonCharacterBand.None, $"CharactersOf({path}) under {described}, which the engine knows");
 
                     foreach (var claim in Questions())
                     {
@@ -211,9 +226,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath[] Read = { A, B, Ax, MetaX, Id };
 
         static readonly SqlValue.Literal[] Literals =
-        {
-            SqlValue.Of("s"), SqlValue.Of("30"), SqlValue.Of("true"), SqlValue.Of(30m), SqlValue.Of(2.5m), SqlValue.Of(true),
-        };
+            new[] { SqlValue.Of("s"), SqlValue.Of("30"), SqlValue.Of("true"), SqlValue.Of(30m), SqlValue.Of(2.5m), SqlValue.Of(true) }
+                .Concat(Banded.Select(text => SqlValue.Of(text))).ToArray();
 
         /// <summary>
         /// A conjunct of one atom over a path, or its negation: a comparison with a literal or a parameter, a membership, a
@@ -262,6 +276,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             yield return new JsonClaim.OneOf(new JsonScalar[] { "s", "t" });
             yield return new JsonClaim.OneOf(new JsonScalar[] { 0m, 1m, 5m });
             yield return new JsonClaim.OneOf(new JsonScalar[] { true, false, JsonScalar.Null });
+            yield return new JsonClaim.OneOf(new JsonScalar[] { "s", "\uE000" });
+
+            foreach (var bands in new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp, JsonCharacterBand.Any })
+                yield return new JsonClaim.Characters(bands);
 
             foreach (var edge in Edges)
             {

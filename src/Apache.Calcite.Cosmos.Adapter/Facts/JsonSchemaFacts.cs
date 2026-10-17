@@ -120,10 +120,11 @@ namespace Apache.Calcite.Cosmos.Facts
             if (declared?.Type == JsonType.String && recognisers.StringPattern?.Invoke(Text(node, "pattern")) is IJsonStoredForm form)
                 State(new JsonClaim.Represents(form));
 
-            // Claims the caller reads off a subschema whole, which JSON Schema's own claims cannot state:
-            // the adapter's geography, proven from a pinned GeoJSON shape, and the characters a pattern
-            // lets a string hold -- read beside any type, being vacuous for anything but a string, as the
-            // pattern is. See JsonSchemaRecognisers.
+            // Claims the caller reads off a subschema whole: the adapter's geography, proven from a pinned
+            // GeoJSON shape, which JSON Schema's own claims cannot state; and the characters a pattern lets
+            // a string hold, which they can, read by the caller's reader of the pattern language -- beside
+            // any type, being vacuous for anything but a string, as the pattern is. See
+            // JsonSchemaRecognisers.
             if (recognisers.Subschema?.Invoke(node) is { } recognised)
                 foreach (var claim in recognised)
                     State(claim);
@@ -630,9 +631,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>A claim about the union's own value</b> has to admit the null: a type becomes its
         /// <c>OrNull</c>, a constant and a domain gain <c>null</c> as a member, and a disequality
         /// already holds of a null unless it excluded one. A stored form already admits a null —
-        /// it says how the strings are written and nothing about whether one is there — and a
-        /// consumer's claim says for itself whether a null satisfies it, as one about the characters
-        /// of a string does.
+        /// it says how the strings are written and nothing about whether one is there — and so does
+        /// a claim of what characters a string holds.
         /// </para>
         /// <para>
         /// <b>A claim that something is there</b> does not survive a null at all. A <c>required</c>
@@ -663,12 +663,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
 
-                // A bound binds a number and holds of a null already.
+                // A bound binds a number and holds of a null already, and what characters a string holds binds strings.
                 JsonClaim.LowerBound bound => bound,
                 JsonClaim.UpperBound bound => bound,
-
-                // And a consumer's claim that a null satisfies, which it says itself: what a string's characters are.
-                JsonClaim.Extension extension when extension.IsEntailedBy(new JsonClaim.OfType(JsonType.Null)) => extension,
+                JsonClaim.Characters characters => characters,
                 _ => null,
             };
 

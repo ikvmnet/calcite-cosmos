@@ -62,6 +62,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var focus = Relatives(Vocabulary[random.Next(Vocabulary.Length)]);
                 var premises = Enumerable.Range(0, 1 + random.Next(6))
                     .Select(_ => TrueFact(random, document, random.Next(4) != 0 ? focus[random.Next(focus.Count)] : null)).ToList();
+                premises.Add(Documents.FormCharacters);
                 // Half the trials carry a discriminator and conditional rules, so that splits and lifts are checked too.
                 var rules = new List<JsonGuardedRule>();
                 if (random.Next(2) == 0)
@@ -137,6 +138,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new JsonFact.MinLength(path, minLength);
                 if (scope.TryGet(r.MaxLength.Of(p), out var maxLength))
                     yield return new JsonFact.MaxLength(path, maxLength);
+                if (scope.TryGet(r.Chars.Of(p), out var chars))
+                    yield return new JsonFact.Characters(path, chars);
                 if (scope.TryGet(r.MinItems.Of(p), out var minItems))
                     yield return new JsonFact.MinItems(path, minItems);
                 if (scope.TryGet(r.MaxItems.Of(p), out var maxItems))
@@ -194,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             typeof(JsonFact.Present), typeof(JsonFact.Absent), typeof(JsonFact.OfType), typeof(JsonFact.OneOf), typeof(JsonFact.NotEqual),
             typeof(JsonFact.Lower), typeof(JsonFact.Upper), typeof(JsonFact.MinItems), typeof(JsonFact.MaxItems), typeof(JsonFact.Requires), typeof(JsonFact.ClosedTo),
-            typeof(JsonFact.Form), typeof(JsonFact.Extension),
+            typeof(JsonFact.Form), typeof(JsonFact.Extension), typeof(JsonFact.Characters),
         };
 
         /// <summary>A fact of one of the kinds, true of the document.</summary>
@@ -276,7 +279,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var objects = values.OfType<J.Obj>().ToList();
 
                 // Facts bearing on what the document holds there are drawn more often than those that hold vacuously.
-                var kinds = Enumerable.Range(0, 25).ToList();
+                var kinds = Enumerable.Range(0, 26).ToList();
                 if (objects.Count > 0)
                     kinds.AddRange(new[] { 10, 11, 16, 17, 21, 22, 10, 11, 16, 17, 21, 22 });
                 if (arrays.Count > 0)
@@ -286,7 +289,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 if (numbers.Count > 0)
                     kinds.AddRange(new[] { 4, 5, 14, 4, 5, 14 });
                 if (strings.Count > 0)
-                    kinds.AddRange(new[] { 6, 7, 23, 23 });
+                    kinds.AddRange(new[] { 6, 7, 23, 23, 25, 25 });
                 if (values.OfType<J.Huge>().Any())
                     kinds.AddRange(new[] { 2, 4, 5, 2, 4, 5 });
                 if (scalars.Count > 0)
@@ -326,6 +329,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     22 => new JsonFact.NameMaxLength(path, objects.SelectMany(o => o.Properties.Keys).Select(k => (long)k.Length).DefaultIfEmpty(1).Max() + random.Next(2) - (objects.Count == 0 ? 0 : 0)),
                     23 => new JsonFact.Form(path, Documents.Forms[random.Next(Documents.Forms.Length)]),
                     24 => new JsonFact.Extension(path, Documents.Extensions[random.Next(Documents.Extensions.Length)]),
+                    25 => new JsonFact.Characters(path, ValueSet.From(values.OfType<J.Str>().SelectMany(v => BandsOfText(v.Value)).Concat(AllBands.Where(_ => random.Next(3) == 0)))),
                     _ => null,
                 };
 

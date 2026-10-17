@@ -22,16 +22,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     public class CosmosPatternAlphabetTests
     {
 
-        static readonly CosmosCharacterBand S = CosmosCharacterBand.Surrogates;
+        static readonly JsonCharacterBand S = JsonCharacterBand.Surrogates;
 
-        static readonly CosmosCharacterBand H = CosmosCharacterBand.HighBmp;
+        static readonly JsonCharacterBand H = JsonCharacterBand.HighBmp;
 
-        static CosmosCharacterBand[]? Absent(string pattern) => CosmosPatternAlphabet.Absent(pattern)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternAlphabet.Absent(pattern)?.ToArray();
 
-        static CosmosCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternAlphabet.Absent(pattern, unicode)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternAlphabet.Absent(pattern, unicode)?.ToArray();
 
-        static CosmosCharacterBand[] Claimed(string pattern) =>
-            CosmosPatternAlphabet.Claims(pattern).Cast<CosmosCharacters>().Select(c => c.Band).ToArray();
+        /// <summary>The bands the pattern's claim says its strings hold no unit of, as <see cref="Absent(string)"/> lists them.</summary>
+        static JsonCharacterBand[] Claimed(string pattern) =>
+            CosmosPatternAlphabet.Claims(pattern).Cast<JsonClaim.Characters>()
+                .SelectMany(c => new[] { S, H }.Where(band => (c.Bands & band) == JsonCharacterBand.None)).ToArray();
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────
 
@@ -241,8 +243,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static JsonFactSet Facts(string schema) =>
             CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!)).Facts).Declared;
 
-        static bool Lacks(JsonFactSet facts, string path, CosmosCharacterBand band) =>
-            facts.Knows(new JsonFact(JsonDocumentPath.Root.Property(path), new CosmosCharacters(band)));
+        static bool Lacks(JsonFactSet facts, string path, JsonCharacterBand band) =>
+            (facts.CharactersOf(JsonDocumentPath.Root.Property(path)) & band) == JsonCharacterBand.None;
 
         /// <remarks>
         /// A pattern is read beside any type, or none: it constrains only a string, and so does what it says of the

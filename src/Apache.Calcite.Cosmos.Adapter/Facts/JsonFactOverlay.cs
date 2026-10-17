@@ -259,6 +259,26 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <inheritdoc />
+        /// <remarks>
+        /// What the theory's rule says of a domain, read off the overlay's own: a value's characters are its own, and a
+        /// domain says which bands the path's strings draw from (<see cref="JsonValues.CharactersOf(ValueSet{string})"/>,
+        /// which the rule computes). The engine states it of every domain a run passes through, and a domain only narrows,
+        /// so what it holds at the end is what the last domain says, which is the one the overlay reads. An established
+        /// path holds no other fact the engine could narrow them by: the gate keeps out every path the declaration states.
+        /// </remarks>
+        public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands)
+        {
+            if (_established.ContainsKey(path) || IsAbsent(path))
+            {
+                var known = TryDom(path, out var dom);
+                bands = known ? CharactersOf(dom) : AllBands;
+                return known;
+            }
+
+            return _outright.TryChars(path, out bands);
+        }
+
+        /// <inheritdoc />
         public override bool Form(JsonDocumentPath path, string token) =>
             _established.ContainsKey(path) == false && IsAbsent(path) == false && _outright.Form(path, token);
 

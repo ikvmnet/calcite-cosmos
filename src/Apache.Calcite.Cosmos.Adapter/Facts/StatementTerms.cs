@@ -661,6 +661,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
             public override bool Form(JsonDocumentPath path, string token) => Keep(_tables.Form(path, token));
 
+            public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => Keep(_tables.TryChars(path, out bands));
+
             public override bool Extension(JsonDocumentPath path, string key) => Keep(_tables.Extension(path, key));
 
             T Keep<T>(T answer)
@@ -710,6 +712,12 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             public override bool Form(JsonDocumentPath path, string token) => false;
+
+            public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands)
+            {
+                bands = ValueSet<string>.Empty;
+                return false;
+            }
 
             public override bool Extension(JsonDocumentPath path, string key) => false;
 

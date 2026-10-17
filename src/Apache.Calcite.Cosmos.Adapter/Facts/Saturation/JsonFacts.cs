@@ -168,6 +168,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>If the path holds a string, it is spelled in the named stored form.</summary>
         public sealed record Form(JsonPathSpec Path, string Name) : JsonFact(Path);
 
+        /// <summary>
+        /// If the path holds a string, its UTF-16 units are below U+D800 or in these bands
+        /// (<see cref="JsonValues.SurrogateBand"/>, <see cref="JsonValues.HighBand"/>).
+        /// </summary>
+        public sealed record Characters(JsonPathSpec Path, ValueSet<string> Bands) : JsonFact(Path);
+
+        /// <summary>
+        /// A stored form's strings hold units below U+D800 or in these bands: a statement about how the form is
+        /// written, and so about no path, which rides on the root. Says nothing about any document.
+        /// </summary>
+        public sealed record FormCharacters(string Name, ValueSet<string> Bands) : JsonFact(JsonPathSpec.Root);
+
         /// <summary>The path holds what a host's claim, named by its key, says; the theory reads nothing of it.</summary>
         public sealed record Extension(JsonPathSpec Path, string Key) : JsonFact(Path);
 
@@ -203,6 +215,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 NameMinLength f => r.NameMinLength.Of(p).Is(f.Length),
                 NameMaxLength f => r.NameMaxLength.Of(p).Is(f.Length),
                 Form f => r.Form.Of(p, f.Name),
+                Characters f => r.Chars.Of(p).Is(f.Bands),
+                FormCharacters f => r.FormChars.Of(f.Name).Is(f.Bands),
                 Extension f => r.Extension.Of(p, f.Key),
                 Discriminates => r.Discriminator.Of(p),
                 _ => throw new NotSupportedException(GetType().Name),
@@ -435,6 +449,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     JsonFact.Requires f => r.HeadRequired.Of(id, p, f.Property),
                     JsonFact.ClosedTo f => r.HeadClosed.Of(id, p, f.Properties),
                     JsonFact.Form f => r.HeadForm.Of(id, p, f.Name),
+                    JsonFact.Characters f => r.HeadChars.Of(id, p, f.Bands),
                     JsonFact.Extension f => r.HeadExtension.Of(id, p, f.Key),
                     _ => throw new NotSupportedException("a head of " + head.GetType().Name),
                 };

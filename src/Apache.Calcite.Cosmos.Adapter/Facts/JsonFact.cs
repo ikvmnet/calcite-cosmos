@@ -69,9 +69,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 // whether a null is there beside them -- so it entails only the claim that admits one.
                 (JsonClaim.Represents, JsonClaim.OfType b) => b.Type == JsonType.String && b.OrNull,
 
-                // A consumer's claim answers for itself, either way round. See JsonClaim.Extension.
+                // A consumer's claim answers for itself. See JsonClaim.Extension.
                 (JsonClaim.Extension a, var b) => a.Entails(b),
-                (var a, JsonClaim.Extension b) => b.IsEntailedBy(a),
 
                 // A bound binds numbers only. A stricter bound settles a looser one, a value or a domain
                 // settles one every number in it satisfies, and a claim that the path holds no number
@@ -85,6 +84,18 @@ namespace Apache.Calcite.Cosmos.Facts
                 (JsonClaim.OneOf a, JsonClaim.UpperBound b) => a.Values.Count > 0 && AllSatisfy(a.Values, b.Admits),
                 (JsonClaim.OfType a, JsonClaim.LowerBound or JsonClaim.UpperBound) => a.Type is not (JsonType.Number or JsonType.Integer),
                 (JsonClaim.Represents, JsonClaim.LowerBound or JsonClaim.UpperBound) => true,
+
+                // What characters a string holds binds strings only, as a bound binds numbers: fewer bands settle more, a
+                // claim that the path holds no string settles every such claim, a value or a domain one its strings'
+                // characters satisfy — read as the theory reads a value's, through JsonFactEncoding.Characters — and a
+                // stored form one the characters it is written in satisfy. The theory derives the same of one path by its
+                // rules; these say it of a union's branches, which the meet reads before the theory sees them, as the
+                // bounds' rows do, and go with the meet (TODO.md, *The schema reader emits splits rather than a meet*).
+                (JsonClaim.Characters a, JsonClaim.Characters b) => (a.Bands & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.OfType a, JsonClaim.Characters) => a.Type != JsonType.String,
+                (JsonClaim.EqualTo a, JsonClaim.Characters b) => (JsonFactEncoding.Characters(a.Value) & ~b.Bands) == JsonCharacterBand.None,
+                (JsonClaim.OneOf a, JsonClaim.Characters b) => a.Values.Count > 0 && System.Linq.Enumerable.All(a.Values, v => (JsonFactEncoding.Characters(v) & ~b.Bands) == JsonCharacterBand.None),
+                (JsonClaim.Represents a, JsonClaim.Characters b) => (a.Form.Characters & ~b.Bands) == JsonCharacterBand.None,
 
                 // A null is a value every nullable claim admits: a type that admits one, a domain
                 // holding one, a disequality with anything else, and a stored form, which says how

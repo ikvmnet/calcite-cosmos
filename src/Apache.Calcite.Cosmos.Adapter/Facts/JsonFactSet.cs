@@ -125,9 +125,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 case JsonClaim.Represents represents:
                     return _vocabulary!.TryForm(represents.Form, out var form) && t.Form(p, form);
 
+                case JsonClaim.Characters characters:
+                    return t.TryChars(p, out var held) && held.IsSubsetOf(JsonFactEncoding.Members(characters.Bands));
+
                 case JsonClaim.Extension extension:
-                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key)
-                        || IsEntailedByWhatIsKnown(t, p, extension);
+                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key);
 
                 default:
                     return false;
@@ -135,26 +137,26 @@ namespace Apache.Calcite.Cosmos.Facts
         });
 
         /// <summary>
-        /// Determines whether an extension follows from the rest of what is known of a path: a domain every value of
-        /// which satisfies it, or a stored form that establishes it.
+        /// Returns the bands of UTF-16 units the strings at a path may hold beside those below U+D800:
+        /// <see cref="JsonCharacterBand.Any"/> where nothing is known.
         /// </summary>
         /// <remarks>
-        /// The theory knows an extension only as it was stated. What JSON's own claims establish of it is the
-        /// extension's to say (<see cref="JsonClaim.Extension.IsEntailedBy"/>), and is read here the way a bound is read
-        /// off a domain: so a filter's <c>IN</c> or a schema's <c>enum</c> says the characters of the strings it lists,
-        /// and a stored form says that it is ASCII, through the claim's own reading of each and nowhere else.
+        /// <para>
+        /// <b>A fact of the theory, read as a type is.</b> What the context proved of the path's <c>chars</c>: a declared
+        /// <c>pattern</c> and a service fact state it, a value or a domain a declaration or a filter names derives it, and
+        /// so does a stored form, each by a rule of the theory and nowhere else; met over a conjunction and joined over the
+        /// cases a disjunction or a discriminator splits into. So <c>WHERE s IN ('a', 'b')</c> says its characters here
+        /// in the stratum it holds in, as a pattern does in every one.
+        /// </para>
+        /// <para>
+        /// Silent about whether a string is there: a path holding none satisfies any answer, and a consumer asks it only
+        /// of a path that may hold one.
+        /// </para>
         /// </remarks>
-        bool IsEntailedByWhatIsKnown(JsonFactTables t, JsonDocumentPath path, JsonClaim.Extension extension)
-        {
-            if (t.TryDom(path, out var dom) && Decode(dom) is { } values && extension.IsEntailedBy(new JsonClaim.OneOf(values)))
-                return true;
-
-            foreach (var (form, token) in _vocabulary!.Forms)
-                if (t.Form(path, token) && extension.IsEntailedBy(new JsonClaim.Represents(form)))
-                    return true;
-
-            return false;
-        }
+        /// <param name="path">The path.</param>
+        /// <returns>The bands.</returns>
+        public JsonCharacterBand CharactersOf(JsonDocumentPath path) =>
+            Read(JsonCharacterBand.Any, t => t.TryChars(path, out var bands) ? JsonFactEncoding.Bands(bands) : JsonCharacterBand.Any);
 
         /// <summary>
         /// Returns every stored form known for a path, which may be none.
@@ -209,8 +211,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns what is known about a path as claims, for diagnostics.
         /// </summary>
         /// <remarks>
-        /// The presence, the narrowest type claim that states the known types, the domain, and the forms and extensions.
-        /// A disequality is not listed: the set of them is not enumerable from one path.
+        /// The presence, the narrowest type claim that states the known types, the domain, the bounds, the forms, the
+        /// characters and the extensions. A disequality is not listed: the set of them is not enumerable from one path.
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <returns>The claims, which may be empty.</returns>
@@ -236,6 +238,9 @@ namespace Apache.Calcite.Cosmos.Facts
             foreach (var (form, token) in _vocabulary!.Forms)
                 if (t.Form(path, token))
                     claims.Add(new JsonClaim.Represents(form));
+
+            if (t.TryChars(path, out var bands) && JsonFactEncoding.Bands(bands) is var held && held != JsonCharacterBand.Any)
+                claims.Add(new JsonClaim.Characters(held));
 
             foreach (var (extension, key) in _vocabulary.Extensions)
                 if (t.Extension(path, key))

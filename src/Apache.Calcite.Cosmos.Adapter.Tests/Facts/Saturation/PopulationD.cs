@@ -88,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
                 .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
                 .ToArray();
-            var conjuncts = Statements.Draw(random, declaration);
+            var conjuncts = Statements.Draw(random, declaration).Concat(Statements.Banded(bands, declaration)).ToList();
             var report = new PopulationReport(seed, declaration, conjuncts);
 
             foreach (var document in documents)
@@ -287,6 +287,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     foreach (var claim in facts.ClaimsFor(path))
                     {
                         _report.Facts++;
+                        if (claim is JsonClaim.Characters)
+                            _report.Characters++;
+
                         foreach (var document in keeping)
                             if (Declaration.Holds(IrEval.At(document, path), claim) == false)
                             {
@@ -375,6 +378,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var fact in JsonFacts(context, json, graph))
                 {
                     _report.Facts++;
+                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters { Bands.Count: < 2 })
+                        _report.Characters++;
+
                     foreach (var document in keeping)
                         if (Documents.IsTrue(document, fact) == false)
                         {
@@ -534,6 +540,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.NameMinLength(p, (long)row.Output!);
                 foreach (var (p, row) in Of(r.NameMaxLength))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.NameMaxLength(p, (long)row.Output!);
+                foreach (var (p, row) in Of(r.Chars))
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters(p, (ValueSet<string>)row.Output!);
             }
 
         }

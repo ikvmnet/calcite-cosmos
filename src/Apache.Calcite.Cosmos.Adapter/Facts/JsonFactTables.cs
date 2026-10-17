@@ -65,6 +65,11 @@ namespace Apache.Calcite.Cosmos.Facts
         public abstract bool Form(JsonDocumentPath path, string token);
 
         /// <summary>
+        /// Returns the bands of UTF-16 units a path's strings may hold beside those below U+D800, where they are known.
+        /// </summary>
+        public abstract bool TryChars(JsonDocumentPath path, out ValueSet<string> bands);
+
+        /// <summary>
         /// Determines whether a path is known to hold what an extension claim says, by the claim's key.
         /// </summary>
         public abstract bool Extension(JsonDocumentPath path, string key);
@@ -121,6 +126,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <inheritdoc />
         public override bool Form(JsonDocumentPath path, string token) => Read(false, (scope, r) => scope.Check(r.Form.Of(Term(path, r), token)));
+
+        /// <inheritdoc />
+        public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => TryGet(path, r => r.Chars, out bands);
 
         /// <inheritdoc />
         public override bool Extension(JsonDocumentPath path, string key) => Read(false, (scope, r) => scope.Check(r.Extension.Of(Term(path, r), key)));

@@ -361,8 +361,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// What the facts say of the characters of a path's strings, read off its claims: a domain all below U+D800, a
-        /// stored form (every one ASCII), or a statement that a band beyond is not there — one band for an order among
-        /// the path's own strings, both against a value that may hold anything.
+        /// stored form (every one ASCII), or the theory's statement of the bands its strings may hold — one band left
+        /// out for an order among the path's own strings, both against a value that may hold anything. Read here, as a
+        /// classifier of its own, rather than through the fact the question reads.
         /// </summary>
         static bool CharactersKnown(JsonFactSet facts, JsonDocumentPath path, bool againstAnything = false)
         {
@@ -380,9 +381,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     return domain.Values.All(v => v.ToClrValue() is not string s || BelowSurrogates(s));
             }
 
-            var surrogates = claims.Contains(new CosmosCharacters(CosmosCharacterBand.Surrogates));
-            var high = claims.Contains(new CosmosCharacters(CosmosCharacterBand.HighBmp));
-            return againstAnything ? surrogates && high : surrogates || high;
+            var held = claims.OfType<JsonClaim.Characters>().Select(c => c.Bands).DefaultIfEmpty(JsonCharacterBand.Any).First();
+            return againstAnything ? held == JsonCharacterBand.None : held != JsonCharacterBand.Any;
         }
 
         /// <summary>
@@ -668,8 +668,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             if (CharactersKnown(facts, at, againstAnything: true))
                 return (false, false);
 
-            var claims = facts.ClaimsFor(at);
-            return (claims.Contains(new CosmosCharacters(CosmosCharacterBand.Surrogates)) == false, claims.Contains(new CosmosCharacters(CosmosCharacterBand.HighBmp)) == false);
+            var held = facts.ClaimsFor(at).OfType<JsonClaim.Characters>().Select(c => c.Bands).DefaultIfEmpty(JsonCharacterBand.Any).First();
+            return ((held & JsonCharacterBand.Surrogates) != JsonCharacterBand.None, (held & JsonCharacterBand.HighBmp) != JsonCharacterBand.None);
         }
 
         /// <summary>

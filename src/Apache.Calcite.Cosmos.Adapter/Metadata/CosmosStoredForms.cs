@@ -61,10 +61,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <b>A hook for the tests, and read by nothing else.</b> What <c>CosmosStoredFormsTests</c> holds to the claim
-        /// the service's order rests on: every stored form is ASCII, so a path in one holds no character at or above
-        /// U+D800, where code point and UTF-16 order part (<see cref="CosmosCharacters"/>, which a form entails). The
-        /// tables it enumerates are the recognisers' own, so a form added to one is held to the claim with no list to
-        /// keep beside it.
+        /// the service's order rests on: every stored form is ASCII, as <see cref="CosmosRepresentation.Characters"/>
+        /// states, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part — a
+        /// rule of the theory reads that off the form. The tables it enumerates are the recognisers' own, so a form added
+        /// to one is held to the claim with no list to keep beside it.
         /// </remarks>
         internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
             System.Linq.Enumerable.Concat(

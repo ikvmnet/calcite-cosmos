@@ -83,20 +83,6 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
             public virtual bool Entails(JsonClaim other) => Equals(other);
 
-            /// <summary>
-            /// Determines whether one of JSON's own claims, holding of a value, establishes this one of the same value.
-            /// </summary>
-            /// <remarks>
-            /// The other direction, and asked where <see cref="Entails"/> is: by the meet of a union, which keeps a claim
-            /// every branch entails, and by the nullable union, which keeps a claim a null standing in for the value
-            /// satisfies. A claim about what a value is <em>if</em> it is one kind of thing — what the characters of a
-            /// string are — holds of every value of another kind, a null among them, and says so here; the default
-            /// says nothing establishes it, which loses facts rather than inventing them.
-            /// </remarks>
-            /// <param name="other">A claim of JSON's own, of the same path.</param>
-            /// <returns><c>true</c> where it does; the default answers <c>false</c>.</returns>
-            public virtual bool IsEntailedBy(JsonClaim other) => false;
-
         }
 
         /// <summary>
@@ -216,6 +202,26 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="Form">The form, as the consumer that recognised it identifies it.</param>
         public sealed record Represents(IJsonStoredForm Form) : JsonClaim;
+
+        /// <summary>
+        /// The value at the path, where it is a string, holds UTF-16 units only below U+D800 and in these bands.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A fact of JSON's like a type</b>, and the theory reasons with it as one: per path, the bands a string there
+        /// may hold units of, which a conjunction narrows and a disjunction, a case split or a union widens, per branch
+        /// and per scope. A declared <c>pattern</c> states it, read as the characters it admits; so does a service fact,
+        /// of a property whose grammar a standard fixes. And the theory derives it, from a value or a domain a
+        /// declaration or a filter states — each value's characters being its own — and from a stored form, which
+        /// says how its strings are written. See <c>DESIGN.md</c> under <em>Characters, a fact of the theory</em>.
+        /// </para>
+        /// <para>
+        /// <b>Silent about anything but a string</b>, as a pattern is: a number, a null or an absent path holds no
+        /// character, and satisfies every claim of this kind.
+        /// </para>
+        /// </remarks>
+        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        public sealed record Characters(JsonCharacterBand Bands) : JsonClaim;
 
     }
 

@@ -72,6 +72,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             NameMinLength = graph.DefineFunction<JPath, long>("nameMinLength", ValueLattice.Max<long>());
             NameMaxLength = graph.DefineFunction<JPath, long>("nameMaxLength", ValueLattice.Min<long>());
             Form = graph.DefineRelation<JPath, string>("form");
+            Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
+            FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
             Extension = graph.DefineRelation<JPath, string>("extension");
 
             Json = graph.DefineRuleset("json");
@@ -185,6 +187,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// What a form is, the theory does not know; that it is a way of writing strings is all it reads.
         /// </summary>
         public Relation<JPath, string> Form { get; }
+
+        /// <summary>
+        /// If the path holds a string, the bands its UTF-16 units may be in beside those below U+D800:
+        /// <see cref="JsonValues.SurrogateBand"/> and <see cref="JsonValues.HighBand"/>. A fact about the value like a type,
+        /// and combined as one: a conjunction meets the sets, a case join unites them.
+        /// </summary>
+        public Function<JPath, ValueSet<string>> Chars { get; }
+
+        /// <summary>
+        /// The bands a stored form's strings may hold units of, by the form's token: a statement about how a form is
+        /// written, and about no document, stated beside the forms a declaration names.
+        /// </summary>
+        public Function<string, ValueSet<string>> FormChars { get; }
 
         /// <summary>
         /// The path holds what a host's own claim, named by a key, says it holds. The theory reads nothing of it: what
@@ -327,6 +342,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (p, n) = r.Vars<JPath, string>("p", "n");
                 r.When(Form.Of(p, n));
                 r.Then(Types.Of(p).Is(Types(StringType, NullType)));
+            });
+
+            // What characters a string holds is a fact about it like its length: a value's are its own, and a domain's
+            // strings say together which bands the path's may draw from; a domain of no string, that the path holds no
+            // character at all. Stated of every domain, so that what a context holds is what its last domain says
+            // whatever domains it passed through: a domain only narrows, and so do the bands of what it holds.
+            Rule("a value's characters are its own", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Then(Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain))));
+            });
+            SchemaRule("a stored form holds the characters it is written in", r =>
+            {
+                var (p, n, c) = r.Vars<JPath, string, ValueSet<string>>("p", "n", "c");
+                r.When(Form.Of(p, n), c.Is(FormChars.Of(n)));
+                r.Then(Chars.Of(p).Is(c));
             });
         }
 
@@ -491,6 +523,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Inherit("hi", Hi);
             Inherit("minLength", MinLength);
             Inherit("maxLength", MaxLength);
+            Inherit("chars", Chars);
             Inherit("minItems", MinItems);
             Inherit("maxItems", MaxItems);
             Inherit("closed", Closed, schema: true);
@@ -847,6 +880,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         internal Relation<long, JPath, string> HeadRequired { get; private set; } = null!;
         internal Relation<long, JPath, ValueSet<string>> HeadClosed { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadForm { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadChars { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadExtension { get; private set; } = null!;
 
         /// <summary>
@@ -888,6 +922,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             HeadRequired = g.DefineRelation<long, JPath, string>("head_required", local);
             HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
             HeadForm = g.DefineRelation<long, JPath, string>("head_form", local);
+            HeadChars = g.DefineRelation<long, JPath, ValueSet<string>>("head_chars", local);
             HeadExtension = g.DefineRelation<long, JPath, string>("head_extension", local);
 
             SchemaRule("a singleton domain pins its value", r =>
@@ -980,6 +1015,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Head("a required property", HeadRequired, (p, v) => Required.Of(p, v));
             Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
             Head("a stored form", HeadForm, (p, v) => Form.Of(p, v));
+            Head("characters", HeadChars, (p, v) => Chars.Of(p).Is(v));
             Head("a host's claim", HeadExtension, (p, v) => Extension.Of(p, v));
 
             // What a query mentions is relevant, and so is what bears on it: a path's parent and array, the patterns it

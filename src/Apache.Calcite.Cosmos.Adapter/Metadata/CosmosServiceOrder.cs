@@ -37,15 +37,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <list type="bullet">
     /// <item><description><b>R1, characters.</b> Code point and UTF-16 order part only where a surrogate unit meets a
-    /// unit from U+E000 (<see cref="CosmosCharacterBand"/>): at the first unit two strings differ in, the prefixes agree,
+    /// unit from U+E000 (<see cref="JsonCharacterBand"/>): at the first unit two strings differ in, the prefixes agree,
     /// a unit below U+D800 orders alike against anything, and only a surrogate against a high unit reverses. So two sets
-    /// of strings order alike unless one may hold a surrogate and the other a high unit. A path's characters are what
-    /// the facts say of it as <see cref="CosmosCharacters"/>, one claim per band, which a declared pattern, a service
-    /// fact, its domain and a stored form — every registered form is ASCII — each establish; and otherwise anything:
-    /// Azure allows every character in <c>id</c> but <c>/</c> and <c>\</c>. A literal's are its own, which under the
-    /// default charset are always below U+0100. Two constants the service compares by UTF-16 on Azure and by code point
-    /// on the emulator, and a range whose bounds the two orders rank apart keeps nothing on Azure; both are inside what
-    /// R1 refuses, since each needs a surrogate on one side and a high unit on the other.</description></item>
+    /// of strings order alike unless one may hold a surrogate and the other a high unit — the service's measured
+    /// behaviour, and the one thing about characters decided here (<see cref="Agree"/>). What characters a path's
+    /// strings hold is a fact of the theory, asked of the facts the consumer was decided under
+    /// (<see cref="JsonFactSet.CharactersOf"/>): a declared pattern and a service fact state it, and a domain — an
+    /// <c>enum</c>, a <c>const</c>, a filter's <c>=</c> or <c>IN</c>, per disjunct — and a stored form derive it, each by
+    /// a rule there; and otherwise anything: Azure allows every character in <c>id</c> but <c>/</c> and <c>\</c>. A
+    /// literal's are its own, read as the theory reads a value's (<see cref="JsonFactEncoding.Characters(JsonScalar)"/>),
+    /// which under the default charset are always below U+0100; a parameter's are anything until it is bound. Two
+    /// constants the service compares by UTF-16 on Azure and by code point on the emulator, and a range whose bounds the
+    /// two orders rank apart keeps nothing on Azure; both are inside what R1 refuses, since each needs a surrogate on one
+    /// side and a high unit on the other.</description></item>
     /// <item><description><b>R2, readings.</b> Calcite orders what the column reads, and the service the stored value.
     /// Text over strings is the strings; text over a number or a boolean is a rendering, which sorts among the strings
     /// as text where the service sorts it by type and value. <c>INTEGER</c> and narrower read exactly what they read,
@@ -114,12 +118,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// values and which as null, what characters the strings may hold, whether every row holds one value, and what
         /// check of each value would complete an agreement that falls short.
         /// </summary>
-        readonly record struct Reading(CosmosOrderAgreement Agreement, Classes Values, Classes Nulls, CosmosCharacterBand Characters, bool Constant, JsonDocumentPath? Path, string Why, CosmosOrderAnchor Anchorable = CosmosOrderAnchor.None);
-
-        /// <summary>
-        /// Both bands: what strings nothing states the characters of may hold.
-        /// </summary>
-        const CosmosCharacterBand AnyCharacter = CosmosCharacterBand.Surrogates | CosmosCharacterBand.HighBmp;
+        readonly record struct Reading(CosmosOrderAgreement Agreement, Classes Values, Classes Nulls, JsonCharacterBand Characters, bool Constant, JsonDocumentPath? Path, string Why, CosmosOrderAnchor Anchorable = CosmosOrderAnchor.None);
 
         /// <summary>
         /// 2^53: past it a double ties an integer with its neighbour, and within it every integer is one value however
@@ -432,7 +431,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where it certifies.</returns>
         public static bool IsAnchor(CosmosOrderAnchor anchor, System.Text.Json.JsonElement value) => anchor switch
         {
-            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || CosmosCharacters.BandsOf(value.GetString()!) == CosmosCharacterBand.None,
+            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || JsonFactEncoding.Characters(value.GetString()!) == JsonCharacterBand.None,
             CosmosOrderAnchor.Number => value.ValueKind != System.Text.Json.JsonValueKind.Number || value.TryGetDouble(out var number) && Math.Abs(number) < (double)TwoTo53,
             _ => true,
         };
@@ -483,7 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static string LowerBound(string value)
         {
             var below = 0;
-            while (below < value.Length && CosmosCharacters.BandOf(value[below]) == CosmosCharacterBand.None)
+            while (below < value.Length && JsonFactEncoding.Characters(value[below]) == JsonCharacterBand.None)
                 below++;
 
             return value.Substring(0, below);
@@ -601,25 +600,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     foreach (var path in operand.Operands)
                         always &= facts.IsAlwaysGeography(path);
 
-                    return new(CosmosOrderAgreement.Exact, Classes.Number, always ? Classes.None : Classes.Undefined | Classes.Null, CosmosCharacterBand.None, false, null, "a geodesic distance");
+                    return new(CosmosOrderAgreement.Exact, Classes.Number, always ? Classes.None : Classes.Undefined | Classes.Null, JsonCharacterBand.None, false, null, "a geodesic distance");
                 }
 
                 case CosmosOrderOperandKind.Score:
-                    return new(CosmosOrderAgreement.Exact, Classes.Number, Classes.None, CosmosCharacterBand.None, false, null, "a score");
+                    return new(CosmosOrderAgreement.Exact, Classes.Number, Classes.None, JsonCharacterBand.None, false, null, "a score");
 
                 case CosmosOrderOperandKind.Literal:
                 {
                     // A null is written as one, a JSON null the service compares as a value, where Calcite reads null.
                     var value = operand.Value;
                     if (value.IsNull)
-                        return new(CosmosOrderAgreement.Exact, Classes.None, Classes.Null, CosmosCharacterBand.None, true, null, "a null literal");
+                        return new(CosmosOrderAgreement.Exact, Classes.None, Classes.Null, JsonCharacterBand.None, true, null, "a null literal");
 
-                    var characters = value.Type == JsonType.String ? CosmosCharacters.BandsOf((string)value.ToClrValue()!) : CosmosCharacterBand.None;
-                    return new(CosmosOrderAgreement.Exact, ClassOf(value), Classes.None, characters, true, null, "a literal");
+                    return new(CosmosOrderAgreement.Exact, ClassOf(value), Classes.None, JsonFactEncoding.Characters(value), true, null, "a literal");
                 }
 
                 case CosmosOrderOperandKind.Parameter:
-                    return new(CosmosOrderAgreement.Exact, ClassesOf(operand.Type!), Classes.None, AnyCharacter, false, null, "a parameter, which may hold any character");
+                    return new(CosmosOrderAgreement.Exact, ClassesOf(operand.Type!), Classes.None, JsonCharacterBand.Any, false, null, "a parameter, which may hold any character");
 
                 default:
                     return ReadComputed(operand.Type!, operand.Nullable, printed);
@@ -652,8 +650,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             if (type == SqlTypeName.ANY || type == SqlTypeName.VARIANT)
                 return printed
-                    ? new(CosmosOrderAgreement.None, Classes.None, Classes.All, AnyCharacter, false, null, "a " + type.getName() + ", which the service orders by no rule Calcite shares")
-                    : new(CosmosOrderAgreement.Exact, Classes.All, Classes.None, AnyCharacter, false, null, "the stored value");
+                    ? new(CosmosOrderAgreement.None, Classes.None, Classes.All, JsonCharacterBand.Any, false, null, "a " + type.getName() + ", which the service orders by no rule Calcite shares")
+                    : new(CosmosOrderAgreement.Exact, Classes.All, Classes.None, JsonCharacterBand.Any, false, null, "the stored value");
 
             var values = IsCharacter(type) ? Classes.String
                 : type == SqlTypeName.BOOLEAN ? Classes.Boolean
@@ -661,9 +659,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 : Classes.None;
 
             if (values == Classes.None || printed)
-                return new(CosmosOrderAgreement.None, Classes.None, Classes.All, AnyCharacter, false, null, "a computed " + type.getName() + ", which the service orders by no rule the plan has checked");
+                return new(CosmosOrderAgreement.None, Classes.None, Classes.All, JsonCharacterBand.Any, false, null, "a computed " + type.getName() + ", which the service orders by no rule the plan has checked");
 
-            return new(CosmosOrderAgreement.Exact, values, nullable ? Classes.All & ~values : Classes.None, AnyCharacter, false, null, "a computed value, whose characters nothing states");
+            return new(CosmosOrderAgreement.Exact, values, nullable ? Classes.All & ~values : Classes.None, JsonCharacterBand.Any, false, null, "a computed value, whose characters nothing states");
         }
 
         /// <summary>
@@ -803,29 +801,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Reads what characters a path's strings may hold: the bands the facts do not say it lacks.
+        /// Reads what characters a path's strings may hold: the theory's fact, or anything for a path no fact can be
+        /// about.
         /// </summary>
-        /// <remarks>
-        /// Asked of the facts as a claim, one per band (<see cref="CosmosCharacters"/>), which a declared
-        /// <c>pattern</c>, a service fact, a domain and a stored form each establish — the last two through the claim's
-        /// own reading of them (<see cref="JsonFactSet.Knows"/>), so a filter's <c>IN</c> and an ASCII form say their
-        /// characters here as a pattern does. A path no fact can be about may hold any.
-        /// </remarks>
-        static CosmosCharacterBand Characters(JsonFactSet facts, JsonDocumentPath? path)
-        {
-            var characters = AnyCharacter;
-
-            if (path is not JsonDocumentPath known)
-                return characters;
-
-            if (facts.Knows(new JsonFact(known, new CosmosCharacters(CosmosCharacterBand.Surrogates))))
-                characters &= ~CosmosCharacterBand.Surrogates;
-
-            if (facts.Knows(new JsonFact(known, new CosmosCharacters(CosmosCharacterBand.HighBmp))))
-                characters &= ~CosmosCharacterBand.HighBmp;
-
-            return characters;
-        }
+        static JsonCharacterBand Characters(JsonFactSet facts, JsonDocumentPath? path) =>
+            path is JsonDocumentPath known ? facts.CharactersOf(known) : JsonCharacterBand.Any;
 
         /// <summary>
         /// Determines whether the facts bound every number a path holds within a range.
@@ -879,9 +859,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Determines whether two sets of strings order alike by code point and by UTF-16 code unit: unless one may hold a
         /// surrogate and the other a unit from U+E000.
         /// </summary>
-        static bool Agree(CosmosCharacterBand x, CosmosCharacterBand y) =>
-            ((x & CosmosCharacterBand.Surrogates) == CosmosCharacterBand.None || (y & CosmosCharacterBand.HighBmp) == CosmosCharacterBand.None)
-            && ((x & CosmosCharacterBand.HighBmp) == CosmosCharacterBand.None || (y & CosmosCharacterBand.Surrogates) == CosmosCharacterBand.None);
+        /// <remarks>
+        /// Legality, not a fact about the data: what each side may hold is the theory's, and this is what the service
+        /// was measured to do with it, on the emulator and on Azure, one partition and the merge of two.
+        /// </remarks>
+        static bool Agree(JsonCharacterBand x, JsonCharacterBand y) =>
+            ((x & JsonCharacterBand.Surrogates) == JsonCharacterBand.None || (y & JsonCharacterBand.HighBmp) == JsonCharacterBand.None)
+            && ((x & JsonCharacterBand.HighBmp) == JsonCharacterBand.None || (y & JsonCharacterBand.Surrogates) == JsonCharacterBand.None);
 
         /// <summary>
         /// Determines whether every type of a null class lies on one side of the values in the service's type order.
@@ -987,11 +971,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return string.Join(" and ", names);
         }
 
-        static string Describe(CosmosCharacterBand bands) => bands switch
+        static string Describe(JsonCharacterBand bands) => bands switch
         {
-            CosmosCharacterBand.None => "below U+D800",
-            CosmosCharacterBand.Surrogates => "nothing from U+E000",
-            CosmosCharacterBand.HighBmp => "no surrogate",
+            JsonCharacterBand.None => "below U+D800",
+            JsonCharacterBand.Surrogates => "nothing from U+E000",
+            JsonCharacterBand.HighBmp => "no surrogate",
             _ => "any character",
         };
 

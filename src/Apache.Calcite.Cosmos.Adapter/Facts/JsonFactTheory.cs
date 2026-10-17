@@ -143,6 +143,11 @@ namespace Apache.Calcite.Cosmos.Facts
             foreach (var discriminator in discriminators)
                 _stated.Add(new Saturation.JsonFact.Discriminates(discriminator));
 
+            // What each form a rule names is written in, as the form states it: data about the form, which the theory
+            // reads into what a path holding it holds.
+            foreach (var (form, token) in _vocabulary.Forms)
+                _stated.Add(new Saturation.JsonFact.FormCharacters(token, JsonFactEncoding.Members(form.Characters)));
+
             _paths.AddRange(paths);
         }
 

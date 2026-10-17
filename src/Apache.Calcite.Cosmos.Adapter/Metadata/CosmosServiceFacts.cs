@@ -86,11 +86,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             rules.AddRange(About(CosmosContainerMetadata.ETagPropertyName, JsonType.String));
 
             // An entity tag, whose grammar RFC 9110 fixes: a quoted run of '!', 0x23 to 0x7E and 0x80
-            // to 0xFF. No unit at or above U+D800, so its strings order alike by code point and by
-            // UTF-16 code unit (see CosmosCharacterBand), which is what lets MIN and MAX over it push.
+            // to 0xFF. No unit at or above U+D800, stated as data like the rest: its strings then order
+            // alike by code point and by UTF-16 code unit (see JsonCharacterBand), which is what lets MIN
+            // and MAX over it push.
             var etag = JsonDocumentPath.Root.Property(CosmosContainerMetadata.ETagPropertyName);
-            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new CosmosCharacters(CosmosCharacterBand.Surrogates))));
-            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new CosmosCharacters(CosmosCharacterBand.HighBmp))));
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new JsonClaim.Characters(JsonCharacterBand.None))));
 
             return rules.ToArray();
         }

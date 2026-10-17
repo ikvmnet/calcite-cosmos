@@ -14,11 +14,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <remarks>
     /// <para>
     /// <b>What it is for.</b> The service orders a document's strings by code point and Calcite by UTF-16 code unit, and
-    /// the two part only where a surrogate meets a unit from U+E000 (<see cref="CosmosCharacterBand"/>). A path whose
+    /// the two part only where a surrogate meets a unit from U+E000 (<see cref="JsonCharacterBand"/>). A path whose
     /// strings are known to lack either band is one whose sorts, extremes and comparisons the service can be handed
     /// (<see cref="CosmosServiceOrder"/>). JSON Schema has one keyword that says what characters a string holds, and it
     /// is this one: a schema writing <c>"pattern": "^[A-Za-z0-9_-]+$"</c> on <c>id</c> has said that no id holds a
     /// character at or above U+D800, which is a proof the planner can use with nothing checked at run time.
+    /// </para>
+    /// <para>
+    /// <b>A reader of an input, and nothing more.</b> What it reads becomes a declared fact of the path
+    /// (<see cref="JsonClaim.Characters"/>), stated into the theory as a type is; the theory meets it with what a
+    /// domain, a stored form or a filter says of the same path, and what it is worth to an order is asked of the fact
+    /// there. Which band a range's units are in is the theory's to say (<c>JsonValues.BandsOf</c>).
     /// </para>
     /// <para>
     /// <b>Two readings, and the answer has to be right under both.</b> JSON Schema names ECMA-262's dialect and no flag.
@@ -85,23 +91,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// service stores them.
         /// </summary>
         /// <remarks>
-        /// A <see cref="CosmosCharacters"/> for each band no string the pattern admits holds a unit of. A pattern
-        /// admitting a surrogate admits a lone one under the reading by unit, which the service stores as U+FFFD, so it
-        /// says nothing of the high band either, and makes no claim at all. Like the pattern, each claim is about a
-        /// string if there is one, and holds of anything else.
+        /// <para>
+        /// A <see cref="JsonClaim.Characters"/> naming the bands the strings the pattern admits may hold units of, which
+        /// the theory states of the path as declared: an input read into a fact, and nothing decided here about what
+        /// the fact is for. Like the pattern, it is about a string if there is one, and holds of anything else.
+        /// </para>
+        /// <para>
+        /// <b>What the service stores, not what was written.</b> A pattern admitting a surrogate admits a lone one under
+        /// the reading by unit, which the service stores as U+FFFD, so its strings as stored may hold the high band too,
+        /// and it claims nothing.
+        /// </para>
         /// </remarks>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
-        /// <returns>The claims, which are empty where the pattern is refused or excludes nothing.</returns>
+        /// <returns>The claim, or none where the pattern is refused or its strings may hold either band.</returns>
         public static IReadOnlyList<JsonClaim> Claims(string? pattern)
         {
-            if (pattern is null || Absent(pattern) is not { } absent || absent.Contains(CosmosCharacterBand.Surrogates) == false)
+            if (pattern is null || Absent(pattern) is not { } absent || absent.Contains(JsonCharacterBand.Surrogates) == false)
                 return Array.Empty<JsonClaim>();
 
-            var claims = new List<JsonClaim>(2);
+            var held = JsonCharacterBand.Any;
             foreach (var band in absent)
-                claims.Add(new CosmosCharacters(band));
+                held &= ~band;
 
-            return claims;
+            return new JsonClaim[] { new JsonClaim.Characters(held) };
         }
 
         /// <summary>
@@ -109,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="pattern">The pattern.</param>
         /// <returns>The bands, or <c>null</c> where either reading refuses the pattern.</returns>
-        internal static IReadOnlyList<CosmosCharacterBand>? Absent(string pattern)
+        internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern)
         {
             if (Read(pattern, unicode: false) is not { } units || Read(pattern, unicode: true) is not { } points)
                 return null;
@@ -124,24 +136,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="pattern">The pattern.</param>
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
         /// <returns>The bands, or <c>null</c> where the reading refuses the pattern.</returns>
-        internal static IReadOnlyList<CosmosCharacterBand>? Absent(string pattern, bool unicode) =>
+        internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern, bool unicode) =>
             Read(pattern, unicode) is { } read ? Bands(read) : null;
 
         /// <summary>
         /// Returns the bands a set does not hold, one by one.
         /// </summary>
-        static IReadOnlyList<CosmosCharacterBand> Bands(CosmosCharacterBand held)
+        static IReadOnlyList<JsonCharacterBand> Bands(JsonCharacterBand held)
         {
-            var absent = new List<CosmosCharacterBand>(2);
-            if ((held & CosmosCharacterBand.Surrogates) == CosmosCharacterBand.None)
-                absent.Add(CosmosCharacterBand.Surrogates);
-            if ((held & CosmosCharacterBand.HighBmp) == CosmosCharacterBand.None)
-                absent.Add(CosmosCharacterBand.HighBmp);
+            var absent = new List<JsonCharacterBand>(2);
+            if ((held & JsonCharacterBand.Surrogates) == JsonCharacterBand.None)
+                absent.Add(JsonCharacterBand.Surrogates);
+            if ((held & JsonCharacterBand.HighBmp) == JsonCharacterBand.None)
+                absent.Add(JsonCharacterBand.HighBmp);
 
             return absent;
         }
 
-        static CosmosCharacterBand? Read(string pattern, bool unicode)
+        static JsonCharacterBand? Read(string pattern, bool unicode)
         {
             var reader = new Reader(pattern, unicode);
             return reader.Pattern() ? reader.Bands : null;
@@ -178,7 +190,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>Gets the bands of the units a character an atom consumes may be, or be written in.</summary>
-            public CosmosCharacterBand Bands { get; private set; }
+            public JsonCharacterBand Bands { get; private set; }
 
             bool AtEnd => _at >= _source.Length;
 
@@ -560,7 +572,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// Records the bands of every character in a span: of each unit, or, read by code point, of the units each
             /// code point is written in, everything past U+FFFF being a surrogate pair.
             /// </summary>
-            void Add(int lo, int hi) => Bands |= CosmosCharacters.BandsOf(lo, hi);
+            void Add(int lo, int hi) => Bands |= JsonFactEncoding.Characters(lo, hi);
 
             /// <summary>
             /// Returns the characters from zero to <paramref name="last"/> that no member holds.
