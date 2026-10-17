@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;
@@ -21,7 +22,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     {
 
         /// <summary>
-        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800.
+        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800, as each form states of
+        /// itself for the theory to read (<see cref="CosmosRepresentation.Characters"/>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -59,6 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 writing += written.Count > 0 ? 1 : 0;
                 written.Should().OnlyContain(text => text.All(c => c < ''), $"{form.Name} writes ASCII");
+                form.Characters.Should().Be(JsonCharacterBand.None, $"{form.Name} states that it is written below U+D800");
             }
 
             writing.Should().BeGreaterThan(forms.Count / 2, "most forms write a literal from these values, so this asks something of them");
