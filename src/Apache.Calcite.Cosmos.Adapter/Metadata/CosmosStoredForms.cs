@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {

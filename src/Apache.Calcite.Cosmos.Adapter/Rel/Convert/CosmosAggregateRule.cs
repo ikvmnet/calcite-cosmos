@@ -1,4 +1,4 @@
-﻿using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 

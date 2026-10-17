@@ -1,4 +1,4 @@
-# 14. Describing documents with JSON Schema
+﻿# 14. Describing documents with JSON Schema
 
 A container has no row schema, so the adapter cannot know what a document path holds — and that is
 what keeps some comparisons in process. Cosmos stores a UUID as a string; SQL has a `UUID` type; and

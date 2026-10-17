@@ -1,4 +1,4 @@
-# Apache.Calcite.Cosmos.Adapter — Design
+﻿# Apache.Calcite.Cosmos.Adapter — Design
 
 `Apache.Calcite.Cosmos.Adapter` exposes Azure Cosmos DB containers to Apache Calcite as
 relational schemas, and pushes as much of the relational plan as possible down to Cosmos by

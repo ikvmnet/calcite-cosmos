@@ -1,4 +1,4 @@
-# Outstanding work
+﻿# Outstanding work
 
 What a complete adapter would have, sized and reasoned, so that the next session picks up an argument
 rather than a list.
