@@ -1144,6 +1144,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// orders are proved by: a pattern read that proved less would show there first.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// The keyset seek past two keys chapter 9.5 recommends, <c>s &gt; ? OR (s = ? AND id &gt; ?)</c> ordered by both
+        /// and paged, over a container whose <c>s</c> and <c>id</c> hold strings either side of U+D800 and declare no
+        /// characters: pushed whole, its comparisons under the <c>OR</c> weakened where a value is no anchor and the
+        /// conjunct rechecked as the rows arrive, and every page one Calcite allows.
+        /// </summary>
+        /// <remarks>
+        /// The values are the strings the documents hold, so that each page starts where a reader paging the container
+        /// would start it — an anchor, a string past U+D800, the empty string — and the page sizes leave edges inside and
+        /// outside a run of strings the two orders part.
+        /// </remarks>
+        [Fact]
+        public async Task ASeekPastTwoKeysIsOneCalciteAllows()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var containers = await OrderContainersSeeded();
+
+            const string S = "JSON_VALUE(c.\"DOC\", '$.s')";
+            const string Where = $"FROM orders_declared AS c WHERE {S} > ? OR ({S} = ? AND c.\"id\" > ?)";
+            CalciteSortKey[] keys = [new(0, false, false), new(1, false, false)];
+
+            var failures = new List<string>();
+            var pushed = 0;
+
+            foreach (var s in new[] { "", "a", "a\U0001F600", "\uE000", "\U0001F600", "\uFFFF" })
+                foreach (var id in new[] { "a", "a\U0001F600", "\uFF21" })
+                    foreach (var fetch in new[] { 2, 5 })
+                    {
+                        var sql = $"SELECT {S} AS \"s\", c.\"id\" AS \"id\" {Where} ORDER BY 1, 2 FETCH NEXT {fetch} ROWS ONLY";
+                        object?[] parameters = [s, s, id];
+                        var sent = new List<string>();
+
+                        var answer = (await Run(sql, true, sent, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList();
+                        var input = (await Run($"SELECT {S} AS \"s\", c.\"id\" AS \"id\" {Where}", false, null, containers, parameters)).Select(r => r as object?[] ?? [r]).ToList();
+
+                        var verdict = OrderAllowability.Judge(input, answer, 2, keys, 0, fetch, ordered: true);
+                        if (verdict.Failed)
+                            failures.Add($"{sql} [{string.Join(", ", parameters.Select(OrderAllowability.Show))}]\n  {verdict.Failure}\n  sent: {string.Join(" || ", sent)}");
+
+                        if (sent.Any(q => q.Contains(" ORDER BY ", StringComparison.Ordinal) && q.Contains(" OR ", StringComparison.Ordinal)))
+                            pushed++;
+                    }
+
+            failures.Should().BeEmpty("every page of the seek must be one Calcite allows:\n" + string.Join("\n", failures));
+            pushed.Should().Be(36, "the seek is pushed whole, ordered and filtered, whatever its values hold");
+        }
+
         [Fact]
         public async Task EveryOrderIsOneCalciteAllows()
         {

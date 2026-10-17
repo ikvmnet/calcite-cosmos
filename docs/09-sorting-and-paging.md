@@ -298,9 +298,9 @@ any character. A value with nothing at or above U+D800 — the last `id` of the 
 compares alike under both rules, and the statement is sent as written. Any other value is checked when the
 statement runs: the comparison is sent weakened to the part of the value below U+D800, which every `id`
 Calcite keeps satisfies, and the reader rechecks it and takes the page. Where a `pattern` declares `id`'s
-characters (Chapter 14.4) nothing is checked at all. Only a comparison that is a whole conjunct of the
-`WHERE` is sent this way; under an `OR` or a `NOT` it stays in process, as does a grouping or a `DISTINCT`
-over a filter holding one, which leaves no row of the comparison's to recheck.
+characters (Chapter 14.4) nothing is checked at all. A comparison under an `OR` is sent the same way, and
+its whole conjunct rechecked; under a `NOT` it stays in process, as does a grouping or a `DISTINCT` over a
+filter holding one, which leaves no row of the comparison's to recheck.
 
 **Key the page on `(partition key, id)`, not on `id` alone.** An `id` is unique only within its logical
 partition: two documents in different partitions may share one, and where a page ends between them the
@@ -324,9 +324,10 @@ complete. Two ways close it:
   FETCH NEXT 50 ROWS ONLY
   ```
 
-  which needs a composite index on `(/category, /id)` (9.2), and pushes only where the schema proves both
-  keys' characters — a `pattern` or an `enum` (Chapter 14.4): the comparisons sit under an `OR`, where the
-  reader cannot recheck one, so a parameter that might hold any character keeps the seek in process.
+  which needs a composite index on `(/category, /id)` (9.2), and pushes whole: ordered, paged and filtered.
+  Where a value holds a character at or above U+D800 the comparisons are weakened as above and the reader
+  rechecks the `OR` whole — the equality as the service answered it — before it takes the page. Where a
+  schema proves both keys' characters (Chapter 14.4) nothing is checked at all.
 
 ## 9.6 A filter that removes the nulls
 

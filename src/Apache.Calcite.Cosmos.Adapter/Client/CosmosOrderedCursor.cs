@@ -40,8 +40,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// otherwise.</description></item>
     /// <item><description><b>A comparison with a parameter</b> is exact where the value is an anchor. Otherwise the
     /// statement is read unpaged with the comparison weakened to a bound every string Calcite keeps satisfies, and the
-    /// rows the exact one drops are dropped here, before any order is checked — what is left of a stream is a stream the
-    /// certificate holds of.</description></item>
+    /// rows the conjunct it sits in drops are dropped here (<see cref="CosmosRecheck"/>), before any order is checked —
+    /// what is left of a stream is a stream the certificate holds of.</description></item>
     /// </list>
     /// <para>
     /// <b>One iterator per statement, read from its start.</b> Each statement is opened through the executor once and read
@@ -113,6 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         readonly Activity? _activity;
         readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
         readonly List<(CosmosOrderComparison Comparison, JsonElement Value)> _rechecks = new();
+        readonly Dictionary<int, JsonElement> _compared = new();
         readonly List<JsonElement> _run = new();
         readonly Queue<JsonElement> _ready = new();
         readonly HashSet<string> _tied = new(StringComparer.Ordinal);
@@ -177,11 +178,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         async ValueTask StartAsync(CancellationToken cancellationToken)
         {
-            // A comparison is exact where its parameter is an anchor; any other is rechecked here, against the value.
-            foreach (var comparison in _program.Comparisons)
-                if (_values.TryGetValue(comparison.Parameter, out var value) && value is string text
-                    && JsonSerializer.SerializeToElement(text) is var bound && CosmosServiceOrder.IsAnchor(comparison.Anchor, bound) == false)
-                    _rechecks.Add((comparison, bound));
+            // A comparison is exact where its parameter is an anchor; any other is weakened in the fallback, and every
+            // conjunct holding one is rechecked here, against the values.
+            for (var i = 0; i < _program.Comparisons.Count; i++)
+            {
+                var comparison = _program.Comparisons[i];
+                var value = _values.TryGetValue(comparison.Parameter, out var bound) ? JsonSerializer.SerializeToElement(bound) : default;
+                _compared[i] = value;
+
+                if (value.ValueKind == JsonValueKind.String && CosmosServiceOrder.IsAnchor(comparison.Anchor, value) == false)
+                    _rechecks.Add((comparison, value));
+            }
 
             if (_program.Extremes.Count > 0)
             {
@@ -405,32 +412,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Determines whether a row satisfies every comparison rechecked here, as Calcite compares: text, which reads
-        /// nothing but a string as a value, and compares by UTF-16 code unit (<see cref="CosmosKeyComparer"/>). A row the
-        /// column reads as null is unknown, and dropped.
+        /// Determines whether a row of the fallback satisfies every conjunct holding a comparison weakened in it, as
+        /// Calcite answers each: see <see cref="True"/>. The statement as written needs no recheck.
         /// </summary>
         bool Keeps(JsonElement row)
         {
-            foreach (var (comparison, value) in _rechecks)
-            {
-                var held = CosmosKeyComparer.Member(row, comparison.Member!);
-                if (CosmosKeyComparer.IsValue(held, CosmosOrderedKeyKind.Text) == false)
-                    return false;
+            if (_rechecks.Count == 0)
+                return true;
 
-                var c = CosmosKeyComparer.CompareValues(held, value, CosmosOrderedKeyKind.Text);
-                var kept = comparison.Operator switch
-                {
-                    ">" => c > 0,
-                    ">=" => c >= 0,
-                    "<" => c < 0,
-                    _ => c <= 0,
-                };
-
-                if (kept == false)
+            foreach (var conjunct in _program.Rechecks)
+                if (True(conjunct, row) == false)
                     return false;
-            }
 
             return true;
+        }
+
+        /// <summary>
+        /// Determines whether a conjunct is true of a row: an <c>AND</c> or an <c>OR</c> of its operands; a comparison as
+        /// Calcite compares text, which reads nothing but a string as a value and compares by UTF-16 code unit
+        /// (<see cref="CosmosKeyComparer"/>), a null or a value of another type being unknown; and a predicate as the
+        /// service answered it, only <c>true</c> counting. Truth is all a <c>WHERE</c> keeps a row by, so unknown and
+        /// false count alike.
+        /// </summary>
+        bool True(CosmosRecheck conjunct, JsonElement row)
+        {
+            switch (conjunct.Kind)
+            {
+                case CosmosRecheckKind.All:
+                    foreach (var operand in conjunct.Operands)
+                        if (True(operand, row) == false)
+                            return false;
+
+                    return true;
+
+                case CosmosRecheckKind.Any:
+                    foreach (var operand in conjunct.Operands)
+                        if (True(operand, row))
+                            return true;
+
+                    return false;
+
+                case CosmosRecheckKind.Predicate:
+                    return CosmosKeyComparer.Member(row, conjunct.Member!).ValueKind == JsonValueKind.True;
+
+                default:
+                {
+                    var comparison = _program.Comparisons[conjunct.Comparison];
+                    var value = _compared[conjunct.Comparison];
+                    var held = CosmosKeyComparer.Member(row, comparison.Member!);
+
+                    if (CosmosKeyComparer.IsValue(held, CosmosOrderedKeyKind.Text) == false || CosmosKeyComparer.IsValue(value, CosmosOrderedKeyKind.Text) == false)
+                        return false;
+
+                    var c = CosmosKeyComparer.CompareValues(held, value, CosmosOrderedKeyKind.Text);
+                    return comparison.Operator switch
+                    {
+                        ">" => c > 0,
+                        ">=" => c >= 0,
+                        "<" => c < 0,
+                        _ => c <= 0,
+                    };
+                }
+            }
         }
 
         /// <summary>

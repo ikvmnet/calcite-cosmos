@@ -37,6 +37,8 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <param name="Unpaged">The statement without its <c>OFFSET</c> and <c>LIMIT</c>: the fallback, with each
     /// comparison in <paramref name="Comparisons"/> whose parameter is no anchor weakened in it.</param>
     /// <param name="Comparisons">The comparisons a parameter's value decides.</param>
+    /// <param name="Rechecks">The conjuncts of the <c>WHERE</c> holding them, which the reader rechecks whole wherever
+    /// it reads the fallback.</param>
     /// <param name="Extremes">The extremes of an aggregate to check.</param>
     public sealed record CosmosOrderProgram(
         IReadOnlyList<CosmosOrderedKey> Keys,
@@ -45,6 +47,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         CosmosRowLimit? Fetch,
         string Unpaged,
         IReadOnlyList<CosmosOrderComparison> Comparisons,
+        IReadOnlyList<CosmosRecheck> Rechecks,
         IReadOnlyList<CosmosOrderExtreme> Extremes)
     {
 

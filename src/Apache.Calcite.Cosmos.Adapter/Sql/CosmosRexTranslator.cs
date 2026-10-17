@@ -592,10 +592,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// A predicate, as <see cref="Translate"/> writes one, and one more thing: a comparison of a path with a parameter
         /// whose exactness the value decides may be written here, and is recorded beside the parameters
-        /// (<see cref="CosmosOrderComparison"/>). Where the value is no anchor the reader sends a weaker comparison in its
-        /// place and rechecks the rows, which keeps exactly Calcite's only where the comparison is the whole conjunct:
-        /// beside the others the service applies, a superset of it rechecked is the conjunction. Inside an <c>OR</c>, a
-        /// <c>NOT</c> or a value it would not be, and there it is refused as before.
+        /// (<see cref="CosmosOrderComparison"/>), with the conjunct it sits in (<see cref="CosmosRecheck"/>). Where the
+        /// value is no anchor the reader sends a weaker comparison in its place and rechecks the conjunct, which keeps
+        /// exactly Calcite's where <c>AND</c> and <c>OR</c> alone lead to the comparison: a weaker leaf there makes a weaker
+        /// conjunct, which beside the others the service applies is a superset of the conjunction. Under a <c>NOT</c> or
+        /// in a value it would not be, and there it is refused as before.
         /// </para>
         /// </remarks>
         /// <param name="node">The conjunct.</param>
@@ -622,10 +623,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// The top-level conjunct being translated by <see cref="TranslateConjunct"/>, or <c>null</c>: the one node an
-        /// anchored comparison may be.
+        /// The nodes of the top-level conjunct being translated by <see cref="TranslateConjunct"/> that <c>AND</c> and
+        /// <c>OR</c> alone lead to from it, itself among them; or <c>null</c>. Where an anchored comparison may be, a
+        /// weaker one there making the conjunct weaker (<see cref="CosmosRecheck"/>).
         /// </summary>
-        RexNode? _conjunct;
+        HashSet<RexNode>? _positive;
+
+        /// <summary>
+        /// What each operand of an <c>AND</c> or an <c>OR</c> in <see cref="_positive"/> was written as, for a conjunct
+        /// the reader rechecks; and which comparison each anchored one is among the parameters'.
+        /// </summary>
+        Dictionary<RexNode, string>? _written;
+
+        /// <inheritdoc cref="_written" />
+        Dictionary<RexNode, int>? _compared;
 
         /// <summary>
         /// Determines whether a filter's condition may hold a comparison of a path with a parameter whose exactness at
@@ -634,8 +645,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// <para>
         /// <b>Asked by the binding walk</b>, for <see cref="CosmosClauses.Recheck"/>, of the condition and the declaration
-        /// alone: a top-level conjunct comparing something with a bare parameter, by an ordering comparison, that the
-        /// declaration does not prove exact. A conjunct rendered from its stratum may be proved by a sibling the
+        /// alone: an ordering comparison of something with a bare parameter, which <c>AND</c> and <c>OR</c> alone lead to
+        /// from the condition, that the declaration does not prove exact. A conjunct rendered from its stratum may be proved by a sibling the
         /// declaration knows nothing of; this answers yes for it all the same, which declines a consumer the comparison
         /// would not have stopped and never folds one it would. The facts only grow from the declaration to a stratum,
         /// and a comparison the declaration proves no stratum anchors.
@@ -656,13 +667,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             CosmosRexTranslator? translator = null;
             return Holds(condition);
 
-            // Every AND taken apart, as the filter statement reads its conjuncts (CosmosFilterStatement.ConjunctsOf).
+            // Every AND taken apart, as the filter statement reads its conjuncts (CosmosFilterStatement.ConjunctsOf), and
+            // every OR beneath them, where a comparison is rechecked as part of its conjunct (CosmosRecheck).
             bool Holds(RexNode node)
             {
                 if (node is not RexCall call)
                     return false;
 
-                if (call.getKind() == SqlKind.AND)
+                if (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR)
                 {
                     for (var i = 0; i < call.getOperands().size(); i++)
                         if (Holds(Operand(call, i)))
@@ -729,21 +741,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireRenderingsReadAsRenderings(expanded, permitted: true);
 
             var saved = _value;
-            var savedConjunct = _conjunct;
+            var savedPositive = _positive;
+            var savedWritten = _written;
+            var savedCompared = _compared;
             _value = value;
-            _conjunct = conjunct ? expanded : null;
+            _positive = conjunct ? Positive(expanded) : null;
+            _written = conjunct ? new Dictionary<RexNode, string>(ReferenceEqualityComparer.Instance) : null;
+            _compared = conjunct ? new Dictionary<RexNode, int>(ReferenceEqualityComparer.Instance) : null;
 
             try
             {
                 var builder = new StringBuilder();
                 Write(builder, expanded);
+
+                // A conjunct holding a comparison a parameter decides is rechecked whole where one is no anchor.
+                if (_compared?.Count > 0)
+                    _parameters.Recheck(Recheck(expanded) ?? throw new CosmosTranslationException("A comparison whose parameter decides its exactness sits where the reader cannot recheck its conjunct."));
+
                 return builder.ToString();
             }
             finally
             {
                 _value = saved;
-                _conjunct = savedConjunct;
+                _positive = savedPositive;
+                _written = savedWritten;
+                _compared = savedCompared;
             }
+        }
+
+        /// <summary>
+        /// Returns the nodes of a conjunct that <c>AND</c> and <c>OR</c> alone lead to, the conjunct among them.
+        /// </summary>
+        static HashSet<RexNode> Positive(RexNode conjunct)
+        {
+            var positive = new HashSet<RexNode>(ReferenceEqualityComparer.Instance);
+            Walk(conjunct);
+            return positive;
+
+            void Walk(RexNode node)
+            {
+                positive.Add(node);
+
+                if (node is RexCall call && (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR))
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        Walk(Operand(call, i));
+            }
+        }
+
+        /// <summary>
+        /// Returns a conjunct as the reader rechecks it, from what its operands were written as; or <c>null</c> where a
+        /// leaf was written some other way than through its connective.
+        /// </summary>
+        CosmosRecheck? Recheck(RexNode node)
+        {
+            if (_compared!.TryGetValue(node, out var comparison))
+                return CosmosRecheck.Compared(comparison);
+
+            if (node is RexCall call && (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR))
+            {
+                var operands = new List<CosmosRecheck>(call.getOperands().size());
+                for (var i = 0; i < call.getOperands().size(); i++)
+                    if (Recheck(Operand(call, i)) is CosmosRecheck operand)
+                        operands.Add(operand);
+                    else
+                        return null;
+
+                return CosmosRecheck.Of(call.getKind() == SqlKind.AND, operands);
+            }
+
+            return _written!.TryGetValue(node, out var written) ? CosmosRecheck.Answered(written) : null;
         }
 
         /// <summary>
@@ -3424,12 +3490,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             builder.Append('(');
 
+            // On a conjunct's AND and OR spine, what each operand is written as, which the conjunct's recheck reads
+            // back where it is no comparison of its own (CosmosRecheck).
+            var spine = _positive?.Contains(call) == true;
+
             for (var i = 0; i < operands.size(); i++)
             {
                 if (i > 0)
                     builder.Append(' ').Append(op).Append(' ');
 
+                var start = builder.Length;
                 Write(builder, (RexNode)operands.get(i));
+
+                if (spine)
+                    _written![(RexNode)operands.get(i)] = builder.ToString(start, builder.Length - start);
             }
 
             builder.Append(')');
@@ -3848,9 +3922,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // the second: measured on the probe account, `c.s > @p` bound to U+1F600 keeps the
                 // strings above it by code point, which Calcite puts below.
                 //
-                // Unless the one thing missing is a parameter's characters, and the comparison is a whole conjunct of a
-                // WHERE: then it is exact where the value is an anchor, which the reader knows when it is bound, and
-                // otherwise sent weakened and rechecked. See TryWriteAnchoredComparison.
+                // Unless the one thing missing is a parameter's characters, and AND and OR alone lead to the comparison
+                // from a conjunct of a WHERE: then it is exact where the value is an anchor, which the reader knows when
+                // it is bound, and otherwise sent weakened and its conjunct rechecked. See TryWriteAnchoredComparison.
                 if (refused.IsAnchored && TryWriteAnchoredComparison(builder, call, leftValue, rightValue, op, refused.Anchors[0]))
                     return;
 
@@ -3870,11 +3944,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>The shape: a whole conjunct, a bare parameter, a path.</b> The comparison has to be the conjunct
-        /// <see cref="TranslateConjunct"/> was handed, so that a superset of it beside the others the service applies,
-        /// rechecked, is the conjunction (<see cref="CosmosOrderComparison"/>); in a positive position, which a top-level
-        /// conjunct is; and between a parameter and what <see cref="TryResolvePath"/> names, whose value the reader can be
-        /// handed in a member of its own. Anything else is refused as an ordering comparison the service answers otherwise.
+        /// <b>The shape: under <c>AND</c> and <c>OR</c> alone, a bare parameter, a path.</b> <c>AND</c> and <c>OR</c>
+        /// alone have to lead to the comparison from the conjunct <see cref="TranslateConjunct"/> was handed, so that a
+        /// weaker comparison makes a weaker conjunct, which the reader rechecks whole beside the others the service
+        /// applies (<see cref="CosmosRecheck"/>); and it has to be between a parameter and what
+        /// <see cref="TryResolvePath"/> names, whose value the reader can be handed in a member of its own. Anything else
+        /// is refused as an ordering comparison the service answers otherwise.
         /// </para>
         /// <para>
         /// <b>Two slots for one parameter.</b> The exact comparison binds the value; the weakened one binds its bound,
@@ -3893,7 +3968,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <returns><c>true</c> where the comparison was written.</returns>
         bool TryWriteAnchoredComparison(StringBuilder builder, RexCall call, RexNode left, RexNode right, string op, Metadata.CosmosOrderAnchor anchor)
         {
-            if (ReferenceEquals(call, _conjunct) == false)
+            if (_positive?.Contains(call) != true)
                 return false;
 
             if (left is org.apache.calcite.rex.RexDynamicParam && right is not org.apache.calcite.rex.RexDynamicParam)
@@ -3916,7 +3991,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var exact = $"({expression} {op} {name})";
             builder.Append(exact);
 
-            _parameters.Recheck(new CosmosOrderComparison(
+            _compared![call] = _parameters.Recheck(new CosmosOrderComparison(
                 name,
                 bound,
                 op,

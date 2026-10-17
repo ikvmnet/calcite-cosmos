@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
@@ -993,7 +994,9 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <para>
         /// <b>The fallback is the same statement without its page</b>, rendered after the members are added so that it
         /// selects them too. The comparisons are weakened in it by the reader, which alone knows which parameters are no
-        /// anchors.
+        /// anchors, and the conjunct each sits in is rechecked whole: a predicate beside one under an <c>OR</c> is
+        /// selected as a member of its own, <c>"$b0": (c.s = @p1)</c>, and read back as the service answers it
+        /// (<see cref="CosmosRecheck"/>).
         /// </para>
         /// </remarks>
         CosmosOrderProgram? OrderProgram()
@@ -1018,11 +1021,23 @@ namespace Apache.Calcite.Cosmos.Adapter
             foreach (var comparison in comparisons)
                 rechecked.Add(comparison with { Member = Reserve("c", comparison.Expression) });
 
+            // A predicate beside a comparison in its conjunct is read back as the service answers it.
+            var conjuncts = new List<CosmosRecheck>(_parameters.Rechecks.Count);
+            foreach (var conjunct in _parameters.Rechecks)
+                conjuncts.Add(Selected(conjunct));
+
             var extremes = new List<CosmosOrderExtreme>(_anchoredExtremes.Count);
             foreach (var (expression, extreme) in _anchoredExtremes)
                 extremes.Add(extreme with { Reread = _query.BuildValues(expression, extreme.Ordered, extreme.Max) });
 
-            return new CosmosOrderProgram(keys, _query.Distinct, _query.Offset, _query.Fetch, _query.BuildUnpaged(), rechecked, extremes);
+            return new CosmosOrderProgram(keys, _query.Distinct, _query.Offset, _query.Fetch, _query.BuildUnpaged(), rechecked, conjuncts, extremes);
+
+            CosmosRecheck Selected(CosmosRecheck node) => node.Kind switch
+            {
+                CosmosRecheckKind.Predicate => node with { Member = Reserve("b", node.Expression!) },
+                CosmosRecheckKind.Comparison => node,
+                _ => node with { Operands = node.Operands.Select(Selected).ToList() },
+            };
         }
 
         /// <summary>

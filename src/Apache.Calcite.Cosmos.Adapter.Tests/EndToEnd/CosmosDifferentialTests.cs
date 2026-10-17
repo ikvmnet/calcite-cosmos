@@ -1752,6 +1752,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING CHAR(3)) = ?", ["a"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["a"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["\uE000"], false),
+
+            // A comparison under an OR, its conjunct rechecked whole where a value is no anchor, the equality beside it
+            // read back as the service answered it.
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["a", "a", "0"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\uE000", "\uE000", "a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\U0001F600", "\U0001F600", "\uFFFD"], false),
         ];
 
         /// <summary>

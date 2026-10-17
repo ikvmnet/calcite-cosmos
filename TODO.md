@@ -1294,11 +1294,17 @@ the distribution the gate is sized for.
     checked. Only a declaration recovers it;
   - **a grouped `MIN` or `MAX`** — no one row to check. A grouped reread by key would, at a second statement
     per group whose extreme is no anchor;
-  - **a comparison with a parameter under an `OR` or a `NOT`, or beneath a grouping, a `DISTINCT`, a rank or
-    a lookup** — the recheck is the predicate only where the comparison is a whole conjunct and the rows are
-    the filter's (`CosmosClauses.Recheck`). The walk asks the declaration alone, so a comparison a sibling
-    proves exact in its stratum still declines a grouping above it; reading the strata there would cost a
-    scope per walk;
+  - **a comparison with a parameter under a `NOT`, or beneath a grouping, a `DISTINCT`, a rank or a lookup** —
+    a weaker comparison under a `NOT` makes a stronger condition, and the recheck needs the rows the filter
+    kept (`CosmosClauses.Recheck`); under `AND` and `OR` alone the conjunct is rechecked whole
+    (`CosmosRecheck`). The walk asks the declaration alone, so a comparison a sibling proves exact in its
+    stratum still declines a grouping above it; reading the strata there would cost a scope per walk. Two
+    recoveries, neither built: `NOT (x <= ?)` is `x > ?` in SQL's logic and the service's alike, so the
+    filter could be read with each `NOT` of a comparison turned into the comparison it negates; and a
+    `COUNT`, a `GROUP BY` or a `DISTINCT` over such a filter could carry its own statement as the primary
+    and a row statement aggregated in process as the fallback, the value deciding which when the statement
+    runs — two plans for one statement, which nothing here builds yet. Main pushed the aggregate with the
+    exact comparison for every value, right only where the value is an anchor;
   - **a `REAL` key before the last**, for which no anchor is stated (within ±2^24 would do).
 
   The rest is not about characters: the null placement and the mixed-type keys, which **a sort split by

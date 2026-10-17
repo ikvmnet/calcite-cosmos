@@ -120,8 +120,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A comparison of <c>id</c> with a literal pushes exactly, and with a parameter anchored: a parameter may be bound
         /// to any character, and the service compares strings by code point where Calcite compares them by UTF-16 code
         /// unit, so the reader sends it as it is where the value lies below U+D800 and weakened and rechecked otherwise.
-        /// Only as a whole conjunct: under an <c>OR</c> a recheck of the one comparison would not be the predicate's, and
-        /// it stays in process.
+        /// Under an <c>OR</c> too: a weaker comparison there makes a weaker conjunct, which the reader rechecks whole, the
+        /// equality beside it read back from a member as the service answered it.
         /// </summary>
         [Fact]
         public void AnIdComparesWithALiteralExactlyAndWithAParameterAnchored()
@@ -138,7 +138,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             comparison.Should().BeEquivalentTo(new { Operator = ">", Expression = "c.id", Exact = "(c.id > @p0)", Weakened = "(c.id >= @p1)", Guarded = "IS_STRING(c.id)", Member = "$c0" });
 
             var either = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" > ? OR c."id" = 'x'""", container, out _);
-            PlanText(either).Should().Contain("ClrCursorFilter", "a disjunct is not rechecked: " + PlanText(either));
+            PlanText(either).Should().NotContain("ClrCursorFilter", "a disjunct is rechecked with its conjunct: " + PlanText(either));
+
+            var recheck = Query(FindCosmos(either), container).Order!.Rechecks.Should().ContainSingle().Subject;
+            recheck.Kind.Should().Be(Adapter.Sql.CosmosRecheckKind.Any);
+            recheck.Operands.Select(o => o.Kind).Should().Equal(Adapter.Sql.CosmosRecheckKind.Comparison, Adapter.Sql.CosmosRecheckKind.Predicate);
+            recheck.Operands[1].Member.Should().Be("$b0", "the equality is selected to be read back");
         }
 
         /// <summary>

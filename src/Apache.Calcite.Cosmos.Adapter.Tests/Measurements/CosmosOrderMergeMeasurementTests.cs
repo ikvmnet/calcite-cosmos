@@ -157,19 +157,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 var unpaged = $"SELECT VALUE {{ \"s\": c.s, \"$k0\": c.s }} FROM c WHERE c.probe = @probe AND IS_STRING(c.s) ORDER BY c.s {direction}";
                 var key = new Adapter.CosmosOrderedKey("$k0", Adapter.CosmosOrderedKeyKind.Text, descending, false, Adapter.Metadata.CosmosOrderAnchor.Text);
 
-                (await Read(unpaged, new([key], false, null, null, unpaged, [], []))).Should().Equal(calcite, $"the reader's stream is Calcite's order ({direction})");
+                (await Read(unpaged, new([key], false, null, null, unpaged, [], [], []))).Should().Equal(calcite, $"the reader's stream is Calcite's order ({direction})");
 
                 for (var offset = 0; offset < all.Count; offset += 3)
                     foreach (var fetch in new[] { 3, 4 })
                     {
-                        var window = await Read($"{unpaged} OFFSET {offset} LIMIT {fetch}", new([key], false, offset, fetch, unpaged, [], []), offset + fetch);
+                        var window = await Read($"{unpaged} OFFSET {offset} LIMIT {fetch}", new([key], false, offset, fetch, unpaged, [], [], []), offset + fetch);
                         window.Should().Equal(calcite.Skip(offset).Take(fetch), $"OFFSET {offset} LIMIT {fetch} {direction}");
                     }
             }
 
             var max = "SELECT MAX(c.s) AS \"s\" FROM c WHERE c.probe = @probe AND IS_STRING(c.s)";
             var extreme = new Adapter.CosmosOrderExtreme("s", true, Adapter.CosmosOrderedKeyKind.Text, Adapter.Metadata.CosmosOrderAnchor.Text, "SELECT VALUE c.s FROM c WHERE c.probe = @probe AND IS_STRING(c.s) ORDER BY c.s DESC", true);
-            (await Read(max, new([], false, null, null, max, [], [extreme]))).Should().Equal([all.Max(StringComparer.Ordinal)!], "Calcite's MAX");
+            (await Read(max, new([], false, null, null, max, [], [], [extreme]))).Should().Equal([all.Max(StringComparer.Ordinal)!], "Calcite's MAX");
         }
 
         /// <summary>

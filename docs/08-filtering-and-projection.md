@@ -410,10 +410,12 @@ of `JSON_VALUE` over a path declared a string, with a parameter is sent as it is
 and the value decides when it arrives: below the line it is exact; otherwise the statement is sent with
 the comparison weakened to the part of the value below U+D800 — every string SQL keeps satisfies it — and
 the rows are rechecked in process. A `pattern` declaring the path's characters (Chapter 14.4) makes it
-exact when the plan is made. Only a comparison that is a whole conjunct of the `WHERE` is sent this way:
-under an `OR` or a `NOT` the recheck would not be the predicate's, and the comparison is made in process,
-the service sent `IS_DEFINED(…)` for the path. A grouping, a `DISTINCT` or a ranking over such a filter
-runs in process too, there being no row of the comparison's left to recheck. Comparisons with parameters
+exact when the plan is made. A comparison is sent this way wherever `AND` and `OR` alone lead to it from a
+conjunct of the `WHERE` — the keyset seek past two keys of Chapter 9.5 among them — and the reader
+rechecks that conjunct whole, reading back what the service answered for the rest of it. Under a `NOT`
+the comparison is made in process, the service sent `IS_DEFINED(…)` for the path: a weaker comparison
+there would make the condition stronger. A grouping, a `DISTINCT` or a ranking over such a filter runs in
+process too, there being no row of the comparison's left to recheck. Comparisons with parameters
 over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a comparison of a declared
 instant with a parameter — the value is written in the stored spelling when the statement runs
 (Chapter 15).

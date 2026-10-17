@@ -3203,13 +3203,18 @@ unit at or above U+D800 (`anchors.py` §5, 342,225 pairs); for `<` and `<=`, `x 
 raised, U+D7FF going to U+E000 (`keyset_mirror.py`, 170,820 pairs); and the type test alone where `P` is empty. The
 translator writes the comparison as it is and records the three forms beside the parameters
 (`CosmosOrderComparison`), with a second slot for the bound that `CosmosQueries.Bind` writes from the same value
-(`CosmosAnchorBound`). Rechecking a superset of one comparison is the predicate only where the comparison is a whole
-conjunct of the `WHERE`, beside conjuncts the service applies exactly, and only where the rows are the filter's: so
-the translator writes it only for the conjunct `TranslateConjunct` was handed, and refuses it under an `OR`, a `NOT`
-or a value; and the binding walk marks a filter that may hold one (`CosmosClauses.Recheck`, asked of the declaration
-alone, which over-approximates what a stratum renders anchored) so that a grouping, a `DISTINCT`, a rank and a lookup
-decline above it, and a filter declines above a `DISTINCT`. A comparison of two paths is refused: the rows the service
-drops never arrive.
+(`CosmosAnchorBound`). A weaker comparison makes a weaker conjunct wherever `AND` and `OR` alone lead to it, each being
+monotone in its operands, so the translator writes it there, and records the conjunct as a tree the reader rechecks
+whole (`CosmosRecheck`): an `AND` and an `OR` of the comparisons, which the reader makes as Calcite does, and of the
+other predicates, each selected as a member of its own and read back as the service answered it. Only truth is asked
+of a leaf — a `WHERE` keeps a row where its condition is true, and through `AND` and `OR` alone unknown and false
+count alike — so a predicate the service answers exactly in a `WHERE` is read back exactly. So the keyset seek past
+two keys chapter 9.5 recommends, `s > ? OR (s = ? AND id > ?)`, pushes whole, ordered and paged. Under a `NOT` or in a
+value a weaker leaf would not make a weaker condition, and the comparison is refused there. And the rows have to be the
+filter's: the binding walk marks a filter that may hold one (`CosmosClauses.Recheck`, asked of the declaration alone,
+which over-approximates what a stratum renders anchored) so that a grouping, a `DISTINCT`, a rank and a lookup decline
+above it, and a filter declines above a `DISTINCT`. A comparison of two paths is refused: the rows the service drops
+never arrive.
 
 **One program, on the statement.** The node that asked records what the reader needs — a sort its keys
 (`CosmosImplementor.OrderAnchored`), an aggregate its extremes, a translator its comparisons — and `Build` assembles
@@ -3259,7 +3264,7 @@ re-sorted a run or read its fallback (`CosmosDifferentialTests.CompletedByTheRea
 order the reader completes (*Differential testing*). `CosmosOrderMergeMeasurementTests` runs the reader through the
 adapter's executor over two physical partitions, on an account that has them.
 
-**What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under an `OR` or beneath a
+**What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under a `NOT` or beneath a
 grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
 and the mixed types the sort split by JSON type is for (`TODO.md` section 5).
 

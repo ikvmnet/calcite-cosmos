@@ -20,7 +20,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// exact at the service only where the value is an anchor (<see cref="Metadata.CosmosOrderAnchor"/>),
     /// which is known when the statement runs and not before. The translator writes it as it is and
     /// records it here, beside the parameter it names, so that the reader can tell from the value
-    /// whether to read the statement or its fallback — see <see cref="CosmosOrderComparison"/>. They
+    /// whether to read the statement or its fallback — see <see cref="CosmosOrderComparison"/> — and
+    /// the conjunct each sits in, which the reader rechecks whole (<see cref="CosmosRecheck"/>). They
     /// are kept with the parameters because they are written with them, by whichever translator the
     /// statement's clauses are rendered through.
     /// </para>
@@ -30,6 +31,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         readonly List<CosmosParameter> _parameters = new();
         readonly List<CosmosOrderComparison> _comparisons = new();
+        readonly List<CosmosRecheck> _rechecks = new();
         readonly string _prefix;
 
         /// <summary>
@@ -72,6 +74,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public IReadOnlyList<CosmosOrderComparison> Comparisons => _comparisons;
 
         /// <summary>
+        /// Gets the conjuncts that hold those comparisons, as the reader rechecks them, each naming its comparisons by
+        /// their index in <see cref="Comparisons"/>.
+        /// </summary>
+        public IReadOnlyList<CosmosRecheck> Rechecks => _rechecks;
+
+        /// <summary>
         /// Binds <paramref name="value"/> and returns the name to emit in its place.
         /// </summary>
         /// <param name="value">The value to bind.</param>
@@ -87,10 +95,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Records a comparison written into the statement whose exactness a parameter's value decides.
         /// </summary>
         /// <param name="comparison">The comparison.</param>
+        /// <returns>Its index in <see cref="Comparisons"/>, by which a conjunct names it.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="comparison"/> is <c>null</c>.</exception>
-        public void Recheck(CosmosOrderComparison comparison)
+        public int Recheck(CosmosOrderComparison comparison)
         {
             _comparisons.Add(comparison ?? throw new ArgumentNullException(nameof(comparison)));
+            return _comparisons.Count - 1;
+        }
+
+        /// <summary>
+        /// Records a conjunct holding comparisons <see cref="Recheck(CosmosOrderComparison)"/> recorded, as the reader
+        /// rechecks it.
+        /// </summary>
+        /// <param name="conjunct">The conjunct.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="conjunct"/> is <c>null</c>.</exception>
+        public void Recheck(CosmosRecheck conjunct)
+        {
+            _rechecks.Add(conjunct ?? throw new ArgumentNullException(nameof(conjunct)));
         }
 
     }

@@ -17,9 +17,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// Calcite compares it.
     /// </para>
     /// <para>
-    /// <b>Only a top-level conjunct of a <c>WHERE</c>.</b> A superset of one conjunct, rechecked, is exact for the
-    /// conjunction only where the other conjuncts are the service's own; under an <c>OR</c> or a <c>NOT</c> it would not
-    /// be, and the translator refuses the comparison there, as it did every such comparison before.
+    /// <b>Only where <c>AND</c> and <c>OR</c> alone lead to it from a conjunct of a <c>WHERE</c>.</b> A weaker leaf
+    /// there makes a weaker conjunct, which beside the others the service applies keeps a superset of the conjunction;
+    /// the reader rechecks the conjunct whole (<see cref="CosmosRecheck"/>). Under a <c>NOT</c> or in a value it would
+    /// not be weaker, and the translator refuses the comparison there, as it did every such comparison before.
     /// </para>
     /// </remarks>
     /// <param name="Parameter">The name the exact comparison binds the value under.</param>

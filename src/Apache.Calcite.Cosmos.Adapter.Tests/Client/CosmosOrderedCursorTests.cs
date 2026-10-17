@@ -81,7 +81,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         static string Row(string id) => $"{{\"id\":{JsonSerializer.Serialize(id)},\"$k0\":{JsonSerializer.Serialize(id)}}}";
 
         static CosmosOrderProgram Sort(CosmosRowLimit? offset = null, CosmosRowLimit? fetch = null, bool distinct = false, IReadOnlyList<CosmosOrderComparison>? comparisons = null, string unpaged = Statement) =>
-            new([ById], distinct, offset, fetch, unpaged, comparisons ?? [], []);
+            new([ById], distinct, offset, fetch, unpaged, comparisons ?? [], (comparisons ?? []).Select((_, i) => CosmosRecheck.Compared(i)).ToList(), []);
 
         static async Task<List<string>> Read(StubExecutor executor, CosmosQuery query, org.apache.calcite.DataContext? root = null)
         {
@@ -173,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 stream.Should().NotEqual(stream.OrderBy(s => s, Comparer<string>.Create(Merge)), "the merge is not Calcite's order as it comes");
 
                 var executor = new StubExecutor(_ => stream.Select(Row));
-                var program = new CosmosOrderProgram([ById with { Descending = descending }], false, null, null, Statement, [], []);
+                var program = new CosmosOrderProgram([ById with { Descending = descending }], false, null, null, Statement, [], [], []);
                 var rows = await Read(executor, new CosmosQuery(Statement, [], Order: program));
 
                 rows.Should().Equal(range0.Concat(range1).OrderBy(s => s, Comparer<string>.Create(Merge)), descending ? "descending" : "ascending");
@@ -320,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var where = "SELECT VALUE { \"id\": c.id, \"$k0\": c.id } FROM c WHERE (c.id < @p0) ORDER BY c.id DESC";
             string[] stream = ["c", "b\U0001F600", "b￿", "b", "b", "a"];
             var executor = new StubExecutor(_ => stream.Select(Row));
-            var program = new CosmosOrderProgram([ById with { Descending = true }], false, null, null, where, [Comparison("<", "@p1")], []);
+            var program = new CosmosOrderProgram([ById with { Descending = true }], false, null, null, where, [Comparison("<", "@p1")], [CosmosRecheck.Compared(0)], []);
 
             var rows = await Read(executor, new CosmosQuery(where, Slots("<"), Order: program), new Context(("?0", "b")));
             rows.Should().Equal("b\U0001F600", "b", "a");
@@ -350,6 +350,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             executor.Executed.Single().Parameters.Should().ContainSingle().Which.Name.Should().Be("@p0");
         }
 
+        /// <summary>
+        /// The seek past two keys, <c>s &gt; ? OR (s = ? AND id &gt; ?)</c>, whose comparisons sit under an <c>OR</c>: the
+        /// one whose value is no anchor is weakened in the fallback, which makes the conjunct weaker, and the reader
+        /// rechecks the conjunct whole — the comparisons as Calcite compares text, the equality as the service answered
+        /// it, read back from its member.
+        /// </summary>
+        [Fact]
+        public async Task ASeekPastTwoKeysIsRecheckedWhole()
+        {
+            const string Seek = "SELECT VALUE { \"id\": c.id, \"$c0\": c.s, \"$c1\": c.id, \"$b0\": (c.s = @p1) } FROM c WHERE ((c.s > @p0) OR ((c.s = @p1) AND (c.id > @p2)))";
+
+            CosmosOrderComparison Past(string parameter, string bound, string path, string member) =>
+                new(parameter, bound, ">", CosmosOrderAnchor.Text, path, $"({path} > {parameter})", $"({path} >= {bound})", $"IS_STRING({path})", member);
+
+            var program = new CosmosOrderProgram([], false, null, null, Seek,
+                [Past("@p0", "@p3", "c.s", "$c0"), Past("@p2", "@p4", "c.id", "$c1")],
+                [CosmosRecheck.Of(false, [CosmosRecheck.Compared(0), CosmosRecheck.Of(true, [CosmosRecheck.Answered("(c.s = @p1)") with { Member = "$b0" }, CosmosRecheck.Compared(1)])])],
+                []);
+
+            IReadOnlyList<CosmosParameter> slots =
+            [
+                new("@p0", new CosmosDynamicValue(0)),
+                new("@p1", new CosmosDynamicValue(1)),
+                new("@p2", new CosmosDynamicValue(2)),
+                new("@p3", new CosmosDynamicValue(0) { Bound = CosmosAnchorBound.Lower }),
+                new("@p4", new CosmosDynamicValue(2) { Bound = CosmosAnchorBound.Lower }),
+            ];
+
+            const string Last = "a\U0001F600";
+
+            string Seeked(string id, string? s) => s is null
+                ? $"{{\"id\":{JsonSerializer.Serialize(id)},\"$c1\":{JsonSerializer.Serialize(id)}}}"
+                : $"{{\"id\":{JsonSerializer.Serialize(id)},\"$c0\":{JsonSerializer.Serialize(s)},\"$c1\":{JsonSerializer.Serialize(id)},\"$b0\":{(s == Last ? "true" : "false")}}}";
+
+            var executor = new StubExecutor(_ =>
+            [
+                Seeked("a", "b"),
+                Seeked("z", "a\uE000"),
+                Seeked("n", Last),
+                Seeked("b", Last),
+                Seeked("y", "a"),
+                Seeked("x", null),
+            ]);
+
+            var rows = await Read(executor, new CosmosQuery(Seek, slots, Order: program), new Context(("?0", Last), ("?1", Last), ("?2", "m")));
+
+            rows.Should().Equal("a", "z", "n");
+            executor.Executed.Single().Sql.Should().Be(Seek.Replace("(c.s > @p0)", "(c.s >= @p3)"), "the comparison past an anchor stays as it is");
+        }
+
         // ── An extreme ────────────────────────────────────────────────────────────────────────
 
         const string Aggregate = "SELECT MAX(c.id) AS \"m\" FROM c";
@@ -357,7 +407,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         const string Reread = "SELECT VALUE c.id FROM c ORDER BY c.id DESC";
 
         static CosmosOrderProgram Extreme(bool ordered = true) =>
-            new([], false, null, null, Aggregate, [], [new CosmosOrderExtreme("m", true, CosmosOrderedKeyKind.Text, CosmosOrderAnchor.Text, Reread, ordered)]);
+            new([], false, null, null, Aggregate, [], [], [new CosmosOrderExtreme("m", true, CosmosOrderedKeyKind.Text, CosmosOrderAnchor.Text, Reread, ordered)]);
 
         static async Task<List<string?>> ReadExtreme(StubExecutor executor, CosmosOrderProgram program)
         {
