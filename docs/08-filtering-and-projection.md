@@ -401,13 +401,19 @@ integer, which compares exactly; sent with a point, it would match the document 
 `2.9999999999999999`, which a double reads as 3 — is compared in process if it is a literal, and fails
 the statement if it is a parameter's value.
 
-**A parameter compared as text needs the path's characters.** Whether a text comparison can be exact
-depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and on the characters either side holds:
-a parameter may hold any character, and the service orders strings by code point where SQL orders them
-by UTF-16 code unit, which part where an emoji meets a character from U+E000 (Chapter 9.3). So a
-comparison of `JSON_VALUE` or `id` with a parameter is made in process, the service sent only
-`IS_DEFINED(…)` for a path, unless the container declares the path a string and its characters with a
-`pattern` (Chapter 14.4), which sends it exactly: `WHERE (c.name > @p0)`. Comparisons with parameters
+**A parameter compared as text is checked when the statement runs.** Whether a text comparison can be
+exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and on the characters either side
+holds: a parameter may hold any character, and the service orders strings by code point where SQL orders
+them by UTF-16 code unit, which part where an emoji meets a character from U+E000 (Chapter 9.3). Against a
+value with nothing at or above U+D800 the two agree whatever the path holds, so a comparison of `id`, or
+of `JSON_VALUE` over a path declared a string, with a parameter is sent as it is, `WHERE (c.name > @p0)`,
+and the value decides when it arrives: below the line it is exact; otherwise the statement is sent with
+the comparison weakened to the part of the value below U+D800 — every string SQL keeps satisfies it — and
+the rows are rechecked in process. A `pattern` declaring the path's characters (Chapter 14.4) makes it
+exact when the plan is made. Only a comparison that is a whole conjunct of the `WHERE` is sent this way:
+under an `OR` or a `NOT` the recheck would not be the predicate's, and the comparison is made in process,
+the service sent `IS_DEFINED(…)` for the path. A grouping, a `DISTINCT` or a ranking over such a filter
+runs in process too, there being no row of the comparison's left to recheck. Comparisons with parameters
 over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a comparison of a declared
 instant with a parameter — the value is written in the stored spelling when the statement runs
 (Chapter 15).

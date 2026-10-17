@@ -142,6 +142,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The keyset chapter 9.5 recommends where <c>id</c> is unique only within a partition: an equality on the
+        /// partition key beside the seek pushes whole, the seek and the sort checked as the rows arrive.
+        /// </summary>
+        [Fact]
+        public void AKeysetInsideOnePartitionPushesWhole()
+        {
+            var container = new CosmosContainerMetadata("items", new[] { "/category" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "properties": { "category": { "type": "string" } } }""")!));
+
+            var seek = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.category') = ? AND c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY""", container, out _);
+
+            PlanText(seek).Should().StartWith("CosmosToClrCursorConverter", "the whole statement is the service's: " + PlanText(seek));
+            var query = Query(FindCosmos(seek), container);
+            query.Sql.Should().Contain("(c.category = @p0)").And.Contain("(c.id > @p1)").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 50");
+            query.Order!.Comparisons.Should().ContainSingle();
+        }
+
+        /// <summary>
         /// A comparison the reader may recheck is the rows the <c>WHERE</c> kept, one each: a grouping or a
         /// <c>DISTINCT</c> over it leaves none to recheck, and stays in process while the filter pushes.
         /// </summary>

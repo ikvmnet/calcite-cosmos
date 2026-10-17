@@ -23,10 +23,13 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Sorting on the promoted partition key column** | Declined; sort on `JSON_VALUE` of the path. *Calcite has no order for `VARIANT`.* |
 | **Sorting on `JSON_VALUE` as text over a path no schema declares a string** | In process. *The service orders the stored value, by JSON type and numbers by value; SQL orders the text.* |
 | **Sorting on a `JSON_QUERY`, `DOC` or array column** | In process. *The service orders objects and arrays by rules of its own.* |
-| **Sorting, comparing against a parameter, or taking `MIN`/`MAX` of strings whose characters nothing states** | In process — over `id` too, so a page or a keyset seek on `id` reads the container. Pushes where a schema `pattern` rules the characters out (Chapter 14.4), or a schema `enum` or `const`, a declared stored form or the `WHERE` lists the values (Chapter 9.3). *Cosmos orders strings by code point and Calcite by UTF-16 code unit, which part where a character above U+FFFF meets one in U+E000–U+FFFF. A check of the rows as they arrive is not done.* |
+| **Sorting, comparing against a parameter, or taking `MIN`/`MAX` of strings whose characters nothing states** | Pushed, and checked as the rows arrive — over `id` too: a page or a keyset seek on `id` is one statement and one page on ordinary text, and reads again only where a character at or above U+D800 lands at a page's edge (Chapters 9.3, 19.8). Proved outright where a schema `pattern` rules the characters out (Chapter 14.4), or a schema `enum` or `const`, a declared stored form or the `WHERE` lists the values. *Cosmos orders strings by code point and Calcite by UTF-16 code unit, which part where a character above U+FFFF meets one in U+E000–U+FFFF.* |
+| **A comparison with a parameter under an `OR` or a `NOT`, or beneath a grouping, a `DISTINCT` or a ranking, over strings whose characters nothing states** | In process. *The reader rechecks a comparison whose parameter it cannot prove by recomputing that comparison over the rows the statement returns, which is the predicate's only where the comparison is a whole conjunct of the `WHERE` and the rows are the filter's.* |
+| **A grouped `MIN` or `MAX` of strings whose characters nothing states** | In process. *There is no one row to check.* |
+| **Comparing two paths' strings whose characters nothing states** | In process. *The rows the service drops never arrive to be checked.* |
 | **Multi-key sorts** | Need a matching composite index; a key the `WHERE` pins, or one repeated, is not sent and does not count. *Cosmos.* |
 | **Sorting on a path the indexing policy does not index** | In process: `_etag`, which every policy excludes, an excluded path, and a computed property no included path names. *Cosmos — a 400 on Azure; the emulator accepts it.* |
-| **Sorting on `RETURNING BIGINT` over an integer the schema does not bound within int64** | In process. *A number past int64 is read back rounded below one inside it.* |
+| **Sorting on `RETURNING BIGINT` over an integer the schema does not bound within int64** | Pushed, and checked as the rows arrive: a number within ±2^53 certifies the order around it, and the rows between two such are re-sorted. *A number past int64 is read back rounded below one inside it.* |
 | **Sorting on a computed expression** | In process, except a geodesic distance. *Cosmos.* |
 | **`GROUP BY` with `ORDER BY`** | The groups are sorted in process. *Cosmos.* |
 | **`SUM`, `AVG` over nullable inputs; `MIN`, `MAX` over a path that may hold a JSON null or two types** | In process — Cosmos's null semantics differ, and its `MIN` and `MAX` compare by JSON type first (Chapter 10.2). *Cosmos; a guarded rewrite is possible and not built.* |
@@ -96,8 +99,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 - A sort on a `JSON_VALUE` column reaches the service only where the container's schema declares the
   type it reads — a string, or the `RETURNING` type — because the service orders the stored value and
   places an object or an array after every number, where the column is null (Chapter 9). A string
-  key also needs its characters known, which `ORDER BY c."id"` has only where a `pattern` declares them
-  (Chapter 14.4).
+  key whose characters nothing declares is checked as the rows arrive (Chapter 9.3); a `pattern`
+  proves them when the plan is made (Chapter 14.4).
 - `MAX(c."_etag")` pushes and `ORDER BY c."_etag"` does not: an aggregate scans, and an `ORDER BY`
   needs an index `_etag` never has (Chapter 9.2).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).

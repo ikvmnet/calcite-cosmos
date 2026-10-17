@@ -50,6 +50,23 @@ when the reader lets go of it — however many pages that took. Its tags:
 A span with no `cosmos.request_charge` is a statement whose reader was abandoned before the end — which
 is its own signal. Point reads and writes are recorded on the metrics, not as `cosmos.query` spans.
 
+**A statement whose order the reader completes** — a sort, a `MIN` or `MAX`, or a comparison with a
+parameter that the plan proved only around the values the rows hold (Chapter 9.3) — is read inside an
+activity of its own, **`cosmos.order`**, and the `cosmos.query` span of each statement it sends sits
+beneath it. Its tags:
+
+| tag | value |
+| --- | --- |
+| `db.query.text` | the statement as the plan wrote it |
+| `cosmos.order.program` | `sort` for a sort read whole, `page` for one under `OFFSET`/`FETCH`, `extreme` for `MIN`/`MAX`, `comparison` for a statement whose only check is a parameter's |
+| `cosmos.order.reissued` | `true` where the reader sent its fallback: the statement unpaged, or with a comparison weakened, or an extreme's argument read again |
+| `cosmos.order.buffered` | how many rows were held back and re-sorted because their keys lay at or above U+D800 (or past 2^53) |
+
+On data whose strings stay below U+D800, `reissued` is `false` and `buffered` is `0`: the statement was
+read once, as written, and only scanned. A `reissued` that is often `true` is a page whose edges keep
+landing on such strings, or a keyset seek past one; Chapter 19.8 says what that costs and how a
+declaration removes it.
+
 ## 20.4 Index metrics
 
 ```json
@@ -131,6 +148,15 @@ ClrCursorSort(sort0=[$1], dir0=[ASC], fetch=[10])     ← every matching documen
     CosmosProject(…)
       CosmosTableScan(table=[[COSMOS, products]])
 ```
+
+A pushed sort whose order the reader checks as the rows arrive says so:
+
+```
+CosmosSort(sort0=[$1], dir0=[ASC], fetch=[10], order=[anchored])
+```
+
+It is still one statement and one page in the ordinary case; see Chapter 9.3 for what is checked and
+the `cosmos.order` activity above for whether a check sent anything more.
 
 The questions to ask of a plan: is the `Filter` below the converter? Is the `Sort` (with its `fetch`)?
 Is a join a `CosmosLookupJoin`, or an in-process join over two converters — two full reads?

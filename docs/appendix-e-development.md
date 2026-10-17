@@ -130,14 +130,16 @@ holds every `ORDER BY` a plan sends to what Azure accepts, which the emulator do
 (`_etag` is excluded by default), and a composite index for every order of more than one key. Its three
 containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs.
 
-It is explicit, and fails today only where no order was pushed — a projected double printed two ways,
-and `CHAR_LENGTH` pushed as `LENGTH` — in the families `DESIGN.md` lists under *Differential testing*.
-It also holds a floor for how many statements push each kind of order, in every container and in
-`orders_ascii`, whose patterns declare its strings' characters, so that a change declining more than it
-must fails it too:
+It runs with the class, and fails on any answer Calcite does not allow. Two families of wrong answer
+that are no order's — a projected double printed two ways, and `CHAR_LENGTH` pushed as `LENGTH` — are
+findings of their own, recorded in `TODO.md`, and are reported apart where the statement sent no order.
+It also holds a floor for how many statements push each kind of order — sorts, extremes, pages and
+comparisons a parameter decides — in every container and in each, so that a change declining more than it
+must fails it too, and a change losing what the reader completes shows in the containers that declare no
+characters:
 
 ```sh
-Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \
+Apache.Calcite.Cosmos.Adapter.Tests.exe \
   -method Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.CosmosDifferentialTests.EveryOrderIsOneCalciteAllows
 ```
 
@@ -149,7 +151,10 @@ Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \
 
 `CosmosServiceOrderModelTests` asks the same question with no service at all: a model of each
 partition's order, the SDK's merge and Calcite's, over every value a fact set admits. Its sweep,
-`EveryVerdictOfTheQuestionHolds`, is explicit for the same reason.
+`EveryVerdictOfTheQuestionHolds`, runs by default, and holds an order completed as the rows arrive to the
+reader's own check: every value it calls an anchor compares alike with every other under all three orders,
+and an extreme read again up to the first anchor is Calcite's. `CosmosOrderedCursorTests` runs the reader
+itself over canned streams in the service's orders, the merge of two partitions among them.
 
 ### Measurements
 
@@ -173,6 +178,9 @@ COSMOS_TEST_MULTIPARTITION_CONTAINER=<container>
 
 Its partition key must be one top-level path and its indexing policy must index `/s`. The test writes a
 few dozen documents tagged with its run and deletes them before it ends; without the variables it skips.
+Beside the merge it measures, it runs the adapter's reader over the same documents through the adapter's own
+executor — the stream, every window, the `MAX` — and holds each to Calcite's order: the one place the
+reader meets a merge the service made rather than a model of one.
 
 ### Generated soundness checks
 

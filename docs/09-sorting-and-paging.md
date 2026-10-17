@@ -33,8 +33,8 @@ new CalciteConnectionStringBuilder
 
 The `JSON_VALUE` rows below assume the container's schema declares `status` and `metadata.region` an
 `enum` of strings and `price` an integer (Chapter 14); a `JSON_VALUE` key needs the type it reads
-declared before it sorts at the service at all, and a string key its characters, which 9.3 explains.
-`_ts` needs nothing declared.
+declared before it sorts at the service at all; a string key's characters are checked as the rows arrive
+unless they are declared too, which 9.3 explains. `_ts` needs nothing declared.
 
 | statement | default (`HIGH`) | `LOW` |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ declared before it sorts at the service at all, and a string key its characters,
 | `ORDER BY JSON_VALUE(c."DOC", '$.metadata.region')` | in process | `ORDER BY c.metadata.region ASC` |
 | `ORDER BY JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER)` | in process | `ORDER BY c.price ASC` |
 | `ORDER BY c."_ts"` | `ORDER BY c._ts ASC` | `ORDER BY c._ts ASC` |
-| `ORDER BY c."id"` | in process (9.3) | in process (9.3) |
+| `ORDER BY c."id"` | `ORDER BY c.id ASC`, checked as the rows arrive (9.3) | `ORDER BY c.id ASC`, checked as the rows arrive (9.3) |
 | `ORDER BY JSON_VALUE(c."DOC", '$.status') NULLS LAST` | in process | in process |
 
 `LOW` does not loosen anything; it changes what the query *asks for* to something the service can
@@ -66,8 +66,8 @@ Those push under any default.
 
 **Keys that cannot be null are exempt.** `id` and `_ts` are never null, so a sort on them has no null
 placement to disagree about. `_ts` pushes under any setting, and keyset paging on it works without
-`LOW`; `id` has a question of its own, its characters (9.3). `_etag` is never null either, and never
-sorts at the service (9.2).
+`LOW`, and so does `id`, whose characters the reader checks as the rows arrive (9.3). `_etag` is never
+null either, and never sorts at the service (9.2).
 
 ## 9.2 One property, or a composite index
 
@@ -130,9 +130,9 @@ be mapped to a document path"*. So:
 - **A sort on a computed expression runs in process.** That includes a sort on a view column that is
   a `CAST`, a function call or a concatenation.
 - **A sort on a column that *is* a path pushes, where the column is the value stored there**:
-  `_ts` always; `id` where its characters are known (below); `JSON_VALUE(…)` read as text where the
-  schema declares the path a string and its characters are known, and `JSON_VALUE(… RETURNING …)` of a
-  number or a boolean where it declares the path that type (all below). Never `_etag`, which no
+  `_ts` and `id` always — `id` checked for its characters as the rows arrive unless a `pattern` declares
+  them (below); `JSON_VALUE(…)` read as text where the schema declares the path a string, and
+  `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that type (all below). Never `_etag`, which no
   policy indexes (9.2). A date or a time read by `RETURNING` needs its stored form declared instead
   (Chapter 15). Not `RETURNING DECIMAL` under any declaration: it parses a stored string, and so
   orders `"10"` after `"9"` where the service orders the strings (Chapter 7).
@@ -181,23 +181,26 @@ So it runs in process unless the schema declares the property that type, or null
 `"number"` for a numeric `RETURNING`, `"boolean"` for `RETURNING BOOLEAN`, each alone or with
 `"null"`. Declare the properties you sort by, whichever way you read them.
 
-**`RETURNING BIGINT` needs the integer's range too.** A sort reads back what the service returns, and
-a stored number beyond the int64 range comes back rounded — on the emulator `2^63` as
-`9223372036854775800`, below `2^63 - 1`, though the service orders it above. So a `BIGINT` key over a
-declared integer pushes only where the schema also bounds it within int64, with `minimum` and
-`maximum`. `RETURNING INTEGER`, and `RETURNING DOUBLE` as the last key, need no bound: the first raises
-on a value it cannot hold, and the second reads nearby large integers as one double, which only ties
-what the service orders.
+**`RETURNING BIGINT` past the int64 range is checked as the rows arrive.** A sort reads back what the
+service returns, and a stored number beyond the int64 range comes back rounded — on the emulator `2^63`
+as `9223372036854775800`, below `2^63 - 1`, though the service orders it above. A number within ±2^53
+reads back as itself and on the right side of every other, so the reader keeps the service's order
+around those and re-sorts the rows between them, as it does for strings (below). A schema bounding the
+integer within int64, with `minimum` and `maximum`, proves the order outright and the check is skipped.
+`RETURNING INTEGER` needs neither: it raises on a value it cannot hold. `RETURNING DOUBLE` as the last
+key needs nothing either, reading nearby large integers as one double, which only ties what the service
+orders; before the last key it is checked the same way.
 
 **Some columns never sort at the service**: a `JSON_QUERY` column, the `DOC` column, and an array
 (`JSON_QUERY … RETURNING … ARRAY`). The service orders objects and arrays by rules of its own — `[]`
 after `[1, 5]`, `{"b":1}` before `{"a":2}` — which are not the order of their text or of SQL's arrays.
 
-**A string key sorts at the service only where its characters are known.** The service orders strings
-by code point, and Calcite by UTF-16 code unit. The two agree everywhere except where a character above
-U+FFFF — an emoji, say — meets one between U+E000 and U+FFFF, such as a fullwidth letter or U+FFFD: the
-service puts the second first, Calcite the first. Measured on the emulator and on Azure. So a string sort
-is sent only where the strings it orders cannot hold both kinds:
+**A string key's characters are proved when the plan is made, or checked as the rows arrive.** The
+service orders strings by code point, and Calcite by UTF-16 code unit. The two agree everywhere except
+where a character above U+FFFF — an emoji, say — meets one between U+E000 and U+FFFF, such as a fullwidth
+letter or U+FFFD: the service puts the second first, Calcite the first. Measured on the emulator and on
+Azure, and across two physical partitions a stream can be in neither order. A string sort is proved
+outright where the strings it orders cannot hold both kinds:
 
 - the schema's `pattern` rules them out — an identifier on `id`, a UUID in either case, or every
   character below U+D800 (Chapter 14.4);
@@ -206,18 +209,25 @@ is sent only where the strings it orders cannot hold both kinds:
   and 15);
 - or the `WHERE` lists them: `WHERE c."id" IN ('a', 'b', 'c') ORDER BY c."id"` pushes.
 
-Anything else is sorted in process, and a row limit with it. That includes **`id`** where no pattern
-declares its characters, since Azure allows every character in an `id` but `/` and `\`, and a path
-declared only `"type": "string"`:
+**Anything else is sent too, and its order completed by the reader.** That includes **`id`** where no
+pattern declares its characters — Azure allows every character in an `id` but `/` and `\` — and a path
+declared only `"type": "string"`. A string with no character at or above U+D800 orders the same against
+any other under both rules, so wherever one arrives the service's order around it is Calcite's; the
+reader passes such rows on as they come, re-sorts the rare rows between two of them, and checks a page's
+first and last rows the same way, reading the statement again unpaged where either is not one:
 
 ```sql
 SELECT c."id" FROM "products" AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY
-→ SELECT VALUE { "id": c.id } FROM products c       -- sorted and paged in process
+→ SELECT VALUE { "id": c.id, "$k0": c.id } FROM products c ORDER BY c.id ASC OFFSET 40 LIMIT 20
 ```
 
-Declaring `id` an identifier, `"id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }`, sends the
-same query as `… ORDER BY c.id ASC OFFSET 40 LIMIT 20` (Chapter 14.4). The same question decides a
-range comparison (Chapter 8.3) and `MIN` and `MAX` (Chapter 10).
+The `"$k0"` member is the key the reader checks, selected under a name no column has; `EXPLAIN` shows the
+sort as `order=[anchored]`. On ordinary text this is one statement and one page, as a declared key's would
+be; Chapter 19.8 says what it costs where the characters are exotic, and the `cosmos.order` activity
+(Chapter 20.3) whether a check sent anything more. Declaring `id` an identifier,
+`"id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }`, proves the order when the plan is made and
+the statement is read as it comes (Chapter 14.4). The same question decides a range comparison with a
+parameter (Chapter 8.3) and `MIN` and `MAX` (Chapter 10).
 
 Through a view, the adapter can move a sort and its row limit beneath a projection it cannot push, so
 that the page is still taken at the service and the projection computed over it. That works whenever
@@ -249,8 +259,9 @@ ORDER BY c."_ts" DESC OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY
 ```
 
 A row limit is pushed **with** its sort, and only once the sort is: the first twenty under the
-service's order are the first twenty the query wants only if the orders agree. On `id`, which sorts in
-process (9.3), the page is taken in process too, after the container is read. A `FETCH` with no
+service's order are the first twenty the query wants only if the orders agree. On a key checked as the
+rows arrive (9.3) the reader checks the page's first and last rows, and takes the page itself from the
+statement read again unpaged where either holds a character at or above U+D800. A `FETCH` with no
 `ORDER BY` pushes on its own — "any twenty" is something the service can answer.
 
 The limit also sets the **page size**. Cosmos returns results a page at a time, and by default fills a
@@ -274,10 +285,47 @@ FETCH NEXT 50 ROWS ONLY
 ```
 
 A keyset over a declared UUID or timestamp path works the same way once the stored form is declared
-(Chapter 14). **A keyset over `id` pushes where a `pattern` declares its characters** (Chapter 14.4):
-the comparison against the parameter is a string order as much as the sort is, and a parameter may
-hold any character, but against strings below U+D800 every character compares alike. Without one,
-`WHERE c."id" > ? ORDER BY c."id"` reads the container and pages it in process (Chapter 23).
+(Chapter 14). **A keyset over `id` pushes too**:
+
+```sql
+WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY
+→ … WHERE (c.id > @p0) ORDER BY c.id ASC OFFSET 0 LIMIT 50
+```
+
+The comparison against the parameter is a string order as much as the sort is, and a parameter may hold
+any character. A value with nothing at or above U+D800 — the last `id` of the page before, ordinarily —
+compares alike under both rules, and the statement is sent as written. Any other value is checked when the
+statement runs: the comparison is sent weakened to the part of the value below U+D800, which every `id`
+Calcite keeps satisfies, and the reader rechecks it and takes the page. Where a `pattern` declares `id`'s
+characters (Chapter 14.4) nothing is checked at all. Only a comparison that is a whole conjunct of the
+`WHERE` is sent this way; under an `OR` or a `NOT` it stays in process, as does a grouping or a `DISTINCT`
+over a filter holding one, which leaves no row of the comparison's to recheck.
+
+**Key the page on `(partition key, id)`, not on `id` alone.** An `id` is unique only within its logical
+partition: two documents in different partitions may share one, and where a page ends between them the
+next page's `id > ?` skips the second. Each page is still one Calcite allows; the sequence of pages is not
+complete. Two ways close it:
+
+- **Page inside one partition**, with an equality on its key, where `id` is unique:
+
+  ```sql
+  WHERE JSON_VALUE(c."DOC", '$.category') = ? AND c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY
+  ```
+
+  which pushes whole where the schema declares the partition key path a string (Chapter 14), the `id`
+  comparison and the sort checked as the rows arrive.
+- **Seek past both keys**, ordering by both:
+
+  ```sql
+  WHERE JSON_VALUE(c."DOC", '$.category') > ?
+     OR (JSON_VALUE(c."DOC", '$.category') = ? AND c."id" > ?)
+  ORDER BY JSON_VALUE(c."DOC", '$.category'), c."id"
+  FETCH NEXT 50 ROWS ONLY
+  ```
+
+  which needs a composite index on `(/category, /id)` (9.2), and pushes only where the schema proves both
+  keys' characters — a `pattern` or an `enum` (Chapter 14.4): the comparisons sit under an `OR`, where the
+  reader cannot recheck one, so a parameter that might hold any character keeps the seek in process.
 
 ## 9.6 A filter that removes the nulls
 
@@ -295,8 +343,9 @@ ORDER BY 1 FETCH NEXT 20 ROWS ONLY
 ```
 
 The key still has to be one the service orders the way SQL does (9.7, item 3): the filter settles where
-nulls go, the schema says the text is the value, and something says what characters it holds (9.3) —
-in the example, an `enum` of genres. A filter that keeps one kind of document counts
+nulls go, and the schema says the text is the value; its characters are checked as the rows arrive
+where nothing declares them (9.3) — in the example an `enum` of genres declares them. A filter that keeps
+one kind of document counts
 too, when that kind's branch of the schema declares the key's type (Chapter 14.5). For keys no filter
 settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
 
@@ -312,9 +361,10 @@ settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
    `RETURNING BOOLEAN` a boolean — each alone or with null, outright or in the branch of a kind the
    `WHERE` keeps. Anything less sorts in process. A
    `JSON_QUERY`, `DOC` or array key never sorts at the service.
-4. A string key, `id` included: does the schema's `pattern` rule out the characters (Chapter 14.4),
-   does it list the values (`enum`, `const`), is it a declared UUID or timestamp form, or does the
-   `WHERE` list them (9.3)?
+4. A string key, `id` included, pushes whatever its characters, checked as the rows arrive where nothing
+   declares them (9.3); a `pattern` (Chapter 14.4), an `enum` or `const`, a declared UUID or timestamp
+   form, or a `WHERE` listing the values proves it outright. A two-key sort led by a nullable key that some
+   documents lack and others hold null in stays in process.
 5. Two or more keys? Does the container have a composite index matching their order and directions?
    (A key the `WHERE` pins does not count — 9.2.)
 6. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a

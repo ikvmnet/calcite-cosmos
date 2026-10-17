@@ -117,8 +117,9 @@ Three things to notice:
   the guard makes the service answer the same way.
 - The `FETCH` became `OFFSET 0 LIMIT 10`, and the adapter asks the service for pages of ten, so it is
   not charged for rows it would discard. `_ts`, the time a document was last written, sorts at the
-  service under any setting; a sort on `id` would not, because an `id` may hold characters the service
-  orders differently from SQL (Chapter 9.3), unless a schema `pattern` says it cannot (Chapter 14.4).
+  service under any setting; so does `id`, though an `id` may hold characters the service orders
+  differently from SQL, and the adapter checks them as the rows arrive (Chapter 9.3) unless a schema
+  `pattern` says it need not (Chapter 14.4).
 
 ## 3.4 Seeing the plan and the statement
 

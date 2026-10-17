@@ -282,7 +282,7 @@ string and a text key sorts at the service only over a declared string (Chapter 
 ```
 
 - **An identifier on `id`.** `ORDER BY c."id"`, its pages, `MAX(c."id")` and the keyset seek
-  Chapter 9.5 recommends all reach the service:
+  Chapter 9.5 recommends all reach the service proved, with nothing checked as the rows arrive:
 
   ```sql
   SELECT c."id" FROM "products" AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY
@@ -298,11 +298,18 @@ string and a text key sorts at the service only over a declared string (Chapter 
 
 What each says:
 
-| the strings may hold | sort, `MIN`, `MAX` | compared with a literal | with a parameter, or a path of any character | with another declared path |
-| --- | --- | --- | --- | --- |
-| nothing at or above U+D800 | ✔ | ✔ | ✔ | ✔ |
-| U+E000–U+FFFF but no surrogate: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | ✔ | ✔ | ✘ | where the other holds no surrogate either |
-| anything: no pattern, or one not read | ✘ | ✔ | ✘ | where the other holds nothing at or above U+D800 |
+| the strings may hold | sort, `MIN`, `MAX` | compared with a literal | with a parameter | with a path of any character | with another declared path |
+| --- | --- | --- | --- | --- | --- |
+| nothing at or above U+D800 | ✔ | ✔ | ✔ | ✔ | ✔ |
+| U+E000–U+FFFF but no surrogate: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | ✔ | ✔ | checked | ✘ | where the other holds no surrogate either |
+| anything: no pattern, or one not read | checked | ✔ | checked | ✘ | where the other holds nothing at or above U+D800 |
+
+**✔** is proved when the plan is made, and the statement is read as it comes. **Checked** is sent too, and
+completed as the rows arrive: the reader checks each key, a page's edges, an extreme or a parameter for a
+character at or above U+D800, and reads the statement again where one is (Chapter 9.3) — a scan of each key
+on ordinary text, and a second request only where such a character lands where it matters (Chapter 19.8).
+A grouped `MIN` or `MAX` is not checked, and needs the ✔. **✘** stays in process: the rows a comparison of
+two paths drops never arrive to be checked.
 
 A literal compares exactly in every row because, under the default charset, it holds nothing at or
 above U+0100 (Chapter 8.3).
