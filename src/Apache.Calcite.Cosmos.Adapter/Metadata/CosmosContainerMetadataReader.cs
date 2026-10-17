@@ -180,7 +180,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ReadFullTextPaths(properties),
                 ReadVectorPaths(properties),
                 properties.GeospatialConfig?.GeospatialType != GeospatialType.Geometry,
-                uniqueKeys: ReadUniqueKeys(properties));
+                uniqueKeys: ReadUniqueKeys(properties),
+                computedProperties: ReadComputedProperties(properties));
+        }
+
+        /// <summary>
+        /// Reads the names of the container's computed properties.
+        /// </summary>
+        /// <remarks>
+        /// A computed property is indexed only where an included path names it, and an <c>ORDER BY</c> over one that is
+        /// not is a 400 on Azure — see <see cref="CosmosContainerMetadata.IsPathIndexed"/>. Its query is not read: what a
+        /// computed property holds is the service's to compute, and nothing here addresses it but by name.
+        /// </remarks>
+        static IReadOnlyList<string> ReadComputedProperties(ContainerProperties properties)
+        {
+            var names = new List<string>();
+
+            if (properties.ComputedProperties is { } computed)
+                foreach (var property in computed)
+                    if (string.IsNullOrEmpty(property.Name) == false)
+                        names.Add(property.Name);
+
+            return names;
         }
 
         /// <summary>

@@ -222,7 +222,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// and a rule that decided differently from implementation fires on a key implementation then
         /// refuses. So this is derived once, on the walk
         /// <see cref="CosmosImplementor.TryBindOutput"/> already makes, and never by a second walk of
-        /// its own. Whether the container licenses the candidate is <see cref="IsOrderable"/>, which
+        /// its own. Whether the container licenses the candidate is <see cref="Metadata.CosmosServiceOrder"/>'s, which
         /// is a pure lookup and cannot disagree with itself.
         /// </para>
         /// <para>
@@ -237,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// cast does, except that the query said <em>how</em> — and ordering by the stored strings is
         /// ordering by what the parse answers only where the format reads the declared shape. Which
         /// format was written is structural, so it is read here; whether it reads the shape is the
-        /// pure lookup <see cref="IsOrderable"/> makes.
+        /// pure lookup <see cref="Metadata.CosmosServiceOrder"/> makes.
         /// </para>
         /// </remarks>
         /// <param name="node">The projected expression.</param>
@@ -290,66 +290,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <summary>
-        /// Determines whether the container licenses ordering by a candidate path.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Two conditions.</b> The stored form has to preserve order, which is what
-        /// <see cref="Metadata.CosmosRepresentation.PreservesOrder"/> says and which a form preserving
-        /// equality alone does not give.
-        /// </para>
-        /// <para>
-        /// <b>And the guard the projection renders has to be vacuous</b>, which is the condition a
-        /// reading of <c>TODO.md</c> alone would miss — see
-        /// <see cref="CosmosImplementor.Orderings"/> for what the column renders as and why an
-        /// object at the path would otherwise sort on the wrong side of every scalar.
-        /// </para>
-        /// <para>
-        /// A pure function of the path and the facts, which is what lets the rule and the
-        /// implementation each ask it without a walk between them: the sort asks it, of the facts it
-        /// was decided under, of the candidates the binding walk and the projection record alike.
-        /// </para>
-        /// </remarks>
-        /// <param name="facts">What every row the sort orders is known to satisfy.</param>
-        /// <param name="path">The candidate path, or <c>null</c>.</param>
-        /// <param name="format">
-        /// The format a parse reads the path with, where the candidate is a chain rather than a cast;
-        /// <c>null</c> otherwise. A format that does not read the declared shape maps the stored
-        /// strings onto instants of its own, and their order is then not the order the key asked for.
-        /// </param>
-        /// <param name="held">The halves of an instant the conversion's value holds.</param>
-        /// <returns><c>true</c> where a sort may order by the path.</returns>
-        public static bool IsOrderable(JsonFactSet? facts, CosmosPath? path, string? format = null, Metadata.CosmosTemporalParts held = Metadata.CosmosTemporalParts.None)
-        {
-            if (facts is null || path is null)
-                return false;
-
-            if (Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
-                return false;
-
-            if (facts.RepresentationOf(document) is not Metadata.CosmosRepresentation representation || representation.PreservesOrder == false)
-                return false;
-
-            // A parse names how the text is read and is licensed by the format; a cast leaves it to
-            // the engine and is licensed only where the engine can do it. A temporal cast over an
-            // ISO-8601 instant cannot be, measured -- so ordering by the stored strings would order
-            // rows for a query whose key raises. A candidate carrying neither is a UUID cast, whose
-            // conversion the engine performs and which `CalciteUuidReadingMeasurementTests` pins.
-            if (format is not null)
-            {
-                if (Metadata.CosmosStoredForms.ParsesExactly(representation, format, held) == false)
-                    return false;
-            }
-            else if (held != Metadata.CosmosTemporalParts.None
-                && Metadata.CosmosStoredForms.EngineReads(representation, held) == false)
-            {
-                return false;
-            }
-
-            return facts.IsAlwaysScalar(document);
-        }
-
-        /// <summary>
         /// Returns the document paths a sortable expression reads, where every operand is one this
         /// can account for.
         /// </summary>
@@ -374,7 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <para>
         /// Structural, like <see cref="OrderingCandidateOf"/>, and derived on the one walk
         /// <see cref="CosmosImplementor.TryBindOutput"/> makes. Whether the container licenses the
-        /// paths is a pure lookup the caller makes — <c>CosmosSortRule.NonNullFields</c> — for the
+        /// paths is a pure lookup the caller makes — <see cref="Metadata.CosmosServiceOrder"/> — for the
         /// reason <see cref="CosmosOrdering"/> gives: two walks can disagree about which expression
         /// sits at an ordinal, and a pure lookup cannot disagree with itself.
         /// </para>

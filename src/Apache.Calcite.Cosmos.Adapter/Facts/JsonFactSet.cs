@@ -291,6 +291,44 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// Returns the values a path holds wherever it is there, where they are finitely many and known.
+        /// </summary>
+        /// <remarks>
+        /// Silent about whether the path is there, as <see cref="TryGetValue"/> is: an <c>enum</c> or an <c>IN</c>
+        /// constrains the value only where there is one. What an order over the path needs of it is the characters and
+        /// the types of what may be there, and that a path holding one value is a key nothing orders by — see
+        /// <c>CosmosServiceOrder</c>.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <param name="values">The values, in no order that means anything.</param>
+        /// <returns><c>true</c> where the values are known.</returns>
+        public bool TryGetDomain(JsonDocumentPath path, out IReadOnlyList<JsonScalar> values)
+        {
+            var known = Read<IReadOnlyList<JsonScalar>?>(null, t => t.TryDom(path, out var dom) ? Decode(dom) : null);
+
+            values = known ?? Array.Empty<JsonScalar>();
+            return known is not null;
+        }
+
+        /// <summary>
+        /// Returns the types a path holds wherever it is there, in the theory's names, where they are known.
+        /// </summary>
+        /// <remarks>
+        /// Silent about whether the path is there; an empty set says it never is.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <param name="types">The types: <see cref="JsonValues.StringType"/>, <see cref="JsonValues.IntegerType"/> and
+        /// the rest.</param>
+        /// <returns><c>true</c> where the types are known.</returns>
+        internal bool TryGetTypes(JsonDocumentPath path, out ValueSet<string> types)
+        {
+            var (found, known) = Read((false, AllTypes), t => t.TryTypes(path, out var held) ? (true, held) : (false, AllTypes));
+
+            types = known;
+            return found;
+        }
+
+        /// <summary>
         /// Reads the tables, or answers <paramref name="otherwise"/> where nothing is known.
         /// </summary>
         T Read<T>(T otherwise, Func<JsonFactTables, T> read) => _tables is null ? otherwise : read(_tables);

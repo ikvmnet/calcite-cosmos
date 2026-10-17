@@ -1,4 +1,4 @@
-using Apache.Calcite.Cosmos.Facts;
+﻿using Apache.Calcite.Cosmos.Facts;
 
 using java.util.function;
 
@@ -102,7 +102,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CosmosAggregate.CanImplement(call, inputRowType) == false)
+                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known) == false)
                     return false;
 
                 var arguments = call.getArgList();

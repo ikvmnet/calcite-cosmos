@@ -51,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// every claim here has — the container's word, believed.
         /// </para>
         /// <para>
-        /// What it buys is <c>CosmosSortRule.AlwaysDefined</c>: a distance over such a path is
+        /// What it buys is <c>CosmosServiceOrder</c>'s distance reading: a distance over such a path is
         /// neither null nor undefined, so the <c>ORDER BY</c> reaches the service under Calcite's
         /// default placement rather than only under <c>LOW</c>.
         /// </para>

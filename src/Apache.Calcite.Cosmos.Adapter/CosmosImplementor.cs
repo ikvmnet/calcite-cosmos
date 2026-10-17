@@ -358,7 +358,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// depends on <em>which</em> tree is looked at: a rule reading one equivalent and the
         /// implementation another would disagree, while the facts half is a pure lookup that cannot.
         /// See <see cref="Rel.CosmosProject.OrderingCandidateOf"/> for what qualifies and
-        /// <see cref="Rel.CosmosProject.IsOrderable"/> for the half left to the caller.
+        /// <see cref="Metadata.CosmosServiceOrder"/> for the half left to the caller.
         /// </param>
         /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
         public static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written)
@@ -701,7 +701,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <b>Structural only.</b> Both conditions are asked by the sort, of the facts the sort was
         /// decided under — the filters beneath it, which may be more than the projection's own — so
         /// the projection records the candidate and the sort licenses it, as its rule licensed the
-        /// candidate the binding walk derived. See <see cref="Rel.CosmosProject.IsOrderable"/>.
+        /// candidate the binding walk derived. See <see cref="Metadata.CosmosOrderOperandKind.Conversion"/>.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException">The value is <c>null</c>.</exception>

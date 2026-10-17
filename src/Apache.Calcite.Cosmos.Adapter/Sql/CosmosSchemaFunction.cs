@@ -134,7 +134,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ? name + " has no value this adapter can produce. Cosmos computes a relevance score "
                     + "only while ordering and never returns one, so nothing may read it. A statement "
                     + "arrives here either by selecting the score, which the service rejects outright, "
-                    + "or by ordering on it in a plan that could not push the whole ordering down."
+                    + "or by ordering on it in a plan that could not push the whole ordering down. "
+                    + "Cosmos ranks the best match first and takes no direction for it, so an ordering "
+                    + "on a score pushes only descending: write ORDER BY " + name + "(...) DESC."
                 : name + " is evaluated by the service and has no in-process body. This plan asks for "
                     + "its value somewhere the call could not be pushed down.";
         }

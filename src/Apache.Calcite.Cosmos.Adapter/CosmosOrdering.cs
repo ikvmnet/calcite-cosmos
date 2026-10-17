@@ -19,7 +19,7 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <para>
     /// Neither says whether the container <em>licenses</em> anything. That is a pure lookup over the
     /// path and the declared facts, which cannot disagree with itself, and each site makes it for
-    /// itself — see <see cref="Rel.CosmosProject.IsOrderable"/>.
+    /// itself — see <see cref="Metadata.CosmosServiceOrder"/>.
     /// </para>
     /// </remarks>
     /// <param name="Path">

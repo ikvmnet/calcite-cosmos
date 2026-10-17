@@ -3689,30 +3689,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
             }
-            else if (IsOrdering(KindOf(call))
+            else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
                 && RendersOnlyStrings(leftValue, rightValue) == false)
             {
-                // The same gap the equality has, with no exact case to carve out of it. An equality
-                // against text no non-string renders as is exact; an ordering comparison never is,
-                // because the two orders disagree in kind — Calcite compares renderings as text, and
-                // the service compares raw values across JSON types, where a boolean sorts before a
-                // number and a number before any string.
+                // The same gap the equality has, negated. Measured over the typed container, one
+                // document per JSON type: `label <> 'bikes'` gained the array and the object, which
+                // the accessor answers null for and Calcite therefore excludes, while the service's
+                // inequality across types is true. So it is declined here and CosmosFilterSplitRule
+                // pushes what it implies.
+                throw new CosmosTranslationException("An inequality over JSON_VALUE read as text compares a rendering, and the service's inequality is true across JSON types where the rendering is null.");
+            }
+            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue) is { IsProved: false } refused)
+            {
+                // An ordering comparison is an order the service computes, and is asked as one
+                // (CosmosServiceOrder.Compare): each side must read exactly what the service compares,
+                // and the strings of the two must order alike by code point, as the service compares
+                // them, and by UTF-16 code unit, as Calcite does.
                 //
-                // Measured over the typed container, one document per JSON type. `label > 'bikes'`
-                // lost the stored `true`, which renders as `true` and sorts after `bikes` as text
-                // while sorting before every string at the service. `label >= '30'` lost the stored
-                // 30 and the stored `true` the same way. `label < 'bikes'` lost the stored 30, and
-                // `label <> 'bikes'` gained the array and the object, which the accessor answers
-                // null for and Calcite therefore excludes.
+                // A rendering of what may not be a string fails the first. Measured over the typed
+                // container, one document per JSON type: `label > 'bikes'` lost the stored `true`,
+                // which renders as `true` and sorts after `bikes` as text while sorting before every
+                // string at the service; `label >= '30'` lost the stored 30 and the stored `true` the
+                // same way; `label < 'bikes'` lost the stored 30. A parameter, or another path, that
+                // may hold a character beyond U+FFFF against one that may hold one from U+E000 fails
+                // the second: measured on the probe account, `c.s > @p` bound to U+1F600 keeps the
+                // strings above it by code point, which Calcite puts below.
                 //
-                // So it is declined here and CosmosFilterSplitRule pushes what it implies: the
-                // comparison where the value is a string, and every non-string admitted for the
-                // recheck above.
-                throw new CosmosTranslationException("A comparison over JSON_VALUE read as text compares a rendering, and the service orders raw values across JSON types rather than their renderings.");
+                // So it is declined here and CosmosFilterSplitRule pushes what it implies: for a
+                // rendering, the comparison where the value is a string, and every non-string
+                // admitted for the recheck above.
+                throw new CosmosTranslationException("An ordering comparison the service answers otherwise than Calcite: " + refused.Reason + ".");
             }
 
             WriteBinary(builder, left, right, op);
+        }
+
+        /// <summary>
+        /// Asks whether the service's ordering comparison of two values keeps exactly the rows Calcite's
+        /// does, of the facts this translator was given.
+        /// </summary>
+        /// <remarks>
+        /// The translator says only what each side is — a literal, a parameter, a path and how it is read,
+        /// or another value — and <see cref="Metadata.CosmosServiceOrder.Compare"/> decides, as it decides
+        /// every order the service computes. The split rule's weakening asks the same of the comparison it
+        /// pushes over the raw value.
+        /// </remarks>
+        /// <param name="left">One side, beneath any box the validator's coercion put around it.</param>
+        /// <param name="right">The other.</param>
+        /// <returns>The verdict.</returns>
+        internal Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right)
+        {
+            left = StripVariantCoercion(left);
+            right = StripVariantCoercion(right);
+
+            // A rendering compared with text is compared as text, in Calcite. Compared with a number it is not
+            // Calcite's comparison at all — the validator compares text with text — but the split rule's bound on
+            // the raw value, which carries its own type test (CosmosFilterSplitRule.TryBoundNumericCast), and is read
+            // as that value.
+            var text = IsTextComparand(left) && IsTextComparand(right);
+
+            return Metadata.CosmosServiceOrder.Compare(Facts, OrderOperand(left, text), OrderOperand(right, text));
+        }
+
+        /// <summary>
+        /// Says what one side of an ordering comparison is.
+        /// </summary>
+        /// <remarks>
+        /// A path read as text where the side is a rendering compared with text, a path read as its type where
+        /// it is the stored value — the service's own properties, a typed accessor, a raw document value — and
+        /// otherwise a literal, a parameter or a value known by its type alone. Only a scalar a comparison can
+        /// order is a path here: anything else is a value the service computes, and the question is then its
+        /// type's.
+        /// </remarks>
+        /// <param name="node">The side.</param>
+        /// <param name="text">Whether the comparison is between text, where a rendering is compared as one.</param>
+        Metadata.CosmosOrderOperand OrderOperand(RexNode node, bool text)
+        {
+            var type = node.getType()?.getSqlTypeName() ?? SqlTypeName.ANY;
+
+            if (node is RexLiteral literal)
+                return literal.isNull() == false && JsonScalar.TryFrom(GetLiteralValue(literal), out var value)
+                    ? Metadata.CosmosOrderOperand.ForLiteral(value)
+                    : Metadata.CosmosOrderOperand.ForExpression(type);
+
+            if (node is org.apache.calcite.rex.RexDynamicParam)
+                return Metadata.CosmosOrderOperand.ForParameter(type);
+
+            if (IsTextRendering(node))
+                return TryResolvePath(node, out var rendered) && DocumentOf(rendered) is JsonDocumentPath at
+                    ? text
+                        ? Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.VARCHAR, IsScalarRendering(node) ? CosmosReading.Text : CosmosReading.JsonText)
+                        : Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.ANY, CosmosReading.Typed)
+                    : Metadata.CosmosOrderOperand.ForExpression(type);
+
+            if ((IsCharacter(node) || SqlTypeName.NUMERIC_TYPES.contains(type) || type == SqlTypeName.BOOLEAN || IsDocumentValueType(type))
+                && TryResolvePath(node, out var path) && DocumentOf(path) is JsonDocumentPath document)
+                return Metadata.CosmosOrderOperand.ForPath(document, type, CosmosReading.Typed);
+
+            return Metadata.CosmosOrderOperand.ForExpression(type);
+        }
+
+        /// <summary>
+        /// Determines whether a kind is one of the four ordering comparisons, the inequality not among
+        /// them.
+        /// </summary>
+        static bool IsOrderingComparison(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.LESS_THAN
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN
+                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 
         /// <summary>
@@ -3934,23 +4021,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsTextComparand(RexNode node)
         {
             return IsCharacter(node) || IsDocumentValueType(node.getType()?.getSqlTypeName());
-        }
-
-        /// <summary>
-        /// Determines whether a kind is one of the ordering comparisons, or the inequality.
-        /// </summary>
-        /// <remarks>
-        /// The inequality belongs with them rather than with the equality it negates: an equality
-        /// against unambiguous text is exact, and its negation is not, because the accessor answers
-        /// null for an object or an array where the raw value compares unequal to anything.
-        /// </remarks>
-        static bool IsOrdering(SqlKind.__Enum kind)
-        {
-            return kind is SqlKind.__Enum.NOT_EQUALS
-                or SqlKind.__Enum.LESS_THAN
-                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
-                or SqlKind.__Enum.GREATER_THAN
-                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 
         /// <summary>
