@@ -233,6 +233,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Reads the fallback in place of what was read: the statement unpaged, each comparison whose parameter is no anchor
         /// weakened, the page taken here.
         /// </summary>
+        /// <remarks>
+        /// The weakened form takes the place of the text the translator wrote for the exact one, which occurs once: it
+        /// names the parameter slot <see cref="CosmosOrderComparison.Parameter"/>, which the parameter list hands out to
+        /// that comparison alone. Which comparisons are weakened is the value's to decide, so the fallback is finished
+        /// here rather than when the statement is built, and its two forms per comparison would otherwise be as many
+        /// statements as there are combinations of them.
+        /// </remarks>
         async ValueTask ReissueAsync(CancellationToken cancellationToken)
         {
             _source?.Dispose();
