@@ -718,8 +718,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// or its answer could not be matched to it.</param>
         /// <param name="Failure">What is wrong, or <c>null</c>.</param>
         /// <param name="Family">The family a failure belongs to.</param>
-        /// <param name="Runtime">Whether the failure is the CLR runtime's own: no order was pushed,
-        /// and Calcite's own run answers no better.</param>
+        /// <param name="Runtime">Whether the failure is the CLR runtime's own: the service was handed no
+        /// order, and the answer holds the right rows in an order the runtime chose.</param>
         /// <param name="Sent">What the plan sent the service.</param>
         /// <param name="Answer">The rows the pushed plan answered, which a keyset's next page is bound
         /// from.</param>
