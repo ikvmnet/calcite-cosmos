@@ -59,6 +59,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>How many documents each trial draws from its declaration.</summary>
         public const int DocumentsPerTrial = 64;
 
+        /// <summary>
+        /// How many more it draws holding a string of either band where the declaration lets one stand, from a stream of
+        /// their own: what the characters a string is said to hold are checked on (<see cref="Declaration"/>).
+        /// </summary>
+        public const int BandedPerTrial = 16;
+
         readonly Func<JsonFactTheory, CosmosOracle> _oracle;
 
         /// <param name="oracle">How an oracle is made over a declaration: by default, as the planner would, in its own graphs.</param>
@@ -76,9 +82,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var clock = Stopwatch.StartNew();
             var random = new Random(seed);
+            var bands = new Random(unchecked(seed * 7919 + 17));
             var world = new World(seed);
-            var declaration = Declaration.Random(random);
-            var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random)).ToArray();
+            var declaration = Declaration.Random(random, bands);
+            var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
+                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
+                .ToArray();
             var conjuncts = Statements.Draw(random, declaration);
             var report = new PopulationReport(seed, declaration, conjuncts);
 
