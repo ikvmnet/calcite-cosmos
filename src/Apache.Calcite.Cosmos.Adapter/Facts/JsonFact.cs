@@ -38,16 +38,12 @@ namespace Apache.Calcite.Cosmos.Facts
             if (Claim.Equals(other.Claim))
                 return true;
 
-            // Almost nothing here entails Present, and that is the whole of what a claim about a
-            // value means. A schema's `properties` constrains the value a path holds *if it holds
-            // one*; only `required` says it holds one at all. Reading "this is a canonical UUID" as
-            // "this is there" would claim of every document what the schema claimed of none, which is
-            // exactly the mistake a container holding more than one kind of document punishes.
-            //
-            // An extension claim may be the exception, and says so itself: a consumer's claim about a
-            // value can be one that no absent value satisfies, the way a geography the service will
-            // measure is. It is still conditional on its guard like every other rule, so a path under
-            // a discriminator says nothing until the discriminator is proven.
+            // Nothing here entails Present, and that is the whole of what a claim about a value means.
+            // A schema's `properties` constrains the value a path holds *if it holds one*; only
+            // `required` says it holds one at all. Reading "this is a canonical UUID" or "this is a
+            // geography" as "this is there" would claim of every document what the schema claimed of
+            // none, which is exactly the mistake a container holding more than one kind of document
+            // punishes. An extension is a token and entails only itself, which the equality above says.
             return (Claim, other.Claim) switch
             {
                 // A known value settles membership, type and every disequality but its own.
@@ -68,9 +64,6 @@ namespace Apache.Calcite.Cosmos.Facts
                 // A stored form says what the strings at a path look like, and says nothing about
                 // whether a null is there beside them -- so it entails only the claim that admits one.
                 (JsonClaim.Represents, JsonClaim.OfType b) => b.Type == JsonType.String && b.OrNull,
-
-                // A consumer's claim answers for itself. See JsonClaim.Extension.
-                (JsonClaim.Extension a, var b) => a.Entails(b),
 
                 // A bound binds numbers only. A stricter bound settles a looser one, a value or a domain
                 // settles one every number in it satisfies, and a claim that the path holds no number

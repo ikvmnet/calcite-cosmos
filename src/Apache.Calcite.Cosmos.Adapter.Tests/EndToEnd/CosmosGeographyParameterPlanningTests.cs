@@ -56,9 +56,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string View = $"""(SELECT c."id" AS "Id", {Location} AS "Location" FROM products AS c) AS s""";
 
         /// <summary>
-        /// What a container declares to say a path always holds a point.
+        /// What a container declares to say a path always holds a point: the shape, and the location required.
         /// </summary>
         const string Point = """
+        { "type": "object",
+          "required": ["location"],
+          "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                        "properties": {
+                          "type": { "const": "Point" },
+                          "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                            "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                             { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+        """;
+
+        /// <summary>
+        /// The shape without the location required: what a location is where a document has one.
+        /// </summary>
+        const string OptionalPoint = """
         { "type": "object",
           "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
                         "properties": {
@@ -218,6 +232,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Text(Plan(sql, NullCollation.HIGH, Point)).Should().NotContain("ClrCursorSort");
             Text(Plan(sql, NullCollation.HIGH, null)).Should().Contain("ClrCursorSort",
                 "and without the declaration a stored operand may be null, so the placement still decides");
+        }
+
+        /// <summary>
+        /// And not where the declaration leaves the location optional: a document without one conforms, and its
+        /// distance is undefined.
+        /// </summary>
+        /// <remarks>
+        /// The service sorts an undefined distance first ascending, and Calcite's default placement puts it last, so
+        /// under <c>FETCH FIRST 5</c> a document lacking a location displaced a located row. The shape's claim used to
+        /// carry a presence of its own, and this statement was sent as
+        /// <c>ORDER BY ST_DISTANCE(c.location, @p0) ASC OFFSET 0 LIMIT 5</c> with nothing sorted in process.
+        /// </remarks>
+        [Fact]
+        public void AnOrderingByTheDistanceToAnOptionalPointIsSortedInProcessUnderTheDefaultPlacement()
+        {
+            var sql = $"""SELECT c."id" FROM products AS c ORDER BY CLR_ST_GEOG_DISTANCE({Location}, CAST(? AS GEOMETRY)) FETCH FIRST 5 ROWS ONLY""";
+
+            Text(Plan(sql, NullCollation.HIGH, OptionalPoint)).Should().Contain("ClrCursorSort",
+                "a location the declaration does not require may be absent, and its distance undefined");
+            Text(Plan(sql, NullCollation.LOW, OptionalPoint)).Should().NotContain("ClrCursorSort",
+                "and where Calcite puts the nulls first, as the service puts an undefined, the order is the service's");
         }
 
         const string Here = """CLR_ST_GEOG_GEOMFROMGEOJSON('{"type":"Point","coordinates":[-111.5,38.3]}')""";

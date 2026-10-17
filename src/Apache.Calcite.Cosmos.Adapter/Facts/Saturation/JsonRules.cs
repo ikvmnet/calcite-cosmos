@@ -202,9 +202,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Function<string, ValueSet<string>> FormChars { get; }
 
         /// <summary>
-        /// The path holds what a host's own claim, named by a key, says it holds. The theory reads nothing of it: what
-        /// it says in JSON's terms — that the path is there, that it is an object — is stated beside it by whoever states
-        /// it, so it is not inherited through a pattern, which would carry a presence it may imply.
+        /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing
+        /// of it and derives nothing from it: what the value is in JSON's terms — an object, say — is stated beside it by
+        /// the reader that read it, from the keywords that say so, and whether it is there is a presence like any other.
+        /// No pattern inherits it, there being no claim of the kind a pattern carries.
         /// </summary>
         public Relation<JPath, string> Extension { get; }
 

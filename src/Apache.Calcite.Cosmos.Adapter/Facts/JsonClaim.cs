@@ -44,22 +44,23 @@ namespace Apache.Calcite.Cosmos.Facts
         public sealed record Present : JsonClaim;
 
         /// <summary>
-        /// A claim this theory carries for a consumer, which says for itself what it entails.
+        /// A claim this theory carries for a consumer, as a token it reads nothing of.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>The claims above are JSON's: a type, a presence, a value, a domain, a spelling.</b> A
         /// consumer may know more about a value than JSON can say — the adapter knows when the service
-        /// will measure a shape as a geography, which no subschema can state because the service
-        /// range-checks coordinates — and needs that claim derived, guarded and combined like any other.
+        /// will measure a shape as a geography — and needs that claim guarded and carried like any other.
         /// This is where it goes, without the theory learning what it means.
         /// </para>
         /// <para>
-        /// <b>It answers its own entailments, toward JSON's claims or toward its own kind.</b> What it
-        /// says about the value in JSON's terms — that a geography is an object, and one that is there —
-        /// is what lets the rest of the theory use it; <see cref="JsonFact.Entails"/> asks it. An
-        /// extension entails nothing it does not say it does, and is excluded by nothing, which loses
-        /// facts rather than inventing them.
+        /// <b>It entails nothing, and says nothing of whether the path is there.</b> Like every claim
+        /// but <see cref="Present"/>, it says what the value is <em>if</em> there is one; what the value
+        /// is in JSON's terms — an object, a presence — is stated beside it by the reader that read the
+        /// input, from the keywords that say so, and the theory derives the rest. An extension that
+        /// settled a type or a presence itself would be a fact derived in C#, and was one: a geography
+        /// said its path was there, which no keyword had said, and an optional location's distance was
+        /// sorted as though no document lacked one.
         /// </para>
         /// <para>
         /// A record, so its equality is value equality, which two declarations of one claim need.
@@ -74,14 +75,6 @@ namespace Apache.Calcite.Cosmos.Facts
             protected Extension()
             {
             }
-
-            /// <summary>
-            /// Determines whether this claim, holding of a value, establishes <paramref name="other"/>
-            /// of the same value.
-            /// </summary>
-            /// <param name="other">The claim to establish, of the same path.</param>
-            /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
-            public virtual bool Entails(JsonClaim other) => Equals(other);
 
         }
 

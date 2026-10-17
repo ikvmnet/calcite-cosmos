@@ -195,6 +195,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             ContainsSort(best).Should().BeFalse("the type says nothing about whether the service can measure it");
         }
 
+        /// <summary>
+        /// Nor does the shape where nothing requires the path: a document without a location conforms, and its
+        /// distance arrives undefined, which the service sorts first and <c>HIGH</c> last.
+        /// </summary>
+        [Fact]
+        public void AnOptionalGeographyDoesNot()
+        {
+            var optional = Geography.Replace("\"required\": [\"location\"],", "");
+
+            optional.Should().NotBe(Geography);
+            ContainsSort(Plan(OrderedByPath, asConnection: true, NullCollation.HIGH, optional)).Should().BeFalse("an optional location may be absent");
+        }
+
         /// <remarks>
         /// The control: without a declaration the placement is all there is, and under <c>HIGH</c> it
         /// disagrees. This is the behaviour the two above are a departure from.
@@ -235,10 +248,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             """;
 
         /// <summary>
-        /// What a container declares to say a path holds a shape.
+        /// What a container declares to say a path holds a shape in every document: the shape, and the path required.
         /// </summary>
         const string Geography = """
         { "type": "object",
+          "required": ["location"],
           "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
                         "properties": {
                           "type": { "const": "Point" },

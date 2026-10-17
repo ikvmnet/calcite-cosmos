@@ -15,7 +15,7 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <remarks>
     /// <para>
     /// <b>A claim says what a path holds if it holds anything</b>, and so does every fact of the theory but
-    /// <c>present</c>, <c>absent</c> and an extension's: the two vocabularies agree on that, which is what makes the
+    /// <c>present</c> and <c>absent</c>: the two vocabularies agree on that, which is what makes the
     /// translation one table rather than an argument. A type is a set of JSON Schema's members, <c>Number</c> being
     /// <c>{integer, fraction}</c> and <c>OrNull</c> adding <c>null</c>; a value or a domain is a set of tagged scalars;
     /// a disequality is one; a bound is a bound, binding numbers in both.
@@ -117,9 +117,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Returns the theory's facts that state what a claim states, for a head or an established fact.
         /// </summary>
         /// <remarks>
-        /// An extension is stated as its token, and beside it as whatever it entails among JSON's own claims: that the
-        /// path is there, and the narrowest set of types it settles. Those are what the rest of the theory can use, and
-        /// the extension answers for them itself, through <see cref="JsonClaim.Extension.Entails"/>.
+        /// One fact a claim, and none for a claim the theory cannot state. An extension is its token and nothing beside
+        /// it: what the value is in JSON's terms the reader that read the extension states as claims of their own.
         /// </remarks>
         /// <param name="fact">The fact.</param>
         /// <param name="vocabulary">The tokens of stored forms and extensions.</param>
@@ -179,12 +178,6 @@ namespace Apache.Calcite.Cosmos.Facts
                         yield return new Saturation.JsonFact.Extension(path, vocabulary.Extension(extension));
                     else if (vocabulary.TryExtension(extension, out var key))
                         yield return new Saturation.JsonFact.Extension(path, key);
-
-                    if (extension.Entails(new JsonClaim.Present()))
-                        yield return new Saturation.JsonFact.Present(path);
-
-                    if (EntailedTypes(extension) is ValueSet<string> types)
-                        yield return new Saturation.JsonFact.OfType(path, types);
 
                     break;
             }
@@ -277,32 +270,6 @@ namespace Apache.Calcite.Cosmos.Facts
         /// past U+FFFF being written in surrogates: what a pattern's reader reads a range as.
         /// </summary>
         public static JsonCharacterBand Characters(int lo, int hi) => Bands(BandsOf(lo, hi));
-
-        /// <summary>
-        /// Returns the narrowest set of types an extension settles, or <c>null</c> where it settles none.
-        /// </summary>
-        /// <remarks>
-        /// Asked of every type with and without a null, and intersected: what is left is a set every value the claim
-        /// holds of belongs to, which is the most the theory can be told in its own terms.
-        /// </remarks>
-        static ValueSet<string>? EntailedTypes(JsonClaim.Extension extension)
-        {
-            ValueSet<string>? settled = null;
-
-            foreach (JsonType type in Enum.GetValues(typeof(JsonType)))
-            {
-                foreach (var orNull in new[] { false, true })
-                {
-                    if (extension.Entails(new JsonClaim.OfType(type, orNull)) == false)
-                        continue;
-
-                    var members = Types(type, orNull);
-                    settled = settled is null ? members : ValueSet.From(System.Linq.Enumerable.Intersect(settled, members));
-                }
-            }
-
-            return settled;
-        }
 
     }
 

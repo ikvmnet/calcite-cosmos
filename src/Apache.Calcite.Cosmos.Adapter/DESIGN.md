@@ -652,8 +652,11 @@ a number* is a subset test rather than a rule.
 
 **Nothing entails presence** — the stance this section has always taken, now carried by the encoding rather
 than by a table. A schema's `properties` constrains the value a path holds if it holds one; only `required`
-says it holds one. A host's extension says for itself what it entails: a geography is an object and is there,
-so its token is stated beside `present` and `{object}`, and that is how the rest of the theory reads it.
+says it holds one. A host's extension is a token and entails nothing: a geography says what the value is if
+there is one, and the subschema's own `"type": "object"` and its parent's `required` are what say it is an
+object and is there. It used to say for itself that it was both, stating `present` beside its token, and an
+optional location's distance was then sorted at the service as though every document had one — where a
+document without one sorts first at the service and, under Calcite's default placement, last.
 
 #### Absence is not a contradiction
 
@@ -1299,7 +1302,7 @@ string share no fact. So where every branch but one admits only `null`, that one
 each fact it yields is made true of the null too: a type takes its `OrNull`, a constant or a domain
 gains `null` as a member, a disequality of anything but `null` is kept, and a stored form is kept
 as it is, already being silent about whether a string is there. A fact that says something is
-**there** — a `required` child, a `not`'s property, a geography — is false of a null standing in for
+**there** — a `required` child, a `not`'s property, a geography of the union's value — is false of a null standing in for
 the object, and `Present` cannot tell them apart since `IS_DEFINED` is true of a null; so those rules
 are kept under two more conditions at the union's path, `Present` and `NotEqualTo(null)`: a disequality
 alone holds of an absent path too, where no branch describes anything. Everything else below is a claim
@@ -5097,8 +5100,9 @@ schema reader walks its tree and resolves references itself. Two things a JSON f
   over the neutral `FormsOf`. The schema reader asks `JsonSchemaRecognisers` for a pattern's form;
   `CosmosSchemaRecognition.Cosmos` is the adapter's answer.
 - **What the service will measure.** A geography is a claim JSON cannot state, so it is an
-  `Extension` claim the adapter defines, `CosmosGeography`, which tells the theory only what it is in
-  JSON's terms — an object, and one that is there.
+  `Extension` claim the adapter defines, `CosmosGeography`: a token the theory carries and reads
+  nothing of. What the value is in JSON's terms — an object, and whether it is there — the schema
+  reader states from the keywords that say so.
 
 Where the adapter meets it: `CosmosDocumentPaths.From` turns a statement's path into a document path,
 and everything that turns a predicate into terms or facts into a rewrite — `CosmosPredicateLoader`,

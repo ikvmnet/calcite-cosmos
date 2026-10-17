@@ -353,21 +353,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// An extension says in JSON's terms what it entails, and those are what the rest of the theory reads: a
-        /// geography is an object, and one that is there, so the path's parent is there too.
+        /// An extension is a token, and states nothing beside it in JSON's terms: a geography says what the value is
+        /// where there is one, and whether one is there is a presence the theory is told of, or derives, as of any path.
         /// </summary>
         [Fact]
-        public void AnExtensionStatesWhatItEntails()
+        public void AnExtensionStatesNothingButItself()
         {
             var location = JsonDocumentPath.Root.Property("data").Property("location");
-            var theory = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())) });
-            var set = theory.Derive(null);
+            var alone = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())) }).Derive(null);
 
-            set.IsAlwaysGeography(location).Should().BeTrue();
-            set.Knows(Present(location)).Should().BeTrue();
-            set.Knows(new JsonFact(location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
-            set.Knows(Present(JsonDocumentPath.Root.Property("data"))).Should().BeTrue("a present property has a present object for a parent");
-            set.IsAlwaysGeography(At).Should().BeFalse();
+            alone.Knows(new JsonFact(location, new CosmosGeography())).Should().BeTrue();
+            alone.Knows(Present(location)).Should().BeFalse("a claim about a value says nothing about its being there");
+            alone.Knows(new JsonFact(location, new JsonClaim.OfType(JsonType.Object))).Should().BeFalse("nor what type it is: that is the keyword's to say");
+            alone.IsAlwaysGeography(location).Should().BeFalse();
+
+            var required = new JsonFactTheory(new[]
+            {
+                JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())),
+                JsonFactRule.Unconditional(Present(location)),
+            }).Derive(null);
+
+            required.IsAlwaysGeography(location).Should().BeTrue();
+            required.Knows(Present(JsonDocumentPath.Root.Property("data"))).Should().BeTrue("a present property has a present object for a parent");
+            required.IsAlwaysGeography(At).Should().BeFalse();
         }
 
         /// <summary>

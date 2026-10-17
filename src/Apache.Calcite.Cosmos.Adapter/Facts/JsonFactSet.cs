@@ -23,9 +23,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// tables are read off the query instead (<see cref="JsonFactOverlay"/>), and asked the same way.
     /// </para>
     /// <para>
-    /// <b>A fact about a value holds if the value is there.</b> Every claim but <see cref="JsonClaim.Present"/> and a
-    /// presence-entailing extension says what a path holds <em>if it holds anything</em>, and is answered that way: a path
-    /// known to be absent satisfies every such claim, as it satisfies every JSON Schema keyword.
+    /// <b>A fact about a value holds if the value is there.</b> Every claim but <see cref="JsonClaim.Present"/> says what a
+    /// path holds <em>if it holds anything</em>, and is answered that way: a path known to be absent satisfies every such
+    /// claim, as it satisfies every JSON Schema keyword.
     /// </para>
     /// <para>
     /// <b>Thread-safe.</b> A frozen context is read freely; a query's context is read one call at a time. Its context is

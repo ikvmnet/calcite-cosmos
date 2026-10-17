@@ -217,6 +217,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             const string Point = """
             { "type": "object",
+              "required": ["location"],
               "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
                             "properties": {
                               "type": { "const": "Point" },
