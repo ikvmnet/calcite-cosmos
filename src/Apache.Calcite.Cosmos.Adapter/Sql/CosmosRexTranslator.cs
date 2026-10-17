@@ -646,10 +646,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>Asked by the binding walk</b>, for <see cref="CosmosClauses.Recheck"/>, of the condition and the declaration
         /// alone: an ordering comparison of something with a bare parameter, which <c>AND</c> and <c>OR</c> alone lead to
-        /// from the condition, that the declaration does not prove exact. A conjunct rendered from its stratum may be proved by a sibling the
-        /// declaration knows nothing of; this answers yes for it all the same, which declines a consumer the comparison
-        /// would not have stopped and never folds one it would. The facts only grow from the declaration to a stratum,
-        /// and a comparison the declaration proves no stratum anchors.
+        /// from the condition, that the declaration does not prove exact. A conjunct rendered from its stratum may be
+        /// proved by a sibling the declaration knows nothing of; this answers yes for it all the same, which declines a
+        /// consumer the comparison would not have stopped and never folds one it would. The facts only grow from the
+        /// declaration to a stratum, and a comparison the declaration proves no stratum anchors.
         /// </para>
         /// <para>
         /// Cheap where it is asked most: a condition with no parameter in an ordering comparison is answered from its
