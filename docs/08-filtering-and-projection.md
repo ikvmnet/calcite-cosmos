@@ -432,6 +432,23 @@ comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALU
 a schema declares a string or null. Cosmos holds a JSON null equal to a JSON null; SQL's comparison with a
 null is unknown, and keeps nothing. `<`, `>` and `<>` agree and are sent.
 
+**A parameter bound to `NULL` keeps no row a comparison with it decides**, as SQL says. It arrives at
+Cosmos as a JSON null, which Cosmos compares as a value — `c.t = null` is true of a document storing a
+null, and `c.t != null` of every other — so where the operator would keep a row for it, the statement
+tests the parameter beside the comparison:
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.t') = ?
+→ WHERE (NOT IS_NULL(@p1) AND (c.t = @p0))
+
+WHERE NOT (JSON_VALUE(c."DOC", '$.t') = ?)
+→ WHERE (NOT (((c.t = @p0) OR …) OR IS_NULL(@p1)))
+```
+
+`<` and `>` need no test where they are not negated, nor `<=` and `>=` where they are: Cosmos answers
+them as SQL keeps them already. The test reads the same value as the comparison, and decides nothing
+unless it is null.
+
 **Give a parameter a type where Calcite cannot infer one** — `CAST(? AS VARCHAR)` — so the plan can
 reason from it. A parameter's value also does not route the statement to a partition the way a
 literal does: routing is decided while the plan is made, from constants.

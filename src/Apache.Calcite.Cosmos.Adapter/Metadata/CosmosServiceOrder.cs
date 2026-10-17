@@ -616,6 +616,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return new(CosmosOrderAgreement.Exact, ClassOf(value), Classes.None, JsonFactEncoding.Characters(value), true, null, "a literal");
                 }
 
+                // A parameter bound to SQL's NULL is never compared at the service: where the operator would keep a row
+                // for the JSON null it arrives as, the translator writes a test of it beside the comparison
+                // (CosmosRexTranslator.WriteComparison), so its null class is empty.
                 case CosmosOrderOperandKind.Parameter:
                     return new(CosmosOrderAgreement.Exact, ClassesOf(operand.Type!), Classes.None, JsonCharacterBand.Any, false, null, "a parameter, which may hold any character");
 

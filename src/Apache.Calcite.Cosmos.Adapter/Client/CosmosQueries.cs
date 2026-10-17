@@ -64,7 +64,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <remarks>
         /// Written whatever the value: the reader decides from the value itself whether the fallback is read at all, and
         /// a bound for one that is an anchor is never sent. Anything but a string — a null — has no bound, and its
-        /// comparison is exact.
+        /// comparison is sent as it is: where its operator would keep a row for the JSON null a SQL NULL arrives as,
+        /// the statement tests the parameter beside it (<see cref="Sql.CosmosRexTranslator"/>'s
+        /// <c>WriteComparison</c>), so it keeps nothing, as Calcite's does.
         /// </remarks>
         /// <param name="root">The data context.</param>
         /// <param name="slot">The ordinal to read, and which bound to write.</param>
@@ -93,9 +95,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </para>
         /// <para>
         /// <b>A null is bound as null</b>, which is what a parameter of any other kind binds — and
-        /// that the service compares a JSON null as a value where SQL compares nothing is the same
-        /// question for every parameter, recorded in <c>TODO.md</c> rather than answered for this one
-        /// alone.
+        /// that the service compares a JSON null as a value where SQL compares nothing is answered
+        /// for every parameter alike, by the test of it the statement carries beside each comparison
+        /// whose operator would keep a row for one.
         /// </para>
         /// </remarks>
         /// <param name="root">The data context.</param>

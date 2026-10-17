@@ -2218,6 +2218,23 @@ never consulted.
 | `>=`, `<` | `12:00:01Z` |
 | `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
 
+**A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
+bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =
+@p` is true of a document storing null, `c.t != @p` of every other, `c.t <= @p` of a stored null too, and
+an `IN` or a `NOT IN` naming the parameter likewise. SQL's comparison with a null is unknown, whatever the
+other side holds, and keeps nothing. The guards `WriteComparison` writes were about a null at the *path*,
+in the position each operator needs; a parameter is now guarded the same way, in the positions its
+operator would keep a row for the JSON null: `NOT IS_NULL(@p) AND` before `=`, `!=`, `<=` and `>=` in a
+positive position, and `OR IS_NULL(@p)` after `=`, `!=`, `<` and `>` under a `NOT`. Where it is not null
+the test is false, or true, and the comparison decides as it did. `<` and `>` against a JSON null are false
+at the service and `<=` and `>=` true, and against any other type each is undefined, which a `WHERE` drops
+in either position: so those need nothing where they stand. Measured on the emulator over the
+differential's `ordering`, whose `t` is declared a string or null, and held there by its parameter rows:
+without the test eleven of them answered rows Calcite does not, from `t = ?` keeping the stored null to
+`t NOT IN (?, 'apple')` keeping every other. `CosmosServiceOrder` reads a parameter's null class as empty
+for this reason, the statement never comparing a null one. What the test costs on Azure, a constant the
+service may or may not fold before it picks an index, is not measured (`TODO.md`).
+
 #### Casts over document values
 
 The row model types every document path `ANY`, so a view can only give a column a SQL type by

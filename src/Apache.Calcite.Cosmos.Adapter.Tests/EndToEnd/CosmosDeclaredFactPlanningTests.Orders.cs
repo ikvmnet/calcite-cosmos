@@ -160,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             PlanText(seek).Should().StartWith("CosmosToClrCursorConverter", "the whole statement is the service's: " + PlanText(seek));
             var query = Query(FindCosmos(seek), container);
-            query.Sql.Should().Contain("(c.category = @p0)").And.Contain("(c.id > @p1)").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 50");
+            query.Sql.Should().Contain("(NOT IS_NULL(@p1) AND (c.category = @p0))").And.Contain("(c.id > @p2)").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 50");
             query.Order!.Comparisons.Should().ContainSingle();
         }
 

@@ -178,7 +178,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query(best);
 
             query.Sql.Should().MatchRegex(@"ST_DISTANCE\(c\.location, @p\d+\) < @p\d+", "the distance is the filter: " + query.Sql);
-            query.Parameters.Should().ContainSingle(p => p.Value is CosmosDynamicValue, "and the point is the execution's to supply");
+            query.Parameters.Where(p => p.Value is CosmosDynamicValue).Should().OnlyContain(p => ((CosmosDynamicValue)p.Value!).Ordinal == 0, "and the point is the execution's to supply");
             Text(best).Should().NotContain("ClrCursorFilter", "so nothing is measured in process: " + Text(best));
         }
 

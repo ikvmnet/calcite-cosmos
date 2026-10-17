@@ -3613,6 +3613,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// what SQL says about it too. The guard names it anyway, because a term that is already
         /// unreachable costs nothing and reads as deliberate.
         /// </para>
+        /// <para>
+        /// <b>A parameter is a null the guard tests too, and against a value rather than a path.</b> Bound
+        /// to SQL's NULL it arrives as a JSON null, which the service's <c>=</c> equates with a stored null
+        /// and its <c>!=</c> parts from everything else, where SQL's comparison is unknown. So where the
+        /// operator would keep a row for it — <c>=</c>, <c>!=</c>, <c>&lt;=</c> and <c>&gt;=</c> in a
+        /// positive position, <c>=</c>, <c>!=</c>, <c>&lt;</c> and <c>&gt;</c> in a negated one —
+        /// <c>NOT IS_NULL(@p) AND</c> is written before the comparison, or <c>OR IS_NULL(@p)</c> after it.
+        /// The statement is the same for every value; the guard decides nothing unless the value is null.
+        /// </para>
         /// </remarks>
         void WriteComparison(StringBuilder builder, RexCall call, string op)
         {
@@ -3627,6 +3636,83 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // column, a grouping key or an enclosing comparison can. See _value.
             if (value && call.getType()?.isNullable() != false)
                 throw new CosmosTranslationException("A comparison read as a value is unknown where an operand is null, and the service's comparisons answer false there -- the guard that makes them right in a WHERE is what makes them wrong as a value.");
+
+            // A parameter bound to SQL's NULL arrives a JSON null, which the service compares as a value
+            // where SQL's comparison with it is unknown whatever the other side holds. Measured on the
+            // emulator, over a path declared a string or null holding a string, a JSON null and nothing:
+            // `c.t = @p`, `c.t <= @p`, `c.t >= @p` and BETWEEN kept the documents storing a null,
+            // `c.t != @p` and NOT IN every document holding anything else, and `NOT (c.t = @p)` those
+            // too. So the comparison is made false where its parameter is null in a positive position and
+            // true in a negated one, as a path's null is below; where it is not null the guard changes
+            // nothing. Not where the operator already answers so: against a JSON null the service's `<`
+            // and `>` are false and its `<=` and `>=` true, and against any other type each is undefined,
+            // which a WHERE drops in either position — so `<` and `>` need no guard in a positive
+            // position, nor `<=` and `>=` in a negated one. A parameter beneath what observes a null is
+            // not guarded, its null not being the comparison's: such an operand is refused below where
+            // the position needs it.
+            var parameters = new List<org.apache.calcite.rex.RexDynamicParam>();
+            if (negated ? KindOf(call) is not (SqlKind.__Enum.LESS_THAN_OR_EQUAL or SqlKind.__Enum.GREATER_THAN_OR_EQUAL) : IsInclusive(KindOf(call)) || notEquals)
+            {
+                CollectGuardParameters(Operand(call, 0), parameters);
+                CollectGuardParameters(Operand(call, 1), parameters);
+            }
+
+            if (parameters.Count == 0)
+            {
+                WriteComparisonOverPaths(builder, call, op, negated, notEquals);
+                return;
+            }
+
+            var written = new StringBuilder();
+            WriteComparisonOverPaths(written, call, op, negated, notEquals);
+
+            builder.Append('(');
+
+            if (negated)
+            {
+                builder.Append(written);
+                foreach (var parameter in parameters)
+                    builder.Append(" OR IS_NULL(").Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()))).Append(')');
+            }
+            else
+            {
+                foreach (var parameter in parameters)
+                    builder.Append("NOT IS_NULL(").Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()))).Append(") AND ");
+
+                builder.Append(written);
+            }
+
+            builder.Append(')');
+        }
+
+        /// <summary>
+        /// Returns the parameters a comparison reads through operators that answer null for a null, each once: those
+        /// whose SQL null makes the comparison unknown.
+        /// </summary>
+        static void CollectGuardParameters(RexNode node, List<org.apache.calcite.rex.RexDynamicParam> parameters)
+        {
+            if (node is org.apache.calcite.rex.RexDynamicParam parameter)
+            {
+                if (parameters.Exists(p => p.getIndex() == parameter.getIndex()) == false)
+                    parameters.Add(parameter);
+
+                return;
+            }
+
+            if (node is not RexCall call || ObservesAbsence(call))
+                return;
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                CollectGuardParameters(Operand(call, i), parameters);
+        }
+
+        /// <summary>
+        /// Writes a comparison with the guards a null at a path it reads needs in its position: see
+        /// <see cref="WriteComparison"/>.
+        /// </summary>
+        void WriteComparisonOverPaths(StringBuilder builder, RexCall call, string op, bool negated, bool notEquals)
+        {
+            var value = _value;
 
             // Operands are values, and a value has no position. Cleared so that a comparison nested
             // inside one is not written as though the NOT above applied to it.

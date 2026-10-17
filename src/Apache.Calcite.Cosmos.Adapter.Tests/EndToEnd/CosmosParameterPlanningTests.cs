@@ -222,9 +222,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var query = Query("""SELECT c."id" FROM items AS c WHERE c."id" = ?""");
 
-            query.Parameters.Should().ContainSingle()
-                .Which.Value.Should().BeOfType<CosmosDynamicValue>()
-                .Which.Ordinal.Should().Be(0, "only the ordinal, and no value was invented");
+            query.Parameters.Should().NotBeEmpty()
+                .And.OnlyContain(p => p.Value is CosmosDynamicValue && ((CosmosDynamicValue)p.Value).Ordinal == 0, "only the ordinal, and no value was invented");
+        }
+
+        /// <summary>
+        /// A parameter bound to SQL's NULL keeps no row: where the operator would keep one for the JSON null it arrives
+        /// as, the statement tests it beside the comparison — before it in a positive position, after it under a
+        /// <c>NOT</c> — and where the operator answers so already, it does not.
+        /// </summary>
+        /// <remarks>
+        /// Measured on the emulator over a path declared a string or null (the differential's parameter rows): bound
+        /// to a null, <c>c.t = @p</c>, <c>&lt;= @p</c>, <c>&gt;= @p</c> and <c>BETWEEN</c> kept the document storing a
+        /// null, and <c>!= @p</c> and <c>NOT (c.t = @p)</c> every document holding anything else, where Calcite keeps
+        /// none. The service's <c>&lt;</c> and <c>&gt;</c> against a JSON null are false, and its <c>&lt;=</c> and
+        /// <c>&gt;=</c> true, so the first pair needs no test where it is positive and the second where it is not.
+        /// </remarks>
+        [Theory]
+        [InlineData("""c."id" = ?""", @"\(NOT IS_NULL\(@p1\) AND \(c\.id = @p0\)\)")]
+        [InlineData("""c."id" <> ?""", @"WHERE \(NOT IS_NULL\(@p1\) AND \(.*\(c\.id != @p0\)\)\)$")]
+        [InlineData("""NOT (c."id" = ?)""", @"WHERE \(NOT \(\(\(c\.id = @p0\).*\) OR IS_NULL\(@p1\)\)\)$")]
+        [InlineData("""c."_ts" <= ?""", @"\(NOT IS_NULL\(@p1\) AND \(c\._ts <= @p0\)\)")]
+        [InlineData("""c."_ts" < ?""", @"WHERE \(c\._ts < @p0\)$")]
+        public void ANullParameterIsTestedWhereTheOperatorWouldKeepARowForIt(string predicate, string written)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Sql.Should().MatchRegex(written);
+            query.Parameters.Should().OnlyContain(p => p.Value is CosmosDynamicValue && ((CosmosDynamicValue)p.Value).Ordinal == 0,
+                "the test reads the same parameter: " + query.Sql);
         }
 
         /// <summary>

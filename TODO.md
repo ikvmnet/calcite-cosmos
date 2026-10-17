@@ -1828,7 +1828,7 @@ execution*. A declared UUID took it next (#207), the slot carrying the UUID form
 into it when it arrives. The numeric forms still lower against a literal only: the same move would
 take them, with an integer written into its width, and nothing has asked.
 
-### A null parameter is not SQL's null at the service — *small, found beside #182, and older than it*
+### A null parameter is not SQL's null at the service — *done; its cost on Azure is owed*
 
 A parameter is bound as it arrives, and a SQL `NULL` arrives as a JSON `null`, which the service compares
 as a value. Measured against the emulator, over one path holding `true`, `false`, `null`, a string, a
@@ -1839,13 +1839,24 @@ number and nothing:
 | `c.flag = @n` | the document storing `null` | nothing |
 | `c.flag != @n`, `NOT (c.flag = @n)` | every document holding something other than `null` | nothing |
 | `c.flag > @n` | nothing | nothing |
+| `c.t <= @n`, `c.t >= @n`, `c.t BETWEEN @n AND @m` | the document storing `null` | nothing |
+| `c.t IN (@n, 'apple')` | `apple` and the document storing `null` | `apple` |
+| `c.t NOT IN (@n, 'apple')` | every document holding something other than `null` or `apple` | nothing |
 
-So every parameterised equality, inequality and negated equality answers rows a null parameter should
-not, and the guards `WriteComparison` writes are about a null at the *path*. The repair is a guard on
-the parameter in those positions — `NOT IS_NULL(@p0)` beside the comparison — which costs nothing where
-the value is not null. A host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity
-Framework does, never sends one, which is likely why nothing has reported it. Not measured against an
-account.
+So every parameterised equality, inequality and negated equality answered rows a null parameter should
+not, and so did `<=`, `>=` and `BETWEEN` over a path that may hold a JSON null, `IN` and `NOT IN` with a
+parameter among the values, and an `OR` beside any of them: measured again over the differential's
+`ordering`, whose `t` is declared a string or null, `t <= ?` and `t BETWEEN ? AND ?` bound to nulls kept the
+document storing a null, `t NOT IN (?, 'apple')` every other, and `t = ? OR s = 'a'` the null one beside
+`a`. The guards `WriteComparison` wrote were about a null at the *path*.
+
+**Done: the parameter is guarded too**, in every position its operator would keep a row for a JSON null —
+`NOT IS_NULL(@p) AND` before `=`, `!=`, `<=` and `>=` in a positive position, `OR IS_NULL(@p)` after `=`,
+`!=`, `<` and `>` under a `NOT` (`DESIGN.md`, *A prepared statement's value belongs to the execution*). The
+differential's parameter rows bind each shape to a null and to a value. **Still owed:** what the test costs
+on Azure, where it is a constant the service may or may not fold before it picks an index; not measured. A
+host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
+one, which is likely why nothing had reported it.
 
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 

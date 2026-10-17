@@ -711,7 +711,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The slot a statement leaves for a parameter written in a stored form.
         /// </summary>
         static Adapter.Sql.CosmosDynamicValue Slot(CosmosQuery query) =>
-            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single();
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single(slot => slot.Form is not null);
 
         /// <summary>
         /// The statement as it runs with <c>?0</c> holding the given value.
