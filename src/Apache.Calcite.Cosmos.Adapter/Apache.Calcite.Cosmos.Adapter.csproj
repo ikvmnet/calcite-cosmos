@@ -22,7 +22,7 @@
 
     <ItemGroup>
         <!-- The engine the fact theory runs on: a single-maintainer prerelease, pinned the way Calcite is. -->
-        <PackageReference Include="Eggnog" Version="1.1.0" />
+        <PackageReference Include="Eggnog" Version="1.1.1" />
     </ItemGroup>
 
     <ItemGroup>

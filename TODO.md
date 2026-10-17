@@ -1905,7 +1905,7 @@ answer.
 
 ### The fact reasoning on Eggnog — *done; what is left is below*
 
-[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, pinned at `1.1.0`, MIT, no dependencies) is
+[Eggnog](https://github.com/alethic/eggnog) (`Eggnog` on NuGet, pinned at `1.1.1`, MIT, no dependencies) is
 the engine. It is an egglog-style e-graph with scopes, lattices and case splits, built for this adapter. The plan
 of record is in its repository, as
 [`docs/history/cosmos-integration.md`](https://github.com/alethic/eggnog/blob/eda0c61973cb1e41fc0d9994af3e013a9252c4bd/docs/history/cosmos-integration.md)
