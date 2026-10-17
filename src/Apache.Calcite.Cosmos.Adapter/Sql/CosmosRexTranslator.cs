@@ -1349,8 +1349,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </para>
         /// <para>
         /// Nullable only: every other typed field bound to a path is the service's <c>id</c>,
-        /// <c>_ts</c> or <c>_etag</c>, which is never null and has nothing to test, or a promoted
-        /// <c>VARIANT</c> column, which is the raw value and has no test to give.
+        /// <c>_ts</c> or <c>_etag</c>, which the theory knows is there and of its type in every
+        /// document — the row type reads that off it (<c>CosmosTable.ServiceColumnType</c>) — and has
+        /// nothing to test, or a promoted <c>VARIANT</c> column, which is the raw value and has no
+        /// test to give.
         /// </para>
         /// </remarks>
         /// <param name="reference">A field read as declared.</param>

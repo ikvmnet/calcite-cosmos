@@ -206,18 +206,43 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // point-read pushdown carry through unchanged. A sort keyed on the column is the one
                 // thing that does not: Calcite cannot order a VARIANT in process (VariantValue is not
                 // Comparable), so CosmosSort declines it and a caller orders by JSON_VALUE instead. #165.
-                var type = name switch
-                {
-                    CosmosContainerMetadata.TimestampPropertyName => typeFactory.createSqlType(SqlTypeName.BIGINT),
-                    CosmosContainerMetadata.IdPropertyName => varchar,
-                    CosmosContainerMetadata.ETagPropertyName => varchar,
-                    _ => typeFactory.createTypeWithNullability(variant, true),
-                };
+                var type = ServiceColumnType(name, typeFactory) ?? typeFactory.createTypeWithNullability(variant, true);
 
                 builder.add(name, type);
             }
 
             return builder.build();
+        }
+
+        /// <summary>
+        /// Returns the type of a column bound to one of the properties the service maintains, read off what the theory
+        /// knows of it; or <c>null</c> for any other column.
+        /// </summary>
+        /// <remarks>
+        /// What the service guarantees of <c>id</c>, <c>_ts</c> and <c>_etag</c> is stated once, as facts
+        /// (<see cref="CosmosServiceFacts"/>), and the row type reads them: a string is a <c>VARCHAR</c> and an integer a
+        /// <c>BIGINT</c>, and <c>NOT NULL</c> where the path is there and its type admits no null. It used to say so a
+        /// second time, by name, and the translator's reading of a non-nullable field as the stored value
+        /// (<see cref="Sql.CosmosRexTranslator.IsReadAsStored"/>) rested on that second statement.
+        /// </remarks>
+        RelDataType? ServiceColumnType(string name, RelDataTypeFactory typeFactory)
+        {
+            if (CosmosServiceFacts.Properties.Contains(name) == false)
+                return null;
+
+            var facts = Facts.CosmosOracle.For(_container.Facts).Declared;
+            var path = Facts.JsonDocumentPath.Root.Property(name);
+
+            SqlTypeName? sql =
+                facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.String))) ? SqlTypeName.VARCHAR
+                : facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.Integer))) ? SqlTypeName.BIGINT
+                : null;
+
+            if (sql is not SqlTypeName known)
+                return null;
+
+            var present = facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.Present()));
+            return typeFactory.createTypeWithNullability(typeFactory.createSqlType(known), present == false);
         }
 
         /// <summary>

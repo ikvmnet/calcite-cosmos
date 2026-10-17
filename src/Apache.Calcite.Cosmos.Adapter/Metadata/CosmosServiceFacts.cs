@@ -100,6 +100,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         public static IReadOnlyList<JsonFactRule> Rules => Stated;
 
+        /// <summary>
+        /// Gets the properties the facts are about: the columns a table types from them (<c>CosmosTable</c>).
+        /// </summary>
+        public static IReadOnlySet<string> Properties { get; } = new HashSet<string>(StringComparer.Ordinal)
+        {
+            CosmosContainerMetadata.IdPropertyName,
+            CosmosContainerMetadata.TimestampPropertyName,
+            CosmosContainerMetadata.ETagPropertyName,
+        };
+
     }
 
 }

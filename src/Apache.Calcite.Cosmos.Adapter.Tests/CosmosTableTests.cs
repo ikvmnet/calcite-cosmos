@@ -28,6 +28,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         // Row type ordinals: 0 DOC, 1 id, 2 _ts, 3 _etag, then declared paths.
 
+        /// <summary>
+        /// The service's own columns are typed by what the theory knows of them — a string, an integer, there in every
+        /// document — and nothing else is: a declared path is a nullable <c>VARIANT</c> whatever is declared of it.
+        /// </summary>
+        [Fact]
+        public void TheServicesColumnsAreTypedByItsFacts()
+        {
+            var declared = new CosmosContainerMetadata("products", new[] { "/category" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "required": ["category"], "properties": { "category": { "type": "string" } } }""")!));
+            var type = new CosmosTable(declared).getRowType(new org.apache.calcite.jdbc.JavaTypeFactoryImpl());
+
+            string Of(string name) => type.getField(name, true, false).getType().getFullTypeString();
+
+            Of("id").Should().Be("VARCHAR NOT NULL");
+            Of("_ts").Should().Be("BIGINT NOT NULL");
+            Of("_etag").Should().Be("VARCHAR NOT NULL");
+            ((org.apache.calcite.rel.type.RelDataTypeField)type.getFieldList().get(4)).getType().getFullTypeString().Should().Be("VARIANT");
+        }
+
         [Fact]
         public void PromotedColumnsResolveToOrdinals()
         {
