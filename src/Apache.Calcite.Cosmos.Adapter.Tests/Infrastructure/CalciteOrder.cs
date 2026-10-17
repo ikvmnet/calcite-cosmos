@@ -48,15 +48,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// <param name="left">A row.</param>
         /// <param name="right">A row.</param>
         /// <param name="keys">The collation, outermost first.</param>
+        /// <param name="text">How strings compare: Calcite's UTF-16 code unit order unless a caller
+        /// asks what another order would make of an answer.</param>
         /// <returns>Negative where <paramref name="left"/> comes first, positive where
         /// <paramref name="right"/> does, and zero where they tie.</returns>
         /// <exception cref="NotSupportedException">A key holds values Calcite defines no order
         /// for.</exception>
-        public static int Compare(IReadOnlyList<object?> left, IReadOnlyList<object?> right, IReadOnlyList<CalciteSortKey> keys)
+        public static int Compare(IReadOnlyList<object?> left, IReadOnlyList<object?> right, IReadOnlyList<CalciteSortKey> keys, Comparison<string>? text = null)
         {
             foreach (var key in keys)
             {
-                var c = CompareKey(left[key.Field], right[key.Field], key, keys.Count > 1);
+                var c = CompareKey(left[key.Field], right[key.Field], key, keys.Count > 1, text);
                 if (c != 0)
                     return c;
             }
@@ -72,8 +74,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// <param name="key">The key.</param>
         /// <param name="several">Whether the collation has more than one key, which is what decides
         /// whether <c>-0.0</c> and <c>0.0</c> tie.</param>
+        /// <param name="text">How strings compare, as for <see cref="Compare"/>.</param>
         /// <returns>The comparison's sign.</returns>
-        public static int CompareKey(object? left, object? right, CalciteSortKey key, bool several)
+        public static int CompareKey(object? left, object? right, CalciteSortKey key, bool several, Comparison<string>? text = null)
         {
             if (left is null && right is null)
                 return 0;
@@ -84,7 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             if (right is null)
                 return key.NullsFirst ? 1 : -1;
 
-            var c = CompareValues(left, right, several);
+            var c = CompareValues(left, right, several, text);
             return key.Descending ? -c : c;
         }
 
@@ -94,12 +97,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// <param name="left">A value.</param>
         /// <param name="right">A value.</param>
         /// <param name="several">Whether the comparison is one key of several.</param>
+        /// <param name="text">How strings compare, as for <see cref="Compare"/>.</param>
         /// <returns>The comparison's sign.</returns>
         /// <exception cref="NotSupportedException">Calcite defines no order for the pair.</exception>
-        public static int CompareValues(object left, object right, bool several)
+        public static int CompareValues(object left, object right, bool several, Comparison<string>? text = null)
         {
             if (left is string a && right is string b)
-                return Math.Sign(string.CompareOrdinal(a, b));
+                return Math.Sign(text is null ? string.CompareOrdinal(a, b) : text(a, b));
 
             if (TryBoolean(left, out var p) && TryBoolean(right, out var q))
                 return p.CompareTo(q);

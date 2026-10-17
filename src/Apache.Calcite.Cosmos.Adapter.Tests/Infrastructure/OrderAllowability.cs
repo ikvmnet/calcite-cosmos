@@ -75,11 +75,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         /// <param name="ordered">Whether the answer's own order is asked for: <c>false</c> for a
         /// window whose rows a parent reads in no order, such as a subquery's
         /// <c>ORDER BY … FETCH</c>.</param>
-        public static Verdict Judge(IReadOnlyList<object?[]> rows, IReadOnlyList<object?[]> answer, int width, IReadOnlyList<CalciteSortKey> keys, int offset, int? fetch, bool ordered)
+        /// <param name="text">How strings compare: Calcite's order unless a caller asks whether the
+        /// answer would be allowable under another, which is how a failure is told to be the string
+        /// order's.</param>
+        public static Verdict Judge(IReadOnlyList<object?[]> rows, IReadOnlyList<object?[]> answer, int width, IReadOnlyList<CalciteSortKey> keys, int offset, int? fetch, bool ordered, Comparison<string>? text = null)
         {
             try
             {
-                return JudgeCore(rows, answer, width, keys, offset, fetch, ordered);
+                return JudgeCore(rows, answer, width, keys, offset, fetch, ordered, text);
             }
             catch (NotSupportedException e)
             {
@@ -87,8 +90,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             }
         }
 
-        static Verdict JudgeCore(IReadOnlyList<object?[]> rows, IReadOnlyList<object?[]> answer, int width, IReadOnlyList<CalciteSortKey> keys, int offset, int? fetch, bool ordered)
+        static Verdict JudgeCore(IReadOnlyList<object?[]> rows, IReadOnlyList<object?[]> answer, int width, IReadOnlyList<CalciteSortKey> keys, int offset, int? fetch, bool ordered, Comparison<string>? text)
         {
+            int Compare(object?[] a, object?[] b) => CalciteOrder.Compare(a, b, keys, text);
+
             // (A0): match every answered row to a row of R, each once.
             var unused = rows
                 .Select((row, i) => (Key: Projection(row, width), Index: i))
@@ -100,12 +105,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             {
                 var key = Projection(row, width);
                 if (unused.TryGetValue(key, out var candidates) == false || candidates.Count == 0)
-                    return new Verdict(true, $"(A0) the answer holds a row the input does not, or holds it more often: {Render(row, width)}");
+                {
+                    // The input's row that starts alike, where there is one, says which column differs.
+                    var near = rows.FirstOrDefault(r => width > 0 && CalciteOrder.Canonical(r[0]) == CalciteOrder.Canonical(row[0]) && (width < 2 || CalciteOrder.Canonical(r[1]) == CalciteOrder.Canonical(row[1])));
+                    return new Verdict(true, $"(A0) the answer holds a row the input does not, or holds it more often: {Render(row, width)}" +
+                        (near is null ? "" : $"; the input's row that starts alike is {Render(near, width)}"));
+                }
 
                 // Rows selecting alike must sort alike, or which of them was answered is unknowable.
                 var first = rows[candidates.Peek()];
                 foreach (var other in candidates)
-                    if (keys.Count > 0 && CalciteOrder.Compare(first, rows[other], keys) != 0)
+                    if (keys.Count > 0 && Compare(first, rows[other]) != 0)
                         return Verdict.NotJudged($"the answer's columns do not determine its keys: {Render(row, width)} selects rows that sort apart");
 
                 matched.Add(rows[candidates.Dequeue()]);
@@ -119,16 +129,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             // (A2): the order, where it is asked for.
             if (ordered)
                 for (var i = 0; i + 1 < matched.Count; i++)
-                    if (CalciteOrder.Compare(matched[i], matched[i + 1], keys) > 0)
+                    if (Compare(matched[i], matched[i + 1]) > 0)
                         return new Verdict(true, $"(A2) row {i + 1} of the answer, {Render(matched[i], width)}, comes before {Render(matched[i + 1], width)}, which Calcite orders first under {string.Join(", ", keys)}", (matched[i], matched[i + 1]));
 
             // (A3): each tie class's share of the window.
             var sorted = rows.ToList();
-            sorted.Sort((a, b) => CalciteOrder.Compare(a, b, keys));
+            sorted.Sort(Compare);
 
             var classOf = new int[sorted.Count];
             for (var i = 1; i < sorted.Count; i++)
-                classOf[i] = CalciteOrder.Compare(sorted[i - 1], sorted[i], keys) == 0 ? classOf[i - 1] : classOf[i - 1] + 1;
+                classOf[i] = Compare(sorted[i - 1], sorted[i]) == 0 ? classOf[i - 1] : classOf[i - 1] + 1;
 
             var share = new Dictionary<int, int>();
             for (var i = offset; i < offset + matched.Count && i < sorted.Count; i++)
@@ -137,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             var held = new Dictionary<int, int>();
             foreach (var row in matched)
             {
-                var c = ClassOf(sorted, classOf, row, keys);
+                var c = ClassOf(sorted, classOf, row, Compare);
                 held[c] = held.GetValueOrDefault(c) + 1;
             }
 
@@ -206,14 +216,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             return new Verdict(true, $"the rows differ: lost [{string.Join("; ", lost)}], gained [{string.Join("; ", gained)}]{(lost.Count == 0 && gained.Count == 0 ? " (multiplicities only)" : "")}");
         }
 
-        static int ClassOf(List<object?[]> sorted, int[] classOf, object?[] row, IReadOnlyList<CalciteSortKey> keys)
+        static int ClassOf(List<object?[]> sorted, int[] classOf, object?[] row, Comparison<object?[]> compare)
         {
             // Binary search for any row tying with this one: the classes are runs of the sorted rows.
             int lo = 0, hi = sorted.Count - 1;
             while (lo <= hi)
             {
                 var mid = (lo + hi) / 2;
-                var c = CalciteOrder.Compare(sorted[mid], row, keys);
+                var c = compare(sorted[mid], row);
                 if (c == 0)
                     return classOf[mid];
                 if (c < 0)

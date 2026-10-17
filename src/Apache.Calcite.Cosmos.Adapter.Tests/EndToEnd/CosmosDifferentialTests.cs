@@ -315,10 +315,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Recreates a container and writes the given documents into it.
         /// </summary>
-        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category")
+        /// <remarks>
+        /// Created with the service's default indexing policy unless a <c>policy</c> is given: the
+        /// <c>ORDER BY</c> yardstick names the composite indexes its metadata declares, so that the
+        /// policy Azure would hold a statement to is the one the container has.
+        /// </remarks>
+        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category", IndexingPolicy? policy = null)
         {
             try { await database.GetContainer(name).DeleteContainerAsync(cancellationToken: cancellationToken); } catch (CosmosException) { }
-            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/" + key), cancellationToken: cancellationToken)).Container;
+
+            var properties = new ContainerProperties(name, "/" + key);
+            if (policy is not null)
+                properties.IndexingPolicy = policy;
+
+            var container = (await database.CreateContainerIfNotExistsAsync(properties, cancellationToken: cancellationToken)).Container;
 
             foreach (var json in documents)
             {
@@ -349,16 +359,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _kindsContainer = null;
         }
 
+        /// <summary>
+        /// What a statement's plan reads at run time: the schema, and the values its parameters are
+        /// bound to, under the names Calcite asks for them by: <c>?0</c>, <c>?1</c> and so on.
+        /// </summary>
         sealed class TestDataContext : DataContext
         {
 
             readonly SchemaPlus _rootSchema;
             readonly JavaTypeFactory _typeFactory;
+            readonly IReadOnlyList<object?> _parameters;
 
-            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory)
+            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory, IReadOnlyList<object?>? parameters = null)
             {
                 _rootSchema = rootSchema;
                 _typeFactory = typeFactory;
+                _parameters = parameters ?? [];
             }
 
             public SchemaPlus getRootSchema() => _rootSchema;
@@ -367,9 +383,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
 
-            public object get(string name) => null!;
+            public object get(string name) => name.StartsWith('?') && int.TryParse(name.AsSpan(1), out var i) && i < _parameters.Count ? _parameters[i]! : null!;
 
         }
+
+        /// <summary>
+        /// The containers the corpus is written over, in the order their rules are registered.
+        /// </summary>
+        static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> CorpusContainers =>
+        [
+            (Products, _container!),
+            (Typed, _typedContainer!),
+            (Ordering, _orderingContainer!),
+            (Declared, _declaredContainer!),
+            (Kinds, _kindsContainer!),
+        ];
 
         /// <summary>
         /// Plans and executes a statement, with the pushdown rules or with only the way out.
@@ -378,21 +406,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <param name="pushdown">Whether the pushdown rules may fire.</param>
         /// <param name="sent">Where given, collects every Cosmos statement the plan sends, so that a
         /// report can say what was pushed and not only what came back.</param>
-        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null)
+        static Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null) => Run(sql, pushdown, sent, CorpusContainers, null);
+
+        /// <summary>
+        /// Plans and executes a statement over the given containers, its parameters bound to the given
+        /// values.
+        /// </summary>
+        /// <remarks>
+        /// The containers are the schema, each registered under its metadata's name, and the rules
+        /// registered are theirs alone: a statement over one set of containers plans as it would with
+        /// no others beside it.
+        /// </remarks>
+        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> containers, IReadOnlyList<object?>? parameters)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(Products, Recorded(new CosmosQueryExecutor(_container!), sent));
-            var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
-            var ordering = new CosmosTable(Ordering, Recorded(new CosmosQueryExecutor(_orderingContainer!), sent));
-            var declared = new CosmosTable(Declared, Recorded(new CosmosQueryExecutor(_declaredContainer!), sent));
-            var kinds = new CosmosTable(Kinds, Recorded(new CosmosQueryExecutor(_kindsContainer!), sent));
+            var tables = containers.Select(c => new CosmosTable(c.Metadata, Recorded(new CosmosQueryExecutor(c.Container), sent))).ToList();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
-            rootSchema.add("products", table);
-            rootSchema.add("typed", typed);
-            rootSchema.add("ordering", ordering);
-            rootSchema.add("declared", declared);
-            rootSchema.add("kinds", kinds);
+            foreach (var table in tables)
+                rootSchema.add(table.Container.Name, table);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -421,11 +453,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
 
-            // A convention per container, so both tables need their rules registered whichever a
+            // A convention per container, so every table needs its rules registered whichever a
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention, kinds.Convention })
+            foreach (var convention in tables.Select(t => t.Convention))
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -472,7 +504,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var implementor = new ClrCursorRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
             var factory = implementor.ImplementRoot((ClrCursorRel)best, ClrCursorPrefer.Array);
 
-            var context = new TestDataContext(rootSchema.plus(), typeFactory);
+            var context = new TestDataContext(rootSchema.plus(), typeFactory, parameters);
 
             var rows = new List<object>();
 

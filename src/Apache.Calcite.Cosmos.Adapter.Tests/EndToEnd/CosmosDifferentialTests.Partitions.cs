@@ -238,9 +238,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Draws predicates over a <see cref="Vocabulary"/>, shallow more often than deep.
+        /// Draws predicates over a <see cref="Vocabulary"/>, shallow more often than deep, at most
+        /// <paramref name="depth"/> connectives deep.
         /// </summary>
-        sealed class PredicateGenerator(Random random)
+        /// <remarks>
+        /// The <c>ORDER BY</c> yardstick draws its filters here too, one connective deep: a sort is
+        /// pushed only above a filter the service answers whole, and a deeper predicate rarely is.
+        /// </remarks>
+        sealed class PredicateGenerator(Random random, int depth = PredicateGenerator.Depth)
         {
 
             /// <summary>
@@ -249,7 +254,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             /// been. At three a predicate took twice as long on average, and its slowest statements
             /// several seconds each to implement.
             /// </summary>
-            const int Depth = 2;
+            internal const int Depth = 2;
 
             static readonly string[] Comparisons = ["=", "<>", "<", ">"];
 
@@ -259,19 +264,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             T Pick<T>(IReadOnlyList<T> items) => items[random.Next(items.Count)];
 
-            Predicate Draw(Vocabulary v, int depth)
+            Predicate Draw(Vocabulary v, int level)
             {
-                if (depth < Depth && random.NextDouble() < 0.7 - 0.25 * depth)
+                if (level < depth && random.NextDouble() < 0.7 - 0.25 * level)
                 {
                     return random.Next(14) switch
                     {
-                        0 or 1 or 2 => new Negation(Draw(v, depth + 1)),
-                        3 or 4 or 5 => new Junction(Draw(v, depth + 1), "AND", Draw(v, depth + 1)),
-                        6 or 7 or 8 => new Junction(Draw(v, depth + 1), "OR", Draw(v, depth + 1)),
-                        9 or 10 => new Choice(Draw(v, depth + 1), Draw(v, depth + 1), Draw(v, depth + 1)),
-                        11 => new Fallback(Draw(v, depth + 1), random.Next(2) == 0),
-                        12 => new Test(Draw(v, depth + 1), random.Next(2) == 0 ? "NULL" : "NOT NULL"),
-                        _ => new Test(Draw(v, depth + 1), Pick(Tests)),
+                        0 or 1 or 2 => new Negation(Draw(v, level + 1)),
+                        3 or 4 or 5 => new Junction(Draw(v, level + 1), "AND", Draw(v, level + 1)),
+                        6 or 7 or 8 => new Junction(Draw(v, level + 1), "OR", Draw(v, level + 1)),
+                        9 or 10 => new Choice(Draw(v, level + 1), Draw(v, level + 1), Draw(v, level + 1)),
+                        11 => new Fallback(Draw(v, level + 1), random.Next(2) == 0),
+                        12 => new Test(Draw(v, level + 1), random.Next(2) == 0 ? "NULL" : "NOT NULL"),
+                        _ => new Test(Draw(v, level + 1), Pick(Tests)),
                     };
                 }
 
