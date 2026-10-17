@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
-using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -53,44 +54,62 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             new($"integer-fixed-width-{width.ToString(CultureInfo.InvariantCulture)}", PreservesEquality: true, PreservesOrder: true, Width: width);
 
         /// <summary>
-        /// Recognises <c>^[0-9]{n}$</c>, the zero-padded fixed-width integer.
-        /// </summary>
-        static readonly Regex FixedWidthInteger = new(@"^\^\[0-9\]\{([0-9]{1,2})\}\$$", RegexOptions.CultureInvariant);
-
-        /// <summary>
-        /// Recognises the two ways a pattern forbids a leading zero.
+        /// The widest fixed width a pattern is recognised at.
         /// </summary>
         /// <remarks>
-        /// <c>^(0|[1-9][0-9]*)$</c> admits zero and <c>^[1-9][0-9]*$</c> does not; both give one
-        /// spelling per value, which is the only thing being asked. A bare <c>^[0-9]+$</c> is neither
-        /// and is the trap this exists to distinguish from — it admits <c>42</c> and <c>042</c>
-        /// alike, so comparing the stored strings would miss documents.
+        /// Two digits' worth, which is what the form has always been read at. A long is nineteen digits, and a wider form
+        /// pads every literal out to its width; past this a declaration would ask for a literal of any length a count
+        /// can name, which is nothing a container stores.
         /// </remarks>
-        static readonly Regex UnpaddedInteger = new(@"^\^(?:\(0\|\[1-9\]\[0-9\]\*\)|\[1-9\]\[0-9\]\*)\$$", RegexOptions.CultureInvariant);
+        const int Widest = 99;
 
         /// <summary>
-        /// Returns the numeric form a normalised pattern is recognised as, or <c>null</c>.
+        /// The class of the digits a fixed width is written in: <c>[0-9]</c>, or <c>\d</c>, which ECMA-262 makes the same.
+        /// </summary>
+        static readonly CosmosPatternClass Digits = CosmosPatternClass.Range('0', '9');
+
+        /// <summary>
+        /// The two languages of an integer written without padding: <c>^(0|[1-9][0-9]*)$</c>, which admits zero, and
+        /// <c>^[1-9][0-9]*$</c>, which does not.
         /// </summary>
         /// <remarks>
-        /// Parametric rather than tabulated: a fixed width is a family with one member per width, and
-        /// no table would hold it. Both matchers require the anchors, because JSON Schema's
-        /// <c>pattern</c> is a search rather than a full match — an unanchored <c>[0-9]{5}</c> is
-        /// satisfied by <c>x12345y</c>, which constrains nothing this could rest on.
+        /// Both give one spelling per value, which is the only thing being asked. A bare <c>^[0-9]+$</c> is neither and
+        /// is the trap this exists to distinguish from — it admits <c>42</c> and <c>042</c> alike, so comparing the stored
+        /// strings would miss documents. Read by the reader every declaration is read by, so the alternatives in either
+        /// order, the group or none, and <c>\d</c> for <c>[0-9]</c> are each the same language.
         /// </remarks>
-        /// <param name="normalised">The pattern, already normalised.</param>
-        /// <returns>The representation, or <c>null</c>.</returns>
-        internal static CosmosRepresentation? Recognise(string normalised)
+        static readonly CosmosPatternStrings[] Unpadded =
         {
-            if (FixedWidthInteger.Match(normalised) is { Success: true } fixedWidth)
-                return int.TryParse(fixedWidth.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var width) && width > 0
-                    ? IntegerFixedWidth(width)
-                    : null;
+            CosmosStoredForms.Definition("^(0|[1-9][0-9]*)$"),
+            CosmosStoredForms.Definition("^[1-9][0-9]*$"),
+        };
 
-            if (UnpaddedInteger.IsMatch(normalised))
-                return IntegerUnpadded;
+        /// <summary>
+        /// Returns the numeric form whose language a pattern's strings are, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// Parametric rather than tabulated: a fixed width is a family with one member per width, the language of one
+        /// run of digits counted that many times, and no table would hold it. The strings are anchored at both ends,
+        /// because JSON Schema's <c>pattern</c> is a search rather than a full match — an unanchored <c>[0-9]{5}</c> is
+        /// satisfied by <c>x12345y</c>, which constrains nothing this could rest on — and the reader reads none that is
+        /// not.
+        /// </remarks>
+        /// <param name="strings">The strings a declared pattern admits.</param>
+        /// <returns>The representation, or <c>null</c>.</returns>
+        internal static CosmosRepresentation? Recognise(CosmosPatternStrings strings)
+        {
+            if (strings.Alternatives is [[{ IsFixed: true, Min: var width } run]] && run.Class.Equals(Digits) && width is >= 1 and <= Widest)
+                return IntegerFixedWidth(width);
 
-            return null;
+            return Unpadded.Any(strings.Equals) ? IntegerUnpadded : null;
         }
+
+        /// <summary>
+        /// Gets every numeric form a pattern can be recognised as, one at each width a pattern can name: for
+        /// <see cref="CosmosStoredForms.Registered"/>, a hook for the tests.
+        /// </summary>
+        internal static IEnumerable<CosmosRepresentation> Registered =>
+            Enumerable.Range(1, Widest).Select(IntegerFixedWidth).Prepend(IntegerUnpadded);
 
         /// <summary>
         /// Writes an integer the way a path in this form stores it, or returns <c>null</c> where the

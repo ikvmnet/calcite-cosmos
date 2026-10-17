@@ -552,11 +552,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <remarks>
         /// <para>
         /// <c>2024-01-15 12:30:00Z</c> is as fixed as its <c>T</c> spelling and would sort exactly as
-        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. The normaliser
-        /// used to strip whitespace outside a class, which made the pattern indistinguishable from one
-        /// with no separator at all; whitespace is significant in unextended ECMA-262, the dialect JSON
-        /// Schema specifies, and it is kept now. What is left is registering the form, which no table
-        /// does yet: unrecognised is the safe direction, the comparison staying in process.
+        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. Whitespace was
+        /// once stripped before a pattern was matched against the forms' spellings, which made the pattern
+        /// indistinguishable from one with no separator at all; a space is a character in unextended
+        /// ECMA-262, the dialect JSON Schema specifies, and the reader of a pattern reads it as one. What
+        /// is left is defining the form, which no table does yet: unrecognised is the safe direction, the
+        /// comparison staying in process.
         /// </para>
         /// </remarks>
         [Fact]

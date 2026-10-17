@@ -14,9 +14,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// What the dispatcher does before any family reads a pattern, and what it refuses outright.
     /// </summary>
     /// <remarks>
-    /// The families are tested beside the classes that hold them; what is left here is the pattern
-    /// language every one of them rests on — the rewrites that make one language written several ways
-    /// into one key, and the anchoring without which no form means anything.
+    /// The families are tested beside the classes that hold them, the reader of the pattern beside its own class, and
+    /// every spelling the forms were ever recognised under in <c>CosmosStoredFormsSpellingTests</c>; what is left here
+    /// is what every form rests on — one language however it is written, and the anchoring without which no form means
+    /// anything.
     /// </remarks>
     public class CosmosStoredFormsTests
     {
@@ -68,7 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// Written with <c>\d</c> it is the same pattern, which normalisation already knew.
+        /// Written with <c>\d</c> it is the same language, which ECMA-262 makes <c>[0-9]</c>.
         /// </summary>
         [Fact]
         public void TheDigitShorthandIsTheSamePattern()
