@@ -157,8 +157,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// <para>
         /// <b>A fact of the theory, read as a type is.</b> What the context proved of the path's <c>chars</c>: a declared
-        /// <c>pattern</c> and a service fact state it, a value or a domain a declaration or a filter names derives it, and
-        /// so does a stored form, each by a rule of the theory and nowhere else; met over a conjunction and joined over the
+        /// <c>pattern</c> says what its strings were written in, from which a rule derives what is stored, a service fact
+        /// states it, a value or a domain a declaration or a filter names derives it, and so does a stored form, each by a
+        /// rule of the theory and nowhere else; met over a conjunction and joined over the
         /// cases a disjunction or a discriminator splits into. So <c>WHERE s IN ('a', 'b')</c> says its characters here
         /// in the stratum it holds in, as a pattern does in every one.
         /// </para>
