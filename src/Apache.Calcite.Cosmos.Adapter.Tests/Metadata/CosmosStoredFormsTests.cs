@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
@@ -66,6 +67,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
 
             writing.Should().BeGreaterThan(forms.Count / 2, "most forms write a literal from these values, so this asks something of them");
+        }
+
+        /// <summary>
+        /// A form gives a path its characters through the theory's rule, and from nothing the recogniser states.
+        /// </summary>
+        /// <remarks>
+        /// The reader of a pattern states two things of a path, read off one parse: the form, where the strings are a
+        /// form's language, and the characters, where it can read them. The first is not a second way to the second.
+        /// With the characters left unread, a path declared in a stored form holds the characters the form is written
+        /// in all the same, which only the theory's rule that a path in a form holds its form's characters can have
+        /// derived; and a pattern that is no form says nothing of them.
+        /// </remarks>
+        [Fact]
+        public void AFormGivesItsCharactersThroughTheTheory()
+        {
+            var formsOnly = new JsonSchemaRecognisers(StringPattern: CosmosSchemaRecognition.Cosmos.StringPattern);
+            var path = JsonDocumentPath.Root.Property("p");
+
+            JsonFactSet Declared(string pattern) =>
+                CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(JsonSchemaFacts.ReadFrom(
+                    JsonNode.Parse($$"""{ "type": "object", "properties": { "p": { "type": "string", "pattern": "{{pattern}}" } } }""")!, formsOnly)).Facts).Declared;
+
+            foreach (var form in new[] { "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "^[0-9]{5}$" })
+                Declared(form).CharactersOf(path).Should().Be(JsonCharacterBand.None, "the form is ASCII, for " + form);
+
+            Declared("^[a-z]+$").CharactersOf(path).Should().Be(JsonCharacterBand.Any, "a pattern that is no form gives nothing when only forms are read");
         }
 
         /// <summary>
