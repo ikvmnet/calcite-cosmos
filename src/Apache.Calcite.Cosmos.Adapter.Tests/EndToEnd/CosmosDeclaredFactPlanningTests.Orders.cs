@@ -275,6 +275,63 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A container declaring <c>id</c> a UUID in either case by a <c>pattern</c>, or, for the control, in lowercase
+        /// alone.
+        /// </summary>
+        static CosmosContainerMetadata UuidIds(bool mixedCase) =>
+            new CosmosContainerMetadata("items", new[] { "/pk" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                    "{ \"type\": \"object\", \"properties\": { \"id\": { \"type\": \"string\", \"pattern\": \""
+                    + (mixedCase ? "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" : "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+                    + "\" } } }")!));
+
+        /// <summary>
+        /// An <c>id</c> declared a UUID in either case is ASCII, which is all its text order needs: its sort, its
+        /// <c>MAX</c> and its keyset seek push proved when the plan is made, with nothing for the reader to check.
+        /// </summary>
+        /// <remarks>
+        /// The pattern is no stored form — two spellings of one value, <c>a</c> and <c>A</c>, are no one spelling — so it
+        /// is read for its characters alone, by the pattern reader.
+        /// </remarks>
+        [Fact]
+        public void AnIdDeclaredAUuidInEitherCaseOrdersAsText()
+        {
+            var container = UuidIds(mixedCase: true);
+
+            const string Page = """SELECT c."id" FROM items AS c ORDER BY c."id" FETCH NEXT 20 ROWS ONLY""";
+            Sent(Page, container).Should().EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 20");
+            Program(Page, container).Should().BeNull("the declaration proves the order");
+
+            const string Extreme = """SELECT MAX(c."id") FROM items AS c""";
+            Sent(Extreme, container).Should().Contain("MAX(c.id)");
+            Program(Extreme, container).Should().BeNull("and the extreme");
+
+            const string Seek = """SELECT c."id" FROM items AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 20 ROWS ONLY""";
+            var seek = PlanToCosmos(Seek, container, out _);
+            PlanText(seek).Should().StartWith("CosmosToClrCursorConverter", "the whole statement is the service's: " + PlanText(seek));
+            Query(FindCosmos(seek), container).Sql.Should().Contain("(c.id > @").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 20");
+            Query(FindCosmos(seek), container).Order.Should().BeNull("and the seek, the parameter compared with ASCII alone");
+        }
+
+        /// <summary>
+        /// But not its order as a UUID: only a stored form of one case proves that the text orders as the values do, and
+        /// a mixed case spells one value two ways that order apart. The lowercase pattern is the control.
+        /// </summary>
+        [Fact]
+        public void AnIdDeclaredAUuidInEitherCaseDoesNotOrderAsAUuid()
+        {
+            const string ByUuid = """SELECT CAST(c."id" AS UUID) AS "u" FROM items AS c ORDER BY 1""";
+
+            var mixed = UuidIds(mixedCase: true);
+            var refused = PlanToCosmos(ByUuid, mixed, out _);
+            Query(FindCosmos(refused), mixed).Sql.Should().NotContain("ORDER BY", "no stored form proves the UUID order: " + PlanText(refused));
+            PlanText(refused).Should().Contain("Sort", "the sort is Calcite's to make: " + PlanText(refused));
+
+            var lower = UuidIds(mixedCase: false);
+            Sent(ByUuid, lower).Should().EndWith("ORDER BY c.id ASC", "a canonical lowercase form proves it");
+        }
+
+        /// <summary>
         /// Two paths compare at the service unless one may hold a surrogate and the other a high unit: a path below U+D800
         /// compares alike against anything, and one of the basic plane against one of any character does not. A sort over
         /// the basic plane without the surrogates orders alike too, a high unit against a high unit being one comparison
