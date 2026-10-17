@@ -436,8 +436,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 // First digit confined, so the high half keeps its sign and the order is usable.
                 ("^[0-7][a-f0-9]{7}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", sortable),
 
-                // Whitespace, which means nothing outside a class.
-                ("^[0-9a-f]{8} -[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", lower),
+                // Whitespace, which ECMA-262 matches as itself: a space where a form has none is another
+                // language, and a document conforming to it holds no UUID the form spells.
+                ("^[0-9a-f]{8} -[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", null),
+                ("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} $", null),
 
                 // And the ones that must stay unrecognised. Case-insensitive throughout, and mixed in
                 // the variant nibble alone -- both admit two spellings of one value.
@@ -545,29 +547,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// A space-separated instant is not recognised, and the reason is the normaliser rather than
-        /// the shape.
+        /// A space-separated instant is not recognised, and a space is no longer read away.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <c>2024-01-15 12:30:00Z</c> is as fixed as its <c>T</c> spelling and would sort exactly as
-        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. What stops
-        /// it is that <see cref="CosmosStoredForms.Normalise"/> strips whitespace outside a character
-        /// class, so the pattern cannot be told apart from one written with no separator at all, and
-        /// registering it would claim this form for that one.
-        /// </para>
-        /// <para>
-        /// Recorded as a test rather than a comment because the fix is a one-line change to the
-        /// normaliser — whitespace is significant in unextended ECMA-262, which is the dialect JSON
-        /// Schema specifies — and this is the row that would flip when someone makes it. Until then the
-        /// failure is the safe direction: unrecognised, so the comparison stays in process.
+        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. The normaliser
+        /// used to strip whitespace outside a class, which made the pattern indistinguishable from one
+        /// with no separator at all; whitespace is significant in unextended ECMA-262, the dialect JSON
+        /// Schema specifies, and it is kept now. What is left is registering the form, which no table
+        /// does yet: unrecognised is the safe direction, the comparison staying in process.
         /// </para>
         /// </remarks>
         [Fact]
         public void ASpaceSeparatedInstantIsNotYetRecognised()
         {
             CosmosStoredForms.Recognise(@"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
-                .Should().BeNull("the separator does not survive normalisation");
+                .Should().BeNull("no form is registered with a space for its separator");
+            CosmosStoredForms.Recognise(@"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2} Z$")
+                .Should().BeNull("a space beside a form's spelling is another language");
+            CosmosStoredForms.Recognise(@"^[0-9]{5} $")
+                .Should().BeNull("and a fixed width with one after it is no fixed width of digits");
         }
 
         /// <summary>

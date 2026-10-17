@@ -217,7 +217,8 @@ yields no stored form, though what it says of the characters a string holds may 
 | `^[0-9]+$`, `^\d+$`, anything signed | ✘ | ✘ |
 | any other pattern | ✘ | ✘ |
 
-`\d` and `[0-9]` are read as the same thing, and whitespace in the pattern is ignored. A UUID pattern
+`\d` and `[0-9]` are read as the same thing. Whitespace is a character the pattern matches, as ECMA-262
+reads it: `^[0-9]{5} $` is not the fixed-width form, nor a UUID pattern with a stray space a UUID. A UUID pattern
 is read as a shape — 32 hex slots, hyphens in fixed places, anchored at both ends — so any narrower
 confinement of the slots (a pinned prefix, `[1-5]` for the version, `[8-9a-b]` for the variant)
 is recognised too. A pattern that mixes cases, or a character range like `[8-f]` that spans

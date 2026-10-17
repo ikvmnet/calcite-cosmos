@@ -67,9 +67,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// string hold a surrogate proves nothing about the high band either (<see cref="Claims"/>).
     /// </para>
     /// <para>
-    /// It reads the pattern as written, not as <c>CosmosPatternLanguage.Normalise</c> leaves it: that drops the spaces
-    /// a pattern matches literally, which is harmless to the bands — no space is at or above U+D800 — and wrong as a
-    /// reading of the language.
+    /// It reads the pattern as written, not as <c>CosmosPatternLanguage.Normalise</c> leaves it, which is a spelling
+    /// for matching the stored forms and not a parse: the two readers are one keyword asked two questions, and
+    /// DESIGN says why both exist for now.
     /// </para>
     /// </remarks>
     static class CosmosPatternAlphabet

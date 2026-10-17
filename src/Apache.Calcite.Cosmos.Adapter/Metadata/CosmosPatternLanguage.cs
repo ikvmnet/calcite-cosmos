@@ -12,11 +12,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Whitespace outside a character class means nothing in an unextended ECMA-262 pattern, which is
-    /// the dialect JSON Schema specifies; <c>\d</c> is exactly <c>[0-9]</c> there; a character class
-    /// is a <em>set</em>, so the order its members are written in carries no meaning; and for an atom
-    /// matching exactly one character, <c>A{m}A{n}</c> and <c>A{m+n}</c> accept the same strings.
-    /// Four rewrites, and each collapses an axis along which one language is written several ways.
+    /// <c>\d</c> is exactly <c>[0-9]</c> in ECMA-262, which is the dialect JSON Schema specifies; a
+    /// character class is a <em>set</em>, so the order its members are written in carries no meaning;
+    /// and for an atom matching exactly one character, <c>A{m}A{n}</c> and <c>A{m+n}</c> accept the
+    /// same strings. Three rewrites, and each collapses an axis along which one language is written
+    /// several ways. Whitespace is not one: unextended ECMA-262 has no mode that ignores it, and a space
+    /// in a pattern matches a space.
+    /// </para>
+    /// <para>
+    /// <b>One of two readers of the language</b>, for now. This one puts a pattern in the spelling the
+    /// stored-form tables are keyed by, and reads a UUID's shape by its atoms;
+    /// <see cref="CosmosPatternAlphabet"/> parses the language strictly, under both readings, for the
+    /// characters a string may hold. They answer different questions of one keyword — which spelling,
+    /// which only matching answers, and which characters, which only a parse does — and the second is to
+    /// become the only parser, this one's spelling printed from its parse (<c>TODO.md</c>).
     /// </para>
     /// <para>
     /// Anything else — a different quantifier, a looser class, a missing anchor — is a different
@@ -140,11 +149,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Three liberties, and each is an identity rather than a guess. Whitespace outside a character
-        /// class means nothing in an unextended ECMA-262 pattern, which is the dialect JSON Schema
-        /// specifies; <c>\d</c> is exactly <c>[0-9]</c> there; and a character class is a <em>set</em>,
-        /// so the order its members are written in carries no meaning — <c>[a-f0-9]</c> and
-        /// <c>[0-9a-f]</c> are one class written two ways, and both are in use.
+        /// Two liberties here, and each is an identity rather than a guess: <c>\d</c> is exactly
+        /// <c>[0-9]</c> in ECMA-262, the dialect JSON Schema specifies; and a character class is a
+        /// <em>set</em>, so the order its members are written in carries no meaning — <c>[a-f0-9]</c> and
+        /// <c>[0-9a-f]</c> are one class written two ways, and both are in use. A third,
+        /// <see cref="Collapse"/>, counts runs. Whitespace is kept: a space in a pattern matches a space,
+        /// and a pattern with one beside a form's spelling is another language, which is left
+        /// unrecognised.
         /// </para>
         /// <para>
         /// Anything else — a different quantifier, a looser class, a missing anchor — is a different
@@ -161,9 +172,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             for (var i = 0; i < pattern.Length; i++)
             {
                 var c = pattern[i];
-
-                if (char.IsWhiteSpace(c))
-                    continue;
 
                 if (c == '\\' && i + 1 < pattern.Length && pattern[i + 1] == 'd')
                 {

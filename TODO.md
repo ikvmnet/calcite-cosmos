@@ -1164,20 +1164,14 @@ hand. Two tests pin both directions.
   for every string, the clause asserting the extracted type rather than converting to it and wanting
   a JSON number of epoch milliseconds. Both are refused now, and the parse is the spelling that
   works — see *A parse carries a format* in `DESIGN.md`.
-- **A space-separated instant is not recognised, and the obstacle is the normaliser rather than the
-  shape.** `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
-  `isoformat(sep=' ')` and a good many SQL exports write it. But `Normalise` strips whitespace outside
-  a character class, on the stated grounds that it "means nothing in an unextended ECMA-262 pattern",
-  and that is **not so**: whitespace is significant in ECMA-262, which is the dialect JSON Schema
-  specifies, and only the `x` flag other dialects have makes it insignificant. So the space-separated
-  pattern cannot be told apart from one written with no separator at all, and registering it would
-  claim this form for that one. Two consequences, and the second is the one worth acting on: the
-  shape stays unsupported, and a declared pattern carrying *significant* whitespace is today
-  recognised as the form it would be without it — which is a wrong answer rather than a missing
-  feature, since `RenderUuid` then writes a spelling the stored values do not have. The rule is
-  pinned by a row in `TheSpellingsInTheWildAreRecognised`, so flipping it is a deliberate change and
-  not a bug fix to slip in; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that would flip
-  with it.
+- **A space-separated instant is not recognised** — *small, and the obstacle is gone.*
+  `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
+  `isoformat(sep=' ')` and a good many SQL exports write it. `Normalise` used to strip whitespace
+  outside a class, which made the pattern indistinguishable from one with no separator and recognised
+  a pattern carrying a significant space as the form without it — a wrong answer, `RenderUuid`
+  writing a spelling the stored values do not have. Whitespace is kept now, as ECMA-262 reads it, and
+  `TheSpellingsInTheWildAreRecognised` holds a spaced UUID unrecognised. What is left is registering
+  the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
 - **`PARSE_TIMESTAMP` is recognised and pushes at neither site, and the reason is its type rather
   than its parse** — *small, and two separate pieces of work.* It is the name a caller reaches for
   first and it reads a format exactly as `PARSE_DATETIME` does, measured. What it answers is
@@ -1342,13 +1336,19 @@ the distribution the gate is sized for.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
-- **`CosmosPatternLanguage.Normalise` drops literal whitespace** — *small, and a wrong answer.* It
-  skips `char.IsWhiteSpace` outside a class on the premise that whitespace means nothing in an
-  ECMA-262 pattern, which has no extended mode and matches a space literally. So
-  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} Z$` is recognised as `iso8601-utc-seconds`, a canonical UUID
-  pattern with a trailing space as `uuid-canonical-lower`, and `^[0-9]{5} $` as
-  `integer-fixed-width-5`: a document conforming to the schema then carries a form it is not in, and
-  a rendered literal misses it. Keep the whitespace and let recognition fail.
+- **One parser of the pattern language** — *medium, and the owner's decision.* `CosmosPatternLanguage`
+  puts a pattern in the spelling the stored-form tables are keyed by and reads a UUID's shape by its
+  atoms; `CosmosPatternAlphabet` parses the language strictly, under both readings, for its characters.
+  Two readers of one keyword, each stating what `\d` means. The alphabet's parse is to feed stored-form
+  recognition too, printing the tables' spelling from the parse, so that the language is read once.
+  The literal-space defect the first had is fixed; the readers agree on everything else they both read.
+- **`\d` and `\w` are read as ECMA-262's** — *the owner's to confirm.* A validator in .NET's default
+  dialect or Python's matches every Unicode digit or word character, U+FF10 and U+1D7CE among them, so a
+  path declared `^\d+$` and validated that way can hold strings whose order the declaration claims and
+  the service does not keep. JSON Schema names ECMA-262, the stored forms read `\d` as `[0-9]` too, and
+  chapter 14.4 tells a user to spell the classes out; refusing both in the reader would cost nothing a
+  user cannot write as `[0-9]`, but would leave the stored forms reading them, which a fix of one
+  reading alone does not make consistent.
 - **Lone surrogates are stored on Azure, and a raw one fails the reader** — *small.* An escaped lone
   surrogate in a document is stored as U+FFFD; raw WTF-8 bytes are stored verbatim and come back as
   invalid UTF-8, which `System.Text.Json` refuses to transcode, so the stream throws. The emulator

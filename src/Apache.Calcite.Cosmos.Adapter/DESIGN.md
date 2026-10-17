@@ -3138,7 +3138,16 @@ the rules let one stand. A plant reading one kind's characters claim of every ki
 **`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the stored
 forms read `\d` as `[0-9]` already. A validator in .NET's default dialect or Python's reads `\d` and `\w` as every
 Unicode digit or word character, fullwidth and supplementary ones among them; the manual says to spell the classes
-out where documents are validated that way (chapter 14.4).
+out where documents are validated that way (chapter 14.4). Refusing the two here alone would not close it: a stored
+form's `\d` says its characters as well, through the form. Recorded in `TODO.md` for the owner.
+
+**Two readers of the language, for now.** `CosmosPatternLanguage` puts a pattern in the spelling the stored-form
+tables are keyed by, and reads a UUID's shape by its atoms; this reader parses the language for the characters. They
+ask one keyword different questions — which form, which only matching a spelling answers, and which characters,
+which only a parse does — and each states what `\d` means. A pattern recognised as a stored form beside a declared
+string says its characters through the form and is not read here too. The owner's decision is one parser, the
+tables' spelling printed from its parse; until then the second reader's one defect, dropping a space as though it
+meant nothing, is fixed, ECMA-262 matching a space as itself.
 
 **What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most two
 extension facts to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
