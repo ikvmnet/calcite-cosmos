@@ -610,6 +610,24 @@ parameter work found.
 
 #### The theory of JSON, in layers
 
+**There are no facts about the documents but the theory's.** That is the owner's rule for all of this, stated
+once here. What a path can hold — its types, its values, its bounds, its characters, its stored form, whether
+it is there — and how two such facts combine are derived in the theory and nowhere else. C# does three things
+and no fourth:
+
+- **It reads an input into facts, with one reader for each kind of input.** A schema is read by
+  `JsonSchemaFacts`, a `pattern` by `CosmosPatternReader`, a filter by `CosmosPredicateLoader`, a value's
+  spelling by `JsonFactEncoding`, the service's guarantees by `CosmosServiceFacts`. A reader states what it
+  read and decides nothing about what the fact is worth.
+- **It decides what is legal**, given the facts and the service's measured behaviour: whether an order, a
+  comparison, a rendering, a route or a point read keeps exactly the rows Calcite does (`CosmosServiceOrder`,
+  the translator's renderings, `IsSortSupported`, the partition key extractor).
+- **It writes the statement.**
+
+A helper that derives or combines a fact about the data belongs in the theory, as a rule. Where one has not
+moved yet, it is listed with the reason at the end of *Characters, a fact of the theory* (*What is left in C#*),
+each with its `TODO.md` entry.
+
 A container's declaration is reasoned about by a theory of JSON written as an
 [Eggnog](https://github.com/alethic/eggnog) e-graph, under `Facts/Saturation/`. What a query established is
 saturated beneath the declaration, and a question is a read of what saturation proved. `JsonSchemaFacts`
@@ -623,7 +641,11 @@ consumer asks what it always asked.
 1. **The root holds the rules of JSON**, global to the graph: what is true of every document because it is
    JSON. A present property has a present object for a parent. Only an object has properties and only an array
    has elements. A value is of its own type, and its characters are its own. A bound, a length or a disequality
-   narrows a domain. A path with no possible type is absent, and absent and present together is a contradiction.
+   narrows a domain, and a domain's numbers bound the path by the least and the most of them. A present path of
+   one value holds it in every document (`constant`, the value part of the fact so that a split lifts it only
+   where its cases agree). A string is stored as it was written, a lone surrogate as U+FFFD, which is the
+   service's measured behaviour read as data (`Service.LoneSurrogateIsStoredAsReplacement`). A path with no
+   possible type is absent, and absent and present together is a contradiction.
 2. **A child of the root holds the rules of JSON Schema**, as local rules (`JsonContexts.JsonSchema`). These
    read what only a schema keyword states — `required`, a closed object, `multipleOf`, `uniqueItems`, counts of
    items and properties, a stored form and the characters it is written in — and they include the interpreter for a
@@ -1091,7 +1113,8 @@ walks, and reads the declaration: a key only the filter proves present is groupe
 costs the sort above and cannot fail the plan.
 
 **A key is pinned where the oracle says it holds one value.** `CosmosPartitionKeyExtractor` reads a filter's condition
-as a statement and asks, of the key's path, `Present` and one value in its domain (`JsonFactSet.TryGetValue`).
+as a statement and asks, of the key's path, whether the theory knows it holds one value in every document — its
+`constant`, a presence and a domain of one combined by a rule (`JsonFactSet.TryGetConstant`).
 Routing a statement that still applies its predicate reads every conjunct, a strengthening's argument: a partition it
 skips holds no row the predicate keeps, so a key a sibling's kind declares routes as surely as one the predicate names
 — `kind <> 'b' AND kind <> 'c'` over a required enum routes to `a`. A point read, a batch of them and a
@@ -3162,12 +3185,17 @@ validator using that reading could not have checked a document with it.
   octal escape; an identity escape of anything but a syntax character or `/`; a class escape ending a range; and a
   lone `]`, `{` or `}`. Each of the last group is a literal read by unit and an error read by code point.
 
-**What is stored is not always what was written.** Measured on the probe account, a lone surrogate written as a JSON
-escape is stored as U+FFFD, a high unit. Read by unit a pattern admitting a surrogate admits a lone one, so a claim
-that its strings lack the high band would be true of the written document and false of the stored one. So a pattern
-that admits a surrogate yields no claim at all, and the claims a pattern can make are "neither band" and "no
-surrogate". A domain needs no such care: `System.Text.Json` will not read a lone surrogate escape as a string, so no
-`enum` or `const` holds one.
+**What is stored is not always what was written, and that is the theory's to say.** Measured on the probe account, a
+lone surrogate written as a JSON escape is stored as U+FFFD, a high unit; the emulator refuses the write. Read by unit
+a pattern admitting a surrogate admits a lone one, so a claim that its strings lack the high band would be true of the
+written document and false of the stored one. The reader used to decide that itself, claiming nothing for such a
+pattern, which folded a service fact into the reading of an input. It now states what a validator saw, the bands the
+strings were written in (`JsonClaim.Written`, the theory's `written`), and one rule of the theory derives what is
+stored from it, reading the measured behaviour as data (`JsonValues.Stored`, the axiom
+`Service.LoneSurrogateIsStoredAsReplacement`, pinned by a measurement that asserts on Azure and skips where the
+emulator refuses the write): written with a surrogate, stored with the high band too. So what a pattern can prove of
+the stored strings is still "neither band" or "no surrogate", and the deciding is in one place. A domain needs no such
+care: `System.Text.Json` will not read a lone surrogate escape as a string, so no `enum` or `const` holds one.
 
 **Checked against the engine, not only the grammar.** While it was written the reader was run against V8's own
 `RegExp`, with the flag and without, over 36,000 generated patterns — literals and escapes from every band, ranges
@@ -3319,8 +3347,8 @@ other sessions kept at 90–100% of its four cores (main's corpus took 8.2 s her
 
 #### Characters, a fact of the theory
 
-**There are no facts about the documents but the theory's.** That is the owner's rule for this work, and what
-characters a path's strings hold is a fact about the documents like any other. So it is the theory's `chars(p)`: the
+**What characters a path's strings hold is a fact about the documents like any other** (*The theory of JSON, in
+layers*, for the rule). So it is the theory's `chars(p)`: the
 set of bands — a surrogate, a unit from U+E000 — that a string at the path may hold units of, beside those below
 U+D800, which matter to no order. It is a fact like a type, and reasoned with as one. It is said of the value if it
 is a string, so a number, a null or an absent path satisfies every such fact. It lies on the intersect lattice the
@@ -3330,9 +3358,11 @@ and it is licensed per scope, read off the stratum, the child or the declaration
 union of a branch lacking both bands with one lacking one keeps the one.
 
 **Each source reaches it the same way: stated or derived in the theory, never computed beside it.**
-- **A declared `pattern`.** `CosmosPatternReader` is a reader of an input. It states its verdict as a declared fact of
-  the path (`JsonClaim.Characters`), beside any type, and decides nothing about what the fact is worth. A pattern that
-  is also a stored form is read like any other; the theory meets the two.
+- **A declared `pattern`.** `CosmosPatternReader` is a reader of an input. It states what a validator saw, the bands
+  the strings were written in, as a declared fact of the path (`JsonClaim.Written`, the theory's `written`), beside
+  any type, and decides nothing about what the fact is worth. A rule of JSON derives `chars` from it: a string is
+  stored as it was written, a lone surrogate as U+FFFD (*Reading a pattern as characters*). A pattern that is also a
+  stored form is read like any other; the theory meets the two.
 - **A value.** A rule of JSON: a value's characters are its own. A domain's `chars` is the bands of the strings it
   holds, read off each value's spelling as its type is (`JsonValues.CharactersOf`, beside `TypesOf`). So an `enum` or a
   `const` says its characters in the declaration's context, and a filter's `=` or `IN` in the stratum it holds in,
@@ -3340,8 +3370,11 @@ union of a branch lacking both bands with one lacking one keeps the one.
   own and the lift joins them. `WHERE c.s IN ('a', 'b')` proves `s`'s characters in the last stratum (L1) with nothing
   in C# computing them.
 - **A stored form.** A rule of JSON Schema: a path holding a string in a form holds the characters the form is
-  written in. `JsonFactTheory` states, for every form a declaration names, what the form says of itself
-  (`IJsonStoredForm.Characters`); every registered form is ASCII, and `CosmosStoredFormsTests` holds each one to it.
+  written in. `JsonFactTheory` states, for every form a declaration names, what the form is written in
+  (`IJsonStoredForm.Characters`), which each family reads off what defines the form — a language the one reader of a
+  pattern parsed, or a UUID spelling's alphabet — by the reader's own reading of a range's bands
+  (`CosmosStoredForms.CharactersOf`). It used to be a constant beside the definition, a third encoding of one fact.
+  Every registered form comes out ASCII, and `CosmosStoredFormsTests` checks what the definitions read.
 - **A service fact.** `_etag`'s characters are stated as data, of the grammar RFC 9110 fixes, as `id`'s type is.
 
 **Stated of every domain, a domain of no string saying none.** The first version derived a row only from a domain
@@ -3352,19 +3385,39 @@ answered otherwise, and its differential caught the difference. Stated of every 
 the one its last domain says, whichever domains it passed through.
 
 **Who reads it.** `JsonFactSet.CharactersOf` is what R1 asks (*The service's order, asked once*), and `Knows` and
-`ClaimsFor` answer it as a claim. `JsonFactOverlay` answers it from its own domain, through the same function the
-rule computes. `JsonFactOverlayTests` holds the two to each other over literals of all three bands, a service fact
-and a declaration. A literal's characters, and a parameter's once it is bound, are read by the same reader of a
-value (`JsonFactEncoding.Characters`), so what a consumer asks of a value is what the theory knows of it.
+`ClaimsFor` answer it as a claim. `JsonFactOverlay` answers it from its own domain, applying the rule's own function
+(`JsonValues.CharactersOf`) — one of the theory's rules the overlay restates for the statements it answers without
+the engine, listed below. `JsonFactOverlayTests` holds the two to each other over literals of all three bands, a
+service fact and a declaration. A literal's characters and type, and a parameter's characters once it is bound, are
+read by the theory's own reader of a value (`JsonFactEncoding.Characters`, `JsonValues.TypesOf`), so what a consumer
+asks of a value is what the theory knows of it.
 
-**What is left in C#.**
-- The reader of the pattern language, which reads an input.
-- `CosmosServiceOrder.Agree`, which says what the service was measured to do with two sets of strings: legality.
-- The meet of an undiscriminated union. `JsonSchemaFacts.Meet` reads `anyOf` before the theory sees it, and keeps
-  a claim every branch entails (`JsonFact.Entails`). Characters take part in it as bounds do: a branch holding no
-  string, a value or a domain, and a stored form each entail a characters claim. That is the one place a character
-  fact is still combined outside the theory. It goes when the reader states such a union as a hidden discriminator's
-  cases, which `TODO.md` records with the rest of the meet.
+**What is left in C#,** every fact about the documents still derived or combined outside the theory, each with why it
+has not moved and its `TODO.md` entry. Everything else C# does with a fact reads it, decides what is legal, or writes.
+- **The meet of an undiscriminated union, and the widening of a nullable one.** `JsonSchemaFacts.Meet` reads an
+  `anyOf` or a `oneOf` with no discriminator before the theory sees it, and keeps every claim each branch entails
+  (`JsonFact.Entails`, whose rows read a value's type through `JsonScalar.Type`): types, domains, bounds, forms,
+  characters, what was written. `AdmitNull` widens every fact of a nullable union's branch to admit the null. Both are
+  combinations of facts. They go when the reader states such a union as cases of a hidden discriminator, a null one
+  among them, which the theory's split already reasons over (`TODO.md`, *The schema reader emits splits rather than a
+  meet*).
+- **The overlay.** `JsonFactOverlay` answers a stratum the engine would add nothing to without opening a context,
+  and so restates, for its gated case, rules of JSON the engine runs: a value is of its own types, holds its own
+  characters, and bounds the path by its numbers; a present path of one value is constant; a JSON null excluded
+  leaves every other type (`PathValues.Normal`); a present path has present objects above it; a path beneath one that
+  holds no object is absent. `StatementTerms.Established` reads each conjunct as the oracle's establishing rules do.
+  `JsonFactOverlayTests` holds it to the engine answer for answer. It goes when a context costs nothing measurable for
+  these statements, which is the planning cost the gate exists for (`TODO.md`, *The overlay restates the theory*).
+- **A geography's proof.** `CosmosGeographyForms` reads a subschema's array counts and its elements' bounds itself,
+  the schema reader stating no facts of array elements yet; it reads `type`, `required`, `const` and the bounds through
+  the schema reader's own readers. It goes when `JsonSchemaFacts` states the element facts and a rule of the theory
+  reads a measurable point off them, the measured ranges as data (`TODO.md`, *Facts about array elements*).
+- **A disequality a domain or a set of types leaves out.** `JsonFactSet.Knows(NotEqualTo)` answers from a domain or
+  types that exclude the value, as the subset test a domain claim is read by; no finite table states "not v" for
+  every value a domain leaves out. Only the checks ask it.
+
+Not facts, and in C# by the rule: the reader of the pattern language, which reads an input; `CosmosServiceOrder.Agree`,
+which says what the service was measured to do with two sets of strings; and the rest of the one question.
 
 **How it is checked.**
 - `SoundnessTests` draw strings of all three bands, characters facts true of the document, and a form whose
@@ -3376,6 +3429,11 @@ value (`JsonFactEncoding.Characters`), so what a consumer asks of a value is wha
   an arm's characters stated of its disjunction.
 - `CharactersTests` and `CosmosOracleCharactersTests` name the cases: a conjunction narrowing, a split widening, a
   branch, a form, an instance, a filter in its stratum and not in the one it is rendered from.
+- The `written` rows are checked as `chars` rows are, by both; what is stored from them is `CosmosPatternReaderTests`'
+  to name, a surrogate written proving nothing of the high band stored.
+- The other two rules of a domain have rows of their own in both checks, and a plant each, caught within a run: a
+  domain's numbers read as bounding the path above their least, and a domain of one read as one value in every
+  document without the path's presence.
 
 **What it costs.** The theory has one rule of JSON more, over every domain a context holds, an inheritance through a
 pattern, and one rule of JSON Schema over a stated form. A path with a domain or a declaration carries one row more.
