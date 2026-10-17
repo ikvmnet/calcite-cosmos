@@ -74,6 +74,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public abstract bool Extension(JsonDocumentPath path, string key);
 
+        /// <summary>
+        /// Determines whether a path is known to be there and to hold this value in every document.
+        /// </summary>
+        public abstract bool Constant(JsonDocumentPath path, string value);
+
     }
 
 }

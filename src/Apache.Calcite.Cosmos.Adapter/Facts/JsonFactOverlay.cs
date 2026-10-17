@@ -31,8 +31,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// Anything else goes to the engine.
     /// </para>
     /// <para>
-    /// <b>What the rules of JSON add, in that case, and nothing else.</b> A value or a domain is of its own types, and
-    /// holds its own characters. A path that is not null is of every other type. A present path has present objects for
+    /// <b>What the rules of JSON add, in that case, and nothing else.</b> A value or a domain is of its own types, holds
+    /// its own characters, and bounds the path by the least and the most of its numbers; a present one of one value holds
+    /// it in every document. A path that is not null is of every other type. A present path has present objects for
     /// its ancestors, the root among them. A path beneath one that holds no object is absent, and has no possible type
     /// and so no possible value. Every other path is what the declaration's own context says it is. Nothing contradicts:
     /// one claim with a presence is satisfiable, and an object above a scalar is the one meeting the gate keeps out.
@@ -227,6 +228,14 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             if (_established.TryGetValue(path, out var entry))
             {
+                // A domain's numbers bound the path, by the least of them: the domain already lies within any bound stated
+                // beside it, so its least is the stricter.
+                if (entry.Dom is { } dom && NumbersOf(dom) is var (least, _))
+                {
+                    bound = Bound.AtLeast(least);
+                    return true;
+                }
+
                 bound = entry.Lo.GetValueOrDefault();
                 return entry.Lo is not null;
             }
@@ -245,6 +254,12 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             if (_established.TryGetValue(path, out var entry))
             {
+                if (entry.Dom is { } dom && NumbersOf(dom) is var (_, most))
+                {
+                    bound = Bound.AtMost(most);
+                    return true;
+                }
+
                 bound = entry.Hi.GetValueOrDefault();
                 return entry.Hi is not null;
             }
@@ -285,6 +300,14 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <inheritdoc />
         public override bool Extension(JsonDocumentPath path, string key) =>
             _established.ContainsKey(path) == false && IsAbsent(path) == false && _outright.Extension(path, key);
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// The theory's rule that a present path of one value holds it in every document, read over the overlay's own
+        /// presence and domain.
+        /// </remarks>
+        public override bool Constant(JsonDocumentPath path, string value) =>
+            Present(path) && TryDom(path, out var dom) && dom.Count == 1 && dom[0] == value;
 
         /// <summary>
         /// Determines whether a path lies beneath an established one that holds no object, which makes it absent.

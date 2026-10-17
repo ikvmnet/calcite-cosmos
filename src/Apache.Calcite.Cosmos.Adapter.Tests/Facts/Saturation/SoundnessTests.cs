@@ -169,6 +169,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 {
                     if (scope.Check(r.Ne.Of(p, value)))
                         yield return new JsonFact.NotEqual(path, value);
+
+                    // One value in every document: in a trial's, there and holding it.
+                    if (scope.Check(r.Constant.Of(p, value)))
+                    {
+                        yield return new JsonFact.Present(path);
+                        yield return new JsonFact.OneOf(path, ValueSet.Of(value));
+                    }
                     if (scope.Check(r.Contains.Of(p, value)))
                         yield return new JsonFact.Holds(path, value);
                     if (scope.TryGet(r.ContainsAtLeast.Of(p, value), out var atLeast))

@@ -64,6 +64,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <inheritdoc />
         public override bool Extension(JsonDocumentPath path, string key) => Read(false, (scope, r) => scope.Check(r.Extension.Of(Term(path, r), key)));
 
+        /// <inheritdoc />
+        public override bool Constant(JsonDocumentPath path, string value) => Read(false, (scope, r) => scope.Check(r.Constant.Of(Term(path, r), value)));
+
         bool TryGet<T>(JsonDocumentPath path, Func<JsonRules, Function<JPath, T>> table, out T value)
         {
             var (found, read) = Read((false, default(T)!), (scope, r) =>

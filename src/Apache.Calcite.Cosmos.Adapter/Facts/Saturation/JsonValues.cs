@@ -120,6 +120,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static ValueSet<string> AtMost(ValueSet<string> values, Bound upper) =>
             ValueSet.From(values.Where(v => TryNumberOf(v, out var x) == false || upper.AdmitsBelow(x)));
 
+        /// <summary>
+        /// The least and the most of a domain's numbers, or <c>null</c> where it holds none, or one held approximately,
+        /// whose place against a bound is not read.
+        /// </summary>
+        public static (decimal Least, decimal Most)? NumbersOf(ValueSet<string> values)
+        {
+            (decimal Least, decimal Most)? span = null;
+            foreach (var value in values)
+            {
+                if (IsNumber(value) == false)
+                    continue;
+
+                if (TryNumberOf(value, out var x) == false)
+                    return null;
+
+                span = span is var (least, most) ? (Math.Min(least, x), Math.Max(most, x)) : (x, x);
+            }
+
+            return span;
+        }
+
         /// <summary>A domain less the strings shorter than a length; members that are not strings are kept.</summary>
         public static ValueSet<string> LengthAtLeast(ValueSet<string> values, long least) =>
             ValueSet.From(values.Where(v => IsString(v) == false || StringOf(v).Length >= least));

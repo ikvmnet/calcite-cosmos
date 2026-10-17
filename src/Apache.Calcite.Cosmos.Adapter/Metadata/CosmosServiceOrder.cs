@@ -613,7 +613,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     if (value.IsNull)
                         return new(CosmosOrderAgreement.Exact, Classes.None, Classes.Null, JsonCharacterBand.None, true, null, "a null literal");
 
-                    return new(CosmosOrderAgreement.Exact, ClassOf(value), Classes.None, JsonFactEncoding.Characters(value), true, null, "a literal");
+                    // Its type and its characters as the theory reads a value's, off the spelling it is stated in.
+                    return new(CosmosOrderAgreement.Exact, ClassesOf(TypesOf(Eggnog.ValueSet.Of(JsonFactEncoding.Value(value)))), Classes.None, JsonFactEncoding.Characters(value), true, null, "a literal");
                 }
 
                 // A parameter bound to SQL's NULL is never compared at the service: where the operator would keep a row
@@ -773,6 +774,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Reads which types a path may hold in a row, the absent path among them, and whether every row holds one value
         /// there: every type, and not one value, for a path no fact can be about.
         /// </summary>
+        /// <remarks>
+        /// Two reads of the theory and nothing combined here. The types are what it proved of the path, a domain's own
+        /// among them (<c>JsonRules</c>, <em>a value is of its own type</em>); one value in every row is its
+        /// <c>constant</c>, a presence and a domain of one, a JSON null alone among them; and a path of no possible type
+        /// is one it proved absent, which every row holds alike too.
+        /// </remarks>
         static Classes Admitted(JsonFactSet facts, JsonDocumentPath? path, out bool constant)
         {
             constant = false;
@@ -780,25 +787,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (path is null)
                 return Classes.All;
 
-            var present = facts.Knows(new JsonFact(path.Value, new JsonClaim.Present()));
-
             var admitted = facts.TryGetTypes(path.Value, out var types) ? ClassesOf(types) : Classes.All & ~Classes.Undefined;
 
-            if (facts.TryGetDomain(path.Value, out var domain))
-            {
-                var held = Classes.None;
-                foreach (var value in domain)
-                    held |= ClassOf(value);
-
-                admitted &= held;
-                constant = present && domain.Count == 1;
-            }
-
-            if (present == false)
+            if (facts.Knows(new JsonFact(path.Value, new JsonClaim.Present())) == false)
                 admitted |= Classes.Undefined;
 
-            // Never there, or always a JSON null: one value in every row, read alike.
-            constant |= admitted == Classes.Undefined || present && admitted == Classes.Null;
+            constant = admitted == Classes.Undefined || facts.TryGetConstant(path.Value, out _);
 
             return admitted;
         }
@@ -922,14 +916,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             return classes;
         }
-
-        static Classes ClassOf(JsonScalar value) => value.Type switch
-        {
-            JsonType.String => Classes.String,
-            JsonType.Boolean => Classes.Boolean,
-            JsonType.Integer or JsonType.Number => Classes.Number,
-            _ => Classes.Null,
-        };
 
         static Classes ClassesOf(SqlTypeName type)
         {

@@ -261,7 +261,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             Knows(loaded.Statement.FactsFor(0), Label, String).Should().BeFalse();
             loaded.Statement.IsAdmitted(0).Should().BeFalse("so the translator does not render it exactly");
-            loaded.Statement.Kept.TryGetValue(Label, out _).Should().BeFalse("a stored 30 renders as '30' too");
+            loaded.Statement.Kept.TryGetConstant(Label, out _).Should().BeFalse("a stored 30 renders as '30' too");
             Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeTrue("the preimage, and nothing narrower");
         }
 
@@ -276,7 +276,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             Knows(loaded.Statement.FactsFor(0), Label, String).Should().BeTrue();
             loaded.Statement.StratumOf(0).Should().Be(1, "it renders exactly from the declaration");
-            loaded.Statement.Kept.TryGetValue(Label, out var only).Should().BeTrue();
+            loaded.Statement.Kept.TryGetConstant(Label, out var only).Should().BeTrue("the row it keeps holds the string there");
             only.Should().Be((JsonScalar)"30");
         }
 

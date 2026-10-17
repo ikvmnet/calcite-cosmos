@@ -297,23 +297,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// A pinned value is read back as the scalar it is, and only where exactly one value is possible.
+        /// A value a path holds in every document is read back as the scalar it is: the theory's <c>constant</c>, a
+        /// presence and a domain of one, and only where both are known.
         /// </summary>
         [Fact]
         public void APinnedValueIsReadBackAsItsScalar()
         {
             foreach (var value in new JsonScalar[] { "ParkMap", 42L, 1.5m, true, JsonScalar.Null, 1e300 })
             {
-                var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, value) });
+                var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, value), Present(At) });
 
-                set.TryGetValue(At, out var read).Should().BeTrue($"{value} is pinned");
+                set.TryGetConstant(At, out var read).Should().BeTrue($"{value} is pinned");
                 read.Should().Be(value);
+
+                JsonFactTheory.Empty.Derive(new[] { Equals(At, value) }).TryGetConstant(At, out _).Should().BeFalse(
+                    "a value says what the path holds if it is there, and a document without it conforms");
             }
 
-            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })) })
-                .TryGetValue(At, out _).Should().BeFalse("two values are possible");
-            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(At, out _).Should().BeFalse("nothing is known of the value");
-            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(Type, out _).Should().BeFalse("nor of a path nothing mentions");
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OfType(JsonType.Null)), Present(At) })
+                .TryGetConstant(At, out var only).Should().BeTrue("a JSON null is one value");
+            only.Should().Be(JsonScalar.Null);
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })), Present(At) })
+                .TryGetConstant(At, out _).Should().BeFalse("two values are possible");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetConstant(At, out _).Should().BeFalse("nothing is known of the value");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetConstant(Type, out _).Should().BeFalse("nor of a path nothing mentions");
+        }
+
+        /// <summary>
+        /// A domain's numbers bound the path by the least and the most of them, a rule of the theory: what a sort's
+        /// exactness past 2^53 asks of an <c>enum</c> of numbers, and nothing combined where it is read.
+        /// </summary>
+        [Fact]
+        public void ADomainsNumbersBoundThePath()
+        {
+            var set = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 3L, -2.5m, "a" })) });
+
+            set.ClaimsFor(At).Should().Contain(new JsonClaim.LowerBound(-2.5m)).And.Contain(new JsonClaim.UpperBound(3m));
+            set.Knows(new JsonFact(At, new JsonClaim.LowerBound(-3m, Exclusive: true))).Should().BeTrue();
+            set.Knows(new JsonFact(At, new JsonClaim.UpperBound(3m, Exclusive: true))).Should().BeFalse("3 is among them");
+
+            var approximate = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1L, 1e300 })) });
+            approximate.Knows(new JsonFact(At, new JsonClaim.UpperBound(2m))).Should().BeFalse("a number held approximately is read against no bound");
+
+            var none = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", true })) });
+            none.Knows(new JsonFact(At, new JsonClaim.UpperBound(0m))).Should().BeTrue("a path holding no number satisfies every bound");
         }
 
         /// <summary>

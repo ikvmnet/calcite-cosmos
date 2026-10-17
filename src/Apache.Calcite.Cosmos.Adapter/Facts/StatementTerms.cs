@@ -665,6 +665,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
             public override bool Extension(JsonDocumentPath path, string key) => Keep(_tables.Extension(path, key));
 
+            public override bool Constant(JsonDocumentPath path, string value) => Keep(_tables.Constant(path, value));
+
             T Keep<T>(T answer)
             {
                 GC.KeepAlive(_lease);
@@ -720,6 +722,8 @@ namespace Apache.Calcite.Cosmos.Facts
             }
 
             public override bool Extension(JsonDocumentPath path, string key) => false;
+
+            public override bool Constant(JsonDocumentPath path, string value) => false;
 
         }
 

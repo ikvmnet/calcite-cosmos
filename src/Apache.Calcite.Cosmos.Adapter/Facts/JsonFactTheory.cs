@@ -47,7 +47,6 @@ namespace Apache.Calcite.Cosmos.Facts
 
         readonly JsonFactRule[] _rules;
         readonly bool _conditional;
-        readonly bool _representations;
         readonly JsonFactVocabulary _vocabulary = new();
         readonly List<Saturation.JsonFact> _stated = new();
         readonly List<JsonGuardedRule> _guarded = new();
@@ -87,9 +86,6 @@ namespace Apache.Calcite.Cosmos.Facts
 
             foreach (var rule in _rules)
             {
-                if (rule.Head.Claim is JsonClaim.Represents)
-                    _representations = true;
-
                 if (rule.Body.Count > 0)
                     _conditional = true;
 
@@ -165,15 +161,6 @@ namespace Apache.Calcite.Cosmos.Facts
         /// is conditional on nothing — so the common path does no work at all.
         /// </remarks>
         public bool IsUnconditional => _conditional == false;
-
-        /// <summary>
-        /// Gets whether anything here states a stored form, as distinct from a type or a value.
-        /// </summary>
-        /// <remarks>
-        /// Asked by the rewrite, which has nothing to do without one: the service's guarantees say
-        /// what a property <em>is</em> and never how it is written.
-        /// </remarks>
-        public bool HasRepresentations => _representations;
 
         /// <summary>
         /// Gets the compiled rules.

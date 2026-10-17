@@ -464,9 +464,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 var facts = _statement.FactsUnder(licence);
 
                 foreach (var key in _keys)
-                    if (DocumentPathOf(key) is JsonDocumentPath path
-                        && facts.Knows(new JsonFact(path, new JsonClaim.Present()))
-                        && facts.TryGetValue(path, out var value))
+                    if (DocumentPathOf(key) is JsonDocumentPath path && facts.TryGetConstant(path, out var value))
                         pinned[key] = Bound(value);
 
                 return pinned;

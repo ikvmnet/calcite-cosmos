@@ -81,8 +81,21 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Determines whether a fact holds.
         /// </summary>
         /// <remarks>
-        /// Through what the context proved, so a known value answers yes to its type and to every disequality but its own,
-        /// a known domain to a wider one, and a required property to its presence.
+        /// <para>
+        /// <b>A read of what the context proved, and nothing combined here.</b> Each claim is answered from the table that
+        /// states it: a presence, a set of types within the claim's, a domain within the claim's, a bound at least as
+        /// strict, a form, characters within the claim's, an extension. A known value answers yes to its type because the
+        /// theory derived the type from it, and a domain to a bound because it derived the bound (<c>JsonRules</c>, <em>a
+        /// domain's numbers bound the path</em>): what one fact entails of another is a rule there, not an argument here.
+        /// A path that can hold no number satisfies every bound, which is what a bound means; and a disequality, which no
+        /// finite table states, is read as the subset test it is (below).
+        /// </para>
+        /// <para>
+        /// <b>Who asks which.</b> A presence, a type, a bound and an extension are asked by consumers; a value, a domain, a
+        /// disequality, a form and characters only by the checks that hold the theory to its documents — population D,
+        /// the overlay's differential, the theory's own tests — which ask every claim the way a consumer would. A form a
+        /// consumer reads through <see cref="FormsOf"/>, and characters through <see cref="CharactersOf"/>.
+        /// </para>
         /// </remarks>
         /// <param name="fact">The fact to test.</param>
         /// <returns><c>true</c> if it holds.</returns>
@@ -104,6 +117,9 @@ namespace Apache.Calcite.Cosmos.Facts
                 case JsonClaim.OneOf domain:
                     return t.TryDom(p, out var within) && within.IsSubsetOf(JsonFactEncoding.Domain(domain.Values));
 
+                // "Not v" is "one of everything but v", which no finite table states: it is read off the disequalities
+                // the theory holds, and off a domain or a set of types that leaves v out — the subset test a domain and a
+                // type claim are read by — and the theory states none of it beside them.
                 case JsonClaim.NotEqualTo unequal:
                 {
                     var value = JsonFactEncoding.Value(unequal.Value);
@@ -114,13 +130,11 @@ namespace Apache.Calcite.Cosmos.Facts
 
                 case JsonClaim.LowerBound lower:
                     return NoNumber(t, p)
-                        || t.TryLo(p, out var lo) && Bound.StricterLower(lo, new Bound(lower.Value, lower.Exclusive)) == lo
-                        || t.TryDom(p, out var above) && above.Count > 0 && above.All(v => TryNumberOf(v, out var x) ? lower.Admits(x) : IsNumber(v) == false);
+                        || t.TryLo(p, out var lo) && Bound.StricterLower(lo, new Bound(lower.Value, lower.Exclusive)) == lo;
 
                 case JsonClaim.UpperBound upper:
                     return NoNumber(t, p)
-                        || t.TryHi(p, out var hi) && Bound.StricterUpper(hi, new Bound(upper.Value, upper.Exclusive)) == hi
-                        || t.TryDom(p, out var below) && below.Count > 0 && below.All(v => TryNumberOf(v, out var x) ? upper.Admits(x) : IsNumber(v) == false);
+                        || t.TryHi(p, out var hi) && Bound.StricterUpper(hi, new Bound(upper.Value, upper.Exclusive)) == hi;
 
                 case JsonClaim.Represents represents:
                     return _vocabulary!.TryForm(represents.Form, out var form) && t.Form(p, form);
@@ -263,46 +277,26 @@ namespace Apache.Calcite.Cosmos.Facts
             t.TryTypes(path, out var types) && IsOneScalarKind(types));
 
         /// <summary>
-        /// Returns the one value a path holds wherever it is there, if one is known.
+        /// Returns the one value a path holds in every document, where the theory knows the path is there and holds one.
         /// </summary>
         /// <remarks>
-        /// Silent about whether the path is there: a declared constant constrains the value only where there is one. A
-        /// caller that needs it there asks <see cref="Knows"/> for <see cref="JsonClaim.Present"/> too.
+        /// The theory's <c>constant</c>: a presence and a domain of one together, combined by its rule. What a sort key
+        /// that orders nothing is, and a partition key the facts pin.
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <param name="value">The value.</param>
-        /// <returns><c>true</c> where exactly one value is possible.</returns>
-        public bool TryGetValue(JsonDocumentPath path, out JsonScalar value)
+        /// <returns><c>true</c> where the path holds one value in every document.</returns>
+        public bool TryGetConstant(JsonDocumentPath path, out JsonScalar value)
         {
             // A tuple rather than a nullable scalar: a scalar converts from a null string, so a conditional between one
             // and null types as a scalar, and answers the JSON null where it meant no answer.
             var (found, only) = Read((false, JsonScalar.Null), t =>
-                t.TryDom(path, out var dom) && dom.Count == 1 && JsonFactEncoding.TryScalar(dom[0], out var one)
+                t.TryDom(path, out var dom) && dom.Count == 1 && t.Constant(path, dom[0]) && JsonFactEncoding.TryScalar(dom[0], out var one)
                     ? (true, one)
                     : (false, JsonScalar.Null));
 
             value = only;
             return found;
-        }
-
-        /// <summary>
-        /// Returns the values a path holds wherever it is there, where they are finitely many and known.
-        /// </summary>
-        /// <remarks>
-        /// Silent about whether the path is there, as <see cref="TryGetValue"/> is: an <c>enum</c> or an <c>IN</c>
-        /// constrains the value only where there is one. What an order over the path needs of it is the types of what may
-        /// be there, and that a path holding one value is a key nothing orders by — see <c>CosmosServiceOrder</c>; what
-        /// characters the values hold the theory derives itself, and <see cref="CharactersOf"/> reads.
-        /// </remarks>
-        /// <param name="path">The path.</param>
-        /// <param name="values">The values, in no order that means anything.</param>
-        /// <returns><c>true</c> where the values are known.</returns>
-        public bool TryGetDomain(JsonDocumentPath path, out IReadOnlyList<JsonScalar> values)
-        {
-            var known = Read<IReadOnlyList<JsonScalar>?>(null, t => t.TryDom(path, out var dom) ? Decode(dom) : null);
-
-            values = known ?? Array.Empty<JsonScalar>();
-            return known is not null;
         }
 
         /// <summary>

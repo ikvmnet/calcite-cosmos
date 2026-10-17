@@ -75,6 +75,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
             FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
             Extension = graph.DefineRelation<JPath, string>("extension");
+            Constant = graph.DefineRelation<JPath, string>("constant");
 
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
@@ -209,6 +210,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public Relation<JPath, string> Extension { get; }
 
+        /// <summary>
+        /// The path is there, and holds this value in every document: a presence and a domain of one together.
+        /// </summary>
+        public Relation<JPath, string> Constant { get; }
+
         readonly List<(string Name, Action<RuleBuilder> Define)> _schemaRules = new();
 
         /// <summary>Defines a rule of JSON: global to the graph, so it holds in every context.</summary>
@@ -279,6 +285,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Where(Primitives.IsEmpty<string>().Of(t));
                 r.Then(Absent.Of(p));
             });
+            // One value in every document: what a key that orders nothing and a partition key pinned both are. Not a
+            // domain of one alone, which says what the path holds if it is there. The value is part of the fact, so that
+            // what every case of a split proves is lifted only where every case holds the same one: two cases each
+            // holding one value hold two between them.
+            Rule("a present path of one value holds it in every document", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(Present.Of(p), d.Is(Dom.Of(p)));
+                r.Where(d, x => x.Count == 1);
+                r.Then(Constant.Of(p, Compute.Of(d, x => x[0])));
+            });
             Rule("a path is not both absent and present", r =>
             {
                 var p = r.Var<JPath>("p");
@@ -300,6 +317,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (p, d, h) = r.Vars<JPath, ValueSet<string>, Bound>("p", "d", "h");
                 r.When(d.Is(Dom.Of(p)), h.Is(Hi.Of(p)));
                 r.Then(Dom.Of(p).Is(Compute.Of(d, h, AtMost)));
+            });
+            // The reverse of the two above: what a path holds is one of its domain's values, so its numbers lie between
+            // the least and the most of the domain's. Stated of every domain, as its characters are, and a domain only
+            // narrows, so the bounds a context ends with are its last domain's. A domain holding no number says it holds
+            // none, which its types say and every bound then holds of.
+            Rule("a domain's numbers bound the path", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Where(d, x => NumbersOf(x) is not null);
+                r.Then(
+                    Lo.Of(p).Is(Compute.Of(d, x => Bound.AtLeast(NumbersOf(x)!.Value.Least))),
+                    Hi.Of(p).Is(Compute.Of(d, x => Bound.AtMost(NumbersOf(x)!.Value.Most))));
             });
             Rule("no number lies between crossed bounds", r =>
             {

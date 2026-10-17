@@ -506,6 +506,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Lower(p, (Bound)row.Output!);
                 foreach (var (p, row) in Of(r.Hi))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Upper(p, (Bound)row.Output!);
+
+                // One value in every document: the path there in each, and holding the value.
+                foreach (var (p, row) in Of(r.Constant))
+                {
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Present(p);
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.OneOf(p, ValueSet.Of((string)row.Keys[1]));
+                }
                 foreach (var (p, row) in Of(r.MinLength))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.MinLength(p, (long)row.Output!);
                 foreach (var (p, row) in Of(r.MaxLength))

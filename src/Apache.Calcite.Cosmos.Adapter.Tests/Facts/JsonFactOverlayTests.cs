@@ -180,10 +180,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                     {
                         fast.HasOneScalarType(path).Should().Be(engine.HasOneScalarType(path), $"HasOneScalarType({path}) under {described}");
 
-                        var fastFound = fast.TryGetValue(path, out var fastValue);
-                        fastFound.Should().Be(engine.TryGetValue(path, out var engineValue), $"TryGetValue({path}) under {described}");
+                        var fastFound = fast.TryGetConstant(path, out var fastValue);
+                        fastFound.Should().Be(engine.TryGetConstant(path, out var engineValue), $"TryGetConstant({path}) under {described}");
                         if (fastFound)
-                            fastValue.Should().Be(engineValue, $"TryGetValue({path}) under {described}");
+                            fastValue.Should().Be(engineValue, $"TryGetConstant({path}) under {described}");
 
                         Describe(fast.ClaimsFor(path)).Should().Equal(Describe(engine.ClaimsFor(path)), $"ClaimsFor({path}) under {described}");
                         fast.CharactersOf(path).Should().Be(engine.CharactersOf(path), $"CharactersOf({path}) under {described}");
