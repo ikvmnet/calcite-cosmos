@@ -621,11 +621,12 @@ consumer asks what it always asked.
 
 1. **The root holds the rules of JSON**, global to the graph: what is true of every document because it is
    JSON. A present property has a present object for a parent. Only an object has properties and only an array
-   has elements. A value is of its own type. A bound, a length or a disequality narrows a domain. A path with no
-   possible type is absent, and absent and present together is a contradiction.
+   has elements. A value is of its own type, and its characters are its own. A bound, a length or a disequality
+   narrows a domain. A path with no possible type is absent, and absent and present together is a contradiction.
 2. **A child of the root holds the rules of JSON Schema**, as local rules (`JsonContexts.JsonSchema`). These
    read what only a schema keyword states — `required`, a closed object, `multipleOf`, `uniqueItems`, counts of
-   items and properties, a stored form — and they include the interpreter for a schema's conditional rules.
+   items and properties, a stored form and the characters it is written in — and they include the interpreter for a
+   schema's conditional rules.
 3. **Each declaration is a context of its own** beneath that. It holds the unconditional facts as facts, the
    conditional ones as rows, and its discriminators marked. Its own split is saturated and frozen once.
 4. **Each established set is a query context**, transient, beneath its declaration.
@@ -641,7 +642,8 @@ paths equal, which is what `CHECK (a = b)` will need.
 
 **A fact says what a path holds if it holds anything.** The facts are: a set of types over string, integer,
 fraction, boolean, null, object and array; a domain; disequalities; numeric bounds; string and array
-lengths; a closed object; required properties; and the rest of JSON Schema's assertions. Each is
+lengths; the bands of a string's characters; a closed object; required properties; and the rest of JSON Schema's
+assertions. Each is
 conditional on presence, as JSON Schema's own keywords are, and an absent path satisfies all of them. Only
 `present`, `absent` and `contains` say whether something is there. A claim `OfType(T, OrNull)` is the set of
 `T`'s members, with `null` added where it is admitted, so `number` is `{integer, fraction}` and *an integer is
@@ -1148,9 +1150,11 @@ is the right test of a theory of facts, and blind to the mistake a theory of pre
 licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
 never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
 discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
-declaration**, not from the filter; and, from a stream of their own so that the rest is drawn as it always was, the
-characters a declared `pattern` would state and sixteen more documents holding strings of either band where the
-declaration lets one stand (*Reading a pattern as characters*). A random filter over its paths is admitted with a random renderer, and every
+declaration**, not from the filter. From a stream of their own, so that the declaration's other claims and the
+filter are drawn as they always were, it draws the characters a declared `pattern` would state, `enum`s and `const`s
+of strings from all three bands, sixteen more documents holding such strings where the declaration lets one stand,
+and conjuncts comparing a path with them by `=`, `IN` and an `OR` of the two (*Characters, a fact of the theory*). A
+random filter over its paths is admitted with a random renderer, and every
 scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
 the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
 
@@ -1187,7 +1191,7 @@ alone, so the parse that would raise is never made — beside other conjuncts it
 out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
 compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
 
-**What it is worth is what it catches.** `PlantedBugTests` plants eight faults, each in a graph of its own — a rule
+**What it is worth is what it catches.** `PlantedBugTests` plants ten faults, each in a graph of its own — a rule
 added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
 scheduled without its guard; the renderer handed the wrong stratum; a declaration read wider than it was written —
 and requires each caught within the trials a run pays for:
@@ -1202,6 +1206,8 @@ and requires each caught within the trials a run pays for:
 | a stratum handing a conjunct its own facts | 0 | the strata |
 | a union of a conjunction with its other arm where one arm is always true | 0 | C5 |
 | a guarded characters claim read of every kind | 0 | a fact |
+| a value's characters read without its surrogates | 9 | a fact |
+| an arm's characters stated of its disjunction | 13 | a fact |
 
 The C5 plant was caught in trial 60 until each trial drew sixteen more documents holding strings of either band
 (*Reading a pattern as characters*), which see it in the first.
@@ -3019,14 +3025,13 @@ the three agree over the values the facts admit.
 **Four rules decide every reading.**
 - **R1, characters.** Code point order and UTF-16 order part only where a surrogate meets a unit from U+E000: at the
   first unit two strings differ in, a unit below U+D800 orders alike against anything. So two sets of strings order
-  alike unless one may hold a surrogate and the other a high unit. A path's characters are asked of the facts as
-  one claim per band, `CosmosCharacters`, which a declared `pattern` states (*Reading a pattern as characters*), a
-  service fact states (`_etag`'s, which the HTTP entity tag grammar fixes), and a domain — an `enum`, a `const`, a
-  filter's list — or a stored form establishes through the claim's own reading of it (`JsonFactSet.Knows`, as a
-  bound is read off a domain; every registered form is ASCII, which `CosmosStoredFormsTests` holds each to). So a
-  pattern recognised as a stored form is not read for its characters too. Otherwise anything: Azure allows every
-  character in an `id` but `/` and `\`. A literal's are its own. A parameter's are anything. Which band a unit is
-  in is decided once, `CosmosCharacters.BandOf`, for a path's strings, a pattern's ranges, a literal and an anchor.
+  alike unless one may hold a surrogate and the other a high unit — the service's measured behaviour, and the one
+  thing about characters decided here (`Agree`). What characters a path's strings hold is a fact of the theory
+  (*Characters, a fact of the theory*), asked of the facts the consumer was decided under (`JsonFactSet.CharactersOf`):
+  a declared `pattern` and a service fact state it, a domain — an `enum`, a `const`, a filter's `=` or `IN`, per
+  disjunct — and a stored form derive it by rules of the theory. Otherwise anything: Azure allows every character in
+  an `id` but `/` and `\`. A literal's are its own, read by the theory's own reader of a value
+  (`JsonFactEncoding.Characters`). A parameter's are anything until it is bound, and then the same reader's.
 - **R2, readings.** Calcite orders what the column reads and the service the stored value: text over strings is the
   strings, a rendering of a number is not; a typed accessor over its declared type is exact; a `BIGINT` read back is
   the stored order within int64, a `DOUBLE` within ±2^53 and refines past it. A comparison reads the document, not a
@@ -3080,7 +3085,7 @@ it answers best first, which for a full text score and for `RRF` is descending, 
 means the service's WGS84 value, as a pushed spatial predicate does (the manual's 18.8), and keeps pushing.
 
 **What it costs, and what it replaces.** The questions read frozen fact tables — presence, types, domains, bounds,
-extensions — and open no oracle scope; the planning gate measured no time added. They replace `NonNullFields`,
+characters — and open no oracle scope; the planning gate measured no time added. They replace `NonNullFields`,
 `NeverNull`, `AlwaysDefined`, `SortableFields`, `CosmosProject.IsOrderable` and the per-site order checks, each of
 which encoded part of this. What they decline that pushed before is the order of strings whose characters nothing
 states: a sort, a page and a keyset seek over `id`, a sort over a declared string, a comparison against a parameter
@@ -3094,9 +3099,10 @@ again but a comparison of two paths and a grouped extreme. A sort split by JSON 
 **A declaration is the first proof a user can write, and `pattern` is the one keyword that states what characters a
 string holds.** That is the owner's decision (D2): not `format`, which JSON Schema calls an annotation, and not a
 container operand, which would say per container what a pattern on `id` says per path. `CosmosPatternAlphabet` reads
-a pattern into `CosmosCharacters`, one claim per band its strings lack, and R1 reads the claim: a path declared below
-U+D800 sorts, takes `MIN` and `MAX`, and compares with a parameter and with any other path at the service, and `id`
-declared so pages and seeks there, proved when the plan is made with nothing checked when the rows arrive.
+a pattern into the bands its strings may hold, a declared fact of the path (`JsonClaim.Characters`, *Characters, a
+fact of the theory*), and R1 reads the fact: a path declared below U+D800 sorts, takes `MIN` and `MAX`, and compares
+with a parameter and with any other path at the service, and `id` declared so pages and seeks there, proved when the
+plan is made with nothing checked when the rows arrive.
 
 **Two readings, and a claim has to hold under both.** JSON Schema names ECMA-262's dialect and no flags. Without the
 `u` flag a pattern is a sequence of UTF-16 units, matched unit by unit: `[^a]` matches either half of a surrogate
@@ -3144,15 +3150,10 @@ across U+D800 and U+E000, negated classes, groups, quantifiers, and the refused 
 some four thousand strings. No band the reader called absent was held by a string either reading matched, and no
 pattern either reading rejects was read. `CosmosPatternAlphabetTests` names the cases.
 
-**In the theory, a claim like any other.** `CosmosCharacters` is a `JsonClaim.Extension`, one per band, so each is
-known or not on its own and a union of a branch lacking both bands with one lacking one keeps the one. It is read
-off a subschema beside any type, a pattern being vacuous for anything but a string as the claim is, and it says for
-itself what establishes it (`JsonClaim.Extension.IsEntailedBy`): a type that is no string, a null, a value or a
-domain without the band, a stored form. That is what lets it survive the nullable union `anyOf: [{type: null}, X]`,
-which keeps what a null satisfies, and the meet of a union whose other branch is a number. Population D draws the
-claim, outright and per kind, from a stream of its own, so that every trial draws the declaration, documents and
-filter it drew before; and sixteen more documents a trial, from that stream, hold strings of either band wherever
-the rules let one stand. A plant reading one kind's characters claim of every kind is caught in the first trial.
+**What it reads is a declared fact, and it decides nothing.** The reader's verdict is stated of the path as a type is,
+read off a subschema beside any type, a pattern being vacuous for anything but a string as the fact is; what the
+fact is worth, and how it meets what else is known of the path, is the theory's (*Characters, a fact of the
+theory*, below).
 
 **`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the stored
 forms read `\d` as `[0-9]` already. A validator in .NET's default dialect or Python's reads `\d` and `\w` as every
@@ -3163,18 +3164,79 @@ form's `\d` says its characters as well, through the form. Recorded in `TODO.md`
 **Two readers of the language, for now.** `CosmosPatternLanguage` puts a pattern in the spelling the stored-form
 tables are keyed by, and reads a UUID's shape by its atoms; this reader parses the language for the characters. They
 ask one keyword different questions — which form, which only matching a spelling answers, and which characters,
-which only a parse does — and each states what `\d` means. A pattern recognised as a stored form beside a declared
-string says its characters through the form and is not read here too. The owner's decision is one parser, the
-tables' spelling printed from its parse; until then the second reader's one defect, dropping a space as though it
-meant nothing, is fixed, ECMA-262 matching a space as itself.
+which only a parse does — and each states what `\d` means. Every pattern is read for its characters, a stored
+form's among them: the theory derives the same of the path from the form, and meets the two as it meets any two
+facts of one path. The owner's decision is one parser, the tables' spelling printed from its parse; until then the
+second reader's one defect, dropping a space as though it meant nothing, is fixed, ECMA-262 matching a space as
+itself.
 
-**What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most two
-extension facts to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
+**What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most one
+fact to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
 4.32 s on both and at a p90 of 152 ms against 159; planned again in 2.06 s against 2.03 and at a p90 of 19.4 ms against
 18.5, the ranges overlapping as the one question's own did; the hierarchy and a declared container's steady state
 the same within their noise. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
 to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
 they did (*Differential testing*).
+
+#### Characters, a fact of the theory
+
+**There are no facts about the documents but the theory's.** That is the owner's rule for this work, and what
+characters a path's strings hold is a fact about the documents like any other. So it is the theory's `chars(p)`: the
+set of bands — a surrogate, a unit from U+E000 — that a string at the path may hold units of, beside those below
+U+D800, which matter to no order. It is a fact like a type, and reasoned with as one. It is said of the value if it
+is a string, so a number, a null or an absent path satisfies every such fact. It lies on the intersect lattice the
+types use: a conjunction meets two sets, and a case join — a discriminator's split, the split over a disjunction's
+arms, the lift of what every case proves — unites them. It holds per branch, a conditional rule stating it as a head,
+and it is licensed per scope, read off the stratum, the child or the declaration a question's licence names. A
+union of a branch lacking both bands with one lacking one keeps the one.
+
+**Each source reaches it the same way: stated or derived in the theory, never computed beside it.**
+- **A declared `pattern`.** `CosmosPatternAlphabet` is a reader of an input. It states its verdict as a declared fact of
+  the path (`JsonClaim.Characters`), beside any type, and decides nothing about what the fact is worth. A pattern that
+  is also a stored form is read like any other; the theory meets the two.
+- **A value.** A rule of JSON: a value's characters are its own. A domain's `chars` is the bands of the strings it
+  holds, read off each value's spelling as its type is (`JsonValues.CharactersOf`, beside `TypesOf`). So an `enum` or a
+  `const` says its characters in the declaration's context, and a filter's `=` or `IN` in the stratum it holds in,
+  through the predicate oracle's establishing rules, which state the domain. Under an `OR` each arm's case states its
+  own and the lift joins them. `WHERE c.s IN ('a', 'b')` proves `s`'s characters in the last stratum (L1) with nothing
+  in C# computing them.
+- **A stored form.** A rule of JSON Schema: a path holding a string in a form holds the characters the form is
+  written in. `JsonFactTheory` states, for every form a declaration names, what the form says of itself
+  (`IJsonStoredForm.Characters`); every registered form is ASCII, and `CosmosStoredFormsTests` holds each one to it.
+- **A service fact.** `_etag`'s characters are stated as data, of the grammar RFC 9110 fixes, as `id`'s type is.
+
+**Stated of every domain, a domain of no string saying none.** The first version derived a row only from a domain
+holding a string. The engine states a row of every domain a run passes through, and a domain only narrows, so a
+row derived from a domain that still held a string outlived it. That happened to `text(x) = '30'` beside a typed
+reading, whose preimage held the string `"30"` until the type took it out. The overlay, reading the last domain,
+answered otherwise, and its differential caught the difference. Stated of every domain, the row a run ends with is
+the one its last domain says, whichever domains it passed through.
+
+**Who reads it.** `JsonFactSet.CharactersOf` is what R1 asks (*The service's order, asked once*), and `Knows` and
+`ClaimsFor` answer it as a claim. `JsonFactOverlay` answers it from its own domain, through the same function the
+rule computes. `JsonFactOverlayTests` holds the two to each other over literals of all three bands, a service fact
+and a declaration. A literal's characters, and a parameter's once it is bound, are read by the same reader of a
+value (`JsonFactEncoding.Characters`), so what a consumer asks of a value is what the theory knows of it.
+
+**What is left in C#.**
+- The reader of the pattern language, which reads an input.
+- `CosmosServiceOrder.Agree`, which says what the service was measured to do with two sets of strings: legality.
+- The meet of an undiscriminated union. `JsonSchemaFacts.Meet` reads `anyOf` before the theory sees it, and keeps
+  a claim every branch entails (`JsonFact.Entails`). Characters take part in it as bounds do: a branch holding no
+  string, a value or a domain, and a stored form each entail a characters claim. That is the one place a character
+  fact is still combined outside the theory. It goes when the reader states such a union as a hidden discriminator's
+  cases, which `TODO.md` records with the rest of the meet.
+
+**How it is checked.**
+- `SoundnessTests` draw strings of all three bands, characters facts true of the document, and a form whose
+  characters are stated, and check every `chars` row derived.
+- Population D (*How the oracle is checked*) draws patterns, `enum`s and `const`s of strings from all three bands,
+  and filters comparing paths with them by `=`, `IN` and an `OR` of the two. It checks every `chars` row and every
+  characters claim each scope answers, on the documents it admits.
+- Two plants are the characters' own, each caught within a run's trials: a value read without its surrogates, and
+  an arm's characters stated of its disjunction.
+- `CharactersTests` and `CosmosOracleCharactersTests` name the cases: a conjunction narrowing, a split widening, a
+  branch, a form, an instance, a filter in its stratum and not in the one it is rendered from.
 
 #### The anchored read: a proof completed as the rows arrive
 

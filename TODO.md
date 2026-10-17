@@ -1285,7 +1285,9 @@ the distribution the gate is sized for.
   `Service.ConstantStringComparisonIsByCodeUnit` for two constants). Every order the service computes is
   asked of `CosmosServiceOrder` (`DESIGN.md`, *The service's order, asked once*). **A declaration proves it
   when the plan is made:** a JSON Schema `pattern` read as the characters a path may hold
-  (`CosmosPatternAlphabet`; *Reading a pattern as characters*). **The rows prove the rest:** the anchored
+  (`CosmosPatternAlphabet`; *Reading a pattern as characters*), and an `enum`, a `const`, a stored form or a
+  filter's `=` or `IN`, each of which the theory derives the characters from (*Characters, a fact of the
+  theory*). **The rows prove the rest:** the anchored
   read (*The anchored read*) sends `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?`, a sort
   over a declared string, a comparison against a parameter, `MAX(c.id)` and a `BIGINT` past int64, and the
   reader checks each value as it arrives and reads a fallback where one breaks the proof. Eight of the nine
@@ -1962,7 +1964,11 @@ holds. Three bugs planted in what was added were each caught by it.
   `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
   33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
-  bottleneck.
+  bottleneck. It is also the one place a fact about characters is still combined outside the theory: an
+  undiscriminated `anyOf` keeps a characters claim where every branch entails one, and a branch holding no string,
+  a value or a domain, and a stored form each do, by rows of `JsonFact.Entails` beside the bounds' (`DESIGN.md`,
+  *Characters, a fact of the theory*). Stated as a hidden discriminator's cases, the theory's lift would join them
+  as it joins a discriminated union's.
 - **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
   conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
   without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
@@ -1989,15 +1995,6 @@ holds. Three bugs planted in what was added were each caught by it.
   in-process evaluation of the same query, over containers with schemas. The plan's step 1, still owed.
 - F7, alias-blind consumers, wants the tests over `CosmosUnnest` aliases the plan names.
 - F9, documentation drift, wants re-reading against what is here now.
-- **Characters as a fact of the theory** — *medium, and the owner's decision.* A path's characters are a
-  claim the theory carries opaquely, `CosmosCharacters`, one per band, which a pattern and a service fact
-  state; a domain and a stored form establish it only as `JsonFactSet.Knows` reads it, through the claim's
-  own `IsEntailedBy`, the way a bound is read off a domain. The owner decided they are a fact of the theory
-  like a type: per path, whether each band can occur, fed by one pattern parser, by each literal's bands as
-  it is loaded and by a rule that an ASCII form holds neither; narrowed by a conjunction, widened by a
-  disjunction, split per branch and licensed per scope, so that `WHERE s IN (…)` under an `OR` proves its
-  characters through the oracle. `CosmosServiceOrder` then asks the fact and keeps only the order's
-  legality: R2 to R4.
 - **What Eggnog adds beyond the closure** — *large, each its own decision.*
   - The rewriter as extraction under an RU cost.
   - Path equality for `CHECK`. The theory has it: a union of two path terms.

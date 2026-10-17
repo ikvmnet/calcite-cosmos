@@ -208,7 +208,11 @@ outright where the strings it orders cannot hold both kinds:
 - the schema lists them — an `enum` or a `const` (Chapter 14);
 - the key is a declared stored form — a UUID or a timestamp, all of whose forms are ASCII (Chapters 14
   and 15);
-- or the `WHERE` lists them: `WHERE c."id" IN ('a', 'b', 'c') ORDER BY c."id"` pushes.
+- or the `WHERE` lists them: `WHERE c."id" IN ('a', 'b', 'c') ORDER BY c."id"` pushes, and so does a list in
+  every arm of an `OR`.
+
+Each holds in a kind's branch too: a `pattern` that one branch of a `oneOf` declares proves the sort where
+the `WHERE` keeps that kind, or kinds whose patterns all prove it (Chapter 14.5).
 
 **Anything else is sent too, and its order completed by the reader.** That includes **`id`** where no
 pattern declares its characters — Azure allows every character in an `id` but `/` and `\` — and a path

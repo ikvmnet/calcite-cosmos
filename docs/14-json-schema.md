@@ -271,8 +271,10 @@ path run in process — `id` included, since Azure allows every character in an 
 
 **A `pattern` that rules those characters out is the proof.** Any pattern the adapter can read
 counts, not only the stored forms of 14.3, and the proof is made when the plan is: nothing is
-checked when the rows come back. Declare the type beside it, since a pattern constrains only a
-string and a text key sorts at the service only over a declared string (Chapter 9.3):
+checked when the rows come back. It is not the only proof — an `enum`, a `const`, a stored form and a
+`WHERE` listing the values each prove the same (Chapter 9.3) — but it is the one that covers strings
+no one listed. Declare the type beside it, since a pattern constrains only a string and a text key
+sorts at the service only over a declared string (Chapter 9.3):
 
 ```json
 "properties": {
