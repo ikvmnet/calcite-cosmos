@@ -3128,7 +3128,10 @@ Unicode digit or word character, fullwidth and supplementary ones among them; th
 out where documents are validated that way (chapter 14.4).
 
 **What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most two
-extension facts to a path. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
+extension facts to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
+4.32 s on both and at a p90 of 152 ms against 159; planned again in 2.06 s against 2.03 and at a p90 of 19.4 ms against
+18.5, the ranges overlapping as the one question's own did; the hierarchy and a declared container's steady state
+the same within their noise. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
 to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
 they did (*Differential testing*).
 
