@@ -53,7 +53,11 @@ That is the safe form of a text comparison (Chapter 8). If the property is alway
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**
 The container does not declare the stored form, or the query reads it with a spelling that cannot push.
 Declare a `pattern` (Chapter 14); for instants, read with `PARSE_DATETIME` or `CAST … FORMAT`, not
-`CAST` or `RETURNING TIMESTAMP` (Chapter 15).
+`CAST` or `RETURNING TIMESTAMP` (Chapter 15). A pattern that one reading of ECMA-262 rejects is no form:
+a UUID pattern with bare braces, `^{…}$`, or with `\-` for a hyphen outside a class, is a literal without
+the `u` flag and an error with it, and earlier versions read both as forms. Write `\{…\}`, and `-` or
+`[\-]` (Chapter 14.3). A pattern with a space in it is no form either, unless the stored strings hold that
+space.
 
 **A query with a parameterised partition key fans out to every partition.**
 Routing is decided from literals while planning; a parameter does not route. If the partition key is
