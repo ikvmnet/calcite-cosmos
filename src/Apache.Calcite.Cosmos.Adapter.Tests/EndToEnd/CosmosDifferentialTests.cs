@@ -176,6 +176,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The documents both plans read: prices present, null and absent; a document with a null
         /// category and one with none, which land in different groups than either expects; names for
         /// the LIKE shapes; a nested object and arrays.
+        /// <para>
+        /// The last four hold at <c>tags[0]</c> what the first does not: a number, a boolean, an object
+        /// and a null. An array's element is a path no fact can be about, and its rendering was once
+        /// compared at the service as though it were a string, which only a fixture of string elements
+        /// could not tell.
+        /// </para>
         /// </summary>
         static readonly string[] Documents =
         [
@@ -186,6 +192,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"5","category":"shoes","name":"Slipper"}""",
             """{"id":"6","category":null,"name":"Uncategorized","price":5}""",
             """{"id":"7","name":"Unfiled","price":10}""",
+            """{"id":"8","category":"bikes","name":"Kickstand","price":15,"tags":[5,"steel"]}""",
+            """{"id":"9","category":"shoes","name":"Insole","price":6,"tags":[true]}""",
+            """{"id":"10","category":"bikes","name":"Basket","price":25,"tags":[{"k":"outdoor"}]}""",
+            """{"id":"11","category":"shoes","name":"Lace","tags":[null,"outdoor"]}""",
         ];
 
         /// <summary>
@@ -882,20 +892,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // The spelling is the one the oracle can evaluate: JSON_QUERY with an array RETURNING
             // agrees pushed and in process, where StringToArray has no Calcite implementation. The
             // container side projects document columns only, since the element binds nothing where a
-            // rule decides; and the bike with two tags is two rows, the one with none is none.
-            ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.k = p.\"id\"", false),
+            // rule decides; and the bike with two tags is two rows, the one with none is none. Over the
+            // first seven documents, whose tags are strings: Calcite's VARCHAR ARRAY asserts its
+            // elements, and raises over the boolean a later one holds.
+            ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t WHERE c.\"id\" IN ('1', '2', '3', '4', '5', '6', '7')) AS p ON v.k = p.\"id\"", false),
 
             // A lookup on a number or a boolean (review probes I4, I12 and I13). The keys reached the
             // batch in Java's boxes, which the SDK wrote as objects, and the service matched nothing:
             // each returned no rows where the in-process join returned them. Integer keys against an
             // integer column, a DOUBLE and a BIGINT against it, a _ts read by one statement and looked
-            // up by another, a boolean through a filtering view, and a _ts through a traversal (K9).
+            // up by another, a boolean through a filtering view, and a _ts through a traversal (K9), over
+            // the documents whose tags are strings, as the traversal above.
             ("SELECT t.\"id\" FROM (VALUES (120), (80)) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS DOUBLE)), (CAST(80.5 AS DOUBLE))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS BIGINT)), (CAST(80 AS BIGINT))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN products AS p ON v.\"ts\" = p.\"_ts\"", false),
             ("SELECT p.\"id\" FROM (VALUES (TRUE)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING BOOLEAN) AS \"b\" FROM typed AS c WHERE c.\"id\" = '3') AS p ON v.k = p.\"b\"", false),
-            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN (SELECT c.\"id\", c.\"_ts\" AS \"ts\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.\"ts\" = p.\"ts\"", false),
+            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN (SELECT c.\"id\", c.\"_ts\" AS \"ts\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t WHERE c.\"id\" IN ('1', '2', '3', '4', '5', '6', '7')) AS p ON v.\"ts\" = p.\"ts\"", false),
 
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
             // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
@@ -1125,6 +1138,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[2]') FROM products AS c", false),
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[3]') FROM products AS c", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') = 'outdoor'", false),
+
+            // An element compared as text, where tags[0] holds a string, a number, a boolean, an object and a null. It
+            // has no document path, and was read as a value its type alone knew, a string: each was sent exact, as
+            // c.tags[0] < @p0, and lost the number and the boolean, which Calcite compares as their text -- 5 renders
+            // '5', below 'm', and true 'true', above 'BIKES' -- and the service across types.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') < 'm'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') >= 'm'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') > 'BIKES'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.tags[0]') <= 'outdoor')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') >= 'outdoor'", false),
+
+            // A value the service computes, which may hold a JSON null where Calcite reads null: the CASE hands the
+            // marathon's null price through, and the service's null <= null keeps the row Calcite's unknown drops.
+            ("SELECT c.\"id\" FROM products AS c WHERE CASE WHEN c.\"$.category\" = 'bikes' THEN CAST(NULL AS INTEGER) ELSE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) END <= JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 1 > JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", false),
 
             // CASE, whose arms are where an unknown condition goes somewhere visible.
             ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END FROM products AS c", false),
@@ -1752,6 +1780,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING CHAR(3)) = ?", ["a"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["a"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["\uE000"], false),
+
+            // An element compared as text with a parameter, which no anchor makes exact: the element may be a number.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') < ?", ["m"], false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') > ?", ["BIKES"], false),
 
             // A comparison under an OR, its conjunct rechecked whole where a value is no anchor, the equality beside it
             // read back as the service answered it.
