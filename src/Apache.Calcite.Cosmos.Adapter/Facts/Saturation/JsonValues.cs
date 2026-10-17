@@ -129,7 +129,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             (decimal Least, decimal Most)? span = null;
             foreach (var value in values)
             {
-                if (IsNumber(value) == false)
+                // Read off the tag in place: a domain of strings, the commonest, is passed over without a copy of each.
+                if (value.StartsWith(IntegerType + "|", StringComparison.Ordinal) == false && value.StartsWith(FractionType + "|", StringComparison.Ordinal) == false)
                     continue;
 
                 if (TryNumberOf(value, out var x) == false)

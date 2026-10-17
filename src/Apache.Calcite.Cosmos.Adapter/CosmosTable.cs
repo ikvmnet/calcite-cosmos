@@ -230,20 +230,39 @@ namespace Apache.Calcite.Cosmos.Adapter
             if (CosmosServiceFacts.Properties.Contains(name) == false)
                 return null;
 
-            var facts = Facts.CosmosOracle.For(_container.Facts).Declared;
-            var path = Facts.JsonDocumentPath.Root.Property(name);
-
-            SqlTypeName? sql =
-                facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.String))) ? SqlTypeName.VARCHAR
-                : facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.Integer))) ? SqlTypeName.BIGINT
+            // Read once a table: the declaration is frozen, and the row type is asked for every time a statement over
+            // the table is prepared.
+            var read = _serviceColumns ??= ReadServiceColumns();
+            return read.TryGetValue(name, out var column)
+                ? typeFactory.createTypeWithNullability(typeFactory.createSqlType(column.Type), column.Nullable)
                 : null;
-
-            if (sql is not SqlTypeName known)
-                return null;
-
-            var present = facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.Present()));
-            return typeFactory.createTypeWithNullability(typeFactory.createSqlType(known), present == false);
         }
+
+        /// <summary>
+        /// What the theory knows of each of the service's properties, as the SQL type a column bound to it reads.
+        /// </summary>
+        Dictionary<string, (SqlTypeName Type, bool Nullable)> ReadServiceColumns()
+        {
+            var facts = Facts.CosmosOracle.For(_container.Facts).Declared;
+            var columns = new Dictionary<string, (SqlTypeName, bool)>(System.StringComparer.Ordinal);
+
+            foreach (var name in CosmosServiceFacts.Properties)
+            {
+                var path = Facts.JsonDocumentPath.Root.Property(name);
+
+                SqlTypeName? sql =
+                    facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.String))) ? SqlTypeName.VARCHAR
+                    : facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.Integer))) ? SqlTypeName.BIGINT
+                    : null;
+
+                if (sql is SqlTypeName known)
+                    columns[name] = (known, facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.Present())) == false);
+            }
+
+            return columns;
+        }
+
+        Dictionary<string, (SqlTypeName Type, bool Nullable)>? _serviceColumns;
 
         /// <summary>
         /// Returns the ordinal of the column carrying a declared path, or <c>-1</c>.
