@@ -242,8 +242,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "Each physical partition orders strings by code point, and the SDK merges the partitions' streams by String.CompareOrdinal, UTF-16, the lower feed range first on a tie: a stream from two partitions may be in neither order.",
                 CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosOrderMergeMeasurementTests.ACrossPartitionOrderIsTheMergeOfCodePointRuns"),
 
-            new("Service.UndefinedSortsFirstAscending",
-                "ORDER BY puts undefined first ascending and last descending, DESC being the exact reverse of ASC.",
+            new("Service.ComputedOrderKeepsTheTypeOrder",
+                "ORDER BY over a computed value, ST_DISTANCE undefined over a row, keeps the type order a path's has: undefined first ascending and last descending, DESC the exact reverse of ASC.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.UndefinedSortsFirstAscendingAndLastDescending"),
             new("Service.SpatialOrderByTakesTheCallAlone",
                 "ORDER BY takes a spatial call and nothing built around one: a conditional over it, or a second key beside it, fails the statement.",

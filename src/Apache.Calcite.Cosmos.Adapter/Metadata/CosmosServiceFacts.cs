@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // seconds is some 285 million years.
             var timestamp = JsonDocumentPath.Root.Property(CosmosContainerMetadata.TimestampPropertyName);
             rules.Add(JsonFactRule.Unconditional(new JsonFact(timestamp, new JsonClaim.LowerBound(0))));
-            rules.Add(JsonFactRule.Unconditional(new JsonFact(timestamp, new JsonClaim.UpperBound(9007199254740992m, Exclusive: true))));
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(timestamp, new JsonClaim.UpperBound(CosmosServiceOrder.TwoTo53, Exclusive: true))));
 
             // Service-generated, and a string. Excluded from the index by default, which bears on what
             // a predicate over it costs, and makes an ORDER BY over it a 400 (see

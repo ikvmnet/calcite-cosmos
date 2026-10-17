@@ -127,7 +127,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         readonly record struct Reading(CosmosOrderAgreement Agreement, Classes Values, Classes Nulls, Bands Characters, bool Constant, JsonDocumentPath? Path, string Why, CosmosOrderAnchor Anchorable = CosmosOrderAnchor.None);
 
-        const decimal TwoTo53 = 9007199254740992m;
+        /// <summary>
+        /// 2^53: past it a double ties an integer with its neighbour, and within it every integer is one value however
+        /// the service holds it or a response prints it.
+        /// </summary>
+        internal const decimal TwoTo53 = 9007199254740992m;
 
         const decimal Int64Least = -9223372036854775808m;
 
@@ -522,7 +526,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return null;
 
             var last = lower[^1];
-            return lower.Substring(0, lower.Length - 1) + (last == '퟿' ? '' : (char)(last + 1));
+            return lower.Substring(0, lower.Length - 1) + (last == '\uD7FF' ? '\uE000' : (char)(last + 1));
         }
 
         /// <summary>
