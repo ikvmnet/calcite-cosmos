@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -52,6 +52,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
                 "guid": { "type": "string", "pattern": "{{Uuid}}" },
                 "ref": { "type": "string" } } }
             """;
+
+        /// <summary>
+        /// <see cref="Schema"/>, with <c>ref</c> one of three strings below U+D800, so that a page ordered by it is the
+        /// service's to take.
+        /// </summary>
+        static readonly string Paging = Schema.Replace("\"ref\": { \"type\": \"string\" }", "\"ref\": { \"enum\": [\"a\", \"b\", \"c\"] }");
 
         static CosmosContainerMetadata Container(string name = "items", string partitionKey = "/linkId", string? schema = null, IReadOnlyList<IReadOnlyList<string>>? uniqueKeys = null) =>
             new CosmosContainerMetadata(name, new[] { partitionKey }, uniqueKeys: uniqueKeys)
@@ -452,6 +458,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// Two views, the left of them sorted and paged before the join, the way a paged query over a
         /// table-per-type hierarchy is written.
         /// </summary>
+        /// <remarks>
+        /// Paged by <c>ref</c>, which <see cref="Paging"/> declares a domain of strings below U+D800. A page
+        /// ordered by text whose characters nothing declares is Calcite's to take, the service ordering
+        /// strings by code point where Calcite orders them by UTF-16 code unit
+        /// (<see cref="CosmosServiceOrder"/>), and that is not what these are about.
+        /// </remarks>
         static string Paged(string join, bool rightPaged = false)
         {
             var page = """
@@ -476,7 +488,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         [Fact]
         public void ALeftJoinOntoAPageIsOneReadWithThePageAtTheService()
         {
-            var plan = Plan(Paged("LEFT"), Container().WithConstraints(new[] { Unique("/guid") }));
+            var plan = Plan(Paged("LEFT"), Container(schema: Paging).WithConstraints(new[] { Unique("/guid") }));
 
             Scans(plan).Should().Be(1, Text(plan));
             Text(plan).Should().NotContain("Join", Text(plan));
@@ -491,7 +503,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         [Fact]
         public void ARightJoinOntoAPageIsOneRead()
         {
-            var plan = Plan(Paged("RIGHT", rightPaged: true), Container().WithConstraints(new[] { Unique("/guid") }));
+            var plan = Plan(Paged("RIGHT", rightPaged: true), Container(schema: Paging).WithConstraints(new[] { Unique("/guid") }));
 
             Scans(plan).Should().Be(1, Text(plan));
             Text(plan).Should().MatchRegex(@"CosmosSort\([^\n]*offset=\[2\], fetch=\[5\]", "the page is the service's:\n" + Text(plan));

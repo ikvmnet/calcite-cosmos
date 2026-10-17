@@ -1,4 +1,4 @@
-using Apache.Calcite.Cosmos.Adapter.Metadata;
+﻿using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -26,10 +26,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// the cast's operand wherever it calls the cast monotonic — which it does of a cast of text to an instant or a UUID.
     /// The sort beneath then orders the operand's text where the plan asked for the converted value: <c>'2024-1-5'</c>
     /// after <c>'2024-10-1'</c> as text and before it as a date. The plan's inventory found twelve such transposes the
-    /// planner admitted and, by luck of the costs, never chose. Whether a stored spelling orders as the converted value
-    /// is a fact about a path, which the sort asks with its facts in hand of a conversion it reads off the projection;
-    /// with no facts, a cast moves beneath the sort only where it preserves the order of every value it can be given —
-    /// see <see cref="CosmosServiceOrder.CastPreservesOrder"/>.
+    /// planner admitted and, by luck of the costs, never chose. So a cast moves beneath the sort where it preserves the
+    /// order of every value it can be given — see <see cref="CosmosServiceOrder.CastPreservesOrder"/> — or where it is a
+    /// conversion of text whose stored spelling the facts say orders as the converted value: asked of
+    /// <see cref="CosmosServiceOrder.OrderBy"/>, of what the rows the projection reads are known to satisfy, as the sort
+    /// over the projection would ask it. That second question reads the binding and the facts, and is asked only of a
+    /// cast the first refused.
     /// </para>
     /// <para>
     /// A transformation adds an equivalence rather than replacing one, so the untransposed plan survives and the planner
@@ -69,11 +71,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (index < 0 || index >= projects.size())
                     return false;
 
-                if (PreservesOrder((RexNode)projects.get(index)) == false)
+                var key = (RexNode)projects.get(index);
+                if (PreservesOrder(key) == false && IsStoredFormConversion(project, key, (RelFieldCollation)collations.get(i)) == false)
                     return false;
             }
 
             return base.matches(call);
+        }
+
+        /// <summary>
+        /// Determines whether a projected key is a conversion of text into an instant or a UUID whose stored spelling the
+        /// facts say orders as the converted value, under this key's direction and placement.
+        /// </summary>
+        static bool IsStoredFormConversion(Project project, RexNode node, RelFieldCollation collation)
+        {
+            if (node is not RexCall cast
+                || cast.getKind() != SqlKind.CAST && cast.getKind() != SqlKind.SAFE_CAST
+                || cast.getOperands().size() != 1
+                || cast.getOperands().get(0) is not RexInputRef operand)
+                return false;
+
+            var target = cast.getType().getSqlTypeName();
+            var held = CosmosTemporalParse.PartsOf(target);
+            if (held == CosmosTemporalParts.None && target != org.apache.calcite.sql.type.SqlTypeName.UUID)
+                return false;
+
+            if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _, out _, out var container) == false
+                || operand.getIndex() >= fields.Count
+                || fields[operand.getIndex()] is not Sql.CosmosPath path
+                || string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, System.StringComparison.Ordinal) == false
+                || CosmosDocumentPaths.From(path) is not Apache.Calcite.Cosmos.Facts.JsonDocumentPath document)
+                return false;
+
+            var facts = CosmosRowFacts.Of(project.getInput(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.OrderBy);
+            return CosmosServiceOrder.OrderBy(facts, new[] { new CosmosOrderKey(CosmosOrderOperand.ForConversion(document, null, held), collation) }).IsProved;
         }
 
         /// <summary>

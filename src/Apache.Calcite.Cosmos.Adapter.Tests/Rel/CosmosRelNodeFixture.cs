@@ -177,8 +177,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             return RelCollations.of(list);
         }
 
-        protected CosmosSort SortOver(RelNode input, RelCollation collation, RexNode? offset = null, RexNode? fetch = null) =>
-            new(_cluster, Traits(), input, collation, offset, fetch);
+        /// <summary>
+        /// What a sort these tests build is decided under: the products as declared, but with every <c>id</c> one of
+        /// a few strings below U+0100.
+        /// </summary>
+        /// <remarks>
+        /// The service orders <c>id</c> by code point and Calcite by UTF-16 code unit, which part over characters
+        /// either side of U+D800, and nothing the service says of <c>id</c> rules those out — so without a fact
+        /// about its characters a sort keyed by it declines. These tests are about the shape a sort renders, not about
+        /// that, and the domain is the least that proves it; the decline itself is
+        /// <c>CosmosSortTests.Resolution.AnIdIsOrderedOnlyWhereItsCharactersAreKnown</c>'s.
+        /// </remarks>
+        protected static readonly Apache.Calcite.Cosmos.Facts.JsonFactSet SortFacts = Apache.Calcite.Cosmos.Facts.CosmosOracle.For(
+            Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""{ "type": "object", "properties": { "id": { "enum": ["1", "2", "3"] } } }""")!)).Facts).Declared;
+
+        protected CosmosSort SortOver(RelNode input, RelCollation collation, RexNode? offset = null, RexNode? fetch = null, Apache.Calcite.Cosmos.Facts.JsonFactSet? facts = null) =>
+            new(_cluster, Traits(), input, collation, offset, fetch, facts ?? SortFacts);
 
         protected static string Sql(CosmosRel rel, CosmosImplementor implementor)
         {

@@ -3769,7 +3769,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var type = node.getType()?.getSqlTypeName() ?? SqlTypeName.ANY;
 
             if (node is RexLiteral literal)
-                return literal.isNull() == false && JsonScalar.TryFrom(GetLiteralValue(literal), out var value)
+                return literal.isNull() == false && IsCharacter(literal) && JsonScalar.TryFrom(GetLiteralValue(literal), out var value)
                     ? Metadata.CosmosOrderOperand.ForLiteral(value)
                     : Metadata.CosmosOrderOperand.ForExpression(type);
 

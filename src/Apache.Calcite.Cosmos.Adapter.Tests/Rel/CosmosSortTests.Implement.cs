@@ -60,9 +60,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     ("d", Distance()),
                 });
 
-                var sort = SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING)));
+                var sort = SortOver(project, NullsFirst(1));
 
                 Sql(sort, Implementor()).Should().EndWith($"ORDER BY ST_DISTANCE(c.location, {Here}) ASC");
+            }
+
+            /// <summary>
+            /// A distance is null where its operand is and undefined where the service cannot measure it, and the
+            /// service sorts both first ascending; so with nothing declared of the operand, only that placement is the
+            /// service's. Declared a geography, the operand has neither — see <c>CosmosPlannerTests</c>.
+            /// </summary>
+            [Fact]
+            public void ASortOverADistanceOfAnUndeclaredShapePlacesItsNullsFirstOrNotAtAll()
+            {
+                var project = ProjectOver(Scan(), new[]
+                {
+                    ("id", Ref(1)),
+                    ("d", Distance()),
+                });
+
+                var implement = () => Sql(SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING))), Implementor());
+                implement.Should().Throw<CosmosTranslationException>("an unspecified placement is last, as Calcite runs it");
+            }
+
+            /// <summary>
+            /// A sort keyed by <c>id</c> declines where nothing is known of its characters: the service orders them by
+            /// code point and Calcite by UTF-16 code unit, which part either side of U+D800.
+            /// </summary>
+            [Fact]
+            public void AnIdSortWhoseCharactersAreUnknownIsDeclined()
+            {
+                var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)), facts: Apache.Calcite.Cosmos.Facts.CosmosOracle.For(Products.Facts).Declared);
+
+                var implement = () => Sql(sort, Implementor());
+                implement.Should().Throw<CosmosTranslationException>();
+            }
+
+            static RelCollation NullsFirst(int index)
+            {
+                var list = new java.util.ArrayList();
+                list.add(new RelFieldCollation(index, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.FIRST));
+                return RelCollations.of(list);
             }
 
             /// <summary>

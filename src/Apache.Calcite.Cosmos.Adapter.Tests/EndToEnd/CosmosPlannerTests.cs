@@ -710,7 +710,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void SortIsSelectedWhenTheCompositeIndexPermitsIt()
         {
-            var best = PlanToCosmos("SELECT * FROM products AS c ORDER BY c.\"id\", c.\"_ts\"");
+            var best = PlanToCosmos("SELECT * FROM products AS c WHERE c.\"id\" IN ('a', 'b') ORDER BY c.\"id\", c.\"_ts\"");
 
             Plan(best).Should().Contain("CosmosSort");
             Render(best).Should().Contain("ORDER BY c.id ASC, c._ts ASC");
@@ -1306,9 +1306,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void SortPushesPastAnAllPathProjection()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" AS \"i\" FROM products AS c ORDER BY c.\"id\"");
+            var best = PlanToCosmos("SELECT c.\"_ts\" AS \"i\" FROM products AS c ORDER BY c.\"_ts\"");
 
-            Render(best).Should().Contain("ORDER BY c.id ASC");
+            Render(best).Should().Contain("ORDER BY c._ts ASC");
         }
 
         /// <remarks>
@@ -1319,9 +1319,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void SortOnAPlainColumnPushesPastAComputedProjection()
         {
-            var best = PlanToCosmos("SELECT UPPER(c.\"id\") AS \"u\", c.\"id\" AS \"i\" FROM products AS c ORDER BY c.\"id\"");
+            var best = PlanToCosmos("SELECT UPPER(c.\"id\") AS \"u\", c.\"_ts\" AS \"i\" FROM products AS c ORDER BY c.\"_ts\"");
 
-            Render(best).Should().Contain("ORDER BY c.id ASC");
+            Render(best).Should().Contain("ORDER BY c._ts ASC");
         }
 
         /// <remarks>
@@ -1364,15 +1364,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void OrderingByAColumnOutsideTheSelectListPushesAsOneStatement()
         {
-            var best = PlanToCosmos("SELECT c.\"$.category\" FROM products AS c ORDER BY c.\"id\"");
+            var best = PlanToCosmos("SELECT c.\"$.category\" FROM products AS c ORDER BY c.\"_ts\"");
 
             Plan(best).Should().Be(
                 "CosmosProject($.category=[$4])\n" +
-                "  CosmosSort(sort0=[$1], dir0=[ASC])\n" +
+                "  CosmosSort(sort0=[$2], dir0=[ASC])\n" +
                 "    CosmosTableScan(table=[[products]])",
                 "the two projections fold into the one the statement has room for");
 
-            Render(best).Should().Be("SELECT VALUE { \"$.category\": c.category } FROM products c ORDER BY c.id ASC");
+            Render(best).Should().Be("SELECT VALUE { \"$.category\": c.category } FROM products c ORDER BY c._ts ASC");
         }
 
 
@@ -1395,11 +1395,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ASortIsNotPushedOntoASubtreeThatHasAlreadySorted()
         {
-            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"id\"");
+            var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"_ts\" FETCH NEXT 5 ROWS ONLY) AS x ORDER BY x.\"_ts\"");
             var plan = Plan(best);
 
             plan.Should().Contain("ClrCursorSort", "the second ordering stays in process: " + plan);
-            Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 5");
+            Render(FindCosmos(best)).Should().Contain("ORDER BY c._ts ASC OFFSET 0 LIMIT 5");
         }
 
         /// <summary>
@@ -1447,7 +1447,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void AnArrayTraversalIsNotPushedOntoAPagedOrDistinctSubtree()
         {
-            var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"id\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
+            var paged = PlanToAsync("SELECT c.\"id\" FROM (SELECT * FROM products AS p ORDER BY p.\"_ts\" FETCH NEXT 5 ROWS ONLY) AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS t");
 
             Plan(paged).Should().NotContain("CosmosUnnest", "the page is taken before the traversal: " + Plan(paged));
             Render(FindCosmos(paged)).Should().Contain("OFFSET 0 LIMIT 5");
@@ -2010,16 +2010,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A sort keyed by a column that is the stored value whatever the container declares still
-        /// reaches the service: the service's own <c>id</c> and <c>_ts</c>.
+        /// reaches the service: the service's own <c>_ts</c>.
         /// </summary>
         /// <remarks>
-        /// Typed and bound to a path, as an accessor with a <c>RETURNING</c> is, and asked nothing of
-        /// the container because neither can be null — so neither is an accessor's reading, which
-        /// answers null for a value of another type. A <c>RETURNING</c> key pushes where the container
-        /// declares its type; <c>CosmosDeclaredFactPlanningTests</c> holds that.
+        /// Typed and bound to a path, as an accessor with a <c>RETURNING</c> is, and asking nothing of
+        /// the container: the service states it is there, an integer, and below 2^53, which is all an
+        /// order of it needs. Its <c>id</c> is a string the service says nothing of the characters of,
+        /// and orders only where they are known — see <see cref="AnIdOrdersOnlyWhereItsCharactersAreKnown"/>.
+        /// A <c>RETURNING</c> key pushes where the container declares its type;
+        /// <c>CosmosDeclaredFactPlanningTests</c> holds that.
         /// </remarks>
         [Theory]
-        [InlineData("SELECT c.\"id\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY", "ORDER BY c.id ASC OFFSET 0 LIMIT 5")]
+        [InlineData("SELECT c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\" FETCH NEXT 5 ROWS ONLY", "ORDER BY c._ts ASC OFFSET 0 LIMIT 5")]
         [InlineData("SELECT c.\"id\", c.\"_ts\" FROM products AS c ORDER BY c.\"_ts\" DESC", "ORDER BY c._ts DESC")]
         public void ASortOverAColumnReadAsDeclaredStillPushes(string sql, string clause)
         {
@@ -2528,7 +2530,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void TheSharedScoreReachesTheRankClause()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY CLR_FT_SCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel')");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY CLR_FT_SCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC");
 
             Plan(best).Should().Contain("CosmosRank", "the rule reads the name, not the operator: " + Plan(best));
 
@@ -3324,14 +3326,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ASortOnAnUncastColumnPushesPastAnUnrenderableProjection()
         {
-            var best = PlanToAsync("SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+            var best = PlanToAsync("SELECT c.\"_ts\", CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER) AS \"p\" FROM products AS c ORDER BY c.\"_ts\" FETCH NEXT 10 ROWS ONLY");
             var plan = Plan(best);
 
             plan.Should().Contain("CosmosSort", "the sort belongs at the service: " + plan);
             plan.Should().NotContain("ClrCursorSort", "and must not also remain in process: " + plan);
             plan.Should().Contain("ClrCursorProject", "the cast itself still runs in process: " + plan);
 
-            Render(FindCosmos(best)).Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 10");
+            Render(FindCosmos(best)).Should().Contain("ORDER BY c._ts ASC OFFSET 0 LIMIT 10");
         }
 
         /// <remarks>
@@ -3365,7 +3367,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var best = PlanToAsync(
                 "SELECT c.\"id\", CAST(JSON_VALUE(c.\"DOC\", '$.name') AS VARCHAR) AS \"n\" FROM products AS c " +
-                "WHERE c.\"$.category\" = 'bikes' ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY");
+                "WHERE c.\"$.category\" = 'bikes' ORDER BY c.\"_ts\" FETCH NEXT 10 ROWS ONLY");
 
             var plan = Plan(best);
             plan.Should().NotContain("ClrCursorProject", "nothing is left for the plan to do: " + plan);
@@ -3373,7 +3375,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var sql = Render(FindCosmos(best));
 
             sql.Should().Contain("WHERE (c.category = @p0)");
-            sql.Should().Contain("ORDER BY c.id ASC OFFSET 0 LIMIT 10");
+            sql.Should().Contain("ORDER BY c._ts ASC OFFSET 0 LIMIT 10");
         }
 
         /// <remarks>
@@ -3383,7 +3385,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void WithNoCastTheWholeStatementPushesAsBefore()
         {
-            var plan = Plan(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 10 ROWS ONLY"));
+            var plan = Plan(PlanToAsync("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c ORDER BY c.\"_ts\" FETCH NEXT 10 ROWS ONLY"));
 
             plan.Should().Contain("CosmosSort");
             plan.Should().Contain("CosmosProject");
@@ -4043,7 +4045,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void OrderingByAScoreBecomesOrderByRank()
         {
-            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
+            var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
             var sql = Render(best);
 
             sql.Should().Be("SELECT TOP 10 VALUE { \"id\": c.id } FROM products c ORDER BY RANK FULLTEXTSCORE(c.name, @p0)");
@@ -4056,7 +4058,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void TheRankKeywordIsBound()
         {
-            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 5 ROWS ONLY"));
+            var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 5 ROWS ONLY"));
 
             query.Parameters.Should().ContainSingle().Which.Value.Should().Be("steel");
         }
@@ -4069,7 +4071,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         {
             var best = PlanToCosmos(
                 "SELECT c.\"id\" FROM products AS c " +
-                "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) " +
+                "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) DESC " +
                 "FETCH FIRST 10 ROWS ONLY");
 
             Render(best).Should().Contain("ORDER BY RANK RRF(FULLTEXTSCORE(c.name, @p0), FULLTEXTSCORE(c.tags, @p1))");
@@ -4142,8 +4144,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ARankOverAnUndeclaredPathIsPushedDownAndPricedAsAScan()
         {
-            var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') FETCH FIRST 10 ROWS ONLY");
-            var declared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
+            var undeclared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.description'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
+            var declared = PlanToCosmos("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
 
             Render(undeclared).Should().Contain("ORDER BY RANK FULLTEXTSCORE(c.description, @p0)");
 

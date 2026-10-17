@@ -157,8 +157,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 var reading = Read(facts, key.Operand, printed: true);
 
-                // R4: a key one value over every row orders nothing, whatever it reads that value as.
-                if (reading.Constant)
+                // R4: a key one value over every row orders nothing, whatever it reads that value as; and nor does a key
+                // that reads every row as null, Calcite tying every null, though the service holds values there.
+                if (reading.Constant || reading.Agreement != CosmosOrderAgreement.None && reading.Values == Classes.None)
                     continue;
 
                 // R4: and nor does a key on a path an earlier key orders exactly. Tied there, two rows hold one stored
@@ -181,6 +182,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 if (IsOneClass(reading.Values) == false)
                     return CosmosOrderVerdict.Refused("two JSON types, which the service orders by type first");
+
+                // R1: one path's strings against each other.
+                if (OrdersItsStrings(reading) == false)
+                    return CosmosOrderVerdict.Refused("text across U+D800: " + Describe(reading.Characters));
 
                 // R3: the null class on Calcite's side of the values. Ascending puts the low types first at the service,
                 // descending the high ones; Calcite puts nulls first or last whatever the direction.
@@ -229,6 +234,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (IsOneClass(reading.Values) == false)
                 return CosmosOrderVerdict.Refused("two JSON types, which the service's extreme compares by type first");
+
+            if (OrdersItsStrings(reading) == false)
+                return CosmosOrderVerdict.Refused("text across U+D800: " + Describe(reading.Characters));
 
             if ((reading.Nulls & ~Classes.Undefined) != Classes.None)
                 return CosmosOrderVerdict.Refused("the service's extreme counts " + Describe(reading.Nulls & ~Classes.Undefined) + ", which Calcite skips");
@@ -397,12 +405,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // else as null (Calcite.JsonValueRendersScalarsAsText).
                 var text = As(Classes.String | Classes.Number | Classes.Boolean, CosmosOrderAgreement.Exact, "text");
 
-                if ((text.Values & (Classes.Number | Classes.Boolean)) != Classes.None)
-                    return text with { Agreement = CosmosOrderAgreement.None, Why = "a rendering of what may not be a string, which orders as text in Calcite and by type and value at the service" };
-
-                return Agree(characters, characters) || (text.Values & Classes.String) == Classes.None
+                return (text.Values & (Classes.Number | Classes.Boolean)) == Classes.None
                     ? text
-                    : text with { Agreement = CosmosOrderAgreement.None, Why = "text across U+D800: " + Describe(characters) };
+                    : text with { Agreement = CosmosOrderAgreement.None, Why = "a rendering of what may not be a string, which orders as text in Calcite and by type and value at the service" };
             }
 
             if (type == SqlTypeName.BOOLEAN)
@@ -453,8 +458,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Reads a conversion of a path's text: by the stored spelling, where the path's form keeps the order, the
-        /// conversion reads that form, and the guard the projection renders is vacuous.
+        /// Reads a conversion of a path's text: by the stored spelling, where the path's form keeps the order and the
+        /// conversion reads that form.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -464,14 +469,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// neither is a UUID cast, which the engine performs (<c>Calcite.UuidOrderIsCanonicalOrdinal</c>).
         /// </para>
         /// <para>
-        /// <b>And the path a scalar in every document.</b> The column is rendered through
-        /// <c>IS_PRIMITIVE(c.p) ? c.p : null</c>, so an object at the path reads null in the column and sorts above every
-        /// string at the service; a path known present and a scalar has none.
+        /// <b>And its null class is the guard's.</b> The column is rendered through <c>IS_PRIMITIVE(c.p) ? c.p : null</c>,
+        /// so an absent path, a JSON null, an object and an array read null in the column, and the service sorts the
+        /// first two below every string and the others above: R3 decides, as of any key. A number or a boolean at the
+        /// path is no spelling of the value, and is refused as a rendering is.
         /// </para>
         /// </remarks>
         static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath path, string? format, CosmosTemporalParts held)
         {
-            var refused = new Reading(CosmosOrderAgreement.None, Classes.String, Classes.None, Bands.Low, false, path, "a conversion with no stored form that keeps its order");
+            var admitted = Admitted(facts, path, out _, out var constant);
+            var values = admitted & (Classes.String | Classes.Number | Classes.Boolean);
+            var refused = new Reading(CosmosOrderAgreement.None, values, admitted & ~values, Bands.Low, constant, path, "a conversion with no stored form that keeps its order");
+
+            if ((values & (Classes.Number | Classes.Boolean)) != Classes.None)
+                return refused with { Why = "a conversion over what may not be a string" };
 
             if (facts.RepresentationOf(path) is not CosmosRepresentation representation || representation.PreservesOrder == false)
                 return refused;
@@ -485,9 +496,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 return refused with { Why = "a cast the engine cannot read the stored form by" };
             }
-
-            if (facts.IsAlwaysScalar(path) == false)
-                return refused with { Why = "a conversion over a path not always a scalar, whose guard reads null where the service orders a value" };
 
             return refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" };
         }
@@ -593,6 +601,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             nullsFirst = (RelFieldCollation.NullDirection.__Enum)collation.nullDirection.ordinal() == RelFieldCollation.NullDirection.__Enum.FIRST;
             return null;
         }
+
+        /// <summary>
+        /// Determines whether the strings a reading may hold order among themselves alike by code point and by UTF-16
+        /// code unit.
+        /// </summary>
+        static bool OrdersItsStrings(Reading reading) =>
+            (reading.Values & Classes.String) == Classes.None || Agree(reading.Characters, reading.Characters);
 
         /// <summary>
         /// Determines whether two sets of strings order alike by code point and by UTF-16 code unit: unless one may hold a
