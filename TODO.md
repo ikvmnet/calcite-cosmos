@@ -1287,14 +1287,13 @@ the distribution the gate is sized for.
   used to recommend — a sort over a declared string, a comparison against a parameter or between two
   declared strings, and the extreme of either. The earlier entry here put the decline "in one place,
   the text exception of `IsReadAsStored`"; that is withdrawn, `IsReadAsStored` staying the equality
-  question for grouping and lookup keys. What recovers the rest:
-  - **the anchored read**: the order checked as the rows arrive, against what the plan could not
-    prove, with a fallback statement where a row breaks it — a proof at run time, which the owner
-    counts as a proof;
-  - **a sort split by JSON type**, for the null placement and the mixed-type keys (section 5);
+  question for grouping and lookup keys. What recovers the rest, the declaration first:
   - **a JSON Schema `pattern` read as the characters a path may hold**, as `CosmosCharacters`, the way
     `PreservesOrder` licenses a stored form. It must read the raw pattern, not
-    `CosmosPatternLanguage.Normalise`'s output (below).
+    `CosmosPatternLanguage.Normalise`'s output (below);
+  - **the anchored read**: the order checked as the rows arrive, against what the plan could not
+    prove, with a fallback statement where a row breaks it — a proof at run time, which counts as one;
+  - **a sort split by JSON type**, for the null placement and the mixed-type keys (section 5).
 - **A grouped statement ordered by its key** — *small, and measured.* `GROUP BY k ORDER BY k` is
   accepted and honoured on Azure, both directions and with `OFFSET LIMIT`, but only where the select
   list carries an aggregate or the statement has a partition key: a grouped statement selecting only

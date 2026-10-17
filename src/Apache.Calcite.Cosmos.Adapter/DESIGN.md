@@ -3045,9 +3045,10 @@ extensions — and open no oracle scope; the planning gate measured no time adde
 `NeverNull`, `AlwaysDefined`, `SortableFields`, `CosmosProject.IsOrderable` and the per-site order checks, each of
 which encoded part of this. What they decline that pushed before is the order of strings whose characters nothing
 states: a sort, a page and a keyset seek over `id`, a sort over a declared string, a comparison against a parameter
-or between two such paths, the extreme of either. A proof completed when the rows arrive — the anchored read, which
-checks at run time what the plan could not — and a sort split by JSON type are the next answers, and a JSON Schema
-`pattern` read as an alphabet the one after (`TODO.md` section 4).
+or between two such paths, the extreme of either. Three answers are next, the declaration first: a JSON Schema
+`pattern` read as the characters a path may hold, the first proof a user can write; a proof completed when the rows
+arrive — the anchored read, which checks at run time what the plan could not; and a sort split by JSON type
+(`TODO.md` section 4).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
