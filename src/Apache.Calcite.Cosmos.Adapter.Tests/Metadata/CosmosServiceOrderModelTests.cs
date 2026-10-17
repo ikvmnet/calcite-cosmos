@@ -467,7 +467,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                         if (inPartition is not < 0 || inMerge is not < 0)
                             return $"[{Family(rows[r].Concat(rows[s]), keys.Count > 1 && rows[r][0].Kind != rows[s][0].Kind && reads[r][0] is null && reads[s][0] is null)}] " +
-                                $"Calcite orders ({string.Join(", ", rows[r])}) before ({string.Join(", ", rows[s])}); " +
+                                $"Calcite orders ({string.Join(", ", rows[r].AsEnumerable())}) before ({string.Join(", ", rows[s].AsEnumerable())}); " +
                                 $"{(inPartition is not < 0 ? "one partition " + Says(inPartition) : "the merge " + Says(inMerge))} ({printer} printing)";
                     }
             }
