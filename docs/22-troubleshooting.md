@@ -96,7 +96,14 @@ A Cosmos-only function (full text, scoring, `REGEXMATCH`, the string conversions
 
 **"Cosmos never returns a relevance score" / `ORDER BY FULLTEXTSCORE(…)` fails through a connection.**
 `ORDER BY RANK` cannot be recovered through a `CalciteConnection` ([#46](https://github.com/ikvmnet/calcite-cosmos/issues/46)).
-Use a planner you build (Chapter 21), or filter with `FULLTEXTCONTAINS…` instead of ranking.
+Use a planner you build (Chapter 21), or filter with `FULLTEXTCONTAINS…` instead of ranking. If the
+message ends *"write ORDER BY FULLTEXTSCORE(...) DESC"*, the ordering is ascending — the default when
+no direction is written — and Cosmos ranks only best first: add `DESC` (Chapter 17.3).
+
+**"The index path corresponding to the specified order-by item is excluded" (400).**
+Should not happen through the adapter, which reads the container's indexing policy and sorts an
+excluded path, `_etag` and an unindexed computed property in process (Chapter 9.2). If it does, the
+policy changed after the schema was built: rebuild it.
 
 **`SC2005 'FullTextScore' is not a recognized built-in function` (or the full text functions fail).**
 You are on the emulator, which does not implement full text search. Use a real account.

@@ -23,11 +23,13 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Sorting on the promoted partition key column** | Declined; sort on `JSON_VALUE` of the path. *Calcite has no order for `VARIANT`.* |
 | **Sorting on `JSON_VALUE` as text over a path no schema declares a string** | In process. *The service orders the stored value, by JSON type and numbers by value; SQL orders the text.* |
 | **Sorting on a `JSON_QUERY`, `DOC` or array column** | In process. *The service orders objects and arrays by rules of its own.* |
-| **Strings with characters above U+FFFF** | A sort or range comparison the service performs follows its code point order, which differs from Calcite's UTF-16 order where such a character meets one in U+E000–U+FFFF. An open defect. *Cosmos and Calcite.* |
-| **Multi-key sorts** | Need a matching composite index. *Cosmos.* |
+| **Sorting, comparing against a parameter, or taking `MIN`/`MAX` of strings whose characters nothing states** | In process — over `id` too, so a page or a keyset seek on `id` reads the container. Pushes where a schema `enum` or `const`, a declared stored form or the `WHERE` lists the values (Chapter 9.3). *Cosmos orders strings by code point and Calcite by UTF-16 code unit, which part where a character above U+FFFF meets one in U+E000–U+FFFF. A check of the rows as they arrive, and a schema `pattern` read as the characters allowed, are not done.* |
+| **Multi-key sorts** | Need a matching composite index; a key the `WHERE` pins, or one repeated, is not sent and does not count. *Cosmos.* |
+| **Sorting on a path the indexing policy does not index** | In process: `_etag`, which every policy excludes, an excluded path, and a computed property no included path names. *Cosmos — a 400 on Azure; the emulator accepts it.* |
+| **Sorting on `RETURNING BIGINT` over an integer the schema does not bound within int64** | In process. *A number past int64 is read back rounded below one inside it.* |
 | **Sorting on a computed expression** | In process, except a geodesic distance. *Cosmos.* |
 | **`GROUP BY` with `ORDER BY`** | The groups are sorted in process. *Cosmos.* |
-| **`SUM`, `MIN`, `MAX`, `AVG` over nullable inputs** | In process — Cosmos's null semantics differ. *Cosmos; a guarded rewrite is possible and not built.* |
+| **`SUM`, `AVG` over nullable inputs; `MIN`, `MAX` over a path that may hold a JSON null or two types** | In process — Cosmos's null semantics differ, and its `MIN` and `MAX` compare by JSON type first (Chapter 10.2). *Cosmos; a guarded rewrite is possible and not built.* |
 | **`FILTER` clauses and `DISTINCT` inside aggregates** (other than `COUNT(DISTINCT)`) | In process. *Cosmos.* |
 | **Other aggregates** (`STDDEV`, `VARIANCE`, `BOOL_AND`, `LISTAGG`, …) | In process. Several are expressible in Cosmos's five and are not rewritten yet. *Not done.* |
 | **Subqueries** (`EXISTS`, `IN (SELECT …)`, scalar subqueries) | In process. *Cosmos subqueries are document-scoped; mapping the item-scoped forms is not done.* |
@@ -53,6 +55,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 
 | | |
 | --- | --- |
+| **An ascending ordering on a score** | Refused at plan time, with a message naming `DESC`. *Cosmos ranks the best match first and takes no direction.* |
+| **Ordering by `VECTORDISTANCE` alone** | In process over the distances the service computes. *Which way it ranks is the distance function's, and nothing read declares it to the planner.* |
 | **`ORDER BY RANK` through a connection** | Fails to implement ([#46](https://github.com/ikvmnet/calcite-cosmos/issues/46)); works in a planner you build. *Provider behaviour.* |
 | **Fuzzy and prefix terms** | Fuzzy via `CLR_FT_FUZZY`; prefix refused. *Cosmos has no prefix term.* |
 | **Variadic full text functions through a schema** | Up to 16 arguments. Chain the operator table for more. |
@@ -91,7 +95,10 @@ deliberate choice, or work not done yet. The open work is tracked in
   (Chapter 7).
 - A sort on a `JSON_VALUE` column reaches the service only where the container's schema declares the
   type it reads — a string, or the `RETURNING` type — because the service orders the stored value and
-  places an object or an array after every number, where the column is null (Chapter 9).
+  places an object or an array after every number, where the column is null (Chapter 9). A string
+  key also needs its characters known, which `ORDER BY c."id"` never has (Chapter 9.3).
+- `MAX(c."_etag")` pushes and `ORDER BY c."_etag"` does not: an aggregate scans, and an `ORDER BY`
+  needs an index `_etag` never has (Chapter 9.2).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).
 - Out-of-domain arithmetic (`SQRT(-1)`) fails the whole Cosmos statement rather than one row (Chapter 8).
 - A Cosmos query is not a snapshot: a long, paged read can see writes made while it runs. That is the

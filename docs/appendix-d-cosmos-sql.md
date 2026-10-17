@@ -58,12 +58,15 @@ undefined  <  null  <  boolean  <  number  <  string  <  array  <  object
 `DESC` is the exact reverse. There is no `NULLS FIRST`/`NULLS LAST`. Strings compare by code point,
 not by culture — which is not quite .NET's or Java's ordinal comparison, both of which compare UTF-16
 code units: the two part where a character above U+FFFF meets one in U+E000–U+FFFF, which the service
-sorts first and they sort last (Chapter 9.3). Arrays and objects are ordered among themselves by rules
+sorts first and they sort last (Chapter 9.3). Across physical partitions the SDK merges the
+partitions' results by UTF-16 code unit, and on Azure two constants compare by code unit too, so only a
+string the stored documents hold is compared by code point. Arrays and objects are ordered among themselves by rules
 of the service's own, not by their text.
 
 An `ORDER BY` item must be a document path — an expression is rejected (*"ORDER BY item expression
 could not be mapped to a document path"*), with `ST_DISTANCE` the one exception. An `ORDER BY` on two or
-more properties requires a composite index matching the properties and directions.
+more properties requires a composite index matching the properties and directions, and Azure refuses an
+`ORDER BY` over a path its indexing policy excludes — `_etag` is excluded from every policy.
 
 ## D.6 Aggregates
 

@@ -1275,24 +1275,35 @@ the distribution the gate is sized for.
   numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
   order, placed before or after them as the placement says. The cost model would have to know the
   second half's size, as there.
-- **Strings beyond the BMP are ordered by code point at the service** — *small to build, a decision
-  to make first, and a wrong answer meanwhile.* Calcite compares strings by UTF-16 code unit, as Java
-  does, and the service by code point, so the two part where a character above U+FFFF meets one
-  between U+E000 and U+FFFF — private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
-  Measured on the vnext-preview emulator, and witnessed in `CosmosDifferentialTests`' divergences:
-  `ORDER BY c.id`, a sort over a declared string, a comparison between two declared strings, and
-  `MAX(c.id)` (`DESIGN.md` under *Ordering a sort key the way it reads*). Everything the service orders
-  strings for is exposed, the keyset page on `id` that chapter 9 recommends among them, which is why
-  declining is not the cheap answer it usually is here. **The oracle widened the exposure, not its
-  kind:** a sort reads what the rows a filter kept prove (L1), so `WHERE s IS NOT NULL ORDER BY s`
-  pushes under Calcite's own placement, where only `NULLS FIRST` did, and a kind's string sorts at the
-  service as a declared one does; three more divergences record it, paged among them, where the order
-  chooses the rows. Kept rather than declined because the decline is the one already waiting on this
-  decision, in one place: the text exception of `IsReadAsStored`, which every one of these goes through. Closing it is two pieces: a
-  `pattern` that keeps a path to one side of the line — an ASCII identifier, a UUID — read as a
-  licence, the way `PreservesOrder` licenses a stored form; and string order declined everywhere no
-  licence reaches, `id` included, unless the connection says its strings stay in the BMP. Measure
-  Azure before choosing: the emulator is a reimplementation and may not order as the service does.
+- **String orders the plan cannot prove are declined, and three pieces would recover them** — *medium
+  each.* Calcite compares strings by UTF-16 code unit, as Java does, and the service by code point, so
+  the two part where a character above U+FFFF meets one between U+E000 and U+FFFF — private use, the
+  CJK compatibility block, the fullwidth forms, U+FFFD. Measured on the emulator and on the probe
+  account (`Service.StringOrderIsCodePoint`, and `Service.ConstantStringComparisonIsByCodeUnit` for two
+  constants). Every order the service computes is now asked of `CosmosServiceOrder` (`DESIGN.md`, *The
+  service's order, asked once*), which declines a string order over characters nothing states, and the
+  nine divergences that witnessed it agree in process and are in the corpus. What that costs is what
+  pushed before: `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?` — the paging chapter 9
+  used to recommend — a sort over a declared string, a comparison against a parameter or between two
+  declared strings, and the extreme of either. The earlier entry here put the decline "in one place,
+  the text exception of `IsReadAsStored`"; that is withdrawn, `IsReadAsStored` staying the equality
+  question for grouping and lookup keys. What recovers the rest:
+  - **the anchored read**: the order checked as the rows arrive, against what the plan could not
+    prove, with a fallback statement where a row breaks it — a proof at run time, which the owner
+    counts as a proof;
+  - **a sort split by JSON type**, for the null placement and the mixed-type keys (section 5);
+  - **a JSON Schema `pattern` read as the characters a path may hold**, as `CosmosCharacters`, the way
+    `PreservesOrder` licenses a stored form. It must read the raw pattern, not
+    `CosmosPatternLanguage.Normalise`'s output (below).
+- **A grouped statement ordered by its key** — *small, and measured.* `GROUP BY k ORDER BY k` is
+  accepted and honoured on Azure, both directions and with `OFFSET LIMIT`, but only where the select
+  list carries an aggregate or the statement has a partition key: a grouped statement selecting only
+  the key, sent across partitions, fails with SC2102, the SDK's cross-partition rewrite adding
+  `c._rid`. `ORDER BY` an aggregate, or its alias, is refused. The groups are sorted in process now
+  (chapter 9.4), which is correct and costs only the rows the groups are.
+- **`ORDER BY` an array element** — *small, and measured.* `ORDER BY c.arr[0]` is accepted on Azure
+  and answers as the emulator does; it is a path, so `CosmosServiceOrder` reads it as any other, a
+  missing element undefined and first. Nothing binds an indexed element as a sort key yet.
 - **`TOP` — closed by the same measurement.** Emitted for a rank clause and nowhere else. `TOP 10`
   and `OFFSET 0 LIMIT 10` cost the same 2.37 RU on a real account, so the spelling the adapter
   already emits is the cheaper of nothing.
@@ -1314,6 +1325,22 @@ the distribution the gate is sized for.
   measurement belongs in `Sql/CosmosAxioms.cs` as two rows, one per target; `LENGTH` then pushes only
   where the path's characters are declared below U+D800, and the four only where the target is
   Azure or the characters are so declared.
+- **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
+  and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
+  alike.
+- **`CosmosPatternLanguage.Normalise` drops literal whitespace** — *small, and a wrong answer.* It
+  skips `char.IsWhiteSpace` outside a class on the premise that whitespace means nothing in an
+  ECMA-262 pattern, which has no extended mode and matches a space literally. So
+  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} Z$` is recognised as `iso8601-utc-seconds`, a canonical UUID
+  pattern with a trailing space as `uuid-canonical-lower`, and `^[0-9]{5} $` as
+  `integer-fixed-width-5`: a document conforming to the schema then carries a form it is not in, and
+  a rendered literal misses it. Keep the whitespace and let recognition fail.
+- **Lone surrogates are stored on Azure, and a raw one fails the reader** — *small.* An escaped lone
+  surrogate in a document is stored as U+FFFD; raw WTF-8 bytes are stored verbatim and come back as
+  invalid UTF-8, which `System.Text.Json` refuses to transcode, so the stream throws. The emulator
+  refuses both with a 403. Nothing here orders them wrongly — U+FFFD and a surrogate both lie at or
+  above U+D800, which R1 already refuses to rank against a high unit — but the reader should say what
+  it met.
 - **A comparison of two nullable declared strings keeps the rows where both are null** — *small, and a
   wrong answer, found by the `ORDER BY` yardstick.* `JSON_VALUE(c."DOC", '$.t') <= JSON_VALUE(c."DOC",
   '$.t')` over `orders_ascii`, where `t` is declared `["string", "null"]`, is sent raw as
@@ -1455,7 +1482,8 @@ old wording did not allow for.
   indexed: if that is a 400 too, the two lists want reading separately and the gate wants both.
   See `DESIGN.md` under *The declaration decides whether a full text or vector function pushes*.
 - **Computed properties** — *medium.* A container can declare named, queryable, indexable computed
-  paths. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
+  paths. Their names are read now, for one question only: a sort over one pushes only where an
+  included path names it, which Azure requires. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
 ### Two weakenings over one path still share one raw value — *small, found beside the alternatives*
@@ -2256,28 +2284,12 @@ across documents* and *A join of a container to itself* is the record.
   either would have gone on skipping for ever. Both now measure the gap and report it, and the
   index-metrics pair already did. Any future gap belongs in that shape. *(Retained here as the rule
   rather than as a task.)*
-- **The `IS_*` family on Azure** — *small, and owed.* `CosmosJsonTypeMeasurementTests` pins what
-  `IS_PRIMITIVE`, `IS_STRING`, `IS_NUMBER`, `IS_BOOL`, `IS_NULL`, `IS_OBJECT`, `IS_ARRAY` and
-  `IS_DEFINED`, and `NOT` over each, answer over every JSON type and over an absent path. Every one
-  answers a real boolean, never undefined, and `IS_PRIMITIVE` is false over an absent path. That
-  settled the repository's two recorded answers in the translator's favour, and `DESIGN.md` was the
-  one corrected. Measured on the emulator (2026-10-15) and nowhere else. The answers are unlikely to
-  differ on Azure, but the emulator has differed before. Run the class with `COSMOS_TEST_ENDPOINT`
-  naming an account.
-- **Every emulator-only axiom, on Azure** — *small, and owed.* `Sql/CosmosAxioms.cs` records where
-  each measured fact was measured. These `Service.` rows name the emulator alone:
-  - the `IS_*` family, above;
-  - the comparisons across types, `!=` over a null, and `NOT` over undefined;
-  - the string functions and `/` over each JSON type;
-  - what `ReadManyItemsAsync` answers;
-  - out-of-domain arithmetic;
-  - the stored boolean's logic (`CosmosBooleanLogicMeasurementTests`).
-
-  Run `CosmosJsonTypeMeasurementTests`, `CosmosReadManyMeasurementTests`,
-  `CosmosBooleanLogicMeasurementTests` and `OutOfDomainArithmeticFailsTheQuery` against an account,
-  and add `Azure` to each row that passes. A row that fails there is a disagreement between the
-  targets, and the reading to encode is the conservative one. The registry is not yet read by the
-  translator; that is the step after this.
+- **The axiom registry is not read by the translator** — *small.* Every `Service.` row of
+  `Sql/CosmosAxioms.cs` that was measured on the emulator alone is now measured on the probe account
+  too, and the order's own rows — code point order, the constants, the excluded path, the composite
+  index, the rank's direction, the merge across partitions — are pinned by tests that skip where the
+  account in hand cannot show them. The translator still encodes each fact where it uses it; reading
+  the registry, and refusing where a row names only one target, is the step after.
 - **Ternary logic partitioning passes over the fixes** — *done; what it found is kept below.*
   `EveryPredicatePartitionsTheRows` (`DESIGN.md`, *Differential testing*) fails on main: 131 of
   1,000 predicates. Over the fixes for A to K it failed two, both L, and with L closed the gate's

@@ -372,7 +372,7 @@ Parameters are written as `?` and bound positionally:
 command.CommandText = """
     SELECT c."id" FROM "products" AS c
     WHERE c."$.category" = ? AND JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > ?
-    ORDER BY c."id"
+    ORDER BY c."_ts" DESC
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     """;
 

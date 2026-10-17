@@ -22,7 +22,11 @@ statements Azure rejects and to reject features Azure implements:
 | full text functions and `ORDER BY RANK` | rejected (`SC2005`) | accepted |
 | full text policies and indexes | accepted on create, then reported absent | kept |
 | composite indexes | discarded on create | kept |
-| multi-key `ORDER BY` without a composite index | accepted | rejected (400) |
+| multi-key `ORDER BY` without a composite index, a key repeated included | accepted | rejected (400) |
+| `ORDER BY` over a path the indexing policy excludes, `_etag` included | accepted | rejected (400) |
+| `ORDER BY` over a computed property no included path names | computed properties dropped on create | rejected (400) |
+| `ORDER BY RANK … ASC` or `DESC` | rejected (`SC2005`) | rejected — no direction is taken |
+| two string constants compared, `'\uE000' < '\uD83D\uDE00'` | by code point | by UTF-16 code unit |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 
@@ -126,8 +130,10 @@ holds every `ORDER BY` a plan sends to what Azure accepts, which the emulator do
 (`_etag` is excluded by default), and a composite index for every order of more than one key. Its three
 containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs.
 
-It is explicit until the adapter asks how the service orders in one place, and fails on `main` in the
-families `DESIGN.md` lists under *Differential testing*:
+It is explicit, and fails today only where no order was pushed — a projected double printed two ways,
+and `CHAR_LENGTH` pushed as `LENGTH` — in the families `DESIGN.md` lists under *Differential testing*.
+It also holds a floor for how many statements push each kind of order, so that a change declining more
+than it must fails it too:
 
 ```sh
 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \

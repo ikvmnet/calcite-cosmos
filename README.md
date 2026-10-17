@@ -56,7 +56,7 @@ command.CommandText = """
     SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name"
     FROM "products" AS c
     WHERE c."$.category" = 'bikes'
-    ORDER BY c."id" FETCH NEXT 10 ROWS ONLY
+    ORDER BY c."_ts" DESC FETCH NEXT 10 ROWS ONLY
     """;
 
 await using var reader = await command.ExecuteReaderAsync();
