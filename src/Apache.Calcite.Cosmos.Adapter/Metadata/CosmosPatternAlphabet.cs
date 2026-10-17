@@ -118,7 +118,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the bands no string a pattern matches holds a unit of, under one reading.
+        /// Returns the bands no string a pattern matches holds a unit of, under one reading: a hook for the tests, which hold
+        /// each reading apart, and read by nothing else.
         /// </summary>
         /// <param name="pattern">The pattern.</param>
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>

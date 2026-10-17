@@ -1977,6 +1977,15 @@ holds. Three bugs planted in what was added were each caught by it.
   in-process evaluation of the same query, over containers with schemas. The plan's step 1, still owed.
 - F7, alias-blind consumers, wants the tests over `CosmosUnnest` aliases the plan names.
 - F9, documentation drift, wants re-reading against what is here now.
+- **Characters as a fact of the theory** — *medium, and the owner's decision.* A path's characters are a
+  claim the theory carries opaquely, `CosmosCharacters`, one per band, which a pattern and a service fact
+  state; a domain and a stored form establish it only as `JsonFactSet.Knows` reads it, through the claim's
+  own `IsEntailedBy`, the way a bound is read off a domain. The owner decided they are a fact of the theory
+  like a type: per path, whether each band can occur, fed by one pattern parser, by each literal's bands as
+  it is loaded and by a rule that an ASCII form holds neither; narrowed by a conjunction, widened by a
+  disjunction, split per branch and licensed per scope, so that `WHERE s IN (…)` under an `OR` proves its
+  characters through the oracle. `CosmosServiceOrder` then asks the fact and keeps only the order's
+  legality: R2 to R4.
 - **What Eggnog adds beyond the closure** — *large, each its own decision.*
   - The rewriter as extraction under an RU cost.
   - Path equality for `CHECK`. The theory has it: a union of two path terms.
