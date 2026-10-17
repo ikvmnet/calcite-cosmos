@@ -1871,12 +1871,23 @@ The stored-number disjunct a lowered equality carried beside a declared string i
 `type: string`, or a sibling's kind declaring one, makes `label = '30'` exact from the stratum it is
 rendered from, and the oracle's rendering preimage meets a declared string down to the string.
 
-### Facts about array elements — *small, and waiting for a consumer*
+### Facts about array elements — *small, and a geography's proof waits on it*
 
 `JsonDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
 path model has room for an element segment and `ARRAY_CONTAINS` and the traversal are the rules that
 would read one. Not built because nothing asks yet, and a path model that admits an index has to
 answer what `$.tags[0]` means against a fact declared for `items`.
+
+**A geography's proof is the one reader that asks now.** `CosmosGeographyForms` reads a subschema's
+`minItems`, `maxItems`, `prefixItems`/`items` and its elements' `minimum` and `maximum` itself, a second
+reader of the schema and a derivation in C# of "the service will measure this value"; it reads `type`,
+`required`, `const` and the bounds through `JsonSchemaFacts`' own readers. What has to move: the schema
+reader states the element facts — `prefixItems` as `Index` paths, `items` as `Each`, the counts as
+`minItems`/`maxItems` and the elements' bounds as `lo`/`hi`, all of which the theory already has — and a rule
+of the theory derives the geography from a pinned `type`, both members present, and the coordinates' counts
+and bounds, the measured ranges (±180 and ±90, `CosmosGeographyValidityMeasurementTests`) stated as data.
+Then `CosmosGeographyForms` goes. Not done in the review of `feature/allowable-orders`: it needs the element
+segment above first.
 
 ### The keywords still not read — *small each, and none of them blocked*
 
@@ -1983,11 +1994,41 @@ holds. Three bugs planted in what was added were each caught by it.
   `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
   33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
-  bottleneck. It is also the one place a fact about characters is still combined outside the theory: an
-  undiscriminated `anyOf` keeps a characters claim where every branch entails one, and a branch holding no string,
-  a value or a domain, and a stored form each do, by rows of `JsonFact.Entails` beside the bounds' (`DESIGN.md`,
-  *Characters, a fact of the theory*). Stated as a hidden discriminator's cases, the theory's lift would join them
-  as it joins a discriminated union's.
+  bottleneck. **It is also where facts are still combined outside the theory, against the owner's rule**
+  (`DESIGN.md`, *Characters, a fact of the theory*, *What is left in C#*), and this is exactly what has to move:
+  - `JsonSchemaFacts.Meet`, which keeps a claim of every kind — a type, a domain joining the branches' constants, a
+    bound, a form, characters stored and written — where every branch entails one, by the rows of
+    `JsonFact.Entails`, which read a value's type through `JsonScalar.Type` beside the theory's `JsonValues.TypeOf`;
+  - `AdmitNull` and `NullableBranch`, which widen every fact of a nullable union's one branch to admit the null —
+    a type to its `OrNull`, a domain by a null, a presence and a geography under the union's presence and
+    non-null — and which are a hidden discriminator with a null case;
+  - and with them `JsonFact.Entails` itself, which nothing else asks.
+
+  Stated as a hidden discriminator's cases, the theory's lift joins what the branches say as it joins a
+  discriminated union's, and widens nothing by hand. Not done in the review of `feature/allowable-orders` because
+  it is the reader's rewrite the plan sizes as *large*, and every rule a union states would move with it.
+  Population D draws its declarations as claims, so the meet and the nullable widening are fuzzed only by the
+  schema reader's own tests; drawing some declarations as JSON Schema text through
+  `CosmosSchemaRecognition.ReadFrom` would fuzz them end to end until they go.
+- **The overlay restates the theory** — *medium, and waiting on the engine's cost.* `JsonFactOverlay` answers a
+  stratum the engine would add nothing to without opening a context, which is what keeps an undeclared container's
+  filter at the closure's cost (below). To answer without the engine it restates, for its gated case, rules of JSON
+  the engine runs — against the owner's rule that there are no facts but the theory's:
+  - a value or a domain is of its own types (`PathValues.Normal`, `JsonRules` *a value is of its own type*);
+  - it holds its own characters (`TryChars`, *a value's characters are its own*);
+  - it bounds the path by its numbers (`TryLo`, `TryHi`, *a domain's numbers bound the path*);
+  - a present path of one value holds it in every document (`Constant`, *a present path of one value…*);
+  - a JSON null excluded leaves every other type, and booleans or null alone are a domain of their values
+    (`PathValues.Normal`);
+  - a present path has present objects above it, the root among them, and a path beneath one that holds no object
+    is absent (`Open`, `IsAbsent`);
+  - and `StatementTerms.Established` and `AtomOf` read each conjunct as the oracle's establishing rules do.
+
+  `JsonFactOverlayTests` holds it to the engine answer for answer. What has to happen is the overlay's retirement:
+  a context opened for these statements costs about 2 ms each, four a plan where the split rule fires, which the
+  planning gate will not take. Eggnog's idle-rule fix (`campaign/idle-rule-fix`, 165 KB to 32 KB a query at a
+  hundred idle local rules) is the lever; measure the corpus planned new with and without the overlay, with the
+  `MeasureScratchTests` harness, once it is released, and delete the overlay if the gate holds.
 - **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
   conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
   without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
@@ -2284,8 +2325,9 @@ across documents* and *A join of a container to itself* is the record.
   statement whose rows reach it. Either the failure names the document, or the reader reads the
   sequence as U+FFFD, which is what the service itself did with the escape. Nothing orders them
   wrongly meanwhile: U+FFFD and a surrogate both lie at or above U+D800, which R1 already refuses to rank
-  against a high unit, and a declared `pattern` that admits a surrogate claims nothing of the high band
-  for this reason.
+  against a high unit, and what a declared `pattern` that admits a surrogate proves of the stored strings'
+  high band is nothing, by the theory's rule of what is stored (`Service.LoneSurrogateIsStoredAsReplacement`,
+  `DESIGN.md`, *Reading a pattern as characters*).
 - **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
   returns a document read whole as it was written, and prints a projected number to 17 significant
   digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and
