@@ -3268,6 +3268,23 @@ and the reader part:
 A class one character wider than a form's, at any atom, is no form; for the tables, one character narrower is none
 either.
 
+**What it costs.** A pattern is read when its container's schema is, once for its form and once for its characters,
+and each reading parses it under both readings. Measured in Release, interleaved, a fresh process a run, on a machine
+other sessions kept at 90–100% of its four cores (main's corpus took 8.2 s here, where the orders measurement took
+4.3 s):
+- **The reader alone**, over the 198 patterns of the spelling test and five others, asked as the schema reader asks
+  them, five runs a build: 12.0 µs a pattern on main `4b2ccb3`, which read forms only; 16.5 µs on `140eb4c`, the
+  branch with two readers; 18.4 µs here, the runs' medians ranging 5.8–13.1, 14.6–18.8 and 11.7–21.4. It allocates
+  2.8, 4.1 and 22 KB a pattern. The first version cost 30 µs and 42 KB: it built the strings for the characters,
+  which ask only the bands, and copied a sequence at every term. Both are gone.
+- **The corpus of 78**, at the final code, ten runs: planned new in 8.24 s on main (4.70–8.95) and 8.03 s here
+  (5.08–9.17); p50 35.1 and 34.7 ms; p90 287 and 266 ms; planned again in 3.71 and 3.67 s. Allocated planning new:
+  1,055 MB on main and 1,045 here.
+- **The hierarchy**, before the reader's allocation was cut: MapLinks over one connection, 4.06 s a plan on main and
+  3.22 s here, the ranges overlapping; it allocates 1,077 MB a plan on main and 1,083 here, the difference the
+  characters' measurement already recorded.
+- **A declared container's new statement in steady state:** no shape apart (Mann-Whitney p ≥ 0.38).
+
 #### Characters, a fact of the theory
 
 **There are no facts about the documents but the theory's.** That is the owner's rule for this work, and what
