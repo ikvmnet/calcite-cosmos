@@ -43,10 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// the facts say of it as <see cref="CosmosCharacters"/>, one claim per band, which a declared pattern, a service
     /// fact, its domain and a stored form — every registered form is ASCII — each establish; and otherwise anything:
     /// Azure allows every character in <c>id</c> but <c>/</c> and <c>\</c>. A literal's are its own, which under the
-    /// default charset are always below U+0100. Two
-    /// constants the service compares by UTF-16 on Azure and by code point on the emulator, and a range whose bounds
-    /// the two orders rank apart keeps nothing on Azure; both are inside what R1 refuses, since each needs a surrogate
-    /// on one side and a high unit on the other.</description></item>
+    /// default charset are always below U+0100. Two constants the service compares by UTF-16 on Azure and by code point
+    /// on the emulator, and a range whose bounds the two orders rank apart keeps nothing on Azure; both are inside what
+    /// R1 refuses, since each needs a surrogate on one side and a high unit on the other.</description></item>
     /// <item><description><b>R2, readings.</b> Calcite orders what the column reads, and the service the stored value.
     /// Text over strings is the strings; text over a number or a boolean is a rendering, which sorts among the strings
     /// as text where the service sorts it by type and value. <c>INTEGER</c> and narrower read exactly what they read,
@@ -62,7 +61,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// type the reading does not read — has to lie wholly on the side of the values Calcite puts nulls (an unspecified
     /// placement is last, as Calcite runs it), the values have to be one JSON type, and before the last key the null
     /// class has to be one tie class: the service puts undefined before null where Calcite ties them, so a later key would
-    /// order the two where the service already has.</description></item>
+    /// order the two where the service already has. A comparison asks it of its two sides together: a JSON type one side
+    /// reads as null and the other may hold, the service compares as values — a JSON null equals a JSON null there
+    /// (<see cref="Compare"/>, <see cref="Equate"/>).</description></item>
     /// <item><description><b>R4, keys.</b> Every key but the last must agree exactly, ties included; the last may be
     /// finer at the service. A key the facts make one value over every row orders nothing and is not written, nor is one
     /// whose reading reads every row as null, which Calcite ties however the service orders what it holds, nor a key an
