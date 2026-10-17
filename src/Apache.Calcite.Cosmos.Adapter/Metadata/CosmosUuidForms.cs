@@ -618,6 +618,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where the form stores a UUID.</returns>
         public static bool IsUuid(CosmosRepresentation representation) => Uuids.ContainsKey(representation.Name);
 
+        /// <summary>
+        /// Returns the bands a UUID form's strings hold units of, read off its spelling: the digits, the hex letters in
+        /// its case, and the hyphens and braces it writes; or <c>null</c> for a form that is not one of these.
+        /// </summary>
+        internal static Facts.JsonCharacterBand? CharactersOf(CosmosRepresentation representation)
+        {
+            if (Uuids.TryGetValue(representation.Name, out var spelling) == false)
+                return null;
+
+            var alphabet = CosmosPatternClass.Range('0', '9').Union(spelling.Upper ? CosmosPatternClass.Range('A', 'F') : CosmosPatternClass.Range('a', 'f'));
+            if (spelling.Hyphenated)
+                alphabet = alphabet.Union(CosmosPatternClass.Of('-'));
+            if (spelling.Braced)
+                alphabet = alphabet.Union(CosmosPatternClass.Of('{')).Union(CosmosPatternClass.Of('}'));
+
+            return alphabet.Characters;
+        }
+
     }
 
 }

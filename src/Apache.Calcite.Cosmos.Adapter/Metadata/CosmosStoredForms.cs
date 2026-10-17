@@ -89,13 +89,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <b>A hook for the tests, and read by nothing else.</b> What <c>CosmosStoredFormsTests</c> holds to the claim
-        /// the service's order rests on: every stored form is ASCII, as <see cref="CosmosRepresentation.Characters"/>
-        /// states, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part — a
+        /// the service's order rests on: every stored form is ASCII, as <see cref="CharactersOf"/> reads it off the form's
+        /// definition, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part — a
         /// rule of the theory reads that off the form. The tables it enumerates are the recognisers' own, so a form added
         /// to one is held to the claim with no list to keep beside it.
         /// </remarks>
         internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
             System.Linq.Enumerable.Concat(System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered), CosmosNumericForms.Registered);
+
+        /// <summary>
+        /// Returns the bands a form's strings hold units of beside those below U+D800, read off what defines the form —
+        /// a language the one reader of a pattern parsed, or a shape's alphabet — by the reader's own reading of a
+        /// range's bands; <see cref="Facts.JsonCharacterBand.Any"/> for a form no family defines, which says nothing.
+        /// </summary>
+        internal static Facts.JsonCharacterBand CharactersOf(CosmosRepresentation representation) =>
+            CosmosTemporalForms.CharactersOf(representation)
+                ?? CosmosUuidForms.CharactersOf(representation)
+                ?? CosmosNumericForms.CharactersOf(representation)
+                ?? Facts.JsonCharacterBand.Any;
 
         /// <inheritdoc cref="CosmosUuidForms.Render" />
         public static string? RenderUuid(CosmosRepresentation representation, Guid value) =>

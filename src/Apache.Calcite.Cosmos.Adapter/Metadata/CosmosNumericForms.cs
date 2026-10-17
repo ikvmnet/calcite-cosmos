@@ -112,6 +112,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Enumerable.Range(1, Widest).Select(IntegerFixedWidth).Prepend(IntegerUnpadded);
 
         /// <summary>
+        /// Returns the bands a numeric form's strings hold units of, read off what defines it — the digits a fixed width
+        /// repeats, the languages of an unpadded integer — or <c>null</c> for a form that is not one of these.
+        /// </summary>
+        internal static Facts.JsonCharacterBand? CharactersOf(CosmosRepresentation representation)
+        {
+            if (representation.Width is int width && representation == IntegerFixedWidth(width))
+                return Digits.Characters;
+
+            return representation == IntegerUnpadded ? Unpadded.Aggregate(Facts.JsonCharacterBand.None, (bands, language) => bands | language.Characters) : null;
+        }
+
+        /// <summary>
         /// Writes an integer the way a path in this form stores it, or returns <c>null</c> where the
         /// form does not store one or the value has no spelling in it.
         /// </summary>

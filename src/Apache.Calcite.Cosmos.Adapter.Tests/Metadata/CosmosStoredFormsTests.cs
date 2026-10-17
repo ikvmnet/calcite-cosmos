@@ -24,8 +24,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     {
 
         /// <summary>
-        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800, as each form states of
-        /// itself for the theory to read (<see cref="CosmosRepresentation.Characters"/>).
+        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800, as each form's definition is
+        /// read for the theory (<see cref="CosmosRepresentation.Characters"/>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -63,10 +63,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 writing += written.Count > 0 ? 1 : 0;
                 written.Should().OnlyContain(text => text.All(c => c < ''), $"{form.Name} writes ASCII");
-                form.Characters.Should().Be(JsonCharacterBand.None, $"{form.Name} states that it is written below U+D800");
+                form.Characters.Should().Be(JsonCharacterBand.None, $"{form.Name}'s definition is written below U+D800");
             }
 
             writing.Should().BeGreaterThan(forms.Count / 2, "most forms write a literal from these values, so this asks something of them");
+        }
+
+        /// <summary>
+        /// A form's characters are read off what defines it, by the reader's own reading of a range's bands, and stated
+        /// nowhere beside it: a definition reaching past U+D800 would say so.
+        /// </summary>
+        [Fact]
+        public void AFormsCharactersAreReadOffItsDefinition()
+        {
+            CosmosStoredForms.Definition("^[0-9]{4}-[0-9]{2}$").Characters.Should().Be(JsonCharacterBand.None);
+            CosmosStoredForms.Definition("^[a-z\uE000]{3}$").Characters.Should().Be(JsonCharacterBand.HighBmp);
+            CosmosPatternClass.Range('\uD000', '\uE100').Characters.Should().Be(JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp,
+                "a range's bands are every unit's it spans, not its ends'");
+            CosmosStoredForms.CharactersOf(new CosmosRepresentation("no-family", PreservesEquality: true, PreservesOrder: false)).Should().Be(JsonCharacterBand.Any,
+                "a form no family defines says nothing");
         }
 
         /// <summary>

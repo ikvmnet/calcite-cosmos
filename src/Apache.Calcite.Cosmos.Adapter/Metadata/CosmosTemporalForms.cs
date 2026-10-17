@@ -583,6 +583,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         internal static IEnumerable<CosmosRepresentation> Registered => Temporal.Values.Select(form => form.Representation);
 
         /// <summary>
+        /// Returns the bands a temporal form's strings hold units of, read off the language that defines it; or
+        /// <c>null</c> for a form that is not one of these.
+        /// </summary>
+        internal static Facts.JsonCharacterBand? CharactersOf(CosmosRepresentation representation) =>
+            Temporal.TryGetValue(representation.Name, out var form) ? form.Language.Characters : null;
+
+        /// <summary>
         /// Writes an instant the way a path in this form stores it, or returns <c>null</c> where the
         /// form is not a temporal one or the value does not land on its precision.
         /// </summary>

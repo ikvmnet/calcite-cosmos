@@ -44,6 +44,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public IReadOnlyList<IReadOnlyList<CosmosPatternRun>> Alternatives => _alternatives;
 
         /// <summary>
+        /// Gets the bands the strings hold units of, beside those below U+D800: those of every class a run repeats, a run
+        /// repeated no times having been dropped. What a form defined by these strings is written in.
+        /// </summary>
+        public Facts.JsonCharacterBand Characters
+        {
+            get
+            {
+                var bands = Facts.JsonCharacterBand.None;
+                foreach (var alternative in _alternatives)
+                    foreach (var run in alternative)
+                        bands |= run.Class.Characters;
+
+                return bands;
+            }
+        }
+
+        /// <summary>
         /// Returns the strings of some alternatives, each put in the one form its language is held in here.
         /// </summary>
         /// <remarks>

@@ -40,6 +40,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public IReadOnlyList<(int Lo, int Hi)> Spans => _spans;
 
         /// <summary>
+        /// Gets the bands the class's characters hold units of, read as the reader reads a range's: every unit, or code
+        /// point, a span covers (<see cref="Facts.JsonFactEncoding.Characters(int, int)"/>).
+        /// </summary>
+        public Facts.JsonCharacterBand Characters
+        {
+            get
+            {
+                var bands = Facts.JsonCharacterBand.None;
+                foreach (var (lo, hi) in _spans)
+                    bands |= Facts.JsonFactEncoding.Characters(lo, hi);
+
+                return bands;
+            }
+        }
+
+        /// <summary>
         /// Returns the class holding every character of some spans, in whatever order and overlap they were written.
         /// </summary>
         /// <param name="spans">The spans, each from its first character to its last.</param>

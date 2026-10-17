@@ -49,11 +49,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <inheritdoc />
         /// <remarks>
-        /// Every form the recognisers register is ASCII — hex digits and hyphens, digits and the ISO-8601 punctuation —
-        /// which <c>CosmosStoredFormsTests</c> holds each one to over the tables the recognisers read
-        /// (<see cref="CosmosStoredForms.Registered"/>), so a form added to one is held to it with no list to keep.
+        /// Read off what defines the form, by its family (<see cref="CosmosStoredForms.CharactersOf"/>): one encoding of
+        /// what a form is written in, which is its definition. Every form the recognisers register comes out ASCII — hex
+        /// digits, hyphens and braces, digits and the ISO-8601 punctuation — which <c>CosmosStoredFormsTests</c> checks
+        /// over the tables the recognisers read.
         /// </remarks>
-        public JsonCharacterBand Characters => JsonCharacterBand.None;
+        public JsonCharacterBand Characters => CosmosStoredForms.CharactersOf(this);
 
     }
 
