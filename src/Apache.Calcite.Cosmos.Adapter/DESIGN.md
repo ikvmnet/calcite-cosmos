@@ -1,4 +1,4 @@
-﻿# Apache.Calcite.Cosmos.Adapter — Design
+# Apache.Calcite.Cosmos.Adapter — Design
 
 `Apache.Calcite.Cosmos.Adapter` exposes Azure Cosmos DB containers to Apache Calcite as
 relational schemas, and pushes as much of the relational plan as possible down to Cosmos by
@@ -1148,7 +1148,9 @@ is the right test of a theory of facts, and blind to the mistake a theory of pre
 licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
 never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
 discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
-declaration**, not from the filter. A random filter over its paths is admitted with a random renderer, and every
+declaration**, not from the filter; and, from a stream of their own so that the rest is drawn as it always was, the
+characters a declared `pattern` would state and sixteen more documents holding strings of either band where the
+declaration lets one stand (*Reading a pattern as characters*). A random filter over its paths is admitted with a random renderer, and every
 scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
 the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
 
@@ -1185,10 +1187,10 @@ alone, so the parse that would raise is never made — beside other conjuncts it
 out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
 compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
 
-**What it is worth is what it catches.** `PlantedBugTests` plants seven faults, each in a graph of its own — a rule
+**What it is worth is what it catches.** `PlantedBugTests` plants eight faults, each in a graph of its own — a rule
 added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
-scheduled without its guard; the renderer handed the wrong stratum — and requires each caught within the trials a run
-pays for:
+scheduled without its guard; the renderer handed the wrong stratum; a declaration read wider than it was written —
+and requires each caught within the trials a run pays for:
 
 | planted | caught in trial | by |
 | --- | --- | --- |
@@ -1198,7 +1200,11 @@ pays for:
 | the arm split without its `holds` guard | 0 | a contradiction |
 | an axiom row contradicting the measurement: `IS NULL` of the accessor false of an object | 18 | a fact |
 | a stratum handing a conjunct its own facts | 0 | the strata |
-| a union of a conjunction with its other arm where one arm is always true | 60 | C5 |
+| a union of a conjunction with its other arm where one arm is always true | 0 | C5 |
+| a guarded characters claim read of every kind | 0 | a fact |
+
+The C5 plant was caught in trial 60 until each trial drew sixteen more documents holding strings of either band
+(*Reading a pattern as characters*), which see it in the first.
 
 The three seams the plants go through are internal and set by nothing else: `PredicateRules.ScheduleWith` schedules
 the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stratum a conjunct is handed, and
@@ -1250,7 +1256,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `required` | these children exist **if this object does** | presence, guarded by the parent's |
 | `type` | the type, unless `nullable` or a union widens it | nothing for a union or under `nullable: true` |
 | `const`, `enum` | the value if present; scalars only | value and domain |
-| `pattern` | a regular expression | a stored form, for recognised spellings only |
+| `pattern` | a regular expression | a stored form, for recognised spellings only; and, read under both of ECMA-262's readings, the characters a string may hold (*Reading a pattern as characters*) |
 | `format` | an annotation | nothing |
 | `allOf` | every branch applies | every branch, same guard |
 | `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the discriminator's presence and value; and the meet, unguarded |
@@ -3012,8 +3018,9 @@ the three agree over the values the facts admit.
   first unit two strings differ in, a unit below U+D800 orders alike against anything. So two sets of strings order
   alike unless one may hold a surrogate and the other a high unit. A path's characters are those of its domain
   (`JsonFactSet.TryGetDomain`: an `enum`, a `const`, or a filter's list), of a stored form — every registered form
-  is ASCII — or of a service fact (`_etag`'s, which the HTTP entity tag grammar fixes), and otherwise anything:
-  Azure allows every character in an `id` but `/` and `\`. A literal's are its own. A parameter's are anything.
+  is ASCII — of a declared `pattern` (*Reading a pattern as characters*), or of a service fact (`_etag`'s, which
+  the HTTP entity tag grammar fixes), and otherwise anything: Azure allows every character in an `id` but `/` and
+  `\`. A literal's are its own. A parameter's are anything.
 - **R2, readings.** Calcite orders what the column reads and the service the stored value: text over strings is the
   strings, a rendering of a number is not; a typed accessor over its declared type is exact; a `BIGINT` read back is
   the stored order within int64, a `DOUBLE` within ±2^53 and refines past it. A comparison reads the document, not a
@@ -3045,10 +3052,85 @@ extensions — and open no oracle scope; the planning gate measured no time adde
 `NeverNull`, `AlwaysDefined`, `SortableFields`, `CosmosProject.IsOrderable` and the per-site order checks, each of
 which encoded part of this. What they decline that pushed before is the order of strings whose characters nothing
 states: a sort, a page and a keyset seek over `id`, a sort over a declared string, a comparison against a parameter
-or between two such paths, the extreme of either. Three answers are next, the declaration first: a JSON Schema
-`pattern` read as the characters a path may hold, the first proof a user can write; a proof completed when the rows
-arrive — the anchored read, which checks at run time what the plan could not; and a sort split by JSON type
+or between two such paths, the extreme of either. The declaration is the first answer, and is read now: a JSON
+Schema `pattern` read as the characters a path may hold (below). Two are next: a proof completed when the rows
+arrive — the anchored read, which checks at run time what no declaration proved — and a sort split by JSON type
 (`TODO.md` section 4).
+
+#### Reading a pattern as characters
+
+**A declaration is the first proof a user can write, and `pattern` is the one keyword that states what characters a
+string holds.** That is the owner's decision (D2): not `format`, which JSON Schema calls an annotation, and not a
+container operand, which would say per container what a pattern on `id` says per path. `CosmosPatternAlphabet` reads
+a pattern into `CosmosCharacters`, one claim per band its strings lack, and R1 reads the claim: a path declared below
+U+D800 sorts, takes `MIN` and `MAX`, and compares with a parameter and with any other path at the service, and `id`
+declared so pages and seeks there, proved when the plan is made with nothing checked when the rows arrive.
+
+**Two readings, and a claim has to hold under both.** JSON Schema names ECMA-262's dialect and no flags. Without the
+`u` flag a pattern is a sequence of UTF-16 units, matched unit by unit: `[^a]` matches either half of a surrogate
+pair, and `\uD83D\uDE00` is two atoms. With it, a sequence of code points matched code point by code point: `[^a]` is
+a whole character, the pair is one atom, and a range may run past U+FFFF. A JavaScript validator built on `RegExp`
+with the flag reads one way and .NET's `Regex` the other, and nothing in a container says which checked its
+documents. So every pattern is parsed twice, and a band is absent only where both readings exclude it. They part
+where it matters. `^[^\uD800-\uDFFF]*$` excludes the surrogates read by unit and admits every supplementary
+character read by code point; `[\uD800-\uDBFF\uDC00-\uDFFF]` is the surrogates read by unit and, read by code point,
+a range from U+D800 to U+10FC00 holding the whole high band. A pattern either reading rejects proves nothing: a
+validator using that reading could not have checked a document with it.
+
+**The grammar read is the strict one the two share**, and anything outside it is refused.
+- Every top-level alternative begins with `^` and ends with `$`. `pattern` searches, so an unanchored alternative
+  matches inside a string of anything. With both anchors and no `m` flag every character of a matching string is one
+  an atom consumed, which is what lets the atoms' bands bound the string's. An assertion inside — `^`, `$`, `\b` —
+  consumes nothing and only narrows.
+- An atom is a literal, an escaped syntax character or `/`, a control escape, `\cX`, `\0`, `\xHH`, `\uXXXX`, `\d`,
+  `\w`, a class, or a group, capturing or `(?:`, under any quantifier. `\d` and `\w` are ASCII in ECMA-262 under
+  either reading, a schema having no `i` flag to widen `\w`.
+- A range's bands are those of every unit, or code point, it spans. `[\uD000-\uE100]` holds both bands though
+  neither end is in one; taking a range's top unit as its band, as the plan first wrote it, would call it free of
+  surrogates.
+- A negated class is its complement under each reading, over that reading's alphabet: the units to U+FFFF, the code
+  points to U+10FFFF. Computed exactly, so it is accepted. Read by code point the complement holds every
+  supplementary character the class does not name, and no class both readings accept can name them all — a range of two
+  supplementary characters runs backwards read by unit — so a negated class never excludes the surrogates, though it
+  can exclude the high band.
+- Refused: `.`; `\s`, which matches U+FEFF, and `\S`, `\D` and `\W`, which bound nothing; `\p{…}` and `\P{…}`, whose
+  sets a Unicode version decides and which read by unit are a letter and a brace; `\u{…}`, a code point read by code
+  point and `u` repeated read by unit; back-references and `\k`; lookarounds, named groups and inline flags; a legacy
+  octal escape; an identity escape of anything but a syntax character or `/`; a class escape ending a range; and a
+  lone `]`, `{` or `}`. Each of the last group is a literal read by unit and an error read by code point.
+
+**What is stored is not always what was written.** Measured on the probe account, a lone surrogate written as a JSON
+escape is stored as U+FFFD, a high unit. Read by unit a pattern admitting a surrogate admits a lone one, so a claim
+that its strings lack the high band would be true of the written document and false of the stored one. So a pattern
+that admits a surrogate yields no claim at all, and the claims a pattern can make are "neither band" and "no
+surrogate". A domain needs no such care: `System.Text.Json` will not read a lone surrogate escape as a string, so no
+`enum` or `const` holds one.
+
+**Checked against the engine, not only the grammar.** While it was written the reader was run against V8's own
+`RegExp`, with the flag and without, over 36,000 generated patterns — literals and escapes from every band, ranges
+across U+D800 and U+E000, negated classes, groups, quantifiers, and the refused constructs — each matched against
+some four thousand strings. No band the reader called absent was held by a string either reading matched, and no
+pattern either reading rejects was read. `CosmosPatternAlphabetTests` names the cases.
+
+**In the theory, a claim like any other.** `CosmosCharacters` is a `JsonClaim.Extension`, one per band, so each is
+known or not on its own and a union of a branch lacking both bands with one lacking one keeps the one. It is read
+off a subschema beside any type, a pattern being vacuous for anything but a string as the claim is, and it says for
+itself what establishes it (`JsonClaim.Extension.IsEntailedBy`): a type that is no string, a null, a value or a
+domain without the band, a stored form. That is what lets it survive the nullable union `anyOf: [{type: null}, X]`,
+which keeps what a null satisfies, and the meet of a union whose other branch is a number. Population D draws the
+claim, outright and per kind, from a stream of its own, so that every trial draws the declaration, documents and
+filter it drew before; and sixteen more documents a trial, from that stream, hold strings of either band wherever
+the rules let one stand. A plant reading one kind's characters claim of every kind is caught in the first trial.
+
+**`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the stored
+forms read `\d` as `[0-9]` already. A validator in .NET's default dialect or Python's reads `\d` and `\w` as every
+Unicode digit or word character, fullwidth and supplementary ones among them; the manual says to spell the classes
+out where documents are validated that way (chapter 14.4).
+
+**What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most two
+extension facts to a path. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
+to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
+they did (*Differential testing*).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -5476,6 +5558,14 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   because more multi-key sorts now run in process. The default's 200 items push 14 sorts and 3 extremes
   and fail only in `CHAR_LENGTH`. Those counts are the test's floors (`PushedFloors`): a change that
   pushes fewer fails it, which is how "as many as can be proved" is held.
+
+  **With the declared characters read, `orders_ascii` pushes what its patterns prove** (*Reading a pattern as
+  characters*). Over the same items, 110 statements sent the service an `ORDER BY`, 20 an extreme and 2 a page, and
+  none failed: `orders_ascii`'s sorts went from 38 to 84 and its extremes from 7 to 13 — its ids and their
+  three-page keysets, its declared text, `MIN` of it — and the other two containers push what they did. The same 8
+  fail, none an order, and 119 answers were the CLR runtime's own. The default's 200 items push 17 sorts and 4
+  extremes. The floors are kept per container too, `orders_ascii`'s among them, so that a reading of the patterns
+  that proved less fails there first.
 
   **What it costs.** On the emulator, on a workstation running other work, the default's 200 items took
   53 to 76 s and the gate's 1,000 took 157 to 267 s, the class's setup included: about two runs a

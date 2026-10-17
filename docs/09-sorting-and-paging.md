@@ -199,21 +199,25 @@ U+FFFF — an emoji, say — meets one between U+E000 and U+FFFF, such as a full
 service puts the second first, Calcite the first. Measured on the emulator and on Azure. So a string sort
 is sent only where the strings it orders cannot hold both kinds:
 
+- the schema's `pattern` rules them out — an identifier on `id`, a UUID in either case, or every
+  character below U+D800 (Chapter 14.4);
 - the schema lists them — an `enum` or a `const` (Chapter 14);
 - the key is a declared stored form — a UUID or a timestamp, all of whose forms are ASCII (Chapters 14
   and 15);
 - or the `WHERE` lists them: `WHERE c."id" IN ('a', 'b', 'c') ORDER BY c."id"` pushes.
 
-Anything else is sorted in process, and a row limit with it. That includes **`id`**, since Azure allows
-every character in an `id` but `/` and `\`, and a path declared only `"type": "string"`:
+Anything else is sorted in process, and a row limit with it. That includes **`id`** where no pattern
+declares its characters, since Azure allows every character in an `id` but `/` and `\`, and a path
+declared only `"type": "string"`:
 
 ```sql
 SELECT c."id" FROM "products" AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY
 → SELECT VALUE { "id": c.id } FROM products c       -- sorted and paged in process
 ```
 
-A schema's `pattern` does not yet count as listing the characters (Chapter 23). The same question
-decides a range comparison (Chapter 8.3) and `MIN` and `MAX` (Chapter 10).
+Declaring `id` an identifier, `"id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }`, sends the
+same query as `… ORDER BY c.id ASC OFFSET 40 LIMIT 20` (Chapter 14.4). The same question decides a
+range comparison (Chapter 8.3) and `MIN` and `MAX` (Chapter 10).
 
 Through a view, the adapter can move a sort and its row limit beneath a projection it cannot push, so
 that the page is still taken at the service and the projection computed over it. That works whenever
@@ -270,9 +274,10 @@ FETCH NEXT 50 ROWS ONLY
 ```
 
 A keyset over a declared UUID or timestamp path works the same way once the stored form is declared
-(Chapter 14). **A keyset over `id` does not push today**: the comparison against the parameter is a
-string order as much as the sort is, and a parameter may hold any character, so `WHERE c."id" > ?
-ORDER BY c."id"` reads the container and pages it in process (Chapter 23).
+(Chapter 14). **A keyset over `id` pushes where a `pattern` declares its characters** (Chapter 14.4):
+the comparison against the parameter is a string order as much as the sort is, and a parameter may
+hold any character, but against strings below U+D800 every character compares alike. Without one,
+`WHERE c."id" > ? ORDER BY c."id"` reads the container and pages it in process (Chapter 23).
 
 ## 9.6 A filter that removes the nulls
 
@@ -292,7 +297,7 @@ ORDER BY 1 FETCH NEXT 20 ROWS ONLY
 The key still has to be one the service orders the way SQL does (9.7, item 3): the filter settles where
 nulls go, the schema says the text is the value, and something says what characters it holds (9.3) —
 in the example, an `enum` of genres. A filter that keeps one kind of document counts
-too, when that kind's branch of the schema declares the key's type (Chapter 14.4). For keys no filter
+too, when that kind's branch of the schema declares the key's type (Chapter 14.5). For keys no filter
 settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
 
 ## 9.7 Checklist: why did my sort not push?
@@ -307,8 +312,9 @@ settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
    `RETURNING BOOLEAN` a boolean — each alone or with null, outright or in the branch of a kind the
    `WHERE` keeps. Anything less sorts in process. A
    `JSON_QUERY`, `DOC` or array key never sorts at the service.
-4. A string key, `id` included: does the schema list its values (`enum`, `const`), is it a declared
-   UUID or timestamp form, or does the `WHERE` list them (9.3)?
+4. A string key, `id` included: does the schema's `pattern` rule out the characters (Chapter 14.4),
+   does it list the values (`enum`, `const`), is it a declared UUID or timestamp form, or does the
+   `WHERE` list them (9.3)?
 5. Two or more keys? Does the container have a composite index matching their order and directions?
    (A key the `WHERE` pins does not count — 9.2.)
 6. Is the query grouped, ranked, or sorting on an unnested element — or on a `SELECT DISTINCT` of a

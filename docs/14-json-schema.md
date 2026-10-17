@@ -1,4 +1,4 @@
-﻿# 14. Describing documents with JSON Schema
+# 14. Describing documents with JSON Schema
 
 A container has no row schema, so the adapter cannot know what a document path holds — and that is
 what keeps some comparisons in process. Cosmos stores a UUID as a string; SQL has a `UUID` type; and
@@ -87,7 +87,7 @@ with one           ORDER BY c.carrier at the service, 20 documents returned
 
 The service sends the stored text and the adapter converts it back to a UUID as it is read — with the
 same function Calcite's own cast uses — so the column arrives in .NET as a `Guid`. A form declared inside
-one kind's branch (14.4) is used the same way where the `WHERE` keeps that kind: `SELECT CAST(… AS UUID)
+one kind's branch (14.5) is used the same way where the `WHERE` keeps that kind: `SELECT CAST(… AS UUID)
 … WHERE kind = 'shipment'` sends the stored text, and without the conjunct the cast is made in memory.
 
 Sorting *by* such a column (`ORDER BY 1` above) additionally needs the stored strings to sort the way
@@ -116,7 +116,7 @@ the path holds an object, an array or a string, and the service sorts those afte
 than with the nulls; `"type": "integer"` or `"number"` (or `"boolean"` for `RETURNING BOOLEAN`), alone
 or with `"null"`, says nothing else is there, and the sort is sent (Chapter 9.3).
 
-A declaration inside one kind's branch (14.4) does the same once another conjunct proves the branch:
+A declaration inside one kind's branch (14.5) does the same once another conjunct proves the branch:
 `kind = 'shipment' AND carrier = 'DHL'` sends the second comparison exactly where the shipment branch
 declares `carrier` a string. Each conjunct is sent on what the conjuncts sent beside it prove, and never
 on what it proves itself — `carrier = '30'` alone proves only that the path renders as `30`, which a
@@ -198,8 +198,9 @@ not mention `status` is unaffected, and one asking for a `status` keeps nothing.
 
 A `pattern` is what pins the spelling of a string, and the adapter recognises a fixed family of
 spellings rather than interpreting arbitrary regular expressions. A pattern it does not recognise
-simply yields no fact. Each recognised form says two independent things: whether comparing the stored
-strings for **equality** answers what comparing the values does, and whether their **order** does.
+yields no stored form, though what it says of the characters a string holds may still be read
+(14.4). Each recognised form says two independent things: whether comparing the stored strings for
+**equality** answers what comparing the values does, and whether their **order** does.
 
 | declared `pattern` | equality | order |
 | --- | --- | --- |
@@ -257,7 +258,94 @@ cannot vouch for.
 
 Instants and dates are covered in Chapter 15, which also explains which *query* spellings reach them.
 
-## 14.4 Containers that hold several kinds of document
+## 14.4 Characters: what a `pattern` proves about order
+
+The service orders strings by code point and Calcite by UTF-16 code unit. The two agree everywhere
+except where a character above U+FFFF — an emoji, say, which UTF-16 writes as two surrogates — meets
+one between U+E000 and U+FFFF: private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
+The service puts the second first and Calcite the first. So where nothing says what characters a
+string holds, a sort over it, its `MIN` and `MAX`, and a comparison of it with a parameter or another
+path run in process — `id` included, since Azure allows every character in an `id` but `/` and `\`
+(Chapter 9.3).
+
+**A `pattern` that rules those characters out is the proof.** Any pattern the adapter can read
+counts, not only the stored forms of 14.3, and the proof is made when the plan is: nothing is
+checked when the rows come back. Declare the type beside it, since a pattern constrains only a
+string and a text key sorts at the service only over a declared string (Chapter 9.3):
+
+```json
+"properties": {
+  "id":    { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+  "ref":   { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" },
+  "title": { "type": "string", "pattern": "^[\\u0000-\\uD7FF]*$" }
+}
+```
+
+- **An identifier on `id`.** `ORDER BY c."id"`, its pages, `MAX(c."id")` and the keyset seek
+  Chapter 9.5 recommends all reach the service:
+
+  ```sql
+  SELECT c."id" FROM "products" AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY
+  → SELECT VALUE { "id": c.id } FROM products c WHERE (c.id > @p0) ORDER BY c.id ASC OFFSET 0 LIMIT 50
+  ```
+
+- **A UUID in either case.** A pattern admitting both cases is no stored form — one value has two
+  spellings (14.3) — so it gives no UUID comparison; but its characters are hex digits and hyphens,
+  so a sort on the text pushes. A canonical UUID's stored form proves its characters already.
+- **Text with no emoji and nothing from U+E000**: every character below the surrogates, which is
+  every letter of the basic plane but the compatibility and fullwidth forms. In JSON the backslashes
+  are doubled, as above; the pattern itself is `^[\u0000-\uD7FF]*$`.
+
+What each says:
+
+| the strings may hold | sort, `MIN`, `MAX` | compared with a literal | with a parameter, or a path of any character | with another declared path |
+| --- | --- | --- | --- | --- |
+| nothing at or above U+D800 | ✔ | ✔ | ✔ | ✔ |
+| U+E000–U+FFFF but no surrogate: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | ✔ | ✔ | ✘ | where the other holds no surrogate either |
+| anything: no pattern, or one not read | ✘ | ✔ | ✘ | where the other holds nothing at or above U+D800 |
+
+A literal compares exactly in every row because, under the default charset, it holds nothing at or
+above U+0100 (Chapter 8.3).
+
+**How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
+whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one
+UTF-16 unit at a time; with it, one code point at a time; and the two can disagree:
+`[^\uD800-\uDFFF]` excludes the surrogates read by unit, and admits every emoji read by code point.
+So every pattern is read both ways, and a character is ruled out only where both readings rule it out.
+What is read:
+
+- every alternative anchored at both ends, `^…$`. A `pattern` searches, so `[a-z]+` matches any
+  string with a letter in it;
+- literals and escaped characters, `\uXXXX`, `\xHH`, `\t` and the other control escapes, `\d` and `\w`
+  (ASCII in ECMA-262), character classes, ranges, groups, alternation, and any quantifier;
+- a range by every character it spans: `[\uD000-\uE100]` holds surrogates and U+E000 though neither
+  end does;
+- a negated class as its complement under each reading. Read by code point, `[^…]` admits every
+  character above U+FFFF it does not name, so a negated class never rules out the surrogates.
+
+**What is refused, and why.** A refused pattern proves nothing, and the path is reasoned about as if
+it had none:
+
+- an alternative not anchored at both ends, which matches inside a string of anything;
+- `.`, `\s` (it matches U+FEFF and the line separators too), `\S`, `\D` and `\W`, none of which bounds
+  the characters;
+- `\p{…}`, `\u{…}`, named groups, lookarounds, inline flags and back-references, each read differently,
+  or not at all, without the `u` flag;
+- anything only one reading accepts, such as `\a`, a lone `]` or `{`, or a range that ends in `\d`;
+- and a pattern that admits a surrogate says nothing about U+E000–U+FFFF either: Azure stores a lone
+  surrogate written as a JSON escape as U+FFFD.
+
+**`\d` and `\w` are ECMA-262's.** A validator in another dialect — .NET's default `Regex`, Python's
+`re` — reads them as every digit or word character in Unicode, fullwidth and supplementary ones among
+them. If your writers validate that way, spell the classes out: `[0-9]`, `[A-Za-z0-9_]`.
+
+**`format` still proves nothing**, `"format": "uuid"` included (14.3).
+
+A pattern is a promise like the rest of a schema (14.7). A document holding an emoji where the
+pattern says none can is given a page from the wrong place, a wrong `MIN` or `MAX`, and comparisons
+that keep the wrong rows.
+
+## 14.5 Containers that hold several kinds of document
 
 Describe each kind with `oneOf` and a discriminating `const`, or with `if`/`then`/`else`:
 
@@ -298,7 +386,7 @@ UUID or null there, and a query over both kinds gets the stored form. So state a
 the branches that carry it and `null` in the ones that do not, rather than repeating it as a nullable
 property above the `oneOf`.
 
-## 14.5 How each keyword is read
+## 14.6 How each keyword is read
 
 | keyword | read as |
 | --- | --- |
@@ -307,7 +395,7 @@ property above the `oneOf`.
 | `required` | presence, for children of an object that is itself present |
 | `const`, `enum` | the value, or its domain (scalars only) |
 | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | a bound on the value **if it is a number**; the exclusive forms as numbers (2019-09 on) or as flags beside `minimum` and `maximum` (Draft 4, OpenAPI 3.0) |
-| `pattern` | a stored form, for the recognised spellings (14.3) |
+| `pattern` | a stored form, for the recognised spellings (14.3); and, beside any type, the characters a string may hold, for any pattern read under both of its readings (14.4) |
 | `format` | nothing |
 | `allOf` | every branch |
 | `oneOf`, `anyOf` with a discriminating `const` | each branch, for documents that have the discriminator and its value; and what every branch implies, for every document |
@@ -327,7 +415,7 @@ fetched — nothing in the model causes a network call — and fails to resolve.
 facts that can be read from it. A schema that cannot be read at all leaves the container working
 exactly as if it had none. A `schema` that is not a JSON object is a model error.
 
-## 14.6 A schema is a promise, and the adapter believes it
+## 14.7 A schema is a promise, and the adapter believes it
 
 This is the one thing in a model that can change **which rows** a query returns. Everything else the
 adapter knows comes from the container's definition or the service's guarantees. A schema does not —
@@ -359,7 +447,7 @@ So, before adding a schema to an existing container:
 Incompleteness of the other kind is free: unknown keywords are ignored, unrecognised patterns yield
 nothing, and an unreadable schema changes nothing.
 
-## 14.7 What a schema does not do
+## 14.8 What a schema does not do
 
 - It does **not** add columns or types to the table (Chapter 7). It says how values are stored.
 - It does **not** validate documents on write.

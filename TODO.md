@@ -1,4 +1,4 @@
-﻿# Outstanding work
+# Outstanding work
 
 What a complete adapter would have, sized and reasoned, so that the next session picks up an argument
 rather than a list.
@@ -1275,24 +1275,24 @@ the distribution the gate is sized for.
   numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
   order, placed before or after them as the placement says. The cost model would have to know the
   second half's size, as there.
-- **String orders the plan cannot prove are declined, and three pieces would recover them** — *medium
-  each.* Calcite compares strings by UTF-16 code unit, as Java does, and the service by code point, so
+- **String orders the plan cannot prove are declined; a declaration recovers them, and two pieces would
+  recover the rest** — *medium each.* Calcite compares strings by UTF-16 code unit, as Java does, and the service by code point, so
   the two part where a character above U+FFFF meets one between U+E000 and U+FFFF — private use, the
   CJK compatibility block, the fullwidth forms, U+FFFD. Measured on the emulator and on the probe
   account (`Service.StringOrderIsCodePoint`, and `Service.ConstantStringComparisonIsByCodeUnit` for two
   constants). Every order the service computes is now asked of `CosmosServiceOrder` (`DESIGN.md`, *The
   service's order, asked once*), which declines a string order over characters nothing states, and the
-  nine divergences that witnessed it agree in process and are in the corpus. What that costs is what
-  pushed before: `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?` — the paging chapter 9
-  used to recommend — a sort over a declared string, a comparison against a parameter or between two
-  declared strings, and the extreme of either. The earlier entry here put the decline "in one place,
-  the text exception of `IsReadAsStored`"; that is withdrawn, `IsReadAsStored` staying the equality
-  question for grouping and lookup keys. What recovers the rest, the declaration first:
-  - **a JSON Schema `pattern` read as the characters a path may hold**, as `CosmosCharacters`, the way
-    `PreservesOrder` licenses a stored form. It must read the raw pattern, not
-    `CosmosPatternLanguage.Normalise`'s output (below);
-  - **the anchored read**: the order checked as the rows arrive, against what the plan could not
-    prove, with a fallback statement where a row breaks it — a proof at run time, which counts as one;
+  nine divergences that witnessed it agree in process and are in the corpus. What that costs, where
+  nothing declares a path's characters, is what pushed before: `ORDER BY c.id`, its page and its keyset
+  seek `WHERE c.id > ?` — the paging chapter 9 recommends — a sort over a declared string, a comparison
+  against a parameter or between two declared strings, and the extreme of either. The earlier entry here
+  put the decline "in one place, the text exception of `IsReadAsStored`"; that is withdrawn,
+  `IsReadAsStored` staying the equality question for grouping and lookup keys. **The declaration is
+  done:** a JSON Schema `pattern` is read as the characters a path may hold, under both of ECMA-262's
+  readings, into `CosmosCharacters` (`CosmosPatternAlphabet`; `DESIGN.md`, *Reading a pattern as
+  characters*), so a declared `id` or string recovers all of it at plan time. What recovers the rest:
+  - **the anchored read**: the order checked as the rows arrive, against what no declaration proved,
+    with a fallback statement where a row breaks it — a proof at run time, which counts as one;
   - **a sort split by JSON type**, for the null placement and the mixed-type keys (section 5).
 - **A grouped statement ordered by its key** — *small, and measured.* `GROUP BY k ORDER BY k` is
   accepted and honoured on Azure, both directions and with `OFFSET LIMIT`, but only where the select
@@ -1338,7 +1338,8 @@ the distribution the gate is sized for.
   surrogate in a document is stored as U+FFFD; raw WTF-8 bytes are stored verbatim and come back as
   invalid UTF-8, which `System.Text.Json` refuses to transcode, so the stream throws. The emulator
   refuses both with a 403. Nothing here orders them wrongly — U+FFFD and a surrogate both lie at or
-  above U+D800, which R1 already refuses to rank against a high unit — but the reader should say what
+  above U+D800, which R1 already refuses to rank against a high unit, and a declared `pattern` that
+  admits a surrogate claims nothing of the high band for this reason — but the reader should say what
   it met.
 - **A comparison of two nullable declared strings keeps the rows where both are null** — *small, and a
   wrong answer, found by the `ORDER BY` yardstick.* `JSON_VALUE(c."DOC", '$.t') <= JSON_VALUE(c."DOC",

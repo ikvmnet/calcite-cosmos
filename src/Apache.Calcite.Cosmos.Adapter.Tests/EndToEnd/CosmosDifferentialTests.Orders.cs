@@ -1247,7 +1247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// over the gate, in every container or in one: as many as the static question proved when it
         /// was last raised, measured on the emulator. Each stage that changes what pushes records its
         /// counts here. The declared characters of <c>orders_ascii</c>, read from its patterns, raised
-        /// its sorts from 41 to 84 of the gate's and its extremes from 7 to 13, and the other two
+        /// its judged sorts from 38 to 84 of the gate's and its extremes from 7 to 13, and the other two
         /// containers by none.
         /// </summary>
         static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =

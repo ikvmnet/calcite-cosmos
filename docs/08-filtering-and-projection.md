@@ -69,13 +69,18 @@ property is read.
 
 ### System properties: exact
 
-`id`, `_ts` and `_etag` are typed and present on every document, so a comparison over them is always
-exact:
+`id`, `_ts` and `_etag` are typed and present on every document, so a comparison of one with a literal
+is always exact:
 
 ```sql
 WHERE c."id" > 'bike-1' AND c."_ts" > 1700000000
 → WHERE ((c.id > @p0) AND (c._ts > @p1))
 ```
+
+A comparison of `id` with a parameter or with another path turns on the characters `id` holds as well:
+Azure allows every character in an `id` but `/` and `\`, and the service orders strings by code point
+where SQL orders them by UTF-16 code unit (Chapter 9.3). Where a schema `pattern` declares them (Chapter
+14.4) it is exact; otherwise it is made in process. `_ts` and `_etag` compare exactly with anything.
 
 ### `JSON_VALUE`: exact against unambiguous text
 
@@ -396,13 +401,16 @@ integer, which compares exactly; sent with a point, it would match the document 
 `2.9999999999999999`, which a double reads as 3 — is compared in process if it is a literal, and fails
 the statement if it is a parameter's value.
 
-**A parameter compared with `JSON_VALUE` is sent in its weakened form.** Whether a text comparison
-can be exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and a parameter's value
-is not known when the statement is planned. So the comparison is sent as `NOT IS_STRING(…) OR …` and
-rechecked; the rows are correct, the statement slightly wider. Declaring that the path holds a string
-(Chapter 14) makes it exact. Comparisons with parameters over `id`, `_ts`, `_etag` and `RETURNING`
-accessors are exact already, and so is a comparison of a declared instant with a parameter — the
-value is written in the stored spelling when the statement runs (Chapter 15).
+**A parameter compared as text needs the path's characters.** Whether a text comparison can be exact
+depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and on the characters either side holds:
+a parameter may hold any character, and the service orders strings by code point where SQL orders them
+by UTF-16 code unit, which part where an emoji meets a character from U+E000 (Chapter 9.3). So a
+comparison of `JSON_VALUE` or `id` with a parameter is made in process, the service sent only
+`IS_DEFINED(…)` for a path, unless the container declares the path a string and its characters with a
+`pattern` (Chapter 14.4), which sends it exactly: `WHERE (c.name > @p0)`. Comparisons with parameters
+over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a comparison of a declared
+instant with a parameter — the value is written in the stored spelling when the statement runs
+(Chapter 15).
 
 **Give a parameter a type where Calcite cannot infer one** — `CAST(? AS VARCHAR)` — so the plan can
 reason from it. A parameter's value also does not route the statement to a partition the way a

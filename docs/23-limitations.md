@@ -23,7 +23,7 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **Sorting on the promoted partition key column** | Declined; sort on `JSON_VALUE` of the path. *Calcite has no order for `VARIANT`.* |
 | **Sorting on `JSON_VALUE` as text over a path no schema declares a string** | In process. *The service orders the stored value, by JSON type and numbers by value; SQL orders the text.* |
 | **Sorting on a `JSON_QUERY`, `DOC` or array column** | In process. *The service orders objects and arrays by rules of its own.* |
-| **Sorting, comparing against a parameter, or taking `MIN`/`MAX` of strings whose characters nothing states** | In process — over `id` too, so a page or a keyset seek on `id` reads the container. Pushes where a schema `enum` or `const`, a declared stored form or the `WHERE` lists the values (Chapter 9.3). *Cosmos orders strings by code point and Calcite by UTF-16 code unit, which part where a character above U+FFFF meets one in U+E000–U+FFFF. A check of the rows as they arrive, and a schema `pattern` read as the characters allowed, are not done.* |
+| **Sorting, comparing against a parameter, or taking `MIN`/`MAX` of strings whose characters nothing states** | In process — over `id` too, so a page or a keyset seek on `id` reads the container. Pushes where a schema `pattern` rules the characters out (Chapter 14.4), or a schema `enum` or `const`, a declared stored form or the `WHERE` lists the values (Chapter 9.3). *Cosmos orders strings by code point and Calcite by UTF-16 code unit, which part where a character above U+FFFF meets one in U+E000–U+FFFF. A check of the rows as they arrive is not done.* |
 | **Multi-key sorts** | Need a matching composite index; a key the `WHERE` pins, or one repeated, is not sent and does not count. *Cosmos.* |
 | **Sorting on a path the indexing policy does not index** | In process: `_etag`, which every policy excludes, an excluded path, and a computed property no included path names. *Cosmos — a 400 on Azure; the emulator accepts it.* |
 | **Sorting on `RETURNING BIGINT` over an integer the schema does not bound within int64** | In process. *A number past int64 is read back rounded below one inside it.* |
@@ -96,7 +96,8 @@ deliberate choice, or work not done yet. The open work is tracked in
 - A sort on a `JSON_VALUE` column reaches the service only where the container's schema declares the
   type it reads — a string, or the `RETURNING` type — because the service orders the stored value and
   places an object or an array after every number, where the column is null (Chapter 9). A string
-  key also needs its characters known, which `ORDER BY c."id"` never has (Chapter 9.3).
+  key also needs its characters known, which `ORDER BY c."id"` has only where a `pattern` declares them
+  (Chapter 14.4).
 - `MAX(c."_etag")` pushes and `ORDER BY c."_etag"` does not: an aggregate scans, and an `ORDER BY`
   needs an index `_etag` never has (Chapter 9.2).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).

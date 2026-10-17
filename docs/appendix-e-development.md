@@ -132,8 +132,9 @@ containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created th
 
 It is explicit, and fails today only where no order was pushed — a projected double printed two ways,
 and `CHAR_LENGTH` pushed as `LENGTH` — in the families `DESIGN.md` lists under *Differential testing*.
-It also holds a floor for how many statements push each kind of order, so that a change declining more
-than it must fails it too:
+It also holds a floor for how many statements push each kind of order, in every container and in
+`orders_ascii`, whose patterns declare its strings' characters, so that a change declining more than it
+must fails it too:
 
 ```sh
 Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \

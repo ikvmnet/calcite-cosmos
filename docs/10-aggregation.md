@@ -60,10 +60,12 @@ property is nullable as far as the planner knows, so in practice:
   code point where SQL orders them by UTF-16 code unit (Chapter 9.3). So `MIN` and `MAX` push where the
   schema says the property holds one type and never `null` — `"type": "integer"`, not
   `["integer", "null"]` — whether or not every document has it, and for a string only where its
-  characters are known as well: an `enum` or `const`, a declared stored form, or a `WHERE` listing the
-  values. `MAX(c."_ts")` always pushes, and so does `MAX(c."_etag")`, though `_etag` cannot be sorted
-  at the service: an aggregate scans and needs no index. `MAX(c."id")` runs in process, since an `id`
-  may hold any character but `/` and `\`; `WHERE c."id" IN ('a', 'b')` brings it back.
+  characters are known as well: a `pattern` that rules them out (Chapter 14.4), an `enum` or `const`,
+  a declared stored form, or a `WHERE` listing the values. `MAX(c."_ts")` always pushes, and so does
+  `MAX(c."_etag")`, though `_etag` cannot be sorted at the service: an aggregate scans and needs no
+  index. `MAX(c."id")` runs in process, since an `id`
+  may hold any character but `/` and `\`; a `pattern` on `id`, or `WHERE c."id" IN ('a', 'b')`,
+  brings it back.
 
 ```sql
 SELECT MIN(JSON_VALUE(c."DOC", '$.year' RETURNING INTEGER)) FROM "books" AS c
