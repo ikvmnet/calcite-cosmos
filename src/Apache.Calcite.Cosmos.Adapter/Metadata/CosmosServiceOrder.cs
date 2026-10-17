@@ -298,16 +298,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// another type than any string, which the comparison leaves undefined.
         /// </para>
         /// <para>
-        /// <b>Whatever reads as null drops the row on both sides</b>, an object and an array included, the service's
-        /// comparison across types being undefined, as Calcite's with a null is unknown; and the two are one under
-        /// <c>NOT</c>. So the null class is not asked here.
+        /// <b>What reads as null on one side drops the row at the service only where the other side holds another
+        /// type</b>, the service's comparison across types being undefined, as Calcite's with a null is unknown; and the
+        /// two are one under <c>NOT</c>. Where both sides may hold one JSON type that a side reads as null, the service
+        /// compares the two as values: measured on the emulator, <c>c.t &lt;= c.t</c> and <c>c.t = c.t</c> over a path
+        /// declared a string or null keep the documents holding a JSON null, which Calcite drops. So the null classes are
+        /// asked, of the two sides together (<see cref="Equate"/> asks the same of an equality).
         /// </para>
         /// </remarks>
         /// <param name="facts">What the comparison may rely on: its own row of the licence table.</param>
         /// <param name="left">One side.</param>
         /// <param name="right">The other.</param>
+        /// <param name="inclusive">Whether two equal values satisfy the comparison — <c>&lt;=</c> and <c>&gt;=</c> — so that
+        /// a JSON null against a JSON null keeps the row at the service.</param>
         /// <returns>A proof, or a refusal saying why.</returns>
-        public static CosmosOrderVerdict Compare(JsonFactSet facts, CosmosOrderOperand left, CosmosOrderOperand right)
+        public static CosmosOrderVerdict Compare(JsonFactSet facts, CosmosOrderOperand left, CosmosOrderOperand right, bool inclusive)
         {
             if (facts is null)
                 throw new ArgumentNullException(nameof(facts));
@@ -325,6 +330,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (r.Agreement != CosmosOrderAgreement.Exact)
                 return CosmosOrderVerdict.Refused(r.Why);
 
+            if (ComparedNulls(l, r, inclusive) is string nulls)
+                return CosmosOrderVerdict.Refused(nulls);
+
             if ((l.Values & r.Values & Classes.String) != Classes.None && Agree(l.Characters, r.Characters) == false)
             {
                 var unproved = "text across U+D800: " + Describe(l.Characters) + " against " + Describe(r.Characters);
@@ -340,6 +348,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             return CosmosOrderVerdict.Proved("proved");
+        }
+
+        /// <summary>
+        /// Asks whether the service's equality of two operands keeps no row Calcite's drops for a null: the question an
+        /// equality shares with an ordering comparison.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Only the null classes.</b> Whether each side reads what the service compares is the translator's, which
+        /// lets a rendering through against text no other JSON value renders as; and characters do not matter, two
+        /// strings being equal by code point exactly where they are by code unit. What is left is the row where both
+        /// sides read null and the service holds one JSON type on both: a JSON null equals a JSON null at the service
+        /// (<see cref="Compare"/>). An absent path is undefined against anything, and drops the row on both sides.
+        /// </para>
+        /// </remarks>
+        /// <param name="facts">What the equality may rely on: its own row of the licence table.</param>
+        /// <param name="left">One side.</param>
+        /// <param name="right">The other.</param>
+        /// <returns>A proof, or a refusal saying why.</returns>
+        public static CosmosOrderVerdict Equate(JsonFactSet facts, CosmosOrderOperand left, CosmosOrderOperand right)
+        {
+            if (facts is null)
+                throw new ArgumentNullException(nameof(facts));
+            if (left is null)
+                throw new ArgumentNullException(nameof(left));
+            if (right is null)
+                throw new ArgumentNullException(nameof(right));
+
+            return ComparedNulls(Read(facts, left, printed: false), Read(facts, right, printed: false), inclusive: true) is string nulls
+                ? CosmosOrderVerdict.Refused(nulls)
+                : CosmosOrderVerdict.Proved("proved");
+        }
+
+        /// <summary>
+        /// Says why the service would compare as values what one side reads as null, or returns <c>null</c> where it
+        /// would not: where a side reads a JSON type as null that the other side may hold too. A JSON null against a
+        /// JSON null counts only where equal values satisfy the comparison; an absent path never, being undefined
+        /// against anything.
+        /// </summary>
+        static string? ComparedNulls(Reading l, Reading r, bool inclusive)
+        {
+            var shared = (l.Nulls & (r.Values | r.Nulls) | r.Nulls & (l.Values | l.Nulls)) & ~Classes.Undefined;
+            if (inclusive == false)
+                shared &= ~Classes.Null;
+
+            return shared == Classes.None
+                ? null
+                : Describe(shared) + " on both sides, which the service compares as values and Calcite reads as null";
         }
 
         /// <summary>

@@ -220,6 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             return root.get(value.VariableName) switch
             {
+                string text when value.Length is int length => Held(text, length, value.Padded),
                 null => null,
                 java.lang.Byte b => (long)unchecked((sbyte)b.byteValue()),
                 java.lang.Short s => (long)s.shortValue(),
@@ -234,6 +235,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 var other => other,
             };
         }
+
+        /// <summary>
+        /// Holds a string to the length its parameter's type holds, as Calcite does: truncated by code unit, and padded
+        /// with spaces where the type is a <c>CHAR</c> (<c>SqlFunctions.truncate</c> and <c>truncateOrPad</c>).
+        /// </summary>
+        /// <param name="text">The value.</param>
+        /// <param name="length">The type's length.</param>
+        /// <param name="padded">Whether a shorter value is padded.</param>
+        /// <returns>The value as Calcite reads it.</returns>
+        static string Held(string text, int length, bool padded) =>
+            text.Length > length ? text.Substring(0, length) : padded ? text.PadRight(length) : text;
 
     }
 

@@ -622,9 +622,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Plans and executes a statement one way, and keeps a failure as an answer rather than
         /// letting it escape.
         /// </summary>
-        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null)
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null)
         {
-            try { return new Outcome((await Run(sql, pushdown, sent)).Select(Canonical).ToList(), null); }
+            try { return new Outcome((await Run(sql, pushdown, sent, CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
             catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
         }
 
@@ -722,13 +722,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// statement whose oracle raises compares nothing at all, and belongs in
         /// <see cref="WithoutAnOracle"/> with the reason rather than in a list that claims a comparison.
         /// </remarks>
-        static async Task<string?> Compare(string sql, bool ordered)
+        static async Task<string?> Compare(string sql, bool ordered, IReadOnlyList<object?>? parameters = null)
         {
-            var oracle = await Attempt(sql, pushdown: false);
+            var oracle = await Attempt(sql, pushdown: false, parameters: parameters);
             if (oracle.Raised is Exception e)
                 return $"{sql}\n  the oracle failed to run, so this compares nothing: {e.Message}";
 
-            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true));
+            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true, parameters: parameters));
         }
 
         /// <summary>
@@ -790,6 +790,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // never arrive to be checked, so it is answered in process. The sorts and the extreme recorded beside it push
             // again, completed as the rows arrive: see CompletedByTheReader.
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false),
+
+            // Two values the container declares may be a JSON null, compared with each other: t a string or null, null in
+            // document 5, and k an integer or null, null in 4. The service equates a JSON null with a JSON null, and holds
+            // one at most and at least the other, so `c.t = c.t`, `c.k <= c.k` and `c.k >= c.k` kept the documents holding
+            // one, where Calcite's comparison with a null is unknown; `<` keeps nothing either way, and still pushes.
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.t') = JSON_VALUE(c.\"DOC\", '$.t')", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) = JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) <= JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) >= JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) < JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
 
             // A typed accessor over the typed container's label, which holds 30 in document 2, an array
             // in 4, an object in 5, null in 6 and nothing in 7: the five a RETURNING INTEGER answers for,
@@ -1698,6 +1708,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // the JOIN. Stated rather than compared for the same reason, and it is the row the whole
             // predicate pushdown is about: one of the two elements, not both and not none.
         ];
+
+        /// <summary>
+        /// Statements with parameters, and the values each is run with: the corpus's comparisons where the value arrives
+        /// with the execution.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A parameter is what Calcite reads it as.</b> The validator gives <c>?</c> the type of what it is compared
+        /// with, and Calcite's generated code holds a string to that type's length: <c>RETURNING VARCHAR(1) &lt; ?</c>
+        /// bound to <c>'ab'</c> compares with <c>'a'</c>, and keeps none of <c>ordering</c>'s <c>s</c>, all at or above
+        /// it. Sent as it was bound, the service compared with <c>'ab'</c> and kept <c>'a'</c>; and the equality kept
+        /// nothing where Calcite keeps <c>'a'</c>. A <c>CHAR(3)</c> is padded too.
+        /// </para>
+        /// </remarks>
+        static readonly (string Sql, object?[] Parameters, bool Ordered)[] WithParameters =
+        [
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) < ?", ["ab"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) = ?", ["ab"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) >= ?", ["a\uE000"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING CHAR(3)) = ?", ["a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["\uE000"], false),
+        ];
+
+        /// <summary>
+        /// Every statement with parameters answers as Calcite would, with the values it is run with.
+        /// </summary>
+        [Fact]
+        public async Task EveryParameterisedStatementAgreesWithTheOracle()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var failures = new List<string>();
+
+            foreach (var (sql, parameters, ordered) in WithParameters)
+                if (await Compare(sql, ordered, parameters) is string failure)
+                    failures.Add($"{failure}\n  with: [{string.Join(", ", parameters.Select(Canonical))}]");
+
+            failures.Should().BeEmpty("every pushdown must answer as Calcite would, whatever its parameters hold:\n" + string.Join("\n", failures));
+        }
 
         [Fact]
         public async Task EveryStatementAgreesWithTheOracle()

@@ -680,7 +680,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return false;
 
                 translator ??= new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), container is null ? JsonFactSet.Empty : CosmosOracle.For(container.Facts).Declared, null, container, readings);
-                return translator.CompareOrder(left, right).IsProved == false;
+                return translator.CompareOrder(left, right, IsInclusive(KindOf(call))).IsProved == false;
             }
         }
 
@@ -938,7 +938,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="parameter">The parameter to write.</param>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex())));
+            builder.Append(_parameters.Add(SlotOf(parameter)));
+        }
+
+        /// <summary>
+        /// Returns the slot a parameter's value is bound into: its ordinal, and the length its type holds a string to.
+        /// </summary>
+        /// <remarks>
+        /// Calcite reads a parameter as its type, and a <c>CHAR(n)</c> or a <c>VARCHAR(n)</c> holds a string to
+        /// <c>n</c> code units: its generated code truncates the value, and pads it for a <c>CHAR</c>
+        /// (<c>RexToLixTranslator.visitDynamicParam</c>). The validator gives a parameter the type of what it is
+        /// compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to <c>'xa'</c> compares with
+        /// <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept the rows holding
+        /// <c>'x'</c>. So the slot carries the length, and <see cref="Client.CosmosQueries.Bind"/> holds the value to it.
+        /// </remarks>
+        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
+        {
+            var type = parameter.getType();
+            var name = type?.getSqlTypeName();
+
+            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR) && type!.getPrecision() >= 0
+                ? new CosmosDynamicValue(parameter.getIndex()) { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
+                : new CosmosDynamicValue(parameter.getIndex());
         }
 
         void WriteInputRef(StringBuilder builder, RexInputRef inputRef)
@@ -3790,6 +3811,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // rendered from, which never hold what it establishes itself.
                     && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
+
+                // Two values that may both hold a JSON type a side reads as null the service equates as values — a JSON
+                // null equals a JSON null there — where Calcite's equality with a null is unknown: measured, `c.t = c.t`
+                // and `c.k = c.k` over paths declared a string or null and an integer or null kept the documents holding
+                // a null. Asked as an ordering comparison asks it (CosmosServiceOrder.Equate). A literal and a parameter
+                // are never one: a null parameter is a question of its own (TODO.md).
+                if (StripVariantCoercion(left) is not (RexLiteral or org.apache.calcite.rex.RexDynamicParam) && StripVariantCoercion(right) is not (RexLiteral or org.apache.calcite.rex.RexDynamicParam)
+                    && EquateOrder(left, right) is { IsProved: false } nulls)
+                    throw new CosmosTranslationException("An equality the service answers otherwise than Calcite: " + nulls.Reason + ".");
             }
             else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
@@ -3802,7 +3832,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // pushes what it implies.
                 throw new CosmosTranslationException("An inequality over JSON_VALUE read as text compares a rendering, and the service's inequality is true across JSON types where the rendering is null.");
             }
-            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue) is { IsProved: false } refused)
+            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused)
             {
                 // An ordering comparison is an order the service computes, and is asked as one
                 // (CosmosServiceOrder.Compare): each side must read exactly what the service compares,
@@ -3878,9 +3908,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             Write(subject, left);
             var expression = subject.ToString();
 
-            var name = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()));
+            var name = _parameters.Add(SlotOf(parameter));
             var lower = op is ">" or ">=";
-            var bound = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
+            var bound = _parameters.Add(SlotOf(parameter) with { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
 
             var exact = $"({expression} {op} {name})";
             builder.Append(exact);
@@ -3909,8 +3939,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="left">One side, beneath any box the validator's coercion put around it.</param>
         /// <param name="right">The other.</param>
+        /// <param name="inclusive">Whether equal values satisfy the comparison: <c>&lt;=</c> and <c>&gt;=</c>.</param>
         /// <returns>The verdict.</returns>
-        internal Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right)
+        internal Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
+        {
+            var (l, r) = OrderOperands(left, right);
+            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive);
+        }
+
+        /// <summary>
+        /// Asks whether the service's equality of two values keeps no row Calcite's drops for a null, of the facts this
+        /// translator was given: see <see cref="Metadata.CosmosServiceOrder.Equate"/>.
+        /// </summary>
+        /// <param name="left">One side.</param>
+        /// <param name="right">The other.</param>
+        /// <returns>The verdict.</returns>
+        Metadata.CosmosOrderVerdict EquateOrder(RexNode left, RexNode right)
+        {
+            var (l, r) = OrderOperands(left, right);
+            return Metadata.CosmosServiceOrder.Equate(Facts, l, r);
+        }
+
+        /// <summary>
+        /// Says what the two sides of a comparison are, beneath any box the validator's coercion put around them.
+        /// </summary>
+        (Metadata.CosmosOrderOperand Left, Metadata.CosmosOrderOperand Right) OrderOperands(RexNode left, RexNode right)
         {
             left = StripVariantCoercion(left);
             right = StripVariantCoercion(right);
@@ -3921,7 +3974,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // as that value.
             var text = IsTextComparand(left) && IsTextComparand(right);
 
-            return Metadata.CosmosServiceOrder.Compare(Facts, OrderOperand(left, text), OrderOperand(right, text));
+            return (OrderOperand(left, text), OrderOperand(right, text));
         }
 
         /// <summary>
@@ -3971,6 +4024,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return kind is SqlKind.__Enum.LESS_THAN
                 or SqlKind.__Enum.LESS_THAN_OR_EQUAL
                 or SqlKind.__Enum.GREATER_THAN
+                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
+        }
+
+        /// <summary>
+        /// Determines whether two equal values satisfy a comparison of a kind: an equality, <c>&lt;=</c> and
+        /// <c>&gt;=</c>.
+        /// </summary>
+        internal static bool IsInclusive(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.EQUALS
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
                 or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 

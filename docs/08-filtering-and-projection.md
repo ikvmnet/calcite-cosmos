@@ -418,6 +418,16 @@ over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a com
 instant with a parameter — the value is written in the stored spelling when the statement runs
 (Chapter 15).
 
+**A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
+holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
+`'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
+or padded the same way, so the service keeps the rows SQL does.
+
+**Two values that may both be a JSON null are compared in process** where equal values satisfy the
+comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALUE(c."DOC", '$.u')` over paths
+a schema declares a string or null. Cosmos holds a JSON null equal to a JSON null; SQL's comparison with a
+null is unknown, and keeps nothing. `<`, `>` and `<>` agree and are sent.
+
 **Give a parameter a type where Calcite cannot infer one** — `CAST(? AS VARCHAR)` — so the plan can
 reason from it. A parameter's value also does not route the statement to a partition the way a
 literal does: routing is decided while the plan is made, from constants.

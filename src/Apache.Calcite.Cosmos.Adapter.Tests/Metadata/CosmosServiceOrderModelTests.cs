@@ -307,7 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 else
                     other = CosmosOrderOperand.ForParameter(TypeOf(left.Reading));
 
-                return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other));
+                return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other, inclusive: kind == Comparison.GreaterOrEqual));
             }
 
             /// <summary>

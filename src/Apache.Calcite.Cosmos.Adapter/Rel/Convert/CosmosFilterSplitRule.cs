@@ -425,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // is not proved, the comparison stays above whole and only the presence the generic weakening finds is
             // pushed.
             if (kind is not (SqlKind.__Enum.NOT_EQUALS or SqlKind.__Enum.LIKE)
-                && translator.CompareOrder(ReferenceEquals(subject, left) ? rawSubject : left, ReferenceEquals(subject, left) ? right : rawSubject) is { IsProved: false })
+                && translator.CompareOrder(ReferenceEquals(subject, left) ? rawSubject : left, ReferenceEquals(subject, left) ? right : rawSubject, CosmosRexTranslator.IsInclusive(kind)) is { IsProved: false })
                 return null;
 
             return Guarded(

@@ -3027,7 +3027,14 @@ the three agree over the values the facts admit.
   response, so there the readings are exact.
 - **R3, the null class.** What a reading reads as null — absent, JSON null, any type it does not read — has to lie
   wholly on Calcite's side of the values, the values have to be one JSON type, and before the last key the null class
-  has to be one tie class, the service putting undefined below null where Calcite ties them.
+  has to be one tie class, the service putting undefined below null where Calcite ties them. A comparison asks it of
+  its two sides together: what one side reads as null and the other may hold as the same JSON type, the service
+  compares as two values, and a JSON null equals a JSON null there. Measured on the emulator, `c.t = c.t`,
+  `c.t <= c.t` and `c.k >= c.k` over paths declared a string or null and an integer or null kept the documents
+  holding a null, which Calcite's unknown drops; `<` and `>` keep none either way. So `Compare` refuses such a pair
+  where equal values satisfy the comparison, and `Equate` asks the same of an equality, whose renderings the
+  translator decides as it did. An absent path is undefined against anything at the service, and drops the row on
+  both sides.
 - **R4, keys.** Every key but the last agrees exactly; the last may be finer at the service. A key the facts make one
   value, or one read as null over every row, orders nothing and is not written; nor is a key an earlier exact key on
   the same path already ties. Calcite's own constant-key rule is inert in this planner.

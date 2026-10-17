@@ -1356,15 +1356,12 @@ the distribution the gate is sized for.
   above U+D800, which R1 already refuses to rank against a high unit, and a declared `pattern` that
   admits a surrogate claims nothing of the high band for this reason — but the reader should say what
   it met.
-- **A comparison of two nullable declared strings keeps the rows where both are null** — *small, and a
-  wrong answer, found by the `ORDER BY` yardstick.* `JSON_VALUE(c."DOC", '$.t') <= JSON_VALUE(c."DOC",
-  '$.t')` over `orders_ascii`, where `t` is declared `["string", "null"]`, is sent raw as
-  `c.t <= c.t`. The service answers true where `t` holds a JSON null and Calcite answers unknown, so
-  the two documents holding one come back too: 46 rows for 44, and the same with `>=` over
-  `orders_declared` (`<` agrees, keeping none). `RendersOnlyStrings` admits a declared string *or null*, which is right for a
-  comparison with a literal, since the service leaves null against a string undefined; null against
-  null is the case it does not cover. The guard is an `IS_STRING` on either side, or facts excluding
-  null on one. Equality between two such paths is the same question, unmeasured.
+- **Two values that may both be a JSON null are compared in process** — *small; closed as a wrong answer,
+  left as a pushdown.* `=`, `<=` and `>=` between two paths that may each hold a JSON null kept the
+  documents holding one at the service, which equates a null with a null where Calcite's comparison is
+  unknown — over declared strings and declared integers alike, and for equality too (`CosmosServiceOrder.
+  Compare` and `Equate`, measured on the emulator). They are declined now. A guard would push them: `NOT
+  IS_NULL` on one side, in a positive position, which is what the filter's conjuncts are.
 
 ---
 
