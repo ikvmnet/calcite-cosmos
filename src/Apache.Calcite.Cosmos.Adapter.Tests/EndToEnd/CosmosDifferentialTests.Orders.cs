@@ -1140,6 +1140,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// the gate holds: a stage that pushes orders records how many of the default run's statements
         /// push each kind in <see cref="PushedFloors"/>, and pushing fewer fails. The floors are the
         /// static question's: what it proves at plan time, before any proof completed as the rows arrive.
+        /// <c>orders_ascii</c> has floors of its own, its declared characters being what its strings'
+        /// orders are proved by: a pattern read that proved less would show there first.
         /// </para>
         /// </remarks>
         [Fact(Explicit = true)]
@@ -1177,6 +1179,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             });
 
             var pushedKinds = all.Where(j => j.Judged).GroupBy(PushedKind).ToDictionary(g => g.Key, g => g.Count());
+            var pushedByContainer = all.Where(j => j.Judged).GroupBy(j => (j.Draft.Container.Name, PushedKind(j))).ToDictionary(g => g.Key, g => g.Count());
+            int Pushed((string? Container, string Kind) floor) => floor.Container is string container
+                ? pushedByContainer.GetValueOrDefault((container, floor.Kind))
+                : pushedKinds.GetValueOrDefault(floor.Kind);
             var families = failing.GroupBy(f => f.Family ?? "other").OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}");
             var runtime = all.Where(j => j.Runtime).ToList();
 
@@ -1202,8 +1208,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var own in runtime)
                 Log($"### the CLR runtime's own: {own.Draft}\n  {own.Failure}");
 
-            var floors = PushedFloors.Where(f => pushedKinds.GetValueOrDefault(f.Kind) < (items.Count == GateOrderedItems ? f.Gate : f.Default))
-                .Select(f => $"{f.Kind}: {pushedKinds.GetValueOrDefault(f.Kind)} pushed, the floor is {(items.Count == GateOrderedItems ? f.Gate : f.Default)}")
+            var floors = PushedFloors.Where(f => Pushed((f.Container, f.Kind)) < (items.Count == GateOrderedItems ? f.Gate : f.Default))
+                .Select(f => $"{(f.Container is null ? "" : f.Container + " ")}{f.Kind}: {Pushed((f.Container, f.Kind))} pushed, the floor is {(items.Count == GateOrderedItems ? f.Gate : f.Default)}")
                 .ToList();
 
             witnesses.Concat(floors).Should().BeEmpty($"every order the service computes must be one Calcite allows, and as many must push as did ({summary}; {witnesses.Count} distinct smallest witnesses)");
@@ -1238,14 +1244,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The least number of the yardstick's statements each kind must push, over the default run and
-        /// over the gate: as many as the static question proved when it was first asked, measured on
-        /// the emulator. Each stage that changes what pushes records its counts here.
+        /// over the gate, in every container or in one: as many as the static question proved when it
+        /// was last raised, measured on the emulator. Each stage that changes what pushes records its
+        /// counts here. The declared characters of <c>orders_ascii</c>, read from its patterns, raised
+        /// its sorts from 41 to 84 of the gate's and its extremes from 7 to 13, and the other two
+        /// containers by none.
         /// </summary>
-        static readonly (string Kind, int Default, int Gate)[] PushedFloors =
+        static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
-            ("sort", 14, 64),
-            ("extreme", 3, 14),
-            ("page", 0, 2),
+            (null, "sort", 17, 110),
+            (null, "extreme", 4, 20),
+            (null, "page", 0, 2),
+            ("orders_ascii", "sort", 9, 84),
+            ("orders_ascii", "extreme", 2, 13),
         ];
 
     }
