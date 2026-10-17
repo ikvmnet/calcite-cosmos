@@ -784,23 +784,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT JSON_QUERY(c.\"DOC\", '$.f') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
 
-            // The order of strings beyond the BMP: the service orders them by code point and Calcite by UTF-16 code
-            // unit, so U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process. Recorded
-            // as divergences while a sort, a comparison and an extreme pushed over id and over a declared string --
-            // the page that chose a and U+E000 where SQL chooses a and U+1F600, U+E000 < U+1F600 true at the service
-            // and false in process, the service's MAX of U+1F600 against Calcite's U+FFFD. Nothing states the
-            // characters of either path, and each is answered in process now. The last is the descending sort under
-            // SQL's placement, never recorded, over the same characters.
-            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true),
+            // The order of strings beyond the BMP, in a comparison of two paths: U+E000 < U+1F600 is true at the service,
+            // which compares by code point, and false in process, which compares by UTF-16 code unit. Recorded as a
+            // divergence while it pushed; nothing states the characters of either path, and the rows the service drops
+            // never arrive to be checked, so it is answered in process. The sorts and the extreme recorded beside it push
+            // again, completed as the rows arrive: see CompletedByTheReader.
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false),
-            ("SELECT MAX(c.\"id\") FROM ordering AS c", false),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true),
 
             // A typed accessor over the typed container's label, which holds 30 in document 2, an array
             // in 4, an object in 5, null in 6 and nothing in 7: the five a RETURNING INTEGER answers for,
@@ -1725,6 +1714,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     failures.Add(failure);
 
             failures.Should().BeEmpty("every pushdown must answer as Calcite would:\n" + string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// The orders of strings beyond the BMP that the reader completes as the rows arrive, each pushed and checked:
+        /// the statement, whether the fallback is expected to run, and whether the answer is a sequence.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Recorded as divergences while they pushed unchecked</b>, then answered in process once the service's order was
+        /// asked the characters it orders (DESIGN.md, <em>The service's order, asked once</em>), and pushed again once the
+        /// rows could complete the proof (<em>The anchored read</em>). The service orders U+E000, U+FF21 and U+FFFD below
+        /// U+1F600 by code point, and Calcite above it by UTF-16 code unit: the page that chose a and U+E000 where SQL
+        /// chooses a and U+1F600, and the service's <c>MAX</c> of U+1F600 against Calcite's U+FFFD. The last is the
+        /// descending sort under SQL's placement, never recorded, over the same characters.
+        /// </para>
+        /// <para>
+        /// The <c>ordering</c> container holds those characters in its ids and in <c>s</c> and <c>u</c>, so each of these
+        /// is one where the service's answer is not Calcite's as it comes: the reader re-sorts a run of rows between
+        /// anchors, or reads the fallback, and says which on its activity. <see cref="EveryOrderTheReaderCompletesAgrees"/>
+        /// holds it to having done one or the other, so that agreement here is known to be the reader's and not chance.
+        /// </para>
+        /// </remarks>
+        static readonly (string Sql, bool Ordered)[] CompletedByTheReader =
+        [
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true),
+        ];
+
+        /// <summary>
+        /// Every order the reader completes answers as Calcite would, was sent to the service, and was completed: a run
+        /// re-sorted between anchors, or the fallback read.
+        /// </summary>
+        [Fact]
+        public async Task EveryOrderTheReaderCompletesAgrees()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var failures = new List<string>();
+
+            foreach (var (sql, ordered) in CompletedByTheReader)
+            {
+                if (await Compare(sql, ordered) is string failure)
+                    failures.Add(failure);
+
+                var sent = new List<string>();
+                var orders = new List<System.Diagnostics.Activity>();
+
+                using (var test = new System.Diagnostics.Activity("completed").Start())
+                using (var listener = new System.Diagnostics.ActivityListener
+                {
+                    ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
+                    Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+                    ActivityStopped = activity =>
+                    {
+                        if (activity.OperationName == "cosmos.order" && activity.TraceId == test.TraceId)
+                            lock (orders)
+                                orders.Add(activity);
+                    },
+                })
+                {
+                    System.Diagnostics.ActivitySource.AddActivityListener(listener);
+                    await Run(sql, pushdown: true, sent);
+                }
+
+                if (sent.Any(s => s.Contains(" ORDER BY ", StringComparison.Ordinal) || s.Contains("MAX(", StringComparison.Ordinal)) == false)
+                    failures.Add($"{sql}\n  sent no order: {string.Join(" || ", sent)}");
+                else if (orders.Any(a => a.GetTagItem("cosmos.order.reissued") is true || a.GetTagItem("cosmos.order.buffered") is int buffered && buffered > 0) == false)
+                    failures.Add($"{sql}\n  the reader neither re-sorted a run nor read the fallback: {string.Join("; ", orders.Select(a => $"{a.GetTagItem("cosmos.order.program")} reissued={a.GetTagItem("cosmos.order.reissued")} buffered={a.GetTagItem("cosmos.order.buffered")}"))}\n  sent: {string.Join(" || ", sent)}");
+            }
+
+            failures.Should().BeEmpty("every order the reader completes must be Calcite's, and completed:\n" + string.Join("\n", failures));
         }
 
         [Fact]
