@@ -196,26 +196,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             }
         }
 
-        /// <summary>
-        /// Judges an answer that must be exactly the input's rows, in any order: a comparison's.
-        /// </summary>
-        /// <remarks>
-        /// A filter has no order to be allowable in and no window to choose from, so the exact multiset
-        /// is all it can be judged by.
-        /// </remarks>
-        public static Verdict JudgeRows(IReadOnlyList<object?[]> rows, IReadOnlyList<object?[]> answer)
-        {
-            var expected = rows.Select(r => Projection(r, r.Length)).OrderBy(s => s, StringComparer.Ordinal).ToList();
-            var actual = answer.Select(r => Projection(r, r.Length)).OrderBy(s => s, StringComparer.Ordinal).ToList();
-
-            if (expected.SequenceEqual(actual, StringComparer.Ordinal))
-                return Verdict.Allowable;
-
-            var lost = expected.Except(actual, StringComparer.Ordinal).ToList();
-            var gained = actual.Except(expected, StringComparer.Ordinal).ToList();
-            return new Verdict(true, $"the rows differ: lost [{string.Join("; ", lost)}], gained [{string.Join("; ", gained)}]{(lost.Count == 0 && gained.Count == 0 ? " (multiplicities only)" : "")}");
-        }
-
         static int ClassOf(List<object?[]> sorted, int[] classOf, object?[] row, Comparison<object?[]> compare)
         {
             // Binary search for any row tying with this one: the classes are runs of the sorted rows.

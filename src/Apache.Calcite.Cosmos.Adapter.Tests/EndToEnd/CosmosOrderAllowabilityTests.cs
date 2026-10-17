@@ -163,14 +163,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A comparison's rows are judged as a multiset, exactly.
+        /// A comparison's rows are judged as a multiset, exactly: a window of no order over all of them,
+        /// read in no order.
         /// </summary>
         [Fact]
         public void AComparisonsRowsAreJudgedExactly()
         {
-            OrderAllowability.JudgeRows(Rows("a", "b"), Rows("b", "a")).Failed.Should().BeFalse();
-            OrderAllowability.JudgeRows(Rows("a", "b"), Rows("a")).Failure.Should().Contain("lost ['b']");
-            OrderAllowability.JudgeRows(Rows(9007199254740993L), Rows(9007199254740992L)).Failed.Should().BeTrue("the two integers are two values, where a double has one");
+            Judge(Rows("a", "b"), Rows("b", "a"), [], ordered: false).Failed.Should().BeFalse();
+            Judge(Rows("a", "b"), Rows("a"), [], ordered: false).Failure.Should().StartWith("(A1)", "b is lost");
+            Judge(Rows(9007199254740993L), Rows(9007199254740992L), [], ordered: false).Failure.Should().StartWith("(A0)", "the two integers are two values, where a double has one");
         }
 
         static List<object?> Sorted(IReadOnlyList<CalciteSortKey> keys, params object?[] values)
