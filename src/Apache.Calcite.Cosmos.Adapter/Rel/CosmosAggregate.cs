@@ -72,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// around anchors is checked as the row arrives, and only an ungrouped aggregate has one row to check.</param>
         /// <returns><c>true</c> if the call may be pushed down; otherwise <c>false</c>.</returns>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public static bool CanImplement(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, bool grouped = true)
+        public static bool CanImplement(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, bool grouped)
         {
             if (call is null)
                 throw new ArgumentNullException(nameof(call));

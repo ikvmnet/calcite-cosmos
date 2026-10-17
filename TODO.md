@@ -1664,7 +1664,7 @@ preserve order, which is the two-bit question above. And the guard the projectio
 an object at the path the column is null while the path is the object — and Cosmos sorts an object
 above every scalar while null sorts below them. A path declared present and a scalar admits no such
 document, which is the same claim the null-placement rule already makes of any sort key;
-`JsonFactSet.IsAlwaysScalar` is now where both ask it.
+`CosmosServiceOrder`'s null class (R3) is now where both ask it.
 
 **The temporal spelling is _not_ closed by this, and the obvious reading that it is was wrong.**
 `ORDER BY CAST(<path> AS TIMESTAMP)` looks like the UUID case with a different type, and the sort
@@ -2054,7 +2054,8 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
 - **A value aggregate over a path the filter proves present** — *small, a pushdown not taken.* `SUM`, `MIN`, `MAX`
   and `AVG` push only over an input the plan types non-null (`CosmosAggregate.CanImplement`); the service answers
   undefined where one row's value is null or absent, so `WHERE x IS NOT NULL` would settle it as it settles a sort's
-  null placement, and needs a type too (`IsAlwaysScalar` and the number the aggregate reads). The grouping reads L1
+  null placement, and needs a type too (the null class `CosmosServiceOrder.Extreme` reads, and the number the
+  aggregate reads). The grouping reads L1
   already; the calls do not.
 - **Deletions inside a conjunct** — *small, and the measurement says not yet.* The rewriter deletes whole conjuncts,
   one at a time, and the shadow found 2,263 `CASE` conditions on the hierarchy that a sibling conjunct states.

@@ -126,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             facts.Knows(new JsonFact(Location, new JsonClaim.Present())).Should().BeTrue();
             facts.Knows(new JsonFact(Location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
-            facts.IsAlwaysScalar(Location).Should().BeFalse("a shape is not a scalar");
+            facts.HasOneScalarType(Location).Should().BeFalse("a shape is not a scalar");
         }
 
         static JsonFact Equals(JsonDocumentPath path, JsonScalar value) => new(path, new JsonClaim.EqualTo(value));

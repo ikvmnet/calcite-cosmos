@@ -127,7 +127,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         static readonly Dictionary<string, UuidSpelling> Uuids = BuildUuids();
 
         /// <summary>
-        /// Gets every UUID form a pattern can be recognised as.
+        /// Gets every UUID form a pattern can be recognised as: for <see cref="CosmosStoredForms.Registered"/>, a hook for
+        /// the tests.
         /// </summary>
         internal static IEnumerable<CosmosRepresentation> Registered => Uuids.Values.Select(UuidForm);
 

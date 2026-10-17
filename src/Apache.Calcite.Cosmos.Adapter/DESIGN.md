@@ -1754,7 +1754,8 @@ Two things make it sound rather than merely plausible. **Both senses of absent g
 distinguishes a property holding JSON `null` from a property that is not there, and sorts
 `undefined` below `null` below everything else — so excluding only one of them would leave the
 other to arrive first ascending and the guarantee would be false. What the placement asks of a key is
-that it is there and holds a scalar (`JsonFactSet.IsAlwaysScalar`), which rules out both. And **the
+that its null class lies on the side Calcite puts nulls, which a key that is there and holds a scalar
+settles by having none (`CosmosServiceOrder`, R3). And **the
 predicate and the ordering leave as one statement**, so the guarantee holds at the service and not
 only in the plan: it is read off the conjuncts the service applies.
 

@@ -166,7 +166,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                     // What a consumer asks of a fact set beside a claim, on every path the statement reads.
                     if (read.Contains(path))
                     {
-                        fast.IsAlwaysScalar(path).Should().Be(engine.IsAlwaysScalar(path), $"IsAlwaysScalar({path}) under {described}");
                         fast.HasOneScalarType(path).Should().Be(engine.HasOneScalarType(path), $"HasOneScalarType({path}) under {described}");
 
                         var fastFound = fast.TryGetValue(path, out var fastValue);

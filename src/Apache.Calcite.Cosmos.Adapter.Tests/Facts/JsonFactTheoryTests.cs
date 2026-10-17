@@ -353,21 +353,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// Always a scalar is there, of one kind, and never null.
-        /// </summary>
-        [Fact]
-        public void AlwaysAScalarIsThereOfOneKindAndNeverNull()
-        {
-            JsonFactSet With(params JsonFact[] facts) => JsonFactTheory.Empty.Derive(facts);
-            var integer = new JsonFact(At, new JsonClaim.OfType(JsonType.Integer));
-
-            With(integer, Present(At)).IsAlwaysScalar(At).Should().BeTrue();
-            With(integer).IsAlwaysScalar(At).Should().BeFalse("an absent path reads as null");
-            With(new JsonFact(At, new JsonClaim.OfType(JsonType.Integer, OrNull: true)), Present(At)).IsAlwaysScalar(At).Should().BeFalse("and so does a stored null");
-            With(Equals(At, "x"), Present(At)).IsAlwaysScalar(At).Should().BeTrue("a value settles its type");
-        }
-
-        /// <summary>
         /// An extension says in JSON's terms what it entails, and those are what the rest of the theory reads: a
         /// geography is an object, and one that is there, so the path's parent is there too.
         /// </summary>

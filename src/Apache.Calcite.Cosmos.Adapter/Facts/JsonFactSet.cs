@@ -222,39 +222,6 @@ namespace Apache.Calcite.Cosmos.Facts
         });
 
         /// <summary>
-        /// Determines whether a path is guaranteed to hold a scalar of a known type in every document.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Two claims, and both are needed.</b> The path has to be <em>there</em>, since an accessor
-        /// answers null over an absent one; and it has to hold a scalar of a known type, since the
-        /// accessor answers null for a JSON null and for an object or an array alike — neither being a
-        /// scalar, which is SQL/JSON's own line. A type admitting null is not enough, for the same
-        /// reason the presence is not.
-        /// </para>
-        /// <para>
-        /// <b>One type, too.</b> A string at one document and a number at another are both scalars, and the service orders
-        /// them by type before value, where the accessor's text orders them as text. So the types are those of one scalar
-        /// kind — strings, numbers or booleans — as a single declared type always said.
-        /// </para>
-        /// <para>
-        /// <b>Asked by two callers for two reasons that turn out to be one.</b> A sort wants it for the
-        /// null placement — Cosmos orders nulls first ascending where Calcite's default is last, so a
-        /// key that cannot be null leaves the two nothing to disagree about. A projection that renders
-        /// a guarded accessor wants it to know the guard is vacuous, so that ordering by the raw path
-        /// orders the rows the way ordering by the rendered column would. Both are the statement that
-        /// no document makes the accessor answer something other than the value.
-        /// </para>
-        /// </remarks>
-        /// <param name="path">The path.</param>
-        /// <returns><c>true</c> where every document holds a scalar of a known type there.</returns>
-        public bool IsAlwaysScalar(JsonDocumentPath path) => Read(false, t =>
-            t.Present(path)
-                && t.TryTypes(path, out var types)
-                && types.Contains(NullType) == false
-                && IsOneScalarKind(types));
-
-        /// <summary>
         /// Determines whether every value a path holds is a scalar of one kind, or null.
         /// </summary>
         /// <remarks>

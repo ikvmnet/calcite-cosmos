@@ -563,7 +563,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             Known.TryGetValue(normalised, out var representation) ? representation : null;
 
         /// <summary>
-        /// Gets every temporal form a pattern can be recognised as.
+        /// Gets every temporal form a pattern can be recognised as: for <see cref="CosmosStoredForms.Registered"/>, a hook
+        /// for the tests.
         /// </summary>
         internal static IEnumerable<CosmosRepresentation> Registered => Known.Values.Distinct();
 

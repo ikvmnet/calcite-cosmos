@@ -60,9 +60,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Gets every stored form a pattern can be recognised as, a numeric form at each width a pattern can name.
         /// </summary>
         /// <remarks>
-        /// What <c>CosmosStoredFormsTests</c> holds to the claim the service's order rests on: every stored form is
-        /// ASCII, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part
-        /// (<see cref="CosmosServiceOrder"/>).
+        /// <b>A hook for the tests, and read by nothing else.</b> What <c>CosmosStoredFormsTests</c> holds to the claim
+        /// the service's order rests on: every stored form is ASCII, so a path in one holds no character at or above
+        /// U+D800, where code point and UTF-16 order part (<see cref="CosmosCharacters"/>, which a form entails). The
+        /// tables it enumerates are the recognisers' own, so a form added to one is held to the claim with no list to
+        /// keep beside it.
         /// </remarks>
         internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
             System.Linq.Enumerable.Concat(
