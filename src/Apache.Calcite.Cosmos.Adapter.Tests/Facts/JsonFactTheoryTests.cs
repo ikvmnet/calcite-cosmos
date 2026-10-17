@@ -221,11 +221,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var path = StatementPath.Root("c").Property("data").Property("parkId");
 
-            CosmosDocumentPaths.From(path).Should().Be(ParkId);
-            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
+            CosmosDocumentPaths.From(path, "c").Should().Be(ParkId);
+            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId"), "x").Should().Be(ParkId,
                 "the alias is the statement's business and no part of what a schema declares");
 
-            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
+            CosmosDocumentPaths.From(StatementPath.Root("t").Property("data").Property("parkId"), "c").Should().BeNull(
+                "a path under a traversal's alias addresses an element, and is not the document's");
+
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0), "c").Should().BeNull(
                 "an element is not its array, and conflating them would apply one's facts to the other");
         }
 

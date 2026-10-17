@@ -213,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (ordinal < 0 || ordinal >= fields.Count || ordinal >= rowType.getFieldCount() || fields[ordinal] is not CosmosPath path)
                 return null;
 
-            if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false || CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath document)
                 return null;
 
             var type = ((RelDataTypeField)rowType.getFieldList().get(ordinal)).getType().getSqlTypeName();
@@ -583,7 +583,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Determines whether a path is known to be present on every document.
         /// </summary>
         static bool IsAlwaysPresent(CosmosPath path, JsonFactSet facts) =>
-            Metadata.CosmosDocumentPaths.From(path) is JsonDocumentPath document &&
+            Metadata.CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is JsonDocumentPath document &&
             facts.Knows(new JsonFact(document, new JsonClaim.Present()));
 
         string Render(AggregateCall call, IReadOnlyList<CosmosPath?> fields)

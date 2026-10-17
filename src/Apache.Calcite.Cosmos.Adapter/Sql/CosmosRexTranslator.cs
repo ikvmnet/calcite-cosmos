@@ -2205,17 +2205,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// Rooted at the container only: a traversal alias addresses an element, and what is known is of
-        /// the document. <see cref="Metadata.CosmosDocumentPaths.From"/> drops the alias, so asked of an
-        /// element's <c>t.x</c> it answers the document's <c>x</c>. Every translator reads the declaration
-        /// where its caller named no licence (<see cref="Facts"/>), the one predicate an unnest renders over
+        /// the document, which <see cref="Metadata.CosmosDocumentPaths.From"/> asks. Every translator reads
+        /// the declaration where its caller named no licence (<see cref="Facts"/>), the one predicate an unnest renders over
         /// its element among them.
         /// </remarks>
         /// <param name="path">The statement's path.</param>
         /// <returns>The document path, or <c>null</c>.</returns>
         static JsonDocumentPath? DocumentOf(CosmosPath? path) =>
-            path is not null && string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal)
-                ? Metadata.CosmosDocumentPaths.From(path)
-                : null;
+            Metadata.CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias);
 
         /// <summary>
         /// Determines whether a field, as it is read back, is the value the service holds at the path

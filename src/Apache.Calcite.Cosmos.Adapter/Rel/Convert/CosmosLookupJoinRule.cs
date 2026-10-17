@@ -308,7 +308,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(text, out var path) == false || path is null)
                 return null;
 
-            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath stored)
+            if (CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath stored)
                 return null;
 
             if (facts.RepresentationOf(stored) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)

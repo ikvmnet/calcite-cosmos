@@ -148,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             if (path is not null)
             {
-                if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false || Metadata.CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+                if (Metadata.CosmosDocumentPaths.From(path, rootAlias) is not JsonDocumentPath document)
                     return false;
 
                 var type = ((org.apache.calcite.rel.type.RelDataTypeField)rowType.getFieldList().get(index)).getType().getSqlTypeName();
@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             if (ordering.Path is CosmosPath converted)
             {
-                if (string.Equals(converted.Alias, rootAlias, StringComparison.Ordinal) == false || Metadata.CosmosDocumentPaths.From(converted) is not JsonDocumentPath document)
+                if (Metadata.CosmosDocumentPaths.From(converted, rootAlias) is not JsonDocumentPath document)
                     return false;
 
                 path = converted;
@@ -172,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 var accounted = ordering.Operands is not null;
 
                 foreach (var between in ordering.Operands ?? System.Array.Empty<CosmosPath>())
-                    if (Metadata.CosmosDocumentPaths.From(between) is JsonDocumentPath document)
+                    if (Metadata.CosmosDocumentPaths.From(between, rootAlias) is JsonDocumentPath document)
                         measured.Add(document);
                     else
                         accounted = false;

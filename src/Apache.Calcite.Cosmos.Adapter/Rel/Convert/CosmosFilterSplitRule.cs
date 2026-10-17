@@ -323,10 +323,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (translator.TryResolvePath(value, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            return Metadata.CosmosDocumentPaths.From(path);
+            return Metadata.CosmosDocumentPaths.From(path, rootAlias);
         }
 
         /// <summary>
