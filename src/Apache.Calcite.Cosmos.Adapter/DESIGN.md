@@ -3053,9 +3053,9 @@ extensions — and open no oracle scope; the planning gate measured no time adde
 which encoded part of this. What they decline that pushed before is the order of strings whose characters nothing
 states: a sort, a page and a keyset seek over `id`, a sort over a declared string, a comparison against a parameter
 or between two such paths, the extreme of either. The declaration is the first answer, and is read now: a JSON
-Schema `pattern` read as the characters a path may hold (below). Two are next: a proof completed when the rows
-arrive — the anchored read, which checks at run time what no declaration proved — and a sort split by JSON type
-(`TODO.md` section 4).
+Schema `pattern` read as the characters a path may hold (below). The second is a proof completed when the rows
+arrive — the anchored read, which checks at run time what no declaration proved (below) — and it pushes all of that
+again but a comparison of two paths and a grouped extreme. A sort split by JSON type is next (`TODO.md` section 4).
 
 #### Reading a pattern as characters
 
@@ -3134,6 +3134,112 @@ extension facts to a path. Timed against main, interleaved, in Release: the corp
 the same within their noise. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
 to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
 they did (*Differential testing*).
+
+#### The anchored read: a proof completed as the rows arrive
+
+**What the plan cannot prove, the rows can.** A string order whose characters nothing states, a `BIGINT` read back
+past int64, a `DOUBLE` past 2^53 before the last key: in each the one thing the facts cannot say is something about
+the values, and the values arrive with the answer. The owner counts a proof completed when they do as a proof (D1),
+so the question answers `Anchored` there (`CosmosOrderVerdictKind`), for a sort, an ungrouped extreme and a
+comparison with a parameter, and the reader completes it. Everything a value cannot certify — a null placement the
+service does not share, two JSON types, a rendering, the two nulls of a leading key, two paths' strings — is refused
+as before.
+
+**An anchor is a value the two orders agree about** (`CosmosServiceOrder.IsAnchor`, `CosmosOrderAnchor`):
+- a string with no UTF-16 unit at or above U+D800, which orders against any other the same by code point and by code
+  unit — at the first unit two strings differ in, a unit below U+D800 is below every surrogate and every unit from
+  U+E000 under both rules;
+- a number strictly within ±2^53, which is read back as itself, and past which every value — an int64 the service
+  orders exactly, or a double printed as another integer — reads back on the same side. Strictly, because a service
+  comparing doubles ties 2^53 with 2^53 + 1, which a `BIGINT` orders (`anchors.py` §6b);
+- a value the key reads as null, which R3 has already placed alike in both orders: exactly before the last key, where
+  R3 makes the null class one tie class at the service, and as a refinement on the last, where a tie of Calcite's is
+  free and the service may order undefined below null.
+
+**An anchor is where it belongs in the stream, through the merge.** Within a partition every row before an anchor
+is at most it in the partition's order, so at most it in Calcite's. Across partitions the SDK emits the least head
+in Calcite's order: a row of another partition emitted before the anchor was at most the head of the anchor's own
+partition, which was at most the anchor; one emitted after was at least the head of its own partition when the
+anchor went, which was at least the anchor. So every row before an anchor is at most it in Calcite's order and every
+row after at least, whichever partitions they came from — which the probe account measured on 40 one-iterator
+streams and 880 windows across two physical partitions, none accepted wrongly. Three programs follow:
+- **A stream**: emit each anchor as it arrives, after the run of rows since the last one, sorted. The runs are
+  ordinarily empty.
+- **A window**, `OFFSET o LIMIT f`: its rows are Calcite's where its last row is an anchor or the stream ended inside
+  it, and its first is one where `o > 0` — every row skipped is at most the first and every row past it at least
+  the last. Sorted, the window is allowable. Otherwise the statement is read again without its page, and the page is
+  taken from the sorted stream, stopping once it is out and the run it ended in is closed.
+- **An extreme**: one that is an anchor is Calcite's. Any other is replaced by the argument read again in its order
+  toward the extreme, `SELECT VALUE c.k … ORDER BY c.k DESC`, up to the first anchor — past which nothing lies beyond
+  it in either order — or read whole where the path is not indexed. Grouped, there is no one row to check, and it
+  is refused.
+
+**A comparison with a parameter is decided by the value.** Against an anchor it is exact. Against any other the
+statement is sent with the comparison weakened to a bound every string Calcite keeps satisfies at the service, and
+the rows are rechecked by Calcite's comparison: for `>` and `>=`, `x >= P`, where `P` is the value up to its first
+unit at or above U+D800 (`anchors.py` §5, 342,225 pairs); for `<` and `<=`, `x < P′`, `P` with its last character
+raised, U+D7FF going to U+E000 (`keyset_mirror.py`, 170,820 pairs); and the type test alone where `P` is empty. The
+translator writes the comparison as it is and records the three forms beside the parameters
+(`CosmosOrderComparison`), with a second slot for the bound that `CosmosQueries.Bind` writes from the same value
+(`CosmosAnchorBound`). Rechecking a superset of one comparison is the predicate only where the comparison is a whole
+conjunct of the `WHERE`, beside conjuncts the service applies exactly, and only where the rows are the filter's: so
+the translator writes it only for the conjunct `TranslateConjunct` was handed, and refuses it under an `OR`, a `NOT`
+or a value; and the binding walk marks a filter that may hold one (`CosmosClauses.Recheck`, asked of the declaration
+alone, which over-approximates what a stratum renders anchored) so that a grouping, a `DISTINCT`, a rank and a lookup
+decline above it, and a filter declines above a `DISTINCT`. A comparison of two paths is refused: the rows the service
+drops never arrive.
+
+**One program, on the statement.** The node that asked records what the reader needs — a sort its keys
+(`CosmosImplementor.OrderAnchored`), an aggregate its extremes, a translator its comparisons — and `Build` assembles
+`CosmosOrderProgram` beside the statement: the keys with how Calcite compares each (`CosmosOrderedKey`), the page, the
+statement unpaged, the comparisons and the extremes. A value the reader checks is selected under a member no column
+has, `"$k0": c.s`, so a key the statement does not select is still there to read; the row builders read columns by
+name and never see one. A `DISTINCT` is given none — a member it de-duplicated by would change what it returns — and
+its keys are read from the members it already selects, which hold the key's value or null as the key's reading does.
+`CosmosCursors.OpenAsync` hands a statement carrying a program to `CosmosOrderedCursor`; one whose orders are proved
+carries none and is read as it always was. `CosmosSort` shows `order=anchored` in the digest, so that `EXPLAIN` tells
+the two apart.
+
+**Every statement is one iterator, from its start.** Measured on the probe account across two physical partitions, a
+cross-partition `ORDER BY` resumed from a continuation token in a new iterator lost and repeated rows — the token's
+`resumeValues` are compared by code point at the service, and rows the merge had not yet emitted from the other
+partition are skipped or re-sent — and the certificate cannot see a row that never arrives. So the fallback is a
+statement of its own, read from its start, and nothing resumes anything.
+
+**A `DISTINCT` across partitions may repeat a value.** The SDK de-duplicates adjacent rows of the merged stream, and
+where the orders part the merge can separate two copies: one partition holds U+1F600, the other U+E000 then U+1F600,
+and the merge emits U+1F600, U+E000, U+1F600. A repeat ties the row it repeats, and a tie class is contiguous in the
+sorted stream, so the reader drops repeats within each one. A repeat before a window is counted by the service's
+`OFFSET` and cannot be seen, so a `DISTINCT`'s window past an offset is never certified and is taken from the stream
+read unpaged.
+
+**The comparator is Calcite's, written here** (`CosmosKeyComparer`): text by UTF-16 code unit, which is
+`String.compareTo`; an exact number by `BigDecimal.compareTo`; a double as `Double.compare`, reading two integers past
+2^53 alike as Calcite does, which keeps the order of a later key among them; a boolean false first; every null one tie
+class placed absolutely. Not the CLR runtime's `JavaComparisons`, which orders multi-key text by culture.
+
+**What it costs.** At planning, nothing measurable: the question's new answer reads what it read, and the sort rule
+asks it once more in `convert`, for the digest. At run time, on data whose strings stay below U+D800 — nearly all text
+— a scan of each key and the members selected for it, and no second request. Elsewhere, a run held and re-sorted, as
+long as the run; for a page whose edge holds such a string, an extreme that is one, or a parameter that is one, a
+second statement, in order and stopping at the next anchor, never more rows than sorting in process reads. The
+`cosmos.order` activity reports which (`cosmos.order.program`, `cosmos.order.reissued`, `cosmos.order.buffered`; the
+manual's 20.3).
+
+**How it is checked.** `CosmosServiceOrderModelTests` holds every anchored verdict to the reader's own check over the
+model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before
+the last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found
+the last key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe
+account's measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a
+value that is no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite
+inventory's measurements. The eight recorded divergences of string order push again, each held to the reader having
+re-sorted a run or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`), and the yardstick judges every
+order the reader completes (*Differential testing*). `CosmosOrderMergeMeasurementTests` runs the reader through the
+adapter's executor over two physical partitions, on an account that has them.
+
+**What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under an `OR` or beneath a
+grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
+and the mixed types the sort split by JSON type is for (`TODO.md` section 4).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -5530,7 +5636,7 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
     the answer still fails, the CLR runtime's own order is to blame — two or more keys by culture — and
     the failure is reported apart, as `calcite-dotnet`'s.
 
-  **On main it fails, and is explicit until the anchored read lands.** Over the adapter at `4b2ccb3`, on
+  **On main it failed.** Over the adapter at `4b2ccb3`, on
   the emulator, the gate's 1,000 items came to 1,092 statements, of which 115 were not judged because
   Calcite raised. Of the rest, 267 sent the service an `ORDER BY` and 17 an extreme, and 130 failed:
 
@@ -5570,20 +5676,34 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   extremes. The floors are kept per container too, `orders_ascii`'s among them, so that a reading of the patterns
   that proved less fails there first.
 
+  **With the anchored read, what the rows prove pushes too, and the yardstick runs by default** (*The anchored
+  read*). Over the same items, 1,092 statements, 113 not judged: 217 sent the service an `ORDER BY`, 25 an extreme,
+  2 a page and 26 a comparison with a parameter the reader rechecks, and none answered what Calcite does not allow.
+  The gain is in the containers that declare no characters — `orders_plain`'s judged sorts from 12 to 27 and
+  `orders_declared`'s from 14 to 99, with their extremes 3 to 4 and 4 to 8: sorts over `id` and over text of any
+  character, their pages and three-page keysets, `RETURNING BIGINT` over an integer nothing bounds, `MAX(c."id")` —
+  and `orders_ascii` gains its unbounded integers, 84 to 91. 118 answers were the CLR runtime's own. The two families
+  that are not orders' are findings of their own (`Findings`), recorded in `TODO.md` and reported apart where the
+  statement sent no order — every one of the 8 does — so the test holds every order it judges and runs with the
+  class. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
+  it, per container, the comparisons among them.
+
   **What it costs.** On the emulator, on a workstation running other work, the default's 200 items took
-  53 to 76 s and the gate's 1,000 took 157 to 267 s, the class's setup included: about two runs a
-  statement, planning being the cost and each read of 48 documents next to nothing. So the default can
-  be a run of the class once it passes.
+  53 to 76 s and the gate's 1,000 took 157 to 267 s when it was built, the class's setup included: about
+  two runs a statement, planning being the cost and each read of 48 documents next to nothing. Later runs,
+  the containers already seeded, took about 20 s and 70 s in Debug. The default is a run of the class.
 
   **The model checks the question rather than the answers.** `CosmosServiceOrderModelTests` models each
   partition's order (type order, exact numbers, code point text), the SDK's merge (the same over what
   was printed, UTF-16 text, the lower feed range first on a tie) and Calcite's, and checks every verdict
   of the question "may the service compute this order" pairwise over the values each fact set admits.
   The merge is pinned to the two-partition streams the probe account returned, which no single order
-  produces. Until the one place exists it asks a mirror of main's decisions, which it finds wrong in
-  three families: text across U+D800 (52 verdicts), undefined and null on a leading key (20) and 2^63
-  read back (14). That sweep is explicit too; the checker's own test plants each family, and runs by
-  default. `CosmosOrderMergeMeasurementTests` measures the merge itself, on a container with two
+  produces. Built before the one place existed, it asked a mirror of main's decisions, which it found
+  wrong in three families: text across U+D800 (52 verdicts), undefined and null on a leading key (20) and
+  2^63 read back (14). It asks the one place now, by default, and holds an anchored verdict to the reader's
+  own check: every anchor compares alike with every admitted value under the three orders, ties free only on
+  the last key, and an extreme read again to the first anchor through the merge is Calcite's. The checker's
+  own test plants each family. `CosmosOrderMergeMeasurementTests` measures the merge itself, on a container with two
   physical partitions that the caller names; it creates none, and skips without one.
 
 ---

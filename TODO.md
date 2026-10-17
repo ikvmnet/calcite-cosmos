@@ -264,6 +264,14 @@ A query's continuation token makes a result resumable, and the adapter reads eve
 one enumeration. `GROUP BY` and `DISTINCT` results are documented as not resumable, which is a
 constraint on where this can apply rather than a reason not to.
 
+**Not for a string order, measured.** On the probe account, across two physical partitions, a
+cross-partition `ORDER BY c.s` resumed page by page from each continuation token in a new iterator lost 3
+to 5 of 28 rows, and at a page of 5 descending repeated four rows four times over: the token's
+`resumeValues` are compared by code point at the service, where the merge had emitted by UTF-16 code unit.
+No check of the rows that arrive can see a row that never does, so the reader of an anchored order
+(`DESIGN.md`, *The anchored read*) reads every statement through one iterator from its start, and a
+resumable cursor would have to keep to that, or resume only orders proved when the plan is made.
+
 ---
 
 ## 3. Writing
@@ -1275,25 +1283,32 @@ the distribution the gate is sized for.
   numbers, `WHERE IS_NUMBER(p) ORDER BY p` with the page, and the rest, whose key is null and needs no
   order, placed before or after them as the placement says. The cost model would have to know the
   second half's size, as there.
-- **String orders the plan cannot prove are declined; a declaration recovers them, and two pieces would
-  recover the rest** — *medium each.* Calcite compares strings by UTF-16 code unit, as Java does, and the service by code point, so
-  the two part where a character above U+FFFF meets one between U+E000 and U+FFFF — private use, the
-  CJK compatibility block, the fullwidth forms, U+FFFD. Measured on the emulator and on the probe
-  account (`Service.StringOrderIsCodePoint`, and `Service.ConstantStringComparisonIsByCodeUnit` for two
-  constants). Every order the service computes is now asked of `CosmosServiceOrder` (`DESIGN.md`, *The
-  service's order, asked once*), which declines a string order over characters nothing states, and the
-  nine divergences that witnessed it agree in process and are in the corpus. What that costs, where
-  nothing declares a path's characters, is what pushed before: `ORDER BY c.id`, its page and its keyset
-  seek `WHERE c.id > ?` — the paging chapter 9 recommends — a sort over a declared string, a comparison
-  against a parameter or between two declared strings, and the extreme of either. The earlier entry here
-  put the decline "in one place, the text exception of `IsReadAsStored`"; that is withdrawn,
-  `IsReadAsStored` staying the equality question for grouping and lookup keys. **The declaration is
-  done:** a JSON Schema `pattern` is read as the characters a path may hold, under both of ECMA-262's
-  readings, into `CosmosCharacters` (`CosmosPatternAlphabet`; `DESIGN.md`, *Reading a pattern as
-  characters*), so a declared `id` or string recovers all of it at plan time. What recovers the rest:
-  - **the anchored read**: the order checked as the rows arrive, against what no declaration proved,
-    with a fallback statement where a row breaks it — a proof at run time, which counts as one;
-  - **a sort split by JSON type**, for the null placement and the mixed-type keys (section 5).
+- **String orders the plan cannot prove: declared, or checked as the rows arrive; four shapes still
+  declined** — *done, and small each for what is left.* Calcite compares strings by UTF-16 code unit, as
+  Java does, and the service by code point, so the two part where a character above U+FFFF meets one
+  between U+E000 and U+FFFF — private use, the CJK compatibility block, the fullwidth forms, U+FFFD.
+  Measured on the emulator and on the probe account (`Service.StringOrderIsCodePoint`, and
+  `Service.ConstantStringComparisonIsByCodeUnit` for two constants). Every order the service computes is
+  asked of `CosmosServiceOrder` (`DESIGN.md`, *The service's order, asked once*). **A declaration proves it
+  when the plan is made:** a JSON Schema `pattern` read as the characters a path may hold
+  (`CosmosPatternAlphabet`; *Reading a pattern as characters*). **The rows prove the rest:** the anchored
+  read (*The anchored read*) sends `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?`, a sort
+  over a declared string, a comparison against a parameter, `MAX(c.id)` and a `BIGINT` past int64, and the
+  reader checks each value as it arrives and reads a fallback where one breaks the proof. Eight of the nine
+  recorded divergences push again, held to the reader having done its work. What neither reaches:
+  - **a comparison of two paths of unknown characters** — the rows the service drops never arrive to be
+    checked. Only a declaration recovers it;
+  - **a grouped `MIN` or `MAX`** — no one row to check. A grouped reread by key would, at a second statement
+    per group whose extreme is no anchor;
+  - **a comparison with a parameter under an `OR` or a `NOT`, or beneath a grouping, a `DISTINCT`, a rank or
+    a lookup** — the recheck is the predicate only where the comparison is a whole conjunct and the rows are
+    the filter's (`CosmosClauses.Recheck`). The walk asks the declaration alone, so a comparison a sibling
+    proves exact in its stratum still declines a grouping above it; reading the strata there would cost a
+    scope per walk;
+  - **a `REAL` key before the last**, for which no anchor is stated (within ±2^24 would do).
+
+  The rest is not about characters: the null placement and the mixed-type keys, which **a sort split by
+  JSON type** is for (section 5).
 - **A grouped statement ordered by its key** — *small, and measured.* `GROUP BY k ORDER BY k` is
   accepted and honoured on Azure, both directions and with `OFFSET LIMIT`, but only where the select
   list carries an aggregate or the statement has a partition key: a grouped statement selecting only
@@ -2335,17 +2350,17 @@ across documents* and *A join of a container to itself* is the record.
   function as though each were null for a null, and `CONCAT_WS`, `ARRAY[…]` and `ARRAY_CONTAINS`
   over one are not — *fixed* (`DESIGN.md`, *A position belongs to a predicate*), and the four
   statements that lost rows are in the corpus.
-- **The `ORDER BY` yardstick** — *built, explicit, and failing on main until the anchored read; three
-  things owed.* `EveryOrderIsOneCalciteAllows` and `CosmosServiceOrderModelTests` (`DESIGN.md`,
-  *Differential testing*) judge every order the service computes by what Calcite allows. Over main both
-  fail, in the families expected of it: text across U+D800, undefined and null on a leading key, 2^63
-  read back, and `_etag`, which Azure refuses to order by. Owed:
-  - **The floors.** `PushedFloors` is empty. The stage that first passes records how many of the
-    default run's statements push each kind, so that losing a push fails as surely as a wrong one.
-  - **The question.** The model asks a mirror of main's decisions (`MainsDecisions`); pointed at the one
-    place once it exists, its sweep becomes a test of the default run.
+- **The `ORDER BY` yardstick** — *built, and a default run of the class; one thing owed.*
+  `EveryOrderIsOneCalciteAllows` and `CosmosServiceOrderModelTests` (`DESIGN.md`, *Differential testing*)
+  judge every order the service computes by what Calcite allows. Over main both failed, in the families
+  expected: text across U+D800, undefined and null on a leading key, 2^63 read back, and `_etag`, which
+  Azure refuses to order by. Since the anchored read neither fails, the floors (`PushedFloors`) hold what
+  each container pushes, and the model asks the one place by default. Two families of wrong answer that
+  are no order's are reported apart where the statement sent no order (`Findings`): `CHAR_LENGTH` pushed
+  as `LENGTH` (section 4) and the emulator's double printed two ways (section 7). Owed:
   - **The merge, on Azure.** `CosmosOrderMergeMeasurementTests` has not run, no container with two
-    physical partitions existing now; it runs against one the caller names (appendix E).
+    physical partitions existing now; it runs against one the caller names (appendix E), and runs the
+    reader itself over the merge beside measuring it.
 
   The CLR runtime's own misorders are reported apart and are not the adapter's: 94 of the gate's
   statements, every one a sort of two keys or more done in process, multi-key text by culture. The fix is
