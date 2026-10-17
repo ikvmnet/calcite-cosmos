@@ -45,10 +45,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// <para>
     /// <b>The role population D plays for the predicate oracle.</b> The question is asked through
     /// <see cref="IQuestion"/>, and <see cref="Question"/> is <see cref="MainsDecisions"/> until the
-    /// one place the plan names exists: a mirror of what the adapter decides today, so that the sweep
-    /// says what is wrong now in the model's terms. The sweep is explicit while that is so, and its
-    /// failures are the families the inventory measured; a checker that passes everything says nothing,
-    /// so <see cref="TheCheckCatchesWhatItMustCatch"/> runs by default and plants each of them.
+    /// adapter asks it in one place: a mirror of what the adapter decides today, so that the sweep says
+    /// what is wrong now in the model's terms. The sweep is explicit while that is so, and its failures
+    /// are the families the <c>ORDER BY</c> yardstick finds on the emulator; a checker that passes
+    /// everything says nothing, so <see cref="TheCheckCatchesWhatItMustCatch"/> runs by default and
+    /// plants each of them.
     /// </para>
     /// <para>
     /// <b>The model is pinned to what was measured, not to what was reasoned.</b>
@@ -209,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </summary>
         /// <param name="Kind">Whether the order is proved, certified when the rows arrive, split, or
         /// refused.</param>
-        /// <param name="Reason">Why, in the declines inventory's words.</param>
+        /// <param name="Reason">Why, in words a report can group by.</param>
         /// <param name="Written">The keys the service is handed, by position; <c>null</c> for all of
         /// them. A key the facts pin is dropped.</param>
         /// <param name="IsAnchor">For <see cref="VerdictKind.Anchored"/>, the run-time check: whether a
@@ -247,10 +248,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static IQuestion Question => new MainsDecisions();
 
         /// <summary>
-        /// What the adapter decides today, check by check, as the declines inventory mirrored
-        /// <c>CosmosSortRule</c> and <c>CosmosSort.TryResolveSortKeys</c> (0 mismatches over 11,837
-        /// statements): the stored value is the column, and the null placement agrees or nothing is
-        /// null. Nothing asks how the values order.
+        /// What the adapter decides today, check by check, as <c>CosmosSortRule</c> and
+        /// <c>CosmosSort.TryResolveSortKeys</c> ask it: the stored value is the column, and the null
+        /// placement agrees or nothing is null. Nothing asks how the values order.
         /// </summary>
         /// <remarks>
         /// The composite index is taken as declared: it decides what the service accepts, not how what
@@ -887,8 +887,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// The checker finds each family the inventory measured wrong on main, and passes what the
-        /// facts prove: asked of a question that proves everything.
+        /// The checker finds each family main is wrong in on the emulator, and passes what the facts
+        /// prove: asked of a question that proves everything.
         /// </summary>
         [Fact]
         public void TheCheckCatchesWhatItMustCatch()
@@ -947,7 +947,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </summary>
         /// <remarks>
         /// Explicit while <see cref="Question"/> is main's decisions, which the model says are wrong in
-        /// the families the inventory found on the emulator: text orders across U+D800, the null class
+        /// the families the yardstick finds on the emulator: text orders across U+D800, the null class
         /// of a leading key, and 2^63 read back.
         /// </remarks>
         [Fact(Explicit = true)]

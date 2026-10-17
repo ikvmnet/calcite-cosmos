@@ -41,8 +41,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// <para>
     /// <b>The input is read in process.</b> R, the rows a sort is over, is the same statement with
     /// its <c>ORDER BY</c>, <c>OFFSET</c> and <c>FETCH</c> taken away, its keys selected beside its
-    /// columns, and every pushdown rule excluded, as the corpus's oracle is. A statement whose R
-    /// Calcite raises over is not judged; a pushdown that raises where Calcite answers fails.
+    /// columns, and every pushdown rule excluded, as the corpus's oracle is. A pushdown that raises
+    /// where Calcite answers fails. A statement whose R Calcite raises over is not judged, with one
+    /// exception: an answer that shows its keys is held to its own order, since no input makes rows
+    /// allowable whose keys, as the answer itself shows them, run against the <c>ORDER BY</c>.
     /// </para>
     /// <para>
     /// <b>What the service accepts is judged too, as Azure accepts it.</b> The emulator orders an
@@ -446,20 +448,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 OrderForm.Distinct => $"SELECT DISTINCT {Keys} FROM {Table} AS c{Filter(Where)}{OrderBy((i, _) => (i + 1).ToString(CultureInfo.InvariantCulture))}{Page}",
                 OrderForm.Inner => $"SELECT x.\"id\", x.\"pk\" FROM (SELECT c.\"id\" AS \"id\", JSON_VALUE(c.\"DOC\", '$.category') AS \"pk\", " +
                     string.Join(", ", Terms.Select((t, i) => $"{t.Expression.Sql} AS \"k{i}\"")) + $" FROM {Table} AS c{Filter(Where)}{OrderBy((i, _) => $"\"k{i}\"")}{Page}) AS x",
-                OrderForm.Union => $"{Branch(Where, "")} UNION ALL {Branch(Other, "")}{OrderBy((_, _) => "3")}{Page}",
+                OrderForm.Union => $"{Branch(Where)} UNION ALL {Branch(Other)}{OrderBy((_, _) => "3")}{Page}",
                 OrderForm.Min or OrderForm.Max => $"SELECT {(Form == OrderForm.Min ? "MIN" : "MAX")}({Keys}) FROM {Table} AS c{Filter(Where)}",
                 _ => $"SELECT {Identity} FROM {Table} AS c{Filter(Where)}",
             };
 
-            string Branch(IReadOnlyList<OrderConjunct> where, string tail) =>
-                $"SELECT c.\"id\" AS \"id\", JSON_VALUE(c.\"DOC\", '$.category') AS \"pk\", {Keys} AS \"k\"{tail} FROM {Table} AS c{Filter(where)}";
+            /// <summary>One side of a union: a row's identity and its one key.</summary>
+            string Branch(IReadOnlyList<OrderConjunct> where) =>
+                $"SELECT c.\"id\" AS \"id\", JSON_VALUE(c.\"DOC\", '$.category') AS \"pk\", {Keys} AS \"k\" FROM {Table} AS c{Filter(where)}";
 
             /// <summary>R: what the statement orders, read in process, its keys beside its columns.</summary>
             public string InputSql => Form switch
             {
                 OrderForm.Sort or OrderForm.Inner => $"SELECT {Identity}{(SelectsKeys && Form == OrderForm.Sort ? ", " + Keys : "")}{(Terms.Count > 0 ? ", " + Keys : "")} FROM {Table} AS c{Filter(Where)}",
                 OrderForm.Distinct => $"SELECT DISTINCT {Keys} FROM {Table} AS c{Filter(Where)}",
-                OrderForm.Union => $"{Branch(Where, "")} UNION ALL {Branch(Other, "")}",
+                OrderForm.Union => $"{Branch(Where)} UNION ALL {Branch(Other)}",
                 OrderForm.Min or OrderForm.Max => $"SELECT {Keys} FROM {Table} AS c{Filter(Where)}",
                 _ => Sql,
             };
@@ -730,6 +733,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly Regex ExtremeSent = new(@"\b(MIN|MAX)\(", RegexOptions.Compiled);
 
+        /// <summary>A top-level accessor in a generated statement.</summary>
+        static readonly Regex Accessor = new(@"'\$\.(?<path>[A-Za-z_]+)'", RegexOptions.Compiled);
+
         /// <summary>The service's string functions that count code points, where Calcite's count UTF-16 units.</summary>
         static readonly Regex CodePointFunctions = new(@"\b(LENGTH|SUBSTRING|LEFT|RIGHT|INDEX_OF|REVERSE)\(", RegexOptions.Compiled);
 
@@ -957,18 +963,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         return "a string function counts code points";
 
                     var differing = Differing(draft, input, answer, lost: unpaged);
-                    var documents = draft.Identified ? differing.Select(r => Stored(draft.Container, r)).ToList() : [];
-                    var values = differing.SelectMany(r => r).Concat(documents.SelectMany(Strings)).Concat(draft.Parameters).ToList();
-
-                    // A row whose identity is not in the answer, or a parameter's comparison: the strings
-                    // the container holds are what the comparison parted over.
-                    if (HasBothBands(values) || draft.Parameters.OfType<string>().Any() && HasBothBands(draft.Parameters.Concat(draft.Container.Strings)))
-                        return "text across U+D800";
 
                     // Not an order: a projection of a double past 2^53 is printed to 17 digits, where a
                     // document read whole comes back as it was written, on the emulator.
-                    if (values.Any(IsLarge) || documents.Any(d => d.Values.Any(v => v.Kind == JsonValueKind.Number && IsPrintedAsAnother(v.Text))))
+                    if (differing.SelectMany(r => r.Take(draft.Width)).Any(IsLarge))
                         return "a double printed two ways";
+
+                    // What the filter compared, in the rows that differ, and what a parameter was bound
+                    // to; or, for a parameter's comparison, every string the container holds.
+                    var compared = Compared(draft);
+                    var documents = draft.Identified ? differing.Select(r => Stored(draft.Container, r)).ToList() : [];
+                    var values = differing.SelectMany(r => r.Take(draft.Width))
+                        .Concat(documents.SelectMany(d => Strings(d, compared)))
+                        .Concat(draft.Parameters)
+                        .ToList();
+
+                    if (HasBothBands(values) || draft.Parameters.OfType<string>().Any() && HasBothBands(draft.Parameters.Concat(draft.Container.Strings)))
+                        return "text across U+D800";
 
                     return "rows";
                 }
@@ -1046,9 +1057,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 return document.EnumerateObject().ToDictionary(p => p.Name, p => (p.Value.ValueKind, p.Value.GetRawText()));
             }
 
-            /// <summary>The strings a row's document holds, for the characters a comparison may part over.</summary>
-            static IEnumerable<object?> Strings(Dictionary<string, (JsonValueKind Kind, string Text)> stored) =>
-                stored.Values.Where(v => v.Kind == JsonValueKind.String).Select(v => (object?)JsonSerializer.Deserialize<string>(v.Text));
+            /// <summary>The strings a row's document holds at the given paths, for the characters a comparison may part over.</summary>
+            static IEnumerable<object?> Strings(Dictionary<string, (JsonValueKind Kind, string Text)> stored, IReadOnlySet<string> paths) =>
+                stored.Where(p => paths.Contains(p.Key) && p.Value.Kind == JsonValueKind.String).Select(p => (object?)JsonSerializer.Deserialize<string>(p.Value.Text));
+
+            /// <summary>The top-level paths a statement's filters read: its accessors and <c>id</c>.</summary>
+            static IReadOnlySet<string> Compared(OrderDraft draft)
+            {
+                var sql = string.Join(" ", draft.Where.Concat(draft.Other).Select(w => w.Sql));
+                var paths = Accessor.Matches(sql).Select(m => m.Groups["path"].Value).ToHashSet(StringComparer.Ordinal);
+                if (sql.Contains("c.\"id\"", StringComparison.Ordinal))
+                    paths.Add("id");
+
+                return paths;
+            }
 
             /// <summary>The bands a string's units fall in: 1 below U+D800, 2 from U+E000, 4 a surrogate.</summary>
             static int Bands(string s) => s.Aggregate(0, (b, c) => b | (char.IsSurrogate(c) ? 4 : c >= '\uE000' ? 2 : 1));
@@ -1099,11 +1121,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <para>
         /// <b>Explicit, and failing, until the order the service computes is asked in one place.</b>
-        /// Main pushes orders it cannot prove; the families it fails in are the ones the inventory
-        /// measured: text either side of U+D800, over <c>id</c>, a declared string and their keysets and
-        /// extremes; the two nulls of a leading key in a multi-key sort; 2^63 stored as a double; and
-        /// <c>_etag</c>, which Azure refuses to order by. It becomes a default run of the class once the
-        /// anchored read lands.
+        /// Main pushes orders it cannot prove, and fails in four families: text either side of U+D800,
+        /// over <c>id</c>, a declared string and their keysets and extremes; the two nulls of a leading
+        /// key in a multi-key sort; 2^63 stored as a double; and <c>_etag</c>, which Azure refuses to
+        /// order by. See <c>DESIGN.md</c> under <em>Differential testing</em> for the counts. It becomes
+        /// a default run of the class once the anchored read lands.
         /// </para>
         /// <para>
         /// <c>COSMOS_ORDER_GATE=1</c> asks for the gate's <see cref="GateOrderedItems"/>, of which the

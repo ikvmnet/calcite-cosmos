@@ -13,7 +13,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// <summary>
     /// The judge the <c>ORDER BY</c> yardstick holds every pushed order to, held in its turn to Calcite's
     /// semantics: what it calls allowable, what it does not, and the comparator under it pinned to the
-    /// cases the Calcite inventory measured.
+    /// cases measured of Calcite's own engine.
     /// </summary>
     /// <remarks>
     /// A judge that is wrong passes a wrong push or fails a right one, and either is invisible from the
@@ -115,8 +115,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Text by UTF-16 code unit, as Calcite's <c>String.compareTo</c>: the inventory's S1 and U1,
-        /// which the CLR runtime answers by culture under two keys.
+        /// Text by UTF-16 code unit, as Calcite's <c>String.compareTo</c>, which the CLR runtime answers
+        /// by culture under two keys: <c>1 A B _ a b é</c>, and U+1F600 below U+E000.
         /// </summary>
         [Fact]
         public void TextIsOrderedByCodeUnit()
@@ -131,7 +131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The inventory's B1, M1, N1–N4, Q1 and the two readings of ±0.
+        /// Booleans, scale-free decimals, exact integers, <c>NaN</c> last, the two readings of ±0, and
+        /// unsigned UUIDs, as Calcite's engine orders them.
         /// </summary>
         [Fact]
         public void TheOtherTypesAreOrderedAsCalciteOrdersThem()
