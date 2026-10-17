@@ -1120,12 +1120,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Explicit, and failing, until the order the service computes is asked in one place.</b>
-        /// Main pushes orders it cannot prove, and fails in four families: text either side of U+D800,
-        /// over <c>id</c>, a declared string and their keysets and extremes; the two nulls of a leading
-        /// key in a multi-key sort; 2^63 stored as a double; and <c>_etag</c>, which Azure refuses to
-        /// order by. See <c>DESIGN.md</c> under <em>Differential testing</em> for the counts. It becomes
-        /// a default run of the class once the anchored read lands.
+        /// <b>Explicit until the anchored read lands.</b> Before the order the service computes was
+        /// asked in one place, the adapter pushed orders it could not prove and failed in four families:
+        /// text either side of U+D800, over <c>id</c>, a declared string and their keysets and extremes;
+        /// the two nulls of a leading key in a multi-key sort; 2^63 stored as a double; and
+        /// <c>_etag</c>, which Azure refuses to order by. Asked once, no order it pushes fails, and what
+        /// still fails is two families that are not orders: a projected double printed two ways, and
+        /// <c>CHAR_LENGTH</c> pushed as <c>LENGTH</c>, which <c>TODO.md</c> records. See <c>DESIGN.md</c>
+        /// under <em>Differential testing</em> for the counts. It becomes a default run of the class
+        /// once those are fixed and the anchored read has raised the floors.
         /// </para>
         /// <para>
         /// <c>COSMOS_ORDER_GATE=1</c> asks for the gate's <see cref="GateOrderedItems"/>, of which the
@@ -1135,8 +1138,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// <b>A floor per pushed kind is the gate's other half.</b> "As many as possible" is a number
         /// the gate holds: a stage that pushes orders records how many of the default run's statements
-        /// push each kind in <see cref="PushedFloors"/>, and pushing fewer fails. Main records none, its
-        /// pushes being the ones under judgement.
+        /// push each kind in <see cref="PushedFloors"/>, and pushing fewer fails. The floors are the
+        /// static question's: what it proves at plan time, before any proof completed as the rows arrive.
         /// </para>
         /// </remarks>
         [Fact(Explicit = true)]
@@ -1235,10 +1238,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The least number of the yardstick's statements each kind must push, over the default run and
-        /// over the gate. Empty on main, whose pushes are the ones under judgement; each stage that
-        /// changes what pushes records its counts here.
+        /// over the gate: as many as the static question proved when it was first asked, measured on
+        /// the emulator. Each stage that changes what pushes records its counts here.
         /// </summary>
-        static readonly (string Kind, int Default, int Gate)[] PushedFloors = [];
+        static readonly (string Kind, int Default, int Gate)[] PushedFloors =
+        [
+            ("sort", 14, 64),
+            ("extreme", 3, 14),
+            ("page", 0, 2),
+        ];
 
     }
 
