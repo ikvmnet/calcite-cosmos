@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -774,14 +774,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT p.\"Label\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p ORDER BY p.\"Label\" NULLS FIRST", true),
             ("SELECT c.\"id\" FROM typed AS c ORDER BY c.\"DOC\"", true),
 
-            // And where it still pushes: a path the container declares a string or null, whose text is
-            // the stored value, in both directions and with a page. Beside it the fragments and the
+            // And where it pushed: a path the container declares a string or null, whose text is the
+            // stored value, in both directions and with a page -- until the service's order was asked
+            // the string's characters too, which nothing here states. Beside it the fragments and the
             // arrays, which never do -- the service put [] after [1, 5] and {"b":1} before {"a":2},
             // neither of which is their text's order or SQL's.
             ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 3 ROWS ONLY", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.f') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+
+            // The order of strings beyond the BMP: the service orders them by code point and Calcite by UTF-16 code
+            // unit, so U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process. Recorded
+            // as divergences while a sort, a comparison and an extreme pushed over id and over a declared string --
+            // the page that chose a and U+E000 where SQL chooses a and U+1F600, U+E000 < U+1F600 true at the service
+            // and false in process, the service's MAX of U+1F600 against Calcite's U+FFFD. Nothing states the
+            // characters of either path, and each is answered in process now. The last is the descending sort under
+            // SQL's placement, never recorded, over the same characters.
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true),
 
             // A typed accessor over the typed container's label, which holds 30 in document 2, an array
             // in 4, an object in 5, null in 6 and nothing in 7: the five a RETURNING INTEGER answers for,
@@ -1622,10 +1641,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <b>Empty for a long time, and that was the point of keeping it.</b> Repairing the oracle put
         /// five statements here — negation over a null-valued property, grouping and dedup over one, and
         /// an <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each was fixed and
-        /// promoted into the corpus. What it holds now is one open defect, the order of strings beyond
-        /// the BMP, witnessed in a sort, a comparison and an aggregate: over <c>id</c>, over a path
-        /// declared a string, and over one a filter proves present, which lets the service take the
-        /// sort under Calcite's own placement.
+        /// promoted into the corpus. Then nine, the order of strings beyond the BMP witnessed in a sort,
+        /// a comparison and an aggregate, which went to the corpus once the service's order was asked
+        /// what it knows of the characters it orders (DESIGN.md, The service's order, asked once).
         /// </para>
         /// <para>
         /// A statement belongs here only while it is an open defect with a witness, never as a
@@ -1634,27 +1652,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// into the corpus rather than sit here looking settled.
         /// </para>
         /// </remarks>
-        static readonly (string Sql, bool Ordered, string Reason)[] Divergences =
-        [
-            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true,
-                "The service orders strings by code point and Calcite by UTF-16 code unit, measured on the vnext-preview emulator: U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process, a supplementary character being encoded from 0xD800; below the surrogates the two orders are one. Whatever order the service computes is its own -- a sort, a range comparison, a MAX -- over id as over a declared string. Open: TODO.md section 4, DESIGN.md under Ordering a sort key the way it reads."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true,
-                "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
-                "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true,
-                "The same sort descending. As the id above."),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true,
-                "The same sort by a key the statement does not select. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
-                "The same sort paged, where the order chooses the rows: a and U+1F600 in process, a and U+E000 at the service. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true,
-                "The same sort over a key a comparison proves present; the comparison itself agrees, its literal lying below the surrogates. As the id above."),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false,
-                "The same order in a comparison, which a declared string pushes exactly: U+E000 < U+1F600 is true at the service and false in process. As the id above."),
-            ("SELECT MAX(c.\"id\") FROM ordering AS c", false,
-                "The same order in an aggregate over a column that cannot be null: the service's MAX is U+1F600 and Calcite's U+FFFD. As the id above."),
-        ];
+        static readonly (string Sql, bool Ordered, string Reason)[] Divergences = [];
 
         /// <summary>
         /// Statements with no oracle to compare against, and why there is none.
