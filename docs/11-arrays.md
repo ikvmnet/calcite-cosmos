@@ -70,6 +70,16 @@ JSON_VALUE(c."DOC", '$.tags[0]')   →   (IS_PRIMITIVE(c.tags[0]) ? c.tags[0] : 
 
 Both name the first element. `ARRAY_SLICE` and `SUBSTRING` are adjusted for the origin the same way.
 
+An element holds whatever the document put there, and no declaration says otherwise: a schema states
+what a property holds, and none reaches an element. So a comparison of one read as text is sent
+restricted to the strings and rechecked in process, as a comparison over an undeclared property is
+(Chapter 8.3) — `5` renders as `'5'`, which is below `'m'` in SQL and no string at all to Cosmos:
+
+```sql
+WHERE JSON_VALUE(c."DOC", '$.tags[0]') < 'm'
+→ WHERE (IS_DEFINED(c.tags[0]) AND ((NOT IS_STRING(c.tags[0])) OR (c.tags[0] < @p0)))   -- then rechecked
+```
+
 ## 11.4 Array functions
 
 | SQL | Cosmos |

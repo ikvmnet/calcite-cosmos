@@ -266,8 +266,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <para>
         /// <b>The service's own properties are paths the service states facts of</b>, and the model's facts are said of
         /// them beside those: <c>id</c> a string always there, <c>_ts</c> an integer below 2^53, <c>_etag</c> a string of
-        /// entity-tag characters. A comparison's operands are what the translator makes of them: a character literal is
-        /// a literal, any other a value of its type.
+        /// entity-tag characters. A comparison's operands are what the translator makes of them: a literal is the value
+        /// it binds.
         /// </para>
         /// </remarks>
         sealed class TheOnePlace : IQuestion
@@ -297,7 +297,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 CosmosOrderOperand other;
                 if (right.Literal is { } literal)
-                    other = literal.Kind == Kind.String ? CosmosOrderOperand.ForLiteral(JsonScalar.From(literal.Text)) : CosmosOrderOperand.ForExpression(TypeOf(left.Reading));
+                    other = CosmosOrderOperand.ForLiteral(literal.Kind switch
+                    {
+                        Kind.String => JsonScalar.From(literal.Text),
+                        Kind.Boolean => JsonScalar.From(literal.Boolean),
+                        Kind.Number => JsonScalar.From(literal.Number),
+                        _ => JsonScalar.Null,
+                    });
                 else if (right.Path is { } compared)
                 {
                     var at = PathOf(compared.Reading, "w");

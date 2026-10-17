@@ -3045,6 +3045,25 @@ the three agree over the values the facts admit.
   value, or one read as null over every row, orders nothing and is not written; nor is a key an earlier exact key on
   the same path already ties. Calcite's own constant-key rule is inert in this planner.
 
+**An operand says what the service compares, and only a path's facts say what it holds.** The translator's
+`OrderOperand` reads each side of a comparison as one of four things, and none of them by its SQL type where the
+service compares something else. A literal is the value it binds, of any type, and a null literal the JSON null it
+binds, which `<=` keeps against a stored null. A rendering, or a typed accessor, or a raw value, is a path, whether or not
+a fact can be about it: an array's element has no document path (`CosmosDocumentPaths.From`), and nor has a path under a
+traversal's alias or an accessor over a constant, and such a path holds anything. It used to be read as a value its type
+alone knew, so `JSON_VALUE(c."DOC", '$.tags[0]') < 'm'` was a string against a string, proved, and sent exact as
+`c.tags[0] < @p0` with no type test and nothing rechecked: a stored 5 or `true`, which Calcite compares as `'5'` and
+`'true'` and the service across types, was lost, on the emulator and on Azure (bisected to the stage that first asked
+the question once). Read as a path that may hold anything, its rendering is refused and the split rule sends main's
+weakening, `IS_DEFINED(c.tags[0]) AND (NOT IS_STRING(c.tags[0]) OR c.tags[0] < @p0)`, beneath the recheck; and two
+typed elements that may both hold a JSON null are not compared. Anything else is a value the service computes — an
+operator, a function, a `CASE`, a cast — which is Calcite's value where Calcite has one, and where Calcite reads null
+may be an undefined, a JSON null a `CASE` writes or a stored value one hands through, so its null class is every other
+type unless its SQL type admits no null: `CASE WHEN category = 'bikes' THEN NULL ELSE price END <= price` kept the
+document whose price is a JSON null, the `CASE` handing the null through and the service's `null <= null` true, on the
+emulator; and `CAST(2.5 AS DOUBLE)`, which the validator writes around a constant, is never null. What it declines that
+pushed is a computed value against a path that may hold another type, `price + 1 <= c.other` among them (`TODO.md`).
+
 **What the service accepts is a second question, and it is the container's.** Measured on the probe account,
 `ORDER BY` over a path the indexing policy excludes is a 400, single key or not, and so is one over a computed
 property no included path names; `_etag` is excluded from every policy the service hands back, though the emulator

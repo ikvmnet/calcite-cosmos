@@ -31,11 +31,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Returns a document path, read back as a column of <paramref name="type"/> under <paramref name="reading"/>.
         /// </summary>
-        /// <param name="path">The path.</param>
+        /// <remarks>
+        /// A statement's path no fact can be about — an array's element, which <see cref="CosmosDocumentPaths.From"/>
+        /// answers no document path for, or a path rooted at a traversal's alias — is still a path: the service compares
+        /// the value it holds there, and the column reads it as it reads any other. It is passed as <c>null</c>, and read
+        /// as a path that may hold anything.
+        /// </remarks>
+        /// <param name="path">The path, or <c>null</c> for a path no fact can be about.</param>
         /// <param name="type">The type the column is declared, which is what Calcite orders and compares.</param>
         /// <param name="reading">How the column is read back: the stored value, or its rendering.</param>
         /// <returns>The operand.</returns>
-        public static CosmosOrderOperand ForPath(JsonDocumentPath path, SqlTypeName type, CosmosReading reading) =>
+        public static CosmosOrderOperand ForPath(JsonDocumentPath? path, SqlTypeName type, CosmosReading reading) =>
             new(CosmosOrderOperandKind.Path) { Path = path, Type = type ?? throw new ArgumentNullException(nameof(type)), Reading = reading };
 
         /// <summary>
@@ -84,12 +90,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             new(CosmosOrderOperandKind.Parameter) { Type = type ?? throw new ArgumentNullException(nameof(type)) };
 
         /// <summary>
-        /// Returns a value the service computes, known by its type alone.
+        /// Returns a value the service computes: an operator, a function or a <c>CASE</c> over the document, known by
+        /// its type alone.
         /// </summary>
         /// <param name="type">The value's type.</param>
+        /// <param name="nullable">Whether the type admits a null, so that Calcite may read the value as one.</param>
         /// <returns>The operand.</returns>
-        public static CosmosOrderOperand ForExpression(SqlTypeName type) =>
-            new(CosmosOrderOperandKind.Expression) { Type = type ?? throw new ArgumentNullException(nameof(type)) };
+        public static CosmosOrderOperand ForExpression(SqlTypeName type, bool nullable) =>
+            new(CosmosOrderOperandKind.Expression) { Type = type ?? throw new ArgumentNullException(nameof(type)), Nullable = nullable };
 
         /// <summary>
         /// Gets what the operand is.
@@ -97,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public CosmosOrderOperandKind Kind { get; }
 
         /// <summary>
-        /// Gets the document path, for a path and a conversion.
+        /// Gets the document path, for a path and a conversion; for a path, <c>null</c> where no fact can be about it.
         /// </summary>
         public JsonDocumentPath? Path { get; private init; }
 
@@ -138,6 +146,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public bool BestFirstDescending { get; private init; }
 
         /// <summary>
+        /// Gets whether an expression's type admits a null.
+        /// </summary>
+        public bool Nullable { get; private init; }
+
+        /// <summary>
         /// Gets a literal's value.
         /// </summary>
         public JsonScalar Value { get; private init; }
@@ -145,13 +158,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <inheritdoc />
         public override string ToString() => Kind switch
         {
-            CosmosOrderOperandKind.Path => $"{Path} as {Type?.getName()} ({Reading})",
+            CosmosOrderOperandKind.Path => $"{(Path is null ? "a path no fact is about" : Path.ToString())} as {Type?.getName()} ({Reading})",
             CosmosOrderOperandKind.Conversion => $"{Path} converted{(Format is null ? "" : " by " + Format)}",
             CosmosOrderOperandKind.Distance => $"a distance over {string.Join(", ", Operands)}",
             CosmosOrderOperandKind.Score => "a score",
             CosmosOrderOperandKind.Literal => $"literal {Value}",
             CosmosOrderOperandKind.Parameter => $"a {Type?.getName()} parameter",
-            _ => $"a {Type?.getName()} expression",
+            _ => $"a {Type?.getName()}{(Nullable ? "" : " NOT NULL")} expression",
         };
 
     }

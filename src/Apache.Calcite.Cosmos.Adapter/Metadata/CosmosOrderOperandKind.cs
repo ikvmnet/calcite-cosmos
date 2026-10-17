@@ -13,7 +13,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// A document path, read back as the column's type and reading say: the stored value, or its rendering as
-        /// text.
+        /// text. A path no fact can be about, an array's element among them, is one too, and may hold anything.
         /// </summary>
         Path,
 
@@ -44,7 +44,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         Parameter,
 
         /// <summary>
-        /// Any other value the service computes, known by its type alone.
+        /// Any other value the service computes, known by its type alone: Calcite's value where Calcite has one, and
+        /// where Calcite reads null, any other JSON type — an undefined, a JSON null a <c>CASE</c> writes, a stored value
+        /// one hands through.
         /// </summary>
         Expression,
 

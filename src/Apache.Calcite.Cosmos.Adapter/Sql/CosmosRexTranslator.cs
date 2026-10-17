@@ -4058,38 +4058,72 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Says what one side of an ordering comparison is.
         /// </summary>
         /// <remarks>
-        /// A path read as text where the side is a rendering compared with text, a path read as its type where
-        /// it is the stored value — the service's own properties, a typed accessor, a raw document value — and
-        /// otherwise a literal, a parameter or a value known by its type alone. Only a scalar a comparison can
-        /// order is a path here: anything else is a value the service computes, and the question is then its
-        /// type's.
+        /// <para>
+        /// <b>What the service compares, and nothing the facts would have to say.</b> A side is a literal, a
+        /// parameter, a path, or a value the service computes; the question reads what each may hold, and only a
+        /// path's from the facts.
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description><b>A literal</b> of any type the statement can bind is the value it binds, a null the
+        /// JSON null it binds. One it cannot bind — an instant, which <see cref="GetLiteralValue"/> refuses — is
+        /// read by its type, and refused when it is written.</description></item>
+        /// <item><description><b>A rendering is a path read as text,</b> or, against a number, the raw value the split
+        /// rule's bound names (<see cref="OrderOperands"/>), whether or not the facts can be about the path. One they
+        /// cannot — an array's element, a path under a traversal's alias, an accessor over a constant — holds anything,
+        /// and is no string the service compares: <c>JSON_VALUE(c."DOC", '$.tags[0]') &lt; 'm'</c> was read as its
+        /// type's class, sent exact, and lost a stored number and a stored boolean, which Calcite compares as their
+        /// text and the service across types.</description></item>
+        /// <item><description><b>A path read as its type</b> — the service's own properties, a typed accessor, a raw
+        /// document value, an element — is a path, under the same rule.</description></item>
+        /// <item><description><b>Anything else is a value the service computes,</b> an operator, a function, a
+        /// <c>CASE</c>, a cast of a constant or one that hands its operand through, and a path of a type no comparison
+        /// here reads, an instant among them: read by its type, with every other JSON type in its null class where the
+        /// type admits a null (<see cref="Metadata.CosmosOrderOperandKind.Expression"/>).</description></item>
+        /// </list>
         /// </remarks>
         /// <param name="node">The side.</param>
         /// <param name="text">Whether the comparison is between text, where a rendering is compared as one.</param>
         Metadata.CosmosOrderOperand OrderOperand(RexNode node, bool text)
         {
             var type = node.getType()?.getSqlTypeName() ?? SqlTypeName.ANY;
+            var nullable = node.getType()?.isNullable() ?? true;
 
             if (node is RexLiteral literal)
-                return literal.isNull() == false && IsCharacter(literal) && JsonScalar.TryFrom(GetLiteralValue(literal), out var value)
+                return TryLiteralScalar(literal) is JsonScalar value
                     ? Metadata.CosmosOrderOperand.ForLiteral(value)
-                    : Metadata.CosmosOrderOperand.ForExpression(type);
+                    : Metadata.CosmosOrderOperand.ForExpression(type, nullable);
 
             if (node is org.apache.calcite.rex.RexDynamicParam)
                 return Metadata.CosmosOrderOperand.ForParameter(type);
 
             if (IsTextRendering(node))
-                return TryResolvePath(node, out var rendered) && DocumentOf(rendered) is JsonDocumentPath at
-                    ? text
-                        ? Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.VARCHAR, IsScalarRendering(node) ? CosmosReading.Text : CosmosReading.JsonText)
-                        : Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.ANY, CosmosReading.Typed)
-                    : Metadata.CosmosOrderOperand.ForExpression(type);
+            {
+                var at = TryResolvePath(node, out var rendered) ? DocumentOf(rendered) : null;
+                return text
+                    ? Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.VARCHAR, IsScalarRendering(node) ? CosmosReading.Text : CosmosReading.JsonText)
+                    : Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.ANY, CosmosReading.Typed);
+            }
 
             if ((IsCharacter(node) || SqlTypeName.NUMERIC_TYPES.contains(type) || type == SqlTypeName.BOOLEAN || IsDocumentValueType(type))
-                && TryResolvePath(node, out var path) && DocumentOf(path) is JsonDocumentPath document)
-                return Metadata.CosmosOrderOperand.ForPath(document, type, CosmosReading.Typed);
+                && TryResolvePath(node, out var path))
+                return Metadata.CosmosOrderOperand.ForPath(DocumentOf(path), type, CosmosReading.Typed);
 
-            return Metadata.CosmosOrderOperand.ForExpression(type);
+            return Metadata.CosmosOrderOperand.ForExpression(type, nullable);
+        }
+
+        /// <summary>
+        /// Returns the value a literal binds as a JSON scalar, or <c>null</c> for one the statement cannot bind.
+        /// </summary>
+        static JsonScalar? TryLiteralScalar(RexLiteral literal)
+        {
+            try
+            {
+                return JsonScalar.TryFrom(GetLiteralValue(literal), out var value) ? value : null;
+            }
+            catch (CosmosTranslationException)
+            {
+                return null;
+            }
         }
 
         /// <summary>

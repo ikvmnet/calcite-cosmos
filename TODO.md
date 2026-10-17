@@ -1361,6 +1361,18 @@ the distribution the gate is sized for.
   unknown — over declared strings and declared integers alike, and for equality too (`CosmosServiceOrder.
   Compare` and `Equate`, measured on the emulator). They are declined now. A guard would push them: `NOT
   IS_NULL` on one side, in a positive position, which is what the filter's conjuncts are.
+- **A computed value against a path that may hold another type is compared in process** — *small; closed as
+  a wrong answer, left as a pushdown.* A value the service computes is read as its type's values, and, where
+  its type admits a null, every other JSON type in its null class: a `CASE` writes a JSON null or hands a
+  stored value through, and `CASE WHEN category = 'bikes' THEN NULL ELSE price END <= price` kept the
+  marathon, whose price is null, on the emulator. So `price + 1 <= c.other` is declined too, though the
+  service's arithmetic answers undefined over what it does not take and never a null. Saying which operators
+  answer only undefined — measured for the string functions and division (`Service.StringFunctionsOverNonStrings`,
+  `Service.DivisionIsFloatingPoint`), not yet for `+`, `-`, `*`, `%` or the numeric functions — would push them.
+- **An array's element is no path the facts are about** — *medium.* `CosmosDocumentPaths.From` answers no
+  document path for `$.tags[0]`, so a comparison over one is read as a path that may hold anything, and its
+  rendering is weakened and rechecked however the array is declared. A declared `items` read into a fact of
+  the element, in the theory, would let a declared array of strings compare its elements at the service.
 
 ---
 

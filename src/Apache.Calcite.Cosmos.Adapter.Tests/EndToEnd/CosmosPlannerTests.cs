@@ -3036,6 +3036,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// An array's element is a path no fact can be about, and its rendering is weakened as any other.
+        /// </summary>
+        /// <remarks>
+        /// <c>$.tags[0]</c> has no document path, and was read as a value its type alone knew: a string, which R1
+        /// then proved against a literal below U+D800. So the comparison was sent exact, <c>WHERE c.tags[0] &lt; @p0</c>,
+        /// with no type test and nothing rechecked, and a stored number or boolean, which Calcite compares as its text
+        /// (<c>'5' &lt; 'm'</c>, <c>'true' &gt; 'BIKES'</c>) and the service across types, was lost — measured on the
+        /// emulator and on Azure. Read as a path that may hold anything, its rendering is no string the service
+        /// compares, and the split rule sends what main sent.
+        /// </remarks>
+        [Theory]
+        [InlineData("$.tags[0]", "<", "c.tags[0]")]
+        [InlineData("$.tags[0]", ">=", "c.tags[0]")]
+        [InlineData("$.a[0]", "<", "c.a[0]")]
+        [InlineData("$.a.b[0]", "<", "c.a.b[0]")]
+        public void AnElementsRenderingIsWeakenedToTheStringCase(string path, string op, string written)
+        {
+            var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '{path}') {op} 'm'");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain($"IS_DEFINED({written}) AND ((NOT IS_STRING({written})) OR ({written} {op} @p0))", "the string case alone is the service's: " + sql);            Plan(best).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's to make: " + Plan(best));
+        }
+
+        /// <summary>
+        /// Two typed accessors over elements are two paths no fact is about, either of which may hold a JSON null.
+        /// </summary>
+        /// <remarks>
+        /// Read by their type alone, neither had a null class, and the comparison was sent as it stands: the service
+        /// compares a JSON null with a JSON null as equal values, and <c>&lt;=</c> and <c>=</c> keep the row Calcite's
+        /// unknown drops (R3).
+        /// </remarks>
+        [Theory]
+        [InlineData("<=")]
+        [InlineData("=")]
+        public void TwoElementsWhichMayBothBeNullAreNotComparedAtTheService(string op)
+        {
+            var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.a[0]' RETURNING INTEGER) {op} JSON_VALUE(c.\"DOC\", '$.b[0]' RETURNING INTEGER)");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain($"(c.a[0] {op} c.b[0])", "a null on both sides is equal at the service: " + sql);
+            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A <c>CASE</c> that may write a JSON null is not compared at the service with a path that may hold one.
+        /// </summary>
+        /// <remarks>
+        /// A value the service computes was read with no null class, and the comparison was sent as it stands:
+        /// <c>((c.category = @p0) ? @p1 : c.price) &lt;= c.price</c>, with <c>@p1</c> a null, keeps every bike whose
+        /// price is a JSON null at the service, where Calcite's comparison with a null is unknown. Where Calcite reads
+        /// null, a computed value may hold any other JSON type.
+        /// </remarks>
+        [Fact]
+        public void ACaseThatMayWriteANullIsNotComparedWithANullablePath()
+        {
+            var best = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE CASE WHEN c.\"$.category\" = 'bikes' THEN CAST(NULL AS INTEGER) ELSE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) END <= JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().NotContain("<= c.price", "a null on both sides is equal at the service: " + sql);
+            Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
+        }
+
+        /// <summary>
         /// The inequality goes with them rather than with the equality it negates.
         /// </summary>
         /// <remarks>

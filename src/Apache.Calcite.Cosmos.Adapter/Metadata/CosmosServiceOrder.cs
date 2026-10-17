@@ -586,7 +586,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             switch (operand.Kind)
             {
                 case CosmosOrderOperandKind.Path:
-                    return ReadPath(facts, operand.Path!.Value, operand.Type!, operand.Reading, printed);
+                    return ReadPath(facts, operand.Path, operand.Type!, operand.Reading, printed);
 
                 case CosmosOrderOperandKind.Conversion:
                     return ReadConversion(facts, operand.Path!.Value, operand.Format, operand.Held);
@@ -609,7 +609,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 case CosmosOrderOperandKind.Literal:
                 {
+                    // A null is written as one, a JSON null the service compares as a value, where Calcite reads null.
                     var value = operand.Value;
+                    if (value.IsNull)
+                        return new(CosmosOrderAgreement.Exact, Classes.None, Classes.Null, CosmosCharacterBand.None, true, null, "a null literal");
+
                     var characters = value.Type == JsonType.String ? CosmosCharacters.BandsOf((string)value.ToClrValue()!) : CosmosCharacterBand.None;
                     return new(CosmosOrderAgreement.Exact, ClassOf(value), Classes.None, characters, true, null, "a literal");
                 }
@@ -618,14 +622,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return new(CosmosOrderAgreement.Exact, ClassesOf(operand.Type!), Classes.None, AnyCharacter, false, null, "a parameter, which may hold any character");
 
                 default:
-                    return new(CosmosOrderAgreement.Exact, ClassesOf(operand.Type!), Classes.None, AnyCharacter, false, null, "a computed value, whose characters nothing states");
+                    return ReadComputed(operand.Type!, operand.Nullable, printed);
             }
         }
 
         /// <summary>
-        /// Reads a document path under a column's type and reading.
+        /// Reads a value the service computes, by its type alone.
         /// </summary>
-        static Reading ReadPath(JsonFactSet facts, JsonDocumentPath path, SqlTypeName type, CosmosReading reading, bool printed)
+        /// <remarks>
+        /// <para>
+        /// <b>Calcite's value where Calcite has one, and anything else where it reads null.</b> The translator writes an
+        /// operator, a function or a <c>CASE</c> only where the service computes the value Calcite does, so the values are
+        /// the type's and read exactly. Where Calcite reads null the service holds what the statement leaves there: an
+        /// undefined from a function over what it does not take (<c>Service.StringFunctionsOverNonStrings</c>),
+        /// a JSON null a <c>CASE</c>'s arm writes, or a stored value a <c>CASE</c> hands through — in a filter an accessor
+        /// is written bare, and an object its column reads as null is the object at the service. Nothing here says which,
+        /// so the null class is every other type, and a comparison with what may hold one of them is refused (R3). A type
+        /// that admits no null says Calcite has a value in every row, a constant's cast among them
+        /// (<c>CAST(2.5 AS DOUBLE)</c>, which the validator writes against a <c>DOUBLE</c>), and then the null class is
+        /// empty.
+        /// </para>
+        /// <para>
+        /// <b>Only a comparison's side is one.</b> A sort and an extreme order a column bound to a path, and a computed
+        /// column binds none. A raw document value — what the split rule's cast to <c>ANY</c> names — is read as a path's
+        /// stored value is, and is no order as a sort key.
+        /// </para>
+        /// </remarks>
+        static Reading ReadComputed(SqlTypeName type, bool nullable, bool printed)
+        {
+            if (type == SqlTypeName.ANY || type == SqlTypeName.VARIANT)
+                return printed
+                    ? new(CosmosOrderAgreement.None, Classes.None, Classes.All, AnyCharacter, false, null, "a " + type.getName() + ", which the service orders by no rule Calcite shares")
+                    : new(CosmosOrderAgreement.Exact, Classes.All, Classes.None, AnyCharacter, false, null, "the stored value");
+
+            var values = IsCharacter(type) ? Classes.String
+                : type == SqlTypeName.BOOLEAN ? Classes.Boolean
+                : SqlTypeName.NUMERIC_TYPES.contains(type) ? Classes.Number
+                : Classes.None;
+
+            if (values == Classes.None || printed)
+                return new(CosmosOrderAgreement.None, Classes.None, Classes.All, AnyCharacter, false, null, "a computed " + type.getName() + ", which the service orders by no rule the plan has checked");
+
+            return new(CosmosOrderAgreement.Exact, values, nullable ? Classes.All & ~values : Classes.None, AnyCharacter, false, null, "a computed value, whose characters nothing states");
+        }
+
+        /// <summary>
+        /// Reads a document path under a column's type and reading; or, for <c>null</c>, a path no fact can be about,
+        /// which may hold anything.
+        /// </summary>
+        static Reading ReadPath(JsonFactSet facts, JsonDocumentPath? path, SqlTypeName type, CosmosReading reading, bool printed)
         {
             var admitted = Admitted(facts, path, out var constant);
             var characters = Characters(facts, path);
@@ -705,7 +750,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// path is no spelling of the value, and is refused as a rendering is.
         /// </para>
         /// </remarks>
-        static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath path, string? format, CosmosTemporalParts held)
+        static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath? path, string? format, CosmosTemporalParts held)
         {
             var admitted = Admitted(facts, path, out var constant);
             var values = admitted & (Classes.String | Classes.Number | Classes.Boolean);
@@ -714,7 +759,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if ((values & (Classes.Number | Classes.Boolean)) != Classes.None)
                 return refused with { Why = "a conversion over what may not be a string" };
 
-            if (facts.RepresentationOf(path) is not CosmosRepresentation representation || representation.PreservesOrder == false)
+            if (path is not JsonDocumentPath known || facts.RepresentationOf(known) is not CosmosRepresentation representation || representation.PreservesOrder == false)
                 return refused;
 
             if (CosmosStoredForms.Reads(representation, format, held) == false)
@@ -725,17 +770,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Reads which types a path may hold in a row, the absent path among them, and whether every row holds one value
-        /// there.
+        /// there: every type, and not one value, for a path no fact can be about.
         /// </summary>
-        static Classes Admitted(JsonFactSet facts, JsonDocumentPath path, out bool constant)
+        static Classes Admitted(JsonFactSet facts, JsonDocumentPath? path, out bool constant)
         {
-            var present = facts.Knows(new JsonFact(path, new JsonClaim.Present()));
-
-            var admitted = facts.TryGetTypes(path, out var types) ? ClassesOf(types) : Classes.All & ~Classes.Undefined;
-
             constant = false;
 
-            if (facts.TryGetDomain(path, out var domain))
+            if (path is null)
+                return Classes.All;
+
+            var present = facts.Knows(new JsonFact(path.Value, new JsonClaim.Present()));
+
+            var admitted = facts.TryGetTypes(path.Value, out var types) ? ClassesOf(types) : Classes.All & ~Classes.Undefined;
+
+            if (facts.TryGetDomain(path.Value, out var domain))
             {
                 var held = Classes.None;
                 foreach (var value in domain)
@@ -761,16 +809,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Asked of the facts as a claim, one per band (<see cref="CosmosCharacters"/>), which a declared
         /// <c>pattern</c>, a service fact, a domain and a stored form each establish — the last two through the claim's
         /// own reading of them (<see cref="JsonFactSet.Knows"/>), so a filter's <c>IN</c> and an ASCII form say their
-        /// characters here as a pattern does.
+        /// characters here as a pattern does. A path no fact can be about may hold any.
         /// </remarks>
-        static CosmosCharacterBand Characters(JsonFactSet facts, JsonDocumentPath path)
+        static CosmosCharacterBand Characters(JsonFactSet facts, JsonDocumentPath? path)
         {
             var characters = AnyCharacter;
 
-            if (facts.Knows(new JsonFact(path, new CosmosCharacters(CosmosCharacterBand.Surrogates))))
+            if (path is not JsonDocumentPath known)
+                return characters;
+
+            if (facts.Knows(new JsonFact(known, new CosmosCharacters(CosmosCharacterBand.Surrogates))))
                 characters &= ~CosmosCharacterBand.Surrogates;
 
-            if (facts.Knows(new JsonFact(path, new CosmosCharacters(CosmosCharacterBand.HighBmp))))
+            if (facts.Knows(new JsonFact(known, new CosmosCharacters(CosmosCharacterBand.HighBmp))))
                 characters &= ~CosmosCharacterBand.HighBmp;
 
             return characters;
@@ -779,9 +830,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Determines whether the facts bound every number a path holds within a range.
         /// </summary>
-        static bool Within(JsonFactSet facts, JsonDocumentPath path, decimal least, decimal most, bool open) =>
-            facts.Knows(new JsonFact(path, new JsonClaim.LowerBound(least, open)))
-            && facts.Knows(new JsonFact(path, new JsonClaim.UpperBound(most, open)));
+        static bool Within(JsonFactSet facts, JsonDocumentPath? path, decimal least, decimal most, bool open) =>
+            path is JsonDocumentPath known
+            && facts.Knows(new JsonFact(known, new JsonClaim.LowerBound(least, open)))
+            && facts.Knows(new JsonFact(known, new JsonClaim.UpperBound(most, open)));
 
         // ── The pieces ─────────────────────────────────────────────────────────────────────────────
 

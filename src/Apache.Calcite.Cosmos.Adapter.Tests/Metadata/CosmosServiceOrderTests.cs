@@ -314,7 +314,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void ANumberIsComparedWithoutBounds()
         {
             CosmosServiceOrder.Compare(Declared(), Typed("w", SqlTypeName.BIGINT), CosmosOrderOperand.ForParameter(SqlTypeName.BIGINT), inclusive: false).IsProved.Should().BeTrue();
-            CosmosServiceOrder.Compare(Declared(), Typed("d", SqlTypeName.DOUBLE), CosmosOrderOperand.ForExpression(SqlTypeName.DOUBLE), inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(Declared(), Typed("d", SqlTypeName.DOUBLE), CosmosOrderOperand.ForLiteral(JsonScalar.From(1e300)), inclusive: false).IsProved.Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// <para>
+        /// An array's element has no document path, and was read as a value its type alone knew — a rendering as a
+        /// string — so <c>JSON_VALUE(c."DOC", '$.tags[0]') &lt; 'm'</c> was proved and sent exact, and a stored number or
+        /// boolean, compared as its text in Calcite and across types at the service, was lost. A path no fact can be
+        /// about may hold anything: its rendering is no string the service compares, and a typed reading of it reads
+        /// every other type as null.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void APathNoFactIsAboutMayHoldAnything()
+        {
+            var facts = Declared();
+            var m = CosmosOrderOperand.ForLiteral(JsonScalar.From("m"));
+
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Text), m, inclusive: false).Reason.Should().Contain("a rendering of what may not be a string");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.VARCHAR, CosmosReading.Typed), m, inclusive: false).IsProved.Should().BeFalse("a column of text renders what it reads");
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForPath(null, SqlTypeName.ANY, CosmosReading.Typed), m, inclusive: false).IsProved.Should().BeTrue("the stored value, against a string below U+D800, is the weakening's string branch");
+
+            var element = CosmosOrderOperand.ForPath(null, SqlTypeName.INTEGER, CosmosReading.Typed);
+            CosmosServiceOrder.Compare(facts, element, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true).IsProved.Should().BeTrue("a number read as one, every other type read as null and undefined against a number");
+            CosmosServiceOrder.Compare(facts, element, element, inclusive: true).Reason.Should().Contain("a JSON null");
+            CosmosServiceOrder.Equate(facts, element, element).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, element, Typed("k", SqlTypeName.INTEGER), inclusive: false).IsProved.Should().BeFalse("either may hold a string, which the service compares and both read as null");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// A value the service computes is Calcite's where Calcite has one, and where Calcite reads null may be anything
+        /// else: an undefined from a function, a JSON null a <c>CASE</c> writes, a stored value one hands through. Against
+        /// a literal and a parameter of its type that is nothing the service compares; against a path that may hold
+        /// another type, or another such value, it is. A type that admits no null has a value in every row: the cast the
+        /// validator writes around a constant compared with a <c>DOUBLE</c> is one.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AComputedValueIsReadAsAnythingWhereCalciteReadsNull()
+        {
+            var facts = Declared("""{ "type": "object", "properties": { "k": { "type": ["integer", "null"] }, "n": { "type": "integer" } } }""");
+            var computed = CosmosOrderOperand.ForExpression(SqlTypeName.INTEGER, nullable: true);
+
+            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForLiteral(JsonScalar.From(5L)), inclusive: true).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, computed, CosmosOrderOperand.ForParameter(SqlTypeName.INTEGER), inclusive: true).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: true).Reason.Should().Contain("a JSON null on both sides");
+            CosmosServiceOrder.Compare(facts, computed, Typed("k", SqlTypeName.INTEGER), inclusive: false).IsProved.Should().BeTrue("k holds a number or a null, and a null is less than nothing");
+            CosmosServiceOrder.Compare(facts, computed, Typed("n", SqlTypeName.INTEGER), inclusive: true).IsProved.Should().BeTrue("n holds a number wherever it is there");
+            CosmosServiceOrder.Compare(facts, computed, computed, inclusive: false).IsProved.Should().BeFalse("two computed values may both hold a string");
+
+            var always = CosmosOrderOperand.ForExpression(SqlTypeName.DOUBLE, nullable: false);
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.DOUBLE), always, inclusive: true).IsProved.Should().BeTrue("a value in every row is never null");
+            CosmosServiceOrder.Compare(facts, computed, always, inclusive: true).IsProved.Should().BeTrue();
+
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForExpression(SqlTypeName.DATE, nullable: false), CosmosOrderOperand.ForParameter(SqlTypeName.DATE), inclusive: false).IsProved.Should().BeFalse("an instant the service computes is no value it orders as Calcite does");
+        }
+
+        /// <remarks>
+        /// A null literal is written as the JSON null, which the service compares as a value: <c>&lt;=</c> keeps a row
+        /// holding one, where Calcite's comparison with a null is unknown.
+        /// </remarks>
+        [Fact]
+        public void ANullLiteralIsAJsonNullTheServiceCompares()
+        {
+            var facts = Declared("""{ "type": "object", "properties": { "k": { "type": ["integer", "null"] }, "n": { "type": "integer" } } }""");
+
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true).IsProved.Should().BeFalse();
+            CosmosServiceOrder.Compare(facts, Typed("k", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: false).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Typed("n", SqlTypeName.INTEGER), CosmosOrderOperand.ForLiteral(JsonScalar.Null), inclusive: true).IsProved.Should().BeTrue();
         }
 
         // ── Extremes ──────────────────────────────────────────────────────────────────────────

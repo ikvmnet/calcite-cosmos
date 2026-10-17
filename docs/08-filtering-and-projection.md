@@ -113,7 +113,9 @@ WHERE JSON_VALUE(c."DOC", '$.name') LIKE 'Trail%'
 For a property that holds strings in every document, the first branch matches nothing and the service
 does all the work; the recheck is cheap. **If the container declares that the path holds a string**
 (Chapter 14), there is no second type to disagree about, the comparison is sent exactly, and nothing
-is rechecked — which also lets a row limit travel with it.
+is rechecked — which also lets a row limit travel with it. An array's element, `$.tags[0]`, is weakened
+and rechecked whatever the container declares: a declaration states what a property holds, and none
+reaches an element (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string.** `UPPER`,
 `LOWER`, `||`, `CHAR_LENGTH`, `SUBSTRING` and the rest read the *text*, so `UPPER(JSON_VALUE(…))` is
@@ -454,6 +456,7 @@ documents it has to read.
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
+| `<`, `<=`, `>`, `>=` or `=` between a computed value — arithmetic, a function, a `CASE` — and a path or another computed value, where either side may be null | where SQL reads null the service may hold a JSON null or another value, and compares it: a `CASE` writing `NULL` against a null property is true there |
 | `GROUP BY` or `DISTINCT` over `JSON_VALUE`, where the path is not declared a string | Calcite groups the text, the service the value — `30` and `"30"` are one group or two (Chapter 10) |
 | `JSON_VALUE` or `JSON_QUERY` over the result of `JSON_VALUE` | Calcite parses the text as a document; the service has the value |
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |
