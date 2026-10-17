@@ -264,6 +264,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public bool HasOrderByRank => string.IsNullOrEmpty(RankBy) == false;
 
         /// <summary>
+        /// Determines whether the projection already names a property.
+        /// </summary>
+        /// <param name="alias">The property name.</param>
+        /// <returns><c>true</c> where a property of that name is projected.</returns>
+        public bool HasProperty(string alias)
+        {
+            foreach (var (name, _) in _properties)
+                if (string.Equals(name, alias, StringComparison.Ordinal))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
         /// Renders the statement.
         /// </summary>
         /// <returns>The Cosmos SQL text.</returns>
@@ -272,7 +286,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// combined with <c>ORDER BY</c>, <c>TOP</c> combined with <c>OFFSET</c>/<c>LIMIT</c>, or
         /// <c>ORDER BY RANK</c> combined with an ordinary <c>ORDER BY</c> or with <c>GROUP BY</c>.
         /// </exception>
-        public string Build()
+        public string Build() => Render(paged: true);
+
+        /// <summary>
+        /// Renders the statement without its <c>OFFSET</c> and <c>LIMIT</c>: every row it orders, for a reader that takes
+        /// the page itself.
+        /// </summary>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="InvalidOperationException">As <see cref="Build()"/>.</exception>
+        public string BuildUnpaged() => Render(paged: false);
+
+        /// <summary>
+        /// Renders a statement reading one value of every row this one reads: <c>SELECT VALUE</c> it, under the same
+        /// <c>FROM</c> and <c>WHERE</c>, ordered by it where asked.
+        /// </summary>
+        /// <remarks>
+        /// What reads an extreme's argument again where the service's extreme is not Calcite's. <c>SELECT VALUE</c> of
+        /// an absent path returns nothing for the row, which is what an extreme skips.
+        /// </remarks>
+        /// <param name="expression">The value to read.</param>
+        /// <param name="ordered">Whether to order by it.</param>
+        /// <param name="descending">Whether the order is descending.</param>
+        /// <returns>The Cosmos SQL text.</returns>
+        public string BuildValues(string expression, bool ordered, bool descending)
+        {
+            if (string.IsNullOrEmpty(expression))
+                throw new ArgumentException($"'{nameof(expression)}' cannot be null or empty.", nameof(expression));
+
+            var builder = new StringBuilder();
+            builder.Append("SELECT VALUE ").Append(expression);
+
+            WriteFrom(builder);
+            WriteWhere(builder);
+
+            if (ordered)
+                builder.Append(" ORDER BY ").Append(expression).Append(descending ? " DESC" : " ASC");
+
+            return builder.ToString();
+        }
+
+        string Render(bool paged)
         {
             // Cosmos does not support GROUP BY and ORDER BY in the same query. The conversion
             // rules are expected to prevent this pairing; reaching here means one let it through.
@@ -303,7 +356,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             WriteWhere(builder);
             WriteGroupBy(builder);
             WriteOrderBy(builder);
-            WriteOffsetLimit(builder);
+
+            if (paged)
+                WriteOffsetLimit(builder);
 
             return builder.ToString();
         }

@@ -436,9 +436,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void ADeclaredScalarThatIsAlwaysThereMakesAPathSortable()
         {
+            // A domain of strings below U+D800, so that only the placement is in question.
             const string Always = """
             { "type": "object", "required": ["at"],
-              "properties": { "at": { "type": "string" } } }
+              "properties": { "at": { "enum": ["a", "b"] } } }
             """;
 
             var declared = new CosmosContainerMetadata("items", new[] { "/ref" })
@@ -555,13 +556,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The schema of a catalog row: an identifier stored as a UUID, and a name that is always
         /// there so that a sort on it is not refused for null placement.
         /// </summary>
+        /// <remarks>
+        /// The names are a domain of strings below U+D800: the service orders strings by code point and Calcite by
+        /// UTF-16 code unit, which part only beyond, and a sort by a name is pushed only where something says the names
+        /// stay below (<see cref="CosmosServiceOrder"/>). A domain is the least that says it.
+        /// </remarks>
         const string Catalog = """
         { "type": "object",
           "required": ["ref", "name"],
           "properties": {
             "ref": { "type": "string",
                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-            "name": { "type": "string" } } }
+            "name": { "enum": ["Bike", "Helmet", "Lamp"] } } }
         """;
 
         /// <summary>
@@ -571,7 +577,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string CatalogWithoutTheIdentifier = """
         { "type": "object",
           "required": ["name"],
-          "properties": { "name": { "type": "string" } } }
+          "properties": { "name": { "enum": ["Bike", "Helmet", "Lamp"] } } }
         """;
 
         /// <summary>
@@ -699,7 +705,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
               "properties": {
                 "ref": { "type": "string",
                          "pattern": "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$" },
-                "name": { "type": "string" } } }
+                "name": { "enum": ["Bike", "Helmet", "Lamp"] } } }
             """;
 
             const string Sql = """
@@ -1193,11 +1199,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(best).Should().Contain("ClrCursorProject(at=[CAST($0)",
                 "the cast is still the engine's: " + PlanText(best));
 
-            // And the sort now pushes, which is what the remarks above said would happen the moment the
-            // projection did. Measured against the same query on an undeclared container, where it
-            // stays a ClrCursorSort -- see TheTemporalSortNeedsTheDeclaration.
-            Query(FindCosmos(best), container).Sql.Should().Contain("ORDER BY c.at ASC",
-                "the declared shape is what licenses ordering by the stored text");
+            // And the sort is not moved beneath it. Calcite's transpose would have keyed the sort by the text
+            // the cast reads, which orders as the instants only where the engine can read that text at all;
+            // it raises over every ISO-8601 instant (Calcite.TemporalCastReadsFewShapes), so no order of the
+            // text is the order the query asked for, and the query fails in the cast whichever way it is
+            // planned. See CosmosSortProjectTransposeRule.
+            Query(FindCosmos(best), container).Sql.Should().NotContain("ORDER BY",
+                "a cast the engine cannot read the stored form by licenses no order of it");
+        }
+
+        /// <remarks>
+        /// A sort keyed by text narrowed to <c>VARCHAR(n)</c> moves beneath the projection that casts it where the
+        /// key is the last: Calcite truncates by code unit, which never reverses two strings, so the service's order of
+        /// the whole strings is one Calcite allows of their prefixes. Before another key it does not, the truncation
+        /// tying what the next key has to order. Measured by the review against main: the transpose pushed both, and the
+        /// second answered wrongly over strings sharing a prefix.
+        /// </remarks>
+        [Fact]
+        public void ATextNarrowedOnTheLastKeyIsSortedBeneathItsCast()
+        {
+            var container = Container("""{ "type": "object", "properties": { "s": { "type": "string", "pattern": "^[a-z]*$" }, "k": { "type": "integer" } } }""");
+
+            var last = PlanToCosmos("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) AS "s" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) NULLS FIRST FETCH NEXT 2 ROWS ONLY""", container, out _);
+            Query(FindCosmos(last), container).Sql.Should().Contain("ORDER BY c.s ASC", "the whole strings' order is one their prefixes allow");
+
+            var leading = PlanToCosmos("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) AS "s" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) NULLS FIRST, c."id" FETCH NEXT 2 ROWS ONLY""", container, out _);
+            Query(FindCosmos(leading), container).Sql.Should().NotContain("ORDER BY", "a prefix ties what the next key orders, and the whole strings would have ordered it");
         }
 
         /// <summary>
@@ -1713,7 +1740,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("""SELECT p."T" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.t') AS "T" FROM items AS c) AS p ORDER BY p."T" NULLS FIRST""", "ORDER BY c.t ASC")]
         public void ADeclaredStringLetsASortOverTheTextAccessorPush(string sql, string clause)
         {
-            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": ["string", "null"] } } }""");
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "enum": ["a", "B", null] } } }""");
             var best = PlanToCosmos(sql, container, out _);
 
             PlanText(best).Should().Contain("CosmosSort", "the sort reaches the service: " + PlanText(best));
@@ -1721,6 +1748,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var statement = Query(FindCosmos(best), container).Sql;
             statement.Should().Contain(clause, statement);
             statement.Should().Contain("(IS_PRIMITIVE(c.t) ? c.t : null)", "the column is still the guarded accessor: " + statement);
+        }
+
+        /// <summary>
+        /// A declared string whose characters nothing states sorts at the service anchored, its order completed as the
+        /// rows arrive.
+        /// </summary>
+        /// <remarks>
+        /// The service orders strings by code point and Calcite by UTF-16 code unit, which part over a character
+        /// beyond U+FFFF beside one from U+E000: measured on the emulator and on Azure, U+E000 before U+1F600 at the
+        /// service and after it in Calcite. A string is not enough to prove it when the plan is made; a domain, a stored
+        /// form or a pattern is, and otherwise every string below U+D800 the rows hold certifies the order around it.
+        /// </remarks>
+        [Fact]
+        public void ADeclaredStringOfUnknownCharactersIsAnchored()
+        {
+            var container = Declaring("""{ "type": "object", "properties": { "t": { "type": ["string", "null"] } } }""");
+            var best = PlanToCosmos("""SELECT JSON_VALUE(c."DOC", '$.t') FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
+
+            PlanText(best).Should().Contain("CosmosSort(sort0=[$0], dir0=[ASC-nulls-first], order=[anchored])", "the strings may order apart, and the rows say where: " + PlanText(best));
+            Query(FindCosmos(best), container).Order.Should().NotBeNull();
         }
 
         /// <summary>
@@ -1754,7 +1801,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// order parts from SQL's: <c>CosmosPlannerTests.ASortOverAColumnThatIsNotTheStoredValueStaysAbove</c>
         /// holds that side in process. A path declared the type, or null, holds nothing for the
         /// accessor to read null for but null itself, and the column is the stored value: the question
-        /// the text accessor's declared string answers, asked of the type the clause names.
+        /// the text accessor's declared string answers, asked of the type the clause names. A
+        /// <c>BIGINT</c> needs bounds within int64 besides: a double past 2^63 is held and ordered
+        /// above 2^63 - 1 and printed by the emulator as 9223372036854775800, below it.
         /// </para>
         /// <para>
         /// <c>integer</c> answers for every numeric clause, a whole number being a number. The view's
@@ -1767,7 +1816,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Theory]
         [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "null"] } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) FROM items AS c ORDER BY 1 NULLS FIRST""", "ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
         [InlineData("""{ "type": "object", "properties": { "n": { "type": "number" } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) FROM items AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 10 ROWS ONLY""", "ORDER BY c.n DESC OFFSET 0 LIMIT 10", "(IS_NUMBER(c.n) ? c.n : null)")]
-        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer" } } }""", """SELECT p."N" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING BIGINT) AS "N" FROM items AS c) AS p ORDER BY p."N" NULLS FIRST""", "ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer", "minimum": 0, "maximum": 1000000 } } }""", """SELECT p."N" FROM (SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING BIGINT) AS "N" FROM items AS c) AS p ORDER BY p."N" NULLS FIRST""", "ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
         [InlineData("""{ "type": "object", "properties": { "n": { "type": "boolean" } } }""", """SELECT JSON_VALUE(c."DOC", '$.n' RETURNING BOOLEAN) FROM items AS c ORDER BY 1 NULLS FIRST""", "ORDER BY c.n ASC", "(IS_BOOL(c.n) ? c.n : null)")]
         [InlineData("""{ "type": "object", "required": ["n"], "properties": { "n": { "type": "integer" } } }""", """SELECT DISTINCT JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n" FROM items AS c ORDER BY 1 NULLS FIRST""", "SELECT DISTINCT VALUE { \"n\": (IS_NUMBER(c.n) ? c.n : null) } FROM items c ORDER BY c.n ASC", "(IS_NUMBER(c.n) ? c.n : null)")]
         public void ADeclaredTypeLetsASortOverATypedAccessorPush(string schema, string sql, string clause, string column)
@@ -1787,16 +1836,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// sort over the typed accessor in process.
         /// </summary>
         /// <remarks>
-        /// A string declared where the clause names a number, two types, a number where it names a
-        /// boolean and the reverse, and an object with no word about the path. In each the path may hold
-        /// a value the accessor reads null for and the service sorts as itself.
+        /// Two types, and an object with no word about the path. In each the path may hold a value the
+        /// accessor reads null for and the service sorts as itself, on either side of the values.
         /// </remarks>
         [Theory]
-        [InlineData("""{ "type": "object", "properties": { "n": { "type": "string" } } }""", "INTEGER")]
         [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "string"] } } }""", "INTEGER")]
         [InlineData("""{ "type": "object", "properties": { "n": { "type": ["integer", "object"] } } }""", "DOUBLE")]
-        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer" } } }""", "BOOLEAN")]
-        [InlineData("""{ "type": "object", "properties": { "n": { "type": "boolean" } } }""", "INTEGER")]
         [InlineData("""{ "type": "object", "properties": { "u": { "type": "integer" } } }""", "INTEGER")]
         public void ASortOverATypedAccessorOfAPathNotDeclaredItsTypeStaysAbove(string schema, string type)
         {
@@ -1804,6 +1849,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var best = PlanToCosmos($"""SELECT JSON_VALUE(c."DOC", '$.n' RETURNING {type}) FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
 
             PlanText(best).Should().NotContain("CosmosSort", "the service would order the stored values: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// A typed accessor over a path declared only a type the clause does not name reads every row as
+        /// null, so it orders nothing and the service is handed no key.
+        /// </summary>
+        /// <remarks>
+        /// A string declared where the clause names a number, a number where it names a boolean, and the
+        /// reverse. Calcite ties every null, so any order of them is one it allows, and the one the
+        /// service is not asked for costs nothing.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "string" } } }""", "INTEGER")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "integer" } } }""", "BOOLEAN")]
+        [InlineData("""{ "type": "object", "properties": { "n": { "type": "boolean" } } }""", "INTEGER")]
+        public void ATypedAccessorThatReadsEveryRowAsNullOrdersNothing(string schema, string type)
+        {
+            var container = Declaring(schema);
+            var best = PlanToCosmos($"""SELECT JSON_VALUE(c."DOC", '$.n' RETURNING {type}) FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("ORDER BY", "no key is left to write: " + PlanText(best));
         }
 
         /// <summary>

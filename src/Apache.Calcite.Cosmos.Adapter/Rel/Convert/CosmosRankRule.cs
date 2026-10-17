@@ -121,6 +121,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosRexTranslator.IsScoringFunction(rank) == false)
                 return null;
 
+            // ORDER BY RANK returns the best match first, and the service refuses a direction for it (SC2222, measured
+            // on Azure), so the one ordering it answers is the one that puts the best first: descending, for a full
+            // text score and a fusion of ranks. An ascending one is not that order, and stays with Calcite, where the
+            // score has no value and the statement fails saying an ascending score is never ranked
+            // (CosmosSchemaFunction.Refusal). A vector distance is best first ascending or descending by a distance
+            // function the metadata does not hold (CosmosRexTranslator.BestFirstDescending). Asked as every order the
+            // service computes is; a score reads no facts.
+            var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: CosmosRexTranslator.IsBestFirstDescending(rank));
+            var ordered = new Metadata.CosmosOrderKey(operand, (org.apache.calcite.rel.RelFieldCollation)collations.get(0));
+            if (Metadata.CosmosServiceOrder.OrderBy(JsonFactSet.Empty, new[] { ordered }).IsProved == false)
+                return null;
+
             // Offset is refused rather than guessed at: the documented pairings for the clause are TOP
             // and OFFSET LIMIT, and only TOP is expressible here without also ordering.
             if (sort.offset is not null)
@@ -154,7 +166,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The node writes the whole SELECT itself, and ORDER BY RANK is the statement's one
             // ordering and pairs with TOP alone. A subtree that has written any of those leaves it
             // nowhere to go, so the three nodes stay as they are and the ordering runs in process.
-            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
+            // And a ranking takes its TOP of the rows a WHERE kept, which a comparison the reader
+            // rechecks would leave a superset of (CosmosClauses.Recheck).
+            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Recheck)) != 0)
                 return null;
 
             // What the rows the projections read satisfy (L1), as a projection's own rule reads them: a form the filter

@@ -186,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, (i, facts) => Translator(facts, new CosmosParameterList()).TryTranslate(Conjuncts[i], out _));
+                    return _scope ??= Oracle.Admit(Statement, (i, facts) => Translator(facts, new CosmosParameterList()).TryTranslateConjunct(Conjuncts[i], out _));
             }
         }
 
@@ -256,7 +256,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // each index says.
                 var conjunct = next++;
                 System.Diagnostics.Debug.Assert(ReferenceEquals(Conjuncts[conjunct], node), "Translate walks the conjuncts Decompose read, in its order.");
-                builder.Append(TranslatorFor(conjunct, parameters).Translate(node));
+                builder.Append(TranslatorFor(conjunct, parameters).TranslateConjunct(node));
             }
 
             Write(Condition);

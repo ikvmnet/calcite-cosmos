@@ -71,6 +71,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // one left open, which is the only thing read off the context here.
             query = CosmosQueries.Bind(query, root);
 
+            // A statement whose order, or whose rows, the plan proved only around values the rows will
+            // hold is read by the reader that checks them, and that reads its fallback where they fail.
+            if (query.Order is CosmosOrderProgram program)
+                return await CosmosOrderedCursor<TRow>.OpenAsync(executor, query, program, rowBuilder, cancellationToken).ConfigureAwait(false);
+
             return new SelectCursor<TRow>(await executor.OpenAsync(query, cancellationToken: cancellationToken).ConfigureAwait(false), rowBuilder);
         }
 

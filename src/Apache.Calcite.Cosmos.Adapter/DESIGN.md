@@ -462,8 +462,8 @@ number", and over text there is no shape it reads. The adapter had been treating
 **So the pushed plan answered where the query raises**, which is not an optimisation: it is a
 different query, and it hands a caller rows the engine cannot produce. `CosmosTemporalForms.EngineReads`
 is the condition now, it is three rows long, and every site that drops a conversion asks it — the
-comparison in `CosmosFactRewriter`, the sort in `CosmosSort.OrderIsLexical`, the ordering candidate in
-`CosmosProject.IsOrderable`, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
+comparison in `CosmosFactRewriter`, the sort and the ordering candidate in `CosmosServiceOrder`, which
+reads a conversion through it, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
 place every clause reaches an accessor through and therefore catches the projection too. The other two
 families never had this problem and it is worth saying why: `UuidValue.fromString` and Calcite's
 integer cast were both measured against the engine when their rows were written, and the temporal
@@ -952,6 +952,11 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | a projection, a sort, a grouping, a key a lookup restricts | the last stratum: every admitted conjunct, applied before the clause reads a row or beside the key's restriction (L1) |
 | a residual, a side with no filter, a key another node asks of a clause | the declaration (L0) |
 
+**An order the service computes is read through `CosmosServiceOrder` under the consumer's own row, and nowhere
+else.** The table gains no row for it: a sort and an extreme ask under the last stratum (L1), an ordering comparison
+under its conjunct's render row (L2), the string branch of a weakening under the weakening's. No site reads
+characters, types, presence or bounds for an order itself (*The service's order, asked once*).
+
 **Redundancy is asked one conjunct at a time**, in digest order, each against the conjuncts still kept, so two
 duplicates do not delete each other. "If I add X, is Y irrelevant?" is a statement of X asked of Y under `Kept`: Y
 always true where X holds.
@@ -1143,7 +1148,9 @@ is the right test of a theory of facts, and blind to the mistake a theory of pre
 licensed by its own facts is right of every document that satisfies it, and wrong only of the others, which that test
 never draws. So the oracle's checker (`PopulationD`, run by `PredicateSoundnessTests`) draws a random declaration — a
 discriminator, and claims about a handful of paths, outright and per kind — and 64 documents from **the
-declaration**, not from the filter. A random filter over its paths is admitted with a random renderer, and every
+declaration**, not from the filter; and, from a stream of their own so that the rest is drawn as it always was, the
+characters a declared `pattern` would state and sixteen more documents holding strings of either band where the
+declaration lets one stand (*Reading a pattern as characters*). A random filter over its paths is admitted with a random renderer, and every
 scope the licence table names is checked on the declared documents its licence's conjuncts keep: the declaration,
 the last stratum, the stratum each conjunct was rendered from, each leave-one-out child, a point read's pins.
 
@@ -1180,10 +1187,10 @@ alone, so the parse that would raise is never made — beside other conjuncts it
 out of the comparison as an order of evaluation is; and `RETURNING DECIMAL` is typed `DECIMAL(19, 0)`, so a literal
 compared with it is cast to scale zero, `= 2.5` keeping a stored 2.
 
-**What it is worth is what it catches.** `PlantedBugTests` plants seven faults, each in a graph of its own — a rule
+**What it is worth is what it catches.** `PlantedBugTests` plants eight faults, each in a graph of its own — a rule
 added beside the right one, which for a rule that only adds is the same fault as replacing it; the arm split
-scheduled without its guard; the renderer handed the wrong stratum — and requires each caught within the trials a run
-pays for:
+scheduled without its guard; the renderer handed the wrong stratum; a declaration read wider than it was written —
+and requires each caught within the trials a run pays for:
 
 | planted | caught in trial | by |
 | --- | --- | --- |
@@ -1193,7 +1200,11 @@ pays for:
 | the arm split without its `holds` guard | 0 | a contradiction |
 | an axiom row contradicting the measurement: `IS NULL` of the accessor false of an object | 18 | a fact |
 | a stratum handing a conjunct its own facts | 0 | the strata |
-| a union of a conjunction with its other arm where one arm is always true | 60 | C5 |
+| a union of a conjunction with its other arm where one arm is always true | 0 | C5 |
+| a guarded characters claim read of every kind | 0 | a fact |
+
+The C5 plant was caught in trial 60 until each trial drew sixteen more documents holding strings of either band
+(*Reading a pattern as characters*), which see it in the first.
 
 The three seams the plants go through are internal and set by nothing else: `PredicateRules.ScheduleWith` schedules
 the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stratum a conjunct is handed, and
@@ -1245,7 +1256,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `required` | these children exist **if this object does** | presence, guarded by the parent's |
 | `type` | the type, unless `nullable` or a union widens it | nothing for a union or under `nullable: true` |
 | `const`, `enum` | the value if present; scalars only | value and domain |
-| `pattern` | a regular expression | a stored form, for recognised spellings only |
+| `pattern` | a regular expression | a stored form, for recognised spellings only; and, read under both of ECMA-262's readings, the characters a string may hold (*Reading a pattern as characters*) |
 | `format` | an annotation | nothing |
 | `allOf` | every branch applies | every branch, same guard |
 | `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the discriminator's presence and value; and the meet, unguarded |
@@ -1743,7 +1754,8 @@ Two things make it sound rather than merely plausible. **Both senses of absent g
 distinguishes a property holding JSON `null` from a property that is not there, and sorts
 `undefined` below `null` below everything else — so excluding only one of them would leave the
 other to arrive first ascending and the guarantee would be false. What the placement asks of a key is
-that it is there and holds a scalar (`JsonFactSet.IsAlwaysScalar`), which rules out both. And **the
+that its null class lies on the side Calcite puts nulls, which a key that is there and holds a scalar
+settles by having none (`CosmosServiceOrder`, R3). And **the
 predicate and the ordering leave as one statement**, so the guarantee holds at the service and not
 only in the plan: it is read off the conjuncts the service applies.
 
@@ -2933,11 +2945,11 @@ the stored value, a typed accessor only where its type is declared (below); read
 of what is known of the rows each reads — the declaration, or a filter beneath keeping a kind that declares it (L1,
 *The oracle in the planner*); read as
 JSON, never. The lookup join and the grouping ask it now — each taking an
-exception of its own first, the grouping for the document column, no two documents being equal — and
-`CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
-readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
-`TryResolveSortKeys`, which both share, refuses a path-bound key that is not stored, and refuses an
-array, a multiset or a map beside the `VARIANT` it already refused, whatever their reading.
+exception of its own first, the grouping for the document column, no two documents being equal. The
+sort asked it per ordinal too, until the service's order was asked once (below): `CosmosServiceOrder`
+reads each key's reading itself (R2), of the binding, readings and facts `TryResolveSortKeys` hands it in
+the rule and in the node alike, and refuses an array, a multiset, a map and a `VARIANT` whatever their
+reading.
 
 **A `RETURNING` key is the stored value only where the container declares its type, and this
 paragraph used to say it always was.** The argument was that a document holding another type fails
@@ -2977,15 +2989,303 @@ recovers it. Nothing in one statement can, the service refusing an `ORDER BY` it
 statements that could.
 
 **A declared string is then ordered by code point, which is SQL's order only below the surrogates.**
-With the reading settled, a sort over a declared string compares strings at the service — by code
-point, measured on the vnext-preview emulator, where Calcite compares UTF-16 code units as Java does.
-A string the rows' filter proves, a kind's branch or a list of literals, is ordered the same way, and so
-is a key the filter proves present under Calcite's own placement, which once reached only `NULLS FIRST`.
-The two part where a character above U+FFFF meets one between U+E000 and U+FFFF: the service put
-U+E000, U+FF21 and U+FFFD below U+1F600, and Calcite above it. The reading has nothing to do with it,
-and declining the declared sort would not cure it: `ORDER BY c.id`, a comparison pushed exactly between
-two declared strings, and `MAX(c.id)` part the same way. All four are the differential suite's recorded
-divergences, an open defect rather than a decision (`TODO.md` section 4).
+With the reading settled, a sort over a declared string compared strings at the service by code point, where Calcite
+compares UTF-16 code units: the service put U+E000, U+FF21 and U+FFFD below U+1F600, and Calcite above it. The
+reading had nothing to do with it — `ORDER BY c.id`, a comparison between two declared strings and `MAX(c.id)` parted
+the same way, nine recorded divergences in all — and what cured it was asking every order the service computes one
+question, which the next section is.
+
+#### The service's order, asked once
+
+**Every order the service computes for a statement is one question**, `CosmosServiceOrder`, asked at the six places
+the planner hands the service an order: the sort (`CosmosSort.TryResolveSortKeys`, which the rule and `Implement`
+share), the extreme (`CosmosAggregate.CanImplement`), an ordering comparison (`CosmosRexTranslator.CompareOrder`),
+the string branch of a text comparison's weakening (`CosmosFilterSplitRule`), an ordering through a stored form
+(`CosmosFactRewriter`, whose lowering of a literal and binding of a parameter into the path's spelling both ask it of
+the conversion), and the rank (`CosmosRankRule`). Each
+builds its operands from its binding — a path and its reading, a conversion through a stored form, a geodesic
+distance, a score, a literal, a parameter, an expression — and hands over the facts it was decided under, so that a
+rule and the node it builds, asking the same question of the same facts, cannot disagree. The owner's rule is the
+whole specification: if the plan can prove the order is one Calcite allows, it pushes; otherwise it is declined, and
+declining is always correct.
+
+**Three orders, and every proof makes them one.** Within a physical partition the service orders stored values by
+JSON type — undefined, null, false, true, numbers, strings, arrays, objects; `DESC` the exact reverse — numbers by
+value, int64 exactly, and strings by code point. Across partitions the SDK merges the streams by
+`String.CompareOrdinal`, UTF-16 code units, which is also Calcite's order. Measured on the emulator and on the probe
+account, one partition and two. A proof here never depends on how many partitions a container has, because it makes
+the three agree over the values the facts admit.
+
+**Four rules decide every reading.**
+- **R1, characters.** Code point order and UTF-16 order part only where a surrogate meets a unit from U+E000: at the
+  first unit two strings differ in, a unit below U+D800 orders alike against anything. So two sets of strings order
+  alike unless one may hold a surrogate and the other a high unit. A path's characters are asked of the facts as
+  one claim per band, `CosmosCharacters`, which a declared `pattern` states (*Reading a pattern as characters*), a
+  service fact states (`_etag`'s, which the HTTP entity tag grammar fixes), and a domain — an `enum`, a `const`, a
+  filter's list — or a stored form establishes through the claim's own reading of it (`JsonFactSet.Knows`, as a
+  bound is read off a domain; every registered form is ASCII, which `CosmosStoredFormsTests` holds each to). So a
+  pattern recognised as a stored form is not read for its characters too. Otherwise anything: Azure allows every
+  character in an `id` but `/` and `\`. A literal's are its own. A parameter's are anything. Which band a unit is
+  in is decided once, `CosmosCharacters.BandOf`, for a path's strings, a pattern's ranges, a literal and an anchor.
+- **R2, readings.** Calcite orders what the column reads and the service the stored value: text over strings is the
+  strings, a rendering of a number is not; a typed accessor over its declared type is exact; a `BIGINT` read back is
+  the stored order within int64, a `DOUBLE` within ±2^53 and refines past it. A comparison reads the document, not a
+  response, so there the readings are exact.
+- **R3, the null class.** What a reading reads as null — absent, JSON null, any type it does not read — has to lie
+  wholly on Calcite's side of the values, the values have to be one JSON type, and before the last key the null class
+  has to be one tie class, the service putting undefined below null where Calcite ties them. A comparison asks it of
+  its two sides together: what one side reads as null and the other may hold as the same JSON type, the service
+  compares as two values, and a JSON null equals a JSON null there. Measured on the emulator, `c.t = c.t`,
+  `c.t <= c.t` and `c.k >= c.k` over paths declared a string or null and an integer or null kept the documents
+  holding a null, which Calcite's unknown drops; `<` and `>` keep none either way. So `Compare` refuses such a pair
+  where equal values satisfy the comparison, and `Equate` asks the same of an equality, whose renderings the
+  translator decides as it did. An absent path is undefined against anything at the service, and drops the row on
+  both sides.
+- **R4, keys.** Every key but the last agrees exactly; the last may be finer at the service. A key the facts make one
+  value, or one read as null over every row, orders nothing and is not written; nor is a key an earlier exact key on
+  the same path already ties. Calcite's own constant-key rule is inert in this planner.
+
+**An operand says what the service compares, and only a path's facts say what it holds.** The translator's
+`OrderOperand` reads each side of a comparison as one of four things, and none of them by its SQL type where the
+service compares something else. A literal is the value it binds, of any type, and a null literal the JSON null it
+binds, which `<=` keeps against a stored null. A rendering, or a typed accessor, or a raw value, is a path, whether or not
+a fact can be about it: an array's element has no document path (`CosmosDocumentPaths.From`), and nor has a path under a
+traversal's alias or an accessor over a constant, and such a path holds anything. It used to be read as a value its type
+alone knew, so `JSON_VALUE(c."DOC", '$.tags[0]') < 'm'` was a string against a string, proved, and sent exact as
+`c.tags[0] < @p0` with no type test and nothing rechecked: a stored 5 or `true`, which Calcite compares as `'5'` and
+`'true'` and the service across types, was lost, on the emulator and on Azure (bisected to the stage that first asked
+the question once). Read as a path that may hold anything, its rendering is refused and the split rule sends main's
+weakening, `IS_DEFINED(c.tags[0]) AND (NOT IS_STRING(c.tags[0]) OR c.tags[0] < @p0)`, beneath the recheck; and two
+typed elements that may both hold a JSON null are not compared. Anything else is a value the service computes — an
+operator, a function, a `CASE`, a cast — which is Calcite's value where Calcite has one, and where Calcite reads null
+may be an undefined, a JSON null a `CASE` writes or a stored value one hands through, so its null class is every other
+type unless its SQL type admits no null: `CASE WHEN category = 'bikes' THEN NULL ELSE price END <= price` kept the
+document whose price is a JSON null, the `CASE` handing the null through and the service's `null <= null` true, on the
+emulator; and `CAST(2.5 AS DOUBLE)`, which the validator writes around a constant, is never null. What it declines that
+pushed is a computed value against a path that may hold another type, `price + 1 <= c.other` among them (`TODO.md`).
+
+**What the service accepts is a second question, and it is the container's.** Measured on the probe account,
+`ORDER BY` over a path the indexing policy excludes is a 400, single key or not, and so is one over a computed
+property no included path names; `_etag` is excluded from every policy the service hands back, though the emulator
+reads none of that back. A multi-key `ORDER BY` needs a composite index, and a repeated key is two keys there:
+`ORDER BY c.a, c.a` is a 400 without one. So `CosmosContainerMetadata.IsSortSupported` asks that every written key's
+path be indexed and that the keys left after R4 match a composite index. An extreme is not asked it: `MIN` and `MAX`
+scan, and Azure answers both over an excluded path, `_etag` among them.
+
+**The extreme and the rank are the same question in other words.** The service's `MIN` and `MAX` skip an absent path,
+count a JSON null and follow the type order, where Calcite skips every null: so the argument's null class may hold
+only the absent path, its values one type, ordered alike. `ORDER BY RANK` takes no direction at all on Azure (SC2222):
+it answers best first, which for a full text score and for `RRF` is descending, so `DESC` pushes as a bare
+`ORDER BY RANK` and an ascending ranking is refused at plan time with a message naming `DESC`. A geodesic distance
+means the service's WGS84 value, as a pushed spatial predicate does (the manual's 18.8), and keeps pushing.
+
+**What it costs, and what it replaces.** The questions read frozen fact tables — presence, types, domains, bounds,
+extensions — and open no oracle scope; the planning gate measured no time added. They replace `NonNullFields`,
+`NeverNull`, `AlwaysDefined`, `SortableFields`, `CosmosProject.IsOrderable` and the per-site order checks, each of
+which encoded part of this. What they decline that pushed before is the order of strings whose characters nothing
+states: a sort, a page and a keyset seek over `id`, a sort over a declared string, a comparison against a parameter
+or between two such paths, the extreme of either. The declaration is the first answer, and is read now: a JSON
+Schema `pattern` read as the characters a path may hold (below). The second is a proof completed when the rows
+arrive — the anchored read, which checks at run time what no declaration proved (below) — and it pushes all of that
+again but a comparison of two paths and a grouped extreme. A sort split by JSON type is next (`TODO.md` section 5).
+
+#### Reading a pattern as characters
+
+**A declaration is the first proof a user can write, and `pattern` is the one keyword that states what characters a
+string holds.** That is the owner's decision (D2): not `format`, which JSON Schema calls an annotation, and not a
+container operand, which would say per container what a pattern on `id` says per path. `CosmosPatternAlphabet` reads
+a pattern into `CosmosCharacters`, one claim per band its strings lack, and R1 reads the claim: a path declared below
+U+D800 sorts, takes `MIN` and `MAX`, and compares with a parameter and with any other path at the service, and `id`
+declared so pages and seeks there, proved when the plan is made with nothing checked when the rows arrive.
+
+**Two readings, and a claim has to hold under both.** JSON Schema names ECMA-262's dialect and no flags. Without the
+`u` flag a pattern is a sequence of UTF-16 units, matched unit by unit: `[^a]` matches either half of a surrogate
+pair, and `\uD83D\uDE00` is two atoms. With it, a sequence of code points matched code point by code point: `[^a]` is
+a whole character, the pair is one atom, and a range may run past U+FFFF. A JavaScript validator built on `RegExp`
+with the flag reads one way and .NET's `Regex` the other, and nothing in a container says which checked its
+documents. So every pattern is parsed twice, and a band is absent only where both readings exclude it. They part
+where it matters. `^[^\uD800-\uDFFF]*$` excludes the surrogates read by unit and admits every supplementary
+character read by code point; `[\uD800-\uDBFF\uDC00-\uDFFF]` is the surrogates read by unit and, read by code point,
+a range from U+D800 to U+10FC00 holding the whole high band. A pattern either reading rejects proves nothing: a
+validator using that reading could not have checked a document with it.
+
+**The grammar read is the strict one the two share**, and anything outside it is refused.
+- Every top-level alternative begins with `^` and ends with `$`. `pattern` searches, so an unanchored alternative
+  matches inside a string of anything. With both anchors and no `m` flag every character of a matching string is one
+  an atom consumed, which is what lets the atoms' bands bound the string's. An assertion inside — `^`, `$`, `\b` —
+  consumes nothing and only narrows.
+- An atom is a literal, an escaped syntax character or `/`, a control escape, `\cX`, `\0`, `\xHH`, `\uXXXX`, `\d`,
+  `\w`, a class, or a group, capturing or `(?:`, under any quantifier. `\d` and `\w` are ASCII in ECMA-262 under
+  either reading, a schema having no `i` flag to widen `\w`.
+- A range's bands are those of every unit, or code point, it spans. `[\uD000-\uE100]` holds both bands though
+  neither end is in one; taking a range's top unit as its band, as the plan first wrote it, would call it free of
+  surrogates.
+- A negated class is its complement under each reading, over that reading's alphabet: the units to U+FFFF, the code
+  points to U+10FFFF. Computed exactly, so it is accepted. Read by code point the complement holds every
+  supplementary character the class does not name, and no class both readings accept can name them all — a range of two
+  supplementary characters runs backwards read by unit — so a negated class never excludes the surrogates, though it
+  can exclude the high band.
+- Refused: `.`; `\s`, which matches U+FEFF, and `\S`, `\D` and `\W`, which bound nothing; `\p{…}` and `\P{…}`, whose
+  sets a Unicode version decides and which read by unit are a letter and a brace; `\u{…}`, a code point read by code
+  point and `u` repeated read by unit; back-references and `\k`; lookarounds, named groups and inline flags; a legacy
+  octal escape; an identity escape of anything but a syntax character or `/`; a class escape ending a range; and a
+  lone `]`, `{` or `}`. Each of the last group is a literal read by unit and an error read by code point.
+
+**What is stored is not always what was written.** Measured on the probe account, a lone surrogate written as a JSON
+escape is stored as U+FFFD, a high unit. Read by unit a pattern admitting a surrogate admits a lone one, so a claim
+that its strings lack the high band would be true of the written document and false of the stored one. So a pattern
+that admits a surrogate yields no claim at all, and the claims a pattern can make are "neither band" and "no
+surrogate". A domain needs no such care: `System.Text.Json` will not read a lone surrogate escape as a string, so no
+`enum` or `const` holds one.
+
+**Checked against the engine, not only the grammar.** While it was written the reader was run against V8's own
+`RegExp`, with the flag and without, over 36,000 generated patterns — literals and escapes from every band, ranges
+across U+D800 and U+E000, negated classes, groups, quantifiers, and the refused constructs — each matched against
+some four thousand strings. No band the reader called absent was held by a string either reading matched, and no
+pattern either reading rejects was read. `CosmosPatternAlphabetTests` names the cases.
+
+**In the theory, a claim like any other.** `CosmosCharacters` is a `JsonClaim.Extension`, one per band, so each is
+known or not on its own and a union of a branch lacking both bands with one lacking one keeps the one. It is read
+off a subschema beside any type, a pattern being vacuous for anything but a string as the claim is, and it says for
+itself what establishes it (`JsonClaim.Extension.IsEntailedBy`): a type that is no string, a null, a value or a
+domain without the band, a stored form. That is what lets it survive the nullable union `anyOf: [{type: null}, X]`,
+which keeps what a null satisfies, and the meet of a union whose other branch is a number. Population D draws the
+claim, outright and per kind, from a stream of its own, so that every trial draws the declaration, documents and
+filter it drew before; and sixteen more documents a trial, from that stream, hold strings of either band wherever
+the rules let one stand. A plant reading one kind's characters claim of every kind is caught in the first trial.
+
+**`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the stored
+forms read `\d` as `[0-9]` already. A validator in .NET's default dialect or Python's reads `\d` and `\w` as every
+Unicode digit or word character, fullwidth and supplementary ones among them; the manual says to spell the classes
+out where documents are validated that way (chapter 14.4). Refusing the two here alone would not close it: a stored
+form's `\d` says its characters as well, through the form. Recorded in `TODO.md` for the owner.
+
+**Two readers of the language, for now.** `CosmosPatternLanguage` puts a pattern in the spelling the stored-form
+tables are keyed by, and reads a UUID's shape by its atoms; this reader parses the language for the characters. They
+ask one keyword different questions — which form, which only matching a spelling answers, and which characters,
+which only a parse does — and each states what `\d` means. A pattern recognised as a stored form beside a declared
+string says its characters through the form and is not read here too. The owner's decision is one parser, the
+tables' spelling printed from its parse; until then the second reader's one defect, dropping a space as though it
+meant nothing, is fixed, ECMA-262 matching a space as itself.
+
+**What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most two
+extension facts to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
+4.32 s on both and at a p90 of 152 ms against 159; planned again in 2.06 s against 2.03 and at a p90 of 19.4 ms against
+18.5, the ranges overlapping as the one question's own did; the hierarchy and a declared container's steady state
+the same within their noise. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
+to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
+they did (*Differential testing*).
+
+#### The anchored read: a proof completed as the rows arrive
+
+**What the plan cannot prove, the rows can.** A string order whose characters nothing states, a `BIGINT` read back
+past int64, a `DOUBLE` past 2^53 before the last key: in each the one thing the facts cannot say is something about
+the values, and the values arrive with the answer. The owner counts a proof completed when they do as a proof (D1),
+so the question answers `Anchored` there (`CosmosOrderVerdictKind`), for a sort, an ungrouped extreme and a
+comparison with a parameter, and the reader completes it. Everything a value cannot certify — a null placement the
+service does not share, two JSON types, a rendering, the two nulls of a leading key, two paths' strings — is refused
+as before.
+
+**An anchor is a value the two orders agree about** (`CosmosServiceOrder.IsAnchor`, `CosmosOrderAnchor`):
+- a string with no UTF-16 unit at or above U+D800, which orders against any other the same by code point and by code
+  unit — at the first unit two strings differ in, a unit below U+D800 is below every surrogate and every unit from
+  U+E000 under both rules;
+- a number strictly within ±2^53, which is read back as itself, and past which every value — an int64 the service
+  orders exactly, or a double printed as another integer — reads back on the same side. Strictly, because a service
+  comparing doubles ties 2^53 with 2^53 + 1, which a `BIGINT` orders (`anchors.py` §6b);
+- a value the key reads as null, which R3 has already placed alike in both orders: exactly before the last key, where
+  R3 makes the null class one tie class at the service, and as a refinement on the last, where a tie of Calcite's is
+  free and the service may order undefined below null.
+
+**An anchor is where it belongs in the stream, through the merge.** Within a partition every row before an anchor
+is at most it in the partition's order, so at most it in Calcite's. Across partitions the SDK emits the least head
+in Calcite's order: a row of another partition emitted before the anchor was at most the head of the anchor's own
+partition, which was at most the anchor; one emitted after was at least the head of its own partition when the
+anchor went, which was at least the anchor. So every row before an anchor is at most it in Calcite's order and every
+row after at least, whichever partitions they came from — which the probe account measured on 40 one-iterator
+streams and 880 windows across two physical partitions, none accepted wrongly. Three programs follow:
+- **A stream**: emit each anchor as it arrives, after the run of rows since the last one, sorted. The runs are
+  ordinarily empty.
+- **A window**, `OFFSET o LIMIT f`: its rows are Calcite's where its last row is an anchor or the stream ended inside
+  it, and its first is one where `o > 0` — every row skipped is at most the first and every row past it at least
+  the last. Sorted, the window is allowable. Otherwise the statement is read again without its page, and the page is
+  taken from the sorted stream, stopping once it is out and the run it ended in is closed.
+- **An extreme**: one that is an anchor is Calcite's. Any other is replaced by the argument read again in its order
+  toward the extreme, `SELECT VALUE c.k … ORDER BY c.k DESC`, up to the first anchor — past which nothing lies beyond
+  it in either order — or read whole where the path is not indexed. Grouped, there is no one row to check, and it
+  is refused.
+
+**A comparison with a parameter is decided by the value.** Against an anchor it is exact. Against any other the
+statement is sent with the comparison weakened to a bound every string Calcite keeps satisfies at the service, and
+the rows are rechecked by Calcite's comparison: for `>` and `>=`, `x >= P`, where `P` is the value up to its first
+unit at or above U+D800 (`anchors.py` §5, 342,225 pairs); for `<` and `<=`, `x < P′`, `P` with its last character
+raised, U+D7FF going to U+E000 (`keyset_mirror.py`, 170,820 pairs); and the type test alone where `P` is empty. The
+translator writes the comparison as it is and records the three forms beside the parameters
+(`CosmosOrderComparison`), with a second slot for the bound that `CosmosQueries.Bind` writes from the same value
+(`CosmosAnchorBound`). A weaker comparison makes a weaker conjunct wherever `AND` and `OR` alone lead to it, each being
+monotone in its operands, so the translator writes it there, and records the conjunct as a tree the reader rechecks
+whole (`CosmosRecheck`): an `AND` and an `OR` of the comparisons, which the reader makes as Calcite does, and of the
+other predicates, each selected as a member of its own and read back as the service answered it. Only truth is asked
+of a leaf — a `WHERE` keeps a row where its condition is true, and through `AND` and `OR` alone unknown and false
+count alike — so a predicate the service answers exactly in a `WHERE` is read back exactly. So the keyset seek past
+two keys chapter 9.5 recommends, `s > ? OR (s = ? AND id > ?)`, pushes whole, ordered and paged. Under a `NOT` or in a
+value a weaker leaf would not make a weaker condition, and the comparison is refused there. And the rows have to be the
+filter's: the binding walk marks a filter that may hold one (`CosmosClauses.Recheck`, asked of the declaration alone,
+which over-approximates what a stratum renders anchored) so that a grouping, a `DISTINCT`, a rank and a lookup decline
+above it, and a filter declines above a `DISTINCT`. A comparison of two paths is refused: the rows the service drops
+never arrive.
+
+**One program, on the statement.** The node that asked records what the reader needs — a sort its keys
+(`CosmosImplementor.OrderAnchored`), an aggregate its extremes, a translator its comparisons — and `Build` assembles
+`CosmosOrderProgram` beside the statement: the keys with how Calcite compares each (`CosmosOrderedKey`), the page, the
+statement unpaged, the comparisons and the extremes. A value the reader checks is selected under a member no column
+has, `"$k0": c.s`, so a key the statement does not select is still there to read; the row builders read columns by
+name and never see one. A `DISTINCT` is given none — a member it de-duplicated by would change what it returns — and
+its keys are read from the members it already selects, which hold the key's value or null as the key's reading does.
+`CosmosCursors.OpenAsync` hands a statement carrying a program to `CosmosOrderedCursor`; one whose orders are proved
+carries none and is read as it always was. `CosmosSort` shows `order=anchored` in the digest, so that `EXPLAIN` tells
+the two apart.
+
+**Every statement is one iterator, from its start.** Measured on the probe account across two physical partitions, a
+cross-partition `ORDER BY` resumed from a continuation token in a new iterator lost and repeated rows — the token's
+`resumeValues` are compared by code point at the service, and rows the merge had not yet emitted from the other
+partition are skipped or re-sent — and the certificate cannot see a row that never arrives. So the fallback is a
+statement of its own, read from its start, and nothing resumes anything.
+
+**A `DISTINCT` across partitions may repeat a value.** The SDK de-duplicates adjacent rows of the merged stream, and
+where the orders part the merge can separate two copies: one partition holds U+1F600, the other U+E000 then U+1F600,
+and the merge emits U+1F600, U+E000, U+1F600. A repeat ties the row it repeats, and a tie class is contiguous in the
+sorted stream, so the reader drops repeats within each one. A repeat before a window is counted by the service's
+`OFFSET` and cannot be seen, so a `DISTINCT`'s window past an offset is never certified and is taken from the stream
+read unpaged.
+
+**The comparator is Calcite's, written here** (`CosmosKeyComparer`): text by UTF-16 code unit, which is
+`String.compareTo`; an exact number by `BigDecimal.compareTo`; a double as `Double.compare`, reading two integers past
+2^53 alike as Calcite does, which keeps the order of a later key among them; a boolean false first; every null one tie
+class placed absolutely. Not the CLR runtime's `JavaComparisons`, which orders multi-key text by culture.
+
+**What it costs.** At planning, nothing measurable: the question's new answer reads what it read, and the sort rule
+asks it once more in `convert`, for the digest. At run time, on data whose strings stay below U+D800 — nearly all text
+— a scan of each key and the members selected for it, and no second request. Elsewhere, a run held and re-sorted, as
+long as the run; for a page whose edge holds such a string, an extreme that is one, or a parameter that is one, a
+second statement, in order and stopping at the next anchor, never more rows than sorting in process reads. The
+`cosmos.order` activity reports which (`cosmos.order.program`, `cosmos.order.reissued`, `cosmos.order.buffered`; the
+manual's 20.3).
+
+**How it is checked.** `CosmosServiceOrderModelTests` holds every anchored verdict to the reader's own check over the
+model's three orders: each value `IsAnchor` admits compares alike with every admitted value, ties included before
+the last key; and an extreme read again to the first anchor through the model's merge is Calcite's. The sweep found
+the last key's refinement needed saying, and says it. `CosmosOrderedCursorTests` runs the reader over the probe
+account's measured merge, windows that pass and fail at either edge, a `DISTINCT`'s separated repeat, keysets past a
+value that is no anchor in both directions, and extremes; `CosmosKeyComparerTests` pins the comparator to the Calcite
+inventory's measurements. The eight recorded divergences of string order push again, each held to the reader having
+re-sorted a run or read its fallback (`CosmosDifferentialTests.CompletedByTheReader`), and the yardstick judges every
+order the reader completes (*Differential testing*). `CosmosOrderMergeMeasurementTests` runs the reader through the
+adapter's executor over two physical partitions, on an account that has them.
+
+**What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under a `NOT` or beneath a
+grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
+and the mixed types the sort split by JSON type is for (`TODO.md` section 5).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -5336,6 +5636,123 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
 
   Over the fixes for A to K and both halves of L, the gate's 1,000 pass: 973 distinct, one
   not judged because Calcite raised, none failing, 3,880 statements run.
+
+- **And orders are judged by what Calcite allows: the `ORDER BY` yardstick.** The corpus compares an
+  ordered answer as a sequence, which is stricter than SQL on ties, and against a runtime that orders
+  multi-key text by the host's culture. Neither is the rule a pushed order is held to. That rule is that
+  the answer be *allowable*: rows `o+1` to `o+f` of some arrangement of the input that Calcite's
+  comparator finds non-decreasing. Which rows of a tie a page takes is free, and so is their order.
+  `EveryOrderIsOneCalciteAllows` (`CosmosDifferentialTests.Orders.cs`) draws the statements whose
+  answers depend on an order and judges each by that.
+  - **What it draws.** Sorts of one to three keys, over every reading the adapter has: text accessors,
+    every `RETURNING`, `id`, `_ts` and `_etag`, monotone and other computed keys, casts to `UUID` and
+    `TIMESTAMP`, a JSON fragment and the promoted column. Each key has a direction, a placement, and
+    sometimes a page. Then `DISTINCT`, a subquery's page, `UNION ALL … ORDER BY`, `MIN` and `MAX`, a
+    keyset chained three pages, comparisons with a parameter and of a path with a path, and a sort led
+    by a key that one document leaves absent and another holds null. Its filters are the ternary logic
+    gate's predicates one connective deep, beside equalities, memberships, ranges against a literal or a
+    parameter, `LIKE` and a pinned partition.
+  - **Over what.** Three containers of 48 documents in four logical partitions, written in a
+    permutation. They hold strings from both sides of U+D800, ids repeated across partitions, integers
+    and doubles either side of 2^53 and 2^63, every JSON type at an undeclared path, and ties at every
+    key. `orders_plain` declares nothing. `orders_declared` declares types, bounds, `required`, an `enum`
+    whose strings straddle U+D800, and the composite indexes. `orders_ascii` declares the same, and the
+    characters of its strings by `pattern` — a UUID, an identifier, nothing at or above U+D800 — and its
+    documents keep that.
+  - **How it judges.** The input is the statement without its order and page, read in process with its
+    keys selected. `OrderAllowability` checks four things of the answer: its rows are the input's, its
+    count is the window's, it is non-decreasing, and each tie class holds its share of the window. The
+    comparator is written in the test from Calcite's Java semantics (`CalciteOrder`): text by code unit,
+    exact numbers, `-0.0` by the number of keys, unsigned UUIDs, `NaN` last. An extreme is judged by
+    Calcite's extreme tie class, and a comparison by its exact rows.
+  - **And what the service accepts, as Azure accepts it.** Every `ORDER BY` a plan sends is held to the
+    indexing policy the container was created with. An excluded path is a 400 on Azure, and
+    `/"_etag"/?` is excluded by default; so is a multi-key order that no composite index serves in its
+    directions or their exact reverse. The emulator accepts both, so the check is the test's.
+  - **Where Calcite raises over the input** the statement is not judged, with one exception: an answer
+    that shows its keys is held to its own order. No input makes rows allowable whose keys, as the
+    answer shows them, run against the `ORDER BY`. That is how 2^63 stored as a double is judged at
+    all: the emulator returns a document whole as it was written, which Calcite's `BIGINT` cannot read,
+    and prints a projection of it to 17 digits, as another integer, while ordering it by the double.
+  - **A failure is narrowed and named.** It is narrowed through its page, its keys and its conjuncts, as
+    a predicate is, and named by its family. The family is read from what the failure holds. Strings
+    from both sides of U+D800, or an answer that would be allowable had Calcite compared text by code
+    point, are the string order's. A leading key that one document leaves absent and another holds null
+    is the null class's. A double past 2^53 is the read-back's. Where the service was handed no order and
+    the answer still fails, the CLR runtime's own order is to blame — two or more keys by culture — and
+    the failure is reported apart, as `calcite-dotnet`'s.
+
+  **On main it failed.** Over the adapter at `4b2ccb3`, on
+  the emulator, the gate's 1,000 items came to 1,092 statements, of which 115 were not judged because
+  Calcite raised. Of the rest, 267 sent the service an `ORDER BY` and 17 an extreme, and 130 failed:
+
+  | Family | Statements |
+  | --- | --- |
+  | Text from both sides of U+D800 | 80 |
+  | Undefined and null on a leading key | 26 |
+  | `_etag`, an excluded path | 12 |
+  | 2^63 stored as a double, read back as another integer | 4 |
+  | *Not an order:* a projected double printed two ways | 5 |
+  | *Not an order:* `CHAR_LENGTH` pushed as `LENGTH` | 3 |
+
+  The string order's are sorts over `id`, over declared strings and the `enum`, their keysets, a union
+  merging a pushed sort, the text weakening beneath a page, `MAX(c."id")`, and comparisons of `id` or a
+  declared string with another or with a parameter. The null class's are two-key sorts led by `t` or
+  `k` under the service's placement. `orders_ascii`, whose strings stay below U+D800, has no string
+  order failure at all: its failures are the null class's, `_etag`'s and the 2^63 sort's. Two families
+  are not orders', and `TODO.md` records them: `CHAR_LENGTH` pushed as `LENGTH`, which counts code
+  points, and the emulator printing a projected double past 2^53 to 17 digits where a document read
+  whole keeps what was written. A third finding came from an earlier draw of the generator and is in
+  `TODO.md` too: a comparison of two nullable declared strings keeps the rows where both are null. 94
+  answers were the CLR runtime's own, every one of them a sort of two keys or more done in process.
+
+  **Asked once, no order it pushes fails** (*The service's order, asked once*). Over the same 1,000
+  items, 1,092 statements, 116 not judged: 64 sent the service an `ORDER BY`, 14 an extreme and 2 a page
+  with no order, and none of them failed. What fails is the two families that are not orders' — 5 a
+  projected double, 3 `CHAR_LENGTH` — and 119 answers were the CLR runtime's own, more than before
+  because more multi-key sorts now run in process. The default's 200 items push 14 sorts and 3 extremes
+  and fail only in `CHAR_LENGTH`. Those counts are the test's floors (`PushedFloors`): a change that
+  pushes fewer fails it, which is how "as many as can be proved" is held.
+
+  **With the declared characters read, `orders_ascii` pushes what its patterns prove** (*Reading a pattern as
+  characters*). Over the same items, 110 statements sent the service an `ORDER BY`, 20 an extreme and 2 a page, and
+  none failed: `orders_ascii`'s sorts went from 38 to 84 and its extremes from 7 to 13 — its ids and their
+  three-page keysets, its declared text, `MIN` of it — and the other two containers push what they did. The same 8
+  fail, none an order, and 119 answers were the CLR runtime's own. The default's 200 items push 17 sorts and 4
+  extremes. The floors are kept per container too, `orders_ascii`'s among them, so that a reading of the patterns
+  that proved less fails there first.
+
+  **With the anchored read, what the rows prove pushes too, and the yardstick runs by default** (*The anchored
+  read*). Over the same items, 1,092 statements, 113 not judged: 217 sent the service an `ORDER BY`, 25 an extreme,
+  2 a page and 26 a comparison with a parameter the reader rechecks, and none answered what Calcite does not allow.
+  The gain is in the containers that declare no characters — `orders_plain`'s judged sorts from 12 to 27 and
+  `orders_declared`'s from 14 to 99, with their extremes 3 to 4 and 4 to 8: sorts over `id` and over text of any
+  character, their pages and three-page keysets, `RETURNING BIGINT` over an integer nothing bounds, `MAX(c."id")` —
+  and `orders_ascii` gains its unbounded integers, 84 to 91. About 117 or 118 answers were the CLR runtime's own — the
+  count follows the order the service returns tied rows in, which the in-process multi-key sort is sensitive to, and
+  not the build: a Release build gave 118 on the probe account. The two families
+  that are not orders' are findings of their own (`Findings`), recorded in `TODO.md` and reported apart where the
+  statement sent no order — every one of the 8 does — so the test holds every order it judges and runs with the
+  class. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
+  it, per container, the comparisons among them.
+
+  **What it costs.** On the emulator, on a workstation running other work, the default's 200 items took
+  53 to 76 s and the gate's 1,000 took 157 to 267 s when it was built, the class's setup included: about
+  two runs a statement, planning being the cost and each read of 48 documents next to nothing. Later runs,
+  the containers already seeded, took about 20 s and 70 s in Debug. The default is a run of the class.
+
+  **The model checks the question rather than the answers.** `CosmosServiceOrderModelTests` models each
+  partition's order (type order, exact numbers, code point text), the SDK's merge (the same over what
+  was printed, UTF-16 text, the lower feed range first on a tie) and Calcite's, and checks every verdict
+  of the question "may the service compute this order" pairwise over the values each fact set admits.
+  The merge is pinned to the two-partition streams the probe account returned, which no single order
+  produces. Built before the one place existed, it asked a mirror of main's decisions, which it found
+  wrong in three families: text across U+D800 (52 verdicts), undefined and null on a leading key (20) and
+  2^63 read back (14). It asks the one place now, by default, and holds an anchored verdict to the reader's
+  own check: every anchor compares alike with every admitted value under the three orders, ties free only on
+  the last key, and an extreme read again to the first anchor through the merge is Calcite's. The checker's
+  own test plants each family. `CosmosOrderMergeMeasurementTests` measures the merge itself, on a container with two
+  physical partitions that the caller names; it creates none, and skips without one.
 
 ---
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 using System.Text.Json.Nodes;
 
@@ -18,19 +19,20 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </para>
     /// <para>
     /// <see cref="Subschema"/> is the same idea one step wider: a consumer may read a whole subschema as
-    /// a claim of its own, the way the adapter reads a pinned GeoJSON shape as a geography the service
-    /// can measure. It is asked of every subschema the walk reaches and answers <c>null</c> for most.
+    /// claims of its own, the way the adapter reads a pinned GeoJSON shape as a geography the service
+    /// can measure, and a <c>pattern</c> as the characters a string may hold. It is asked of every
+    /// subschema the walk reaches, beside whatever type it declares, and answers nothing for most.
     /// </para>
     /// </remarks>
     /// <param name="StringPattern">
     /// Recognises the <c>pattern</c> of a subschema declaring a string, answering its form or <c>null</c>.
     /// </param>
     /// <param name="Subschema">
-    /// Recognises a whole subschema as a claim about the value at its path, or answers <c>null</c>.
+    /// Recognises a whole subschema as claims about the value at its path, which may be none.
     /// </param>
     public sealed record JsonSchemaRecognisers(
         Func<string?, IJsonStoredForm?>? StringPattern = null,
-        Func<JsonNode, JsonClaim?>? Subschema = null)
+        Func<JsonNode, IReadOnlyList<JsonClaim>>? Subschema = null)
     {
 
         /// <summary>

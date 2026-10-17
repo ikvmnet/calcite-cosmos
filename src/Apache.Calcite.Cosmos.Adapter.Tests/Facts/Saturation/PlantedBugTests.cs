@@ -28,7 +28,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// </para>
     /// <para>
     /// The six of Stage 1's plan, and a seventh that only C5 sees: a union of two predicates, which is the trap a
-    /// property of a context written as a property of a term becomes under congruence.
+    /// property of a context written as a property of a term becomes under congruence. An eighth is a declaration's
+    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -129,6 +130,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AStratumAdmittingAConjunctWithItsOwnFactsIsCaught() =>
             Caught(theory => new CosmosOracle(theory, null) { RenderedFrom = (terms, stratum, conjunct) => terms.Child(stratum, new[] { conjunct }) });
+
+        /// <summary>
+        /// A claim of a string's characters that one kind's branch makes, read as made of every kind: the shape of a
+        /// discriminated union's pattern taken for the meet. What population D checks the characters a declared
+        /// <c>pattern</c> states by.
+        /// </summary>
+        [Fact]
+        public void AGuardedCharactersClaimReadOfEveryKindIsCaught() =>
+            Caught(theory => new CosmosOracle(new JsonFactTheory(theory.Rules.Select(rule =>
+                rule.Head.Claim is Adapter.Metadata.CosmosCharacters ? JsonFactRule.Unconditional(rule.Head) : rule)), null), "fact");
 
         /// <summary>
         /// A union of two predicates: a conjunction with an arm the context decides always true made one class with its

@@ -269,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
                 "Sort.CompositeIndexOrder",
                 PlannerQueryCategory.Sort,
                 """SELECT * FROM products AS c WHERE c."$.category" = 'bikes' ORDER BY c."$.category", c."_ts" DESC FETCH NEXT 50 ROWS ONLY""",
-                "A two-key ordering the container declares a composite index for, which is the only two-key ordering the service will answer."),
+                "A two-key ordering led by the key the filter pins, which orders nothing and is not written: the service is sent ORDER BY c._ts DESC alone, and no composite index is asked for."),
 
             new PlannerQuery(
                 "Sort.UnsupportedTwoKeyOrder",
@@ -286,8 +286,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             new PlannerQuery(
                 "Sort.ThroughProjection",
                 PlannerQueryCategory.Sort,
-                """SELECT * FROM (SELECT JSON_VALUE(c."DOC", '$.sku') AS "sku", c."id" AS "ident" FROM products AS c) AS t ORDER BY t."ident" FETCH NEXT 10 ROWS ONLY""",
-                "Ordering by a column the projection passes through, which transposes; ordering by the cast beside it would not, and must not."),
+                """SELECT * FROM (SELECT JSON_VALUE(c."DOC", '$.sku') AS "sku", c."_ts" AS "stamp" FROM products AS c) AS t ORDER BY t."stamp" FETCH NEXT 10 ROWS ONLY""",
+                "Ordering by a column the projection passes through, which transposes; ordering by the cast beside it would not, and must not. The timestamp rather than the id, whose characters nothing states."),
 
             new PlannerQuery(
                 "Sort.ByCastColumn",
@@ -362,13 +362,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             new PlannerQuery(
                 "Search.RankedByScore",
                 PlannerQueryCategory.Search,
-                """SELECT c."id" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY""",
+                """SELECT c."id" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY""",
                 "Three Calcite nodes — a projected score, an ordering, a limit — that are one Cosmos clause, and whose middle node is a statement the service rejects."),
 
             new PlannerQuery(
                 "Search.ReciprocalRankFusion",
                 PlannerQueryCategory.Search,
-                """SELECT c."id" FROM products AS c ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.tags'), 'frame')) FETCH FIRST 10 ROWS ONLY""",
+                """SELECT c."id" FROM products AS c ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.tags'), 'frame')) DESC FETCH FIRST 10 ROWS ONLY""",
                 "Two scores fused into one ranking, which is the same shape again with a scoring function that takes scoring functions."),
 
             new PlannerQuery(
@@ -377,7 +377,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
                 """
                 SELECT c."id" FROM products AS c
                 WHERE c."$.category" = 'bikes' AND FULLTEXTCONTAINS(JSON_VALUE(c."DOC", '$.description'), 'steel')
-                ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.description'), 'frame'))
+                ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.description'), 'frame')) DESC
                 FETCH FIRST 20 ROWS ONLY
                 """,
                 "Routing, a full text predicate and a fused ranking in one statement, which is what a search box over a catalogue actually is."),
@@ -626,7 +626,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
                     WHERE x."$.category" = 'bikes'
                       AND FULLTEXTCONTAINSALL(JSON_VALUE(x."DOC", '$.description'), 'steel', 'frame')
                       AND VECTORDISTANCE(JSON_VALUE(x."DOC", '$.embedding'), JSON_VALUE(x."DOC", '$.query')) < 0.4
-                    ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(x."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(x."DOC", '$.tags'), 'frame'))
+                    ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(x."DOC", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(x."DOC", '$.tags'), 'frame')) DESC
                     FETCH FIRST 25 ROWS ONLY
                 ) AS p
                 JOIN customers AS c ON c."id" = p."id"
@@ -704,6 +704,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.Corpus
             "Aggregate.GroupBy",
             "Aggregate.GroupByHavingOnKey",
             "Sort.OffsetPage",
+            "Sort.CompositeIndexOrder",
             "Sort.ThroughProjection",
             "Unnest.Traversal",
             "Unnest.FilteredElement",

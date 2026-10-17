@@ -57,7 +57,7 @@ class Program
             SELECT c."id", JSON_VALUE(c."DOC", '$.name') AS "name"
             FROM "products" AS c
             WHERE c."$.category" = 'bikes'
-            ORDER BY c."id"
+            ORDER BY c."_ts" DESC
             FETCH NEXT 10 ROWS ONLY
             """;
 
@@ -106,7 +106,7 @@ The query above is answered entirely by the service, as one statement routed to 
 SELECT VALUE { "id": c.id, "name": (IS_PRIMITIVE(c.name) ? c.name : null) }
 FROM products c
 WHERE (c.category = @p0)
-ORDER BY c.id ASC
+ORDER BY c._ts DESC
 OFFSET 0 LIMIT 10
 ```
 
@@ -116,7 +116,10 @@ Three things to notice:
 - `JSON_VALUE` became a guarded path. SQL's `JSON_VALUE` answers null for an object or an array, and
   the guard makes the service answer the same way.
 - The `FETCH` became `OFFSET 0 LIMIT 10`, and the adapter asks the service for pages of ten, so it is
-  not charged for rows it would discard.
+  not charged for rows it would discard. `_ts`, the time a document was last written, sorts at the
+  service under any setting; so does `id`, though an `id` may hold characters the service orders
+  differently from SQL, and the adapter checks them as the rows arrive (Chapter 9.3) unless a schema
+  `pattern` says it need not (Chapter 14.4).
 
 ## 3.4 Seeing the plan and the statement
 

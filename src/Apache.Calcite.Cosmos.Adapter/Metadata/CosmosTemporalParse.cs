@@ -20,7 +20,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <see cref="CosmosTemporalForms.ParsesExactly"/>, a pure lookup the callers make for
     /// themselves; keeping the two apart is what lets a rule and an implementation ask the same
     /// question without a walk between them, exactly as <c>CosmosProject.OrderingCandidateOf</c> and
-    /// <c>CosmosProject.IsOrderable</c> already do.
+    /// <c>CosmosServiceOrder</c> already do.
     /// </para>
     /// <para>
     /// <b>The <c>PARSE_</c> family and nothing else, and the reason is a name collision.</b>

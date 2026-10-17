@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -27,6 +28,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <para>
     /// <b>Values whose renderings collide</b>: <c>30</c>, <c>30.0</c>, <c>"30"</c>, <c>1e30</c>, <c>true</c> and
     /// <c>"true"</c>, strings that only look like numbers, and a structure at a path a predicate reads as a scalar.
+    /// </para>
+    /// <para>
+    /// <b>And the characters of a string</b>, which a declared <c>pattern</c> states as <see cref="CosmosCharacters"/>:
+    /// drawn from a stream of their own, beside the declaration and in documents of their own that hold a string of
+    /// either band wherever the rules let one stand. Every trial draws what it drew before the claim existed, and what the
+    /// claim adds is only more to check.
     /// </para>
     /// </remarks>
     sealed class Declaration
@@ -59,6 +66,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new J.Arr(new List<J>()), new J.Arr(new List<J> { new J.Num(30m) }), new J.Arr(new List<J> { new J.Str("x") }),
         };
 
+        /// <summary>
+        /// Strings in the two bands a <see cref="CosmosCharacters"/> claim may exclude: a high unit, and a supplementary
+        /// character, which is two surrogates.
+        /// </summary>
+        static readonly J[] Banded = { new J.Str(char.ConvertFromUtf32(0xE000)), new J.Str("a" + char.ConvertFromUtf32(0x1F600)) };
+
         /// <summary>The scalars a claim names: a const, a member of an enum, a value a path is unequal to.</summary>
         static readonly JsonScalar[] Named = { "30", "x", "true", "", 30m, 30m, 2.5m, 7m, 7m, -1m, true, false, JsonScalar.Null, 1e30 };
 
@@ -83,19 +96,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// Draws a declaration that admits at least one document.
         /// </summary>
-        public static Declaration Random(Random random)
+        /// <param name="random">The trial's stream.</param>
+        /// <param name="bands">A stream of its own for the characters a string is said to hold, or <c>null</c> for none.
+        /// A claim of them admits every value <see cref="Values"/> holds, so it never changes which declaration is
+        /// drawn.</param>
+        public static Declaration Random(Random random, Random? bands = null)
         {
             while (true)
             {
                 var declaration = new Declaration();
-                declaration.Fill(random);
+                declaration.Fill(random, bands);
                 if (declaration.TryGenerate(random, out _))
                     return declaration;
             }
         }
 
-        void Fill(Random random)
+        void Fill(Random random, Random? bands)
         {
+            var guards = new List<JsonFact[]>();
+
             // The discriminator: a domain of kinds, required most of the time.
             _rules.Add(Rule(Kind, new JsonClaim.OneOf(Kinds.Select(k => (JsonScalar)k).ToArray())));
             if (random.Next(10) < 7)
@@ -119,7 +138,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var path in Claimed)
                     foreach (var claim in Claims(random, path, outright: false))
                         _rules.Add(new JsonFactRule(body, new JsonFact(path, claim)));
+
+                guards.Add(body);
             }
+
+            if (bands is null)
+                return;
+
+            foreach (var path in Claimed)
+            {
+                foreach (var claim in Characters(bands, outright: true))
+                    _rules.Add(Rule(path, claim));
+
+                foreach (var body in guards)
+                    foreach (var claim in Characters(bands, outright: false))
+                        _rules.Add(new JsonFactRule(body, new JsonFact(path, claim)));
+            }
+        }
+
+        static IEnumerable<JsonClaim> Characters(Random bands, bool outright)
+        {
+            if (bands.Next(outright ? 6 : 12) == 0)
+                yield return new CosmosCharacters(bands.Next(2) == 0 ? CosmosCharacterBand.Surrogates : CosmosCharacterBand.HighBmp);
         }
 
         IEnumerable<JsonClaim> Claims(Random random, JsonDocumentPath path, bool outright)
@@ -168,9 +208,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// One kind a document may be — a value of the discriminator, or none — with what each path may hold under it.
+        /// Draws a document the declaration admits from a stream of its own, holding a string of either band at a path
+        /// wherever the rules its kind fires let one stand there.
         /// </summary>
-        sealed record Branch(J? Kind, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J?>> Choices, IReadOnlyList<(J? V, IReadOnlyList<J?> Holders)> Objects);
+        public J.Obj GenerateBanded(Random bands)
+        {
+            if (TryGenerate(bands, out var document, banded: true) == false)
+                throw new InvalidOperationException("The declaration admits no document it once did.");
+
+            return document;
+        }
+
+        /// <summary>
+        /// One kind a document may be — a value of the discriminator, or none — with what each path may hold under it,
+        /// and which of the banded strings.
+        /// </summary>
+        sealed record Branch(J? Kind, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J?>> Choices, IReadOnlyList<(J? V, IReadOnlyList<J?> Holders)> Objects, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J>> Banded);
 
         IReadOnlyList<Branch>? _branches;
 
@@ -202,8 +255,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 bool Fits(JsonDocumentPath path, J? value) => fired.Where(f => f.Path.Equals(path)).All(f => Holds(value, f.Claim));
 
                 var choices = new Dictionary<JsonDocumentPath, IReadOnlyList<J?>>();
+                var banded = new Dictionary<JsonDocumentPath, IReadOnlyList<J>>();
                 foreach (var path in new[] { A, B, N })
+                {
                     choices[path] = Candidates.Where(c => Fits(path, c)).ToList();
+                    banded[path] = Banded.Where(b => Fits(path, b)).ToList();
+                }
 
                 // o.v first, then an o that holds it: an object with it where it is there, anything without it where not.
                 var objects = Candidates.Where(v => Fits(V, v))
@@ -212,7 +269,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     .ToList();
 
                 if (choices.Values.All(c => c.Count > 0) && objects.Count > 0)
-                    branches.Add(new Branch(kind, choices, objects));
+                    branches.Add(new Branch(kind, choices, objects, banded));
             }
 
             return _branches = branches;
@@ -222,7 +279,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             ? Values.Append(null)
             : new J?[] { new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["v"] = v }), new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["v"] = v, ["x"] = new J.Num(1m) }) };
 
-        bool TryGenerate(Random random, out J.Obj document)
+        bool TryGenerate(Random random, out J.Obj document, bool banded = false)
         {
             var branches = Branches();
             if (branches.Count == 0)
@@ -237,8 +294,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 properties["kind"] = branch.Kind;
 
             foreach (var (path, choices) in branch.Choices)
+            {
                 if (choices[random.Next(choices.Count)] is J value)
                     properties[path.Names[^1]] = value;
+
+                if (banded && branch.Banded[path] is { Count: > 0 } strings && random.Next(2) == 0)
+                    properties[path.Names[^1]] = strings[random.Next(strings.Count)];
+            }
 
             var (_, holders) = branch.Objects[random.Next(branch.Objects.Count)];
             if (holders[random.Next(holders.Count)] is J o)
@@ -292,6 +354,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     J.Huge h => u.Exclusive ? h.Value < (double)u.Value : h.Value <= (double)u.Value,
                     _ => true,
                 },
+
+                // Of a string's units, which is what a pattern's reader states.
+                CosmosCharacters c => value is not J.Str s || s.Value.All(unit => c.Band == CosmosCharacterBand.Surrogates ? char.IsSurrogate(unit) == false : unit < 0xE000),
                 _ => throw new NotSupportedException(claim.GetType().Name),
             };
         }
@@ -309,6 +374,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             JsonClaim.NotEqualTo n => "<> " + n.Value,
             JsonClaim.LowerBound l => (l.Exclusive ? "> " : ">= ") + l.Value,
             JsonClaim.UpperBound u => (u.Exclusive ? "< " : "<= ") + u.Value,
+            CosmosCharacters c => "holds no " + (c.Band == CosmosCharacterBand.Surrogates ? "surrogate" : "unit from U+E000"),
             var other => other.ToString(),
         };
 

@@ -45,11 +45,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// </description></item>
     /// </list>
     /// <para>
-    /// The divergence disappears when the aggregated value cannot be null, which is the same
-    /// reasoning applied to sort null placement. So <c>COUNT(*)</c> is always safe, and the value
-    /// aggregates are pushed down only over a non-nullable input. <c>COUNT(x)</c> needs no
-    /// non-nullable case of its own: Calcite rewrites it to <c>COUNT(*)</c> there before any rule
-    /// sees it.
+    /// The divergence disappears when the aggregated value cannot be null. So <c>COUNT(*)</c> is
+    /// always safe, and <c>SUM</c> and <c>AVG</c> are pushed down only over a non-nullable input.
+    /// <c>COUNT(x)</c> needs no non-nullable case of its own: Calcite rewrites it to <c>COUNT(*)</c>
+    /// there before any rule sees it.
+    /// </para>
+    /// <para>
+    /// <c>MIN</c> and <c>MAX</c> are orders the service computes, and are asked as one:
+    /// <see cref="CosmosServiceOrder.Extreme"/>, of the facts the rows aggregated satisfy. The
+    /// service skips an absent path as Calcite skips a null, so that much of the null class is
+    /// free; a JSON null it counts, and an object or an array makes its answer undefined.
     /// </para>
     /// </remarks>
     public class CosmosAggregate : Aggregate, CosmosRel
@@ -60,14 +65,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         /// <param name="call">The aggregate call.</param>
         /// <param name="inputRowType">The row type of the aggregate's input.</param>
+        /// <param name="fields">The binding of the aggregate's input.</param>
+        /// <param name="readings">How each input ordinal is read back.</param>
+        /// <param name="facts">What every row aggregated is known to satisfy (L1), which an extreme is asked of.</param>
+        /// <param name="grouped">Whether the aggregate groups, so that an extreme is one per group: one the plan proves only
+        /// around anchors is checked as the row arrives, and only an ungrouped aggregate has one row to check.</param>
         /// <returns><c>true</c> if the call may be pushed down; otherwise <c>false</c>.</returns>
         /// <exception cref="ArgumentNullException">Any argument is <c>null</c>.</exception>
-        public static bool CanImplement(AggregateCall call, RelDataType inputRowType)
+        public static bool CanImplement(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts, bool grouped)
         {
             if (call is null)
                 throw new ArgumentNullException(nameof(call));
             if (inputRowType is null)
                 throw new ArgumentNullException(nameof(inputRowType));
+            if (fields is null)
+                throw new ArgumentNullException(nameof(fields));
+            if (readings is null)
+                throw new ArgumentNullException(nameof(readings));
+            if (facts is null)
+                throw new ArgumentNullException(nameof(facts));
 
             // DISTINCT aggregates and FILTER clauses have no Cosmos equivalent.
             if (call.isDistinct() || call.hasFilter() || call.distinctKeys is not null)
@@ -89,9 +105,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     return arguments.size() == 0;
 
                 case SqlKind.__Enum.SUM:
+                    return arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
+
                 case SqlKind.__Enum.MIN:
                 case SqlKind.__Enum.MAX:
-                    return arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
+                    // An extreme is an order the service computes, and pushes where the order is Calcite's and the two
+                    // skip the same values: asked once, of the facts the rows aggregated satisfy. See
+                    // CosmosServiceOrder.Extreme, and ExtremeOf for the operand. One proved only around anchors is
+                    // checked as the row arrives (CosmosOrderExtreme), which needs the one row an ungrouped aggregate has.
+                    return ExtremeVerdict(call, inputRowType, fields, readings, facts) is { } verdict
+                        && (verdict.IsProved || verdict.IsAnchored && grouped == false);
 
                 case SqlKind.__Enum.AVG:
                     // Cosmos AVG returns the exact mean; Calcite types an integer AVG as an integer
@@ -174,6 +197,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 return true;
 
             return translator.IsReadAsStored(org.apache.calcite.rex.RexInputRef.of(ordinal, rowType));
+        }
+
+        /// <summary>
+        /// Builds the operand an extreme orders: the path its argument binds, read as the column reads it; or
+        /// <c>null</c> for an argument bound to none, which nothing can address.
+        /// </summary>
+        /// <remarks>
+        /// <c>MIN</c> and <c>MAX</c> were pushed on the argument's row type alone, wherever it was non-nullable — the
+        /// service's own <c>id</c>, <c>_ts</c> and <c>_etag</c> — which said nothing of how the values order: the
+        /// service's <c>MAX</c> of <c>id</c> over U+FFFF and U+1F600 is the second, Calcite's the first.
+        /// </remarks>
+        static CosmosOrderOperand? ExtremeOf(int ordinal, RelDataType rowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings)
+        {
+            if (ordinal < 0 || ordinal >= fields.Count || ordinal >= rowType.getFieldCount() || fields[ordinal] is not CosmosPath path)
+                return null;
+
+            if (string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, StringComparison.Ordinal) == false || CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+                return null;
+
+            var type = ((RelDataTypeField)rowType.getFieldList().get(ordinal)).getType().getSqlTypeName();
+            return CosmosOrderOperand.ForPath(document, type, ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed);
+        }
+
+        /// <summary>
+        /// Asks whether the service's <c>MIN</c> or <c>MAX</c> of a call's argument is Calcite's, or returns <c>null</c>
+        /// for a call that is neither, or whose argument binds no path.
+        /// </summary>
+        static CosmosOrderVerdict? ExtremeVerdict(AggregateCall call, RelDataType inputRowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, JsonFactSet facts)
+        {
+            var arguments = call.getArgList();
+            if ((SqlKind.__Enum)call.getAggregation().getKind().ordinal() is not (SqlKind.__Enum.MIN or SqlKind.__Enum.MAX) || arguments.size() != 1)
+                return null;
+
+            return ExtremeOf(((java.lang.Integer)arguments.get(0)).intValue(), inputRowType, fields, readings) is CosmosOrderOperand operand
+                ? CosmosServiceOrder.Extreme(facts, operand)
+                : null;
         }
 
         static bool IsApproximateNumeric(RelDataType rowType, int ordinal)
@@ -345,14 +404,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 implementor.Query.SelectProperty((string)names.get(output++), key);
             }
 
+            var grouped = getGroupSet().isEmpty() == false;
             var calls = getAggCallList();
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CanImplement(call, inputRowType) == false)
+                if (CanImplement(call, inputRowType, fields, inputReadings, facts, grouped) == false)
                     throw new CosmosTranslationException($"Aggregate '{call}' has no faithful Cosmos equivalent.");
 
-                implementor.Query.SelectProperty((string)names.get(output++), Render(call, fields));
+                var name = (string)names.get(output++);
+                var computed = Render(call, fields);
+                implementor.Query.SelectProperty(name, computed);
+
+                // An extreme proved only around anchors, which the reader checks and, where it is none, reads again: in its
+                // argument's order where the service orders by the path, which may then stop at the first anchor.
+                if (ExtremeVerdict(call, inputRowType, fields, inputReadings, facts) is { IsAnchored: true } verdict)
+                {
+                    var argument = ((java.lang.Integer)call.getArgList().get(0)).intValue();
+                    var path = fields[argument]!;
+                    var max = (SqlKind.__Enum)call.getAggregation().getKind().ordinal() == SqlKind.__Enum.MAX;
+                    var operand = ExtremeOf(argument, inputRowType, fields, inputReadings)!;
+
+                    implementor.ExtremeAnchored(path.ToString(), new CosmosOrderExtreme(name, max, CosmosServiceOrder.ComparedAs(operand), verdict.Anchors[0], null,
+                        implementor.Container.IsSortSupported(new[] { new CosmosSortKey(path.ToPolicyPath(), max) })));
+                }
             }
 
             // Aggregated output is computed, so nothing downstream can address it as a path. Bound

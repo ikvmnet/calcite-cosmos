@@ -137,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void AParameterisedOffsetAndLimitBothReachTheService()
         {
-            var query = Query("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY""");
+            var query = Query("""SELECT c."id" FROM items AS c ORDER BY c."_ts" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY""");
 
             query.Sql.Should().Contain("OFFSET @").And.Contain("LIMIT @");
             query.Parameters.Should().HaveCount(2).And.OnlyContain(p => p.Value is CosmosDynamicValue);

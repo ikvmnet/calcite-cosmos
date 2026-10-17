@@ -69,13 +69,18 @@ property is read.
 
 ### System properties: exact
 
-`id`, `_ts` and `_etag` are typed and present on every document, so a comparison over them is always
-exact:
+`id`, `_ts` and `_etag` are typed and present on every document, so a comparison of one with a literal
+is always exact:
 
 ```sql
 WHERE c."id" > 'bike-1' AND c."_ts" > 1700000000
 → WHERE ((c.id > @p0) AND (c._ts > @p1))
 ```
+
+A comparison of `id` with a parameter or with another path turns on the characters `id` holds as well:
+Azure allows every character in an `id` but `/` and `\`, and the service orders strings by code point
+where SQL orders them by UTF-16 code unit (Chapter 9.3). Where a schema `pattern` declares them (Chapter
+14.4) it is exact; otherwise it is made in process. `_ts` and `_etag` compare exactly with anything.
 
 ### `JSON_VALUE`: exact against unambiguous text
 
@@ -108,7 +113,9 @@ WHERE JSON_VALUE(c."DOC", '$.name') LIKE 'Trail%'
 For a property that holds strings in every document, the first branch matches nothing and the service
 does all the work; the recheck is cheap. **If the container declares that the path holds a string**
 (Chapter 14), there is no second type to disagree about, the comparison is sent exactly, and nothing
-is rechecked — which also lets a row limit travel with it.
+is rechecked — which also lets a row limit travel with it. An array's element, `$.tags[0]`, is weakened
+and rechecked whatever the container declares: a declaration states what a property holds, and none
+reaches an element (Chapter 11.3).
 
 **A function over `JSON_VALUE` runs in process unless the path is declared a string.** `UPPER`,
 `LOWER`, `||`, `CHAR_LENGTH`, `SUBSTRING` and the rest read the *text*, so `UPPER(JSON_VALUE(…))` is
@@ -372,7 +379,7 @@ Parameters are written as `?` and bound positionally:
 command.CommandText = """
     SELECT c."id" FROM "products" AS c
     WHERE c."$.category" = ? AND JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) > ?
-    ORDER BY c."id"
+    ORDER BY c."_ts" DESC
     OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     """;
 
@@ -396,13 +403,34 @@ integer, which compares exactly; sent with a point, it would match the document 
 `2.9999999999999999`, which a double reads as 3 — is compared in process if it is a literal, and fails
 the statement if it is a parameter's value.
 
-**A parameter compared with `JSON_VALUE` is sent in its weakened form.** Whether a text comparison
-can be exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and a parameter's value
-is not known when the statement is planned. So the comparison is sent as `NOT IS_STRING(…) OR …` and
-rechecked; the rows are correct, the statement slightly wider. Declaring that the path holds a string
-(Chapter 14) makes it exact. Comparisons with parameters over `id`, `_ts`, `_etag` and `RETURNING`
-accessors are exact already, and so is a comparison of a declared instant with a parameter — the
-value is written in the stored spelling when the statement runs (Chapter 15).
+**A parameter compared as text is checked when the statement runs.** Whether a text comparison can be
+exact depends on the value — `'bikes'` can be, `'30'` cannot (8.3) — and on the characters either side
+holds: a parameter may hold any character, and the service orders strings by code point where SQL orders
+them by UTF-16 code unit, which part where an emoji meets a character from U+E000 (Chapter 9.3). Against a
+value with nothing at or above U+D800 the two agree whatever the path holds, so a comparison of `id`, or
+of `JSON_VALUE` over a path declared a string, with a parameter is sent as it is, `WHERE (c.name > @p0)`,
+and the value decides when it arrives: below the line it is exact; otherwise the statement is sent with
+the comparison weakened to the part of the value below U+D800 — every string SQL keeps satisfies it — and
+the rows are rechecked in process. A `pattern` declaring the path's characters (Chapter 14.4) makes it
+exact when the plan is made. A comparison is sent this way wherever `AND` and `OR` alone lead to it from a
+conjunct of the `WHERE` — the keyset seek past two keys of Chapter 9.5 among them — and the reader
+rechecks that conjunct whole, reading back what the service answered for the rest of it. Under a `NOT`
+the comparison is made in process, the service sent `IS_DEFINED(…)` for the path: a weaker comparison
+there would make the condition stronger. A grouping, a `DISTINCT` or a ranking over such a filter runs in
+process too, there being no row of the comparison's left to recheck. Comparisons with parameters
+over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a comparison of a declared
+instant with a parameter — the value is written in the stored spelling when the statement runs
+(Chapter 15).
+
+**A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
+holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
+`'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
+or padded the same way, so the service keeps the rows SQL does.
+
+**Two values that may both be a JSON null are compared in process** where equal values satisfy the
+comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALUE(c."DOC", '$.u')` over paths
+a schema declares a string or null. Cosmos holds a JSON null equal to a JSON null; SQL's comparison with a
+null is unknown, and keeps nothing. `<`, `>` and `<>` agree and are sent.
 
 **Give a parameter a type where Calcite cannot infer one** — `CAST(? AS VARCHAR)` — so the plan can
 reason from it. A parameter's value also does not route the statement to a partition the way a
@@ -428,6 +456,7 @@ documents it has to read.
 | an integer or `DECIMAL` division | Calcite truncates or rounds in the operands' type; the service divides in doubles |
 | `+`, `-`, `*` or `%` with a decimal fraction, such as `price * 1.1` | Calcite computes it exactly; the service in doubles, where `1.1` is not exact |
 | a comparison selected, grouped by, or compared with something, where it can be null | the service's comparison is false where SQL's is null (8.4) |
+| `<`, `<=`, `>`, `>=` or `=` between a computed value — arithmetic, a function, a `CASE` — and a path or another computed value, where either side may be null | where SQL reads null the service may hold a JSON null or another value, and compares it: a `CASE` writing `NULL` against a null property is true there |
 | `GROUP BY` or `DISTINCT` over `JSON_VALUE`, where the path is not declared a string | Calcite groups the text, the service the value — `30` and `"30"` are one group or two (Chapter 10) |
 | `JSON_VALUE` or `JSON_QUERY` over the result of `JSON_VALUE` | Calcite parses the text as a document; the service has the value |
 | `IS NULL` over a comparison, and `COALESCE(comparison, …)` | the service has no unknown to test for (8.4) |

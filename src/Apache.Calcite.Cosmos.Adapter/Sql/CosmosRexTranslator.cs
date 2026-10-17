@@ -586,6 +586,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public string Translate(RexNode node) => TranslateAs(node, value: false);
 
         /// <summary>
+        /// Translates <paramref name="node"/> as one top-level conjunct of a <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A predicate, as <see cref="Translate"/> writes one, and one more thing: a comparison of a path with a parameter
+        /// whose exactness the value decides may be written here, and is recorded beside the parameters
+        /// (<see cref="CosmosOrderComparison"/>), with the conjunct it sits in (<see cref="CosmosRecheck"/>). Where the
+        /// value is no anchor the reader sends a weaker comparison in its place and rechecks the conjunct, which keeps
+        /// exactly Calcite's where <c>AND</c> and <c>OR</c> alone lead to the comparison: a weaker leaf there makes a weaker
+        /// conjunct, which beside the others the service applies is a superset of the conjunction. Under a <c>NOT</c> or
+        /// in a value it would not be, and there it is refused as before.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The conjunct.</param>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="CosmosTranslationException">The conjunct has no Cosmos equivalent.</exception>
+        public string TranslateConjunct(RexNode node) => TranslateAs(node, value: false, conjunct: true);
+
+        /// <inheritdoc cref="TranslateConjunct(RexNode)" />
+        /// <param name="node">The conjunct.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the conjunct was translated; otherwise <c>false</c>.</returns>
+        public bool TryTranslateConjunct(RexNode node, out string? expression)
+        {
+            try
+            {
+                expression = TranslateConjunct(node);
+                return true;
+            }
+            catch (CosmosTranslationException)
+            {
+                expression = null;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The nodes of the top-level conjunct being translated by <see cref="TranslateConjunct"/> that <c>AND</c> and
+        /// <c>OR</c> alone lead to from it, itself among them; or <c>null</c>. Where an anchored comparison may be, a
+        /// weaker one there making the conjunct weaker (<see cref="CosmosRecheck"/>).
+        /// </summary>
+        HashSet<RexNode>? _positive;
+
+        /// <summary>
+        /// What each operand of an <c>AND</c> or an <c>OR</c> in <see cref="_positive"/> was written as, for a conjunct
+        /// the reader rechecks; and which comparison each anchored one is among the parameters'.
+        /// </summary>
+        Dictionary<RexNode, string>? _written;
+
+        /// <inheritdoc cref="_written" />
+        Dictionary<RexNode, int>? _compared;
+
+        /// <summary>
+        /// Determines whether a filter's condition may hold a comparison of a path with a parameter whose exactness at
+        /// the service the value decides — one the reader may recheck row by row.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Asked by the binding walk</b>, for <see cref="CosmosClauses.Recheck"/>, of the condition and the declaration
+        /// alone: an ordering comparison of something with a bare parameter, which <c>AND</c> and <c>OR</c> alone lead to
+        /// from the condition, that the declaration does not prove exact. A conjunct rendered from its stratum may be
+        /// proved by a sibling the declaration knows nothing of; this answers yes for it all the same, which declines a
+        /// consumer the comparison would not have stopped and never folds one it would. The facts only grow from the
+        /// declaration to a stratum, and a comparison the declaration proves no stratum anchors.
+        /// </para>
+        /// <para>
+        /// Cheap where it is asked most: a condition with no parameter in an ordering comparison is answered from its
+        /// shape, and a translator is built only for one that has.
+        /// </para>
+        /// </remarks>
+        /// <param name="condition">The filter's condition.</param>
+        /// <param name="fields">The binding of the filtered input.</param>
+        /// <param name="readings">How each field is read back.</param>
+        /// <param name="container">The container, whose declaration is asked; <c>null</c> for none.</param>
+        /// <param name="rexBuilder">A builder over the condition's types.</param>
+        /// <returns><c>true</c> where a conjunct may be rechecked.</returns>
+        internal static bool MayRecheck(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, Metadata.CosmosContainerMetadata? container, RexBuilder rexBuilder)
+        {
+            CosmosRexTranslator? translator = null;
+            return Holds(condition);
+
+            // Every AND taken apart, as the filter statement reads its conjuncts (CosmosFilterStatement.ConjunctsOf), and
+            // every OR beneath them, where a comparison is rechecked as part of its conjunct (CosmosRecheck).
+            bool Holds(RexNode node)
+            {
+                if (node is not RexCall call)
+                    return false;
+
+                if (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR)
+                {
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        if (Holds(Operand(call, i)))
+                            return true;
+
+                    return false;
+                }
+
+                if (call.getOperands().size() != 2 || IsOrderingComparison(KindOf(call)) == false)
+                    return false;
+
+                var left = StripVariantCoercion(Operand(call, 0));
+                var right = StripVariantCoercion(Operand(call, 1));
+                if (left is not org.apache.calcite.rex.RexDynamicParam && right is not org.apache.calcite.rex.RexDynamicParam)
+                    return false;
+
+                translator ??= new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), container is null ? JsonFactSet.Empty : CosmosOracle.For(container.Facts).Declared, null, container, readings);
+                return translator.CompareOrder(left, right, IsInclusive(KindOf(call))).IsProved == false;
+            }
+        }
+
+        /// <summary>
         /// Translates <paramref name="node"/> as a value, whose SQL null has to survive.
         /// </summary>
         /// <remarks>
@@ -618,7 +729,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
         }
 
-        string TranslateAs(RexNode node, bool value)
+        string TranslateAs(RexNode node, bool value, bool conjunct = false)
         {
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
@@ -630,18 +741,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireRenderingsReadAsRenderings(expanded, permitted: true);
 
             var saved = _value;
+            var savedPositive = _positive;
+            var savedWritten = _written;
+            var savedCompared = _compared;
             _value = value;
+            _positive = conjunct ? Positive(expanded) : null;
+            _written = conjunct ? new Dictionary<RexNode, string>(ReferenceEqualityComparer.Instance) : null;
+            _compared = conjunct ? new Dictionary<RexNode, int>(ReferenceEqualityComparer.Instance) : null;
 
             try
             {
                 var builder = new StringBuilder();
                 Write(builder, expanded);
+
+                // A conjunct holding a comparison a parameter decides is rechecked whole where one is no anchor.
+                if (_compared?.Count > 0)
+                    _parameters.Recheck(Recheck(expanded) ?? throw new CosmosTranslationException("A comparison whose parameter decides its exactness sits where the reader cannot recheck its conjunct."));
+
                 return builder.ToString();
             }
             finally
             {
                 _value = saved;
+                _positive = savedPositive;
+                _written = savedWritten;
+                _compared = savedCompared;
             }
+        }
+
+        /// <summary>
+        /// Returns the nodes of a conjunct that <c>AND</c> and <c>OR</c> alone lead to, the conjunct among them.
+        /// </summary>
+        static HashSet<RexNode> Positive(RexNode conjunct)
+        {
+            var positive = new HashSet<RexNode>(ReferenceEqualityComparer.Instance);
+            Walk(conjunct);
+            return positive;
+
+            void Walk(RexNode node)
+            {
+                positive.Add(node);
+
+                if (node is RexCall call && (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR))
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        Walk(Operand(call, i));
+            }
+        }
+
+        /// <summary>
+        /// Returns a conjunct as the reader rechecks it, from what its operands were written as; or <c>null</c> where a
+        /// leaf was written some other way than through its connective.
+        /// </summary>
+        CosmosRecheck? Recheck(RexNode node)
+        {
+            if (_compared!.TryGetValue(node, out var comparison))
+                return CosmosRecheck.Compared(comparison);
+
+            if (node is RexCall call && (call.getKind() == SqlKind.AND || call.getKind() == SqlKind.OR))
+            {
+                var operands = new List<CosmosRecheck>(call.getOperands().size());
+                for (var i = 0; i < call.getOperands().size(); i++)
+                    if (Recheck(Operand(call, i)) is CosmosRecheck operand)
+                        operands.Add(operand);
+                    else
+                        return null;
+
+                return CosmosRecheck.Of(call.getKind() == SqlKind.AND, operands);
+            }
+
+            return _written!.TryGetValue(node, out var written) ? CosmosRecheck.Answered(written) : null;
         }
 
         /// <summary>
@@ -836,7 +1004,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="parameter">The parameter to write.</param>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex())));
+            builder.Append(_parameters.Add(SlotOf(parameter)));
+        }
+
+        /// <summary>
+        /// Returns the slot a parameter's value is bound into: its ordinal, and the length its type holds a string to.
+        /// </summary>
+        /// <remarks>
+        /// Calcite reads a parameter as its type, and a <c>CHAR(n)</c> or a <c>VARCHAR(n)</c> holds a string to
+        /// <c>n</c> code units: its generated code truncates the value, and pads it for a <c>CHAR</c>
+        /// (<c>RexToLixTranslator.visitDynamicParam</c>). The validator gives a parameter the type of what it is
+        /// compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to <c>'xa'</c> compares with
+        /// <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept the rows holding
+        /// <c>'x'</c>. So the slot carries the length, and <see cref="Client.CosmosQueries.Bind"/> holds the value to it.
+        /// </remarks>
+        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
+        {
+            var type = parameter.getType();
+            var name = type?.getSqlTypeName();
+
+            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR) && type!.getPrecision() >= 0
+                ? new CosmosDynamicValue(parameter.getIndex()) { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
+                : new CosmosDynamicValue(parameter.getIndex());
         }
 
         void WriteInputRef(StringBuilder builder, RexInputRef inputRef)
@@ -3301,12 +3490,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             builder.Append('(');
 
+            // On a conjunct's AND and OR spine, what each operand is written as, which the conjunct's recheck reads
+            // back where it is no comparison of its own (CosmosRecheck).
+            var spine = _positive?.Contains(call) == true;
+
             for (var i = 0; i < operands.size(); i++)
             {
                 if (i > 0)
                     builder.Append(' ').Append(op).Append(' ');
 
+                var start = builder.Length;
                 Write(builder, (RexNode)operands.get(i));
+
+                if (spine)
+                    _written![(RexNode)operands.get(i)] = builder.ToString(start, builder.Length - start);
             }
 
             builder.Append(')');
@@ -3688,31 +3885,268 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // rendered from, which never hold what it establishes itself.
                     && RendersOnlyStrings(leftValue, rightValue) == false)
                     throw new CosmosTranslationException("An equality over JSON_VALUE read as text compares a rendering, and only an equality against unambiguous text selects the same documents at the service.");
+
+                // Two values that may both hold a JSON type a side reads as null the service equates as values — a JSON
+                // null equals a JSON null there — where Calcite's equality with a null is unknown: measured, `c.t = c.t`
+                // and `c.k = c.k` over paths declared a string or null and an integer or null kept the documents holding
+                // a null. Asked as an ordering comparison asks it (CosmosServiceOrder.Equate). A literal and a parameter
+                // are never one: a null parameter is a question of its own (TODO.md).
+                if (StripVariantCoercion(left) is not (RexLiteral or org.apache.calcite.rex.RexDynamicParam) && StripVariantCoercion(right) is not (RexLiteral or org.apache.calcite.rex.RexDynamicParam)
+                    && EquateOrder(left, right) is { IsProved: false } nulls)
+                    throw new CosmosTranslationException("An equality the service answers otherwise than Calcite: " + nulls.Reason + ".");
             }
-            else if (IsOrdering(KindOf(call))
+            else if (KindOf(call) == SqlKind.__Enum.NOT_EQUALS
                 && (IsTextRendering(leftValue) && IsTextComparand(rightValue) || IsTextRendering(rightValue) && IsTextComparand(leftValue))
                 && RendersOnlyStrings(leftValue, rightValue) == false)
             {
-                // The same gap the equality has, with no exact case to carve out of it. An equality
-                // against text no non-string renders as is exact; an ordering comparison never is,
-                // because the two orders disagree in kind — Calcite compares renderings as text, and
-                // the service compares raw values across JSON types, where a boolean sorts before a
-                // number and a number before any string.
+                // The same gap the equality has, negated. Measured over the typed container, one
+                // document per JSON type: `label <> 'bikes'` gained the array and the object, which
+                // the accessor answers null for and Calcite therefore excludes, while the service's
+                // inequality across types is true. So it is declined here and CosmosFilterSplitRule
+                // pushes what it implies.
+                throw new CosmosTranslationException("An inequality over JSON_VALUE read as text compares a rendering, and the service's inequality is true across JSON types where the rendering is null.");
+            }
+            else if (IsOrderingComparison(KindOf(call)) && CompareOrder(leftValue, rightValue, IsInclusive(KindOf(call))) is { IsProved: false } refused)
+            {
+                // An ordering comparison is an order the service computes, and is asked as one
+                // (CosmosServiceOrder.Compare): each side must read exactly what the service compares,
+                // and the strings of the two must order alike by code point, as the service compares
+                // them, and by UTF-16 code unit, as Calcite does.
                 //
-                // Measured over the typed container, one document per JSON type. `label > 'bikes'`
-                // lost the stored `true`, which renders as `true` and sorts after `bikes` as text
-                // while sorting before every string at the service. `label >= '30'` lost the stored
-                // 30 and the stored `true` the same way. `label < 'bikes'` lost the stored 30, and
-                // `label <> 'bikes'` gained the array and the object, which the accessor answers
-                // null for and Calcite therefore excludes.
+                // A rendering of what may not be a string fails the first. Measured over the typed
+                // container, one document per JSON type: `label > 'bikes'` lost the stored `true`,
+                // which renders as `true` and sorts after `bikes` as text while sorting before every
+                // string at the service; `label >= '30'` lost the stored 30 and the stored `true` the
+                // same way; `label < 'bikes'` lost the stored 30. A parameter, or another path, that
+                // may hold a character beyond U+FFFF against one that may hold one from U+E000 fails
+                // the second: measured on the probe account, `c.s > @p` bound to U+1F600 keeps the
+                // strings above it by code point, which Calcite puts below.
                 //
-                // So it is declined here and CosmosFilterSplitRule pushes what it implies: the
-                // comparison where the value is a string, and every non-string admitted for the
-                // recheck above.
-                throw new CosmosTranslationException("A comparison over JSON_VALUE read as text compares a rendering, and the service orders raw values across JSON types rather than their renderings.");
+                // Unless the one thing missing is a parameter's characters, and AND and OR alone lead to the comparison
+                // from a conjunct of a WHERE: then it is exact where the value is an anchor, which the reader knows when
+                // it is bound, and otherwise sent weakened and its conjunct rechecked. See TryWriteAnchoredComparison.
+                if (refused.IsAnchored && TryWriteAnchoredComparison(builder, call, leftValue, rightValue, op, refused.Anchors[0]))
+                    return;
+
+                // So it is declined here and CosmosFilterSplitRule pushes what it implies: for a
+                // rendering, the comparison where the value is a string, and every non-string
+                // admitted for the recheck above.
+                throw new CosmosTranslationException("An ordering comparison the service answers otherwise than Calcite: " + refused.Reason + ".");
             }
 
             WriteBinary(builder, left, right, op);
+        }
+
+        /// <summary>
+        /// Writes a comparison of a path with a parameter whose exactness the value decides, as it is, and records it for
+        /// the reader with the two weaker forms it sends where the value is no anchor; or answers <c>false</c> where it is
+        /// not the shape that can be.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The shape: under <c>AND</c> and <c>OR</c> alone, a bare parameter, a path.</b> <c>AND</c> and <c>OR</c>
+        /// alone have to lead to the comparison from the conjunct <see cref="TranslateConjunct"/> was handed, so that a
+        /// weaker comparison makes a weaker conjunct, which the reader rechecks whole beside the others the service
+        /// applies (<see cref="CosmosRecheck"/>); and it has to be between a parameter and what
+        /// <see cref="TryResolvePath"/> names, whose value the reader can be handed in a member of its own. Anything else
+        /// is refused as an ordering comparison the service answers otherwise.
+        /// </para>
+        /// <para>
+        /// <b>Two slots for one parameter.</b> The exact comparison binds the value; the weakened one binds its bound,
+        /// <see cref="CosmosAnchorBound"/>, which <see cref="Client.CosmosQueries.Bind"/> writes from the same value. The
+        /// path is written on the left, the operator reversed where it was read the other way round, so that which bound
+        /// applies is decided once: below the value for <c>&gt;</c> and <c>&gt;=</c>, above it for <c>&lt;</c> and
+        /// <c>&lt;=</c>, where an empty prefix leaves only the type test.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="call">The comparison.</param>
+        /// <param name="left">Its left side, beneath any box the validator's coercion put around it.</param>
+        /// <param name="right">Its right side, likewise.</param>
+        /// <param name="op">The operator, as read.</param>
+        /// <param name="anchor">What the value has to be for the comparison to be exact, as the verdict named it.</param>
+        /// <returns><c>true</c> where the comparison was written.</returns>
+        bool TryWriteAnchoredComparison(StringBuilder builder, RexCall call, RexNode left, RexNode right, string op, Metadata.CosmosOrderAnchor anchor)
+        {
+            if (_positive?.Contains(call) != true)
+                return false;
+
+            if (left is org.apache.calcite.rex.RexDynamicParam && right is not org.apache.calcite.rex.RexDynamicParam)
+            {
+                (left, right) = (right, left);
+                op = Reverse(op);
+            }
+
+            if (right is not org.apache.calcite.rex.RexDynamicParam parameter || TryResolvePath(left, out var path) == false || path is null)
+                return false;
+
+            var subject = new StringBuilder();
+            Write(subject, left);
+            var expression = subject.ToString();
+
+            var name = _parameters.Add(SlotOf(parameter));
+            var lower = op is ">" or ">=";
+            var bound = _parameters.Add(SlotOf(parameter) with { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
+
+            var exact = $"({expression} {op} {name})";
+            builder.Append(exact);
+
+            _compared![call] = _parameters.Recheck(new CosmosOrderComparison(
+                name,
+                bound,
+                op,
+                anchor,
+                expression,
+                exact,
+                lower ? $"({expression} >= {bound})" : $"({expression} < {bound})",
+                $"IS_STRING({expression})"));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Asks whether the service's ordering comparison of two values keeps exactly the rows Calcite's
+        /// does, of the facts this translator was given.
+        /// </summary>
+        /// <remarks>
+        /// The translator says only what each side is — a literal, a parameter, a path and how it is read,
+        /// or another value — and <see cref="Metadata.CosmosServiceOrder.Compare"/> decides, as it decides
+        /// every order the service computes. The split rule's weakening asks the same of the comparison it
+        /// pushes over the raw value.
+        /// </remarks>
+        /// <param name="left">One side, beneath any box the validator's coercion put around it.</param>
+        /// <param name="right">The other.</param>
+        /// <param name="inclusive">Whether equal values satisfy the comparison: <c>&lt;=</c> and <c>&gt;=</c>.</param>
+        /// <returns>The verdict.</returns>
+        internal Metadata.CosmosOrderVerdict CompareOrder(RexNode left, RexNode right, bool inclusive)
+        {
+            var (l, r) = OrderOperands(left, right);
+            return Metadata.CosmosServiceOrder.Compare(Facts, l, r, inclusive);
+        }
+
+        /// <summary>
+        /// Asks whether the service's equality of two values keeps no row Calcite's drops for a null, of the facts this
+        /// translator was given: see <see cref="Metadata.CosmosServiceOrder.Equate"/>.
+        /// </summary>
+        /// <param name="left">One side.</param>
+        /// <param name="right">The other.</param>
+        /// <returns>The verdict.</returns>
+        Metadata.CosmosOrderVerdict EquateOrder(RexNode left, RexNode right)
+        {
+            var (l, r) = OrderOperands(left, right);
+            return Metadata.CosmosServiceOrder.Equate(Facts, l, r);
+        }
+
+        /// <summary>
+        /// Says what the two sides of a comparison are, beneath any box the validator's coercion put around them.
+        /// </summary>
+        (Metadata.CosmosOrderOperand Left, Metadata.CosmosOrderOperand Right) OrderOperands(RexNode left, RexNode right)
+        {
+            left = StripVariantCoercion(left);
+            right = StripVariantCoercion(right);
+
+            // A rendering compared with text is compared as text, in Calcite. Compared with a number it is not
+            // Calcite's comparison at all — the validator compares text with text — but the split rule's bound on
+            // the raw value, which carries its own type test (CosmosFilterSplitRule.TryBoundNumericCast), and is read
+            // as that value.
+            var text = IsTextComparand(left) && IsTextComparand(right);
+
+            return (OrderOperand(left, text), OrderOperand(right, text));
+        }
+
+        /// <summary>
+        /// Says what one side of an ordering comparison is.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What the service compares, and nothing the facts would have to say.</b> A side is a literal, a
+        /// parameter, a path, or a value the service computes; the question reads what each may hold, and only a
+        /// path's from the facts.
+        /// </para>
+        /// <list type="bullet">
+        /// <item><description><b>A literal</b> of any type the statement can bind is the value it binds, a null the
+        /// JSON null it binds. One it cannot bind — an instant, which <see cref="GetLiteralValue"/> refuses — is
+        /// read by its type, and refused when it is written.</description></item>
+        /// <item><description><b>A rendering is a path read as text,</b> or, against a number, the raw value the split
+        /// rule's bound names (<see cref="OrderOperands"/>), whether or not the facts can be about the path. One they
+        /// cannot — an array's element, a path under a traversal's alias, an accessor over a constant — holds anything,
+        /// and is no string the service compares: <c>JSON_VALUE(c."DOC", '$.tags[0]') &lt; 'm'</c> was read as its
+        /// type's class, sent exact, and lost a stored number and a stored boolean, which Calcite compares as their
+        /// text and the service across types.</description></item>
+        /// <item><description><b>A path read as its type</b> — the service's own properties, a typed accessor, a raw
+        /// document value, an element — is a path, under the same rule.</description></item>
+        /// <item><description><b>Anything else is a value the service computes,</b> an operator, a function, a
+        /// <c>CASE</c>, a cast of a constant or one that hands its operand through, and a path of a type no comparison
+        /// here reads, an instant among them: read by its type, with every other JSON type in its null class where the
+        /// type admits a null (<see cref="Metadata.CosmosOrderOperandKind.Expression"/>).</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="node">The side.</param>
+        /// <param name="text">Whether the comparison is between text, where a rendering is compared as one.</param>
+        Metadata.CosmosOrderOperand OrderOperand(RexNode node, bool text)
+        {
+            var type = node.getType()?.getSqlTypeName() ?? SqlTypeName.ANY;
+            var nullable = node.getType()?.isNullable() ?? true;
+
+            if (node is RexLiteral literal)
+                return TryLiteralScalar(literal) is JsonScalar value
+                    ? Metadata.CosmosOrderOperand.ForLiteral(value)
+                    : Metadata.CosmosOrderOperand.ForExpression(type, nullable);
+
+            if (node is org.apache.calcite.rex.RexDynamicParam)
+                return Metadata.CosmosOrderOperand.ForParameter(type);
+
+            if (IsTextRendering(node))
+            {
+                var at = TryResolvePath(node, out var rendered) ? DocumentOf(rendered) : null;
+                return text
+                    ? Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.VARCHAR, IsScalarRendering(node) ? CosmosReading.Text : CosmosReading.JsonText)
+                    : Metadata.CosmosOrderOperand.ForPath(at, SqlTypeName.ANY, CosmosReading.Typed);
+            }
+
+            if ((IsCharacter(node) || SqlTypeName.NUMERIC_TYPES.contains(type) || type == SqlTypeName.BOOLEAN || IsDocumentValueType(type))
+                && TryResolvePath(node, out var path))
+                return Metadata.CosmosOrderOperand.ForPath(DocumentOf(path), type, CosmosReading.Typed);
+
+            return Metadata.CosmosOrderOperand.ForExpression(type, nullable);
+        }
+
+        /// <summary>
+        /// Returns the value a literal binds as a JSON scalar, or <c>null</c> for one the statement cannot bind.
+        /// </summary>
+        static JsonScalar? TryLiteralScalar(RexLiteral literal)
+        {
+            try
+            {
+                return JsonScalar.TryFrom(GetLiteralValue(literal), out var value) ? value : null;
+            }
+            catch (CosmosTranslationException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a kind is one of the four ordering comparisons, the inequality not among
+        /// them.
+        /// </summary>
+        static bool IsOrderingComparison(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.LESS_THAN
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN
+                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
+        }
+
+        /// <summary>
+        /// Determines whether two equal values satisfy a comparison of a kind: an equality, <c>&lt;=</c> and
+        /// <c>&gt;=</c>.
+        /// </summary>
+        internal static bool IsInclusive(SqlKind.__Enum kind)
+        {
+            return kind is SqlKind.__Enum.EQUALS
+                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
+                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 
         /// <summary>
@@ -3934,23 +4368,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static bool IsTextComparand(RexNode node)
         {
             return IsCharacter(node) || IsDocumentValueType(node.getType()?.getSqlTypeName());
-        }
-
-        /// <summary>
-        /// Determines whether a kind is one of the ordering comparisons, or the inequality.
-        /// </summary>
-        /// <remarks>
-        /// The inequality belongs with them rather than with the equality it negates: an equality
-        /// against unambiguous text is exact, and its negation is not, because the accessor answers
-        /// null for an object or an array where the raw value compares unequal to anything.
-        /// </remarks>
-        static bool IsOrdering(SqlKind.__Enum kind)
-        {
-            return kind is SqlKind.__Enum.NOT_EQUALS
-                or SqlKind.__Enum.LESS_THAN
-                or SqlKind.__Enum.LESS_THAN_OR_EQUAL
-                or SqlKind.__Enum.GREATER_THAN
-                or SqlKind.__Enum.GREATER_THAN_OR_EQUAL;
         }
 
         /// <summary>
@@ -5251,15 +5668,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="node">The expression to test.</param>
         /// <returns><c>true</c> if it is a scoring function.</returns>
-        public static bool IsScoringFunction(RexNode? node)
+        public static bool IsScoringFunction(RexNode? node) => node is RexCall call && BestFirstDescending(call.getOperator().getName()) is not null;
+
+        /// <summary>
+        /// Determines whether an expression is a scoring function whose best match is its greatest value, so that
+        /// <c>ORDER BY RANK</c>, which answers the best first, is the descending order of it.
+        /// </summary>
+        /// <param name="node">The expression to test.</param>
+        /// <returns><c>true</c> for a full text score and a fusion of ranks.</returns>
+        public static bool IsBestFirstDescending(RexNode? node) => node is RexCall call && BestFirstDescending(call.getOperator().getName()) == true;
+
+        /// <summary>
+        /// Says which way a scoring function ranks, by name: <c>true</c> where its best match is its greatest value,
+        /// <c>false</c> where nothing the metadata holds says which, and <c>null</c> for a name that is no scoring
+        /// function.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The one list of them.</b> Whether an ordering can become a rank (<see cref="IsScoringFunction"/>), which
+        /// direction of it the rank is (<see cref="IsBestFirstDescending"/>), and what a score left in process says
+        /// (<see cref="CosmosSchemaFunction.Refusal"/>) all read it, so a scoring function is added here once.
+        /// </para>
+        /// <para>
+        /// A full text score and <c>RRF</c> rank the highest first. <c>VECTORDISTANCE</c> ranks best first ascending or
+        /// descending by the container's distance function, which the metadata does not hold. By name, for the reason
+        /// everything here dispatches by name: a connection resolves the functions through the schema and a planner
+        /// through the operator table, which are two operators with one name, and the in-process names are a third.
+        /// </para>
+        /// </remarks>
+        /// <param name="name">The function's name.</param>
+        /// <returns>Which way it ranks, or <c>null</c>.</returns>
+        internal static bool? BestFirstDescending(string name) => name switch
         {
-            return node is RexCall call && call.getOperator().getName() switch
-            {
-                "FULLTEXTSCORE" or "RRF" or "VECTORDISTANCE" => true,
-                "CLR_FT_SCORE" or "CLR_FT_RRF" => true,
-                _ => false,
-            };
-        }
+            "FULLTEXTSCORE" or "RRF" or "CLR_FT_SCORE" or "CLR_FT_RRF" => true,
+            "VECTORDISTANCE" => false,
+            _ => null,
+        };
 
         /// <summary>
         /// Determines whether an expression is a full text function — a predicate or the score — whose

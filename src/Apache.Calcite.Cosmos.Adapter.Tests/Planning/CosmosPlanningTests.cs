@@ -254,14 +254,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// A page of links with their bodies, the spot's location among them, paged by parameters as an
-        /// ORM pages.
+        /// ORM pages, and ordered by a column of the link.
         /// </summary>
-        const string PageOfLinksWithLocations = """
+        static string PageOfLinksWithLocations(string key) => $"""
             SELECT "l1"."Id", "l1"."Label", "s0"."ParkId", "s0"."MapId", "s0"."Location"
             FROM (
                 SELECT "l"."Id", "l"."Label"
                 FROM "V"."Link" AS "l"
-                ORDER BY "l"."Label" NULLS FIRST
+                ORDER BY "l"."{key}" NULLS FIRST
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
             ) AS "l1"
             LEFT JOIN (
@@ -271,7 +271,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 LEFT JOIN "V"."MapLinkBody" AS "m" ON "l0"."Id" = "m"."Id"
                 LEFT JOIN "V"."SpotLinkBody" AS "s" ON "l0"."Id" = "s"."Id"
             ) AS "s0" ON "l1"."Id" = "s0"."Id"
-            ORDER BY "l1"."Label" NULLS FIRST
+            ORDER BY "l1"."{key}" NULLS FIRST
             """;
 
         /// <summary>
@@ -282,15 +282,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Statistics attached after the container's keys used to drop the keys, so with any document count
         /// the self-join merge had no unique key to read and every view was a read of its own. Without a
         /// count, as on the emulator, the planner has no sense of scale and pages in process, which is why
-        /// this is planned against one.
+        /// this is planned against one. Paged by the link's identifier, a UUID in a declared spelling, whose
+        /// stored strings order as the UUIDs do.
         /// </remarks>
         [Fact]
         public void APageBoundByParametersIsTakenAtTheService()
         {
-            var (plan, _) = Explain(new CosmosContainerStatistics(10_000, 20_000_000, 1), PageOfLinksWithLocations, 0, 25);
+            var (plan, _) = Explain(new CosmosContainerStatistics(10_000, 20_000_000, 1), PageOfLinksWithLocations("Id"), 0, 25);
 
             Scans(plan, "links").Should().Be(1, "the page and its bodies are one read:\n" + plan);
             plan.Should().MatchRegex(@"CosmosSort\([^\n]*fetch=", "the page is taken at the service:\n" + plan);
+            plan.Should().NotContain("ClrCursorSort", "and not again in process:\n" + plan);
+        }
+
+        /// <summary>
+        /// The same page ordered by the label still merges, and is taken at the service anchored: the label is text
+        /// whose characters nothing declares, and the reader checks the page's edges.
+        /// </summary>
+        /// <remarks>
+        /// The service orders strings by code point, and Calcite and the SDK's merge of two partitions by
+        /// UTF-16 code unit, which part over a character beyond U+FFFF beside one from U+E000; nothing says a
+        /// label holds neither, so the order of a page of labels is not proved when the plan is made. A page whose
+        /// first and last labels lie below U+D800 holds Calcite's rows, which the reader checks as they arrive and
+        /// reads again where they do not; a <c>pattern</c> on the label is the declaration that would prove it outright.
+        /// </remarks>
+        [Fact]
+        public void APageByALabelOfUndeclaredCharactersStillMergesAndIsTakenAtTheServiceAnchored()
+        {
+            var (plan, _) = Explain(new CosmosContainerStatistics(10_000, 20_000_000, 1), PageOfLinksWithLocations("Label"), 0, 25);
+
+            Scans(plan, "links").Should().Be(1, "the page and its bodies are one read:\n" + plan);
+            plan.Should().MatchRegex(@"CosmosSort\([^\n]*fetch=[^\n]*order=\[anchored\]", "the order of the labels is the service's, checked as it arrives:\n" + plan);
             plan.Should().NotContain("ClrCursorSort", "and not again in process:\n" + plan);
         }
 

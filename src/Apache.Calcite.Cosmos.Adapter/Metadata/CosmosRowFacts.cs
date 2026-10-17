@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// rule decides on the planner's sets while implementation sees the one tree it chose — whose filter may be the same
     /// condition rewritten another way, or reduced. A clause that rendered under one set of facts and implemented under
     /// another is a plan that fails after the planner committed to it, so the node a rule builds carries the facts the rule
-    /// decided under, as <see cref="CosmosSort.NonNullFields"/> always has, and implementation reads those. A question
+    /// decided under, as <see cref="CosmosSort"/> always has, and implementation reads those. A question
     /// another node asks of this one — the binding a <c>DISTINCT</c> gives its keys — is no such clause: it is answered on
     /// both walks, and reads the declaration (<see cref="CosmosAggregate.DistinctKeyBinding"/>).
     /// </para>

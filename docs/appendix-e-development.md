@@ -22,7 +22,11 @@ statements Azure rejects and to reject features Azure implements:
 | full text functions and `ORDER BY RANK` | rejected (`SC2005`) | accepted |
 | full text policies and indexes | accepted on create, then reported absent | kept |
 | composite indexes | discarded on create | kept |
-| multi-key `ORDER BY` without a composite index | accepted | rejected (400) |
+| multi-key `ORDER BY` without a composite index, a key repeated included | accepted | rejected (400) |
+| `ORDER BY` over a path the indexing policy excludes, `_etag` included | accepted | rejected (400) |
+| `ORDER BY` over a computed property no included path names | computed properties dropped on create | rejected (400) |
+| `ORDER BY RANK … ASC` or `DESC` | rejected (`SC2005`) | rejected — no direction is taken |
+| two string constants compared, `'\uE000' < '\uD83D\uDE00'` | by code point | by UTF-16 code unit |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 
@@ -118,6 +122,43 @@ exactly the first 200 the full run asks. A predicate that fails in one fails in 
 statement. Where the full run belongs, a nightly job or a gate before merging, is not settled yet
 (`TODO.md`, section 10); until it is, run it by hand after changing the translator or the split rule.
 
+**`EveryOrderIsOneCalciteAllows`** generates statements whose answers depend on an order — sorts over
+every reading, `DISTINCT`, a subquery's page, `UNION ALL`, `MIN`/`MAX`, keysets, comparisons with a
+parameter — and judges each by whether Calcite's semantics *allow* its answer, not by whether it equals
+the answer Calcite's own run gave: ties are free, and a `FETCH` may take any of a tie's rows. It also
+holds every `ORDER BY` a plan sends to what Azure accepts, which the emulator does not: no excluded path
+(`_etag` is excluded by default), and a composite index for every order of more than one key. Its three
+containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs. On
+an account, a document in a container with the yardstick's composite indexes costs about 25 RU to write,
+more than a 400 RU/s container takes in the time the seed writes them: the seed writes a throttled
+document again after the interval the service asks for, and a statement the service throttles still fails.
+
+It runs with the class, and fails on any answer Calcite does not allow. Two families of wrong answer
+that are no order's — a projected double printed two ways, and `CHAR_LENGTH` pushed as `LENGTH` — are
+findings of their own, recorded in `TODO.md`, and are reported apart where the statement sent no order.
+It also holds a floor for how many statements push each kind of order — sorts, extremes, pages and
+comparisons a parameter decides — in every container and in each, so that a change declining more than it
+must fails it too, and a change losing what the reader completes shows in the containers that declare no
+characters:
+
+```sh
+Apache.Calcite.Cosmos.Adapter.Tests.exe \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.CosmosDifferentialTests.EveryOrderIsOneCalciteAllows
+```
+
+- **By default it draws 200 items**, about two minutes against the emulator.
+- **With `COSMOS_ORDER_GATE=1`, 1,000**, about six; the default is their prefix, as above.
+- **`COSMOS_MEASUREMENT_LOG`** receives every smallest failing statement with its family and what it
+  sent, and **`COSMOS_ORDER_TRACE`** names a file that receives one line per statement — container,
+  form, what was pushed, the verdict and the family — for comparing two commits.
+
+`CosmosServiceOrderModelTests` asks the same question with no service at all: a model of each
+partition's order, the SDK's merge and Calcite's, over every value a fact set admits. Its sweep,
+`EveryVerdictOfTheQuestionHolds`, runs by default, and holds an order completed as the rows arrive to the
+reader's own check: every value it calls an anchor compares alike with every other under all three orders,
+and an extreme read again up to the first anchor is Calcite's. `CosmosOrderedCursorTests` runs the reader
+itself over canned streams in the service's orders, the merge of two partitions among them.
+
 ### Measurements
 
 Tests under `Measurements/` assert what Calcite, IKVM or the service does — not what the adapter does.
@@ -128,6 +169,21 @@ Each measured fact a pushdown relies on is also a row in `Sql/CosmosAxioms.cs`, 
 was measured and the test that pins it, and a test checks every named test still exists. A new
 measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
 Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
+
+One measurement needs more than an account: `CosmosOrderMergeMeasurementTests` needs a container with two
+physical partitions, which only throughput above 10,000 RU/s makes, so it creates none. Name one the
+account already has:
+
+```sh
+COSMOS_TEST_MULTIPARTITION_DATABASE=<database>
+COSMOS_TEST_MULTIPARTITION_CONTAINER=<container>
+```
+
+Its partition key must be one top-level path and its indexing policy must index `/s`. The test writes a
+few dozen documents tagged with its run and deletes them before it ends; without the variables it skips.
+Beside the merge it measures, it runs the adapter's reader over the same documents through the adapter's own
+executor — the stream, every window, the `MAX` — and holds each to Calcite's order: the one place the
+reader meets a merge the service made rather than a model of one.
 
 ### Generated soundness checks
 

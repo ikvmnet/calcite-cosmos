@@ -859,12 +859,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (known().RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
                 return null;
 
-            if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
+            if (ordering ? OrdersAsTheValues(known(), document, null, CosmosTemporalParts.None) == false : declared.PreservesEquality == false)
                 return null;
 
             representation = declared;
             return operand;
         }
+
+        /// <summary>
+        /// Determines whether the service's order of a path's stored strings is the order of the values a conversion
+        /// reads them as: asked as every order the service computes is (<see cref="CosmosServiceOrder.Compare"/>), of
+        /// the conversion against a value written in the path's own spelling.
+        /// </summary>
+        /// <remarks>
+        /// An ordering through a stored form is one of the orders the service computes, and is decided where they all
+        /// are: the form keeps the order, the conversion reads the form, and the path holds nothing but its strings.
+        /// The value compared with is written in the form when the plan is made or when the statement runs, which is a
+        /// string a parameter stands for here.
+        /// </remarks>
+        /// <param name="facts">What the comparison may rely on.</param>
+        /// <param name="document">The path.</param>
+        /// <param name="format">A parse's format, or <c>null</c> for a cast.</param>
+        /// <param name="held">The halves of an instant the conversion's value holds; none for a UUID or a number.</param>
+        /// <returns><c>true</c> where the stored strings order as the values.</returns>
+        static bool OrdersAsTheValues(JsonFactSet facts, JsonDocumentPath document, string? format, CosmosTemporalParts held) =>
+            CosmosServiceOrder.Compare(facts, CosmosOrderOperand.ForConversion(document, format, held), CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR), inclusive: true).IsProved;
 
         /// <summary>
         /// Lowers a comparison between an instant read out of a path and a temporal literal into a
@@ -955,16 +974,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (known().RepresentationOf(document) is not CosmosRepresentation declared)
                 return null;
 
-            if (ordering ? declared.PreservesOrder == false : declared.PreservesEquality == false)
-                return null;
-
-            // A parse names how the text is read and is licensed by the format reading the shape; a
-            // cast leaves it to the engine, and is licensed only where the engine can do it. Neither
-            // is optional: dropping a conversion the engine would have failed at answers rows where
-            // the query answers an error, which is a different query rather than a faster one.
-            if (format is not null
-                ? CosmosStoredForms.ParsesExactly(declared, format, held) == false
-                : CosmosStoredForms.EngineReads(declared, held) == false)
+            // A parse names how the text is read and is licensed by the format reading the shape; a cast leaves it to
+            // the engine, and is licensed only where the engine can do it (CosmosStoredForms.Reads). An ordering asks
+            // that and that the form keeps the order, as every order the service computes is asked.
+            if (ordering
+                ? OrdersAsTheValues(known(), document, format, held) == false
+                : declared.PreservesEquality == false || CosmosStoredForms.Reads(declared, format, held) == false)
                 return null;
 
             representation = declared;
@@ -1026,7 +1041,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             var ordering = comparison != SqlStdOperatorTable.EQUALS && comparison != SqlStdOperatorTable.NOT_EQUALS;
 
-            if (ordering ? representation.PreservesOrder == false : representation.PreservesEquality == false)
+            if (ordering ? OrdersAsTheValues(at.Known, document, null, CosmosTemporalParts.None) == false : representation.PreservesEquality == false)
                 return null;
 
             if (CosmosStoredForms.RenderInteger(representation, value) is not string stored)

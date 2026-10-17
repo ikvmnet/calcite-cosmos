@@ -28,6 +28,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// guaranteed and nothing would read a fact about them — they are not what anyone filters on — so
     /// stating them would be weight with no consumer.
     /// </para>
+    /// <para>
+    /// <b>Each says what an order needs of it, as a fact and not as a case.</b> An order the service
+    /// computes is read through <see cref="CosmosServiceOrder"/> from what the facts say of the path, and
+    /// the service's own properties are paths like any other: <c>_ts</c> orders as a <c>BIGINT</c> because
+    /// it is an integer with a bound, and <c>_etag</c> as text because its characters are stated. Nothing
+    /// there names either.
+    /// </para>
     /// </remarks>
     public static class CosmosServiceFacts
     {
@@ -65,9 +72,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // which is why it is the one a query can reason about without being told anything.
             rules.AddRange(About(CosmosContainerMetadata.TimestampPropertyName, JsonType.Integer));
 
+            // And a bound, which is what lets it order as the BIGINT it is read as: an integer below 2^53
+            // is one value whichever way the service holds it or a response prints it, where an
+            // unbounded BIGINT is not (see CosmosServiceOrder). Epoch seconds are not negative, and 2^53
+            // seconds is some 285 million years.
+            var timestamp = JsonDocumentPath.Root.Property(CosmosContainerMetadata.TimestampPropertyName);
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(timestamp, new JsonClaim.LowerBound(0))));
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(timestamp, new JsonClaim.UpperBound(CosmosServiceOrder.TwoTo53, Exclusive: true))));
+
             // Service-generated, and a string. Excluded from the index by default, which bears on what
-            // a predicate over it costs and not on what it is.
+            // a predicate over it costs, and makes an ORDER BY over it a 400 (see
+            // CosmosContainerMetadata.IsPathIndexed); not on what it is.
             rules.AddRange(About(CosmosContainerMetadata.ETagPropertyName, JsonType.String));
+
+            // An entity tag, whose grammar RFC 9110 fixes: a quoted run of '!', 0x23 to 0x7E and 0x80
+            // to 0xFF. No unit at or above U+D800, so its strings order alike by code point and by
+            // UTF-16 code unit (see CosmosCharacterBand), which is what lets MIN and MAX over it push.
+            var etag = JsonDocumentPath.Root.Property(CosmosContainerMetadata.ETagPropertyName);
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new CosmosCharacters(CosmosCharacterBand.Surrogates))));
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new CosmosCharacters(CosmosCharacterBand.HighBmp))));
 
             return rules.ToArray();
         }

@@ -158,19 +158,16 @@ namespace Apache.Calcite.Cosmos.Adapter
             // casting -- the row model types every document path ANY, and nothing downstream that
             // expects columns of a type can consume ANY. Nothing renders a bare cast, so the
             // projection stays in process, and a sort and row limit above it stay with it. The
-            // container is then read whole to answer a bounded page.
+            // container is then read whole to answer a bounded page. Transposed, the sort and its
+            // limit sit under the projection and push, leaving the cast above them to run over the
+            // rows that come back.
             //
-            // Transposed, the sort and its limit sit under the projection and push, leaving the cast
-            // above them to run over the rows that come back. The saving is the whole difference
-            // between a page and a scan.
-            //
-            // <b>It fires only where the collation survives the transpose.</b> Calcite maps the sort
-            // keys through the projection and declines unless every one of them is a plain reference,
-            // which is exactly the condition that makes this sound: ordering by a cast column is not
-            // ordering by the path underneath -- as text, 10 sorts before 9 -- so that case must stay
-            // above and does. A transformation adds an equivalence rather than replacing one, so the
-            // untransposed plan survives and the planner costs both.
-            yield return org.apache.calcite.rel.rules.CoreRules.SORT_PROJECT_TRANSPOSE;
+            // <b>Guarded, because Calcite's own fires where the collation does not survive.</b> It maps
+            // a key that is a cast to the cast's operand wherever it calls the cast monotonic, a cast
+            // of text to an instant among them, and the sort beneath then orders the text. So it is
+            // Calcite's rule with a test the plan's keys must pass first: a field, or a cast that
+            // preserves the order of every value. See CosmosSortProjectTransposeRule.
+            yield return CosmosSortProjectTransposeRule.Instance;
 
             // Its other half, and registered for the same missing-rewrite reason. The transpose
             // leaves two projections with a sort between them where a query orders by a column it

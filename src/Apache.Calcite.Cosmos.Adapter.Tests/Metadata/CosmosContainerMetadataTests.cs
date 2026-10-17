@@ -44,13 +44,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
-        /// A single-property sort on an unindexed path costs more but still runs, so it is legal
-        /// regardless of the indexing policy. Only multi-property sorts can be outright rejected.
+        /// A single-property sort is served by the range index every indexed path has, so it needs
+        /// no composite index.
         /// </remarks>
         [Fact]
         public void SingleKeySortIsLegalWithoutAnyCompositeIndex()
         {
             WithIndex().IsSortSupported(Sort(("/name", false))).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// But not over a path the policy excludes: measured on the probe account, "The index path
+        /// corresponding to the specified order-by item is excluded", a 400, for a single key or a page
+        /// of one. Every policy excludes <c>_etag</c>, a wildcard not reaching it, whatever the emulator
+        /// reads back; an included path naming it indexes it. A key with no path, a geodesic distance
+        /// written out as the expression, is not asked.
+        /// </remarks>
+        [Fact]
+        public void ASortOverAnExcludedPathIsRejected()
+        {
+            var container = new CosmosContainerMetadata("products", null, null, new[] { "/*" }, new[] { "/x/?", "/z/*" });
+
+            container.IsSortSupported(Sort(("/x", false))).Should().BeFalse();
+            container.IsSortSupported(Sort(("/z/w", true))).Should().BeFalse();
+            container.IsSortSupported(Sort(("/y", false))).Should().BeTrue();
+            container.IsSortSupported(Sort(("", false))).Should().BeTrue();
+
+            WithIndex().IsSortSupported(Sort(("/_etag", false))).Should().BeFalse();
+            container.IsSortSupported(Sort(("/_etag", false))).Should().BeFalse();
+            new CosmosContainerMetadata("products", null, null, new[] { "/*", "/_etag/?" }, new string[0])
+                .IsSortSupported(Sort(("/_etag", false))).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// A key repeated is two keys to the service: measured on the probe account, <c>ORDER BY c.a,
+        /// c.a</c> is a 400 without a composite index, so the question that hands keys here drops the
+        /// second before it asks.
+        /// </remarks>
+        [Fact]
+        public void ARepeatedKeyIsTwoKeys()
+        {
+            WithIndex().IsSortSupported(Sort(("/a", false), ("/a", false))).Should().BeFalse();
         }
 
         [Fact]

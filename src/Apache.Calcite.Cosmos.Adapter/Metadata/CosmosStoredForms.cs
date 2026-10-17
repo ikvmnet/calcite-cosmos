@@ -56,6 +56,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ?? CosmosNumericForms.Recognise(normalised);
         }
 
+        /// <summary>
+        /// Gets every stored form a pattern can be recognised as, a numeric form at each width a pattern can name.
+        /// </summary>
+        /// <remarks>
+        /// <b>A hook for the tests, and read by nothing else.</b> What <c>CosmosStoredFormsTests</c> holds to the claim
+        /// the service's order rests on: every stored form is ASCII, so a path in one holds no character at or above
+        /// U+D800, where code point and UTF-16 order part (<see cref="CosmosCharacters"/>, which a form entails). The
+        /// tables it enumerates are the recognisers' own, so a form added to one is held to the claim with no list to
+        /// keep beside it.
+        /// </remarks>
+        internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
+            System.Linq.Enumerable.Concat(
+                System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered),
+                System.Linq.Enumerable.Prepend(System.Linq.Enumerable.Select(System.Linq.Enumerable.Range(1, 19), CosmosNumericForms.IntegerFixedWidth), CosmosNumericForms.IntegerUnpadded));
+
         /// <inheritdoc cref="CosmosUuidForms.Render" />
         public static string? RenderUuid(CosmosRepresentation representation, Guid value) =>
             CosmosUuidForms.Render(representation, value);
@@ -83,6 +98,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <inheritdoc cref="CosmosTemporalForms.EngineReads" />
         public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
             CosmosTemporalForms.EngineReads(representation, target);
+
+        /// <summary>
+        /// Determines whether a conversion of a form's stored text reads it as the value it spells: a parse by its
+        /// format, a cast to an instant where the engine reads the form into that type, and a conversion naming
+        /// neither — a cast to a UUID or to a number — as the engine always does.
+        /// </summary>
+        /// <remarks>
+        /// What an equality and an order through the form both need, so asked once: comparing the stored strings in
+        /// place of a conversion the engine would have failed at answers rows where the query answers an error, which
+        /// is a different query rather than a faster one.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="format">The parse's format, or <c>null</c> for a cast.</param>
+        /// <param name="held">The halves of an instant the conversion's value holds; none for a UUID or a number.</param>
+        /// <returns><c>true</c> where the conversion reads the form.</returns>
+        public static bool Reads(CosmosRepresentation representation, string? format, CosmosTemporalParts held) =>
+            format is not null
+                ? ParsesExactly(representation, format, held)
+                : held == CosmosTemporalParts.None || EngineReads(representation, held);
 
         /// <inheritdoc cref="CosmosTemporalForms.ParseFormats" />
         public static System.Collections.Generic.IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>

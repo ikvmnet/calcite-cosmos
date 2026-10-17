@@ -122,19 +122,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Says why a function cannot be evaluated where the plan put it.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The scoring functions get their own sentence because their refusal is a property of the
         /// service rather than of this adapter, and because a caller reaching it has usually done one
-        /// of two quite different things.
+        /// of three quite different things: selected the score, ordered by it ascending, or ordered by
+        /// it descending through a connection, which cannot push a rank (ikvmnet/calcite-cosmos#46).
+        /// </para>
+        /// <para>
+        /// <b>Said for both orderings, since the call cannot see which it is in.</b> The refusal is met
+        /// while code is generated for the projection that computes the score, beneath the sort that
+        /// orders by it, so it says what to write for an ascending ordering and what is true of a
+        /// descending one, rather than telling a statement that already says <c>DESC</c> to add it.
+        /// </para>
         /// </remarks>
         /// <param name="name">The function's name.</param>
         /// <returns>The message.</returns>
         internal static string Refusal(string name)
         {
-            return name is "FULLTEXTSCORE" or "RRF"
+            return CosmosRexTranslator.BestFirstDescending(name) == true
                 ? name + " has no value this adapter can produce. Cosmos computes a relevance score "
                     + "only while ordering and never returns one, so nothing may read it. A statement "
                     + "arrives here either by selecting the score, which the service rejects outright, "
-                    + "or by ordering on it in a plan that could not push the whole ordering down."
+                    + "or by ordering on it in a plan that could not push the whole ordering down. "
+                    + "Cosmos ranks the best match first and takes no direction for it, so an ascending "
+                    + "ordering on a score, the default where none is written, is never pushed: write "
+                    + "ORDER BY " + name + "(...) DESC. A descending one is pushed by a planner built "
+                    + "with the adapter's rules, and not through a connection (ikvmnet/calcite-cosmos#46)."
                 : name + " is evaluated by the service and has no in-process body. This plan asks for "
                     + "its value somewhere the call could not be pushed down.";
         }

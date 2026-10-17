@@ -18,7 +18,8 @@ GROUP BY c."$.category"
 | --- | --- |
 | `COUNT(*)` | always |
 | `COUNT(x)` | where `x` cannot be null (Calcite then rewrites it to `COUNT(*)`) |
-| `SUM(x)`, `MIN(x)`, `MAX(x)`, `AVG(x)` | only where `x` cannot be null |
+| `SUM(x)`, `AVG(x)` | only where `x` cannot be null |
+| `MIN(x)`, `MAX(x)` | where `x` is never a JSON null and holds one type; for a string whose characters nothing declares, and an integer nothing bounds, ungrouped and checked as the row arrives (10.2) |
 | `COUNT(DISTINCT x)` | the de-duplication pushes as a `GROUP BY x`, where `x` would push as a key; the count finishes in process over one row per value |
 | `SELECT DISTINCT …` | as Cosmos `SELECT DISTINCT` |
 | a grouping key or `DISTINCT` column of `JSON_VALUE` read as text | where the path is declared a string (Chapter 14); in process otherwise (10.6) |
@@ -49,11 +50,33 @@ a number. The adapter pushes value aggregates only over inputs that cannot be nu
 property is nullable as far as the planner knows, so in practice:
 
 - **`COUNT(*)` always pushes.** This is the most common aggregate and it is unaffected.
-- **`SUM`, `MIN`, `MAX` and `AVG` over a document property run in process** — unless the input is
-  known non-null. Two ways it can be: aggregate `_ts` or a non-nullable expression, or filter the
-  nulls out in a way the planner can see. A `WHERE x IS NOT NULL` on a *promoted column* works; on a
+- **`SUM` and `AVG` over a document property run in process** — unless the input is known
+  non-null. Two ways it can be: aggregate `_ts` or a non-nullable expression, or filter the nulls out
+  in a way the planner can see. A `WHERE x IS NOT NULL` on a *promoted column* works; on a
   `JSON_VALUE` path the knowledge does not survive the projection, and the aggregate stays in
   process.
+- **`MIN` and `MAX` are an order, and are asked as one.** The service skips a missing property as SQL
+  skips a null, but counts a JSON `null`, compares values by JSON type first, and orders strings by
+  code point where SQL orders them by UTF-16 code unit (Chapter 9.3). So `MIN` and `MAX` push where the
+  schema says the property holds one type and never `null` — `"type": "integer"`, not
+  `["integer", "null"]` — whether or not every document has it. A string's characters prove it outright
+  where they are known: a `pattern` that rules them out (Chapter 14.4), an `enum` or `const`, a declared
+  stored form, or a `WHERE` listing the values. `MAX(c."_ts")` always pushes, and so does
+  `MAX(c."_etag")`, though `_etag` cannot be sorted at the service: an aggregate scans and needs no
+  index.
+- **Where nothing declares a string's characters, an ungrouped `MIN` or `MAX` pushes and is checked.**
+  `MAX(c."id")` is the common case: an `id` may hold any character but `/` and `\`. An answer with nothing
+  at or above U+D800 is Calcite's — every value on the far side of it in one order is on the far side in
+  the other, across partitions too — and is used as it comes. Any other answer is replaced by reading the
+  argument again in its order, `SELECT VALUE c.id … ORDER BY c.id DESC`, up to the first value below the
+  line; or whole, where the path is not indexed. The same holds of `RETURNING BIGINT` over an integer
+  nothing bounds, checked for a number past 2^53. Grouped, there is no one row to check, and it runs in
+  process unless the characters are declared.
+
+```sql
+SELECT MIN(JSON_VALUE(c."DOC", '$.year' RETURNING INTEGER)) FROM "books" AS c
+→ SELECT MIN(c.year) AS "EXPR$0" FROM books c        -- where the schema declares year an integer
+```
 
 Even then, the grouping and filtering around an in-process aggregate still push: the service applies
 the `WHERE` and the planner reads only what it needs.

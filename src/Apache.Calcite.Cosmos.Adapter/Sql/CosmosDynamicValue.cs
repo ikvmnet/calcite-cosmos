@@ -18,8 +18,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <para>
     /// The ordinal is what is carried, because the ordinal is what the plan knows of the value. What
     /// the value will be is the caller's, and what type it is the plan already decided — which is why
-    /// nothing here records one. The one addition is a spelling the plan chose from the path the value
-    /// is compared with, which <see cref="Form"/> says more about.
+    /// nothing here records one, but for the length a sized text type holds a string to
+    /// (<see cref="Length"/>), which changes what Calcite reads. The other additions are what the plan
+    /// chose from the comparison the value sits in: a spelling taken from the path it is compared with,
+    /// which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>).
     /// </para>
     /// </remarks>
     /// <param name="Ordinal">The dynamic parameter's index, as <c>RexDynamicParam</c> numbers them.</param>
@@ -52,6 +54,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// the comparison it is bound into decides.
         /// </summary>
         public Metadata.CosmosTemporalRounding Rounding { get; init; }
+
+        /// <summary>
+        /// Gets the bound a string is written as in place of itself, for the comparison the reader sends where the value
+        /// is no anchor; <see cref="CosmosAnchorBound.None"/> for the value as it stands.
+        /// </summary>
+        /// <remarks>
+        /// The same kind of decision <see cref="Form"/> is: the plan knows which comparison the slot sits in and what the
+        /// service compares there, and writes the bound into the statement's fallback as it would the value — see
+        /// <see cref="CosmosOrderComparison"/>.
+        /// </remarks>
+        public CosmosAnchorBound Bound { get; init; }
+
+        /// <summary>
+        /// Gets the length in UTF-16 code units the parameter's type holds a string to — its <c>CHAR(n)</c> or
+        /// <c>VARCHAR(n)</c> — or <c>null</c> for a type that holds any.
+        /// </summary>
+        /// <remarks>
+        /// What the value is, in Calcite, and so what the service has to be sent: Calcite's generated code truncates a
+        /// parameter to its type's length (<c>RexToLixTranslator.visitDynamicParam</c>), and the statement compares what
+        /// Calcite would.
+        /// </remarks>
+        public int? Length { get; init; }
+
+        /// <summary>
+        /// Gets whether a string shorter than <see cref="Length"/> is padded to it with spaces, as Calcite pads a
+        /// <c>CHAR(n)</c>.
+        /// </summary>
+        public bool Padded { get; init; }
 
         /// <summary>
         /// Gets the name Calcite binds the value under in the data context.

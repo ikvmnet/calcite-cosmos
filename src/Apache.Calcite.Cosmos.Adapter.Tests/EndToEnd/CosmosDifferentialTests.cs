@@ -176,6 +176,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The documents both plans read: prices present, null and absent; a document with a null
         /// category and one with none, which land in different groups than either expects; names for
         /// the LIKE shapes; a nested object and arrays.
+        /// <para>
+        /// The last four hold at <c>tags[0]</c> what the first does not: a number, a boolean, an object
+        /// and a null. An array's element is a path no fact can be about, and its rendering was once
+        /// compared at the service as though it were a string, which only a fixture of string elements
+        /// could not tell.
+        /// </para>
         /// </summary>
         static readonly string[] Documents =
         [
@@ -186,6 +192,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"5","category":"shoes","name":"Slipper"}""",
             """{"id":"6","category":null,"name":"Uncategorized","price":5}""",
             """{"id":"7","name":"Unfiled","price":10}""",
+            """{"id":"8","category":"bikes","name":"Kickstand","price":15,"tags":[5,"steel"]}""",
+            """{"id":"9","category":"shoes","name":"Insole","price":6,"tags":[true]}""",
+            """{"id":"10","category":"bikes","name":"Basket","price":25,"tags":[{"k":"outdoor"}]}""",
+            """{"id":"11","category":"shoes","name":"Lace","tags":[null,"outdoor"]}""",
         ];
 
         /// <summary>
@@ -315,22 +325,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Recreates a container and writes the given documents into it.
         /// </summary>
-        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category")
+        /// <remarks>
+        /// <para>
+        /// Created with the service's default indexing policy unless a <c>policy</c> is given: the
+        /// <c>ORDER BY</c> yardstick names the composite indexes its metadata declares, so that the
+        /// policy Azure would hold a statement to is the one the container has.
+        /// </para>
+        /// <para>
+        /// <b>A write the service throttles is written again</b>, after the interval the response
+        /// asks for. The client retries nothing on a 429, so that a statement the service throttles
+        /// shows as one; a seed is not what the class tests. Measured on the probe account, a document
+        /// in a container carrying the yardstick's 84 composite indexes costs about 25 RU to write,
+        /// so 48 of them in a second and a half ran past a container's 400 RU/s and failed the seed
+        /// before a statement was judged.
+        /// </para>
+        /// </remarks>
+        static async Task<Container> Seed(Database database, string name, string[] documents, CancellationToken cancellationToken, string key = "category", IndexingPolicy? policy = null)
         {
             try { await database.GetContainer(name).DeleteContainerAsync(cancellationToken: cancellationToken); } catch (CosmosException) { }
-            var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties(name, "/" + key), cancellationToken: cancellationToken)).Container;
+
+            var properties = new ContainerProperties(name, "/" + key);
+            if (policy is not null)
+                properties.IndexingPolicy = policy;
+
+            var container = (await database.CreateContainerIfNotExistsAsync(properties, cancellationToken: cancellationToken)).Container;
 
             foreach (var json in documents)
             {
-                using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
                 using var document = System.Text.Json.JsonDocument.Parse(json);
 
                 var partitionKey = document.RootElement.TryGetProperty(key, out var category)
                     ? category.ValueKind == System.Text.Json.JsonValueKind.Null ? PartitionKey.Null : new PartitionKey(category.GetString())
                     : PartitionKey.None;
 
-                using var response = await container.CreateItemStreamAsync(stream, partitionKey, cancellationToken: cancellationToken);
-                response.EnsureSuccessStatusCode();
+                while (true)
+                {
+                    using var stream = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var response = await container.CreateItemStreamAsync(stream, partitionKey, cancellationToken: cancellationToken);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        var after = double.TryParse(response.Headers["x-ms-retry-after-ms"], NumberStyles.Float, CultureInfo.InvariantCulture, out var milliseconds) ? milliseconds : 100;
+                        await Task.Delay(TimeSpan.FromMilliseconds(after), cancellationToken);
+                        continue;
+                    }
+
+                    response.EnsureSuccessStatusCode();
+                    break;
+                }
             }
 
             return container;
@@ -349,16 +391,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _kindsContainer = null;
         }
 
+        /// <summary>
+        /// What a statement's plan reads at run time: the schema, and the values its parameters are
+        /// bound to, under the names Calcite asks for them by: <c>?0</c>, <c>?1</c> and so on.
+        /// </summary>
         sealed class TestDataContext : DataContext
         {
 
             readonly SchemaPlus _rootSchema;
             readonly JavaTypeFactory _typeFactory;
+            readonly IReadOnlyList<object?> _parameters;
 
-            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory)
+            public TestDataContext(SchemaPlus rootSchema, JavaTypeFactory typeFactory, IReadOnlyList<object?>? parameters = null)
             {
                 _rootSchema = rootSchema;
                 _typeFactory = typeFactory;
+                _parameters = parameters ?? [];
             }
 
             public SchemaPlus getRootSchema() => _rootSchema;
@@ -367,9 +415,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
 
-            public object get(string name) => null!;
+            public object get(string name) => name.StartsWith('?') && int.TryParse(name.AsSpan(1), out var i) && i < _parameters.Count ? _parameters[i]! : null!;
 
         }
+
+        /// <summary>
+        /// The containers the corpus is written over, in the order their rules are registered.
+        /// </summary>
+        static IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> CorpusContainers =>
+        [
+            (Products, _container!),
+            (Typed, _typedContainer!),
+            (Ordering, _orderingContainer!),
+            (Declared, _declaredContainer!),
+            (Kinds, _kindsContainer!),
+        ];
 
         /// <summary>
         /// Plans and executes a statement, with the pushdown rules or with only the way out.
@@ -378,21 +438,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <param name="pushdown">Whether the pushdown rules may fire.</param>
         /// <param name="sent">Where given, collects every Cosmos statement the plan sends, so that a
         /// report can say what was pushed and not only what came back.</param>
-        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null)
+        static Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent = null) => Run(sql, pushdown, sent, CorpusContainers, null);
+
+        /// <summary>
+        /// Plans and executes a statement over the given containers, its parameters bound to the given
+        /// values.
+        /// </summary>
+        /// <remarks>
+        /// The containers are the schema, each registered under its metadata's name, and the rules
+        /// registered are theirs alone: a statement over one set of containers plans as it would with
+        /// no others beside it.
+        /// </remarks>
+        static async Task<List<object>> Run(string sql, bool pushdown, ICollection<string>? sent, IReadOnlyList<(CosmosContainerMetadata Metadata, Container Container)> containers, IReadOnlyList<object?>? parameters)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(Products, Recorded(new CosmosQueryExecutor(_container!), sent));
-            var typed = new CosmosTable(Typed, Recorded(new CosmosQueryExecutor(_typedContainer!), sent));
-            var ordering = new CosmosTable(Ordering, Recorded(new CosmosQueryExecutor(_orderingContainer!), sent));
-            var declared = new CosmosTable(Declared, Recorded(new CosmosQueryExecutor(_declaredContainer!), sent));
-            var kinds = new CosmosTable(Kinds, Recorded(new CosmosQueryExecutor(_kindsContainer!), sent));
+            var tables = containers.Select(c => new CosmosTable(c.Metadata, Recorded(new CosmosQueryExecutor(c.Container), sent))).ToList();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
-            rootSchema.add("products", table);
-            rootSchema.add("typed", typed);
-            rootSchema.add("ordering", ordering);
-            rootSchema.add("declared", declared);
-            rootSchema.add("kinds", kinds);
+            foreach (var table in tables)
+                rootSchema.add(table.Container.Name, table);
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -421,11 +485,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
 
-            // A convention per container, so both tables need their rules registered whichever a
+            // A convention per container, so every table needs its rules registered whichever a
             // statement happens to name.
             var pushdownRules = new List<string>();
 
-            foreach (var convention in new[] { table.Convention, typed.Convention, ordering.Convention, declared.Convention, kinds.Convention })
+            foreach (var convention in tables.Select(t => t.Convention))
             {
                 foreach (var rule in CosmosRules.GetRules(convention))
                 {
@@ -472,7 +536,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var implementor = new ClrCursorRelImplementor(best.getCluster().getRexBuilder(), new java.util.HashMap());
             var factory = implementor.ImplementRoot((ClrCursorRel)best, ClrCursorPrefer.Array);
 
-            var context = new TestDataContext(rootSchema.plus(), typeFactory);
+            var context = new TestDataContext(rootSchema.plus(), typeFactory, parameters);
 
             var rows = new List<object>();
 
@@ -590,9 +654,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Plans and executes a statement one way, and keeps a failure as an answer rather than
         /// letting it escape.
         /// </summary>
-        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null)
+        static async Task<Outcome> Attempt(string sql, bool pushdown, ICollection<string>? sent = null, IReadOnlyList<object?>? parameters = null)
         {
-            try { return new Outcome((await Run(sql, pushdown, sent)).Select(Canonical).ToList(), null); }
+            try { return new Outcome((await Run(sql, pushdown, sent, CorpusContainers, parameters)).Select(Canonical).ToList(), null); }
             catch (Exception e) when (e is not SkipException) { return new Outcome(null, e); }
         }
 
@@ -690,13 +754,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// statement whose oracle raises compares nothing at all, and belongs in
         /// <see cref="WithoutAnOracle"/> with the reason rather than in a list that claims a comparison.
         /// </remarks>
-        static async Task<string?> Compare(string sql, bool ordered)
+        static async Task<string?> Compare(string sql, bool ordered, IReadOnlyList<object?>? parameters = null)
         {
-            var oracle = await Attempt(sql, pushdown: false);
+            var oracle = await Attempt(sql, pushdown: false, parameters: parameters);
             if (oracle.Raised is Exception e)
                 return $"{sql}\n  the oracle failed to run, so this compares nothing: {e.Message}";
 
-            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true));
+            return Refines(sql, ordered, oracle, await Attempt(sql, pushdown: true, parameters: parameters));
         }
 
         /// <summary>
@@ -742,14 +806,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT p.\"Label\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p ORDER BY p.\"Label\" NULLS FIRST", true),
             ("SELECT c.\"id\" FROM typed AS c ORDER BY c.\"DOC\"", true),
 
-            // And where it still pushes: a path the container declares a string or null, whose text is
-            // the stored value, in both directions and with a page. Beside it the fragments and the
+            // And where it pushed: a path the container declares a string or null, whose text is the
+            // stored value, in both directions and with a page -- until the service's order was asked
+            // the string's characters too, which nothing here states. Beside it the fragments and the
             // arrays, which never do -- the service put [] after [1, 5] and {"b":1} before {"a":2},
             // neither of which is their text's order or SQL's.
             ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_VALUE(c.\"DOC\", '$.t') FROM ordering AS c ORDER BY 1 DESC NULLS LAST FETCH NEXT 3 ROWS ONLY", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.f') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
             ("SELECT JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+
+            // The order of strings beyond the BMP, in a comparison of two paths: U+E000 < U+1F600 is true at the service,
+            // which compares by code point, and false in process, which compares by UTF-16 code unit. Recorded as a
+            // divergence while it pushed; nothing states the characters of either path, and the rows the service drops
+            // never arrive to be checked, so it is answered in process. The sorts and the extreme recorded beside it push
+            // again, completed as the rows arrive: see CompletedByTheReader.
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false),
+
+            // Two values the container declares may be a JSON null, compared with each other: t a string or null, null in
+            // document 5, and k an integer or null, null in 4. The service equates a JSON null with a JSON null, and holds
+            // one at most and at least the other, so `c.t = c.t`, `c.k <= c.k` and `c.k >= c.k` kept the documents holding
+            // one, where Calcite's comparison with a null is unknown; `<` keeps nothing either way, and still pushes.
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.t') = JSON_VALUE(c.\"DOC\", '$.t')", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) = JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) <= JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) >= JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER) < JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)", false),
 
             // A typed accessor over the typed container's label, which holds 30 in document 2, an array
             // in 4, an object in 5, null in 6 and nothing in 7: the five a RETURNING INTEGER answers for,
@@ -810,20 +892,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // The spelling is the one the oracle can evaluate: JSON_QUERY with an array RETURNING
             // agrees pushed and in process, where StringToArray has no Calcite implementation. The
             // container side projects document columns only, since the element binds nothing where a
-            // rule decides; and the bike with two tags is two rows, the one with none is none.
-            ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.k = p.\"id\"", false),
+            // rule decides; and the bike with two tags is two rows, the one with none is none. Over the
+            // first seven documents, whose tags are strings: Calcite's VARCHAR ARRAY asserts its
+            // elements, and raises over the boolean a later one holds.
+            ("SELECT v.k, p.\"name\" FROM (VALUES ('1'), ('2')) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"name\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t WHERE c.\"id\" IN ('1', '2', '3', '4', '5', '6', '7')) AS p ON v.k = p.\"id\"", false),
 
             // A lookup on a number or a boolean (review probes I4, I12 and I13). The keys reached the
             // batch in Java's boxes, which the SDK wrote as objects, and the service matched nothing:
             // each returned no rows where the in-process join returned them. Integer keys against an
             // integer column, a DOUBLE and a BIGINT against it, a _ts read by one statement and looked
-            // up by another, a boolean through a filtering view, and a _ts through a traversal (K9).
+            // up by another, a boolean through a filtering view, and a _ts through a traversal (K9), over
+            // the documents whose tags are strings, as the traversal above.
             ("SELECT t.\"id\" FROM (VALUES (120), (80)) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS DOUBLE)), (CAST(80.5 AS DOUBLE))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT t.\"id\" FROM (VALUES (CAST(120 AS BIGINT)), (CAST(80 AS BIGINT))) AS v(k) JOIN products AS t ON v.k = JSON_VALUE(t.\"DOC\", '$.price' RETURNING INTEGER)", false),
             ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN products AS p ON v.\"ts\" = p.\"_ts\"", false),
             ("SELECT p.\"id\" FROM (VALUES (TRUE)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label' RETURNING BOOLEAN) AS \"b\" FROM typed AS c WHERE c.\"id\" = '3') AS p ON v.k = p.\"b\"", false),
-            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN (SELECT c.\"id\", c.\"_ts\" AS \"ts\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t) AS p ON v.\"ts\" = p.\"ts\"", false),
+            ("SELECT p.\"id\" FROM (SELECT c2.\"_ts\" AS \"ts\" FROM products AS c2 WHERE c2.\"id\" = '1') AS v JOIN (SELECT c.\"id\", c.\"_ts\" AS \"ts\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS t WHERE c.\"id\" IN ('1', '2', '3', '4', '5', '6', '7')) AS p ON v.\"ts\" = p.\"ts\"", false),
 
             // A case fold under LIKE, rendered as the service's case-insensitive CONTAINS, STARTSWITH
             // and ENDSWITH (#84). Over the accessor it takes the guard LIKE takes; over a promoted
@@ -1053,6 +1138,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[2]') FROM products AS c", false),
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.tags[3]') FROM products AS c", false),
             ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') = 'outdoor'", false),
+
+            // An element compared as text, where tags[0] holds a string, a number, a boolean, an object and a null. It
+            // has no document path, and was read as a value its type alone knew, a string: each was sent exact, as
+            // c.tags[0] < @p0, and lost the number and the boolean, which Calcite compares as their text -- 5 renders
+            // '5', below 'm', and true 'true', above 'BIKES' -- and the service across types.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') < 'm'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') >= 'm'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') > 'BIKES'", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE NOT (JSON_VALUE(c.\"DOC\", '$.tags[0]') <= 'outdoor')", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[1]') >= 'outdoor'", false),
+
+            // A value the service computes, which may hold a JSON null where Calcite reads null: the CASE hands the
+            // marathon's null price through, and the service's null <= null keeps the row Calcite's unknown drops.
+            ("SELECT c.\"id\" FROM products AS c WHERE CASE WHEN c.\"$.category\" = 'bikes' THEN CAST(NULL AS INTEGER) ELSE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) END <= JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) + 1 > JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", false),
 
             // CASE, whose arms are where an unknown condition goes somewhere visible.
             ("SELECT c.\"id\", CASE WHEN c.\"$.category\" = 'bikes' THEN 1 ELSE 0 END FROM products AS c", false),
@@ -1590,10 +1690,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <b>Empty for a long time, and that was the point of keeping it.</b> Repairing the oracle put
         /// five statements here — negation over a null-valued property, grouping and dedup over one, and
         /// an <c>ARRAY_SLICE</c> origin adjustment that was never needed — and each was fixed and
-        /// promoted into the corpus. What it holds now is one open defect, the order of strings beyond
-        /// the BMP, witnessed in a sort, a comparison and an aggregate: over <c>id</c>, over a path
-        /// declared a string, and over one a filter proves present, which lets the service take the
-        /// sort under Calcite's own placement.
+        /// promoted into the corpus. Then nine, the order of strings beyond the BMP witnessed in a sort,
+        /// a comparison and an aggregate, which went to the corpus once the service's order was asked
+        /// what it knows of the characters it orders (DESIGN.md, The service's order, asked once).
         /// </para>
         /// <para>
         /// A statement belongs here only while it is an open defect with a witness, never as a
@@ -1602,27 +1701,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// into the corpus rather than sit here looking settled.
         /// </para>
         /// </remarks>
-        static readonly (string Sql, bool Ordered, string Reason)[] Divergences =
-        [
-            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true,
-                "The service orders strings by code point and Calcite by UTF-16 code unit, measured on the vnext-preview emulator: U+E000, U+FF21 and U+FFFD sort below U+1F600 at the service and above it in process, a supplementary character being encoded from 0xD800; below the surrogates the two orders are one. Whatever order the service computes is its own -- a sort, a range comparison, a MAX -- over id as over a declared string. Open: TODO.md section 4, DESIGN.md under Ordering a sort key the way it reads."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true,
-                "The same order over a path declared a string, which is the one text sort key the service is given. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true,
-                "The same sort under Calcite's default placement, which a filter proving the key present lets the service take: the clauses after a filter read the rows it kept. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true,
-                "The same sort descending. As the id above."),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true,
-                "The same sort by a key the statement does not select. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", false,
-                "The same sort paged, where the order chooses the rows: a and U+1F600 in process, a and U+E000 at the service. As the id above."),
-            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true,
-                "The same sort over a key a comparison proves present; the comparison itself agrees, its literal lying below the surrogates. As the id above."),
-            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') < JSON_VALUE(c.\"DOC\", '$.u')", false,
-                "The same order in a comparison, which a declared string pushes exactly: U+E000 < U+1F600 is true at the service and false in process. As the id above."),
-            ("SELECT MAX(c.\"id\") FROM ordering AS c", false,
-                "The same order in an aggregate over a column that cannot be null: the service's MAX is U+1F600 and Calcite's U+FFFD. As the id above."),
-        ];
+        static readonly (string Sql, bool Ordered, string Reason)[] Divergences = [];
 
         /// <summary>
         /// Statements with no oracle to compare against, and why there is none.
@@ -1680,6 +1759,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // predicate pushdown is about: one of the two elements, not both and not none.
         ];
 
+        /// <summary>
+        /// Statements with parameters, and the values each is run with: the corpus's comparisons where the value arrives
+        /// with the execution.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A parameter is what Calcite reads it as.</b> The validator gives <c>?</c> the type of what it is compared
+        /// with, and Calcite's generated code holds a string to that type's length: <c>RETURNING VARCHAR(1) &lt; ?</c>
+        /// bound to <c>'ab'</c> compares with <c>'a'</c>, and keeps none of <c>ordering</c>'s <c>s</c>, all at or above
+        /// it. Sent as it was bound, the service compared with <c>'ab'</c> and kept <c>'a'</c>; and the equality kept
+        /// nothing where Calcite keeps <c>'a'</c>. A <c>CHAR(3)</c> is padded too.
+        /// </para>
+        /// </remarks>
+        static readonly (string Sql, object?[] Parameters, bool Ordered)[] WithParameters =
+        [
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) < ?", ["ab"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) = ?", ["ab"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING VARCHAR(1)) >= ?", ["a\uE000"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s' RETURNING CHAR(3)) = ?", ["a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ?", ["\uE000"], false),
+
+            // An element compared as text with a parameter, which no anchor makes exact: the element may be a number.
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') < ?", ["m"], false),
+            ("SELECT c.\"id\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.tags[0]') > ?", ["BIKES"], false),
+
+            // A comparison under an OR, its conjunct rechecked whole where a value is no anchor, the equality beside it
+            // read back as the service answered it.
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["a", "a", "0"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\uE000", "\uE000", "a"], false),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\U0001F600", "\U0001F600", "\uFFFD"], false),
+        ];
+
+        /// <summary>
+        /// Every statement with parameters answers as Calcite would, with the values it is run with.
+        /// </summary>
+        [Fact]
+        public async Task EveryParameterisedStatementAgreesWithTheOracle()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var failures = new List<string>();
+
+            foreach (var (sql, parameters, ordered) in WithParameters)
+                if (await Compare(sql, ordered, parameters) is string failure)
+                    failures.Add($"{failure}\n  with: [{string.Join(", ", parameters.Select(Canonical))}]");
+
+            failures.Should().BeEmpty("every pushdown must answer as Calcite would, whatever its parameters hold:\n" + string.Join("\n", failures));
+        }
+
         [Fact]
         public async Task EveryStatementAgreesWithTheOracle()
         {
@@ -1695,6 +1825,85 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     failures.Add(failure);
 
             failures.Should().BeEmpty("every pushdown must answer as Calcite would:\n" + string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// The orders of strings beyond the BMP that the reader completes as the rows arrive, each pushed and checked:
+        /// the statement, whether the fallback is expected to run, and whether the answer is a sequence.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Recorded as divergences while they pushed unchecked</b>, then answered in process once the service's order was
+        /// asked the characters it orders (DESIGN.md, <em>The service's order, asked once</em>), and pushed again once the
+        /// rows could complete the proof (<em>The anchored read</em>). The service orders U+E000, U+FF21 and U+FFFD below
+        /// U+1F600 by code point, and Calcite above it by UTF-16 code unit: the page that chose a and U+E000 where SQL
+        /// chooses a and U+1F600, and the service's <c>MAX</c> of U+1F600 against Calcite's U+FFFD. The last is the
+        /// descending sort under SQL's placement, never recorded, over the same characters.
+        /// </para>
+        /// <para>
+        /// The <c>ordering</c> container holds those characters in its ids and in <c>s</c> and <c>u</c>, so each of these
+        /// is one where the service's answer is not Calcite's as it comes: the reader re-sorts a run of rows between
+        /// anchors, or reads the fallback, and says which on its activity. <see cref="EveryOrderTheReaderCompletesAgrees"/>
+        /// holds it to having done one or the other, so that agreement here is known to be the reader's and not chance.
+        /// </para>
+        /// </remarks>
+        static readonly (string Sql, bool Ordered)[] CompletedByTheReader =
+        [
+            ("SELECT c.\"id\" FROM ordering AS c ORDER BY c.\"id\"", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 NULLS FIRST", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 DESC", true),
+            ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY JSON_VALUE(c.\"DOC\", '$.s')", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IS NOT NULL ORDER BY 1 FETCH NEXT 2 ROWS ONLY", true),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.u') FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.u') > 'a' ORDER BY 1", true),
+            ("SELECT MAX(c.\"id\") FROM ordering AS c", false),
+            ("SELECT JSON_VALUE(c.\"DOC\", '$.s') FROM ordering AS c ORDER BY 1 DESC NULLS LAST", true),
+        ];
+
+        /// <summary>
+        /// Every order the reader completes answers as Calcite would, was sent to the service, and was completed: a run
+        /// re-sorted between anchors, or the fallback read.
+        /// </summary>
+        [Fact]
+        public async Task EveryOrderTheReaderCompletesAgrees()
+        {
+            if (_container is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var failures = new List<string>();
+
+            foreach (var (sql, ordered) in CompletedByTheReader)
+            {
+                if (await Compare(sql, ordered) is string failure)
+                    failures.Add(failure);
+
+                var sent = new List<string>();
+                var orders = new List<System.Diagnostics.Activity>();
+
+                using (var test = new System.Diagnostics.Activity("completed").Start())
+                using (var listener = new System.Diagnostics.ActivityListener
+                {
+                    ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
+                    Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) => System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+                    ActivityStopped = activity =>
+                    {
+                        if (activity.OperationName == "cosmos.order" && activity.TraceId == test.TraceId)
+                            lock (orders)
+                                orders.Add(activity);
+                    },
+                })
+                {
+                    System.Diagnostics.ActivitySource.AddActivityListener(listener);
+                    await Run(sql, pushdown: true, sent);
+                }
+
+                if (sent.Any(s => s.Contains(" ORDER BY ", StringComparison.Ordinal) || s.Contains("MAX(", StringComparison.Ordinal)) == false)
+                    failures.Add($"{sql}\n  sent no order: {string.Join(" || ", sent)}");
+                else if (orders.Any(a => a.GetTagItem("cosmos.order.reissued") is true || a.GetTagItem("cosmos.order.buffered") is int buffered && buffered > 0) == false)
+                    failures.Add($"{sql}\n  the reader neither re-sorted a run nor read the fallback: {string.Join("; ", orders.Select(a => $"{a.GetTagItem("cosmos.order.program")} reissued={a.GetTagItem("cosmos.order.reissued")} buffered={a.GetTagItem("cosmos.order.buffered")}"))}\n  sent: {string.Join(" || ", sent)}");
+            }
+
+            failures.Should().BeEmpty("every order the reader completes must be Calcite's, and completed:\n" + string.Join("\n", failures));
         }
 
         [Fact]

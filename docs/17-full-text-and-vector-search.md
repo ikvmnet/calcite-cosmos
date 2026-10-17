@@ -12,7 +12,7 @@ a query can name them, and translates them into the service's own.
 | `FULLTEXTCONTAINSANY(path, keyword, …)` | boolean — any keyword occurs | `WHERE` |
 | `FULLTEXTSCORE(path, keyword, …)` | a BM25 relevance score | `ORDER BY` only |
 | `RRF(score, score, …[, weights])` | a fused score (reciprocal rank fusion) | `ORDER BY` only |
-| `VECTORDISTANCE(v1, v2[, bruteForce[, options]])` | similarity | anywhere; ordering by it ranks |
+| `VECTORDISTANCE(v1, v2[, bruteForce[, options]])` | similarity | anywhere; as a ranking only inside `RRF` (17.3) |
 
 ```sql
 SELECT c."id"
@@ -48,7 +48,7 @@ Ordering by a score becomes Cosmos's `ORDER BY RANK`:
 ```sql
 SELECT c."id"
 FROM "products" AS c
-ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.description'), 'steel', 'frame')
+ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.description'), 'steel', 'frame') DESC
 FETCH FIRST 10 ROWS ONLY
 → SELECT TOP 10 VALUE { "id": c.id } FROM products c
   ORDER BY RANK FULLTEXTSCORE(c.description, @p0, @p1)
@@ -59,7 +59,7 @@ hybrid search:
 
 ```sql
 ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.description'), 'steel'),
-             VECTORDISTANCE(JSON_QUERY(c."DOC", '$.embedding'), ?))
+             VECTORDISTANCE(JSON_QUERY(c."DOC", '$.embedding'), ?)) DESC
 ```
 
 Rules the service imposes:
@@ -69,7 +69,16 @@ Rules the service imposes:
   orders the rows and never appears in the result.
 - **`ORDER BY RANK` ranks without filtering.** It returns every document, matches first. Add a
   `FULLTEXTCONTAINS…` predicate to return only matches.
-- **No other ordering**, and no `GROUP BY`, in a ranked statement.
+- **Descending, and only descending.** `ORDER BY RANK` takes no direction — measured on Azure, the
+  service refuses `ASC` and `DESC` after it — and returns the best match first, which for a score is
+  the highest. So `ORDER BY <score> DESC` is sent as a bare `ORDER BY RANK`, and an ascending ordering
+  on a score, the default when no direction is written, is never pushed: it stays in process, where a
+  score has no value, and the statement fails. Through a connection the message says to write `DESC`;
+  through a planner you build (Chapter 21) Calcite says it *cannot translate call FULLTEXTSCORE*. Write
+  `DESC`.
+- **No other ordering**, and no `GROUP BY`, in a ranked statement. A `VECTORDISTANCE` alone is not
+  ranked: which way it ranks is the container's distance function's, so an ordering by it runs in
+  process over the distances the service computes. Inside `RRF` it ranks.
 
 > **Ranking needs a planner you build.** Through a `CalciteConnection` the score-ordering does not
 > reach the service: the connection removes the extra score column only after planning, so the

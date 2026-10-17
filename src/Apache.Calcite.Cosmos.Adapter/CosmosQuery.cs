@@ -49,6 +49,16 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// Never set together with <see cref="PointReadId"/>.
     /// </para>
     /// </param>
-    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null);
+    /// <param name="Order">
+    /// What the reader does to complete a proof the plan could not, or <c>null</c> where every order the statement asks of
+    /// the service is proved and its rows are read as they come.
+    /// <para>
+    /// Set where a sort, an extreme or a comparison against a parameter is
+    /// <see cref="Metadata.CosmosOrderVerdictKind.Anchored"/>: see <see cref="CosmosOrderProgram"/>. Never set together
+    /// with <see cref="PointReadId"/> or <see cref="PointReadIds"/>, a statement that orders, aggregates or compares
+    /// against a parameter not being a lookup.
+    /// </para>
+    /// </param>
+    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null, CosmosOrderProgram? Order = null);
 
 }

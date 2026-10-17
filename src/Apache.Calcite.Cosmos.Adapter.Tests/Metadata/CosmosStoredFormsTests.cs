@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
@@ -16,6 +19,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// </remarks>
     public class CosmosStoredFormsTests
     {
+
+        /// <summary>
+        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What the service's order of such a path rests on.</b> The service orders a document's strings by code
+        /// point and Calcite by UTF-16 code unit, and the two part only over a surrogate beside a unit from U+E000 (see
+        /// <see cref="CosmosServiceOrder"/>), which a path in a stored form never holds — so a stored form is a proof of
+        /// the path's characters, and a form registered later that wrote anything else would be a wrong order this
+        /// catches.
+        /// </para>
+        /// <para>
+        /// Each form's language is the canonical spelling it renders (<see cref="CosmosStoredForms"/>): a form is
+        /// recognised only from a pattern whose every string is canonical. So rendering values across each form's range
+        /// is rendering its language's shape.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void EveryStoredFormWritesAscii()
+        {
+            var instants = new[] { new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2024, 1, 15, 10, 30, 56, DateTimeKind.Utc), new DateTime(2024, 1, 15, 10, 30, 56, 123, DateTimeKind.Utc), new DateTime(9999, 12, 31, 23, 59, 59, 999, DateTimeKind.Utc) };
+            var uuids = new[] { Guid.Empty, Guid.Parse("123e4567-e89b-12d3-a456-426614174000"), Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff") };
+            var integers = new long[] { 0, 7, 42, 99999, long.MaxValue };
+
+            var forms = CosmosStoredForms.Registered.ToList();
+            var writing = 0;
+
+            foreach (var form in forms)
+            {
+                // A form of a time of day writes no literal from an instant, its literals coming from elsewhere; what it
+                // is held to is that what it writes is ASCII.
+                var written = instants.Select(i => CosmosStoredForms.RenderDateTime(form, i))
+                    .Concat(uuids.Select(u => CosmosStoredForms.RenderUuid(form, u)))
+                    .Concat(integers.Select(n => CosmosStoredForms.RenderInteger(form, n)))
+                    .OfType<string>()
+                    .ToList();
+
+                writing += written.Count > 0 ? 1 : 0;
+                written.Should().OnlyContain(text => text.All(c => c < ''), $"{form.Name} writes ASCII");
+            }
+
+            writing.Should().BeGreaterThan(forms.Count / 2, "most forms write a literal from these values, so this asks something of them");
+        }
 
         /// <summary>
         /// Written with <c>\d</c> it is the same pattern, which normalisation already knew.

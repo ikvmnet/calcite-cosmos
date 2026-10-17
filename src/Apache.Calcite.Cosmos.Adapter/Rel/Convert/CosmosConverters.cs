@@ -168,11 +168,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             EnsureProjection(implementor, input.getRowType());
 
+            var query = implementor.Build();
+
+            // The lookup reads its statement batch by batch through the executor, not through the reader that completes
+            // a proof the plan could not (CosmosOrderProgram); CosmosLookupJoinRule declines a probe that would need one.
+            // Reaching here with one is that decline missed, and a failure is the answer rather than rows unchecked.
+            if (query.Order is not null)
+                throw new CosmosTranslationException("A lookup's probe carries a comparison or an order the reader would have to check, which the lookup does not read through.");
+
             // A batch restriction is not a lookup by id, whatever the rest of the predicate said. The
             // extractor reads literals only and so would not have offered one, but a point read applies
             // no predicate at all — it would ignore this and return a document the batch did not ask
             // for, which is a wrong answer rather than a slow one. Both forms, for the same reason.
-            return (implementor.Build() with { PointReadId = null, PointReadIds = null }, fields, readings);
+            return (query with { PointReadId = null, PointReadIds = null }, fields, readings);
         }
 
         /// <summary>

@@ -110,6 +110,38 @@ When an account's throughput is exhausted, Cosmos answers 429 and the SDK retrie
 according to the client's retry options. The adapter leaves that to the client; configure retries on
 the `CosmosClient` through a client factory (Chapter 5) if the defaults do not suit.
 
+## 19.8 Orders checked as the rows arrive
+
+A sort, a `MIN` or `MAX`, or a comparison with a parameter over strings whose characters nothing
+declares — `id`, or a path declared only `"type": "string"` — is sent to the service and checked by the
+reader as the rows come back (Chapter 9.3). So is a `RETURNING BIGINT` sort over an integer nothing
+bounds. What that costs:
+
+- **On data whose strings lie below U+D800 — nearly all text — a scan of each key, and nothing else.**
+  The statement is sent as written, read once, and its page is the service's page. The statement also
+  selects each key it checks under a member of its own (`"$k0": c.id`), a few bytes a row.
+- **Where a page's first or last row holds a character at or above U+D800** — an emoji, a private-use
+  character, a fullwidth form, U+FFFD — the reader cannot tell whether the service chose Calcite's rows,
+  and reads the statement again without its `OFFSET`/`LIMIT`, in order, stopping once the page is out and
+  the next row below U+D800 has arrived. That is one more request, never more rows than sorting in process
+  reads. A `DISTINCT` under an `OFFSET` is read that way from the start.
+- **Where a keyset seek's parameter holds such a character**, the comparison is sent weakened to the part
+  of the value below U+D800 and rechecked in process: the page reads from a little before the value
+  rather than from it.
+- **Where a `MIN` or `MAX` comes back as such a string**, or as a number past 2^53, its argument is read
+  again in order, up to the first value below the line.
+- **Rows between two such values** are held and re-sorted: as many as there are in a row of them.
+
+`cosmos.order.reissued` and `cosmos.order.buffered` on the `cosmos.order` activity say when either
+happened (Chapter 20.3). **Declaring the characters removes the check altogether**: a `pattern` that rules
+out U+D800 and above — an identifier on `id`, a UUID, `^[\u0000-퟿]*$` — proves the order when the
+plan is made, and the statement is read as it comes (Chapter 14.4). A `minimum` and `maximum` within
+±2^53 do the same for an integer.
+
+Each statement the reader sends is read by one iterator, from its start. A cross-partition `ORDER BY`
+resumed from a continuation token in a new iterator was measured to lose and repeat rows, so the
+fallback is always a statement of its own.
+
 ---
 
 [← Previous: Geography](18-geography.md) · [Contents](README.md) · [Next: Monitoring and diagnostics →](20-monitoring.md)

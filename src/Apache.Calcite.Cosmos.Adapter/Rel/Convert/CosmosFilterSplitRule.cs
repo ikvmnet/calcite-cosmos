@@ -418,6 +418,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 ? rexBuilder.makeCall(call.getOperator(), rawSubject, right)
                 : rexBuilder.makeCall(call.getOperator(), left, rawSubject);
 
+            // The string branch is an order the service computes, and keeps exactly the strings Calcite's does only
+            // where the strings on both sides order alike by code point and by UTF-16 code unit: asked as every such
+            // order is (CosmosServiceOrder.Compare), of the facts the weakening is decided under. A parameter may hold
+            // any character, and a literal under a charset wider than the default may hold one from U+E000; where it
+            // is not proved, the comparison stays above whole and only the presence the generic weakening finds is
+            // pushed.
+            if (kind is not (SqlKind.__Enum.NOT_EQUALS or SqlKind.__Enum.LIKE)
+                && translator.CompareOrder(ReferenceEquals(subject, left) ? rawSubject : left, ReferenceEquals(subject, left) ? right : rawSubject, CosmosRexTranslator.IsInclusive(kind)) is { IsProved: false })
+                return null;
+
             return Guarded(
                 raw,
                 comparison,

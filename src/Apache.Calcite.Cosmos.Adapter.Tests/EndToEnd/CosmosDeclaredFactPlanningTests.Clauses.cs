@@ -16,10 +16,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A string or null, and not required: what a sort is refused over for its null placement, and pushed over once the
-        /// filter has removed the nulls.
+        /// filter has removed the nulls. The strings a domain below U+D800, so that only the placement is in question: the
+        /// service orders strings by code point and Calcite by UTF-16 code unit, which part only beyond.
         /// </summary>
         const string Optional = """
-        { "type": "object", "properties": { "t": { "type": ["string", "null"] }, "k": { "type": ["integer", "null"] } } }
+        { "type": "object", "properties": { "t": { "enum": ["A", "a", "B", null] }, "k": { "type": ["integer", "null"] } } }
         """;
 
         const string T = """JSON_VALUE(c."DOC", '$.t')""";
@@ -75,8 +76,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A string the filter's kind declares is a sort key and a grouping key; the kind that declares an integer there
-        /// is neither, its rendering being text the service orders and groups as numbers.
+        /// A string the filter's kind declares is a grouping key, and a sort key whose order the rows complete, its
+        /// characters unknown; the kind that declares an integer there is neither, its rendering being text the service
+        /// orders and groups as numbers.
         /// </summary>
         [Fact]
         public void AKindTheFilterKeepsDeclaresTheKeysText()
@@ -85,8 +87,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
             const string Label = """JSON_VALUE(c."DOC", '$.label')""";
 
+            // The text, but not its characters: a label may hold any, and the service orders strings by code point where
+            // Calcite orders them by UTF-16 code unit. So the sort is the service's checked as the rows arrive, and the
+            // grouping, which asks only equality, is the service's outright.
             var sorted = PlanToCosmos($"""SELECT {Label} FROM items AS c WHERE {Kind} = 'a' AND {Label} IS NOT NULL ORDER BY 1""", container, out _);
             Query(FindCosmos(sorted), container).Sql.Should().EndWith("ORDER BY c.label ASC");
+            Query(FindCosmos(sorted), container).Order!.Keys.Should().ContainSingle().Which.Anchor.Should().Be(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosOrderAnchor.Text);
 
             var grouped = PlanToCosmos($"""SELECT {Label}, COUNT(*) FROM items AS c WHERE {Kind} = 'a' GROUP BY {Label}""", container, out _);
             PlanText(grouped).Should().StartWith("CosmosToClrCursorConverter", "the grouping reaches the service: " + PlanText(grouped));
@@ -111,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Container(Planning.CosmosPushdownProbeTests.KindsSchema);
             const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
             string Ranked(string kind) =>
-                $"""SELECT UPPER(JSON_VALUE(c."DOC", '$.label')) AS "L" FROM items AS c WHERE {Kind} = '{kind}' ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.label'), 'steel') FETCH FIRST 10 ROWS ONLY""";
+                $"""SELECT UPPER(JSON_VALUE(c."DOC", '$.label')) AS "L" FROM items AS c WHERE {Kind} = '{kind}' ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.label'), 'steel') DESC FETCH FIRST 10 ROWS ONLY""";
 
             var ranked = PlanToCosmos(Ranked("a"), container, out _);
             PlanText(ranked).Should().Contain("CosmosRank", "the rank reaches the service: " + PlanText(ranked));

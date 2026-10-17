@@ -83,6 +83,20 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
             public virtual bool Entails(JsonClaim other) => Equals(other);
 
+            /// <summary>
+            /// Determines whether one of JSON's own claims, holding of a value, establishes this one of the same value.
+            /// </summary>
+            /// <remarks>
+            /// The other direction, and asked where <see cref="Entails"/> is: by the meet of a union, which keeps a claim
+            /// every branch entails, and by the nullable union, which keeps a claim a null standing in for the value
+            /// satisfies. A claim about what a value is <em>if</em> it is one kind of thing — what the characters of a
+            /// string are — holds of every value of another kind, a null among them, and says so here; the default
+            /// says nothing establishes it, which loses facts rather than inventing them.
+            /// </remarks>
+            /// <param name="other">A claim of JSON's own, of the same path.</param>
+            /// <returns><c>true</c> where it does; the default answers <c>false</c>.</returns>
+            public virtual bool IsEntailedBy(JsonClaim other) => false;
+
         }
 
         /// <summary>

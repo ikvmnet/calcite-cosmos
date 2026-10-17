@@ -227,8 +227,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void OrderingByAScoreBecomesARankClause()
         {
-            Render(Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY"))
+            Render(Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY"))
                 .Should().Be("SELECT TOP 10 VALUE { \"id\": c.id } FROM products c ORDER BY RANK FULLTEXTSCORE(c.name, @p0)");
+        }
+
+        /// <summary>
+        /// An ascending score is not ranked, and the refusal it meets in process says to write <c>DESC</c>.
+        /// </summary>
+        /// <remarks>
+        /// <c>ORDER BY RANK</c> returns the best match first, and the service refuses a direction for it — measured on
+        /// Azure, SC2222 for both <c>ASC</c> and <c>DESC</c> — so the one ordering it answers is a descending score. An
+        /// ascending one would have come back best first, which is the other order. It stays with Calcite, where the
+        /// score has no value; the sentence the statement then fails with is the one place to say what to write. It
+        /// cannot see the ordering it is beneath, so it says what a descending one does too, and never tells a statement
+        /// that already says <c>DESC</c> only to add it. The message a statement raises through a connection is
+        /// <c>CosmosConnectionFunctionTests.AnAscendingScoreThroughAConnectionSaysToWriteDesc</c>.
+        /// </remarks>
+        [Fact]
+        public void AnAscendingScoreIsNotRankedAndItsRefusalNamesDesc()
+        {
+            var ascending = () => Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
+            ascending.Should().Throw<Exception>("no rank renders an ascending score, and nothing else pushes it");
+
+            CosmosSchemaFunction.Refusal("FULLTEXTSCORE").Should().Contain("write ORDER BY FULLTEXTSCORE(...) DESC").And.Contain("ikvmnet/calcite-cosmos#46");
+            CosmosSchemaFunction.Refusal("RRF").Should().Contain("ORDER BY RRF(...) DESC");
+            CosmosSchemaFunction.Refusal("VECTORDISTANCE").Should().NotContain("DESC", "which way a distance ranks is the container's");
         }
 
         /// <summary>
@@ -239,7 +262,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             Render(Plan(
                     "SELECT c.\"id\" FROM products AS c " +
-                    "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) " +
+                    "ORDER BY RRF(FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel'), FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.tags'), 'frame')) DESC " +
                     "FETCH FIRST 10 ROWS ONLY"))
                 .Should().Contain("ORDER BY RANK RRF(FULLTEXTSCORE(c.name, @p0), FULLTEXTSCORE(c.tags, @p1))");
         }

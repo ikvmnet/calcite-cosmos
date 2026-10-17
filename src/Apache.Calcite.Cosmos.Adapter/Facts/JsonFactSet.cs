@@ -126,12 +126,35 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _vocabulary!.TryForm(represents.Form, out var form) && t.Form(p, form);
 
                 case JsonClaim.Extension extension:
-                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key);
+                    return _vocabulary!.TryExtension(extension, out var key) && t.Extension(p, key)
+                        || IsEntailedByWhatIsKnown(t, p, extension);
 
                 default:
                     return false;
             }
         });
+
+        /// <summary>
+        /// Determines whether an extension follows from the rest of what is known of a path: a domain every value of
+        /// which satisfies it, or a stored form that establishes it.
+        /// </summary>
+        /// <remarks>
+        /// The theory knows an extension only as it was stated. What JSON's own claims establish of it is the
+        /// extension's to say (<see cref="JsonClaim.Extension.IsEntailedBy"/>), and is read here the way a bound is read
+        /// off a domain: so a filter's <c>IN</c> or a schema's <c>enum</c> says the characters of the strings it lists,
+        /// and a stored form says that it is ASCII, through the claim's own reading of each and nowhere else.
+        /// </remarks>
+        bool IsEntailedByWhatIsKnown(JsonFactTables t, JsonDocumentPath path, JsonClaim.Extension extension)
+        {
+            if (t.TryDom(path, out var dom) && Decode(dom) is { } values && extension.IsEntailedBy(new JsonClaim.OneOf(values)))
+                return true;
+
+            foreach (var (form, token) in _vocabulary!.Forms)
+                if (t.Form(path, token) && extension.IsEntailedBy(new JsonClaim.Represents(form)))
+                    return true;
+
+            return false;
+        }
 
         /// <summary>
         /// Returns every stored form known for a path, which may be none.
@@ -222,39 +245,6 @@ namespace Apache.Calcite.Cosmos.Facts
         });
 
         /// <summary>
-        /// Determines whether a path is guaranteed to hold a scalar of a known type in every document.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <b>Two claims, and both are needed.</b> The path has to be <em>there</em>, since an accessor
-        /// answers null over an absent one; and it has to hold a scalar of a known type, since the
-        /// accessor answers null for a JSON null and for an object or an array alike — neither being a
-        /// scalar, which is SQL/JSON's own line. A type admitting null is not enough, for the same
-        /// reason the presence is not.
-        /// </para>
-        /// <para>
-        /// <b>One type, too.</b> A string at one document and a number at another are both scalars, and the service orders
-        /// them by type before value, where the accessor's text orders them as text. So the types are those of one scalar
-        /// kind — strings, numbers or booleans — as a single declared type always said.
-        /// </para>
-        /// <para>
-        /// <b>Asked by two callers for two reasons that turn out to be one.</b> A sort wants it for the
-        /// null placement — Cosmos orders nulls first ascending where Calcite's default is last, so a
-        /// key that cannot be null leaves the two nothing to disagree about. A projection that renders
-        /// a guarded accessor wants it to know the guard is vacuous, so that ordering by the raw path
-        /// orders the rows the way ordering by the rendered column would. Both are the statement that
-        /// no document makes the accessor answer something other than the value.
-        /// </para>
-        /// </remarks>
-        /// <param name="path">The path.</param>
-        /// <returns><c>true</c> where every document holds a scalar of a known type there.</returns>
-        public bool IsAlwaysScalar(JsonDocumentPath path) => Read(false, t =>
-            t.Present(path)
-                && t.TryTypes(path, out var types)
-                && types.Contains(NullType) == false
-                && IsOneScalarKind(types));
-
-        /// <summary>
         /// Determines whether every value a path holds is a scalar of one kind, or null.
         /// </summary>
         /// <remarks>
@@ -287,6 +277,44 @@ namespace Apache.Calcite.Cosmos.Facts
                     : (false, JsonScalar.Null));
 
             value = only;
+            return found;
+        }
+
+        /// <summary>
+        /// Returns the values a path holds wherever it is there, where they are finitely many and known.
+        /// </summary>
+        /// <remarks>
+        /// Silent about whether the path is there, as <see cref="TryGetValue"/> is: an <c>enum</c> or an <c>IN</c>
+        /// constrains the value only where there is one. What an order over the path needs of it is the characters and
+        /// the types of what may be there, and that a path holding one value is a key nothing orders by — see
+        /// <c>CosmosServiceOrder</c>.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <param name="values">The values, in no order that means anything.</param>
+        /// <returns><c>true</c> where the values are known.</returns>
+        public bool TryGetDomain(JsonDocumentPath path, out IReadOnlyList<JsonScalar> values)
+        {
+            var known = Read<IReadOnlyList<JsonScalar>?>(null, t => t.TryDom(path, out var dom) ? Decode(dom) : null);
+
+            values = known ?? Array.Empty<JsonScalar>();
+            return known is not null;
+        }
+
+        /// <summary>
+        /// Returns the types a path holds wherever it is there, in the theory's names, where they are known.
+        /// </summary>
+        /// <remarks>
+        /// Silent about whether the path is there; an empty set says it never is.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <param name="types">The types: <see cref="JsonValues.StringType"/>, <see cref="JsonValues.IntegerType"/> and
+        /// the rest.</param>
+        /// <returns><c>true</c> where the types are known.</returns>
+        internal bool TryGetTypes(JsonDocumentPath path, out ValueSet<string> types)
+        {
+            var (found, known) = Read((false, AllTypes), t => t.TryTypes(path, out var held) ? (true, held) : (false, AllTypes));
+
+            types = known;
             return found;
         }
 

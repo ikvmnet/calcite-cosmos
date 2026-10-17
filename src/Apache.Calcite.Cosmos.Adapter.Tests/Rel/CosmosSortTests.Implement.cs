@@ -60,9 +60,72 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                     ("d", Distance()),
                 });
 
-                var sort = SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING)));
+                var sort = SortOver(project, NullsFirst(1));
 
                 Sql(sort, Implementor()).Should().EndWith($"ORDER BY ST_DISTANCE(c.location, {Here}) ASC");
+            }
+
+            /// <summary>
+            /// A distance is null where its operand is and undefined where the service cannot measure it, and the
+            /// service sorts both first ascending; so with nothing declared of the operand, only that placement is the
+            /// service's. Declared a geography, the operand has neither — see <c>CosmosPlannerTests</c>.
+            /// </summary>
+            [Fact]
+            public void ASortOverADistanceOfAnUndeclaredShapePlacesItsNullsFirstOrNotAtAll()
+            {
+                var project = ProjectOver(Scan(), new[]
+                {
+                    ("id", Ref(1)),
+                    ("d", Distance()),
+                });
+
+                var implement = () => Sql(SortOver(project, Collation((1, RelFieldCollation.Direction.ASCENDING))), Implementor());
+                implement.Should().Throw<CosmosTranslationException>("an unspecified placement is last, as Calcite runs it");
+            }
+
+            /// <summary>
+            /// A sort keyed by <c>id</c> where nothing is known of its characters is sent, and its order completed as the
+            /// rows arrive: the service orders them by code point and Calcite by UTF-16 code unit, which part either side
+            /// of U+D800, so the statement selects the key under a member of its own and carries the program its reader
+            /// checks it by.
+            /// </summary>
+            [Fact]
+            public void AnIdSortWhoseCharactersAreUnknownIsAnchored()
+            {
+                var project = ProjectOver(Scan(), new[] { ("name", Ref(1)) });
+                var sort = SortOver(project, Collation((0, RelFieldCollation.Direction.ASCENDING)), offset: _rex.makeExactLiteral(new java.math.BigDecimal(2)), fetch: _rex.makeExactLiteral(new java.math.BigDecimal(3)), facts: Apache.Calcite.Cosmos.Facts.CosmosOracle.For(Products.Facts).Declared);
+
+                var implementor = Implementor();
+                sort.Implement(implementor);
+                var query = implementor.Build();
+
+                query.Sql.Should().Be("SELECT VALUE { \"name\": c.id, \"$k0\": c.id } FROM products c ORDER BY c.id ASC OFFSET 2 LIMIT 3");
+
+                var program = query.Order!;
+                program.Keys.Should().Equal(new CosmosOrderedKey("$k0", CosmosOrderedKeyKind.Text, false, false, CosmosOrderAnchor.Text));
+                program.Unpaged.Should().Be("SELECT VALUE { \"name\": c.id, \"$k0\": c.id } FROM products c ORDER BY c.id ASC");
+                program.Offset!.Value.Count.Should().Be(2);
+                program.Fetch!.Value.Count.Should().Be(3);
+                program.Name.Should().Be("page");
+            }
+
+            /// <summary>
+            /// A sort whose order is proved carries no program, and is read as it comes.
+            /// </summary>
+            [Fact]
+            public void AProvedSortCarriesNoProgram()
+            {
+                var implementor = Implementor();
+                SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING))).Implement(implementor);
+
+                implementor.Build().Order.Should().BeNull();
+            }
+
+            static RelCollation NullsFirst(int index)
+            {
+                var list = new java.util.ArrayList();
+                list.add(new RelFieldCollation(index, RelFieldCollation.Direction.ASCENDING, RelFieldCollation.NullDirection.FIRST));
+                return RelCollations.of(list);
             }
 
             /// <summary>

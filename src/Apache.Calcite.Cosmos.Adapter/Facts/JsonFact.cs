@@ -69,8 +69,9 @@ namespace Apache.Calcite.Cosmos.Facts
                 // whether a null is there beside them -- so it entails only the claim that admits one.
                 (JsonClaim.Represents, JsonClaim.OfType b) => b.Type == JsonType.String && b.OrNull,
 
-                // A consumer's claim answers for itself. See JsonClaim.Extension.
+                // A consumer's claim answers for itself, either way round. See JsonClaim.Extension.
                 (JsonClaim.Extension a, var b) => a.Entails(b),
+                (var a, JsonClaim.Extension b) => b.IsEntailedBy(a),
 
                 // A bound binds numbers only. A stricter bound settles a looser one, a value or a domain
                 // settles one every number in it satisfies, and a claim that the path holds no number

@@ -52,6 +52,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string[] _vectorPaths;
         readonly bool _readsGeography;
         readonly IReadOnlyList<string>[] _uniqueKeys;
+        readonly string[] _computedProperties;
+        readonly string[] _includedPatterns;
+        readonly string[] _excludedPatterns;
 
         /// <summary>
         /// Initializes a new instance.
@@ -66,6 +69,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="readsGeography">Whether the container reads coordinates as geography rather than as a plane.</param>
         /// <param name="statistics">What the service reports about the container's size, or <c>null</c> where it was not asked.</param>
         /// <param name="uniqueKeys">The path sets of the container's unique key policy, each in policy form.</param>
+        /// <param name="computedProperties">The names of the container's computed properties.</param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is <c>null</c> or empty.</exception>
         public CosmosContainerMetadata(
             string name,
@@ -77,7 +81,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             IEnumerable<string>? vectorPaths = null,
             bool readsGeography = true,
             CosmosContainerStatistics? statistics = null,
-            IEnumerable<IReadOnlyList<string>>? uniqueKeys = null)
+            IEnumerable<IReadOnlyList<string>>? uniqueKeys = null,
+            IEnumerable<string>? computedProperties = null)
         {
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentException($"'{nameof(name)}' cannot be null or empty.", nameof(name));
@@ -92,6 +97,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _vectorPaths = vectorPaths is null ? Array.Empty<string>() : new List<string>(vectorPaths).ToArray();
             _readsGeography = readsGeography;
             _uniqueKeys = uniqueKeys is null ? Array.Empty<IReadOnlyList<string>>() : new List<IReadOnlyList<string>>(uniqueKeys).ToArray();
+            _computedProperties = computedProperties is null ? Array.Empty<string>() : new List<string>(computedProperties).ToArray();
+            _includedPatterns = _includedPaths.Length == 0 && _excludedPaths.Length == 0 ? DefaultIncludedPatterns : Array.ConvertAll(_includedPaths, Unquoted);
+            _excludedPatterns = WithServiceExclusions(Array.ConvertAll(_excludedPaths, Unquoted), _includedPatterns);
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -108,18 +116,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public IReadOnlyList<string> ExcludedPaths => _excludedPaths;
 
         /// <summary>
+        /// Gets the names of the container's computed properties.
+        /// </summary>
+        /// <remarks>
+        /// A computed property is addressed like a top-level property, and indexed only where an included path names it:
+        /// the wildcard that indexes every other path does not reach one. See <see cref="IsPathIndexed"/>.
+        /// </remarks>
+        public IReadOnlyList<string> ComputedProperties => _computedProperties;
+
+        /// <summary>
         /// Determines whether a path is covered by the container's index.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// This bears on cost, never on legality: a predicate or sort over an unindexed path still
-        /// runs, it just scans. The default policy indexes everything, so a container that declares
-        /// no included or excluded paths reports every path as indexed.
+        /// <b>Cost for a filter, legality for a sort.</b> A predicate over an unindexed path still runs, it just scans —
+        /// and so do <c>MIN</c> and <c>MAX</c>. An <c>ORDER BY</c> does not: measured on Azure, ordering by a path the
+        /// policy excludes is a 400, "The index path corresponding to the specified order-by item is excluded", and the
+        /// same for a computed property no included path names. The emulator orders by either, which is why it showed
+        /// nothing. So <see cref="IsSortSupported"/> asks this of every key it is handed.
         /// </para>
         /// <para>
-        /// Where included and excluded patterns conflict the more precise wins — a deeper path
-        /// beats a shallower one, and <c>/?</c> beats <c>/*</c> at the same depth. <c>id</c> and
-        /// <c>_ts</c> are always indexed and cannot be excluded.
+        /// <b>The service's own defaults, policy or none.</b> The default policy indexes every path, and every policy
+        /// the service hands back excludes <c>/"_etag"/?</c> unless it names <c>_etag</c> itself — both read into the
+        /// patterns when the metadata is made (<see cref="ServiceExcludedPatterns"/>), so that what a declared policy
+        /// leaves out, the emulator reading none of it back, is the service's and not a case here. A computed property
+        /// is reached by no wildcard: only an included path naming one indexes it. <c>id</c> and <c>_ts</c> are always
+        /// indexed and cannot be excluded.
+        /// </para>
+        /// <para>
+        /// Where included and excluded patterns conflict the more precise wins — a deeper path beats a shallower one, and
+        /// <c>/?</c> beats <c>/*</c> at the same depth. A segment the policy quotes, as the service writes
+        /// <c>/"_etag"/?</c>, is the segment unquoted.
         /// </para>
         /// </remarks>
         /// <param name="policyPath">The path in policy form, such as <c>/inventory/quantity</c>.</param>
@@ -133,28 +160,86 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 string.Equals(policyPath, "/" + TimestampPropertyName, StringComparison.Ordinal))
                 return true;
 
-            // No declared policy means the default, which indexes every property.
-            if (_includedPaths.Length == 0 && _excludedPaths.Length == 0)
-                return true;
+            // A computed property is reached by no wildcard: only a pattern naming it includes it.
+            var named = Array.IndexOf(_computedProperties, FirstSegment(policyPath)) >= 0;
 
-            var included = BestMatch(_includedPaths, policyPath);
-            var excluded = BestMatch(_excludedPaths, policyPath);
+            var included = BestMatch(_includedPatterns, policyPath, named ? 2 : 0);
+            var excluded = BestMatch(_excludedPatterns, policyPath, 0);
 
             // A tie favours inclusion, as does the absence of any exclusion.
             return included >= excluded && included >= 0;
         }
 
         /// <summary>
+        /// The included patterns of a container that declares no policy: the service's default, every path.
+        /// </summary>
+        static readonly string[] DefaultIncludedPatterns = { "/*" };
+
+        /// <summary>
+        /// The patterns the service excludes from every policy it hands back, unquoted: <c>/"_etag"/?</c>.
+        /// </summary>
+        /// <remarks>
+        /// Measured on the probe account: the default policy, and every policy read back, excludes it, and an
+        /// <c>ORDER BY</c> over it is a 400. The emulator reads none of that back, and a declared policy need not
+        /// say it, so it is added to whatever is declared — unless an included pattern names the path, which is the
+        /// one way a policy asks for it.
+        /// </remarks>
+        static readonly string[] ServiceExcludedPatterns = { "/" + ETagPropertyName + "/?" };
+
+        /// <summary>
+        /// Returns the declared excluded patterns with the service's own beside them, each one an included pattern does
+        /// not name.
+        /// </summary>
+        static string[] WithServiceExclusions(string[] excluded, string[] included)
+        {
+            var patterns = new List<string>(excluded);
+
+            foreach (var pattern in ServiceExcludedPatterns)
+                if (patterns.Contains(pattern) == false && Array.Exists(included, i => i.Length > 1 && FirstSegment(i) == FirstSegment(pattern)) == false)
+                    patterns.Add(pattern);
+
+            return patterns.ToArray();
+        }
+
+        /// <summary>
+        /// Returns a policy pattern with each quoted segment unquoted, as the service quotes <c>/"_etag"/?</c>.
+        /// </summary>
+        static string Unquoted(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern) || pattern.IndexOf('"') < 0)
+                return pattern;
+
+            var segments = pattern.Split('/');
+            for (var i = 0; i < segments.Length; i++)
+                if (segments[i].Length >= 2 && segments[i][0] == '"' && segments[i][^1] == '"')
+                    segments[i] = segments[i][1..^1];
+
+            return string.Join("/", segments);
+        }
+
+        /// <summary>
+        /// Returns the first segment of a policy-form path.
+        /// </summary>
+        static string FirstSegment(string policyPath)
+        {
+            var end = policyPath.IndexOf('/', 1);
+            return end < 0 ? policyPath[1..] : policyPath[1..end];
+        }
+
+        /// <summary>
         /// Returns the specificity of the closest matching pattern, or <c>-1</c> when none match.
         /// </summary>
-        static int BestMatch(IReadOnlyList<string> patterns, string path)
+        /// <param name="patterns">The patterns, unquoted.</param>
+        /// <param name="path">The path.</param>
+        /// <param name="least">The least specificity that counts: two leaves out the root wildcard.</param>
+        static int BestMatch(IReadOnlyList<string> patterns, string path, int least)
         {
             var best = -1;
 
             foreach (var pattern in patterns)
             {
                 var score = Specificity(pattern, path);
-                if (score > best)
+                if (score >= least && score > best)
                     best = score;
             }
 
@@ -436,7 +521,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         CosmosContainerMetadata Copy()
         {
-            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys);
+            var metadata = new CosmosContainerMetadata(_name, _partitionKeyPaths, _compositeIndexes, _includedPaths, _excludedPaths, _fullTextPaths, _vectorPaths, _readsGeography, uniqueKeys: _uniqueKeys, computedProperties: _computedProperties);
             metadata._statistics = _statistics;
             metadata._statisticsProvider = _statisticsProvider;
             metadata._statisticsTimeToLive = _statisticsTimeToLive;
@@ -684,30 +769,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// This is a legality test, not a cost estimate. The distinction matters:
+        /// This is a legality test, not a cost estimate, and a separate question from whether the order is one Calcite
+        /// allows — that is <see cref="CosmosServiceOrder"/>'s, which also decides the keys handed here: a key the facts
+        /// make one value is not among them, nor a key repeating an earlier one. Two conditions, both measured on Azure,
+        /// where a statement breaking either is a 400; the emulator accepts both, and its answers say nothing of them:
         /// </para>
         /// <list type="bullet">
         /// <item><description>
-        /// A sort on a single property is always legal. If that property happens not to be
-        /// indexed the query is more expensive, but it still runs.
+        /// <b>Every key's path is indexed</b> — see <see cref="IsPathIndexed"/>. <c>_etag</c> is excluded by default.
+        /// A key with no path, a geodesic distance written out as the expression, is not asked.
         /// </description></item>
         /// <item><description>
-        /// A sort on two or more properties requires a matching composite index. Without one the
-        /// service rejects the query outright, so pushing it down would be a defect rather than a
-        /// pessimisation.
+        /// <b>Two keys or more need a composite index</b> over exactly those paths, in that order, whose directions
+        /// match theirs or are their exact reverse — <c>ORDER BY c.a, c.a</c> included. A single key is served by the
+        /// range index every indexed path has.
         /// </description></item>
         /// </list>
         /// <para>
         /// Conversion rules must consult this before converting a <c>Sort</c>.
         /// </para>
         /// </remarks>
-        /// <param name="keys">The requested sort keys, in order.</param>
+        /// <param name="keys">The keys written, in order.</param>
         /// <returns><c>true</c> if the sort may be pushed down; otherwise <c>false</c>.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="keys"/> is <c>null</c>.</exception>
         public bool IsSortSupported(IReadOnlyList<CosmosSortKey> keys)
         {
             if (keys is null)
                 throw new ArgumentNullException(nameof(keys));
+
+            foreach (var key in keys)
+                if (string.IsNullOrEmpty(key.Path) == false && IsPathIndexed(key.Path) == false)
+                    return false;
 
             if (keys.Count <= 1)
                 return true;

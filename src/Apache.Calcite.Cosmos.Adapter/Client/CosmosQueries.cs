@@ -52,11 +52,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             for (var i = 0; i < parameters.Count; i++)
                 bound[i] = parameters[i].Value is CosmosDynamicValue slot
-                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : Value(root, slot) }
+                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) }
                     : parameters[i];
 
             return query with { Parameters = bound };
         }
+
+        /// <summary>
+        /// Reads a string parameter's value and writes the bound its comparison's fallback compares against in its place.
+        /// </summary>
+        /// <remarks>
+        /// Written whatever the value: the reader decides from the value itself whether the fallback is read at all, and
+        /// a bound for one that is an anchor is never sent. Anything but a string — a null — has no bound, and its
+        /// comparison is exact.
+        /// </remarks>
+        /// <param name="root">The data context.</param>
+        /// <param name="slot">The ordinal to read, and which bound to write.</param>
+        /// <returns>The bound, or <c>null</c>.</returns>
+        static object? Bounded(org.apache.calcite.DataContext root, CosmosDynamicValue slot) => Value(root, slot) switch
+        {
+            string value when slot.Bound == CosmosAnchorBound.Lower => Metadata.CosmosServiceOrder.LowerBound(value),
+            string value => Metadata.CosmosServiceOrder.UpperBound(value),
+            _ => null,
+        };
 
         /// <summary>
         /// Reads one dynamic parameter's value out of the data context and writes it in the stored
@@ -202,6 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             return root.get(value.VariableName) switch
             {
+                string text when value.Length is int length => Held(text, length, value.Padded),
                 null => null,
                 java.lang.Byte b => (long)unchecked((sbyte)b.byteValue()),
                 java.lang.Short s => (long)s.shortValue(),
@@ -216,6 +235,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 var other => other,
             };
         }
+
+        /// <summary>
+        /// Holds a string to the length its parameter's type holds, as Calcite does: truncated by code unit, and padded
+        /// with spaces where the type is a <c>CHAR</c> (<c>SqlFunctions.truncate</c> and <c>truncateOrPad</c>).
+        /// </summary>
+        /// <param name="text">The value.</param>
+        /// <param name="length">The type's length.</param>
+        /// <param name="padded">Whether a shorter value is padded.</param>
+        /// <returns>The value as Calcite reads it.</returns>
+        static string Held(string text, int length, bool padded) =>
+            text.Length > length ? text.Substring(0, length) : padded ? text.PadRight(length) : text;
 
     }
 

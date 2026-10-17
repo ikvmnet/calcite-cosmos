@@ -1345,6 +1345,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <remarks>
+        /// Measured on the probe account: with optimistic direct execution and a partition key,
+        /// <c>ORDER BY RANK</c> came back unranked. A pinned statement is the one it would apply to.
+        /// </remarks>
+        [Fact]
+        public void APinnedStatementIsNotExecutedOptimistically()
+        {
+            var query = new CosmosQuery("SELECT TOP 2 VALUE c FROM products c ORDER BY RANK FULLTEXTSCORE(c.d, @p0)", Array.Empty<CosmosParameter>());
+
+            CosmosQueryExecutor.CreateRequestOptions(query, new PartitionKey("bikes")).EnableOptimisticDirectExecution.Should().BeFalse();
+        }
+
+        /// <remarks>
         /// A cross-partition query is left alone. How much concurrency it wants depends on the
         /// container's spread, which this does not know — and the SDK's own default is a better guess
         /// than a constant invented here.

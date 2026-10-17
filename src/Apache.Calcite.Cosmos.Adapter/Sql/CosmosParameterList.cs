@@ -6,25 +6,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
     /// <summary>
-    /// A value bound to a Cosmos SQL query parameter.
-    /// </summary>
-    /// <param name="Name">The parameter name, including the leading <c>@</c>.</param>
-    /// <param name="Value">The bound value.</param>
-    public readonly record struct CosmosParameter(string Name, object? Value);
-
-    /// <summary>
     /// Accumulates the parameters bound by a query under construction, handing out names as
     /// values are added.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Values that could originate from user input are bound rather than inlined, so that the
     /// generated statement text never varies with the data. Planner-generated constants such as
     /// fetch counts are inlined instead — see <see cref="CosmosSql.WriteLiteral"/>.
+    /// </para>
+    /// <para>
+    /// <b>And the comparisons a bound value decides.</b> A comparison of a path with a parameter is
+    /// exact at the service only where the value is an anchor (<see cref="Metadata.CosmosOrderAnchor"/>),
+    /// which is known when the statement runs and not before. The translator writes it as it is and
+    /// records it here, beside the parameter it names, so that the reader can tell from the value
+    /// whether to read the statement or its fallback — see <see cref="CosmosOrderComparison"/> — and
+    /// the conjunct each sits in, which the reader rechecks whole (<see cref="CosmosRecheck"/>). They
+    /// are kept with the parameters because they are written with them, by whichever translator the
+    /// statement's clauses are rendered through.
+    /// </para>
     /// </remarks>
     public sealed class CosmosParameterList
     {
 
         readonly List<CosmosParameter> _parameters = new();
+        readonly List<CosmosOrderComparison> _comparisons = new();
+        readonly List<CosmosRecheck> _rechecks = new();
         readonly string _prefix;
 
         /// <summary>
@@ -62,6 +69,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public int Count => _parameters.Count;
 
         /// <summary>
+        /// Gets the comparisons written so far whose exactness the value of a parameter decides.
+        /// </summary>
+        public IReadOnlyList<CosmosOrderComparison> Comparisons => _comparisons;
+
+        /// <summary>
+        /// Gets the conjuncts that hold those comparisons, as the reader rechecks them, each naming its comparisons by
+        /// their index in <see cref="Comparisons"/>.
+        /// </summary>
+        public IReadOnlyList<CosmosRecheck> Rechecks => _rechecks;
+
+        /// <summary>
         /// Binds <paramref name="value"/> and returns the name to emit in its place.
         /// </summary>
         /// <param name="value">The value to bind.</param>
@@ -71,6 +89,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var name = _prefix + _parameters.Count.ToString(CultureInfo.InvariantCulture);
             _parameters.Add(new CosmosParameter(name, value));
             return name;
+        }
+
+        /// <summary>
+        /// Records a comparison written into the statement whose exactness a parameter's value decides.
+        /// </summary>
+        /// <param name="comparison">The comparison.</param>
+        /// <returns>Its index in <see cref="Comparisons"/>, by which a conjunct names it.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="comparison"/> is <c>null</c>.</exception>
+        public int Recheck(CosmosOrderComparison comparison)
+        {
+            _comparisons.Add(comparison ?? throw new ArgumentNullException(nameof(comparison)));
+            return _comparisons.Count - 1;
+        }
+
+        /// <summary>
+        /// Records a conjunct holding comparisons <see cref="Recheck(CosmosOrderComparison)"/> recorded, as the reader
+        /// rechecks it.
+        /// </summary>
+        /// <param name="conjunct">The conjunct.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="conjunct"/> is <c>null</c>.</exception>
+        public void Recheck(CosmosRecheck conjunct)
+        {
+            _rechecks.Add(conjunct ?? throw new ArgumentNullException(nameof(conjunct)));
         }
 
     }

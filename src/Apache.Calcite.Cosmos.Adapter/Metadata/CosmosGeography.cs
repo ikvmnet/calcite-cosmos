@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>What it buys is a sort.</b> A geodesic distance over a path this holds for can be neither null
     /// nor undefined, so the placement Calcite asks for has nothing to disagree with and the
-    /// <c>ORDER BY</c> reaches the service under either collation — see <c>CosmosSortRule.AlwaysDefined</c>.
+    /// <c>ORDER BY</c> reaches the service under either collation — see <see cref="CosmosServiceOrder"/>.
     /// </para>
     /// </remarks>
     public sealed record CosmosGeography : JsonClaim.Extension
