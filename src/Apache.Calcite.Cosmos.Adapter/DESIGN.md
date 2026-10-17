@@ -421,13 +421,14 @@ numeric ones still do, which is what keeps the two bits independent:
 | an `enum` of strings | ✔ | ✘ |
 
 **A family per file, because the three differ in kind.** `CosmosStoredForms` is the dispatcher and
-nothing else: it normalises the pattern once and offers it to each family in turn. What it dispatches
-to does not share an implementation, only an output — `CosmosTemporalForms` is a generated **table**
-because a temporal shape has a width and a zone spelling and nothing else to vary; `CosmosUuidForms`
-**decides a shape** because a UUID pattern's axes do not close; `CosmosNumericForms` is **parametric**
-because a fixed width is a family with one member per width. `CosmosPatternLanguage` holds what they
-do share, which is the four rewrites that make one language written several ways into one key. They
-were one 1,400-line class, and the shape of the argument was the thing that got lost in it.
+nothing else: it asks the reader of a pattern for the strings the pattern admits, once, and offers
+them to each family in turn. What it dispatches to does not share an implementation, only an output —
+`CosmosTemporalForms` is a generated **table** because a temporal shape has a width and a zone spelling
+and nothing else to vary; `CosmosUuidForms` **decides a shape** because a UUID pattern's axes do not
+close; `CosmosNumericForms` is **parametric** because a fixed width is a family with one member per
+width. What they share is the reader, `CosmosPatternReader`, whose parse makes one language written
+several ways into one structure (*One reader of a pattern: a form is a language*). They were one
+1,400-line class, and the shape of the argument was the thing that got lost in it.
 
 **The temporal case needs its own measurement, and it moves what to look for.** `CAST(<string> AS
 TIMESTAMP)` accepts only `yyyy-MM-dd HH:mm:ss`; every ISO-8601 form a document stores raises. But the
@@ -1243,7 +1244,8 @@ answers for a schema's `required` paths too, which the list could never have rea
 
 #### Reading a schema: recognition, not inference
 
-A `pattern` yields a stored form only by being one of a table of canonical spellings. The tempting
+A `pattern` yields a stored form only by admitting a form's language, as the one reader of the
+keyword reads it (*One reader of a pattern: a form is a language*). The tempting
 alternative is to probe — generate a canonical sample and an uppercased one, and conclude from which is
 accepted — and it is evidence rather than proof. The conclusion needed is universal, that *every*
 string the pattern accepts is canonical, and two samples say nothing about the rest: a pattern with one
@@ -1263,7 +1265,7 @@ like an assertion about a document is often an assertion about a document **if s
 | `required` | these children exist **if this object does** | presence, guarded by the parent's |
 | `type` | the type, unless `nullable` or a union widens it | nothing for a union or under `nullable: true` |
 | `const`, `enum` | the value if present; scalars only | value and domain |
-| `pattern` | a regular expression | a stored form, for recognised spellings only; and, read under both of ECMA-262's readings, the characters a string may hold (*Reading a pattern as characters*) |
+| `pattern` | a regular expression | read once, under both of ECMA-262's readings: a stored form, where the strings it admits are a form's language; and the characters a string may hold (*Reading a pattern as characters*) |
 | `format` | an annotation | nothing |
 | `allOf` | every branch applies | every branch, same guard |
 | `oneOf`/`anyOf`, discriminated | the branch the discriminator selects | that branch, guarded by the discriminator's presence and value; and the meet, unguarded |
@@ -3117,10 +3119,12 @@ a range from U+D800 to U+10FC00 holding the whole high band. A pattern either re
 validator using that reading could not have checked a document with it.
 
 **The grammar read is the strict one the two share**, and anything outside it is refused.
-- Every top-level alternative begins with `^` and ends with `$`. `pattern` searches, so an unanchored alternative
-  matches inside a string of anything. With both anchors and no `m` flag every character of a matching string is one
-  an atom consumed, which is what lets the atoms' bands bound the string's. An assertion inside — `^`, `$`, `\b` —
-  consumes nothing and only narrows.
+- The pattern is anchored: every way through it asserts `^` before it consumes anything and `$` after it has
+  consumed everything. `pattern` searches, so an unanchored alternative matches inside a string of anything. With
+  both anchors and no `m` flag every character of a matching string is one an atom consumed, which is what lets the
+  atoms' bands bound the string's. An alternative is anchored by its first and last terms, and an unquantified group
+  by its own alternatives (*One reader of a pattern*, below). An assertion inside — `^`, `$`, `\b` — consumes nothing
+  and only narrows.
 - An atom is a literal, an escaped syntax character or `/`, a control escape, `\cX`, `\0`, `\xHH`, `\uXXXX`, `\d`,
   `\w`, a class, or a group, capturing or `(?:`, under any quantifier. `\d` and `\w` are ASCII in ECMA-262 under
   either reading, a schema having no `i` flag to widen `\w`.
@@ -3156,20 +3160,17 @@ read off a subschema beside any type, a pattern being vacuous for anything but a
 fact is worth, and how it meets what else is known of the path, is the theory's (*Characters, a fact of the
 theory*, below).
 
-**`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the stored
-forms read `\d` as `[0-9]` already. A validator in .NET's default dialect or Python's reads `\d` and `\w` as every
-Unicode digit or word character, fullwidth and supplementary ones among them; the manual says to spell the classes
-out where documents are validated that way (chapter 14.4). Refusing the two here alone would not close it: a stored
-form's `\d` says its characters as well, through the form. Recorded in `TODO.md` for the owner.
+**`\d` in another dialect is the one place the reading trusts the name.** JSON Schema names ECMA-262, and the reader
+reads `\d` as `[0-9]` for the characters and the stored forms alike. A validator in .NET's default dialect or
+Python's reads `\d` and `\w` as every Unicode digit or word character, fullwidth and supplementary ones among them;
+the manual says to spell the classes out where documents are validated that way (chapter 14.4). The reader being one,
+refusing the two here would close it for both at once, and would cost every published date and integer pattern
+written with `\d` its form. Recorded in `TODO.md` for the owner.
 
-**Two readers of the language, for now.** `CosmosPatternLanguage` puts a pattern in the spelling the stored-form
-tables are keyed by, and reads a UUID's shape by its atoms; this reader parses the language for the characters. They
-ask one keyword different questions — which form, which only matching a spelling answers, and which characters,
-which only a parse does — and each states what `\d` means. Every pattern is read for its characters, a stored
-form's among them: the theory derives the same of the path from the form, and meets the two as it meets any two
-facts of one path. The owner's decision is one parser, the tables' spelling printed from its parse; until then the
-second reader's one defect, dropping a space as though it meant nothing, is fixed, ECMA-262 matching a space as
-itself.
+**One reader of the language.** This reader is the only one: the stored forms are recognised off the same parse,
+from the strings a pattern admits (*One reader of a pattern: a form is a language*, below). Every pattern is read for
+its characters, a stored form's among them: the theory derives the same of the path from the form, and meets the two
+as it meets any two facts of one path.
 
 **What it costs and what it buys.** A pattern is read once, when the container's schema is, and adds at most one
 fact to a path. Timed against main, interleaved, in Release: the corpus's 78 statements planned new in
@@ -3178,6 +3179,94 @@ fact to a path. Timed against main, interleaved, in Release: the corpus's 78 sta
 the same within their noise. On the yardstick `orders_ascii`'s judged sorts went from 38 to 84 and its extremes from 7
 to 13, its ids, their three-page keysets and its declared text among them, and the other two containers push what
 they did (*Differential testing*).
+
+#### One reader of a pattern: a form is a language
+
+**There is one reader of a `pattern`, and both things the adapter reads off one come from its parse.** The owner's
+rule is that C# reads an input into facts with one reader for each kind of input. A `pattern` was read twice:
+`CosmosPatternAlphabet` parsed it strictly for its characters, and `CosmosPatternLanguage` rewrote its text into a
+key the stored forms were looked up by — `\d` as `[0-9]`, a class's members sorted, a run's counts merged — and split
+a UUID's text at its bars. The two read one keyword differently. The second had dropped a space as though it meant
+nothing, read `Z{0}` as `Z`, and took an unescaped brace and `\-` for a UUID's brace and hyphen, which the reading by
+code point rejects. `CosmosPatternReader` is now the only reader. Its parse yields the bands the strings may hold
+(*Reading a pattern as characters*) and the strings the pattern admits, and the stored forms are recognised from the
+second.
+
+**The strings.** `CosmosPatternStrings` is a union of alternatives, each an anchored sequence of runs, and a run is a
+class (`CosmosPatternClass`, a set of characters held as merged spans) repeated between two counts
+(`CosmosPatternRun`). The parse puts a pattern in that shape by identities of the language alone:
+- a class is the set it holds: `\d`, `[0-9]`, `[0123456789]` and `[5-90-4]` are one; so are a literal, an escape and
+  a class of one character: `-`, `[-]` and `\x2D`;
+- a group is what it holds, capturing or not, there being no back-reference to read it;
+- an alternation of single characters is their class, `(?:0|1)` being `[01]`;
+- an alternation inside a sequence is distributed across it, `^a(?:b|cd)$` being `^ab$|^acd$`;
+- a count of a group is the group written out that many times; a count of one run multiplies into one range where
+  the result is one;
+- neighbouring runs of one class are one run, `A{m,n}A{p,q}` being `A{m+p,n+q}`, and a run repeated no times is
+  dropped;
+- the alternatives are a set.
+
+Two patterns read as equal strings admit the same strings. The converse is not claimed — `^[0-4][0-9]$|^[5-9][0-9]$`
+and `^[0-9]{2}$` are one language read as two — and a spelling read differently costs a form and never mistakes one.
+What is no union of sequences of runs has no strings: a range of counts of a group, `(?:ab)*`; an assertion between
+the anchors; an empty class; a count past 100,000. Such a pattern is still read for its characters.
+
+**Sound under both readings, as the characters are.** The strings are read only where both readings accept the
+pattern and read the same strings, and where every class lies in the basic plane outside the surrogates, where a
+unit and a code point are one character. `[\uD800-\uDFFF]{2}` is one sequence of classes and two languages — a
+surrogate pair read by unit, two lone surrogates read by code point — and has no strings; every form is ASCII, so the
+condition costs none. A pattern one reading rejects is one a validator using that reading could not have checked a
+document with. `^{…}$` with its braces unescaped, and `\-` outside a class, are literals read by unit and errors read
+by code point, and are no form now.
+
+**Anchoring is one decision, read off the structure.** A sequence begins with `^` where its first term does, an
+alternation where every branch does, and an unquantified group where what it holds does; likewise at the end. A
+quantified term may be passed over, and anchors nothing. Every way through a pattern that begins and ends so asserts
+`^` before it consumes a character and `$` after it has consumed the last, which is all the characters need to bound
+the string's and all a form needs to be the string. So `(?:^a$)|(?:^b$)`, the shape the nil-UUID alternation is
+published in, is read for its characters now, where before only a top-level alternative's first and last terms were
+looked at.
+
+**A form is a language.**
+- **Temporal.** Each form is defined by its pattern, which the reader parses as it parses a declaration. A declaration
+  is the form where its strings are that language, exactly.
+- **Numeric.** A fixed width is one run of `[0-9]` counted from one to ninety-nine times. An unpadded integer is either
+  of its two defining languages.
+- **UUID.** The strings are read as a shape. Each alternative is written out one character a slot. It is braced where
+  a `{` opens it and a `}` closes it, its hyphens sit at the four places or at none, and every other slot is a set of
+  hex digits; the alternatives' slots are united. A UUID form is recognised where the strings lie within the shape,
+  because confining a slot only removes strings and every relation the form licenses is a claim about all of them.
+  A table's form claims only its languages, and a narrowing of one — a month written `[01][0-9]` — is no form, as it
+  was not before.
+
+The registry of normalised spellings, the two regular expressions over normalised text, the UUID's splitting of the
+text and `CosmosPatternLanguage` are deleted.
+
+**The order the families are asked in decides two languages, as it did.** Eight digits is a basic date and a fixed
+width, and is read as the date. Thirty-two digits is a hyphenless UUID with no letter and a fixed width, and is read
+as the UUID. Either form proves both relations.
+
+**A form's characters come from the form.** Nothing the reader decides about a form states characters. What gives a
+form's path its characters is the theory's rule that a path in a form holds the characters the form is written in
+(*Characters, a fact of the theory*). `AFormGivesItsCharactersThroughTheTheory` holds the rule to it with the
+pattern's characters left unread. The reader still states the characters of every pattern it reads, a form's among
+them, as reading an input, and the theory meets the two.
+
+**What changed against main, and how it is held.** `CosmosStoredFormsSpellingTests` lists the 193 spellings the forms
+were registered under on `4b2ccb3`, each with the form main recognised it as: the 77 temporal rows, every fixed
+width a pattern could name, both unpadded integers and the sixteen UUID forms. It writes each every way the old
+rewrites made one key of, and every one is the same form. Run against main, the same file fails exactly where main
+and the reader part:
+- **Recognised before, and no form now.** A space anywhere, which main read away: `^[0-9]{5} $` admits no string of
+  five digits. `Z{0}`, which main read as `Z`, so a pattern with no zone was the UTC form. An unescaped brace and `\-`,
+  which one reading rejects.
+- **No form before, and the form now.** The same language written in ways main's rewrites did not reach: a class of
+  the digits written out, `{4,4}`, a group, `[-]` or `\x2D` for a separator, the unpadded integer's alternatives in
+  the other order or anchored apart, a count of a group, and a width of one digit, which main's merging of counts
+  never wrote as a count.
+
+A class one character wider than a form's, at any atom, is no form; for the tables, one character narrower is none
+either.
 
 #### Characters, a fact of the theory
 
@@ -4923,6 +5012,11 @@ src/
       CosmosFilterStatement.cs        ✔ A filter as the oracle reads it, and every question a rule asks of it
       CosmosRowFacts.cs               ✔ What the rows a clause reads satisfy: the filters beneath, last stratum (L1)
       CosmosPartitionKeyExtractor.cs  ✔ What a predicate pins, and whether a read answers it, asked of the oracle
+      CosmosPatternReader.cs          ✔ The one reader of a pattern, under both readings: its characters and its strings
+      CosmosPatternStrings.cs         ✔ What a pattern admits: anchored sequences of CosmosPatternRun, each a
+                                        CosmosPatternClass counted
+      CosmosStoredForms.cs            ✔ The form a pattern's strings are; CosmosTemporalForms, CosmosUuidForms and
+                                        CosmosNumericForms define the families
     Rel/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔

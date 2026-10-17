@@ -1166,12 +1166,13 @@ hand. Two tests pin both directions.
   works — see *A parse carries a format* in `DESIGN.md`.
 - **A space-separated instant is not recognised** — *small, and the obstacle is gone.*
   `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
-  `isoformat(sep=' ')` and a good many SQL exports write it. `Normalise` used to strip whitespace
-  outside a class, which made the pattern indistinguishable from one with no separator and recognised
-  a pattern carrying a significant space as the form without it — a wrong answer, `RenderUuid`
-  writing a spelling the stored values do not have. Whitespace is kept now, as ECMA-262 reads it, and
-  `TheSpellingsInTheWildAreRecognised` holds a spaced UUID unrecognised. What is left is registering
-  the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
+  `isoformat(sep=' ')` and a good many SQL exports write it. Matching the forms by spelling once
+  stripped whitespace outside a class, which made the pattern indistinguishable from one with no
+  separator and recognised a pattern carrying a significant space as the form without it — a wrong
+  answer, `RenderUuid` writing a spelling the stored values do not have. The one reader of a pattern
+  reads a space as the character ECMA-262 matches, and `TheSpellingsInTheWildAreRecognised` and
+  `ASpaceTheRegistryDroppedIsAnotherLanguage` hold spaced patterns unrecognised. What is left is
+  defining the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
 - **`PARSE_TIMESTAMP` is recognised and pushes at neither site, and the reason is its type rather
   than its parse** — *small, and two separate pieces of work.* It is the name a caller reaches for
   first and it reads a format exactly as `PARSE_DATETIME` does, measured. What it answers is
@@ -1344,19 +1345,26 @@ the distribution the gate is sized for.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
-- **One parser of the pattern language** — *medium, and the owner's decision.* `CosmosPatternLanguage`
-  puts a pattern in the spelling the stored-form tables are keyed by and reads a UUID's shape by its
-  atoms; `CosmosPatternReader` parses the language strictly, under both readings, for its characters.
-  Two readers of one keyword, each stating what `\d` means. The alphabet's parse is to feed stored-form
-  recognition too, printing the tables' spelling from the parse, so that the language is read once.
-  The literal-space defect the first had is fixed; the readers agree on everything else they both read.
 - **`\d` and `\w` are read as ECMA-262's** — *the owner's to confirm.* A validator in .NET's default
   dialect or Python's matches every Unicode digit or word character, U+FF10 and U+1D7CE among them, so a
   path declared `^\d+$` and validated that way can hold strings whose order the declaration claims and
-  the service does not keep. JSON Schema names ECMA-262, the stored forms read `\d` as `[0-9]` too, and
-  chapter 14.4 tells a user to spell the classes out; refusing both in the reader would cost nothing a
-  user cannot write as `[0-9]`, but would leave the stored forms reading them, which a fix of one
-  reading alone does not make consistent.
+  the service does not keep. JSON Schema names ECMA-262, and chapter 14.4 tells a user to spell the
+  classes out. There is one reader of a pattern now, so refusing the two there would refuse them for the
+  characters and the stored forms at once: consistent, and costing nothing a user cannot write as
+  `[0-9]` — but every published date and integer pattern written with `\d` would lose its form.
+- **A table's form is recognised from its language exactly** — *small, and the owner's decision.* A
+  pattern admitting fewer strings than a temporal or numeric form — a month written `[01][0-9]`, an
+  hour `[0-2][0-9]`, a fixed width with a first digit `[1-9]` — is no form, though every string it
+  admits is the form's and both relations hold of them all. A UUID already reads its narrowings, its
+  shape being decided (`DESIGN.md`, *One reader of a pattern*). Reading a table's narrowings is the
+  same argument, read slot by slot against the definition's runs; the price is that a literal outside
+  the narrowing, which the form can spell and no document holds, is compared rather than refused,
+  which answers what the query does.
+- **One language read as two** — *small.* The reader puts a pattern's strings in one structure by
+  identities of the language (`CosmosPatternStrings`), and does not claim the converse: `^a$|^b$` and
+  `^[ab]$`, or `^[0-4][0-9]$|^[5-9][0-9]$` and `^[0-9]{2}$`, are one language read as two, and a form
+  written the first way is not recognised. Alternatives differing in one run of one character could be
+  merged into one class; no published spelling of a form has been seen to need it.
 - **Two values that may both be a JSON null are compared in process** — *small; closed as a wrong answer,
   left as a pushdown.* `=`, `<=` and `>=` between two paths that may each hold a JSON null kept the
   documents holding one at the service, which equates a null with a null where Calcite's comparison is
