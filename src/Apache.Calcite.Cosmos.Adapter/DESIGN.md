@@ -1220,8 +1220,9 @@ the rules around another arm split, `CosmosOracle.RenderedFrom` chooses the stra
 150 ms a trial at the median and 350 to 560 at the 95th percentile; the plants another minute, most of it the two
 caught latest; and the comparison with Calcite 24 predicates, 54 statements and 3,135 answers in 21 to 34 seconds. The
 long runs are explicit (`-explicit only`), for a change to the rules, the table or the strata, or a Calcite or IKVM
-upgrade: 5,000 trials took 19 minutes — 3.1 million facts, 261,250 verdicts of which 145,317 decided something, 20,048
-atoms and 149,789 e-nodes over 320,000 documents, and nothing false — and 400 predicates against Calcite four to six,
+upgrade: 5,000 trials took 16 minutes in Release on a shared machine — 4.8 million facts, 249,259 of them about
+characters, 569,024 verdicts of which 469,452 decided something, 36,052 atoms and 222,347 e-nodes over 400,000
+documents, and nothing false — and 400 predicates against Calcite four to six,
 54,141 answers and 491 raises, and no disagreement.
 
 #### A schema is one source of facts, and not the only one
@@ -3237,6 +3238,23 @@ value (`JsonFactEncoding.Characters`), so what a consumer asks of a value is wha
   an arm's characters stated of its disjunction.
 - `CharactersTests` and `CosmosOracleCharactersTests` name the cases: a conjunction narrowing, a split widening, a
   branch, a form, an instance, a filter in its stratum and not in the one it is rendered from.
+
+**What it costs.** The theory has one rule of JSON more, over every domain a context holds, an inheritance through a
+pattern, and one rule of JSON Schema over a stated form. A path with a domain or a declaration carries one row more.
+It was measured in Release, interleaved, a fresh process a run, against main `4b2ccb3` and against `d00c0df`, the
+branch before it. Other sessions' builds and tests shared the four cores throughout, so the ranges are wide: main's
+corpus took 4.9 s here, where the orders measurement took 4.3 s.
+- **The corpus of 78.** Planned new: 4.94 s on main (4.38–5.30) and 4.72 s here (4.47–5.74); p50 19.4 and 19.7 ms;
+  p90 163 and 173 ms (141–192 against 145–196). Planned again: 2.17 and 2.21 s, p90 22.2 and 21.2 ms. Allocated
+  planning new: 1,062 MB on main and 1,081 here; in another window, 1,049 at `d00c0df` and 1,021 here. That is
+  inside the run-to-run spread of about 35 MB.
+- **A declared container's new statement in steady state.** No shape is apart (Mann-Whitney p ≥ 0.18). `ne-gt`
+  planned again is 22.8 ms on main and 19.7 here; `in-eq-ne` is 29.3 and 29.2.
+- **The hierarchy.** MapLinks over one connection costs 5.17 s of CPU a plan on main and 5.72 here; in another
+  window, 4.81 s at `d00c0df` and 4.92 here. The wall clock is 7.06 against 7.01 s, and 6.13 against 5.85, the ranges
+  overlapping. It allocates 1,087 MB a plan here, as at `d00c0df` (main 1,081).
+- **Population D's long run.** 5,000 trials took 945 s, two other sessions' long runs sharing the machine. It
+  checked 4.8 million facts, 249,259 of them about characters, and nothing was false.
 
 #### The anchored read: a proof completed as the rows arrive
 
