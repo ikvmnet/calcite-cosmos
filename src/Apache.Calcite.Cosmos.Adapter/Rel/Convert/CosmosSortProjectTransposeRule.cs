@@ -27,7 +27,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// The sort beneath then orders the operand's text where the plan asked for the converted value: <c>'2024-1-5'</c>
     /// after <c>'2024-10-1'</c> as text and before it as a date. The plan's inventory found twelve such transposes the
     /// planner admitted and, by luck of the costs, never chose. So a cast moves beneath the sort where it preserves the
-    /// order of every value it can be given — see <see cref="CosmosServiceOrder.CastPreservesOrder"/> — or where it is a
+    /// order of every value it can be given, or on the last key where it only ties, as text narrowed to a length does —
+    /// see <see cref="CosmosServiceOrder.CastPreservesOrder"/> — or where it is a
     /// conversion of text whose stored spelling the facts say orders as the converted value: asked of
     /// <see cref="CosmosServiceOrder.OrderBy"/>, of what the rows the projection reads are known to satisfy, as the sort
     /// over the projection would ask it. That second question reads the binding and the facts, and is asked only of a
@@ -72,7 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 var key = (RexNode)projects.get(index);
-                if (PreservesOrder(key) == false && IsStoredFormConversion(project, key, (RelFieldCollation)collations.get(i)) == false)
+                if (PreservesOrder(key, last: i == collations.size() - 1) == false && IsStoredFormConversion(project, key, (RelFieldCollation)collations.get(i)) == false)
                     return false;
             }
 
@@ -109,9 +110,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <summary>
         /// Determines whether a projected key, moved beneath the projection, orders the rows as it does above: a field
-        /// itself, or a cast of one that preserves the order of every value.
+        /// itself, or a cast of one that preserves the order of every value — on the last key, one that only ties.
         /// </summary>
-        static bool PreservesOrder(RexNode node)
+        static bool PreservesOrder(RexNode node, bool last)
         {
             if (node is RexInputRef)
                 return true;
@@ -120,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 && (call.getKind() == SqlKind.CAST || call.getKind() == SqlKind.SAFE_CAST)
                 && call.getOperands().size() == 1
                 && call.getOperands().get(0) is RexInputRef operand
-                && CosmosServiceOrder.CastPreservesOrder(operand.getType(), call.getType());
+                && CosmosServiceOrder.CastPreservesOrder(operand.getType(), call.getType(), last);
         }
 
     }

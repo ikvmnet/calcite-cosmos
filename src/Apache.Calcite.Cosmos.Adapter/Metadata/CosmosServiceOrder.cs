@@ -526,11 +526,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// is a strict widening is order-preserving for every value, and strict, because before the last key a tie the
         /// cast made would hand the next key rows the operand orders apart.
         /// </para>
+        /// <para>
+        /// <b>On the last key, a cast that only ties is enough</b> (R4): text narrowed to <c>VARCHAR(n)</c>, which
+        /// Calcite truncates by code unit, never reverses two strings — a prefix of each orders as the strings do or
+        /// ties — so the operand's order is one Calcite's allows of the truncation, ties being free. Not a <c>CHAR</c>,
+        /// whose padding with spaces puts <c>'a'</c> after <c>'a\u0001'</c>.
+        /// </para>
         /// </remarks>
         /// <param name="from">The operand's type.</param>
         /// <param name="to">The cast's type.</param>
-        /// <returns><c>true</c> for a cast that changes nullability, widens a number exactly, or widens text.</returns>
-        public static bool CastPreservesOrder(RelDataType from, RelDataType to)
+        /// <param name="last">Whether the key is the sort's last, where the service may order finer than Calcite.</param>
+        /// <returns><c>true</c> for a cast that changes nullability, widens a number exactly, or widens text; and on the
+        /// last key, one that narrows text.</returns>
+        public static bool CastPreservesOrder(RelDataType from, RelDataType to, bool last)
         {
             if (from is null || to is null)
                 return false;
@@ -540,6 +548,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             if (source is null || target is null)
                 return false;
+
+            // Text truncated, on the last key: a refinement, which is all the last key needs.
+            if (last && IsCharacter(source) && target == SqlTypeName.VARCHAR)
+                return true;
 
             // The same type, no narrower: a nullability assertion, or a text widened.
             if (source == target)

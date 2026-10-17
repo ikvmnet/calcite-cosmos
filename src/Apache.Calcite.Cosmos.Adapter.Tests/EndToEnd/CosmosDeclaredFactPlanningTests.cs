@@ -1208,6 +1208,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "a cast the engine cannot read the stored form by licenses no order of it");
         }
 
+        /// <remarks>
+        /// A sort keyed by text narrowed to <c>VARCHAR(n)</c> moves beneath the projection that casts it where the
+        /// key is the last: Calcite truncates by code unit, which never reverses two strings, so the service's order of
+        /// the whole strings is one Calcite allows of their prefixes. Before another key it does not, the truncation
+        /// tying what the next key has to order. Measured by the review against main: the transpose pushed both, and the
+        /// second answered wrongly over strings sharing a prefix.
+        /// </remarks>
+        [Fact]
+        public void ATextNarrowedOnTheLastKeyIsSortedBeneathItsCast()
+        {
+            var container = Container("""{ "type": "object", "properties": { "s": { "type": "string", "pattern": "^[a-z]*$" }, "k": { "type": "integer" } } }""");
+
+            var last = PlanToCosmos("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) AS "s" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) NULLS FIRST FETCH NEXT 2 ROWS ONLY""", container, out _);
+            Query(FindCosmos(last), container).Sql.Should().Contain("ORDER BY c.s ASC", "the whole strings' order is one their prefixes allow");
+
+            var leading = PlanToCosmos("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) AS "s" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.s') AS VARCHAR(2)) NULLS FIRST, c."id" FETCH NEXT 2 ROWS ONLY""", container, out _);
+            Query(FindCosmos(leading), container).Sql.Should().NotContain("ORDER BY", "a prefix ties what the next key orders, and the whole strings would have ordered it");
+        }
+
         /// <summary>
         /// A path storing a zero-padded number is comparable as a number, and the literal goes to the
         /// service in the container's own spelling.

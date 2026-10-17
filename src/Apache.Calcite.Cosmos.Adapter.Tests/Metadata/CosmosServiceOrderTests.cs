@@ -408,7 +408,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// With no facts a cast moves beneath a sort only where it is a strict widening: a nullability assertion, a
         /// wider integer, an integer a double holds exactly. Text into an instant or a UUID orders the text, and a
-        /// narrowing ties what the operand parts.
+        /// narrowing ties what the operand parts — which on the last key is a tie Calcite breaks any way.
         /// </remarks>
         [Fact]
         public void OnlyAWideningCastPreservesTheOrderOfEveryValue()
@@ -416,16 +416,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var types = new JavaTypeFactoryImpl();
             org.apache.calcite.rel.type.RelDataType Of(SqlTypeName name, int precision = -1) => precision < 0 ? types.createSqlType(name) : types.createSqlType(name, precision);
 
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.BIGINT)).Should().BeTrue();
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.DOUBLE)).Should().BeTrue();
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 10), Of(SqlTypeName.VARCHAR, 20)).Should().BeTrue();
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), types.createTypeWithNullability(Of(SqlTypeName.INTEGER), true)).Should().BeTrue();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.BIGINT), last: false).Should().BeTrue();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.DOUBLE), last: false).Should().BeTrue();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 10), Of(SqlTypeName.VARCHAR, 20), last: false).Should().BeTrue();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), types.createTypeWithNullability(Of(SqlTypeName.INTEGER), true), last: false).Should().BeTrue();
 
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.BIGINT), Of(SqlTypeName.DOUBLE)).Should().BeFalse("2^53 + 1 is 2^53 as a double");
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 20), Of(SqlTypeName.VARCHAR, 2)).Should().BeFalse("a truncation ties");
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR), Of(SqlTypeName.TIMESTAMP)).Should().BeFalse("the text's order, not the instant's");
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR), Of(SqlTypeName.UUID)).Should().BeFalse();
-            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.VARCHAR)).Should().BeFalse("10 before 9 as text");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.BIGINT), Of(SqlTypeName.DOUBLE), last: false).Should().BeFalse("2^53 + 1 is 2^53 as a double");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 20), Of(SqlTypeName.VARCHAR, 2), last: false).Should().BeFalse("a truncation ties");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR), Of(SqlTypeName.TIMESTAMP), last: false).Should().BeFalse("the text's order, not the instant's");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR), Of(SqlTypeName.UUID), last: false).Should().BeFalse();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.VARCHAR), last: false).Should().BeFalse("10 before 9 as text");
+
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 20), Of(SqlTypeName.VARCHAR, 2), last: true).Should().BeTrue("on the last key a tie is Calcite's to break");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR), Of(SqlTypeName.VARCHAR, 2), last: true).Should().BeTrue();
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.VARCHAR, 20), Of(SqlTypeName.CHAR, 2), last: true).Should().BeFalse("a pad of spaces reorders");
+            CosmosServiceOrder.CastPreservesOrder(Of(SqlTypeName.INTEGER), Of(SqlTypeName.VARCHAR, 2), last: true).Should().BeFalse("10 before 9 as text");
         }
 
     }
