@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         /// <remarks>
         /// A separate method because it is the only part of executing a statement that can be checked
-        /// without a service, and each of the three things it decides is a decision rather than a
+        /// without a service, and each of the four things it decides is a decision rather than a
         /// default.
         /// </remarks>
         /// <param name="query">The statement being executed.</param>
@@ -203,6 +203,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // Which indexes the statement used, where the caller asked. A diagnostic rather than
             // something acted on.
             options.PopulateIndexMetrics = indexMetrics;
+
+            // Off, which is the SDK's default, and said here so that nothing turns it on. Measured on the
+            // probe account: with optimistic direct execution and a partition key, ORDER BY RANK came back
+            // unranked, and TOP 2 returned the first two documents written.
+            options.EnableOptimisticDirectExecution = false;
 
             return options;
         }
