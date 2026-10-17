@@ -94,6 +94,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
+        /// A <c>pattern</c> is a proof of a path's characters, the first a user can write (R1): an id declared an
+        /// identifier sorts, takes an extreme and compares with a parameter at plan time; a path declared below U+D800
+        /// compares with any other; one declared the basic plane without the surrogates sorts, and does not compare with
+        /// a value that may hold a surrogate. A pattern admitting a surrogate proves nothing, one stored lone being U+FFFD.
+        /// </remarks>
+        [Fact]
+        public void APatternProvesItsPathsCharacters()
+        {
+            var facts = Declared("""
+                { "type": "object", "required": ["s", "w", "e"], "properties": {
+                    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+                    "s": { "type": "string", "pattern": "^[\\u0000-\\uD7FF]*$" },
+                    "w": { "type": "string", "pattern": "^[\\u0000-\\uD7FF\\uE000-\\uFFFF]*$" },
+                    "e": { "type": "string", "pattern": "^[a-z\\uD800-\\uDFFF]*$" } } }
+                """);
+            var id = Typed("id", SqlTypeName.VARCHAR);
+            var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(id) }).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Extreme(facts, id).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, id, parameter).IsProved.Should().BeTrue();
+
+            CosmosServiceOrder.Compare(facts, Text("s"), Text("e")).IsProved.Should().BeTrue("below U+D800 against anything");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("w")) }).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("w"), Text("s")).IsProved.Should().BeTrue();
+            CosmosServiceOrder.Compare(facts, Text("w"), parameter).IsProved.Should().BeFalse("a high unit against a surrogate");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("e")) }).IsProved.Should().BeFalse("a surrogate stored lone is U+FFFD");
+        }
+
+        /// <remarks>
         /// Text over a path that may hold a number is a rendering, compared as text in Calcite and as another type at
         /// the service.
         /// </remarks>

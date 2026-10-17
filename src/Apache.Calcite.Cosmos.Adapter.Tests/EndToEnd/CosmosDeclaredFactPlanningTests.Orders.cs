@@ -140,6 +140,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.a')""", Orderable()).Should().EndWith("ORDER BY c.a ASC");
         }
 
+        /// <summary>
+        /// A container declaring the characters of <c>id</c> by a <c>pattern</c>, an identifier's; of <c>s</c> and
+        /// <c>u</c> every character below U+D800, and of <c>w</c> the basic plane without the surrogates; and of
+        /// <c>x</c> a string of any character.
+        /// </summary>
+        static CosmosContainerMetadata Patterned() =>
+            new CosmosContainerMetadata("items", new[] { "/pk" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                    { "type": "object", "required": ["s", "u", "w", "x"],
+                      "properties": { "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+                                      "s": { "type": "string", "pattern": "^[\\u0000-\\uD7FF]*$" },
+                                      "u": { "type": "string", "pattern": "^[\\u0000-\\uD7FF]*$" },
+                                      "w": { "type": "string", "pattern": "^[\\u0000-\\uD7FF\\uE000-\\uFFFF]*$" },
+                                      "x": { "type": "string" } } }
+                    """)!));
+
+        /// <summary>
+        /// An id whose characters a <c>pattern</c> declares orders at the service, and its page with it: the declaration
+        /// is the proof, made when the plan is, and nothing is checked when the rows arrive.
+        /// </summary>
+        [Fact]
+        public void AnIdDeclaredByAPatternOrdersAtTheService()
+        {
+            Sent("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY""", Patterned())
+                .Should().EndWith("ORDER BY c.id ASC OFFSET 40 LIMIT 20");
+            Sent("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY""", Declared(false))
+                .Should().NotContain("ORDER BY", "an id nothing declares may hold any character");
+            Sent("""SELECT MAX(c."id") FROM items AS c""", Patterned()).Should().Contain("MAX(c.id)");
+        }
+
+        /// <summary>
+        /// And so does its keyset seek, the paging chapter 9 recommends: the parameter may hold any character, and against
+        /// strings below U+D800 any character compares alike by code point and by code unit.
+        /// </summary>
+        [Fact]
+        public void AnIdDeclaredByAPatternSeeksAtTheService()
+        {
+            var seek = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 20 ROWS ONLY""", Patterned(), out _);
+
+            PlanText(seek).Should().NotContain("ClrCursorFilter").And.NotContain("EnumerableSort").And.Contain("CosmosSort", "the whole statement is the service's: " + PlanText(seek));
+            Query(FindCosmos(seek), Patterned()).Sql.Should().Contain("c.id > @").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 20");
+        }
+
+        /// <summary>
+        /// Two paths compare at the service unless one may hold a surrogate and the other a high unit: a path below U+D800
+        /// compares alike against anything, and one of the basic plane against one of any character does not. A sort over
+        /// the basic plane without the surrogates orders alike too, a high unit against a high unit being one comparison
+        /// in both orders.
+        /// </summary>
+        [Fact]
+        public void TwoDeclaredPathsCompareAtTheService()
+        {
+            Sent("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.s') < JSON_VALUE(c."DOC", '$.u')""", Patterned()).Should().Contain("c.s < c.u");
+            Sent("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.s') < JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().Contain("c.s < c.x");
+            Sent("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.w') < JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().NotContain("c.w < c.x");
+            Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.w')""", Patterned()).Should().EndWith("ORDER BY c.w ASC");
+            Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().NotContain("ORDER BY");
+        }
+
     }
 
 }
