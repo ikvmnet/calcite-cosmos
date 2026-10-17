@@ -3268,6 +3268,18 @@ and the reader part:
 A class one character wider than a form's, at any atom, is no form; for the tables, one character narrower is none
 either.
 
+**Checked against the engine.** As the characters were, the reader was run against V8's own `RegExp`, with the `u`
+flag and without, over 9,159 patterns:
+- every spelling of every registered form and its one-class neighbours, as the spelling test writes them, with
+  their anchors grouped and their braces unescaped;
+- 6,000 random patterns whose anchors sit inside groups, quantified or not, over atoms from every band.
+
+No pattern either reading rejects was read for anything. No string either reading matched — 2.7 million pairs —
+held a band the reader called absent. And every pattern read as a form, 1,342 of them over 411,820 matching
+samples, matched exactly what the form's definition matches, or, for a UUID, nothing outside the form's shape.
+Planted readings were each caught: a spaced form, `Z{0}` read as `Z`, a claim made of `(?:^a)?b$`, a mixed-case UUID
+read as lowercase, and an unescaped brace.
+
 **What it costs.** A pattern is read when its container's schema is, once for its form and once for its characters,
 and each reading parses it under both readings. Measured in Release, interleaved, a fresh process a run, on a machine
 other sessions kept at 90–100% of its four cores (main's corpus took 8.2 s here, where the orders measurement took
