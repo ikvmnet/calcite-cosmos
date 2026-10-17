@@ -105,15 +105,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var id = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("id", SqlTypeName.VARCHAR)) });
             id.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
-            id.Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            id.Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Text);
             id.Reason.Should().Contain("text across U+D800");
 
-            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("w", SqlTypeName.BIGINT)) }).Anchors.Should().Equal(CosmosOrderAnchor.Number);
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("w", SqlTypeName.BIGINT)) }).Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Number);
 
             var both = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)), Key(Typed("d", SqlTypeName.DOUBLE), RelFieldCollation.Direction.DESCENDING), Key(Text("s")) });
             both.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
             both.Written.Should().Equal(0, 1, 2);
-            both.Anchors.Should().Equal(CosmosOrderAnchor.Number, CosmosOrderAnchor.Number, CosmosOrderAnchor.Text);
+            both.Keys.Select(k => k.Anchor).Should().Equal(CosmosOrderAnchor.Number, CosmosOrderAnchor.Number, CosmosOrderAnchor.Text);
+            both.Keys.Select(k => k.Descending).Should().Equal(false, true, false);
 
             CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)) }).IsProved.Should().BeTrue("the last key may be finer at the service");
 

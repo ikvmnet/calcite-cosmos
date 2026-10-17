@@ -67,12 +67,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             out IReadOnlyList<CosmosSortKey> keys,
             out IReadOnlyList<CosmosPath?> paths,
             out IReadOnlyList<int> written,
-            out IReadOnlyList<(CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor)> checks)
+            out IReadOnlyList<CosmosOrderedKey> ordered)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
             written = System.Array.Empty<int>();
-            checks = System.Array.Empty<(CosmosOrderedKeyKind, CosmosOrderAnchor)>();
+            ordered = System.Array.Empty<CosmosOrderedKey>();
 
             if (collation is null || fields is null || readings is null || orderings is null || rowType is null || facts is null || string.IsNullOrEmpty(rootAlias))
                 return false;
@@ -107,22 +107,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             var writtenKeys = new CosmosSortKey[verdict.Written.Count];
             var writtenPaths = new CosmosPath?[verdict.Written.Count];
-            var writtenChecks = new (CosmosOrderedKeyKind, CosmosOrderAnchor)[verdict.Written.Count];
 
+            // The direction each key is written in is the one the question decided Calcite runs.
             for (var j = 0; j < verdict.Written.Count; j++)
             {
-                var position = verdict.Written[j];
-                var direction = ((RelFieldCollation)collations.get(position)).getDirection();
-
-                writtenPaths[j] = resolved[position];
-                writtenKeys[j] = new CosmosSortKey(resolved[position]?.ToPolicyPath() ?? string.Empty, direction == RelFieldCollation.Direction.DESCENDING);
-                writtenChecks[j] = (CosmosServiceOrder.ComparedAs(operands[position].Operand), verdict.IsAnchored ? verdict.Anchors[j] : CosmosOrderAnchor.None);
+                writtenPaths[j] = resolved[verdict.Written[j]];
+                writtenKeys[j] = new CosmosSortKey(writtenPaths[j]?.ToPolicyPath() ?? string.Empty, verdict.Keys[j].Descending);
             }
 
             keys = writtenKeys;
             paths = writtenPaths;
             written = verdict.Written;
-            checks = writtenChecks;
+            ordered = verdict.Keys;
             return true;
         }
 
@@ -287,13 +283,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // Every question the rule asked, asked again of the facts it decided under.
             var facts = implementor.FactsOf(Facts);
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, out var keys, out var paths, out var written, out var checks) == false)
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, out var keys, out var paths, out var written, out var ordered) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to an order the service computes as Calcite would.");
 
             if (implementor.Container.IsSortSupported(keys) == false)
                 throw new CosmosTranslationException("The container does not index every key of this sort, or has no composite index supporting it.");
 
-            var anchored = new List<(string, string?, CosmosOrderedKeyKind, bool, bool, CosmosOrderAnchor)>(keys.Count);
+            var anchored = new List<(string Expression, CosmosOrderedKey Key)>(keys.Count);
             var names = getInput().getRowType().getFieldNames();
 
             for (var i = 0; i < keys.Count; i++)
@@ -307,18 +303,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 if (expression is null)
                     throw new CosmosTranslationException("A sort key resolves to neither a path nor an expression the service will order by.");
 
-                implementor.Query.AddOrderBy(expression, keys[i].Descending);
+                implementor.Query.AddOrderBy(expression, ordered[i].Descending);
 
                 // What the reader compares, where the order is completed as the rows arrive: the stored value of the
                 // path, selected for it — or for a DISTINCT, the column it already selects, which reads the path's value
                 // where it holds one of the key's type and null where it does not, as the key's own reading does.
-                var nullsFirst = (RelFieldCollation.NullDirection.__Enum)collation.nullDirection.ordinal() == RelFieldCollation.NullDirection.__Enum.FIRST;
-                anchored.Add((expression, implementor.Query.Distinct ? (string)names.get(index) : null, checks[i].Kind, keys[i].Descending, nullsFirst, checks[i].Anchor));
+                anchored.Add((expression, ordered[i] with { Member = implementor.Query.Distinct ? (string)names.get(index) : null }));
             }
 
             // An order the plan proved only around anchors, checked by the reader (CosmosOrderProgram); one it proved
             // outright is read as it comes.
-            if (anchored.Exists(k => k.Item6 != CosmosOrderAnchor.None))
+            if (anchored.Exists(k => k.Key.Anchor != CosmosOrderAnchor.None))
                 implementor.OrderAnchored(anchored);
 
             if (offset is not null)

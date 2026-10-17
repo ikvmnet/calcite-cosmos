@@ -19,9 +19,9 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// <param name="Kind">How Calcite compares the argument's values.</param>
     /// <param name="Anchor">What the extreme has to be to be Calcite's.</param>
     /// <param name="Reread">The statement reading the argument's values, as <c>SELECT VALUE</c>, under the aggregate's
-    /// own <c>FROM</c> and <c>WHERE</c>.</param>
+    /// own <c>FROM</c> and <c>WHERE</c>; <c>null</c> until the statement is built.</param>
     /// <param name="Ordered">Whether <paramref name="Reread"/> orders the values toward the extreme, so that the first
     /// anchor ends it.</param>
-    public sealed record CosmosOrderExtreme(string Member, bool Max, CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor, string Reread, bool Ordered);
+    public sealed record CosmosOrderExtreme(string Member, bool Max, CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor, string? Reread, bool Ordered);
 
 }

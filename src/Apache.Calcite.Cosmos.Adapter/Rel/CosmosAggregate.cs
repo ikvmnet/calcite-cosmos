@@ -425,8 +425,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     var max = (SqlKind.__Enum)call.getAggregation().getKind().ordinal() == SqlKind.__Enum.MAX;
                     var operand = ExtremeOf(argument, inputRowType, fields, inputReadings)!;
 
-                    implementor.ExtremeAnchored(name, path.ToString(), max, CosmosServiceOrder.ComparedAs(operand), verdict.Anchors[0],
-                        implementor.Container.IsSortSupported(new[] { new CosmosSortKey(path.ToPolicyPath(), max) }));
+                    implementor.ExtremeAnchored(path.ToString(), new CosmosOrderExtreme(name, max, CosmosServiceOrder.ComparedAs(operand), verdict.Anchors[0], null,
+                        implementor.Container.IsSortSupported(new[] { new CosmosSortKey(path.ToPolicyPath(), max) })));
                 }
             }
 

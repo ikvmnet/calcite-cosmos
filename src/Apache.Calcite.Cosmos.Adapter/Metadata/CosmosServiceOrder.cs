@@ -151,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 throw new ArgumentNullException(nameof(keys));
 
             var written = new List<int>(keys.Count);
-            var readings = new List<(Reading Reading, bool Descending, bool NullsFirst)>(keys.Count);
+            var readings = new List<(Reading Reading, bool Descending, bool NullsFirst, CosmosOrderedKeyKind Kind)>(keys.Count);
 
             for (var i = 0; i < keys.Count; i++)
             {
@@ -181,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     continue;
 
                 written.Add(i);
-                readings.Add((reading, descending, nullsFirst));
+                readings.Add((reading, descending, nullsFirst, ComparedAs(key.Operand)));
             }
 
             var anchors = new CosmosOrderAnchor[readings.Count];
@@ -189,7 +189,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             for (var j = 0; j < readings.Count; j++)
             {
-                var (reading, descending, nullsFirst) = readings[j];
+                var (reading, descending, nullsFirst, _) = readings[j];
                 var last = j == readings.Count - 1;
 
                 // R2, and where a number read back may not be what the service ordered, what the rows can still prove:
@@ -226,10 +226,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return CosmosOrderVerdict.Refused("undefined and null on a leading key, which Calcite ties and the service does not");
             }
 
-            if (unproved is not null)
-                return CosmosOrderVerdict.Anchored("anchored, " + unproved, anchors, written);
+            // Each written key as decided: how Calcite compares it, the direction and placement Calcite runs, and its anchor.
+            var ordered = new CosmosOrderedKey[readings.Count];
+            for (var j = 0; j < readings.Count; j++)
+                ordered[j] = new CosmosOrderedKey(null, readings[j].Kind, readings[j].Descending, readings[j].NullsFirst, anchors[j]);
 
-            return CosmosOrderVerdict.Proved(written.Count == keys.Count ? "proved" : "proved, with constant keys dropped", written);
+            if (unproved is not null)
+                return CosmosOrderVerdict.Anchored("anchored, " + unproved, written, ordered);
+
+            return CosmosOrderVerdict.Proved(written.Count == keys.Count ? "proved" : "proved, with constant keys dropped", written, ordered);
         }
 
         /// <summary>

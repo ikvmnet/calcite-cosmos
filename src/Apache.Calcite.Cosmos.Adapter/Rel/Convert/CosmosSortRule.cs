@@ -114,8 +114,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Built under the facts the legality test decided under, which the node asks again; and saying whether the
             // order is completed as the rows arrive, which the digest shows.
             var facts = Facts(sort, container);
-            var anchored = CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out _, out _, out _, out var checks)
-                && checks.Any(c => c.Anchor != Metadata.CosmosOrderAnchor.None);
+            var anchored = CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out _, out _, out _, out var ordered)
+                && ordered.Any(k => k.Anchor != Metadata.CosmosOrderAnchor.None);
 
             return new CosmosSort(
                 sort.getCluster(),

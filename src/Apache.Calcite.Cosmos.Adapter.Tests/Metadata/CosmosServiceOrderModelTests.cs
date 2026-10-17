@@ -325,7 +325,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 var written = verdict.Written;
                 return new(VerdictKind.Anchored, verdict.Reason, written.Count > 0 ? written : null,
-                    (key, value) => CosmosServiceOrder.IsAnchor(verdict.Anchors[written.Count > 0 ? IndexOf(written, key) : 0], Returned(value)));
+                    (key, value) => CosmosServiceOrder.IsAnchor(written.Count > 0 ? verdict.Keys[IndexOf(written, key)].Anchor : verdict.Anchors[0], Returned(value)));
 
                 static int IndexOf(IReadOnlyList<int> written, int key)
                 {

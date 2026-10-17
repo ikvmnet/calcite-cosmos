@@ -507,7 +507,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </summary>
         async ValueTask<JsonElement> RereadAsync(CosmosOrderExtreme extreme, CancellationToken cancellationToken)
         {
-            using var values = await OpenAsync(extreme.Reread, null, cancellationToken).ConfigureAwait(false);
+            using var values = await OpenAsync(extreme.Reread!, null, cancellationToken).ConfigureAwait(false);
 
             var best = default(JsonElement);
             var any = false;

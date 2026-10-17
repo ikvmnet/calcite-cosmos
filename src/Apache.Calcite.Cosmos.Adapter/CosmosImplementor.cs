@@ -944,19 +944,19 @@ namespace Apache.Calcite.Cosmos.Adapter
             return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program);
         }
 
-        readonly List<(string Expression, string? Member, CosmosOrderedKeyKind Kind, bool Descending, bool NullsFirst, CosmosOrderAnchor Anchor)> _anchoredKeys = new();
+        readonly List<(string Expression, CosmosOrderedKey Key)> _anchoredKeys = new();
 
-        readonly List<(string Member, string Expression, bool Max, CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor, bool Orderable)> _anchoredExtremes = new();
+        readonly List<(string Expression, CosmosOrderExtreme Extreme)> _anchoredExtremes = new();
 
         /// <summary>
         /// Records the keys of a sort the service is handed whose order is proved only around anchors: every key written,
         /// in order, for the reader to compare and to check.
         /// </summary>
-        /// <param name="keys">Each key's expression as the statement orders by it; the member of a returned row holding its
-        /// value where the statement already selects it under its own name, which a <c>DISTINCT</c> does, or <c>null</c>
-        /// for one to be selected; how Calcite compares it; its direction and null placement; and what a value has to be
-        /// to certify the rows around it.</param>
-        internal void OrderAnchored(IEnumerable<(string Expression, string? Member, CosmosOrderedKeyKind Kind, bool Descending, bool NullsFirst, CosmosOrderAnchor Anchor)> keys)
+        /// <param name="keys">Each key's expression as the statement orders by it, and the key as the question decided it:
+        /// its <see cref="CosmosOrderedKey.Member"/> the member of a returned row holding its value where the statement
+        /// already selects it under its own name, which a <c>DISTINCT</c> does, or <c>null</c> for one to be
+        /// selected.</param>
+        internal void OrderAnchored(IEnumerable<(string Expression, CosmosOrderedKey Key)> keys)
         {
             if (_anchoredKeys.Count > 0)
                 throw new CosmosTranslationException("A sort has already been applied.");
@@ -967,15 +967,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <summary>
         /// Records an extreme the service computes whose answer is Calcite's only where it is an anchor.
         /// </summary>
-        /// <param name="member">The member of the aggregate's row holding it.</param>
         /// <param name="expression">Its argument, as the statement names it.</param>
-        /// <param name="max">Whether it is a <c>MAX</c>.</param>
-        /// <param name="kind">How Calcite compares the argument.</param>
-        /// <param name="anchor">What the answer has to be.</param>
-        /// <param name="orderable">Whether the service orders by the argument, so that reading it again may stop at the
-        /// first anchor.</param>
-        internal void ExtremeAnchored(string member, string expression, bool max, CosmosOrderedKeyKind kind, CosmosOrderAnchor anchor, bool orderable) =>
-            _anchoredExtremes.Add((member, expression, max, kind, anchor, orderable));
+        /// <param name="extreme">The extreme, its <see cref="CosmosOrderExtreme.Reread"/> <c>null</c>: the statement
+        /// that reads the argument again is rendered with the rest.</param>
+        internal void ExtremeAnchored(string expression, CosmosOrderExtreme extreme) =>
+            _anchoredExtremes.Add((expression, extreme));
 
         /// <summary>
         /// Assembles what the reader of the statement does to complete the proofs the plan could not, or returns
@@ -1015,16 +1011,16 @@ namespace Apache.Calcite.Cosmos.Adapter
                 throw new CosmosTranslationException("An order checked as the rows arrive needs the rows it orders.");
 
             var keys = new List<CosmosOrderedKey>(_anchoredKeys.Count);
-            foreach (var key in _anchoredKeys)
-                keys.Add(new CosmosOrderedKey(key.Member ?? Reserve("k", key.Expression), key.Kind, key.Descending, key.NullsFirst, key.Anchor));
+            foreach (var (expression, key) in _anchoredKeys)
+                keys.Add(key with { Member = key.Member ?? Reserve("k", expression) });
 
             var rechecked = new List<CosmosOrderComparison>(comparisons.Count);
             foreach (var comparison in comparisons)
                 rechecked.Add(comparison with { Member = Reserve("c", comparison.Expression) });
 
             var extremes = new List<CosmosOrderExtreme>(_anchoredExtremes.Count);
-            foreach (var extreme in _anchoredExtremes)
-                extremes.Add(new CosmosOrderExtreme(extreme.Member, extreme.Max, extreme.Kind, extreme.Anchor, _query.BuildValues(extreme.Expression, extreme.Orderable, extreme.Max), extreme.Orderable));
+            foreach (var (expression, extreme) in _anchoredExtremes)
+                extremes.Add(extreme with { Reread = _query.BuildValues(expression, extreme.Ordered, extreme.Max) });
 
             return new CosmosOrderProgram(keys, _query.Distinct, _query.Offset, _query.Fetch, _query.BuildUnpaged(), rechecked, extremes);
         }
