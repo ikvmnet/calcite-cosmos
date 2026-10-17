@@ -38,9 +38,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <see cref="JsonCharacterBand.None"/> for a form written in ASCII.
         /// </summary>
         /// <remarks>
-        /// Data about the form, stated beside it as its name is, and read by the theory into a rule: a path holding a
-        /// string in the form holds only these (<c>JsonRules</c>, "a stored form holds the characters it is written
-        /// in"). Nothing reads a path's characters off its form any other way.
+        /// Data about the form, which its owner reads off what defines it, and which the theory reads into a rule: a
+        /// path holding a string in the form holds only these (<c>JsonRules</c>, "a stored form holds the characters it
+        /// is written in"). Nothing reads a path's characters off its form any other way.
         /// </remarks>
         JsonCharacterBand Characters { get; }
 
