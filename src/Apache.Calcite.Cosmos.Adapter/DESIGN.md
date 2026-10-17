@@ -4874,11 +4874,15 @@ src/
       JsonFactRule.cs               ✔ A guarded claim
       JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what a set of facts knows
       JsonFactDeclaration.cs, JsonFactUnconditional.cs ✔ The declaration in one generation, as the oracle reads it
-      JsonFactTables.cs             ✔ What a set reads: a context's tables, or the overlay's
+      JsonFactTables.cs, JsonScopeTables.cs ✔ What a set reads: a context's tables, or the overlay's
       JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
-      JsonFactEncoding.cs           ✔ Claims, paths and scalars in the theory's terms, and back
+      JsonFactEncoding.cs, JsonFactVocabulary.cs ✔ Claims, paths, scalars and characters in the theory's terms,
+                                        and back; the tokens of forms and extensions
+      JsonCharacterBand.cs          ✔ The bands of UTF-16 units a string's characters are known by
       JsonFactGenerations.cs        ✔ The graphs a schema object reasons in, one generation at a time
       Saturation/                   ✔ The rules of JSON and of JSON Schema, on Eggnog; internal
+                                        JsonRules.cs, JsonContexts.cs, JsonFact.cs, JsonPathSpec.cs, JsonValues.cs
+                                        (JPath.cs, Bound.cs): the theory, its contexts, its facts and its values;
                                         PredicateRules.cs (Val.cs, Pred.cs), PredicateAtom.cs (Truths.cs),
                                         Renderings.cs, PathValues.cs: the predicate rules and their sorts, what an
                                         atom means, the grammar a number renders in, and what a path may hold
