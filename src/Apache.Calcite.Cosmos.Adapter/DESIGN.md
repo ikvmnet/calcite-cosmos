@@ -5682,7 +5682,7 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   The gain is in the containers that declare no characters — `orders_plain`'s judged sorts from 12 to 27 and
   `orders_declared`'s from 14 to 99, with their extremes 3 to 4 and 4 to 8: sorts over `id` and over text of any
   character, their pages and three-page keysets, `RETURNING BIGINT` over an integer nothing bounds, `MAX(c."id")` —
-  and `orders_ascii` gains its unbounded integers, 84 to 91. 118 answers were the CLR runtime's own. The two families
+  and `orders_ascii` gains its unbounded integers, 84 to 91. 118 answers in Debug and 117 in Release were the CLR runtime's own. The two families
   that are not orders' are findings of their own (`Findings`), recorded in `TODO.md` and reported apart where the
   statement sent no order — every one of the 8 does — so the test holds every order it judges and runs with the
   class. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
