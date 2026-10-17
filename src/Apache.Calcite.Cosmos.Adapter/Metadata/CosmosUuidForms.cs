@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -124,6 +125,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// literal needs the shape the name stands for.
         /// </remarks>
         static readonly Dictionary<string, UuidSpelling> Uuids = BuildUuids();
+
+        /// <summary>
+        /// Gets every UUID form a pattern can be recognised as.
+        /// </summary>
+        internal static IEnumerable<CosmosRepresentation> Registered => Uuids.Values.Select(UuidForm);
 
         /// <summary>
         /// Builds the table of UUID forms, one per combination of the four axes.

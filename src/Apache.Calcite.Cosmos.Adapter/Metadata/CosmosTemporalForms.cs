@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -561,6 +561,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The representation, or <c>null</c>.</returns>
         internal static CosmosRepresentation? Recognise(string normalised) =>
             Known.TryGetValue(normalised, out var representation) ? representation : null;
+
+        /// <summary>
+        /// Gets every temporal form a pattern can be recognised as.
+        /// </summary>
+        internal static IEnumerable<CosmosRepresentation> Registered => Known.Values.Distinct();
 
         /// <summary>
         /// Writes an instant the way a path in this form stores it, or returns <c>null</c> where the

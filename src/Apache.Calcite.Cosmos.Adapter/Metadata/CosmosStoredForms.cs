@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
@@ -55,6 +55,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ?? CosmosUuidForms.Recognise(normalised)
                 ?? CosmosNumericForms.Recognise(normalised);
         }
+
+        /// <summary>
+        /// Gets every stored form a pattern can be recognised as, a numeric form at each width a pattern can name.
+        /// </summary>
+        /// <remarks>
+        /// What <c>CosmosStoredFormsTests</c> holds to the claim the service's order rests on: every stored form is
+        /// ASCII, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part
+        /// (<see cref="CosmosServiceOrder"/>).
+        /// </remarks>
+        internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
+            System.Linq.Enumerable.Concat(
+                System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered),
+                System.Linq.Enumerable.Prepend(System.Linq.Enumerable.Select(System.Linq.Enumerable.Range(1, 19), CosmosNumericForms.IntegerFixedWidth), CosmosNumericForms.IntegerUnpadded));
 
         /// <inheritdoc cref="CosmosUuidForms.Render" />
         public static string? RenderUuid(CosmosRepresentation representation, Guid value) =>

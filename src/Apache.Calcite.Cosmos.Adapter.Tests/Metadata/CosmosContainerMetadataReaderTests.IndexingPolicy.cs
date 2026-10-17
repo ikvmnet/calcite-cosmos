@@ -13,8 +13,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     {
 
         /// <summary>
-        /// Whether a path is covered by the container's index. This bears on cost only — an unindexed
-        /// path still queries, it just scans.
+        /// Whether a path is covered by the container's index. For a filter this bears on cost only —
+        /// an unindexed path still queries, it just scans — and for an <c>ORDER BY</c> on legality:
+        /// Azure refuses one over a path the policy excludes.
         /// </summary>
         public class IndexingPolicy
         {
@@ -29,6 +30,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 container.IsPathIndexed("/name").Should().BeTrue();
                 container.IsPathIndexed("/inventory/quantity").Should().BeTrue();
+            }
+
+            /// <remarks>
+            /// Everything but <c>_etag</c>, which the service excludes from every policy it hands back —
+            /// <c>/"_etag"/?</c>, measured on the probe account — and an <c>ORDER BY</c> over which is a
+            /// 400 there.
+            /// </remarks>
+            [Fact]
+            public void TheDefaultPolicyExcludesTheEntityTag()
+            {
+                new CosmosContainerMetadata("products").IsPathIndexed("/_etag").Should().BeFalse();
+                Policy(new[] { "/*" }, new[] { "/\"_etag\"/?" }).IsPathIndexed("/_etag").Should().BeFalse("a quoted segment is the segment");
+            }
+
+            /// <remarks>
+            /// A segment the policy quotes is the segment unquoted: the service quotes <c>_etag</c> in the
+            /// policy it returns, and may quote any name.
+            /// </remarks>
+            [Fact]
+            public void AQuotedSegmentIsTheSegment()
+            {
+                var container = Policy(new[] { "/*" }, new[] { "/\"notes\"/?", "/\"blob\"/*" });
+
+                container.IsPathIndexed("/notes").Should().BeFalse();
+                container.IsPathIndexed("/blob/inner").Should().BeFalse();
+                container.IsPathIndexed("/name").Should().BeTrue();
+            }
+
+            /// <remarks>
+            /// A computed property is reached by no wildcard: measured on the probe account, one the policy
+            /// does not name orders as a 400 and one it includes orders as its values do.
+            /// </remarks>
+            [Fact]
+            public void AComputedPropertyIsIndexedOnlyWhereAnIncludedPathNamesIt()
+            {
+                var container = new CosmosContainerMetadata("products", new[] { "/category" }, null, new[] { "/*", "/cp_lower/?" }, new string[0], computedProperties: new[] { "cp_lower", "cp_neg" });
+
+                container.IsPathIndexed("/cp_lower").Should().BeTrue();
+                container.IsPathIndexed("/cp_neg").Should().BeFalse();
+                container.IsPathIndexed("/name").Should().BeTrue();
+
+                new CosmosContainerMetadata("products", computedProperties: new[] { "cp_lower" }).IsPathIndexed("/cp_lower").Should().BeFalse("the default policy names none");
+            }
+
+            [Fact]
+            public void ComputedPropertiesAreReadFromTheContainerDefinition()
+            {
+                var properties = new ContainerProperties("products", "/pk");
+                properties.ComputedProperties.Add(new ComputedProperty { Name = "cp_lower", Query = "SELECT VALUE LOWER(c.name) FROM c" });
+
+                var container = CosmosContainerMetadataReader.FromProperties(properties);
+
+                container.ComputedProperties.Should().Equal("cp_lower");
+                container.IsPathIndexed("/cp_lower").Should().BeFalse();
             }
 
             [Fact]
