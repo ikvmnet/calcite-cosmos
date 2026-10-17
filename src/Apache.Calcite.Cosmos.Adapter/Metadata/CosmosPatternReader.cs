@@ -14,7 +14,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>One keyword, one parse, two things read off it.</b> <see cref="Claims"/> reads the characters, for an order:
+    /// <b>One keyword, one reader, two things read off its parse.</b> Each is read off a parse of its own under each
+    /// reading — four in all where a declared string is read for both — because the characters ask only the bands and
+    /// building the strings for them cost more than parsing again (<c>DESIGN.md</c>, <em>What it costs</em> under
+    /// <em>One reader of a pattern</em>). <see cref="Claims"/> reads the characters, for an order:
     /// the service orders a document's strings by code point and Calcite by UTF-16 code unit, and the two part only
     /// where a surrogate meets a unit from U+E000 (<see cref="JsonCharacterBand"/>), so a path whose strings are known to
     /// lack either band is one whose sorts, extremes and comparisons the service can be handed
@@ -33,12 +36,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>Two readings, and the answer has to be right under both.</b> JSON Schema names ECMA-262's dialect and no flag.
     /// Without the <c>u</c> flag a pattern is read, and matched, unit by unit: <c>[^a]</c> matches either half of a
-    /// surrogate pair, and <c>😀</c> is two atoms. With it, code point by code point: <c>[^a]</c> matches a
-    /// whole supplementary character, <c>😀</c> is one, and a range may span the planes. A validator picks
+    /// surrogate pair, and <c>\uD83D\uDE00</c> is two atoms. With it, code point by code point: <c>[^a]</c> matches a
+    /// whole supplementary character, <c>\uD83D\uDE00</c> is one, and a range may span the planes. A validator picks
     /// one, and the adapter cannot know which wrote its documents. So the pattern is read twice, once each way: a band
     /// is absent only where both readings exclude it, and the strings are read only where both readings read the same
     /// ones. They part in places that matter: <c>^[^\uD800-\uDFFF]*$</c> excludes the surrogates read by unit and admits
-    /// every supplementary character read by code point; <c>[\uD800-􏰀-\uDFFF]</c> is the surrogates read by
+    /// every supplementary character read by code point; <c>[\uD800-\uDBFF\uDC00-\uDFFF]</c> is the surrogates read by
     /// unit and, read by code point, a range from U+D800 to U+10FC00 that holds the whole of the high band. A pattern
     /// either reading rejects as malformed proves nothing: a validator using that reading could not have checked
     /// anything with it. That holds of a form as of the characters — <c>^{…}$</c> with its braces unescaped is a
