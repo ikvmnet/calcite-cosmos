@@ -1349,13 +1349,6 @@ the distribution the gate is sized for.
   chapter 14.4 tells a user to spell the classes out; refusing both in the reader would cost nothing a
   user cannot write as `[0-9]`, but would leave the stored forms reading them, which a fix of one
   reading alone does not make consistent.
-- **Lone surrogates are stored on Azure, and a raw one fails the reader** — *small.* An escaped lone
-  surrogate in a document is stored as U+FFFD; raw WTF-8 bytes are stored verbatim and come back as
-  invalid UTF-8, which `System.Text.Json` refuses to transcode, so the stream throws. The emulator
-  refuses both with a 403. Nothing here orders them wrongly — U+FFFD and a surrogate both lie at or
-  above U+D800, which R1 already refuses to rank against a high unit, and a declared `pattern` that
-  admits a surrogate claims nothing of the high band for this reason — but the reader should say what
-  it met.
 - **Two values that may both be a JSON null are compared in process** — *small; closed as a wrong answer,
   left as a pushdown.* `=`, `<=` and `>=` between two paths that may each hold a JSON null kept the
   documents holding one at the service, which equates a null with a null where Calcite's comparison is
@@ -2246,7 +2239,10 @@ across documents* and *A join of a container to itself* is the record.
   `JsonElement.GetString()` refuses (*"Cannot transcode invalid UTF-8 JSON text to UTF-16 string"*).
   The emulator refuses both writes with a 403. A document another client wrote that way fails every
   statement whose rows reach it. Either the failure names the document, or the reader reads the
-  sequence as U+FFFD, which is what the service itself did with the escape.
+  sequence as U+FFFD, which is what the service itself did with the escape. Nothing orders them
+  wrongly meanwhile: U+FFFD and a surrogate both lie at or above U+D800, which R1 already refuses to rank
+  against a high unit, and a declared `pattern` that admits a surrogate claims nothing of the high band
+  for this reason.
 - **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
   returns a document read whole as it was written, and prints a projected number to 17 significant
   digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and
@@ -2360,8 +2356,9 @@ across documents* and *A join of a container to itself* is the record.
     physical partitions existing now; it runs against one the caller names (appendix E), and runs the
     reader itself over the merge beside measuring it.
 
-  The CLR runtime's own misorders are reported apart and are not the adapter's: 94 of the gate's
-  statements, every one a sort of two keys or more done in process, multi-key text by culture. The fix is
+  The CLR runtime's own misorders are reported apart and are not the adapter's: about 117 or 118 of the
+  gate's statements at the tip (94 on main), every one a sort of two keys or more done in process,
+  multi-key text by culture, the count varying with the order the service returns ties in. The fix is
   `calcite-dotnet`'s: `JavaComparisons.Compare` should compare a string ordinally and route NaN through
   `Double.compare`.
 - **The partition generator's vocabulary** — *small.* Its text expressions are an accessor, a

@@ -3068,7 +3068,7 @@ states: a sort, a page and a keyset seek over `id`, a sort over a declared strin
 or between two such paths, the extreme of either. The declaration is the first answer, and is read now: a JSON
 Schema `pattern` read as the characters a path may hold (below). The second is a proof completed when the rows
 arrive — the anchored read, which checks at run time what no declaration proved (below) — and it pushes all of that
-again but a comparison of two paths and a grouped extreme. A sort split by JSON type is next (`TODO.md` section 4).
+again but a comparison of two paths and a grouped extreme. A sort split by JSON type is next (`TODO.md` section 5).
 
 #### Reading a pattern as characters
 
@@ -3261,7 +3261,7 @@ adapter's executor over two physical partitions, on an account that has them.
 
 **What it does not reach.** A comparison of two paths, a grouped extreme, a comparison under an `OR` or beneath a
 grouping, and `REAL`, which no anchor is stated for; and everything that is not about the values — the null placement
-and the mixed types the sort split by JSON type is for (`TODO.md` section 4).
+and the mixed types the sort split by JSON type is for (`TODO.md` section 5).
 
 #### `COALESCE` pushes, and what stopped it was not `COALESCE`
 
@@ -5704,7 +5704,9 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   The gain is in the containers that declare no characters — `orders_plain`'s judged sorts from 12 to 27 and
   `orders_declared`'s from 14 to 99, with their extremes 3 to 4 and 4 to 8: sorts over `id` and over text of any
   character, their pages and three-page keysets, `RETURNING BIGINT` over an integer nothing bounds, `MAX(c."id")` —
-  and `orders_ascii` gains its unbounded integers, 84 to 91. 118 answers in Debug and 117 in Release were the CLR runtime's own. The two families
+  and `orders_ascii` gains its unbounded integers, 84 to 91. About 117 or 118 answers were the CLR runtime's own — the
+  count follows the order the service returns tied rows in, which the in-process multi-key sort is sensitive to, and
+  not the build: a Release build gave 118 on the probe account. The two families
   that are not orders' are findings of their own (`Findings`), recorded in `TODO.md` and reported apart where the
   statement sent no order — every one of the 8 does — so the test holds every order it judges and runs with the
   class. The default's 200 items push 31 sorts, 5 extremes and 5 comparisons, and the floors are raised to all of
