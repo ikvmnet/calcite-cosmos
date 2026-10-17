@@ -290,9 +290,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         /// <remarks>
         /// Silent about whether the path is there, as <see cref="TryGetValue"/> is: an <c>enum</c> or an <c>IN</c>
-        /// constrains the value only where there is one. What an order over the path needs of it is the characters and
-        /// the types of what may be there, and that a path holding one value is a key nothing orders by — see
-        /// <c>CosmosServiceOrder</c>.
+        /// constrains the value only where there is one. What an order over the path needs of it is the types of what may
+        /// be there, and that a path holding one value is a key nothing orders by — see <c>CosmosServiceOrder</c>; what
+        /// characters the values hold the theory derives itself, and <see cref="CharactersOf"/> reads.
         /// </remarks>
         /// <param name="path">The path.</param>
         /// <param name="values">The values, in no order that means anything.</param>
