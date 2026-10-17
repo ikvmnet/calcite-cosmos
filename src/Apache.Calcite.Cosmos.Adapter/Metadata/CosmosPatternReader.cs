@@ -8,43 +8,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 {
 
     /// <summary>
-    /// Reads what characters a declared <c>pattern</c> lets a string hold: the bands of UTF-16 code units no string it
-    /// matches can draw from, under every reading a validator may have given it.
+    /// The one reader of a declared <c>pattern</c>: it parses the pattern under every reading a validator may have given
+    /// it, and reads two things off the parse — the characters a string at the path may hold, and the strings the
+    /// pattern admits, which are what a stored form is recognised by.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>What it is for.</b> The service orders a document's strings by code point and Calcite by UTF-16 code unit, and
-    /// the two part only where a surrogate meets a unit from U+E000 (<see cref="JsonCharacterBand"/>). A path whose
-    /// strings are known to lack either band is one whose sorts, extremes and comparisons the service can be handed
-    /// (<see cref="CosmosServiceOrder"/>). JSON Schema has one keyword that says what characters a string holds, and it
-    /// is this one: a schema writing <c>"pattern": "^[A-Za-z0-9_-]+$"</c> on <c>id</c> has said that no id holds a
-    /// character at or above U+D800, which is a proof the planner can use with nothing checked at run time.
+    /// <b>One keyword, one parse, two things read off it.</b> <see cref="Claims"/> reads the characters, for an order:
+    /// the service orders a document's strings by code point and Calcite by UTF-16 code unit, and the two part only
+    /// where a surrogate meets a unit from U+E000 (<see cref="JsonCharacterBand"/>), so a path whose strings are known to
+    /// lack either band is one whose sorts, extremes and comparisons the service can be handed
+    /// (<see cref="CosmosServiceOrder"/>). <see cref="Strings"/> reads the language, for a stored form
+    /// (<see cref="CosmosStoredForms"/>): a form is recognised where what the pattern admits is the form's language, which
+    /// only a parse can say — matching the text against spellings could not, and was a second reader of the keyword that
+    /// read some of it differently.
     /// </para>
     /// <para>
-    /// <b>A reader of an input, and nothing more.</b> What it reads becomes a declared fact of the path
-    /// (<see cref="JsonClaim.Characters"/>), stated into the theory as a type is; the theory meets it with what a
-    /// domain, a stored form or a filter says of the same path, and what it is worth to an order is asked of the fact
-    /// there. Which band a range's units are in is the theory's to say (<c>JsonValues.BandsOf</c>).
+    /// <b>A reader of an input, and nothing more.</b> What it reads becomes a declared fact of the path: the characters
+    /// as <see cref="JsonClaim.Characters"/>, and a form as <see cref="JsonClaim.Represents"/> once a family has said
+    /// which form the strings are. The theory meets each with what else is known of the path, and derives the
+    /// characters of a form from the form (<see cref="IJsonStoredForm.Characters"/>), not from this. Which band a range's
+    /// units are in is the theory's to say (<c>JsonValues.BandsOf</c>).
     /// </para>
     /// <para>
     /// <b>Two readings, and the answer has to be right under both.</b> JSON Schema names ECMA-262's dialect and no flag.
     /// Without the <c>u</c> flag a pattern is read, and matched, unit by unit: <c>[^a]</c> matches either half of a
-    /// surrogate pair, and <c>\uD83D\uDE00</c> is two atoms. With it, code point by code point: <c>[^a]</c> matches a
-    /// whole supplementary character, <c>\uD83D\uDE00</c> is one, and a range may span the planes. A validator picks
-    /// one, and the adapter cannot know which wrote its documents. So the pattern is read twice, once each way, and a
-    /// band is absent only where both readings exclude it. They part in places that matter:
-    /// <c>^[^\uD800-\uDFFF]*$</c> excludes the surrogates read by unit and admits every supplementary character read
-    /// by code point; <c>[\uD800-\uDBFF\uDC00-\uDFFF]</c> is the surrogates read by unit and, read by code point, a
-    /// range from U+D800 to U+10FC00 that holds the whole of the high band. A pattern either reading rejects as
-    /// malformed proves nothing: a validator using that reading could not have checked anything with it.
+    /// surrogate pair, and <c>😀</c> is two atoms. With it, code point by code point: <c>[^a]</c> matches a
+    /// whole supplementary character, <c>😀</c> is one, and a range may span the planes. A validator picks
+    /// one, and the adapter cannot know which wrote its documents. So the pattern is read twice, once each way: a band
+    /// is absent only where both readings exclude it, and the strings are read only where both readings read the same
+    /// ones. They part in places that matter: <c>^[^\uD800-\uDFFF]*$</c> excludes the surrogates read by unit and admits
+    /// every supplementary character read by code point; <c>[\uD800-􏰀-\uDFFF]</c> is the surrogates read by
+    /// unit and, read by code point, a range from U+D800 to U+10FC00 that holds the whole of the high band. A pattern
+    /// either reading rejects as malformed proves nothing: a validator using that reading could not have checked
+    /// anything with it. That holds of a form as of the characters — <c>^{…}$</c> with its braces unescaped is a
+    /// braced UUID read by unit and an error read by code point, so it is no form.
     /// </para>
     /// <para>
     /// <b>The grammar read is the strict one both readings share</b>, and anything outside it is refused:
     /// </para>
     /// <list type="bullet">
-    /// <item><description>every top-level alternative is anchored, beginning with <c>^</c> and ending with <c>$</c>, so
-    /// that every character of a matching string is one an atom consumed. JSON Schema's <c>pattern</c> searches: an
-    /// unanchored alternative matches inside a string of anything.</description></item>
+    /// <item><description>the pattern is anchored: every way through it asserts <c>^</c> before it consumes anything and
+    /// <c>$</c> after it has consumed everything, so that every character of a matching string is one an atom consumed.
+    /// JSON Schema's <c>pattern</c> searches: an unanchored alternative matches inside a string of anything. An
+    /// alternative is anchored by its first and last terms, and a group, unquantified, by its own alternatives, so
+    /// <c>^a$|^b$</c>, <c>^(?:a|b)$</c> and <c>(?:^a$)|(?:^b$)</c> are anchored alike, and <c>(?:^a)?b$</c> is
+    /// not.</description></item>
     /// <item><description>an atom is a literal, an escaped syntax character, a control escape, <c>\xHH</c>,
     /// <c>\uXXXX</c>, <c>\0</c>, <c>\d</c>, <c>\w</c>, a character class, or a group, capturing or <c>(?:</c>, quantified
     /// any way; <c>\b</c> and <c>\B</c> consume nothing. <c>\d</c> and <c>\w</c> are ASCII in ECMA-262 under either
@@ -57,25 +66,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><description>refused, because they bound nothing or are read differently, or not at all, by one reading:
     /// <c>.</c>, <c>\s</c> (which matches U+FEFF), <c>\S</c>, <c>\D</c>, <c>\W</c>, <c>\p{…}</c>, <c>\P{…}</c>,
     /// <c>\u{…}</c>, a back-reference, <c>\k</c>, a lookaround, a named group, an inline flag, a legacy octal escape, an
-    /// identity escape of anything but a syntax character or a solidus, a class escape ending a range, and a lone
-    /// <c>]</c>, <c>{</c> or <c>}</c> — each of the last group a literal read by unit and an error read by code
-    /// point.</description></item>
+    /// identity escape of anything but a syntax character or a solidus (<c>\-</c> outside a class among them), a class
+    /// escape ending a range, and a lone <c>]</c>, <c>{</c> or <c>}</c> — each of the last group a literal read by unit
+    /// and an error read by code point.</description></item>
     /// </list>
     /// <para>
     /// <b>A refused pattern proves nothing</b>, which is always correct: a path the schema says nothing readable about
-    /// is reasoned about as it was. Nothing here is guessed from samples: as with a stored form, the conclusion needed is
-    /// about every string the pattern admits, and only a reading of the language gives it.
+    /// is reasoned about as it was. Nothing here is guessed from samples: the conclusion needed, of characters or of a
+    /// form, is about every string the pattern admits, and only a reading of the language gives it.
     /// </para>
     /// <para>
     /// <b>What a written string becomes when it is stored.</b> Measured on the probe account, a lone surrogate written
     /// as a JSON escape is stored as U+FFFD, a high unit. A pattern that admits a surrogate admits a lone one wherever
     /// a validator reads by unit, so what it admits as written is not what the service orders: a pattern that lets a
     /// string hold a surrogate proves nothing about the high band either (<see cref="Claims"/>).
-    /// </para>
-    /// <para>
-    /// It reads the pattern as written, not as <c>CosmosPatternLanguage.Normalise</c> leaves it, which is a spelling
-    /// for matching the stored forms and not a parse: the two readers are one keyword asked two questions, and
-    /// DESIGN says why both exist for now.
     /// </para>
     /// </remarks>
     static class CosmosPatternReader
@@ -85,6 +89,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// How deep groups may nest before a pattern is refused rather than read.
         /// </summary>
         const int Depth = 64;
+
+        /// <summary>
+        /// How many alternatives a pattern's strings may be read as. An alternation inside a sequence is distributed
+        /// across it, which multiplies, so a pattern past this is read for its characters and has no strings.
+        /// </summary>
+        const int Alternatives = 64;
+
+        /// <summary>
+        /// How many runs one alternative may be read as before its runs of one class are merged: a count of a group
+        /// writes the group out that many times.
+        /// </summary>
+        const int Runs = 256;
+
+        /// <summary>
+        /// The largest count a run is read with. Every form is far narrower, and a pattern counting past this has no
+        /// strings, which costs a form no pattern writes.
+        /// </summary>
+        const int Count = 100_000;
 
         /// <summary>
         /// Returns the claims a declared <c>pattern</c> makes about the characters of the strings at its path, as the
@@ -117,6 +139,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
+        /// Returns the strings a declared <c>pattern</c> admits, where both readings read the same ones.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What the stored forms are recognised by (<see cref="CosmosStoredForms.Recognise"/>): a form is recognised
+        /// where these are its language.
+        /// </para>
+        /// <para>
+        /// <b>Read where the two readings read one language.</b> Both readings must accept the pattern, as for its
+        /// characters, and read the same strings from it. And every class must lie in the basic plane outside the
+        /// surrogates, where a unit and a code point are one character: <c>[\uD800-\uDFFF]{2}</c> is a surrogate pair read
+        /// by unit and two lone surrogates read by code point, one sequence of classes and two languages. Every stored
+        /// form is ASCII, so the condition costs none.
+        /// </para>
+        /// </remarks>
+        /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
+        /// <returns>The strings, or <c>null</c> where the pattern is refused, the readings part, or the pattern is not a
+        /// union of anchored sequences of runs.</returns>
+        internal static CosmosPatternStrings? Strings(string? pattern)
+        {
+            if (pattern is null || Read(pattern, unicode: false)?.Strings is not { } units || Read(pattern, unicode: true)?.Strings is not { } points)
+                return null;
+
+            return units.Equals(points) ? units : null;
+        }
+
+        /// <summary>
         /// Returns the bands no string a pattern matches holds a unit of, under both readings.
         /// </summary>
         /// <param name="pattern">The pattern.</param>
@@ -126,7 +175,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (Read(pattern, unicode: false) is not { } units || Read(pattern, unicode: true) is not { } points)
                 return null;
 
-            return Bands(units | points);
+            return Bands(units.Bands | points.Bands);
         }
 
         /// <summary>
@@ -137,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
         /// <returns>The bands, or <c>null</c> where the reading refuses the pattern.</returns>
         internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern, bool unicode) =>
-            Read(pattern, unicode) is { } read ? Bands(read) : null;
+            Read(pattern, unicode) is { } read ? Bands(read.Bands) : null;
 
         /// <summary>
         /// Returns the bands a set does not hold, one by one.
@@ -153,27 +202,234 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return absent;
         }
 
-        static JsonCharacterBand? Read(string pattern, bool unicode)
+        /// <summary>
+        /// Parses a pattern under one reading, or returns <c>null</c> where the reading refuses it or it is not anchored.
+        /// </summary>
+        static Reading? Read(string pattern, bool unicode)
         {
-            var reader = new Reader(pattern, unicode);
-            return reader.Pattern() ? reader.Bands : null;
+            var parser = new Parser(pattern, unicode);
+
+            if (parser.Pattern() is not { Begins: true, Ends: true } read)
+                return null;
+
+            return new Reading(parser.Bands, Canonical(read.Strings));
+        }
+
+        /// <summary>
+        /// Puts the alternatives a parse read into the strings a form is recognised by.
+        /// </summary>
+        /// <remarks>
+        /// Every alternative begins with <c>^</c> and ends with <c>$</c>, which the parse has established before this is
+        /// asked, so they are taken off; an assertion left between them — another anchor, a <c>\b</c> — narrows the
+        /// language in a way no run says, and the pattern has no strings. Nor has one with an empty class, <c>[]</c>,
+        /// which matches nothing and would make a form of a pattern no string conforms to.
+        /// </remarks>
+        static CosmosPatternStrings? Canonical(List<List<Item>>? strings)
+        {
+            if (strings is null)
+                return null;
+
+            var alternatives = new List<List<CosmosPatternRun>>(strings.Count);
+
+            foreach (var alternative in strings)
+            {
+                var start = 0;
+                var end = alternative.Count;
+
+                while (start < end && alternative[start].Mark == Mark.Start)
+                    start++;
+
+                while (end > start && alternative[end - 1].Mark == Mark.End)
+                    end--;
+
+                var runs = new List<CosmosPatternRun>(end - start);
+
+                for (var i = start; i < end; i++)
+                {
+                    if (alternative[i].Mark != Mark.Run || alternative[i].Run.Class.Spans.Count == 0 || alternative[i].Run.Class.IsPlain() == false)
+                        return null;
+
+                    runs.Add(alternative[i].Run);
+                }
+
+                alternatives.Add(runs);
+            }
+
+            return CosmosPatternStrings.Of(alternatives);
+        }
+
+        /// <summary>
+        /// What one reading of a pattern read: the bands of every character an atom can consume, and the strings, where
+        /// the pattern is a union of sequences of runs.
+        /// </summary>
+        sealed record Reading(JsonCharacterBand Bands, CosmosPatternStrings? Strings);
+
+        /// <summary>
+        /// What an item of a read alternative is: a run of characters, or an assertion, which consumes nothing.
+        /// </summary>
+        enum Mark
+        {
+            Run,
+            Start,
+            End,
+            Other,
+        }
+
+        /// <summary>
+        /// One item of a read alternative: a run, or an assertion.
+        /// </summary>
+        readonly record struct Item(Mark Mark, CosmosPatternRun Run);
+
+        /// <summary>
+        /// What a term, a sequence or an alternation reads as: whether every way through it is anchored at its start and
+        /// at its end, and the alternatives it is the union of, or <c>null</c> where it is not a union of sequences of
+        /// runs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Anchoring is read off the structure.</b> A sequence begins with <c>^</c> where its first term does, an
+        /// alternation where every branch does, an unquantified group where what it holds does; a quantified term may be
+        /// passed over, so it begins with nothing. Every way through a fragment that begins asserts <c>^</c> before it
+        /// consumes a character, and so starts at the start of the string, and likewise at the end — which is the whole
+        /// of what anchoring has to give.
+        /// </para>
+        /// <para>
+        /// <b>The strings are distributed, which is an identity.</b> A sequence of alternations is the alternation of
+        /// every sequence through them, a group is what it holds, and a count is the sequence written out that many
+        /// times. An alternation of single characters is their class, and one run of one class repeated is one run, where
+        /// the counts multiply into a single range. A range of counts of anything else — <c>(?:ab)*</c> — is no sequence
+        /// of runs, and reads as none.
+        /// </para>
+        /// </remarks>
+        sealed record Fragment(bool Begins, bool Ends, List<List<Item>>? Strings)
+        {
+
+            /// <summary>
+            /// Reads an assertion, which consumes nothing.
+            /// </summary>
+            public static Fragment Assertion(Mark mark) => new(mark == Mark.Start, mark == Mark.End, One(new Item(mark, default)));
+
+            /// <summary>
+            /// Reads an atom matching one character of a class.
+            /// </summary>
+            public static Fragment Of(CosmosPatternClass characters) => new(false, false, One(new Item(Mark.Run, new CosmosPatternRun(characters, 1, 1))));
+
+            /// <summary>
+            /// Reads terms written one after another.
+            /// </summary>
+            public static Fragment Concatenation(List<Fragment> terms)
+            {
+                List<List<Item>>? strings = new() { new() };
+
+                foreach (var term in terms)
+                    strings = Product(strings, term.Strings);
+
+                return new(terms.Count > 0 && terms[0].Begins, terms.Count > 0 && terms[terms.Count - 1].Ends, strings);
+            }
+
+            /// <summary>
+            /// Reads the branches of an alternation.
+            /// </summary>
+            public static Fragment Union(List<Fragment> branches)
+            {
+                List<List<Item>>? strings = new();
+
+                foreach (var branch in branches)
+                {
+                    if (strings is null || branch.Strings is null || strings.Count + branch.Strings.Count > Alternatives)
+                    {
+                        strings = null;
+                        break;
+                    }
+
+                    strings.AddRange(branch.Strings);
+                }
+
+                // An alternation of single characters is their class: `(?:0|1)` is `[01]`.
+                if (strings is { Count: > 1 } && strings.All(s => s is [{ Mark: Mark.Run, Run: { Min: 1, Max: 1 } }]))
+                    strings = One(new Item(Mark.Run, new CosmosPatternRun(strings.Select(s => s[0].Run.Class).Aggregate((a, b) => a.Union(b)), 1, 1)));
+
+                return new(branches.All(b => b.Begins), branches.All(b => b.Ends), strings);
+            }
+
+            /// <summary>
+            /// Reads the fragment quantified, at least <paramref name="min"/> times and at most <paramref name="max"/>.
+            /// </summary>
+            /// <param name="min">The fewest repetitions.</param>
+            /// <param name="max">The most, or <c>null</c> where there is no bound.</param>
+            public Fragment Repeated(long min, long? max) => new(false, false, Repeat(Strings, min, max));
+
+            static List<List<Item>> One(Item item) => new() { new() { item } };
+
+            static List<List<Item>>? Repeat(List<List<Item>>? strings, long min, long? max)
+            {
+                if (strings is null || min > Count || max > Count)
+                    return null;
+
+                if (max == 0 || strings is [[]])
+                    return new() { new() };
+
+                // One run of one class: A{a,b} repeated k times is A{ka,kb}, and A or A* or A+ repeated m to n times is
+                // one range too. Any other range of counts of one is a set of widths with gaps in it, and is not read.
+                if (strings is [[{ Mark: Mark.Run, Run: var run }]])
+                {
+                    if (min == max && run.Min * min <= Count && (run.Max ?? 0) * min <= Count)
+                        return One(new Item(Mark.Run, run with { Min = (int)(run.Min * min), Max = (int?)(run.Max * min) }));
+
+                    if (run.Min == 1 && run.Max == 1)
+                        return One(new Item(Mark.Run, run with { Min = (int)min, Max = (int?)max }));
+
+                    if (run.Max is null && run.Min <= 1)
+                        return One(new Item(Mark.Run, run with { Min = (int)(run.Min * min), Max = null }));
+
+                    return null;
+                }
+
+                // Anything else is read only a fixed number of times, which is it written out that often.
+                if (min != max)
+                    return null;
+
+                List<List<Item>>? repeated = new() { new() };
+                for (var i = 0; i < min && repeated is not null; i++)
+                    repeated = Product(repeated, strings);
+
+                return repeated;
+            }
+
+            /// <summary>
+            /// Reads two fragments one after the other: every alternative of the first followed by every one of the
+            /// second.
+            /// </summary>
+            static List<List<Item>>? Product(List<List<Item>>? left, List<List<Item>>? right)
+            {
+                if (left is null || right is null || (long)left.Count * right.Count > Alternatives)
+                    return null;
+
+                var product = new List<List<Item>>(left.Count * right.Count);
+
+                foreach (var l in left)
+                    foreach (var r in right)
+                    {
+                        if (l.Count + r.Count > Runs)
+                            return null;
+
+                        var joined = new List<Item>(l.Count + r.Count);
+                        joined.AddRange(l);
+                        joined.AddRange(r);
+                        product.Add(joined);
+                    }
+
+                return product;
+            }
+
         }
 
         /// <summary>
         /// One reading of one pattern: a parser of the grammar both readings share, which records the bands of every
-        /// character an atom can consume.
+        /// character an atom can consume and reads what each term admits.
         /// </summary>
-        sealed class Reader
+        sealed class Parser
         {
-
-            /// <summary>The kinds of term an alternative's anchoring is decided by.</summary>
-            enum Kind
-            {
-                None,
-                Start,
-                End,
-                Other,
-            }
 
             static readonly (int Lo, int Hi)[] Digit = { (0x30, 0x39) };
 
@@ -183,7 +439,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly bool _unicode;
             int _at;
 
-            public Reader(string source, bool unicode)
+            public Parser(string source, bool unicode)
             {
                 _source = source;
                 _unicode = unicode;
@@ -207,160 +463,164 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
-            /// Reads the whole pattern, every top-level alternative anchored at both ends.
+            /// Reads the whole pattern, or returns <c>null</c> where it is outside the grammar.
             /// </summary>
-            public bool Pattern()
+            public Fragment? Pattern() => Disjunction(0) is { } read && AtEnd ? read : null;
+
+            /// <summary>
+            /// Reads alternatives separated by <c>|</c>, up to a <c>)</c> or the end.
+            /// </summary>
+            Fragment? Disjunction(int depth)
             {
+                var branches = new List<Fragment>();
+
                 do
                 {
-                    if (Alternative(0, out var first, out var last) == false || first != Kind.Start || last != Kind.End)
-                        return false;
+                    if (Alternative(depth) is not { } branch)
+                        return null;
+
+                    branches.Add(branch);
                 }
                 while (Take('|'));
 
-                return AtEnd;
+                return Fragment.Union(branches);
             }
 
             /// <summary>
-            /// Reads one alternative up to a <c>|</c>, a <c>)</c> or the end, saying what kind of term it begins and ends
-            /// with.
+            /// Reads one alternative up to a <c>|</c>, a <c>)</c> or the end.
             /// </summary>
-            bool Alternative(int depth, out Kind first, out Kind last)
+            Fragment? Alternative(int depth)
             {
-                first = last = Kind.None;
+                var terms = new List<Fragment>();
 
                 while (AtEnd == false && _source[_at] is not ('|' or ')'))
                 {
-                    if (Term(depth, out var kind) == false)
-                        return false;
+                    if (Term(depth) is not { } term)
+                        return null;
 
-                    if (first == Kind.None)
-                        first = kind;
-
-                    last = kind;
+                    terms.Add(term);
                 }
 
-                return true;
+                return Fragment.Concatenation(terms);
             }
 
-            bool Term(int depth, out Kind kind)
+            Fragment? Term(int depth)
             {
-                kind = Kind.Other;
+                Fragment atom;
 
                 switch (_source[_at])
                 {
                     // Assertions consume nothing, and are not quantified: `^*` is an error read either way.
                     case '^':
                         _at++;
-                        kind = Kind.Start;
-                        return true;
+                        return Fragment.Assertion(Mark.Start);
 
                     case '$':
                         _at++;
-                        kind = Kind.End;
-                        return true;
+                        return Fragment.Assertion(Mark.End);
 
                     case '\\' when Peek(1) is 'b' or 'B':
                         _at += 2;
-                        return true;
+                        return Fragment.Assertion(Mark.Other);
 
                     // Any character but a line terminator: it bounds nothing.
                     case '.':
-                        return false;
+                        return null;
 
                     // A quantifier with nothing before it; and a lone brace or bracket, which a reading by unit takes for a
                     // literal and one by code point refuses.
                     case '*' or '+' or '?' or '{' or '}' or ']':
-                        return false;
+                        return null;
 
                     case '(':
                     {
                         _at++;
 
                         // A non-capturing group. Every other `(?` is a lookaround, a named group or a flag: one changes
-                        // what the rest matches, and the others are read differently, or not at all, by one reading.
+                        // what the rest matches, and the others are read differently, or not at all, by one reading. A
+                        // capturing group admits what a non-capturing one does, there being no back-reference to read it.
                         if (Peek() == '?')
                         {
                             if (Peek(1) != ':')
-                                return false;
+                                return null;
 
                             _at += 2;
                         }
 
-                        if (depth >= Depth)
-                            return false;
+                        if (depth >= Depth || Disjunction(depth + 1) is not { } inner || Take(')') == false)
+                            return null;
 
-                        do
-                        {
-                            if (Alternative(depth + 1, out _, out _) == false)
-                                return false;
-                        }
-                        while (Take('|'));
-
-                        if (Take(')') == false)
-                            return false;
-
+                        atom = inner;
                         break;
                     }
 
                     case '[':
                         _at++;
-                        if (Class() == false)
-                            return false;
+                        if (Class() is not { } members)
+                            return null;
 
+                        atom = Characters(members);
                         break;
 
                     case '\\':
                     {
                         _at++;
                         if (Escape(inClass: false, out var spans) == false)
-                            return false;
+                            return null;
 
-                        foreach (var (lo, hi) in spans)
-                            Add(lo, hi);
-
+                        atom = Characters(spans);
                         break;
                     }
 
                     default:
                     {
                         var c = Character();
-                        Add(c, c);
+                        atom = Characters(new[] { (c, c) });
                         break;
                     }
                 }
 
-                return Quantifier();
+                return Quantified(atom);
             }
 
             /// <summary>
-            /// Reads a quantifier where there is one: <c>*</c>, <c>+</c>, <c>?</c> or a count in braces, each perhaps lazy.
-            /// A brace that opens no count is refused, a reading by unit taking it for a literal and one by code point for an
-            /// error; a quantifier after a quantifier is an error read either way, and the next term refuses it.
+            /// Reads a quantifier where there is one, and the atom it quantifies: <c>*</c>, <c>+</c>, <c>?</c> or a count
+            /// in braces, each perhaps lazy, which matches what the greedy one does. A brace that opens no count is refused,
+            /// a reading by unit taking it for a literal and one by code point for an error; a quantifier after a
+            /// quantifier is an error read either way, and the next term refuses it.
             /// </summary>
-            bool Quantifier()
+            Fragment? Quantified(Fragment atom)
             {
-                if (Take('*') || Take('+') || Take('?'))
+                long min;
+                long? max;
+
+                if (Take('*'))
+                    (min, max) = (0, null);
+                else if (Take('+'))
+                    (min, max) = (1, null);
+                else if (Take('?'))
+                    (min, max) = (0, 1);
+                else if (Take('{'))
                 {
-                    Take('?');
-                    return true;
+                    if (Digits() is not string least)
+                        return null;
+
+                    var most = least;
+                    if (Take(','))
+                        most = Digits();
+
+                    if (Take('}') == false || most is not null && Below(most, least))
+                        return null;
+
+                    (min, max) = (Number(least), most is null ? null : Number(most));
+                }
+                else
+                {
+                    return atom;
                 }
 
-                if (Take('{') == false)
-                    return true;
-
-                if (Digits() is not string least)
-                    return false;
-
-                var most = least;
-                if (Take(','))
-                    most = Digits();
-
-                if (Take('}') == false || most is not null && Below(most, least))
-                    return false;
-
                 Take('?');
-                return true;
+                return atom.Repeated(min, max);
             }
 
             string? Digits()
@@ -370,6 +630,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     _at++;
 
                 return _at > start ? _source.Substring(start, _at - start) : null;
+            }
+
+            /// <summary>
+            /// Reads a count, however many digits it has, as itself or as one past <see cref="Count"/> where it is more.
+            /// </summary>
+            static long Number(string digits)
+            {
+                digits = digits.TrimStart('0');
+
+                return digits.Length > 9 ? Count + 1L : Math.Min(digits.Length == 0 ? 0 : long.Parse(digits, System.Globalization.CultureInfo.InvariantCulture), Count + 1L);
             }
 
             /// <summary>
@@ -397,9 +667,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
-            /// Reads a character class after its <c>[</c>, positive or negated, and records the bands of what it matches.
+            /// Reads an atom matching one character of a set, recording the bands of every character in it.
             /// </summary>
-            bool Class()
+            Fragment Characters(IEnumerable<(int Lo, int Hi)> spans)
+            {
+                var members = CosmosPatternClass.Of(spans);
+
+                foreach (var (lo, hi) in members.Spans)
+                    Add(lo, hi);
+
+                return Fragment.Of(members);
+            }
+
+            /// <summary>
+            /// Reads a character class after its <c>[</c>, positive or negated, as the characters it matches.
+            /// </summary>
+            List<(int Lo, int Hi)>? Class()
             {
                 var negated = Take('^');
                 var members = new List<(int Lo, int Hi)>();
@@ -407,7 +690,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 while (Take(']') == false)
                 {
                     if (AtEnd || ClassAtom(out var from) == false)
-                        return false;
+                        return null;
 
                     // A range, unless the dash is the class's last member: `[a-]` is two members.
                     if (Peek() == '-' && _at + 1 < _source.Length && _source[_at + 1] != ']')
@@ -415,12 +698,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         _at++;
 
                         if (ClassAtom(out var to) == false)
-                            return false;
+                            return null;
 
                         // `[\d-z]` is three members read by unit and an error read by code point; a range running
                         // backwards is an error read either way.
                         if (IsOne(from) == false || IsOne(to) == false || to[0].Lo < from[0].Lo)
-                            return false;
+                            return null;
 
                         members.Add((from[0].Lo, to[0].Lo));
                     }
@@ -431,13 +714,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 }
 
                 // The complement over the reading's own alphabet: every unit to U+FFFF, or every code point to U+10FFFF.
-                if (negated)
-                    members = Complement(members, _unicode ? 0x10FFFF : 0xFFFF);
-
-                foreach (var (lo, hi) in members)
-                    Add(lo, hi);
-
-                return true;
+                return negated ? Complement(members, _unicode ? 0x10FFFF : 0xFFFF) : members;
 
                 static bool IsOne((int Lo, int Hi)[] spans) => spans.Length == 1 && spans[0].Lo == spans[0].Hi;
             }
