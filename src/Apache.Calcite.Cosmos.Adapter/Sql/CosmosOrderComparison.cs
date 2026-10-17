@@ -25,12 +25,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="Parameter">The name the exact comparison binds the value under.</param>
     /// <param name="Bound">The name the weakened comparison binds the bound under, written when the value arrives.</param>
     /// <param name="Operator">The comparison, with the path on its left: <c>&gt;</c>, <c>&gt;=</c>, <c>&lt;</c> or <c>&lt;=</c>.</param>
+    /// <param name="Anchor">What the value has to be for <paramref name="Exact"/> to keep exactly Calcite's rows: the anchor
+    /// <see cref="Metadata.CosmosServiceOrder.Compare"/> named, tested by <see cref="Metadata.CosmosServiceOrder.IsAnchor"/>.</param>
     /// <param name="Expression">What the service compares: the path, as the statement names it.</param>
     /// <param name="Exact">The comparison as the statement carries it.</param>
     /// <param name="Weakened">The comparison against the bound, which keeps a superset of Calcite's rows.</param>
     /// <param name="Guarded">The type test alone, sent where the value has no bound.</param>
     /// <param name="Member">The member of a returned row holding <paramref name="Expression"/>'s value, which the reader
     /// rechecks; assigned when the statement is built, and <c>null</c> until then.</param>
-    public sealed record CosmosOrderComparison(string Parameter, string Bound, string Operator, string Expression, string Exact, string Weakened, string Guarded, string? Member = null);
+    public sealed record CosmosOrderComparison(string Parameter, string Bound, string Operator, Metadata.CosmosOrderAnchor Anchor, string Expression, string Exact, string Weakened, string Guarded, string? Member = null);
 
 }

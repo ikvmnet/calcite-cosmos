@@ -3851,7 +3851,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // Unless the one thing missing is a parameter's characters, and the comparison is a whole conjunct of a
                 // WHERE: then it is exact where the value is an anchor, which the reader knows when it is bound, and
                 // otherwise sent weakened and rechecked. See TryWriteAnchoredComparison.
-                if (refused.IsAnchored && TryWriteAnchoredComparison(builder, call, leftValue, rightValue, op))
+                if (refused.IsAnchored && TryWriteAnchoredComparison(builder, call, leftValue, rightValue, op, refused.Anchors[0]))
                     return;
 
                 // So it is declined here and CosmosFilterSplitRule pushes what it implies: for a
@@ -3889,8 +3889,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="left">Its left side, beneath any box the validator's coercion put around it.</param>
         /// <param name="right">Its right side, likewise.</param>
         /// <param name="op">The operator, as read.</param>
+        /// <param name="anchor">What the value has to be for the comparison to be exact, as the verdict named it.</param>
         /// <returns><c>true</c> where the comparison was written.</returns>
-        bool TryWriteAnchoredComparison(StringBuilder builder, RexCall call, RexNode left, RexNode right, string op)
+        bool TryWriteAnchoredComparison(StringBuilder builder, RexCall call, RexNode left, RexNode right, string op, Metadata.CosmosOrderAnchor anchor)
         {
             if (ReferenceEquals(call, _conjunct) == false)
                 return false;
@@ -3919,6 +3920,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 name,
                 bound,
                 op,
+                anchor,
                 expression,
                 exact,
                 lower ? $"({expression} >= {bound})" : $"({expression} < {bound})",

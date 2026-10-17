@@ -112,7 +112,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         readonly CosmosKeyComparer _comparer;
         readonly Activity? _activity;
         readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
-        readonly List<(CosmosOrderComparison Comparison, string Value)> _rechecks = new();
+        readonly List<(CosmosOrderComparison Comparison, JsonElement Value)> _rechecks = new();
         readonly List<JsonElement> _run = new();
         readonly Queue<JsonElement> _ready = new();
         readonly HashSet<string> _tied = new(StringComparer.Ordinal);
@@ -179,8 +179,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             // A comparison is exact where its parameter is an anchor; any other is rechecked here, against the value.
             foreach (var comparison in _program.Comparisons)
-                if (_values.TryGetValue(comparison.Parameter, out var value) && value is string text && CosmosServiceOrder.IsBelowSurrogates(text) == false)
-                    _rechecks.Add((comparison, text));
+                if (_values.TryGetValue(comparison.Parameter, out var value) && value is string text
+                    && JsonSerializer.SerializeToElement(text) is var bound && CosmosServiceOrder.IsAnchor(comparison.Anchor, bound) == false)
+                    _rechecks.Add((comparison, bound));
 
             if (_program.Extremes.Count > 0)
             {
@@ -404,18 +405,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Determines whether a row satisfies every comparison rechecked here, as Calcite compares: by UTF-16 code unit,
-        /// and nothing but a string at all.
+        /// Determines whether a row satisfies every comparison rechecked here, as Calcite compares: text, which reads
+        /// nothing but a string as a value, and compares by UTF-16 code unit (<see cref="CosmosKeyComparer"/>). A row the
+        /// column reads as null is unknown, and dropped.
         /// </summary>
         bool Keeps(JsonElement row)
         {
             foreach (var (comparison, value) in _rechecks)
             {
                 var held = CosmosKeyComparer.Member(row, comparison.Member!);
-                if (held.ValueKind != JsonValueKind.String)
+                if (CosmosKeyComparer.IsValue(held, CosmosOrderedKeyKind.Text) == false)
                     return false;
 
-                var c = string.CompareOrdinal(held.GetString(), value);
+                var c = CosmosKeyComparer.CompareValues(held, value, CosmosOrderedKeyKind.Text);
                 var kept = comparison.Operator switch
                 {
                     ">" => c > 0,

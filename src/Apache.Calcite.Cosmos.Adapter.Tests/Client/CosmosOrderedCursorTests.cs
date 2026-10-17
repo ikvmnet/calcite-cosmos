@@ -275,6 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             "@p0",
             "@p1",
             op,
+            CosmosOrderAnchor.Text,
             "c.id",
             $"(c.id {op} @p0)",
             op is ">" or ">=" ? "(c.id >= @p1)" : "(c.id < @p1)",
