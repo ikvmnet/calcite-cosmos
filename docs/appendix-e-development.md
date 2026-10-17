@@ -118,6 +118,32 @@ exactly the first 200 the full run asks. A predicate that fails in one fails in 
 statement. Where the full run belongs, a nightly job or a gate before merging, is not settled yet
 (`TODO.md`, section 10); until it is, run it by hand after changing the translator or the split rule.
 
+**`EveryOrderIsOneCalciteAllows`** generates statements whose answers depend on an order — sorts over
+every reading, `DISTINCT`, a subquery's page, `UNION ALL`, `MIN`/`MAX`, keysets, comparisons with a
+parameter — and judges each by whether Calcite's semantics *allow* its answer, not by whether it equals
+the answer Calcite's own run gave: ties are free, and a `FETCH` may take any of a tie's rows. It also
+holds every `ORDER BY` a plan sends to what Azure accepts, which the emulator does not: no excluded path
+(`_etag` is excluded by default), and a composite index for every order of more than one key. Its three
+containers, `orders_plain`, `orders_declared` and `orders_ascii`, are created the first time it runs.
+
+It is explicit until the adapter asks how the service orders in one place, and fails on `main` in the
+families `DESIGN.md` lists under *Differential testing*:
+
+```sh
+Apache.Calcite.Cosmos.Adapter.Tests.exe -explicit only \
+  -method Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd.CosmosDifferentialTests.EveryOrderIsOneCalciteAllows
+```
+
+- **By default it draws 200 items**, about two minutes against the emulator.
+- **With `COSMOS_ORDER_GATE=1`, 1,000**, about six; the default is their prefix, as above.
+- **`COSMOS_MEASUREMENT_LOG`** receives every smallest failing statement with its family and what it
+  sent, and **`COSMOS_ORDER_TRACE`** names a file that receives one line per statement — container,
+  form, what was pushed, the verdict and the family — for comparing two commits.
+
+`CosmosServiceOrderModelTests` asks the same question with no service at all: a model of each
+partition's order, the SDK's merge and Calcite's, over every value a fact set admits. Its sweep,
+`EveryVerdictOfTheQuestionHolds`, is explicit for the same reason.
+
 ### Measurements
 
 Tests under `Measurements/` assert what Calcite, IKVM or the service does — not what the adapter does.
@@ -128,6 +154,18 @@ Each measured fact a pushdown relies on is also a row in `Sql/CosmosAxioms.cs`, 
 was measured and the test that pins it, and a test checks every named test still exists. A new
 measurement a rendering depends on should add its row. A row measured on the emulator alone is owed on
 Azure: run the measurement with `COSMOS_TEST_ENDPOINT` naming an account, and add `Azure` to the row.
+
+One measurement needs more than an account: `CosmosOrderMergeMeasurementTests` needs a container with two
+physical partitions, which only throughput above 10,000 RU/s makes, so it creates none. Name one the
+account already has:
+
+```sh
+COSMOS_TEST_MULTIPARTITION_DATABASE=<database>
+COSMOS_TEST_MULTIPARTITION_CONTAINER=<container>
+```
+
+Its partition key must be one top-level path and its indexing policy must index `/s`. The test writes a
+few dozen documents tagged with its run and deletes them before it ends; without the variables it skips.
 
 ### Generated soundness checks
 

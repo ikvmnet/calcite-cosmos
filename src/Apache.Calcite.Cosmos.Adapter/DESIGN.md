@@ -5337,6 +5337,91 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   Over the fixes for A to K and both halves of L, the gate's 1,000 pass: 973 distinct, one
   not judged because Calcite raised, none failing, 3,880 statements run.
 
+- **And orders are judged by what Calcite allows: the `ORDER BY` yardstick.** The corpus compares an
+  ordered answer as a sequence, which is stricter than SQL on ties, and against a runtime that orders
+  multi-key text by the host's culture. Neither is the rule a pushed order is held to. That rule is that
+  the answer be *allowable*: rows `o+1` to `o+f` of some arrangement of the input that Calcite's
+  comparator finds non-decreasing. Which rows of a tie a page takes is free, and so is their order.
+  `EveryOrderIsOneCalciteAllows` (`CosmosDifferentialTests.Orders.cs`) draws the statements whose
+  answers depend on an order and judges each by that.
+  - **What it draws.** Sorts of one to three keys, over every reading the adapter has: text accessors,
+    every `RETURNING`, `id`, `_ts` and `_etag`, monotone and other computed keys, casts to `UUID` and
+    `TIMESTAMP`, a JSON fragment and the promoted column. Each key has a direction, a placement, and
+    sometimes a page. Then `DISTINCT`, a subquery's page, `UNION ALL … ORDER BY`, `MIN` and `MAX`, a
+    keyset chained three pages, comparisons with a parameter and of a path with a path, and a sort led
+    by a key that one document leaves absent and another holds null. Its filters are the ternary logic
+    gate's predicates one connective deep, beside equalities, memberships, ranges against a literal or a
+    parameter, `LIKE` and a pinned partition.
+  - **Over what.** Three containers of 48 documents in four logical partitions, written in a
+    permutation. They hold strings from both sides of U+D800, ids repeated across partitions, integers
+    and doubles either side of 2^53 and 2^63, every JSON type at an undeclared path, and ties at every
+    key. `orders_plain` declares nothing. `orders_declared` declares types, bounds, `required`, an `enum`
+    whose strings straddle U+D800, and the composite indexes. `orders_ascii` declares the same, and the
+    characters of its strings by `pattern` — a UUID, an identifier, nothing at or above U+D800 — and its
+    documents keep that.
+  - **How it judges.** The input is the statement without its order and page, read in process with its
+    keys selected. `OrderAllowability` checks four things of the answer: its rows are the input's, its
+    count is the window's, it is non-decreasing, and each tie class holds its share of the window. The
+    comparator is written in the test from Calcite's Java semantics (`CalciteOrder`): text by code unit,
+    exact numbers, `-0.0` by the number of keys, unsigned UUIDs, `NaN` last. An extreme is judged by
+    Calcite's extreme tie class, and a comparison by its exact rows.
+  - **And what the service accepts, as Azure accepts it.** Every `ORDER BY` a plan sends is held to the
+    indexing policy the container was created with. An excluded path is a 400 on Azure, and
+    `/"_etag"/?` is excluded by default; so is a multi-key order that no composite index serves in its
+    directions or their exact reverse. The emulator accepts both, so the check is the test's.
+  - **Where Calcite raises over the input** the statement is not judged, with one exception: an answer
+    that shows its keys is held to its own order. No input makes rows allowable whose keys, as the
+    answer shows them, run against the `ORDER BY`. That is how 2^63 stored as a double is judged at
+    all: the emulator returns a document whole as it was written, which Calcite's `BIGINT` cannot read,
+    and prints a projection of it to 17 digits, as another integer, while ordering it by the double.
+  - **A failure is narrowed and named.** It is narrowed through its page, its keys and its conjuncts, as
+    a predicate is, and named by its family. The family is read from what the failure holds. Strings
+    from both sides of U+D800, or an answer that would be allowable had Calcite compared text by code
+    point, are the string order's. A leading key that one document leaves absent and another holds null
+    is the null class's. A double past 2^53 is the read-back's. Where the service was handed no order and
+    the answer still fails, the CLR runtime's own order is to blame — two or more keys by culture — and
+    the failure is reported apart, as `calcite-dotnet`'s.
+
+  **On main it fails, and is explicit until the anchored read lands.** Over the adapter at `4b2ccb3`, on
+  the emulator, the gate's 1,000 items came to 1,092 statements, of which 115 were not judged because
+  Calcite raised. Of the rest, 267 sent the service an `ORDER BY` and 17 an extreme, and 130 failed:
+
+  | Family | Statements |
+  | --- | --- |
+  | Text from both sides of U+D800 | 80 |
+  | Undefined and null on a leading key | 26 |
+  | `_etag`, an excluded path | 12 |
+  | 2^63 stored as a double, read back as another integer | 4 |
+  | *Not an order:* a projected double printed two ways | 5 |
+  | *Not an order:* `CHAR_LENGTH` pushed as `LENGTH` | 3 |
+
+  The string order's are sorts over `id`, over declared strings and the `enum`, their keysets, a union
+  merging a pushed sort, the text weakening beneath a page, `MAX(c."id")`, and comparisons of `id` or a
+  declared string with another or with a parameter. The null class's are two-key sorts led by `t` or
+  `k` under the service's placement. `orders_ascii`, whose strings stay below U+D800, has no string
+  order failure at all: its failures are the null class's, `_etag`'s and the 2^63 sort's. Two families
+  are not orders', and `TODO.md` records them: `CHAR_LENGTH` pushed as `LENGTH`, which counts code
+  points, and the emulator printing a projected double past 2^53 to 17 digits where a document read
+  whole keeps what was written. A third finding came from an earlier draw of the generator and is in
+  `TODO.md` too: a comparison of two nullable declared strings keeps the rows where both are null. 94
+  answers were the CLR runtime's own, every one of them a sort of two keys or more done in process.
+
+  **What it costs.** On the emulator, on a workstation running other work, the default's 200 items took
+  53 to 76 s and the gate's 1,000 took 157 to 267 s, the class's setup included: about two runs a
+  statement, planning being the cost and each read of 48 documents next to nothing. So the default can
+  be a run of the class once it passes.
+
+  **The model checks the question rather than the answers.** `CosmosServiceOrderModelTests` models each
+  partition's order (type order, exact numbers, code point text), the SDK's merge (the same over what
+  was printed, UTF-16 text, the lower feed range first on a tie) and Calcite's, and checks every verdict
+  of the question "may the service compute this order" pairwise over the values each fact set admits.
+  The merge is pinned to the two-partition streams the probe account returned, which no single order
+  produces. Until the one place exists it asks a mirror of main's decisions, which it finds wrong in
+  three families: text across U+D800 (52 verdicts), undefined and null on a leading key (20) and 2^63
+  read back (14). That sweep is explicit too; the checker's own test plants each family, and runs by
+  default. `CosmosOrderMergeMeasurementTests` measures the merge itself, on a container with two
+  physical partitions that the caller names; it creates none, and skips without one.
+
 ---
 
 ## Design Constraints

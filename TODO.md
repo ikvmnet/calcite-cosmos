@@ -1304,6 +1304,25 @@ the distribution the gate is sized for.
   binds such a column to the bare path as text, which is why #181's boolean cast refuses a field. The
   sound answer is to address no path for a clause that substitutes a value; rendering `DEFAULT … ON
   EMPTY` as an `IS_DEFINED` ternary is the cheaper one, once Calcite's own answers are measured.
+- **Pushed string functions count characters their own way** — *a wrong answer, outside the sort work,
+  and the two services differ.* Measured on the probe account: `SUBSTRING`, `LEFT`, `RIGHT` and
+  `INDEX_OF` count UTF-16 code units on Azure and code points on the emulator, and `LENGTH` counts code
+  points on both. Calcite counts UTF-16 code units. So `CHAR_LENGTH` rendered as `LENGTH` is wrong on
+  both wherever a string holds a character beyond U+FFFF, and the other four are right on Azure and
+  wrong on the emulator the suite runs on. The `ORDER BY` yardstick meets it with `CHAR_LENGTH` as a
+  key (`DESIGN.md`, *Differential testing*: the family *a string function counts code points*). The
+  measurement belongs in `Sql/CosmosAxioms.cs` as two rows, one per target; `LENGTH` then pushes only
+  where the path's characters are declared below U+D800, and the four only where the target is
+  Azure or the characters are so declared.
+- **A comparison of two nullable declared strings keeps the rows where both are null** — *small, and a
+  wrong answer, found by the `ORDER BY` yardstick.* `JSON_VALUE(c."DOC", '$.t') <= JSON_VALUE(c."DOC",
+  '$.t')` over `orders_ascii`, where `t` is declared `["string", "null"]`, is sent raw as
+  `c.t <= c.t`. The service answers true where `t` holds a JSON null and Calcite answers unknown, so
+  the two documents holding one come back too: 46 rows for 44, and the same with `>=` over
+  `orders_declared` (`<` agrees, keeping none). `RendersOnlyStrings` admits a declared string *or null*, which is right for a
+  comparison with a literal, since the service leaves null against a string undefined; null against
+  null is the case it does not cover. The guard is an `IS_STRING` on either side, or facts excluding
+  null on one. Equality between two such paths is the same question, unmeasured.
 
 ---
 
@@ -2180,6 +2199,21 @@ across documents* and *A join of a container to itself* is the record.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
   numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
   so the basis is asked of the service per row.
+- **A lone surrogate is stored on Azure and cannot be read back** — *small, and the decision is what to
+  answer.* Measured on the probe account: a `\ud800` escape is stored as U+FFFD, and the raw bytes
+  `ED A0 80` (WTF-8 for U+D800) are stored verbatim and come back as invalid UTF-8, which
+  `JsonElement.GetString()` refuses (*"Cannot transcode invalid UTF-8 JSON text to UTF-16 string"*).
+  The emulator refuses both writes with a 403. A document another client wrote that way fails every
+  statement whose rows reach it. Either the failure names the document, or the reader reads the
+  sequence as U+FFFD, which is what the service itself did with the escape.
+- **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
+  returns a document read whole as it was written, and prints a projected number to 17 significant
+  digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and
+  `9223372036854775800` through `c.v`, so a pushed projection answers another number than the plan
+  that reads the document, and `RETURNING BIGINT` raises over the first and reads the second. The
+  `ORDER BY` yardstick meets it (`DESIGN.md`, *Differential testing*: the family *a double printed two
+  ways*). Azure reads 2^63 back as `9.223372036854776E+18`; whether a projection and a document read
+  whole agree there is unmeasured, and decides whether this is the emulator's alone.
 
 ---
 
@@ -2289,6 +2323,22 @@ across documents* and *A join of a container to itself* is the record.
   function as though each were null for a null, and `CONCAT_WS`, `ARRAY[…]` and `ARRAY_CONTAINS`
   over one are not — *fixed* (`DESIGN.md`, *A position belongs to a predicate*), and the four
   statements that lost rows are in the corpus.
+- **The `ORDER BY` yardstick** — *built, explicit, and failing on main until the anchored read; three
+  things owed.* `EveryOrderIsOneCalciteAllows` and `CosmosServiceOrderModelTests` (`DESIGN.md`,
+  *Differential testing*) judge every order the service computes by what Calcite allows. Over main both
+  fail, in the families expected of it: text across U+D800, undefined and null on a leading key, 2^63
+  read back, and `_etag`, which Azure refuses to order by. Owed:
+  - **The floors.** `PushedFloors` is empty. The stage that first passes records how many of the
+    default run's statements push each kind, so that losing a push fails as surely as a wrong one.
+  - **The question.** The model asks a mirror of main's decisions (`MainsDecisions`); pointed at the one
+    place once it exists, its sweep becomes a test of the default run.
+  - **The merge, on Azure.** `CosmosOrderMergeMeasurementTests` has not run, no container with two
+    physical partitions existing now; it runs against one the caller names (appendix E).
+
+  The CLR runtime's own misorders are reported apart and are not the adapter's: 94 of the gate's
+  statements, every one a sort of two keys or more done in process, multi-key text by culture. The fix is
+  `calcite-dotnet`'s: `JavaComparisons.Compare` should compare a string ordinally and route NaN through
+  `Double.compare`.
 - **The partition generator's vocabulary** — *small.* Its text expressions are an accessor, a
   column or a cast under `UPPER`, `LOWER`, `COALESCE` or `||`, and every one of those but the
   `COALESCE` is null for a null — which is why the run never met a function that answers a value
