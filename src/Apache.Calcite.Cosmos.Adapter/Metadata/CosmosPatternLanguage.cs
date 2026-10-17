@@ -22,7 +22,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>One of two readers of the language</b>, for now. This one puts a pattern in the spelling the
     /// stored-form tables are keyed by, and reads a UUID's shape by its atoms;
-    /// <see cref="CosmosPatternAlphabet"/> parses the language strictly, under both readings, for the
+    /// <see cref="CosmosPatternReader"/> parses the language strictly, under both readings, for the
     /// characters a string may hold. They answer different questions of one keyword — which spelling,
     /// which only matching answers, and which characters, which only a parse does — and the second is to
     /// become the only parser, this one's spelling printed from its parse (<c>TODO.md</c>).

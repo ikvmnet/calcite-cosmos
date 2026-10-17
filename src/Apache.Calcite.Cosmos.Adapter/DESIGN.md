@@ -3099,7 +3099,7 @@ again but a comparison of two paths and a grouped extreme. A sort split by JSON 
 
 **A declaration is the first proof a user can write, and `pattern` is the one keyword that states what characters a
 string holds.** That is the owner's decision (D2): not `format`, which JSON Schema calls an annotation, and not a
-container operand, which would say per container what a pattern on `id` says per path. `CosmosPatternAlphabet` reads
+container operand, which would say per container what a pattern on `id` says per path. `CosmosPatternReader` reads
 a pattern into the bands its strings may hold, a declared fact of the path (`JsonClaim.Characters`, *Characters, a
 fact of the theory*), and R1 reads the fact: a path declared below U+D800 sorts, takes `MIN` and `MAX`, and compares
 with a parameter and with any other path at the service, and `id` declared so pages and seeks there, proved when the
@@ -3149,7 +3149,7 @@ surrogate". A domain needs no such care: `System.Text.Json` will not read a lone
 `RegExp`, with the flag and without, over 36,000 generated patterns — literals and escapes from every band, ranges
 across U+D800 and U+E000, negated classes, groups, quantifiers, and the refused constructs — each matched against
 some four thousand strings. No band the reader called absent was held by a string either reading matched, and no
-pattern either reading rejects was read. `CosmosPatternAlphabetTests` names the cases.
+pattern either reading rejects was read. `CosmosPatternReaderTests` names the cases.
 
 **What it reads is a declared fact, and it decides nothing.** The reader's verdict is stated of the path as a type is,
 read off a subschema beside any type, a pattern being vacuous for anything but a string as the fact is; what the
@@ -3192,7 +3192,7 @@ and it is licensed per scope, read off the stratum, the child or the declaration
 union of a branch lacking both bands with one lacking one keeps the one.
 
 **Each source reaches it the same way: stated or derived in the theory, never computed beside it.**
-- **A declared `pattern`.** `CosmosPatternAlphabet` is a reader of an input. It states its verdict as a declared fact of
+- **A declared `pattern`.** `CosmosPatternReader` is a reader of an input. It states its verdict as a declared fact of
   the path (`JsonClaim.Characters`), beside any type, and decides nothing about what the fact is worth. A pattern that
   is also a stored form is read like any other; the theory meets the two.
 - **A value.** A rule of JSON: a value's characters are its own. A domain's `chars` is the bands of the strings it

@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// The adapter's recognisers: <see cref="CosmosStoredForms.Recognise"/> for the pattern of a
-        /// declared string, and for a subschema <see cref="CosmosPatternAlphabet.Claims"/> for its pattern
+        /// declared string, and for a subschema <see cref="CosmosPatternReader.Claims"/> for its pattern
         /// and <see cref="CosmosGeographyForms.Recognise"/>.
         /// </summary>
         public static readonly JsonSchemaRecognisers Cosmos = new(
@@ -54,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         static IReadOnlyList<JsonClaim> Recognise(JsonNode node)
         {
-            var characters = CosmosPatternAlphabet.Claims(node.Get("pattern").Text());
+            var characters = CosmosPatternReader.Claims(node.Get("pattern").Text());
 
             if (CosmosGeographyForms.Recognise(node) == false)
                 return characters;

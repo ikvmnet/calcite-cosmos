@@ -19,20 +19,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// generated patterns, each matched against some four thousand strings drawn from every band, and no band the reader
     /// called absent held by a string either reading matched, nor a pattern read that either reading rejects.
     /// </remarks>
-    public class CosmosPatternAlphabetTests
+    public class CosmosPatternReaderTests
     {
 
         static readonly JsonCharacterBand S = JsonCharacterBand.Surrogates;
 
         static readonly JsonCharacterBand H = JsonCharacterBand.HighBmp;
 
-        static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternAlphabet.Absent(pattern)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternReader.Absent(pattern)?.ToArray();
 
-        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternAlphabet.Absent(pattern, unicode)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
 
         /// <summary>The bands the pattern's claim says its strings hold no unit of, as <see cref="Absent(string)"/> lists them.</summary>
         static JsonCharacterBand[] Claimed(string pattern) =>
-            CosmosPatternAlphabet.Claims(pattern).Cast<JsonClaim.Characters>()
+            CosmosPatternReader.Claims(pattern).Cast<JsonClaim.Characters>()
                 .SelectMany(c => new[] { S, H }.Where(band => (c.Bands & band) == JsonCharacterBand.None)).ToArray();
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────

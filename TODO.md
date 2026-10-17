@@ -1285,7 +1285,7 @@ the distribution the gate is sized for.
   `Service.ConstantStringComparisonIsByCodeUnit` for two constants). Every order the service computes is
   asked of `CosmosServiceOrder` (`DESIGN.md`, *The service's order, asked once*). **A declaration proves it
   when the plan is made:** a JSON Schema `pattern` read as the characters a path may hold
-  (`CosmosPatternAlphabet`; *Reading a pattern as characters*), and an `enum`, a `const`, a stored form or a
+  (`CosmosPatternReader`; *Reading a pattern as characters*), and an `enum`, a `const`, a stored form or a
   filter's `=` or `IN`, each of which the theory derives the characters from (*Characters, a fact of the
   theory*). **The rows prove the rest:** the anchored
   read (*The anchored read*) sends `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?`, a sort
@@ -1346,7 +1346,7 @@ the distribution the gate is sized for.
   alike.
 - **One parser of the pattern language** — *medium, and the owner's decision.* `CosmosPatternLanguage`
   puts a pattern in the spelling the stored-form tables are keyed by and reads a UUID's shape by its
-  atoms; `CosmosPatternAlphabet` parses the language strictly, under both readings, for its characters.
+  atoms; `CosmosPatternReader` parses the language strictly, under both readings, for its characters.
   Two readers of one keyword, each stating what `\d` means. The alphabet's parse is to feed stored-form
   recognition too, printing the tables' spelling from the parse, so that the language is read once.
   The literal-space defect the first had is fixed; the readers agree on everything else they both read.

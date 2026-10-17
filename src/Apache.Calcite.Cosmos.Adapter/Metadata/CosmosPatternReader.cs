@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// DESIGN says why both exist for now.
     /// </para>
     /// </remarks>
-    static class CosmosPatternAlphabet
+    static class CosmosPatternReader
     {
 
         /// <summary>
