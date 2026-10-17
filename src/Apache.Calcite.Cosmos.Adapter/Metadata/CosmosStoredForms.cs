@@ -99,6 +99,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
             CosmosTemporalForms.EngineReads(representation, target);
 
+        /// <summary>
+        /// Determines whether a conversion of a form's stored text reads it as the value it spells: a parse by its
+        /// format, a cast to an instant where the engine reads the form into that type, and a conversion naming
+        /// neither — a cast to a UUID or to a number — as the engine always does.
+        /// </summary>
+        /// <remarks>
+        /// What an equality and an order through the form both need, so asked once: comparing the stored strings in
+        /// place of a conversion the engine would have failed at answers rows where the query answers an error, which
+        /// is a different query rather than a faster one.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="format">The parse's format, or <c>null</c> for a cast.</param>
+        /// <param name="held">The halves of an instant the conversion's value holds; none for a UUID or a number.</param>
+        /// <returns><c>true</c> where the conversion reads the form.</returns>
+        public static bool Reads(CosmosRepresentation representation, string? format, CosmosTemporalParts held) =>
+            format is not null
+                ? ParsesExactly(representation, format, held)
+                : held == CosmosTemporalParts.None || EngineReads(representation, held);
+
         /// <inheritdoc cref="CosmosTemporalForms.ParseFormats" />
         public static System.Collections.Generic.IReadOnlyCollection<string> ParseFormats(CosmosRepresentation representation) =>
             CosmosTemporalForms.ParseFormats(representation);

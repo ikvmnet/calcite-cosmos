@@ -2997,10 +2997,12 @@ question, which the next section is.
 
 #### The service's order, asked once
 
-**Every order the service computes for a statement is one question**, `CosmosServiceOrder`, asked at the five places
+**Every order the service computes for a statement is one question**, `CosmosServiceOrder`, asked at the six places
 the planner hands the service an order: the sort (`CosmosSort.TryResolveSortKeys`, which the rule and `Implement`
 share), the extreme (`CosmosAggregate.CanImplement`), an ordering comparison (`CosmosRexTranslator.CompareOrder`),
-the string branch of a text comparison's weakening (`CosmosFilterSplitRule`), and the rank (`CosmosRankRule`). Each
+the string branch of a text comparison's weakening (`CosmosFilterSplitRule`), an ordering through a stored form
+(`CosmosFactRewriter`, whose lowering of a literal and binding of a parameter into the path's spelling both ask it of
+the conversion), and the rank (`CosmosRankRule`). Each
 builds its operands from its binding — a path and its reading, a conversion through a stored form, a geodesic
 distance, a score, a literal, a parameter, an expression — and hands over the facts it was decided under, so that a
 rule and the node it builds, asking the same question of the same facts, cannot disagree. The owner's rule is the

@@ -656,22 +656,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.REAL)
                 return As(Classes.Number, printed == false || (admitted & Classes.Number) == Classes.None ? CosmosOrderAgreement.Exact : CosmosOrderAgreement.Refines, "a number read as a float");
 
+            // Cosmos has no temporal type: the path holds a string and the service orders the spelling, which is the
+            // instant's order only in a stored form that keeps it, and one the engine can read at all (every ISO-8601
+            // instant raises in a cast, measured: Calcite.TemporalCastReadsFewShapes) — a cast of the text, as a
+            // conversion is.
             if (IsTemporal(type))
-            {
-                // Cosmos has no temporal type: the path holds a string and the service orders the spelling, which is the
-                // instant's order only in a stored form that keeps it, and one the engine can read at all (every ISO-8601
-                // instant raises in a cast, measured: Calcite.TemporalCastReadsFewShapes).
-                var stored = As(Classes.String | Classes.Number | Classes.Boolean, CosmosOrderAgreement.Exact, "an instant in a stored form that keeps its order");
-
-                if ((stored.Values & (Classes.Number | Classes.Boolean)) != Classes.None)
-                    return stored with { Agreement = CosmosOrderAgreement.None, Why = "an instant over what may not be a string" };
-
-                return facts.RepresentationOf(path) is CosmosRepresentation representation
-                    && representation.PreservesOrder
-                    && CosmosStoredForms.EngineReads(representation, CosmosTemporalParse.PartsOf(type))
-                        ? stored
-                        : stored with { Agreement = CosmosOrderAgreement.None, Why = "an instant with no stored form that keeps its order" };
-            }
+                return ReadConversion(facts, path, null, CosmosTemporalParse.PartsOf(type));
 
             // A raw document value — the promoted column, or the accessor the split rule names as the value it reads — is
             // compared as it stands, and a comparison across types is undefined at the service: what is left is the order
@@ -714,15 +704,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (facts.RepresentationOf(path) is not CosmosRepresentation representation || representation.PreservesOrder == false)
                 return refused;
 
-            if (format is not null)
-            {
-                if (CosmosStoredForms.ParsesExactly(representation, format, held) == false)
-                    return refused with { Why = "a parse whose format does not read the stored form" };
-            }
-            else if (held != CosmosTemporalParts.None && CosmosStoredForms.EngineReads(representation, held) == false)
-            {
-                return refused with { Why = "a cast the engine cannot read the stored form by" };
-            }
+            if (CosmosStoredForms.Reads(representation, format, held) == false)
+                return refused with { Why = format is not null ? "a parse whose format does not read the stored form" : "a cast the engine cannot read the stored form by" };
 
             return refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" };
         }
