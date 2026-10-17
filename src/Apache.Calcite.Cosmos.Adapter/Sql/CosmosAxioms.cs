@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Apache.Calcite.Cosmos.Adapter.Sql
@@ -27,16 +27,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// </para>
     /// <para>
     /// <b>The targets are a record of what was run, not of what is believed.</b> A row measured on
-    /// the emulator alone is owed on Azure, and <c>TODO.md</c> section 10 says so. The emulator has
+    /// the emulator alone is owed on Azure. Every row that was is now measured on both: the probe
+    /// account ran each pinning test on 2026-10-16 and each passed unchanged. The emulator has
     /// differed from the service before (<c>DESIGN.md</c>, <em>Verified against the emulator</em>),
     /// and where the two disagree the conservative reading is the one to encode: a capability holds
-    /// only where both accept it.
+    /// only where both accept it. A row the emulator does not hold — an <c>ORDER BY</c> over an
+    /// excluded path accepted there and refused on Azure — names Azure alone, and its test detects
+    /// the emulator's answer and skips.
     /// </para>
     /// </remarks>
     internal static class CosmosAxioms
     {
 
         static readonly DateOnly Today = new(2026, 10, 15);
+
+        static readonly DateOnly Orders = new(2026, 10, 16);
 
         /// <summary>
         /// Every row, grouped by what relies on it.
@@ -47,73 +52,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             new("Service.IsPrimitive",
                 "IS_PRIMITIVE is true of a string, a number, a boolean and a null, and false of an object, an array and an absent path: false, not undefined. So (IS_PRIMITIVE(p) ? p : null) is null over an absent path.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsPrimitiveIsFalseOverAnAbsentPath"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsPrimitiveIsFalseOverAnAbsentPath"),
             new("Service.IsDefined",
                 "IS_DEFINED is false over an absent path and true over every value, a null, an object and an array included.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsDefinedIsFalseOnlyOverAnAbsentPath"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsDefinedIsFalseOnlyOverAnAbsentPath"),
             new("Service.IsNull",
                 "IS_NULL is true of a null alone, and false over an absent path, an object and an array.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsNullIsTrueOnlyOfANull"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.IsNullIsTrueOnlyOfANull"),
             new("Service.KindTests",
                 "IS_STRING, IS_NUMBER, IS_BOOL, IS_OBJECT and IS_ARRAY are each true of their kind alone, and false over an absent path.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.EachKindTestIsTrueOfItsKindAlone"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.EachKindTestIsTrueOfItsKindAlone"),
             new("Service.NotOfAKindTest",
                 "NOT over any IS_* test is a real boolean over an absent path, true wherever the test is false; the family never answers undefined.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOfATypeTestIsTrueOverAnAbsentPath"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOfATypeTestIsTrueOverAnAbsentPath"),
 
             // ── Comparisons and NOT, where undefined and SQL's unknown part company ───────
 
             new("Service.OrderingAcrossTypesIsUndefined",
                 "An ordering comparison between values of different types is undefined, as is one over an absent path: \"bikes\" < \"zzz\" is true, and 30 < \"zzz\" is undefined.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnOrderingAcrossTypesIsUndefined"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnOrderingAcrossTypesIsUndefined"),
             new("Service.EqualityAcrossTypesIsFalse",
                 "An equality between values of different types is false, not undefined, a null against anything but null included; only over an absent path is it undefined.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue"),
             new("Service.InequalityOverNullIsTrue",
                 "!= is true over a null and over a value of another type, where SQL's <> over a null is unknown; over an absent path it is undefined (#32).",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue"),
             new("Service.NotOverUndefinedIsUndefined",
                 "NOT over undefined is undefined: over an absent path, over an ordering across types, and over a value that is not a boolean.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOverUndefinedIsUndefined"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.NotOverUndefinedIsUndefined"),
             new("Service.BooleanEqualityIsUndefinedOnlyOverAbsent",
                 "A comparison with a boolean is false over a null and over a value of another type, and undefined over an absent path, so NOT above it keeps the first two and not the third.",
-                CosmosAxiomTarget.Emulator, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.AComparisonIsUndefinedOnlyOverAnAbsentPath"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.AComparisonIsUndefinedOnlyOverAnAbsentPath"),
 
             // ── A stored boolean written bare (TryStoredBoolean, WriteTruthTest) ──────────
 
             new("Service.BarePathKeepsOnlyTrue",
                 "A path written as a whole condition keeps a stored true and nothing else: not a string spelling it, not a number.",
-                CosmosAxiomTarget.Emulator, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.ABarePathKeepsOnlyTrue"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.ABarePathKeepsOnlyTrue"),
             new("Service.NotOverAPathKeepsOnlyFalse",
                 "NOT over a path keeps a stored false alone; over a null, an absent path and a value that is not a boolean it keeps nothing, as SQL's NOT over unknown.",
-                CosmosAxiomTarget.Emulator, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.NotOverAPathKeepsOnlyFalse"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.NotOverAPathKeepsOnlyFalse"),
             new("Service.ConnectivesReadNonBooleansAsUnknown",
                 "AND and OR treat a value that is not a boolean, a null and an absent path as SQL treats unknown: OR true keeps it, NOT (... AND false) keeps it, NOT (... OR false) does not.",
-                CosmosAxiomTarget.Emulator, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.TheConnectivesTreatEverythingButABooleanAsUnknown"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 10, 9), "Measurements.CosmosBooleanLogicMeasurementTests.TheConnectivesTreatEverythingButABooleanAsUnknown"),
 
             // ── Functions and arithmetic over a rendering ─────────────────────────────────
 
             new("Service.StringFunctionsOverNonStrings",
                 "UPPER, LOWER and CONCAT are undefined over a number, a boolean, a null, an object, an array and an absent path; only a string has an answer, and the guarded accessor changes nothing.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.TheStringFunctionsAreUndefinedOverAnythingButAString"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.TheStringFunctionsAreUndefinedOverAnythingButAString"),
             new("Service.DivisionIsFloatingPoint",
                 "/ divides in floating point, two integers included (7 / 2 is 3.5, -7 / 2 is -3.5), and is undefined over anything that is not a number.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosJsonTypeMeasurementTests.DivisionIsFloatingPointAndUndefinedOverAnythingButANumber"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosJsonTypeMeasurementTests.DivisionIsFloatingPointAndUndefinedOverAnythingButANumber"),
             new("Calcite.IntegerDivisionTruncates",
                 "Calcite's / over two integers is integer division, truncating toward zero: 7 / 2 is 3, -7 / 2 is -3, and an accessor RETURNING INTEGER divides the same way.",
                 CosmosAxiomTarget.Calcite, Today, "Measurements.CalciteArithmeticMeasurementTests.IntegerDivisionTruncatesTowardZero"),
             new("Service.OutOfDomainArithmeticFailsTheStatement",
                 "ASIN(2), ACOS(2), SQRT(-1) and LOG(0) fail the whole statement rather than answering undefined for the row, where Calcite answers NaN.",
-                CosmosAxiomTarget.Emulator, new(2026, 8, 8), "Client.CosmosQueryExecutorTests.OutOfDomainArithmeticFailsTheQuery"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, new(2026, 8, 8), "Client.CosmosQueryExecutorTests.OutOfDomainArithmeticFailsTheQuery"),
 
             // ── What a point read answers (CosmosQueryExecutor, CosmosImplementor) ────────
 
             new("Service.ReadManyIsWholeDocuments",
                 "ReadManyItemsAsync answers each document it finds whole, one per id, applying no projection, predicate or DISTINCT: two documents equal in every value come back as two.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosReadManyMeasurementTests.ReadManyAnswersOneWholeDocumentPerId"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosReadManyMeasurementTests.ReadManyAnswersOneWholeDocumentPerId"),
             new("Service.ReadManyReadsAnIdOnce",
                 "ReadManyItemsAsync answers an id it is asked for twice once.",
-                CosmosAxiomTarget.Emulator, Today, "Measurements.CosmosReadManyMeasurementTests.ReadManyAnswersAnIdAskedTwiceOnce"),
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Today, "Measurements.CosmosReadManyMeasurementTests.ReadManyAnswersAnIdAskedTwiceOnce"),
             new("Service.PointReadBeatsTheResidualQuery",
                 "A point read followed by an in-process residual is charged less than the query the residual forces, whether the residual keeps the document or discards it, for a small document.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 14), "Measurements.CosmosPointReadResidualMeasurementTests.AReadThenFilterCostsLessThanTheQueryTheResidualForces"),
@@ -204,6 +209,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.ValidityIsDefinedness",
                 "ST_ISVALID is true for exactly the documents ST_DISTANCE is defined over.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.ValidityAgreesWithDefinedness"),
+            // ── The service's order (CosmosServiceOrder, CosmosContainerMetadata.IsSortSupported) ───
+
+            new("Service.StringOrderIsCodePoint",
+                "A document's strings are ordered, compared and extremed by code point, which is UTF-8 byte order, with no collation and no normalisation: U+E000 below U+1F600, which UTF-16 order puts above.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ADocumentsStringsOrderByCodePoint"),
+            new("Service.ConstantStringComparisonIsByCodeUnit",
+                "Two constants are compared by UTF-16 code unit on Azure, @a < @b false for U+E000 and U+1F600, where the emulator compares them by code point.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.TwoConstantsCompareByUtf16"),
+            new("Service.RangeOverPartedBoundsIsEmpty",
+                "A filter c.s BETWEEN @lo AND @hi whose bounds the two orders rank apart, U+E000 and U+1F600, keeps nothing on Azure, while the same predicate projected is true of the rows between them by code point.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ARangeWhoseBoundsTheOrdersRankApartKeepsNothing"),
+            new("Service.OrderByTypeOrder",
+                "ORDER BY orders undefined, null, false, true, numbers, strings, arrays, objects, over every path, and DESC is the exact reverse.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.TheTypeOrderAndItsReverse"),
+            new("Service.IntegersOrderExactly",
+                "An int64 is held, compared and ordered exactly, past 2^53 where a double ties its neighbours, up to 2^63 - 1.",
+                CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.IntegersOrderExactly"),
+            new("Service.OrderByOverAnExcludedPathFails",
+                "ORDER BY over a path the indexing policy excludes is a 400, _etag among them under the default policy; a filter and MIN or MAX over it still answer.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.AnOrderByOverAnExcludedPathFails"),
+            new("Service.UnindexedComputedPropertyFailsToOrder",
+                "ORDER BY over a computed property orders where an included path names it and is a 400 where none does; the emulator drops computed properties on create.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.AnUnindexedComputedPropertyFailsToOrder"),
+            new("Service.MultiKeyOrderByNeedsCompositeIndex",
+                "A multi-key ORDER BY needs a composite index over exactly its paths whose directions match or are the exact reverse; without one it is a 400, a key repeated included.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.ARepeatedKeyNeedsACompositeIndex"),
+            new("Service.RankTakesNoDirection",
+                "ORDER BY RANK returns the best match first and refuses ASC and DESC alike (SC2222).",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosServiceOrderMeasurementTests.RankTakesNoDirection"),
+            new("Service.CrossPartitionOrderIsAMergeByCodeUnit",
+                "Each physical partition orders strings by code point, and the SDK merges the partitions' streams by String.CompareOrdinal, UTF-16, the lower feed range first on a tie: a stream from two partitions may be in neither order.",
+                CosmosAxiomTarget.Azure, Orders, "Measurements.CosmosOrderMergeMeasurementTests.ACrossPartitionOrderIsTheMergeOfCodePointRuns"),
+
             new("Service.UndefinedSortsFirstAscending",
                 "ORDER BY puts undefined first ascending and last descending, DESC being the exact reverse of ASC.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.UndefinedSortsFirstAscendingAndLastDescending"),
