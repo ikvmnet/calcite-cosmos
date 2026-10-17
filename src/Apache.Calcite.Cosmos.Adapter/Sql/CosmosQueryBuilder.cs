@@ -286,7 +286,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// combined with <c>ORDER BY</c>, <c>TOP</c> combined with <c>OFFSET</c>/<c>LIMIT</c>, or
         /// <c>ORDER BY RANK</c> combined with an ordinary <c>ORDER BY</c> or with <c>GROUP BY</c>.
         /// </exception>
-        public string Build() => Build(paged: true);
+        public string Build() => Render(paged: true);
 
         /// <summary>
         /// Renders the statement without its <c>OFFSET</c> and <c>LIMIT</c>: every row it orders, for a reader that takes
@@ -294,7 +294,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <returns>The Cosmos SQL text.</returns>
         /// <exception cref="InvalidOperationException">As <see cref="Build()"/>.</exception>
-        public string BuildUnpaged() => Build(paged: false);
+        public string BuildUnpaged() => Render(paged: false);
 
         /// <summary>
         /// Renders a statement reading one value of every row this one reads: <c>SELECT VALUE</c> it, under the same
@@ -325,7 +325,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return builder.ToString();
         }
 
-        string Build(bool paged)
+        string Render(bool paged)
         {
             // Cosmos does not support GROUP BY and ORDER BY in the same query. The conversion
             // rules are expected to prevent this pairing; reaching here means one let it through.
