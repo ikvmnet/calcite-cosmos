@@ -75,8 +75,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     runs.Add(run);
                 }
 
-                if (read.Any(r => r.AsSpan().SequenceEqual(runs.ToArray())) == false)
-                    read.Add(runs.ToArray());
+                var sequence = runs.ToArray();
+                if (Contains(read, sequence) == false)
+                    read.Add(sequence);
             }
 
             return new CosmosPatternStrings(read.ToArray());
@@ -92,10 +93,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return false;
 
             foreach (var alternative in _alternatives)
-                if (other._alternatives.Any(a => a.AsSpan().SequenceEqual(alternative)) == false)
+                if (Contains(other._alternatives, alternative) == false)
                     return false;
 
             return true;
+        }
+
+        /// <summary>
+        /// Determines whether some alternatives hold one sequence.
+        /// </summary>
+        static bool Contains(IEnumerable<CosmosPatternRun[]> alternatives, CosmosPatternRun[] sequence)
+        {
+            foreach (var alternative in alternatives)
+                if (alternative.AsSpan().SequenceEqual(sequence))
+                    return true;
+
+            return false;
         }
 
         /// <inheritdoc />

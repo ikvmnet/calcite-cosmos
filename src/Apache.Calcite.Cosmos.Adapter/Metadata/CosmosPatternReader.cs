@@ -159,7 +159,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// union of anchored sequences of runs.</returns>
         internal static CosmosPatternStrings? Strings(string? pattern)
         {
-            if (pattern is null || Read(pattern, unicode: false)?.Strings is not { } units || Read(pattern, unicode: true)?.Strings is not { } points)
+            if (pattern is null || Read(pattern, unicode: false, strings: true)?.Strings is not { } units || Read(pattern, unicode: true, strings: true)?.Strings is not { } points)
                 return null;
 
             return units.Equals(points) ? units : null;
@@ -172,7 +172,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The bands, or <c>null</c> where either reading refuses the pattern.</returns>
         internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern)
         {
-            if (Read(pattern, unicode: false) is not { } units || Read(pattern, unicode: true) is not { } points)
+            if (Read(pattern, unicode: false, strings: false) is not { } units || Read(pattern, unicode: true, strings: false) is not { } points)
                 return null;
 
             return Bands(units.Bands | points.Bands);
@@ -186,7 +186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
         /// <returns>The bands, or <c>null</c> where the reading refuses the pattern.</returns>
         internal static IReadOnlyList<JsonCharacterBand>? Absent(string pattern, bool unicode) =>
-            Read(pattern, unicode) is { } read ? Bands(read.Bands) : null;
+            Read(pattern, unicode, strings: false) is { } read ? Bands(read.Bands) : null;
 
         /// <summary>
         /// Returns the bands a set does not hold, one by one.
@@ -205,9 +205,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Parses a pattern under one reading, or returns <c>null</c> where the reading refuses it or it is not anchored.
         /// </summary>
-        static Reading? Read(string pattern, bool unicode)
+        /// <param name="pattern">The pattern.</param>
+        /// <param name="unicode">Whether it is read by code point, as the <c>u</c> flag reads it, rather than by unit.</param>
+        /// <param name="strings">Whether the strings are read as well as the bands: the characters ask only the bands,
+        /// and are read without building what they do not ask.</param>
+        static Reading? Read(string pattern, bool unicode, bool strings)
         {
-            var parser = new Parser(pattern, unicode);
+            var parser = new Parser(pattern, unicode, strings);
 
             if (parser.Pattern() is not { Begins: true, Ends: true } read)
                 return null;
@@ -307,22 +311,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// Reads an assertion, which consumes nothing.
             /// </summary>
-            public static Fragment Assertion(Mark mark) => new(mark == Mark.Start, mark == Mark.End, One(new Item(mark, default)));
+            /// <param name="mark">Which assertion.</param>
+            /// <param name="strings">Whether the strings are being read.</param>
+            public static Fragment Assertion(Mark mark, bool strings) =>
+                new(mark == Mark.Start, mark == Mark.End, strings ? One(new Item(mark, default)) : null);
 
             /// <summary>
             /// Reads an atom matching one character of a class.
             /// </summary>
-            public static Fragment Of(CosmosPatternClass characters) => new(false, false, One(new Item(Mark.Run, new CosmosPatternRun(characters, 1, 1))));
+            /// <param name="characters">The class.</param>
+            /// <param name="strings">Whether the strings are being read.</param>
+            public static Fragment Of(CosmosPatternClass characters, bool strings) =>
+                new(false, false, strings ? One(new Item(Mark.Run, new CosmosPatternRun(characters, 1, 1))) : null);
 
             /// <summary>
             /// Reads terms written one after another.
             /// </summary>
+            /// <remarks>
+            /// A term of one alternative, which is most of them, is written onto the end of every alternative read so
+            /// far, the lists being this sequence's own; only a term of several takes the product.
+            /// </remarks>
             public static Fragment Concatenation(List<Fragment> terms)
             {
                 List<List<Item>>? strings = new() { new() };
 
                 foreach (var term in terms)
-                    strings = Product(strings, term.Strings);
+                {
+                    if (strings is null || term.Strings is null)
+                    {
+                        strings = null;
+                        break;
+                    }
+
+                    if (term.Strings.Count != 1)
+                    {
+                        strings = Product(strings, term.Strings);
+                        continue;
+                    }
+
+                    foreach (var alternative in strings)
+                    {
+                        if (alternative.Count + term.Strings[0].Count > Runs)
+                        {
+                            strings = null;
+                            break;
+                        }
+
+                        alternative.AddRange(term.Strings[0]);
+                    }
+                }
 
                 return new(terms.Count > 0 && terms[0].Begins, terms.Count > 0 && terms[terms.Count - 1].Ends, strings);
             }
@@ -437,12 +474,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             readonly string _source;
             readonly bool _unicode;
+            readonly bool _strings;
             int _at;
 
-            public Parser(string source, bool unicode)
+            public Parser(string source, bool unicode, bool strings)
             {
                 _source = source;
                 _unicode = unicode;
+                _strings = strings;
             }
 
             /// <summary>Gets the bands of the units a character an atom consumes may be, or be written in.</summary>
@@ -513,15 +552,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     // Assertions consume nothing, and are not quantified: `^*` is an error read either way.
                     case '^':
                         _at++;
-                        return Fragment.Assertion(Mark.Start);
+                        return Fragment.Assertion(Mark.Start, _strings);
 
                     case '$':
                         _at++;
-                        return Fragment.Assertion(Mark.End);
+                        return Fragment.Assertion(Mark.End, _strings);
 
                     case '\\' when Peek(1) is 'b' or 'B':
                         _at += 2;
-                        return Fragment.Assertion(Mark.Other);
+                        return Fragment.Assertion(Mark.Other, _strings);
 
                     // Any character but a line terminator: it bounds nothing.
                     case '.':
@@ -676,7 +715,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 foreach (var (lo, hi) in members.Spans)
                     Add(lo, hi);
 
-                return Fragment.Of(members);
+                return Fragment.Of(members, _strings);
             }
 
             /// <summary>
