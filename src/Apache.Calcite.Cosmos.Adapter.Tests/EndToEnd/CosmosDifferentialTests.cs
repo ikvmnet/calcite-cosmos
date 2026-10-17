@@ -355,7 +355,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
-                        await Task.Delay(response.Headers.RetryAfter ?? TimeSpan.FromMilliseconds(100), cancellationToken);
+                        var after = double.TryParse(response.Headers["x-ms-retry-after-ms"], NumberStyles.Float, CultureInfo.InvariantCulture, out var milliseconds) ? milliseconds : 100;
+                        await Task.Delay(TimeSpan.FromMilliseconds(after), cancellationToken);
                         continue;
                     }
 
