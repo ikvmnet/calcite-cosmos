@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -41,6 +41,12 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item><term><see cref="OracleQuestion.Declaration"/></term><description>the declaration: what holds of every
     /// document</description></item>
     /// </list>
+    /// <para>
+    /// <b>An order the service computes</b> — a sort, an extreme, an ordering comparison, a weakening's string branch, a
+    /// rank — is read through <see cref="Apache.Calcite.Cosmos.Adapter.Metadata.CosmosServiceOrder"/> under the consumer's
+    /// own row above, and nowhere else: the sort and the extreme under the last stratum, the comparison under the
+    /// translator's, the weakening under <see cref="OracleQuestion.Applied"/>.
+    /// </para>
     /// <para>
     /// <b>Admitted when first asked.</b> The strata are the renderer's answers, and a question that names no stratum —
     /// a contradiction, a rewrite's siblings, a point read's pins — needs none of them; so the rounds run the first time

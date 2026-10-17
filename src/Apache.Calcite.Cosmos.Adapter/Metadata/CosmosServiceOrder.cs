@@ -63,8 +63,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// class has to be one tie class: the service puts undefined before null where Calcite ties them, so a later key would
     /// order the two where the service already has.</description></item>
     /// <item><description><b>R4, keys.</b> Every key but the last must agree exactly, ties included; the last may be
-    /// finer at the service. A key the facts make one value over every row orders nothing and is not written, nor is a
-    /// key an earlier exact key on the same path already ties — which also keeps a repeated key out of the composite
+    /// finer at the service. A key the facts make one value over every row orders nothing and is not written, nor is one
+    /// whose reading reads every row as null, which Calcite ties however the service orders what it holds, nor a key an
+    /// earlier exact key on the same path already ties — which also keeps a repeated key out of the composite
     /// index question, Azure refusing even <c>ORDER BY c.a, c.a</c> without one. Calcite's own constant-key rule is
     /// inert in this planner.</description></item>
     /// </list>
