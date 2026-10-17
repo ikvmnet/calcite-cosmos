@@ -114,8 +114,9 @@ as for several. The adapter reads the policy's included and excluded paths and s
 process. Two cases catch people out:
 
 - **`_etag`** is excluded from every indexing policy the service hands back, so `ORDER BY c."_etag"`
-  runs in process. `MAX(c."_etag")` still pushes (Chapter 10): an aggregate scans, where an
-  `ORDER BY` needs the index.
+  runs in process — unless the policy's included paths name it, `"includedPaths": [{ "path":
+  "/_etag/?" }]`, which the adapter reads as the one way a policy asks for it. `MAX(c."_etag")` pushes
+  either way (Chapter 10): an aggregate scans, where an `ORDER BY` needs the index.
 - **A computed property** is reached by no wildcard. It sorts at the service only where an included
   path names it — `"includedPaths": [{ "path": "/cp_lower/?" }]` — and in process otherwise.
 
@@ -132,8 +133,8 @@ be mapped to a document path"*. So:
 - **A sort on a column that *is* a path pushes, where the column is the value stored there**:
   `_ts` and `id` always — `id` checked for its characters as the rows arrive unless a `pattern` declares
   them (below); `JSON_VALUE(…)` read as text where the schema declares the path a string, and
-  `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that type (all below). Never `_etag`, which no
-  policy indexes (9.2). A date or a time read by `RETURNING` needs its stored form declared instead
+  `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that type (all below). Not `_etag`, which
+  the service leaves out of the index unless the policy names it (9.2). A date or a time read by `RETURNING` needs its stored form declared instead
   (Chapter 15). Not `RETURNING DECIMAL` under any declaration: it parses a stored string, and so
   orders `"10"` after `"9"` where the service orders the strings (Chapter 7).
 - **The promoted partition key column cannot be a sort key.** It is `VARIANT` (Chapter 7), and Calcite

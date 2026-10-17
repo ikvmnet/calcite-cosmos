@@ -98,8 +98,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _readsGeography = readsGeography;
             _uniqueKeys = uniqueKeys is null ? Array.Empty<IReadOnlyList<string>>() : new List<IReadOnlyList<string>>(uniqueKeys).ToArray();
             _computedProperties = computedProperties is null ? Array.Empty<string>() : new List<string>(computedProperties).ToArray();
-            _includedPatterns = Array.ConvertAll(_includedPaths, Unquoted);
-            _excludedPatterns = Array.ConvertAll(_excludedPaths, Unquoted);
+            _includedPatterns = _includedPaths.Length == 0 && _excludedPaths.Length == 0 ? DefaultIncludedPatterns : Array.ConvertAll(_includedPaths, Unquoted);
+            _excludedPatterns = WithServiceExclusions(Array.ConvertAll(_excludedPaths, Unquoted), _includedPatterns);
 
             if (_partitionKeyPaths.Length > 3)
                 throw new ArgumentException("A container may declare at most three partition key paths.", nameof(partitionKeyPaths));
@@ -136,10 +136,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// nothing. So <see cref="IsSortSupported"/> asks this of every key it is handed.
         /// </para>
         /// <para>
-        /// <b>The service's own defaults, policy or none.</b> The default policy indexes every path but <c>_etag</c>,
-        /// which the service excludes from every policy it hands back (<c>/"_etag"/?</c>), and but a computed property:
-        /// no wildcard reaches either, and only an included path naming one indexes it. <c>id</c> and <c>_ts</c> are
-        /// always indexed and cannot be excluded.
+        /// <b>The service's own defaults, policy or none.</b> The default policy indexes every path, and every policy
+        /// the service hands back excludes <c>/"_etag"/?</c> unless it names <c>_etag</c> itself — both read into the
+        /// patterns when the metadata is made (<see cref="ServiceExcludedPatterns"/>), so that what a declared policy
+        /// leaves out, the emulator reading none of it back, is the service's and not a case here. A computed property
+        /// is reached by no wildcard: only an included path naming one indexes it. <c>id</c> and <c>_ts</c> are always
+        /// indexed and cannot be excluded.
         /// </para>
         /// <para>
         /// Where included and excluded patterns conflict the more precise wins — a deeper path beats a shallower one, and
@@ -158,21 +160,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 string.Equals(policyPath, "/" + TimestampPropertyName, StringComparison.Ordinal))
                 return true;
 
-            // A computed property is reached by no wildcard, and nor is _etag, which the service excludes from every
-            // policy whatever the policy says (the emulator reads back none of that): only a pattern naming either
-            // includes it.
-            var named = Array.IndexOf(_computedProperties, FirstSegment(policyPath)) >= 0
-                || string.Equals(policyPath, "/" + ETagPropertyName, StringComparison.Ordinal);
-
-            // No declared policy means the default, which indexes every property but these.
-            if (_includedPatterns.Length == 0 && _excludedPatterns.Length == 0)
-                return named == false;
+            // A computed property is reached by no wildcard: only a pattern naming it includes it.
+            var named = Array.IndexOf(_computedProperties, FirstSegment(policyPath)) >= 0;
 
             var included = BestMatch(_includedPatterns, policyPath, named ? 2 : 0);
             var excluded = BestMatch(_excludedPatterns, policyPath, 0);
 
             // A tie favours inclusion, as does the absence of any exclusion.
             return included >= excluded && included >= 0;
+        }
+
+        /// <summary>
+        /// The included patterns of a container that declares no policy: the service's default, every path.
+        /// </summary>
+        static readonly string[] DefaultIncludedPatterns = { "/*" };
+
+        /// <summary>
+        /// The patterns the service excludes from every policy it hands back, unquoted: <c>/"_etag"/?</c>.
+        /// </summary>
+        /// <remarks>
+        /// Measured on the probe account: the default policy, and every policy read back, excludes it, and an
+        /// <c>ORDER BY</c> over it is a 400. The emulator reads none of that back, and a declared policy need not
+        /// say it, so it is added to whatever is declared — unless an included pattern names the path, which is the
+        /// one way a policy asks for it.
+        /// </remarks>
+        static readonly string[] ServiceExcludedPatterns = { "/" + ETagPropertyName + "/?" };
+
+        /// <summary>
+        /// Returns the declared excluded patterns with the service's own beside them, each one an included pattern does
+        /// not name.
+        /// </summary>
+        static string[] WithServiceExclusions(string[] excluded, string[] included)
+        {
+            var patterns = new List<string>(excluded);
+
+            foreach (var pattern in ServiceExcludedPatterns)
+                if (patterns.Contains(pattern) == false && Array.Exists(included, i => i.Length > 1 && FirstSegment(i) == FirstSegment(pattern)) == false)
+                    patterns.Add(pattern);
+
+            return patterns.ToArray();
         }
 
         /// <summary>
