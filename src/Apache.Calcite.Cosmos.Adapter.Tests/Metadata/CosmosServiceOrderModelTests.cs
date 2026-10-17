@@ -310,8 +310,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other));
             }
 
-            static Verdict From(CosmosOrderVerdict verdict) =>
-                verdict.IsProved ? new(VerdictKind.Proved, verdict.Reason, verdict.Written) : Verdict.Refused(verdict.Reason);
+            /// <summary>
+            /// The question's verdict in the model's terms. An anchored one carries the adapter's own run-time check,
+            /// <see cref="CosmosServiceOrder.IsAnchor"/>, of each value as the service would return it: for a sort, of the key
+            /// at a position by the anchor written for it; for an extreme or a comparison, by its one anchor.
+            /// </summary>
+            static Verdict From(CosmosOrderVerdict verdict)
+            {
+                if (verdict.IsProved)
+                    return new(VerdictKind.Proved, verdict.Reason, verdict.Written);
+
+                if (verdict.IsAnchored == false)
+                    return Verdict.Refused(verdict.Reason);
+
+                var written = verdict.Written;
+                return new(VerdictKind.Anchored, verdict.Reason, written.Count > 0 ? written : null,
+                    (key, value) => CosmosServiceOrder.IsAnchor(verdict.Anchors[written.Count > 0 ? IndexOf(written, key) : 0], Returned(value)));
+
+                static int IndexOf(IReadOnlyList<int> written, int key)
+                {
+                    for (var j = 0; j < written.Count; j++)
+                        if (written[j] == key)
+                            return j;
+
+                    throw new ArgumentOutOfRangeException(nameof(key), "a key the verdict does not write has no anchor");
+                }
+            }
+
+            /// <summary>
+            /// A stored value as the service returns it, for the run-time check: absent as an undefined element, a number
+            /// as Azure prints it — past 2^53 either printing reads back past it, so the check cannot tell them apart.
+            /// </summary>
+            static System.Text.Json.JsonElement Returned(Value value)
+            {
+                var text = value.Kind switch
+                {
+                    Kind.Absent => null,
+                    Kind.Null => "null",
+                    Kind.Boolean => value.Boolean ? "true" : "false",
+                    Kind.Number => value.ReadBack(Printer.Azure).ToString(CultureInfo.InvariantCulture),
+                    Kind.String => System.Text.Json.JsonSerializer.Serialize(value.Text),
+                    _ => value.Text,
+                };
+
+                return text is null ? default : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+            }
 
             static RelFieldCollation Collation(Key key) => new(
                 0,
@@ -571,9 +614,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// Finds an anchor that some admitted value compares with otherwise under one of the three
-        /// orders, ties included, or returns <c>null</c>: an anchored verdict's run-time check is only
-        /// as good as that.
+        /// orders, ties included before the last key, or returns <c>null</c>: an anchored verdict's
+        /// run-time check is only as good as that.
         /// </summary>
+        /// <remarks>
+        /// On the last key a value Calcite ties with the anchor may be ordered either way at the service —
+        /// a tie of Calcite's is free there, as it is for a proved last key, and an absent path and a JSON
+        /// null that R3 has placed alike are both anchors of the null class. Before the last key a tie
+        /// decides which rows the next key orders, so the service has to tie it too.
+        /// </remarks>
         static string? CheckAnchors(IReadOnlyList<Key> keys, IReadOnlyList<int> written, IReadOnlyList<List<Value>> columns, Func<int, Value, bool> isAnchor, Printer printer)
         {
             foreach (var i in written)
@@ -590,7 +639,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                         var p = Directed(CompareInPartition(a, x));
                         var m = Directed(CompareInMerge(a, x, printer));
 
-                        if (p != c || m != c)
+                        if ((p != c || m != c) && (c != 0 || i != written[^1]))
                             return $"[{Family([a, x], false)}] the anchor {a} of key {i + 1} compares with {x} as {c} in Calcite, {p?.ToString() ?? "unknown"} in a partition and {m?.ToString() ?? "unknown"} in the merge ({printer} printing)";
                     }
             }
@@ -658,7 +707,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// absent path, and is undefined over a set holding an array or an object; each partition's is
         /// merged by the SDK's comparator. Calcite skips every value it reads as null.
         /// </remarks>
-        static string? CheckExtreme(Operand operand, bool max)
+        static string? CheckExtreme(Operand operand, bool max, Verdict? verdict = null)
         {
             foreach (var printer in Enum.GetValues<Printer>())
             {
@@ -670,15 +719,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                         var partitions = Enumerable.Range(0, 2).Select(p => database.Where((_, i) => ((spread >> i) & 1) == p).ToList()).ToList();
                         var results = partitions.Select(p => ServiceExtreme(p, max, CompareInPartition)).Where(v => v.Kind != Kind.Absent).ToList();
                         var service = results.Any(v => v.Kind is Kind.Array) ? Value.Absent : ServiceExtreme(results, max, (a, b) => CompareInMerge(a, b, printer));
+
+                        // An anchored extreme that is no anchor is read again: the argument in its order toward the extreme,
+                        // each partition's merged as the SDK merges them, up to the first anchor.
+                        if (verdict is { Kind: VerdictKind.Anchored } && service.Kind is not (Kind.Absent or Kind.Null) && verdict.IsAnchor!(0, service) == false)
+                            service = Reread(operand, partitions, max, printer, verdict);
+
                         var answered = ReadAs(operand.Reading, service, printer).Value;
 
-                        var verdict = OrderAllowability.JudgeExtreme(database.Select(v => ReadAs(operand.Reading, v, printer).Value).ToList(), answered, max);
-                        if (verdict.Failed)
-                            return $"[{Family(database, false)}] over [{string.Join(", ", database)}], partitions [{string.Join("] [", partitions.Select(p => string.Join(", ", p)))}]: {verdict.Failure} ({printer} printing)";
+                        var judged = OrderAllowability.JudgeExtreme(database.Select(v => ReadAs(operand.Reading, v, printer).Value).ToList(), answered, max);
+                        if (judged.Failed)
+                            return $"[{Family(database, false)}] over [{string.Join(", ", database)}], partitions [{string.Join("] [", partitions.Select(p => string.Join(", ", p)))}]: {judged.Failure} ({printer} printing)";
                     }
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// What the reader makes of an extreme that is no anchor: its argument read again in the service's order toward
+        /// the extreme — each partition by its own order, merged by the SDK's — up to and including the first anchor,
+        /// and Calcite's extreme of what was read.
+        /// </summary>
+        static Value Reread(Operand operand, IReadOnlyList<List<Value>> partitions, bool max, Printer printer, Verdict verdict)
+        {
+            int Toward(int? c) => max ? -(c ?? 0) : c ?? 0;
+
+            var streams = partitions
+                .Select(p => (IReadOnlyList<Value>)p.Where(v => v.Kind != Kind.Absent).OrderBy(v => v, Comparer<Value>.Create((a, b) => Toward(CompareInPartition(a, b)))).ToList())
+                .ToList();
+            var merged = ServiceOrderModel.Merge(streams, (a, b) => Toward(CompareInMerge(a, b, printer)));
+
+            var read = new List<Value>();
+            foreach (var value in merged)
+            {
+                read.Add(value);
+                if (verdict.IsAnchor!(0, value))
+                    break;
+            }
+
+            return read.Count == 0 ? Value.Absent : read.Aggregate((a, b) =>
+                CalciteOrder.CompareValues(ReadAs(operand.Reading, a, printer).Value!, ReadAs(operand.Reading, b, printer).Value!, false) is var c && (max ? c >= 0 : c <= 0) ? a : b);
         }
 
         /// <summary>
@@ -1081,7 +1162,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     var verdict = question.Extreme(operand, max);
                     Count("extreme " + verdict.Kind);
 
-                    if (verdict.Kind == VerdictKind.Proved && CheckExtreme(operand, max) is string failure)
+                    if (verdict.Kind is VerdictKind.Proved or VerdictKind.Anchored && CheckExtreme(operand, max, verdict) is string failure)
                         failures.Add($"{(max ? "MAX" : "MIN")} of {operand}: {verdict.Kind} ({verdict.Reason}), but {failure}");
                     else if (verdict.Kind == VerdictKind.Refused && CheckExtreme(operand, max) is null)
                         Count("extreme refused that the model proves");

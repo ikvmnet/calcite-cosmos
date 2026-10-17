@@ -148,7 +148,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             key = default;
 
-            if (CosmosImplementor.TryBindOutput(probe, out var fields, out var readings, out _, out _, out var container) == false || container is null)
+            if (CosmosImplementor.TryBindOutput(probe, out var fields, out var readings, out _, out var written, out var container) == false || container is null)
+                return false;
+
+            // The join reads the probe's statement itself, batch by batch, and not through the reader that rechecks a
+            // comparison a parameter's value decides (CosmosClauses.Recheck): a probe filtered by one stays in process.
+            if ((written & CosmosClauses.Recheck) != 0)
                 return false;
 
             var known = facts(container);

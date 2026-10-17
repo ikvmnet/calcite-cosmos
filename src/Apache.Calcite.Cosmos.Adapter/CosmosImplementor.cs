@@ -409,7 +409,17 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // does write clauses, though: it is the ORDER BY, the OFFSET/LIMIT, or both, and a
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
-                    return TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container);
+                {
+                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container) == false)
+                        return false;
+
+                    // A comparison a parameter's value decides is rechecked by the reader, row by row, which only rows
+                    // the WHERE filtered can be: see CosmosClauses.Recheck.
+                    if (CosmosRexTranslator.MayRecheck(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder()))
+                        written |= CosmosClauses.Recheck;
+
+                    return true;
+                }
 
                 case Sort sort:
                 {
@@ -921,9 +931,123 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <summary>
         /// Renders the accumulated statement.
         /// </summary>
+        /// <remarks>
+        /// Where a node recorded an order the plan proved only around anchors, or a translator a comparison a parameter's
+        /// value decides, the statement carries the program that completes it (<see cref="CosmosOrderProgram"/>), and
+        /// selects each value its reader checks — see <see cref="OrderProgram"/>.
+        /// </remarks>
         /// <returns>The statement text and its bound parameters.</returns>
         /// <exception cref="InvalidOperationException">The accumulated clauses form a statement Cosmos does not accept.</exception>
-        public CosmosQuery Build() => new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds());
+        public CosmosQuery Build()
+        {
+            var program = OrderProgram();
+            return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program);
+        }
+
+        readonly List<(string Expression, string? Member, CosmosOrderedKeyKind Kind, bool Descending, bool NullsFirst, CosmosOrderAnchor Anchor)> _anchoredKeys = new();
+
+        readonly List<(string Member, string Expression, bool Max, CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor, bool Orderable)> _anchoredExtremes = new();
+
+        /// <summary>
+        /// Records the keys of a sort the service is handed whose order is proved only around anchors: every key written,
+        /// in order, for the reader to compare and to check.
+        /// </summary>
+        /// <param name="keys">Each key's expression as the statement orders by it; the member of a returned row holding its
+        /// value where the statement already selects it under its own name, which a <c>DISTINCT</c> does, or <c>null</c>
+        /// for one to be selected; how Calcite compares it; its direction and null placement; and what a value has to be
+        /// to certify the rows around it.</param>
+        internal void OrderAnchored(IEnumerable<(string Expression, string? Member, CosmosOrderedKeyKind Kind, bool Descending, bool NullsFirst, CosmosOrderAnchor Anchor)> keys)
+        {
+            if (_anchoredKeys.Count > 0)
+                throw new CosmosTranslationException("A sort has already been applied.");
+
+            _anchoredKeys.AddRange(keys);
+        }
+
+        /// <summary>
+        /// Records an extreme the service computes whose answer is Calcite's only where it is an anchor.
+        /// </summary>
+        /// <param name="member">The member of the aggregate's row holding it.</param>
+        /// <param name="expression">Its argument, as the statement names it.</param>
+        /// <param name="max">Whether it is a <c>MAX</c>.</param>
+        /// <param name="kind">How Calcite compares the argument.</param>
+        /// <param name="anchor">What the answer has to be.</param>
+        /// <param name="orderable">Whether the service orders by the argument, so that reading it again may stop at the
+        /// first anchor.</param>
+        internal void ExtremeAnchored(string member, string expression, bool max, CosmosOrderedKeyKind kind, CosmosOrderAnchor anchor, bool orderable) =>
+            _anchoredExtremes.Add((member, expression, max, kind, anchor, orderable));
+
+        /// <summary>
+        /// Assembles what the reader of the statement does to complete the proofs the plan could not, or returns
+        /// <c>null</c> where there are none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A value the reader checks is selected under a name no column has.</b> The rows a sort orders need not carry
+        /// its keys — <c>SELECT c.id … ORDER BY s</c> — and a comparison's path need not be a column either, so each is
+        /// added to the projection as a member of its own, <c>"$k0": c.s</c>, under a name no column the statement
+        /// selects has. The row builders read a row by its columns' names, so they never see one, and nothing else reads the
+        /// row: a point read is never offered beside an order or a comparison, a lookup's statement carries no program
+        /// (<see cref="Rel.Convert.CosmosLookupJoinRule"/> declines one beneath it), and a <c>DISTINCT</c> is given none —
+        /// a member it de-duplicated by would change what it returns. A <c>DISTINCT</c> already selects its keys, as SQL
+        /// requires, and they are read where it put them; a comparison beneath one is declined by the rules
+        /// (<see cref="CosmosClauses.Recheck"/>), and the same for a grouping, which leaves no row of the comparison's to
+        /// recheck.
+        /// </para>
+        /// <para>
+        /// <b>The fallback is the same statement without its page</b>, rendered after the members are added so that it
+        /// selects them too. The comparisons are weakened in it by the reader, which alone knows which parameters are no
+        /// anchors.
+        /// </para>
+        /// </remarks>
+        CosmosOrderProgram? OrderProgram()
+        {
+            var comparisons = _parameters.Comparisons;
+            if (_anchoredKeys.Count == 0 && comparisons.Count == 0 && _anchoredExtremes.Count == 0)
+                return null;
+
+            // What the rules decline, checked again where breaking it would answer wrongly rather than fail: a recheck needs
+            // the rows the comparison filtered, one each.
+            if (comparisons.Count > 0 && (_query.Distinct || _query.HasGroupBy || _query.FlatProjection || _query.HasOrderByRank))
+                throw new CosmosTranslationException("A comparison whose parameter decides its exactness cannot be rechecked beneath a grouping, a DISTINCT or a rank.");
+
+            if (_anchoredKeys.Count > 0 && _query.Distinct == false && _query.FlatProjection)
+                throw new CosmosTranslationException("An order checked as the rows arrive needs the rows it orders.");
+
+            var keys = new List<CosmosOrderedKey>(_anchoredKeys.Count);
+            foreach (var key in _anchoredKeys)
+                keys.Add(new CosmosOrderedKey(key.Member ?? Reserve("k", key.Expression), key.Kind, key.Descending, key.NullsFirst, key.Anchor));
+
+            var rechecked = new List<CosmosOrderComparison>(comparisons.Count);
+            foreach (var comparison in comparisons)
+                rechecked.Add(comparison with { Member = Reserve("c", comparison.Expression) });
+
+            var extremes = new List<CosmosOrderExtreme>(_anchoredExtremes.Count);
+            foreach (var extreme in _anchoredExtremes)
+                extremes.Add(new CosmosOrderExtreme(extreme.Member, extreme.Max, extreme.Kind, extreme.Anchor, _query.BuildValues(extreme.Expression, extreme.Orderable, extreme.Max), extreme.Orderable));
+
+            return new CosmosOrderProgram(keys, _query.Distinct, _query.Offset, _query.Fetch, _query.BuildUnpaged(), rechecked, extremes);
+        }
+
+        /// <summary>
+        /// Selects a value the reader checks under a member no column of the statement is named: the first of <c>$k0</c>,
+        /// <c>$k1</c> and so on, or of <c>$c0</c> and on, that nothing the statement selects already has.
+        /// </summary>
+        string Reserve(string prefix, string expression)
+        {
+            // The reader reads a row's members, and a member beside the document needs the row constructed: the converter
+            // projects every output field before it builds (CosmosConverters.GenerateQuery).
+            if (_query.HasProjection == false)
+                throw new CosmosTranslationException("A statement whose rows the reader checks has to construct them: it is built after its projection.");
+
+            var ordinal = 0;
+            while (_query.HasProperty("$" + prefix + ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                ordinal++;
+
+            var name = "$" + prefix + ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _query.SelectProperty(name, expression);
+            return name;
+        }
 
         /// <summary>
         /// Gets or sets the <c>id</c> a filter pinned alongside a complete partition key, or <c>null</c>.

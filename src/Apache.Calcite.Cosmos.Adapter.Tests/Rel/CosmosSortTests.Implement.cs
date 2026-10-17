@@ -84,16 +84,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             }
 
             /// <summary>
-            /// A sort keyed by <c>id</c> declines where nothing is known of its characters: the service orders them by
-            /// code point and Calcite by UTF-16 code unit, which part either side of U+D800.
+            /// A sort keyed by <c>id</c> where nothing is known of its characters is sent, and its order completed as the
+            /// rows arrive: the service orders them by code point and Calcite by UTF-16 code unit, which part either side
+            /// of U+D800, so the statement selects the key under a member of its own and carries the program its reader
+            /// checks it by.
             /// </summary>
             [Fact]
-            public void AnIdSortWhoseCharactersAreUnknownIsDeclined()
+            public void AnIdSortWhoseCharactersAreUnknownIsAnchored()
             {
-                var sort = SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING)), facts: Apache.Calcite.Cosmos.Facts.CosmosOracle.For(Products.Facts).Declared);
+                var project = ProjectOver(Scan(), new[] { ("name", Ref(1)) });
+                var sort = SortOver(project, Collation((0, RelFieldCollation.Direction.ASCENDING)), offset: _rex.makeExactLiteral(new java.math.BigDecimal(2)), fetch: _rex.makeExactLiteral(new java.math.BigDecimal(3)), facts: Apache.Calcite.Cosmos.Facts.CosmosOracle.For(Products.Facts).Declared);
 
-                var implement = () => Sql(sort, Implementor());
-                implement.Should().Throw<CosmosTranslationException>();
+                var implementor = Implementor();
+                sort.Implement(implementor);
+                var query = implementor.Build();
+
+                query.Sql.Should().Be("SELECT VALUE { \"name\": c.id, \"$k0\": c.id } FROM products c ORDER BY c.id ASC OFFSET 2 LIMIT 3");
+
+                var program = query.Order!;
+                program.Keys.Should().Equal(new CosmosOrderedKey("$k0", CosmosOrderedKeyKind.Text, false, false, CosmosOrderAnchor.Text));
+                program.Unpaged.Should().Be("SELECT VALUE { \"name\": c.id, \"$k0\": c.id } FROM products c ORDER BY c.id ASC");
+                program.Offset!.Value.Count.Should().Be(2);
+                program.Fetch!.Value.Count.Should().Be(3);
+                program.Name.Should().Be("page");
+            }
+
+            /// <summary>
+            /// A sort whose order is proved carries no program, and is read as it comes.
+            /// </summary>
+            [Fact]
+            public void AProvedSortCarriesNoProgram()
+            {
+                var implementor = Implementor();
+                SortOver(Scan(), Collation((1, RelFieldCollation.Direction.ASCENDING))).Implement(implementor);
+
+                implementor.Build().Order.Should().BeNull();
             }
 
             static RelCollation NullsFirst(int index)

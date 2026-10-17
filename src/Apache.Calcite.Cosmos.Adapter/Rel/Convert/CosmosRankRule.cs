@@ -165,7 +165,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The node writes the whole SELECT itself, and ORDER BY RANK is the statement's one
             // ordering and pairs with TOP alone. A subtree that has written any of those leaves it
             // nowhere to go, so the three nodes stay as they are and the ordering runs in process.
-            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit)) != 0)
+            // And a ranking takes its TOP of the rows a WHERE kept, which a comparison the reader
+            // rechecks would leave a superset of (CosmosClauses.Recheck).
+            if ((written & (CosmosClauses.Projection | CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Recheck)) != 0)
                 return null;
 
             // What the rows the projections read satisfy (L1), as a projection's own rule reads them: a form the filter

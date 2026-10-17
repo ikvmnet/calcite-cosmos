@@ -54,6 +54,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public Metadata.CosmosTemporalRounding Rounding { get; init; }
 
         /// <summary>
+        /// Gets the bound a string is written as in place of itself, for the comparison the reader sends where the value
+        /// is no anchor; <see cref="CosmosAnchorBound.None"/> for the value as it stands.
+        /// </summary>
+        /// <remarks>
+        /// The same kind of decision <see cref="Form"/> is: the plan knows which comparison the slot sits in and what the
+        /// service compares there, and writes the bound into the statement's fallback as it would the value — see
+        /// <see cref="CosmosOrderComparison"/>.
+        /// </remarks>
+        public CosmosAnchorBound Bound { get; init; }
+
+        /// <summary>
         /// Gets the name Calcite binds the value under in the data context.
         /// </summary>
         /// <remarks>

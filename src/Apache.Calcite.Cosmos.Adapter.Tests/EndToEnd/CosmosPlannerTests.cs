@@ -1431,7 +1431,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public void AFilterIsNotPushedOntoAPushedRowLimit()
         {
             var best = PlanToAsync("SELECT * FROM (SELECT * FROM products AS c ORDER BY c.\"id\" FETCH NEXT 5 ROWS ONLY) AS x WHERE x.\"$.category\" = 'bikes'");
-            var sql = Render(FindCosmos(best));
+
+            // As the converter renders it, its projection forced: the page over id is checked as the rows arrive, and a
+            // statement whose rows are checked constructs them.
+            var sql = Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosConverters.GenerateQuery(FindCosmos(best), best.getCluster().getRexBuilder()).Query.Sql;
 
             sql.Should().NotContain("WHERE", "the predicate reads the page, not the container: " + sql);
             Plan(best).Should().Contain("ClrCursorFilter");

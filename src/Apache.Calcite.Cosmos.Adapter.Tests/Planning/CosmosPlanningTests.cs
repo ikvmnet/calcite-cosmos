@@ -296,22 +296,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
-        /// The same page ordered by the label still merges, and is taken in process: the label is text whose
-        /// characters nothing declares.
+        /// The same page ordered by the label still merges, and is taken at the service anchored: the label is text
+        /// whose characters nothing declares, and the reader checks the page's edges.
         /// </summary>
         /// <remarks>
         /// The service orders strings by code point, and Calcite and the SDK's merge of two partitions by
         /// UTF-16 code unit, which part over a character beyond U+FFFF beside one from U+E000; nothing says a
-        /// label holds neither, so the order of a page of labels is not proved and the page is Calcite's. A
-        /// <c>pattern</c> on the label is the declaration that would say so.
+        /// label holds neither, so the order of a page of labels is not proved when the plan is made. A page whose
+        /// first and last labels lie below U+D800 holds Calcite's rows, which the reader checks as they arrive and
+        /// reads again where they do not; a <c>pattern</c> on the label is the declaration that would prove it outright.
         /// </remarks>
         [Fact]
-        public void APageByALabelOfUndeclaredCharactersStillMergesAndIsTakenInProcess()
+        public void APageByALabelOfUndeclaredCharactersStillMergesAndIsTakenAtTheServiceAnchored()
         {
             var (plan, _) = Explain(new CosmosContainerStatistics(10_000, 20_000_000, 1), PageOfLinksWithLocations("Label"), 0, 25);
 
             Scans(plan, "links").Should().Be(1, "the page and its bodies are one read:\n" + plan);
-            plan.Should().NotMatchRegex(@"CosmosSort\([^\n]*fetch=", "the order of the labels is not the service's to give:\n" + plan);
+            plan.Should().MatchRegex(@"CosmosSort\([^\n]*fetch=[^\n]*order=\[anchored\]", "the order of the labels is the service's, checked as it arrives:\n" + plan);
+            plan.Should().NotContain("ClrCursorSort", "and not again in process:\n" + plan);
         }
 
     }

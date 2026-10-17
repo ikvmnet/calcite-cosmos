@@ -586,6 +586,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public string Translate(RexNode node) => TranslateAs(node, value: false);
 
         /// <summary>
+        /// Translates <paramref name="node"/> as one top-level conjunct of a <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A predicate, as <see cref="Translate"/> writes one, and one more thing: a comparison of a path with a parameter
+        /// whose exactness the value decides may be written here, and is recorded beside the parameters
+        /// (<see cref="CosmosOrderComparison"/>). Where the value is no anchor the reader sends a weaker comparison in its
+        /// place and rechecks the rows, which keeps exactly Calcite's only where the comparison is the whole conjunct:
+        /// beside the others the service applies, a superset of it rechecked is the conjunction. Inside an <c>OR</c>, a
+        /// <c>NOT</c> or a value it would not be, and there it is refused as before.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The conjunct.</param>
+        /// <returns>The Cosmos SQL text.</returns>
+        /// <exception cref="CosmosTranslationException">The conjunct has no Cosmos equivalent.</exception>
+        public string TranslateConjunct(RexNode node) => TranslateAs(node, value: false, conjunct: true);
+
+        /// <inheritdoc cref="TranslateConjunct(RexNode)" />
+        /// <param name="node">The conjunct.</param>
+        /// <param name="expression">On success, the Cosmos SQL text.</param>
+        /// <returns><c>true</c> if the conjunct was translated; otherwise <c>false</c>.</returns>
+        public bool TryTranslateConjunct(RexNode node, out string? expression)
+        {
+            try
+            {
+                expression = TranslateConjunct(node);
+                return true;
+            }
+            catch (CosmosTranslationException)
+            {
+                expression = null;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The top-level conjunct being translated by <see cref="TranslateConjunct"/>, or <c>null</c>: the one node an
+        /// anchored comparison may be.
+        /// </summary>
+        RexNode? _conjunct;
+
+        /// <summary>
+        /// Determines whether a filter's condition may hold a comparison of a path with a parameter whose exactness at
+        /// the service the value decides — one the reader may recheck row by row.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Asked by the binding walk</b>, for <see cref="CosmosClauses.Recheck"/>, of the condition and the declaration
+        /// alone: a top-level conjunct comparing something with a bare parameter, by an ordering comparison, that the
+        /// declaration does not prove exact. A conjunct rendered from its stratum may be proved by a sibling the
+        /// declaration knows nothing of; this answers yes for it all the same, which declines a consumer the comparison
+        /// would not have stopped and never folds one it would. The facts only grow from the declaration to a stratum,
+        /// and a comparison the declaration proves no stratum anchors.
+        /// </para>
+        /// <para>
+        /// Cheap where it is asked most: a condition with no parameter in an ordering comparison is answered from its
+        /// shape, and a translator is built only for one that has.
+        /// </para>
+        /// </remarks>
+        /// <param name="condition">The filter's condition.</param>
+        /// <param name="fields">The binding of the filtered input.</param>
+        /// <param name="readings">How each field is read back.</param>
+        /// <param name="container">The container, whose declaration is asked; <c>null</c> for none.</param>
+        /// <param name="rexBuilder">A builder over the condition's types.</param>
+        /// <returns><c>true</c> where a conjunct may be rechecked.</returns>
+        internal static bool MayRecheck(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, Metadata.CosmosContainerMetadata? container, RexBuilder rexBuilder)
+        {
+            CosmosRexTranslator? translator = null;
+            return Holds(condition);
+
+            // Every AND taken apart, as the filter statement reads its conjuncts (CosmosFilterStatement.ConjunctsOf).
+            bool Holds(RexNode node)
+            {
+                if (node is not RexCall call)
+                    return false;
+
+                if (call.getKind() == SqlKind.AND)
+                {
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        if (Holds(Operand(call, i)))
+                            return true;
+
+                    return false;
+                }
+
+                if (call.getOperands().size() != 2 || IsOrderingComparison(KindOf(call)) == false)
+                    return false;
+
+                var left = StripVariantCoercion(Operand(call, 0));
+                var right = StripVariantCoercion(Operand(call, 1));
+                if (left is not org.apache.calcite.rex.RexDynamicParam && right is not org.apache.calcite.rex.RexDynamicParam)
+                    return false;
+
+                translator ??= new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), container is null ? JsonFactSet.Empty : CosmosOracle.For(container.Facts).Declared, null, container, readings);
+                return translator.CompareOrder(left, right).IsProved == false;
+            }
+        }
+
+        /// <summary>
         /// Translates <paramref name="node"/> as a value, whose SQL null has to survive.
         /// </summary>
         /// <remarks>
@@ -618,7 +717,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
         }
 
-        string TranslateAs(RexNode node, bool value)
+        string TranslateAs(RexNode node, bool value, bool conjunct = false)
         {
             if (node is null)
                 throw new ArgumentNullException(nameof(node));
@@ -630,7 +729,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             RequireRenderingsReadAsRenderings(expanded, permitted: true);
 
             var saved = _value;
+            var savedConjunct = _conjunct;
             _value = value;
+            _conjunct = conjunct ? expanded : null;
 
             try
             {
@@ -641,6 +742,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _value = saved;
+                _conjunct = savedConjunct;
             }
         }
 
@@ -3716,6 +3818,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // the second: measured on the probe account, `c.s > @p` bound to U+1F600 keeps the
                 // strings above it by code point, which Calcite puts below.
                 //
+                // Unless the one thing missing is a parameter's characters, and the comparison is a whole conjunct of a
+                // WHERE: then it is exact where the value is an anchor, which the reader knows when it is bound, and
+                // otherwise sent weakened and rechecked. See TryWriteAnchoredComparison.
+                if (refused.IsAnchored && TryWriteAnchoredComparison(builder, call, leftValue, rightValue, op))
+                    return;
+
                 // So it is declined here and CosmosFilterSplitRule pushes what it implies: for a
                 // rendering, the comparison where the value is a string, and every non-string
                 // admitted for the recheck above.
@@ -3723,6 +3831,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             }
 
             WriteBinary(builder, left, right, op);
+        }
+
+        /// <summary>
+        /// Writes a comparison of a path with a parameter whose exactness the value decides, as it is, and records it for
+        /// the reader with the two weaker forms it sends where the value is no anchor; or answers <c>false</c> where it is
+        /// not the shape that can be.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The shape: a whole conjunct, a bare parameter, a path.</b> The comparison has to be the conjunct
+        /// <see cref="TranslateConjunct"/> was handed, so that a superset of it beside the others the service applies,
+        /// rechecked, is the conjunction (<see cref="CosmosOrderComparison"/>); in a positive position, which a top-level
+        /// conjunct is; and between a parameter and what <see cref="TryResolvePath"/> names, whose value the reader can be
+        /// handed in a member of its own. Anything else is refused as an ordering comparison the service answers otherwise.
+        /// </para>
+        /// <para>
+        /// <b>Two slots for one parameter.</b> The exact comparison binds the value; the weakened one binds its bound,
+        /// <see cref="CosmosAnchorBound"/>, which <see cref="Client.CosmosQueries.Bind"/> writes from the same value. The
+        /// path is written on the left, the operator reversed where it was read the other way round, so that which bound
+        /// applies is decided once: below the value for <c>&gt;</c> and <c>&gt;=</c>, above it for <c>&lt;</c> and
+        /// <c>&lt;=</c>, where an empty prefix leaves only the type test.
+        /// </para>
+        /// </remarks>
+        /// <param name="builder">The statement under construction.</param>
+        /// <param name="call">The comparison.</param>
+        /// <param name="left">Its left side, beneath any box the validator's coercion put around it.</param>
+        /// <param name="right">Its right side, likewise.</param>
+        /// <param name="op">The operator, as read.</param>
+        /// <returns><c>true</c> where the comparison was written.</returns>
+        bool TryWriteAnchoredComparison(StringBuilder builder, RexCall call, RexNode left, RexNode right, string op)
+        {
+            if (ReferenceEquals(call, _conjunct) == false)
+                return false;
+
+            if (left is org.apache.calcite.rex.RexDynamicParam && right is not org.apache.calcite.rex.RexDynamicParam)
+            {
+                (left, right) = (right, left);
+                op = Reverse(op);
+            }
+
+            if (right is not org.apache.calcite.rex.RexDynamicParam parameter || TryResolvePath(left, out var path) == false || path is null)
+                return false;
+
+            var subject = new StringBuilder();
+            Write(subject, left);
+            var expression = subject.ToString();
+
+            var name = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()));
+            var lower = op is ">" or ">=";
+            var bound = _parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
+
+            var exact = $"({expression} {op} {name})";
+            builder.Append(exact);
+
+            _parameters.Recheck(new CosmosOrderComparison(
+                name,
+                bound,
+                op,
+                expression,
+                exact,
+                lower ? $"({expression} >= {bound})" : $"({expression} < {bound})",
+                $"IS_STRING({expression})"));
+
+            return true;
         }
 
         /// <summary>

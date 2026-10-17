@@ -51,6 +51,20 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         RowLimit = 1 << 3,
 
+        /// <summary>
+        /// A <c>WHERE</c> that may hold a comparison of a path with a parameter whose exactness at the service the value
+        /// decides: where it is no anchor, the reader sends a weaker comparison and keeps only the rows the exact one
+        /// does (<see cref="Sql.CosmosOrderComparison"/>). So the rows the service returns have to be the rows the
+        /// <c>WHERE</c> filtered, one each, read by the converter: a grouping, a <c>DISTINCT</c>, a rank and a lookup
+        /// cannot be folded onto it, and decline.
+        /// </summary>
+        /// <remarks>
+        /// Said of every such comparison the declaration does not prove exact, which is more than renders anchored: a
+        /// sibling conjunct may prove more. A consumer declined where it need not have been costs that consumer's
+        /// clause in process; one folded where it should not have been would answer wrongly, so the walk errs one way.
+        /// </remarks>
+        Recheck = 1 << 4,
+
     }
 
 }

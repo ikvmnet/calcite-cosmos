@@ -77,8 +77,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// composite index, one <c>ORDER BY</c> per statement — see <see cref="CosmosContainerMetadata.IsSortSupported"/>.
     /// </para>
     /// <para>
-    /// <b>Only what the plan can prove.</b> A proof completed when the rows arrive, and a sort split by JSON type into two
-    /// statements, are the next answers this gives; until then what is not proved here is refused.
+    /// <b>What the plan cannot prove, the rows may.</b> Where the one thing missing is what the strings' characters are,
+    /// or how large a number read back is, the facts still say which <em>values</em> every other compares with alike —
+    /// an anchor (<see cref="CosmosOrderAnchor"/>, <see cref="IsAnchor"/>) — and the answer is
+    /// <see cref="CosmosOrderVerdictKind.Anchored"/>: the reader checks each value as it arrives, keeps the service's order
+    /// around the anchors and re-sorts what lies between them, and where a page's edge or an extreme or a parameter is no
+    /// anchor, reads a fallback statement instead (<c>Client.CosmosOrderedCursor</c>). The owner counts a proof completed
+    /// at run time as one (D1). Everything else the facts do not prove — a null placement, a mixed type, a rendering —
+    /// no value can certify, and is refused. A sort split by JSON type into two statements is the next answer.
     /// </para>
     /// </remarks>
     internal static class CosmosServiceOrder
@@ -116,9 +122,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// What an operand's values are under its reading: how the two orders over them stand, which types read as
-        /// values and which as null, what characters the strings may hold, and whether every row holds one value.
+        /// values and which as null, what characters the strings may hold, whether every row holds one value, and what
+        /// check of each value would complete an agreement that falls short.
         /// </summary>
-        readonly record struct Reading(CosmosOrderAgreement Agreement, Classes Values, Classes Nulls, Bands Characters, bool Constant, JsonDocumentPath? Path, string Why);
+        readonly record struct Reading(CosmosOrderAgreement Agreement, Classes Values, Classes Nulls, Bands Characters, bool Constant, JsonDocumentPath? Path, string Why, CosmosOrderAnchor Anchorable = CosmosOrderAnchor.None);
 
         const decimal TwoTo53 = 9007199254740992m;
 
@@ -173,20 +180,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 readings.Add((reading, descending, nullsFirst));
             }
 
+            var anchors = new CosmosOrderAnchor[readings.Count];
+            var unproved = default(string);
+
             for (var j = 0; j < readings.Count; j++)
             {
                 var (reading, descending, nullsFirst) = readings[j];
                 var last = j == readings.Count - 1;
 
+                // R2, and where a number read back may not be what the service ordered, what the rows can still prove:
+                // a value within 2^53 orders alike against every other, read back or not.
                 if (reading.Agreement == CosmosOrderAgreement.None || last == false && reading.Agreement != CosmosOrderAgreement.Exact)
-                    return CosmosOrderVerdict.Refused(last ? reading.Why : "a key before the last orders only " + Grade(reading) + ": " + reading.Why);
+                {
+                    var why = last ? reading.Why : "a key before the last orders only " + Grade(reading) + ": " + reading.Why;
+                    if (reading.Anchorable == CosmosOrderAnchor.None)
+                        return CosmosOrderVerdict.Refused(why);
+
+                    anchors[j] = reading.Anchorable;
+                    unproved ??= why;
+                }
 
                 if (IsOneClass(reading.Values) == false)
                     return CosmosOrderVerdict.Refused("two JSON types, which the service orders by type first");
 
-                // R1: one path's strings against each other.
+                // R1: one path's strings against each other; and where their characters are not known, a string below
+                // U+D800 still orders alike against every other, which the rows can show.
                 if (OrdersItsStrings(reading) == false)
-                    return CosmosOrderVerdict.Refused("text across U+D800: " + Describe(reading.Characters));
+                {
+                    anchors[j] = CosmosOrderAnchor.Text;
+                    unproved ??= "text across U+D800: " + Describe(reading.Characters);
+                }
 
                 // R3: the null class on Calcite's side of the values. Ascending puts the low types first at the service,
                 // descending the high ones; Calcite puts nulls first or last whatever the direction.
@@ -198,6 +221,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 if (last == false && reading.Nulls is not (Classes.None or Classes.Undefined or Classes.Null))
                     return CosmosOrderVerdict.Refused("undefined and null on a leading key, which Calcite ties and the service does not");
             }
+
+            if (unproved is not null)
+                return CosmosOrderVerdict.Anchored("anchored, " + unproved, anchors, written);
 
             return CosmosOrderVerdict.Proved(written.Count == keys.Count ? "proved" : "proved, with constant keys dropped", written);
         }
@@ -229,20 +255,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 throw new ArgumentNullException(nameof(operand));
 
             var reading = Read(facts, operand, printed: true);
+            var anchor = CosmosOrderAnchor.None;
+            var unproved = default(string);
 
             if (reading.Agreement == CosmosOrderAgreement.None)
-                return CosmosOrderVerdict.Refused(reading.Why);
+            {
+                if (reading.Anchorable == CosmosOrderAnchor.None)
+                    return CosmosOrderVerdict.Refused(reading.Why);
+
+                anchor = reading.Anchorable;
+                unproved = reading.Why;
+            }
 
             if (IsOneClass(reading.Values) == false)
                 return CosmosOrderVerdict.Refused("two JSON types, which the service's extreme compares by type first");
 
             if (OrdersItsStrings(reading) == false)
-                return CosmosOrderVerdict.Refused("text across U+D800: " + Describe(reading.Characters));
+            {
+                anchor = CosmosOrderAnchor.Text;
+                unproved ??= "text across U+D800: " + Describe(reading.Characters);
+            }
 
             if ((reading.Nulls & ~Classes.Undefined) != Classes.None)
                 return CosmosOrderVerdict.Refused("the service's extreme counts " + Describe(reading.Nulls & ~Classes.Undefined) + ", which Calcite skips");
 
-            return CosmosOrderVerdict.Proved("proved");
+            // An extreme that is an anchor is Calcite's: every partition's lies at or beyond it in the partition's order,
+            // and every value on the far side of an anchor in one order is on the far side in the other, across the
+            // merge too. Any other answer is read again, in order, up to the first anchor.
+            return unproved is null
+                ? CosmosOrderVerdict.Proved("proved")
+                : CosmosOrderVerdict.Anchored("anchored, " + unproved, new[] { anchor });
         }
 
         /// <summary>
@@ -284,9 +326,147 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return CosmosOrderVerdict.Refused(r.Why);
 
             if ((l.Values & r.Values & Classes.String) != Classes.None && Agree(l.Characters, r.Characters) == false)
-                return CosmosOrderVerdict.Refused("text across U+D800: " + Describe(l.Characters) + " against " + Describe(r.Characters));
+            {
+                var unproved = "text across U+D800: " + Describe(l.Characters) + " against " + Describe(r.Characters);
+
+                // A parameter's value is known when the statement runs, and one below U+D800 compares alike with any string
+                // a path holds: exact then, and otherwise read again under a bound it implies and rechecked in process.
+                // Two paths' strings are never seen whole — the rows the service drops do not arrive — so nothing can.
+                if (left.Kind == CosmosOrderOperandKind.Parameter && right.Kind == CosmosOrderOperandKind.Path
+                    || right.Kind == CosmosOrderOperandKind.Parameter && left.Kind == CosmosOrderOperandKind.Path)
+                    return CosmosOrderVerdict.Anchored("anchored, " + unproved, new[] { CosmosOrderAnchor.Text });
+
+                return CosmosOrderVerdict.Refused(unproved);
+            }
 
             return CosmosOrderVerdict.Proved("proved");
+        }
+
+        /// <summary>
+        /// Determines whether a value certifies the order around it: whether every value the facts admit compares with it
+        /// alike under the service's order, the SDK's merge and Calcite's.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The lemma, and the bound, stated once.</b> A string with no UTF-16 unit at or above U+D800 orders the same
+        /// against any other by code point and by code unit: at the first unit the two differ in, the prefixes agree, and
+        /// a unit below U+D800 is below every surrogate and every unit from U+E000 under both. A number strictly within
+        /// ±2^53 is read back exactly, and a value past it — an int64 the service orders exactly, or a double printed as
+        /// another integer — reads back on the same side of it; strictly, because a service comparing doubles ties 2^53
+        /// with 2^53 + 1, which a <c>BIGINT</c> orders. A value the key reads as null — absent, a JSON null, another type
+        /// — the static question has already placed alike (R3), so it certifies too: exactly before the last key, where R3
+        /// makes the null class one tie class at the service, and as a refinement on the last, where a tie of Calcite's
+        /// is free.
+        /// </para>
+        /// <para>
+        /// <b>What makes it enough.</b> An anchor's place in the stream is Calcite's whatever surrounds it: within a
+        /// partition every value before it is at most it in the partition's order, so at most it in Calcite's; and the
+        /// SDK merges partitions by picking the least head in Calcite's order, so a value of another partition that
+        /// came out first was at most the head of the anchor's own, which is at most the anchor. So every row before an
+        /// anchor is at most it in Calcite's order and every row after at least, and the rows between two anchors need only
+        /// be re-sorted (<c>Client.CosmosOrderedCursor</c>). Measured on the probe account through a two-partition
+        /// merge, 40 streams and 880 windows, none accepted wrongly.
+        /// </para>
+        /// </remarks>
+        /// <param name="anchor">What the value has to be.</param>
+        /// <param name="value">The value as the service returned it; an undefined element for one it left out.</param>
+        /// <returns><c>true</c> where it certifies.</returns>
+        public static bool IsAnchor(CosmosOrderAnchor anchor, System.Text.Json.JsonElement value) => anchor switch
+        {
+            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || IsBelowSurrogates(value.GetString()!),
+            CosmosOrderAnchor.Number => value.ValueKind != System.Text.Json.JsonValueKind.Number || value.TryGetDouble(out var number) && Math.Abs(number) < (double)TwoTo53,
+            _ => true,
+        };
+
+        /// <summary>
+        /// Says how Calcite compares an operand's values, for a reader that compares them itself: what its column reads.
+        /// </summary>
+        /// <remarks>
+        /// Text, a stored form and a conversion through one compare as strings; an integer type and <c>DECIMAL</c>
+        /// exactly; <c>DOUBLE</c> and <c>REAL</c> as what they read, which ties two large integers a double cannot tell
+        /// apart, as Calcite does; a boolean as one. A key whose order is proved compares alike either way, and one the
+        /// rows complete has to compare as Calcite does.
+        /// </remarks>
+        /// <param name="operand">The operand.</param>
+        /// <returns>How its values compare.</returns>
+        internal static CosmosOrderedKeyKind ComparedAs(CosmosOrderOperand operand)
+        {
+            if (operand.Kind is CosmosOrderOperandKind.Distance or CosmosOrderOperandKind.Score)
+                return CosmosOrderedKeyKind.Double;
+
+            if (operand.Kind != CosmosOrderOperandKind.Path || operand.Reading != CosmosReading.Typed || operand.Type is not SqlTypeName type)
+                return CosmosOrderedKeyKind.Text;
+
+            if (type == SqlTypeName.BOOLEAN)
+                return CosmosOrderedKeyKind.Boolean;
+
+            if (type == SqlTypeName.DOUBLE || type == SqlTypeName.FLOAT)
+                return CosmosOrderedKeyKind.Double;
+
+            if (type == SqlTypeName.REAL)
+                return CosmosOrderedKeyKind.Real;
+
+            return IntegerWidth(type) > 0 || type == SqlTypeName.DECIMAL ? CosmosOrderedKeyKind.Exact : CosmosOrderedKeyKind.Text;
+        }
+
+        /// <summary>
+        /// Determines whether every UTF-16 code unit of a string lies below U+D800, where code point order and code unit
+        /// order are one against any other string.
+        /// </summary>
+        /// <param name="text">The string.</param>
+        /// <returns><c>true</c> where it does.</returns>
+        public static bool IsBelowSurrogates(string text)
+        {
+            foreach (var c in text)
+                if (c >= '\uD800')
+                    return false;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the bound the service can compare a path against in place of a parameter that is no anchor, keeping
+        /// every string Calcite keeps: for <c>x &gt; p</c> and <c>x &gt;= p</c>, <c>x &gt;= P</c>, where <c>P</c> is
+        /// <paramref name="value"/> up to its first unit at or above U+D800.
+        /// </summary>
+        /// <remarks>
+        /// A string above <c>p</c> in UTF-16 order either leaves <c>P</c> below the line, where the two orders agree, or
+        /// begins with it; either way it is at least <c>P</c> by code point. Checked over 342,225 pairs (the plan's
+        /// <c>anchors.py</c>). An empty <c>P</c> keeps every string, which is the type test it then is.
+        /// </remarks>
+        /// <param name="value">The parameter's value.</param>
+        /// <returns>The bound.</returns>
+        public static string LowerBound(string value)
+        {
+            var below = 0;
+            while (below < value.Length && value[below] < '\uD800')
+                below++;
+
+            return value.Substring(0, below);
+        }
+
+        /// <summary>
+        /// Returns the bound the service can compare a path against in place of a parameter that is no anchor, keeping
+        /// every string Calcite keeps: for <c>x &lt; p</c> and <c>x &lt;= p</c>, <c>x &lt; P′</c>, where <c>P′</c> is the
+        /// lower bound with its last character raised by one, U+D7FF going to U+E000; or <c>null</c> where the lower
+        /// bound is empty, and no string bounds every string from above.
+        /// </summary>
+        /// <remarks>
+        /// A string at most <c>p</c> in UTF-16 order either parts from <c>P</c> below its last character, where the
+        /// orders agree, or begins with <c>P</c> less its last character and then holds at most that character: below
+        /// <c>P′</c> by code point either way. U+D7FF goes past the surrogates, since a supplementary character follows
+        /// U+FFFF by code point. Checked over 170,820 pairs (the plan's <c>keyset_mirror.py</c>).
+        /// </remarks>
+        /// <param name="value">The parameter's value.</param>
+        /// <returns>The bound, or <c>null</c>.</returns>
+        public static string? UpperBound(string value)
+        {
+            var lower = LowerBound(value);
+            if (lower.Length == 0)
+                return null;
+
+            var last = lower[^1];
+            return lower.Substring(0, lower.Length - 1) + (last == '퟿' ? '' : (char)(last + 1));
         }
 
         /// <summary>
@@ -417,15 +597,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.TINYINT || type == SqlTypeName.SMALLINT || type == SqlTypeName.INTEGER)
                 return As(Classes.Number, CosmosOrderAgreement.Exact, "an integer, read only within its range");
 
+            // Past the bound a value read back may not be the one the service ordered; within 2^53 every value is, and
+            // compares with every other alike, which the rows can show (CosmosOrderAnchor.Number).
             if (type == SqlTypeName.BIGINT || type == SqlTypeName.DECIMAL)
                 return printed == false || (admitted & Classes.Number) == Classes.None || Within(facts, path, Int64Least, Int64Most, open: false)
                     ? As(Classes.Number, CosmosOrderAgreement.Exact, "a number within int64")
-                    : As(Classes.Number, CosmosOrderAgreement.None, "a number past 2^63, which a response prints below 2^63 - 1");
+                    : As(Classes.Number, CosmosOrderAgreement.None, "a number past 2^63, which a response prints below 2^63 - 1") with { Anchorable = CosmosOrderAnchor.Number };
 
             if (type == SqlTypeName.DOUBLE || type == SqlTypeName.FLOAT)
                 return printed == false || (admitted & Classes.Number) == Classes.None || Within(facts, path, -TwoTo53, TwoTo53, open: true)
                     ? As(Classes.Number, CosmosOrderAgreement.Exact, "a number within 2^53")
-                    : As(Classes.Number, CosmosOrderAgreement.Refines, "an integer past 2^53, which a double ties with its neighbour");
+                    : As(Classes.Number, CosmosOrderAgreement.Refines, "an integer past 2^53, which a double ties with its neighbour") with { Anchorable = CosmosOrderAnchor.Number };
 
             if (type == SqlTypeName.REAL)
                 return As(Classes.Number, printed == false || (admitted & Classes.Number) == Classes.None ? CosmosOrderAgreement.Exact : CosmosOrderAgreement.Refines, "a number read as a float");

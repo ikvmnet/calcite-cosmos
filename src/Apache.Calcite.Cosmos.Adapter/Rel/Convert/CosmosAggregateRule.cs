@@ -78,7 +78,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             //
             // The same conditions implementation refuses, decided here instead — off the binding's
             // own walk rather than a second one beside it, so the two cannot drift.
-            if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct)) != 0)
+            //
+            // Nor a WHERE holding a comparison a parameter's value decides: where the value is no anchor the reader sends
+            // a weaker comparison and rechecks the rows it returns, and a grouping or a DISTINCT leaves no row of the
+            // comparison's to recheck (CosmosClauses.Recheck).
+            if ((written & (CosmosClauses.OrderBy | CosmosClauses.RowLimit | CosmosClauses.Distinct | CosmosClauses.Recheck)) != 0)
                 return false;
 
             // Whether each key groups as its column reads is asked of the walk's own binding, readings
@@ -102,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             for (var i = 0; i < calls.size(); i++)
             {
                 var call = (AggregateCall)calls.get(i);
-                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known) == false)
+                if (CosmosAggregate.CanImplement(call, inputRowType, fields, readings, known, groupSet.isEmpty() == false) == false)
                     return false;
 
                 var arguments = call.getArgList();

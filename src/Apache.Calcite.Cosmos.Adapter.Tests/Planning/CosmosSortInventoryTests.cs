@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,6 +55,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
     /// operand, wherever it calls the cast monotonic, and it calls a cast of text to an instant or a UUID that. The text
     /// orders as the converted value only in a stored form that keeps the order; a pushed sort found beneath such a cast
     /// over a path with no such form is a wrong order, whatever any rule said.
+    /// </para>
+    /// <para>
+    /// <b>And what the rows complete.</b> A group nothing proves when the plan is made may still be one the reader proves
+    /// as the rows arrive: text of unknown characters, checked for a unit at or above U+D800; a <c>BIGINT</c> past int64,
+    /// checked for a number past 2^53; a comparison with a parameter, checked against the value. Such an order counts
+    /// here only where the statement the plan renders carries the program that checks it, with the check its group
+    /// needs (<see cref="CosmosOrderProgram"/>); the program's own soundness is the model's and the reader's tests'.
     /// </para>
     /// <para>
     /// <b>What is not judged here.</b> Null placement, which the inventory read off the old rule's checks rather than the
@@ -428,9 +435,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 found.Add(new("rank", true));
 
             foreach (var aggregate in nodes.OfType<CosmosAggregate>())
-                foreach (AggregateCall call in aggregate.getAggCallList().toArray())
-                    if (call.getAggregation().getKind() == org.apache.calcite.sql.SqlKind.MIN || call.getAggregation().getKind() == org.apache.calcite.sql.SqlKind.MAX)
-                        found.Add(Extreme(aggregate, ((java.lang.Integer)call.getArgList().get(0)).intValue()));
+                for (var i = 0; i < aggregate.getAggCallList().size(); i++)
+                    if ((AggregateCall)aggregate.getAggCallList().get(i) is var call
+                        && (call.getAggregation().getKind() == org.apache.calcite.sql.SqlKind.MIN || call.getAggregation().getKind() == org.apache.calcite.sql.SqlKind.MAX))
+                        found.Add(Extreme(aggregate, ((java.lang.Integer)call.getArgList().get(0)).intValue(), (string)aggregate.getRowType().getFieldNames().get(aggregate.getGroupCount() + i)));
 
             foreach (var filter in nodes.OfType<CosmosFilter>())
                 Comparisons(filter, filter.getCondition(), found);
@@ -448,7 +456,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
             var facts = sort.Facts ?? CosmosOracle.For(container.Facts).Declared;
             var collations = sort.getCollation().getFieldCollations();
-            var written = Written(sort, container);
+            var (written, program) = Written(sort);
             var keys = new List<(RelFieldCollation Field, int Index)>();
 
             for (var i = 0; i < collations.size(); i++)
@@ -505,6 +513,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 else
                     (family, proved) = ("sort: " + type.getName(), true);
 
+                // What the plan did not prove, the reader may as the rows arrive: text by its characters, a BIGINT by its
+                // magnitude, each value of the key checked as the statement's program says.
+                var checks = program is { Keys.Count: > 0 } && k < program.Keys.Count ? program.Keys[k].Anchor : CosmosOrderAnchor.None;
+                if (proved == false && (family.Contains("unknown characters") && checks == CosmosOrderAnchor.Text || family.Contains("past int64") && checks == CosmosOrderAnchor.Number))
+                    (family, proved) = (family + ", checked as the rows arrive", true);
+
                 // Before the last key, a null two ways is two tie classes at the service and one in Calcite.
                 if (proved && k < keys.Count - 1 && NullTwoWays(facts, at, type))
                     (family, proved) = ("sort: a leading key null two ways", false);
@@ -514,18 +528,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         }
 
         /// <summary>
-        /// The paths the statement a sort renders writes in its <c>ORDER BY</c>.
+        /// The statement a pushed subtree renders, as the converter renders it, its projection forced, with the program
+        /// its reader runs.
         /// </summary>
-        static HashSet<string> Written(CosmosSort sort, CosmosContainerMetadata container)
+        static CosmosQuery? Statement(RelNode rel)
         {
-            var written = new HashSet<string>(StringComparer.Ordinal);
-
             try
             {
-                var sql = PlannerHarness.Implement(sort, container).Sql;
+                return Adapter.Rel.Convert.CosmosConverters.GenerateQuery(rel, rel.getCluster().getRexBuilder()).Query;
+            }
+            catch (Adapter.Sql.CosmosTranslationException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// The paths the statement a sort renders writes in its <c>ORDER BY</c>, and the program its reader runs.
+        /// </summary>
+        static (HashSet<string> Written, CosmosOrderProgram? Program) Written(CosmosSort sort)
+        {
+            var written = new HashSet<string>(StringComparer.Ordinal);
+            var query = Statement(sort);
+
+            if (query is not CosmosQuery statement)
+                return (written, null);
+
+            {
+                var sql = statement.Sql;
                 var at = sql.IndexOf(" ORDER BY ", StringComparison.Ordinal);
                 if (at < 0)
-                    return written;
+                    return (written, statement.Order);
 
                 var clause = sql[(at + 10)..];
                 foreach (var stop in new[] { " OFFSET ", " LIMIT " })
@@ -535,14 +568,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 foreach (var item in clause.Split(", "))
                     written.Add(item.Replace(" ASC", "").Replace(" DESC", "").Trim());
             }
-            catch (Adapter.Sql.CosmosTranslationException)
-            {
-            }
 
-            return written;
+            return (written, statement.Order);
         }
 
-        static Pushed Extreme(CosmosAggregate aggregate, int argument)
+        static Pushed Extreme(CosmosAggregate aggregate, int argument, string member)
         {
             if (CosmosImplementor.TryBindOutput(aggregate.getInput(), out var fields, out _, out _, out _, out var container) == false || container is null
                 || argument >= fields.Count || fields[argument] is not Adapter.Sql.CosmosPath path || CosmosDocumentPaths.From(path) is not JsonDocumentPath at)
@@ -551,11 +581,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             var facts = aggregate.Facts ?? CosmosOracle.For(container.Facts).Declared;
             var type = ((org.apache.calcite.rel.type.RelDataTypeField)aggregate.getInput().getRowType().getFieldList().get(argument)).getType().getSqlTypeName();
 
+            // What the plan did not prove, the reader may: the answer checked, and read again where it is no anchor.
+            var checks = Statement(aggregate)?.Order?.Extremes.FirstOrDefault(e => e.Member == member)?.Anchor ?? CosmosOrderAnchor.None;
+
             if (SqlTypeName.CHAR_TYPES.contains(type))
-                return CharactersKnown(facts, at) ? new("extreme: text whose characters are known", true) : new("extreme: text of unknown characters", false);
+                return CharactersKnown(facts, at) ? new("extreme: text whose characters are known", true)
+                    : checks == CosmosOrderAnchor.Text ? new("extreme: text of unknown characters, checked as the row arrives", true)
+                    : new("extreme: text of unknown characters", false);
 
             if (type == SqlTypeName.BIGINT || type == SqlTypeName.DECIMAL)
-                return WithinInt64(facts, at) ? new("extreme: a BIGINT within int64", true) : new("extreme: a BIGINT past int64", false);
+                return WithinInt64(facts, at) ? new("extreme: a BIGINT within int64", true)
+                    : checks == CosmosOrderAnchor.Number ? new("extreme: a BIGINT past int64, checked as the row arrives", true)
+                    : new("extreme: a BIGINT past int64", false);
 
             return new("extreme: " + type.getName(), true);
         }
@@ -578,9 +615,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 if (IsText(left) || IsText(right))
                 {
                     var (a, b) = (Side(filter, left), Side(filter, right));
-                    found.Add(Agree(a, b)
-                        ? new("comparison: text whose characters agree", true)
-                        : new("comparison: text against text the two orders part over", false));
+                    found.Add(Agree(a, b) ? new("comparison: text whose characters agree", true)
+                        : (left is RexDynamicParam || right is RexDynamicParam) && Statement(filter)?.Order?.Comparisons.Count > 0
+                            ? new("comparison: text against a parameter, checked against its value", true)
+                            : new("comparison: text against text the two orders part over", false));
                 }
             }
 

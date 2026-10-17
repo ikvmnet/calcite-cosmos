@@ -52,11 +52,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             for (var i = 0; i < parameters.Count; i++)
                 bound[i] = parameters[i].Value is CosmosDynamicValue slot
-                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : Value(root, slot) }
+                    ? parameters[i] with { Value = slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) }
                     : parameters[i];
 
             return query with { Parameters = bound };
         }
+
+        /// <summary>
+        /// Reads a string parameter's value and writes the bound its comparison's fallback compares against in its place.
+        /// </summary>
+        /// <remarks>
+        /// Written whatever the value: the reader decides from the value itself whether the fallback is read at all, and
+        /// a bound for one that is an anchor is never sent. Anything but a string — a null — has no bound, and its
+        /// comparison is exact.
+        /// </remarks>
+        /// <param name="root">The data context.</param>
+        /// <param name="slot">The ordinal to read, and which bound to write.</param>
+        /// <returns>The bound, or <c>null</c>.</returns>
+        static object? Bounded(org.apache.calcite.DataContext root, CosmosDynamicValue slot) => Value(root, slot) switch
+        {
+            string value when slot.Bound == CosmosAnchorBound.Lower => Metadata.CosmosServiceOrder.LowerBound(value),
+            string value => Metadata.CosmosServiceOrder.UpperBound(value),
+            _ => null,
+        };
 
         /// <summary>
         /// Reads one dynamic parameter's value out of the data context and writes it in the stored

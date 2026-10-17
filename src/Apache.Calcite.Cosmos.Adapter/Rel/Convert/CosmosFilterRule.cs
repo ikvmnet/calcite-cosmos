@@ -65,6 +65,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.RowLimit) != 0)
                 return false;
 
+            // Onto a DISTINCT, a comparison a parameter's value decides would leave the reader nothing to recheck: the
+            // rows it returns are the DISTINCT's values, and the member a recheck reads would change what is
+            // de-duplicated (CosmosClauses.Recheck). Asked of the condition as written, which the walk above it asks too.
+            if ((written & CosmosClauses.Distinct) != 0 && Sql.CosmosRexTranslator.MayRecheck(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder()))
+                return false;
+
             // Whole where every conjunct renders from the stratum before the one that admitted it:
             // what its siblings applied beside it establish, and never what it does itself. So a
             // conjunct may lean on another that reaches the service with it, to any depth, and no

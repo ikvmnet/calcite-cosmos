@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -55,6 +57,154 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForLiteral(JsonScalar.From("a"))).IsProved.Should().BeTrue();
             CosmosServiceOrder.Compare(facts, id, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR)).IsProved.Should().BeFalse();
             CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR)).IsProved.Should().BeFalse("two strings of any character");
+        }
+
+        /// <remarks>
+        /// <para>
+        /// What a parameter will hold is known when the statement runs: one below U+D800 compares alike with any string
+        /// under both orders, so the comparison is exact then and is otherwise read weakened and rechecked — anchored,
+        /// whichever side the parameter is on. Two paths' strings are never seen whole, the rows the service drops not
+        /// arriving, so a comparison of two paths is refused as before.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AComparisonWithAParameterIsAnchoredAndOneWithAPathIsNot()
+        {
+            var facts = Declared();
+            var id = Typed("id", SqlTypeName.VARCHAR);
+            var parameter = CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR);
+
+            var verdict = CosmosServiceOrder.Compare(facts, id, parameter);
+            verdict.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
+            verdict.Anchors.Should().Equal(CosmosOrderAnchor.Text);
+
+            CosmosServiceOrder.Compare(facts, parameter, id).Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
+            CosmosServiceOrder.Compare(facts, id, Typed("id", SqlTypeName.VARCHAR)).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+            CosmosServiceOrder.Compare(facts, parameter, CosmosOrderOperand.ForParameter(SqlTypeName.VARCHAR)).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no path for the reader to recheck");
+            CosmosServiceOrder.Compare(facts, Text("v"), parameter).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering of what may not be a string no value certifies");
+        }
+
+        // ── What the rows prove ───────────────────────────────────────────────────────────────
+
+        /// <remarks>
+        /// <para>
+        /// Where the one thing the facts cannot say is what the strings' characters are, or how large a number read back
+        /// is, the verdict is anchored: a string below U+D800, or a number within 2^53, orders alike against every other
+        /// value, and the reader checks each as it arrives. A <c>DOUBLE</c> refines the service's order past 2^53, which is
+        /// enough for the last key and anchored before it.
+        /// </para>
+        /// <para>
+        /// What no value certifies is refused as before: a null placement the service does not share, two JSON types,
+        /// a rendering, the two nulls of a leading key.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void AnOrderTheRowsCanProveIsAnchored()
+        {
+            var facts = Declared("""{ "type": "object", "required": ["w", "d", "s"], "properties": { "w": { "type": "integer" }, "d": { "type": "number" }, "s": { "type": "string" }, "t": { "type": ["string", "null"] } } }""");
+
+            var id = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("id", SqlTypeName.VARCHAR)) });
+            id.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
+            id.Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            id.Reason.Should().Contain("text across U+D800");
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("w", SqlTypeName.BIGINT)) }).Anchors.Should().Equal(CosmosOrderAnchor.Number);
+
+            var both = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)), Key(Typed("d", SqlTypeName.DOUBLE), RelFieldCollation.Direction.DESCENDING), Key(Text("s")) });
+            both.Kind.Should().Be(CosmosOrderVerdictKind.Anchored);
+            both.Written.Should().Equal(0, 1, 2);
+            both.Anchors.Should().Equal(CosmosOrderAnchor.Number, CosmosOrderAnchor.Number, CosmosOrderAnchor.Text);
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("d", SqlTypeName.DOUBLE)) }).IsProved.Should().BeTrue("the last key may be finer at the service");
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("t"), nulls: RelFieldCollation.NullDirection.LAST) }).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "no value moves the nulls");
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(Text("v")) }).Kind.Should().Be(CosmosOrderVerdictKind.Refused, "a rendering");
+        }
+
+        /// <remarks>
+        /// An extreme that is an anchor is Calcite's; one over strings nothing states, or an integer nothing bounds, is
+        /// anchored, and still refused where the service counts a JSON null.
+        /// </remarks>
+        [Fact]
+        public void AnExtremeTheRowsCanProveIsAnchored()
+        {
+            var facts = Declared("""{ "type": "object", "properties": { "w": { "type": "integer" }, "n": { "type": ["string", "null"] } } }""");
+
+            CosmosServiceOrder.Extreme(facts, Typed("id", SqlTypeName.VARCHAR)).Anchors.Should().Equal(CosmosOrderAnchor.Text);
+            CosmosServiceOrder.Extreme(facts, Typed("w", SqlTypeName.BIGINT)).Anchors.Should().Equal(CosmosOrderAnchor.Number);
+            CosmosServiceOrder.Extreme(facts, Text("n")).Kind.Should().Be(CosmosOrderVerdictKind.Refused);
+        }
+
+        /// <remarks>
+        /// The lemma and the bound: a string with no unit at or above U+D800, a number strictly within 2^53, and a value the
+        /// column reads as null.
+        /// </remarks>
+        [Fact]
+        public void AnAnchorIsAValueBothOrdersAgreeAbout()
+        {
+            static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, Json("\"a\\uD7FF\"")).Should().BeTrue();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, Json("\"a\\uE000\"")).Should().BeFalse();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, Json("\"\\uD83D\\uDE00\"")).Should().BeFalse();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, Json("null")).Should().BeTrue();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Text, default).Should().BeTrue("an absent path reads null");
+
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Number, Json("9007199254740991")).Should().BeTrue();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Number, Json("-9007199254740991")).Should().BeTrue();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Number, Json("9007199254740992")).Should().BeFalse("strictly: a service comparing doubles ties 2^53 with 2^53 + 1");
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Number, Json("9.223372036854776E+18")).Should().BeFalse();
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.Number, Json("\"30\"")).Should().BeTrue("a string reads null under a number's reading");
+
+            CosmosServiceOrder.IsAnchor(CosmosOrderAnchor.None, Json("\"\\uE000\"")).Should().BeTrue();
+        }
+
+        /// <remarks>
+        /// <para>
+        /// The bounds a comparison with a parameter that is no anchor is weakened to: below the value up to its first unit
+        /// at or above U+D800 for <c>&gt;</c> and <c>&gt;=</c>; above that prefix with its last character raised for
+        /// <c>&lt;</c> and <c>&lt;=</c>, U+D7FF going to U+E000; nothing where the prefix is empty.
+        /// </para>
+        /// <para>
+        /// And they hold: every string Calcite keeps, the service keeps under the bound — every pair over strings of up to
+        /// three characters from either side of the line, as the plan's <c>anchors.py</c> and <c>keyset_mirror.py</c>
+        /// check them.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void TheBoundsKeepEveryStringCalciteKeeps()
+        {
+            CosmosServiceOrder.LowerBound("ab\uE000c").Should().Be("ab");
+            CosmosServiceOrder.LowerBound("\U0001F600").Should().Be("");
+            CosmosServiceOrder.UpperBound("ab\U0001F600").Should().Be("ac");
+            CosmosServiceOrder.UpperBound("a\uD7FF\uE000").Should().Be("a\uE000");
+            CosmosServiceOrder.UpperBound("\uE000").Should().BeNull();
+
+            string[] alphabet = ["a", "b", "\uD7FE", "\uD7FF", "\uE000", "\uFF21", "\U00010000", "\U0001F600"];
+            var strings = new List<string> { "" };
+            for (var length = 1; length <= 3; length++)
+                strings.AddRange(strings.Where(s => s.EnumerateRunes().Count() == length - 1).SelectMany(s => alphabet.Select(c => s + c)).ToList());
+
+            var lost = new List<string>();
+            foreach (var p in strings)
+            {
+                var lower = CosmosServiceOrder.LowerBound(p);
+                var upper = CosmosServiceOrder.UpperBound(p);
+
+                foreach (var x in strings)
+                {
+                    var calcite = string.CompareOrdinal(x, p);
+
+                    if (calcite >= 0 && Infrastructure.ServiceOrderModel.CompareCodePoints(x, lower) < 0)
+                        lost.Add($"{x} >= {p}");
+
+                    if (calcite <= 0 && upper is not null && Infrastructure.ServiceOrderModel.CompareCodePoints(x, upper) >= 0)
+                        lost.Add($"{x} <= {p}");
+                }
+            }
+
+            strings.Should().HaveCount(585);
+            lost.Should().BeEmpty("the service keeps every string Calcite does under the bound");
         }
 
         /// <remarks>

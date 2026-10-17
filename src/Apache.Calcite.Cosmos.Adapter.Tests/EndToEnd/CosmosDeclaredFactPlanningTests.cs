@@ -1732,20 +1732,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A declared string whose characters nothing states leaves the sort in process.
+        /// A declared string whose characters nothing states sorts at the service anchored, its order completed as the
+        /// rows arrive.
         /// </summary>
         /// <remarks>
         /// The service orders strings by code point and Calcite by UTF-16 code unit, which part over a character
         /// beyond U+FFFF beside one from U+E000: measured on the emulator and on Azure, U+E000 before U+1F600 at the
-        /// service and after it in Calcite. A string is not enough; a domain, or a stored form, is.
+        /// service and after it in Calcite. A string is not enough to prove it when the plan is made; a domain, a stored
+        /// form or a pattern is, and otherwise every string below U+D800 the rows hold certifies the order around it.
         /// </remarks>
         [Fact]
-        public void ADeclaredStringOfUnknownCharactersStaysAbove()
+        public void ADeclaredStringOfUnknownCharactersIsAnchored()
         {
             var container = Declaring("""{ "type": "object", "properties": { "t": { "type": ["string", "null"] } } }""");
             var best = PlanToCosmos("""SELECT JSON_VALUE(c."DOC", '$.t') FROM items AS c ORDER BY 1 NULLS FIRST""", container, out _);
 
-            PlanText(best).Should().NotContain("CosmosSort", "the strings may order apart: " + PlanText(best));
+            PlanText(best).Should().Contain("CosmosSort(sort0=[$0], dir0=[ASC-nulls-first], order=[anchored])", "the strings may order apart, and the rows say where: " + PlanText(best));
+            Query(FindCosmos(best), container).Order.Should().NotBeNull();
         }
 
         /// <summary>

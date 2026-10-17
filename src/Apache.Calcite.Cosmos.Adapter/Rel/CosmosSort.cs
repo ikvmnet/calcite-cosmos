@@ -52,7 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="keys">On success, the keys written, as the service's policy names their paths.</param>
         /// <param name="paths">On success, per key written, its path, or <c>null</c> for a distance.</param>
         /// <param name="written">On success, per key written, its position in the collation.</param>
-        /// <returns><c>true</c> where every key resolved and the order is proved.</returns>
+        /// <param name="checks">On success, per key written, how Calcite compares its values and what one has to be to
+        /// certify the rows around it — <see cref="CosmosOrderAnchor.None"/> for every key of an order proved when the
+        /// plan is made.</param>
+        /// <returns><c>true</c> where every key resolved and the order is proved, or anchored.</returns>
         internal static bool TryResolveSortKeys(
             RelCollation collation,
             IReadOnlyList<CosmosPath?> fields,
@@ -63,11 +66,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             JsonFactSet facts,
             out IReadOnlyList<CosmosSortKey> keys,
             out IReadOnlyList<CosmosPath?> paths,
-            out IReadOnlyList<int> written)
+            out IReadOnlyList<int> written,
+            out IReadOnlyList<(CosmosOrderedKeyKind Kind, CosmosOrderAnchor Anchor)> checks)
         {
             keys = System.Array.Empty<CosmosSortKey>();
             paths = System.Array.Empty<CosmosPath>();
             written = System.Array.Empty<int>();
+            checks = System.Array.Empty<(CosmosOrderedKeyKind, CosmosOrderAnchor)>();
 
             if (collation is null || fields is null || readings is null || orderings is null || rowType is null || facts is null || string.IsNullOrEmpty(rootAlias))
                 return false;
@@ -97,11 +102,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             }
 
             var verdict = CosmosServiceOrder.OrderBy(facts, operands);
-            if (verdict.IsProved == false)
+            if (verdict.IsProved == false && verdict.IsAnchored == false)
                 return false;
 
             var writtenKeys = new CosmosSortKey[verdict.Written.Count];
             var writtenPaths = new CosmosPath?[verdict.Written.Count];
+            var writtenChecks = new (CosmosOrderedKeyKind, CosmosOrderAnchor)[verdict.Written.Count];
 
             for (var j = 0; j < verdict.Written.Count; j++)
             {
@@ -110,11 +116,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
                 writtenPaths[j] = resolved[position];
                 writtenKeys[j] = new CosmosSortKey(resolved[position]?.ToPolicyPath() ?? string.Empty, direction == RelFieldCollation.Direction.DESCENDING);
+                writtenChecks[j] = (CosmosServiceOrder.ComparedAs(operands[position].Operand), verdict.IsAnchored ? verdict.Anchors[j] : CosmosOrderAnchor.None);
             }
 
             keys = writtenKeys;
             paths = writtenPaths;
             written = verdict.Written;
+            checks = writtenChecks;
             return true;
         }
 
@@ -212,10 +220,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// rule saw holds of whichever input the planner finally picks.
         /// </para>
         /// <para>
-        /// <b>Nothing else is carried, and the digest needs nothing more.</b> A sort is built only where its order was
-        /// proved under its own facts, and implemented under them, so two sorts alike in collation, offset and fetch over
-        /// one input answer rows Calcite allows whichever the planner keeps, even where one writes a constant key the other
-        /// does not.
+        /// <b>And whether its order is completed as the rows arrive</b>, which the digest shows as <c>order=anchored</c>.
+        /// A sort is built only where its order was proved or anchored under its own facts, and implemented under them, so
+        /// two sorts alike in collation, offset and fetch over one input answer rows Calcite allows whichever the planner
+        /// keeps, even where one writes a constant key the other does not, or checks what the other proved; but an
+        /// <c>EXPLAIN</c> that showed the two alike would hide which reads the rows as they come and which checks them.
         /// </para>
         /// </remarks>
         /// <param name="cluster">The planner cluster.</param>
@@ -225,10 +234,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="offset">The number of rows to skip, or <c>null</c>.</param>
         /// <param name="fetch">The maximum number of rows to return, or <c>null</c>.</param>
         /// <param name="facts">What every row the sort orders is known to satisfy, or <c>null</c> for the declaration.</param>
-        internal CosmosSort(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, RelCollation collation, RexNode? offset, RexNode? fetch, JsonFactSet? facts) :
+        /// <param name="anchored">Whether the order is proved only around anchors, and checked by the reader.</param>
+        internal CosmosSort(RelOptCluster cluster, RelTraitSet traitSet, RelNode input, RelCollation collation, RexNode? offset, RexNode? fetch, JsonFactSet? facts, bool anchored = false) :
             base(cluster, traitSet, input, collation, offset, fetch)
         {
             Facts = facts;
+            Anchored = anchored;
         }
 
         /// <summary>
@@ -237,10 +248,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         internal JsonFactSet? Facts { get; }
 
+        /// <summary>
+        /// Gets whether the order is proved only around anchors, so that the reader checks the rows as they arrive, as its
+        /// rule decided.
+        /// </summary>
+        internal bool Anchored { get; }
+
         /// <inheritdoc />
         public override Sort copy(RelTraitSet traitSet, RelNode newInput, RelCollation newCollation, RexNode? offset, RexNode? fetch)
         {
-            return new CosmosSort(getCluster(), traitSet, newInput, newCollation, offset, fetch, Facts);
+            return new CosmosSort(getCluster(), traitSet, newInput, newCollation, offset, fetch, Facts, Anchored);
+        }
+
+        /// <inheritdoc />
+        public override RelWriter explainTerms(RelWriter pw)
+        {
+            return base.explainTerms(pw).itemIf("order", "anchored", Anchored);
         }
 
         /// <inheritdoc />
@@ -264,24 +287,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // Every question the rule asked, asked again of the facts it decided under.
             var facts = implementor.FactsOf(Facts);
 
-            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, out var keys, out var paths, out var written) == false)
+            if (TryResolveSortKeys(getCollation(), implementor.Fields, implementor.Readings, implementor.Orderings, getInput().getRowType(), implementor.RootAlias, facts, out var keys, out var paths, out var written, out var checks) == false)
                 throw new CosmosTranslationException("The sort keys do not resolve to an order the service computes as Calcite would.");
 
             if (implementor.Container.IsSortSupported(keys) == false)
                 throw new CosmosTranslationException("The container does not index every key of this sort, or has no composite index supporting it.");
 
+            var anchored = new List<(string, string?, CosmosOrderedKeyKind, bool, bool, CosmosOrderAnchor)>(keys.Count);
+            var names = getInput().getRowType().getFieldNames();
+
             for (var i = 0; i < keys.Count; i++)
             {
                 // A path where there is one, and otherwise the expression the projection recorded,
                 // written out again because the alias is not addressable.
-                var index = ((RelFieldCollation)getCollation().getFieldCollations().get(written[i])).getFieldIndex();
+                var collation = (RelFieldCollation)getCollation().getFieldCollations().get(written[i]);
+                var index = collation.getFieldIndex();
                 var expression = paths[i]?.ToString() ?? (index < implementor.SortableExpressions.Count ? implementor.SortableExpressions[index] : null);
 
                 if (expression is null)
                     throw new CosmosTranslationException("A sort key resolves to neither a path nor an expression the service will order by.");
 
                 implementor.Query.AddOrderBy(expression, keys[i].Descending);
+
+                // What the reader compares, where the order is completed as the rows arrive: the stored value of the
+                // path, selected for it — or for a DISTINCT, the column it already selects, which reads the path's value
+                // where it holds one of the key's type and null where it does not, as the key's own reading does.
+                var nullsFirst = (RelFieldCollation.NullDirection.__Enum)collation.nullDirection.ordinal() == RelFieldCollation.NullDirection.__Enum.FIRST;
+                anchored.Add((expression, implementor.Query.Distinct ? (string)names.get(index) : null, checks[i].Kind, keys[i].Descending, nullsFirst, checks[i].Anchor));
             }
+
+            // An order the plan proved only around anchors, checked by the reader (CosmosOrderProgram); one it proved
+            // outright is read as it comes.
+            if (anchored.Exists(k => k.Item6 != CosmosOrderAnchor.None))
+                implementor.OrderAnchored(anchored);
 
             if (offset is not null)
                 implementor.Query.Offset = implementor.RowLimit(offset);

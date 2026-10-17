@@ -1,3 +1,5 @@
+﻿using System.Linq;
+
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 
 using FluentAssertions;
@@ -27,6 +29,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     """)));
 
         static string Sent(string sql, CosmosContainerMetadata container) => Query(FindCosmos(PlanToCosmos(sql, container, out _)), container).Sql;
+
+        /// <summary>
+        /// What the reader of a statement checks as the rows arrive, or <c>null</c> where the plan proved everything.
+        /// </summary>
+        static CosmosOrderProgram? Program(string sql, CosmosContainerMetadata container) => Query(FindCosmos(PlanToCosmos(sql, container, out _)), container).Order;
+
+        /// <summary>
+        /// The statement as the converter renders it, its projection forced, which a statement whose rows the reader checks
+        /// needs: the reader reads the values it checks from members of the rows the statement constructs.
+        /// </summary>
+        static string Converted(string sql, CosmosContainerMetadata container)
+        {
+            var cosmos = FindCosmos(PlanToCosmos(sql, container, out _));
+            return Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosConverters.GenerateQuery(cosmos, cosmos.getCluster().getRexBuilder()).Query.Sql;
+        }
 
         /// <summary>
         /// A sort over a path the indexing policy excludes stays in process, its order proved or not: measured on the probe
@@ -68,16 +85,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// <c>MAX</c> of <c>id</c> stays in process where nothing is known of its characters, and pushes where a filter
-        /// pins them: the service's maximum of U+FFFF and U+1F600 is the second, Calcite's the first.
+        /// <c>MAX</c> of <c>id</c> pushes where a filter pins its characters, and where nothing does pushes anchored: the
+        /// service's maximum of U+FFFF and U+1F600 is the second, Calcite's the first, so an answer at or above U+D800 is
+        /// read again, in order, to the first anchor. Grouped, there is no one row to check, and it stays in process.
         /// </summary>
         [Fact]
-        public void AnExtremeOfAnIdNeedsItsCharacters()
+        public void AnExtremeOfAnIdIsProvedByItsCharactersOrAnchored()
         {
             var container = Declared(false);
 
-            Sent("""SELECT MAX(c."id") FROM items AS c""", container).Should().NotContain("MAX(");
+            Sent("""SELECT MAX(c."id") FROM items AS c""", container).Should().Contain("MAX(c.id)");
+            var extreme = Program("""SELECT MAX(c."id") FROM items AS c""", container)!.Extremes.Should().ContainSingle().Subject;
+            extreme.Anchor.Should().Be(CosmosOrderAnchor.Text);
+            extreme.Reread.Should().Be("SELECT VALUE c.id FROM items c ORDER BY c.id DESC");
+            extreme.Ordered.Should().BeTrue();
+
             Sent("""SELECT MAX(c."id") FROM items AS c WHERE c."id" IN ('a', 'b')""", container).Should().Contain("MAX(c.id)");
+            Program("""SELECT MAX(c."id") FROM items AS c WHERE c."id" IN ('a', 'b')""", container).Should().BeNull();
+
+            Sent("""SELECT JSON_VALUE(c."DOC", '$.category'), MAX(c."id") FROM items AS c GROUP BY JSON_VALUE(c."DOC", '$.category')""", container).Should().NotContain("MAX(");
         }
 
         /// <summary>
@@ -91,19 +117,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A keyset seek over <c>id</c> against a parameter stays in process, and against a literal pushes: a parameter
-        /// may be bound to any character, and the service compares strings by code point where Calcite compares them by
-        /// UTF-16 code unit.
+        /// A comparison of <c>id</c> with a literal pushes exactly, and with a parameter anchored: a parameter may be bound
+        /// to any character, and the service compares strings by code point where Calcite compares them by UTF-16 code
+        /// unit, so the reader sends it as it is where the value lies below U+D800 and weakened and rechecked otherwise.
+        /// Only as a whole conjunct: under an <c>OR</c> a recheck of the one comparison would not be the predicate's, and
+        /// it stays in process.
         /// </summary>
         [Fact]
-        public void AnIdComparesWithALiteralAndNotWithAParameter()
+        public void AnIdComparesWithALiteralExactlyAndWithAParameterAnchored()
         {
             var container = Declared(false);
 
             Sent("""SELECT c."id" FROM items AS c WHERE c."id" > 'a'""", container).Should().Contain("c.id > @");
+            Program("""SELECT c."id" FROM items AS c WHERE c."id" > 'a'""", container).Should().BeNull();
 
             var seek = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" > ?""", container, out _);
-            PlanText(seek).Should().Contain("ClrCursorFilter", "the comparison is Calcite's: " + PlanText(seek));
+            PlanText(seek).Should().NotContain("ClrCursorFilter", "the comparison is the service's, checked by the reader: " + PlanText(seek));
+
+            var comparison = Query(FindCosmos(seek), container).Order!.Comparisons.Should().ContainSingle().Subject;
+            comparison.Should().BeEquivalentTo(new { Operator = ">", Expression = "c.id", Exact = "(c.id > @p0)", Weakened = "(c.id >= @p1)", Guarded = "IS_STRING(c.id)", Member = "$c0" });
+
+            var either = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" > ? OR c."id" = 'x'""", container, out _);
+            PlanText(either).Should().Contain("ClrCursorFilter", "a disjunct is not rechecked: " + PlanText(either));
+        }
+
+        /// <summary>
+        /// A comparison the reader may recheck is the rows the <c>WHERE</c> kept, one each: a grouping or a
+        /// <c>DISTINCT</c> over it leaves none to recheck, and stays in process while the filter pushes.
+        /// </summary>
+        [Fact]
+        public void AComparisonTheReaderRechecksIsNotGroupedAtTheService()
+        {
+            var container = Declared(false);
+
+            Converted("""SELECT COUNT(*) FROM items AS c WHERE c."id" > ?""", container).Should().NotContain("COUNT(").And.Contain("c.id > @");
+            Converted("""SELECT DISTINCT JSON_VALUE(c."DOC", '$.category') FROM items AS c WHERE c."id" > ?""", container).Should().NotContain("DISTINCT");
+            Sent("""SELECT COUNT(*) FROM items AS c WHERE c."id" > 'a'""", container).Should().Contain("COUNT(1)", "against a literal the comparison is exact");
         }
 
         /// <summary>
@@ -130,14 +179,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A text key whose characters nothing states stays in process however it is otherwise declared; one a domain
-        /// keeps below U+D800 pushes.
+        /// A text key whose characters nothing states pushes anchored, the reader checking each value for a unit at or
+        /// above U+D800 and the statement selecting the key for it; one a domain keeps below U+D800 pushes proved, and is
+        /// read as it comes.
         /// </summary>
         [Fact]
         public void ATextKeyOrdersByItsCharacters()
         {
-            Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.s')""", Orderable()).Should().NotContain("ORDER BY");
+            const string ByS = """SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.s')""";
+
+            Sent(ByS, Orderable()).Should().Be("SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.s) ? c.s : null), \"$k0\": c.s } FROM items c ORDER BY c.s ASC");
+            Program(ByS, Orderable())!.Keys.Should().Equal(new CosmosOrderedKey("$k0", CosmosOrderedKeyKind.Text, false, false, CosmosOrderAnchor.Text));
+
             Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.a')""", Orderable()).Should().EndWith("ORDER BY c.a ASC");
+            Program("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.a')""", Orderable()).Should().BeNull();
         }
 
         /// <summary>
@@ -163,24 +218,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [Fact]
         public void AnIdDeclaredByAPatternOrdersAtTheService()
         {
-            Sent("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY""", Patterned())
-                .Should().EndWith("ORDER BY c.id ASC OFFSET 40 LIMIT 20");
-            Sent("""SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY""", Declared(false))
-                .Should().NotContain("ORDER BY", "an id nothing declares may hold any character");
+            const string Page = """SELECT c."id" FROM items AS c ORDER BY c."id" OFFSET 40 ROWS FETCH NEXT 20 ROWS ONLY""";
+
+            Sent(Page, Patterned()).Should().EndWith("ORDER BY c.id ASC OFFSET 40 LIMIT 20");
+            Program(Page, Patterned()).Should().BeNull("the declaration proves it");
+            Sent(Page, Declared(false)).Should().EndWith("ORDER BY c.id ASC OFFSET 40 LIMIT 20");
+            Program(Page, Declared(false))!.Name.Should().Be("page", "an id nothing declares may hold any character, and its page is checked at its edges");
             Sent("""SELECT MAX(c."id") FROM items AS c""", Patterned()).Should().Contain("MAX(c.id)");
+            Program("""SELECT MAX(c."id") FROM items AS c""", Patterned()).Should().BeNull();
         }
 
         /// <summary>
         /// And so does its keyset seek, the paging chapter 9 recommends: the parameter may hold any character, and against
-        /// strings below U+D800 any character compares alike by code point and by code unit.
+        /// strings below U+D800 any character compares alike by code point and by code unit. Where nothing declares the
+        /// characters the seek still pushes, anchored: the reader checks the parameter and the page's edges.
         /// </summary>
         [Fact]
         public void AnIdDeclaredByAPatternSeeksAtTheService()
         {
-            var seek = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 20 ROWS ONLY""", Patterned(), out _);
+            const string Seek = """SELECT c."id" FROM items AS c WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 20 ROWS ONLY""";
 
+            var seek = PlanToCosmos(Seek, Patterned(), out _);
             PlanText(seek).Should().NotContain("ClrCursorFilter").And.NotContain("EnumerableSort").And.Contain("CosmosSort", "the whole statement is the service's: " + PlanText(seek));
             Query(FindCosmos(seek), Patterned()).Sql.Should().Contain("c.id > @").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 20");
+            Query(FindCosmos(seek), Patterned()).Order.Should().BeNull();
+
+            var anchored = PlanToCosmos(Seek, Declared(false), out _);
+            PlanText(anchored).Should().NotContain("ClrCursorFilter").And.Contain("order=[anchored]", "the whole statement is the service's, checked as it arrives: " + PlanText(anchored));
+            var program = Query(FindCosmos(anchored), Declared(false)).Order!;
+            program.Keys.Should().ContainSingle().Which.Anchor.Should().Be(CosmosOrderAnchor.Text);
+            program.Comparisons.Should().ContainSingle();
+            program.Unpaged.Should().NotContain("OFFSET");
         }
 
         /// <summary>
@@ -196,7 +264,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Sent("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.s') < JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().Contain("c.s < c.x");
             Sent("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.w') < JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().NotContain("c.w < c.x");
             Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.w')""", Patterned()).Should().EndWith("ORDER BY c.w ASC");
-            Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.x')""", Patterned()).Should().NotContain("ORDER BY");
+            Program("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.w')""", Patterned()).Should().BeNull();
+            Program("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.x')""", Patterned())!.Keys.Single().Anchor.Should().Be(CosmosOrderAnchor.Text, "a string of any character is ordered anchored");
         }
 
     }

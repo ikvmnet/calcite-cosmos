@@ -76,8 +76,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A string the filter's kind declares is a grouping key, and would be a sort key were its characters known; the kind
-        /// that declares an integer there is neither, its rendering being text the service orders and groups as numbers.
+        /// A string the filter's kind declares is a grouping key, and a sort key whose order the rows complete, its
+        /// characters unknown; the kind that declares an integer there is neither, its rendering being text the service
+        /// orders and groups as numbers.
         /// </summary>
         [Fact]
         public void AKindTheFilterKeepsDeclaresTheKeysText()
@@ -87,10 +88,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string Label = """JSON_VALUE(c."DOC", '$.label')""";
 
             // The text, but not its characters: a label may hold any, and the service orders strings by code point where
-            // Calcite orders them by UTF-16 code unit. So the sort is Calcite's, and the grouping, which asks only
-            // equality, is the service's.
+            // Calcite orders them by UTF-16 code unit. So the sort is the service's checked as the rows arrive, and the
+            // grouping, which asks only equality, is the service's outright.
             var sorted = PlanToCosmos($"""SELECT {Label} FROM items AS c WHERE {Kind} = 'a' AND {Label} IS NOT NULL ORDER BY 1""", container, out _);
-            Query(FindCosmos(sorted), container).Sql.Should().NotContain("ORDER BY");
+            Query(FindCosmos(sorted), container).Sql.Should().EndWith("ORDER BY c.label ASC");
+            Query(FindCosmos(sorted), container).Order!.Keys.Should().ContainSingle().Which.Anchor.Should().Be(Apache.Calcite.Cosmos.Adapter.Metadata.CosmosOrderAnchor.Text);
 
             var grouped = PlanToCosmos($"""SELECT {Label}, COUNT(*) FROM items AS c WHERE {Kind} = 'a' GROUP BY {Label}""", container, out _);
             PlanText(grouped).Should().StartWith("CosmosToClrCursorConverter", "the grouping reaches the service: " + PlanText(grouped));

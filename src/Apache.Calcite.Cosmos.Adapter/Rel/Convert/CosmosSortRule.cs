@@ -1,4 +1,6 @@
-﻿using java.util.function;
+﻿using System.Linq;
+
+using java.util.function;
 
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
@@ -78,7 +80,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // and which keys it is handed.
             var facts = Facts(sort, container);
 
-            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out var keys, out _, out _) == false)
+            if (CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out var keys, out _, out _, out _) == false)
                 return false;
 
             return convention.Container.IsSortSupported(keys);
@@ -106,10 +108,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var sort = (Sort)rel;
 
-            if (CosmosImplementor.TryBindOutput(sort.getInput(), out _, out _, out _, out _, out var container) == false)
+            if (CosmosImplementor.TryBindOutput(sort.getInput(), out var fields, out var readings, out var candidates, out _, out var container) == false)
                 return null;
 
-            // Built under the facts the legality test decided under, which the node asks again.
+            // Built under the facts the legality test decided under, which the node asks again; and saying whether the
+            // order is completed as the rows arrive, which the digest shows.
+            var facts = Facts(sort, container);
+            var anchored = CosmosSort.TryResolveSortKeys(sort.getCollation(), fields, readings, candidates, sort.getInput().getRowType(), CosmosImplementor.DefaultRootAlias, facts, out _, out _, out _, out var checks)
+                && checks.Any(c => c.Anchor != Metadata.CosmosOrderAnchor.None);
+
             return new CosmosSort(
                 sort.getCluster(),
                 sort.getTraitSet().replace(@out),
@@ -117,7 +124,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 sort.getCollation(),
                 sort.offset,
                 sort.fetch,
-                Facts(sort, container));
+                facts,
+                anchored);
         }
 
     }
