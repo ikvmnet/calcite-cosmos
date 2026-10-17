@@ -1,12 +1,17 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
+
+using org.apache.calcite.rel;
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -44,12 +49,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// </list>
     /// <para>
     /// <b>The role population D plays for the predicate oracle.</b> The question is asked through
-    /// <see cref="IQuestion"/>, and <see cref="Question"/> is <see cref="MainsDecisions"/> until the
-    /// adapter asks it in one place: a mirror of what the adapter decides today, so that the sweep says
-    /// what is wrong now in the model's terms. The sweep is explicit while that is so, and its failures
-    /// are the families the <c>ORDER BY</c> yardstick finds on the emulator; a checker that passes
-    /// everything says nothing, so <see cref="TheCheckCatchesWhatItMustCatch"/> runs by default and
-    /// plants each of them.
+    /// <see cref="IQuestion"/>, and <see cref="Question"/> is the adapter's own,
+    /// <see cref="CosmosServiceOrder"/>, over facts a declaration states. Before the adapter asked it
+    /// in one place the question here was a mirror of what each site decided, and the sweep failed in
+    /// exactly the families the <c>ORDER BY</c> yardstick found on the emulator: text across U+D800, the
+    /// two nulls of a leading key, and 2^63 read back. A checker that passes everything says nothing, so
+    /// <see cref="TheCheckCatchesWhatItMustCatch"/> plants each of them.
     /// </para>
     /// <para>
     /// <b>The model is pinned to what was measured, not to what was reasoned.</b>
@@ -243,74 +248,163 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// The question the sweep asks. Main's decisions until the one place exists; then the one place.
+        /// The question the sweep asks: the adapter's own, <see cref="CosmosServiceOrder"/>.
         /// </summary>
-        static IQuestion Question => new MainsDecisions();
+        static IQuestion Question => new TheOnePlace();
 
         /// <summary>
-        /// What the adapter decides today, check by check, as <c>CosmosSortRule</c> and
-        /// <c>CosmosSort.TryResolveSortKeys</c> ask it: the stored value is the column, and the null
-        /// placement agrees or nothing is null. Nothing asks how the values order.
+        /// The adapter's question, asked of operands and facts built from the model's: each key's path declared what
+        /// the model's facts say of it, through the claims a declaration has.
         /// </summary>
         /// <remarks>
-        /// The composite index is taken as declared: it decides what the service accepts, not how what
-        /// it accepts is ordered.
+        /// <para>
+        /// <b>Never more than the model says, sometimes less.</b> The claims cannot say every set of types the model
+        /// admits — a string or a number is no type claim — and where they cannot, nothing is said, which the question
+        /// reads as anything. A proof under weaker facts holds of every value the model admits, so the sweep still checks
+        /// every verdict; it refuses more, which the refusals the model proves count.
+        /// </para>
+        /// <para>
+        /// <b>The service's own properties are paths the service states facts of</b>, and the model's facts are said of
+        /// them beside those: <c>id</c> a string always there, <c>_ts</c> an integer below 2^53, <c>_etag</c> a string of
+        /// entity-tag characters. A comparison's operands are what the translator makes of them: a character literal is
+        /// a literal, any other a value of its type.
+        /// </para>
         /// </remarks>
-        sealed class MainsDecisions : IQuestion
+        sealed class TheOnePlace : IQuestion
         {
+
+            static readonly Dictionary<string, JsonFactSet> Theories = new(StringComparer.Ordinal);
 
             public Verdict OrderBy(IReadOnlyList<Key> keys)
             {
-                foreach (var key in keys)
-                {
-                    var facts = key.Operand.Facts;
+                var paths = keys.Select((k, i) => PathOf(k.Operand.Reading, "k" + i)).ToList();
+                var facts = Declared(keys.Select((k, i) => (paths[i], k.Operand.Facts)));
+                var ordered = keys.Select((k, i) => new CosmosOrderKey(OperandOf(k.Operand, paths[i]), Collation(k))).ToList();
 
-                    // IsReadAsStored: a typed column is; a text reading where the facts say string or
-                    // null; a RETURNING where they say its tested type or null.
-                    var asStored = key.Operand.Reading switch
-                    {
-                        Reading.Id or Reading.ETag or Reading.Timestamp => true,
-                        Reading.Text => (facts.Admitted & ~(Types.String | Types.Null | Types.Absent)) == 0,
-                        Reading.Boolean => (facts.Admitted & ~(Types.Boolean | Types.Null | Types.Absent)) == 0,
-                        _ => (facts.Admitted & ~(Types.Integer | Types.Fraction | Types.Null | Types.Absent)) == 0,
-                    };
-
-                    if (asStored == false)
-                        return Verdict.Refused("the column is not the stored value");
-
-                    // TryGetDescending: a key that cannot be null, IsAlwaysScalar, or the service's
-                    // placement asked for.
-                    var nonNull = key.Operand.Reading is Reading.Id or Reading.ETag or Reading.Timestamp
-                        || (facts.Admitted & (Types.Null | Types.Absent)) == 0 && facts.Admitted is Types.String or Types.Boolean or Types.Integer or Types.Fraction or (Types.Integer | Types.Fraction);
-
-                    if (nonNull == false && key.NullsFirst == key.Descending)
-                        return Verdict.Refused("null placement");
-                }
-
-                return Verdict.Proved("the stored value is the column");
+                return From(CosmosServiceOrder.OrderBy(facts, ordered));
             }
 
-            /// <summary><c>CosmosAggregate.CanImplement</c>: an argument non-nullable in the row type.</summary>
-            public Verdict Extreme(Operand operand, bool max) => operand.Reading is Reading.Id or Reading.ETag or Reading.Timestamp
-                ? Verdict.Proved("non-nullable in the row type")
-                : Verdict.Refused("nullable in the row type");
+            public Verdict Extreme(Operand operand, bool max)
+            {
+                var path = PathOf(operand.Reading, "v");
+                return From(CosmosServiceOrder.Extreme(Declared([(path, operand.Facts)]), OperandOf(operand, path)));
+            }
 
-            /// <summary>
-            /// <c>WriteComparand</c>: a typed column compares raw; a rendering only where every rendering
-            /// side is a declared string; a typed reading under its own guard.
-            /// </summary>
             public Verdict Compare(Operand left, Comparand right, Comparison kind)
             {
-                bool DeclaredString(Operand o) => o.Reading is Reading.Id or Reading.ETag
-                    || o.Reading == Reading.Text && (o.Facts.Admitted & ~(Types.String | Types.Null | Types.Absent)) == 0;
+                var path = PathOf(left.Reading, "v");
+                var declared = new List<(JsonDocumentPath, Facts)> { (path, left.Facts) };
 
-                return left.Reading switch
+                CosmosOrderOperand other;
+                if (right.Literal is { } literal)
+                    other = literal.Kind == Kind.String ? CosmosOrderOperand.ForLiteral(JsonScalar.From(literal.Text)) : CosmosOrderOperand.ForExpression(TypeOf(left.Reading));
+                else if (right.Path is { } compared)
                 {
-                    Reading.Id or Reading.ETag => Verdict.Proved("a typed column compares raw"),
-                    Reading.Text when DeclaredString(left) && (right.Path is null || DeclaredString(right.Path)) => Verdict.Proved("renders only strings"),
-                    Reading.Text => Verdict.Refused("a rendering of what may not be a string"),
-                    _ => Verdict.Proved("guarded by its type test"),
+                    var at = PathOf(compared.Reading, "w");
+                    declared.Add((at, compared.Facts));
+                    other = OperandOf(compared, at);
+                }
+                else
+                    other = CosmosOrderOperand.ForParameter(TypeOf(left.Reading));
+
+                return From(CosmosServiceOrder.Compare(Declared(declared), OperandOf(left, path), other));
+            }
+
+            static Verdict From(CosmosOrderVerdict verdict) =>
+                verdict.IsProved ? new(VerdictKind.Proved, verdict.Reason, verdict.Written) : Verdict.Refused(verdict.Reason);
+
+            static RelFieldCollation Collation(Key key) => new(
+                0,
+                key.Descending ? RelFieldCollation.Direction.DESCENDING : RelFieldCollation.Direction.ASCENDING,
+                key.NullsFirst ? RelFieldCollation.NullDirection.FIRST : RelFieldCollation.NullDirection.LAST);
+
+            static JsonDocumentPath PathOf(Reading reading, string name) => JsonDocumentPath.Root.Property(reading switch
+            {
+                Reading.Id => "id",
+                Reading.ETag => "_etag",
+                Reading.Timestamp => "_ts",
+                _ => name,
+            });
+
+            static SqlTypeName TypeOf(Reading reading) => reading switch
+            {
+                Reading.Id or Reading.ETag or Reading.Text => SqlTypeName.VARCHAR,
+                Reading.Integer => SqlTypeName.INTEGER,
+                Reading.Bigint or Reading.Timestamp => SqlTypeName.BIGINT,
+                Reading.Double => SqlTypeName.DOUBLE,
+                _ => SqlTypeName.BOOLEAN,
+            };
+
+            static CosmosOrderOperand OperandOf(Operand operand, JsonDocumentPath path) =>
+                CosmosOrderOperand.ForPath(path, TypeOf(operand.Reading), operand.Reading == Reading.Text ? CosmosReading.Text : CosmosReading.Typed);
+
+            /// <summary>
+            /// The facts a container declaring what the model says of each path states, the service's own among them;
+            /// built once for each combination.
+            /// </summary>
+            static JsonFactSet Declared(IEnumerable<(JsonDocumentPath Path, Facts Facts)> paths)
+            {
+                var declared = paths.ToList();
+                var key = string.Join(" | ", declared.Select(d => d.Path + ": " + d.Facts));
+
+                lock (Theories)
+                {
+                    if (Theories.TryGetValue(key, out var facts) == false)
+                    {
+                        var rules = declared.SelectMany(d => Claims(d.Facts).Select(claim => JsonFactRule.Unconditional(new JsonFact(d.Path, claim))));
+                        Theories[key] = facts = CosmosOracle.For(new CosmosContainerMetadata("model", ["/pk"]).WithFacts(rules).Facts).Declared;
+                    }
+
+                    return facts;
+                }
+            }
+
+            /// <summary>
+            /// The claims a declaration can make of what the model admits at a path, none of them more than it says.
+            /// </summary>
+            static IEnumerable<JsonClaim> Claims(Facts facts)
+            {
+                var admitted = facts.Admitted;
+
+                if (admitted.HasFlag(Types.Absent) == false)
+                    yield return new JsonClaim.Present();
+
+                var orNull = admitted.HasFlag(Types.Null);
+                JsonType? type = (admitted & ~(Types.Absent | Types.Null)) switch
+                {
+                    Types.String => JsonType.String,
+                    Types.Integer => JsonType.Integer,
+                    Types.Fraction or (Types.Integer | Types.Fraction) => JsonType.Number,
+                    Types.Boolean => JsonType.Boolean,
+                    Types.Array => JsonType.Array,
+                    Types.Object => JsonType.Object,
+                    0 when orNull => JsonType.Null,
+                    _ => null,
                 };
+
+                if (type is JsonType declared)
+                    yield return new JsonClaim.OfType(declared, orNull && declared != JsonType.Null);
+
+                if (admitted.HasFlag(Types.String) && facts.Characters.HasFlag(Bands.Supplementary) == false)
+                    yield return new CosmosCharacters(CosmosCharacterBand.Surrogates);
+
+                if (admitted.HasFlag(Types.String) && facts.Characters.HasFlag(Bands.High) == false)
+                    yield return new CosmosCharacters(CosmosCharacterBand.HighBmp);
+
+                if (facts.Bounded)
+                {
+                    yield return new JsonClaim.LowerBound(-9007199254740992m, Exclusive: true);
+                    yield return new JsonClaim.UpperBound(9007199254740992m, Exclusive: true);
+                }
+
+                if (facts.Domain is { } domain && domain.All(v => v.Kind is Kind.Null or Kind.Boolean or Kind.Number or Kind.String))
+                    yield return new JsonClaim.OneOf(domain.Select(v => v.Kind switch
+                    {
+                        Kind.Null => JsonScalar.Null,
+                        Kind.Boolean => JsonScalar.From(v.Boolean),
+                        Kind.Number => JsonScalar.From(v.Number),
+                        _ => JsonScalar.From(v.Text),
+                    }).ToList());
             }
 
         }
@@ -640,38 +734,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <c>null</c>.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The service compares values of one type, numbers exactly and strings by code point, and
         /// leaves a comparison across types undefined, which keeps nothing; a typed reading's guard
         /// keeps only its type. Calcite compares what it reads.
+        /// </para>
+        /// <para>
+        /// <b>Of the document, not of a response.</b> A comparison is not read back: Calcite evaluates it
+        /// over the document column, which holds a number as it was written, and a stored 2^63 raises a
+        /// <c>RETURNING BIGINT</c> there. A row Calcite raises over, either side of it, is free.
+        /// </para>
         /// </remarks>
         static string? CheckCompare(Operand left, Comparand right, Comparison kind, Verdict verdict)
         {
-            foreach (var printer in Enum.GetValues<Printer>())
-            {
-                var rights = right.Literal is { } literal ? [literal]
-                    : right.Path is { } path ? Admitted(path, printer)
-                    : Parameters(left.Reading).Where(p => verdict.Kind != VerdictKind.Anchored || verdict.IsAnchor!(0, p)).ToList();
+            // The value the document holds: Azure prints a double as its shortest round trip, which reads back as the
+            // double itself, so its reading is the document's.
+            const Printer document = Printer.Azure;
 
-                var rightReading = right.Path?.Reading ?? (left.Reading is Reading.Id or Reading.ETag ? Reading.Text : left.Reading);
+            var rights = right.Literal is { } literal ? [literal]
+                : right.Path is { } path ? Admitted(path, document)
+                : Parameters(left.Reading).Where(p => verdict.Kind != VerdictKind.Anchored || verdict.IsAnchor!(0, p)).ToList();
 
-                foreach (var v in Admitted(left, printer))
-                    foreach (var w in rights)
-                    {
-                        var x = ReadAs(left.Reading, v, printer);
-                        var y = ReadAs(rightReading, w, printer);
-                        if (y.Raises)
-                            continue;
+            var rightReading = right.Path?.Reading ?? (left.Reading is Reading.Id or Reading.ETag ? Reading.Text : left.Reading);
 
-                        var calcite = x.Value is not null && y.Value is not null && Holds(CalciteOrder.CompareValues(x.Value, y.Value, false), kind);
+            foreach (var v in Admitted(left, document))
+                foreach (var w in rights)
+                {
+                    var x = ReadAs(left.Reading, v, document);
+                    var y = ReadAs(rightReading, w, document);
+                    if (x.Raises || y.Raises)
+                        continue;
 
-                        var guarded = left.Reading is Reading.Id or Reading.ETag or Reading.Text || TypeOf(left.Reading) == v.Kind;
-                        var service = guarded && v.Kind == w.Kind && v.Kind is Kind.Boolean or Kind.Number or Kind.String
-                            && CompareInPartition(v, w) is int c && Holds(c, kind);
+                    var calcite = x.Value is not null && y.Value is not null && Holds(CalciteOrder.CompareValues(x.Value, y.Value, false), kind);
 
-                        if (calcite != service)
-                            return $"[{Family([v, w], false)}] {v} {kind} {w}: Calcite {(calcite ? "keeps" : "drops")} the row and the service {(service ? "keeps" : "drops")} it ({printer} printing)";
-                    }
-            }
+                    var guarded = left.Reading is Reading.Id or Reading.ETag or Reading.Text || TypeOf(left.Reading) == v.Kind;
+                    var service = guarded && v.Kind == w.Kind && v.Kind is Kind.Boolean or Kind.Number or Kind.String
+                        && CompareInPartition(v, w) is int c && Holds(c, kind);
+
+                    if (calcite != service)
+                        return $"[{Family([v, w], false)}] {v} {kind} {w}: Calcite {(calcite ? "keeps" : "drops")} the row and the service {(service ? "keeps" : "drops")} it";
+                }
 
             return null;
         }
@@ -938,7 +1040,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CheckCompare(new(Reading.Text, new(Types.String | Types.Integer, Bands.Low)), new Comparand(Literal: Value.Of("1")), Comparison.GreaterOrEqual, Verdict.Proved())
                 .Should().NotBeNull("a number renders as text in Calcite and is another type at the service");
             CheckCompare(new(Reading.Bigint, new(Types.Integer)), new Comparand(Literal: Value.Of(9223372036854775801)), Comparison.GreaterOrEqual, Verdict.Proved())
-                .Should().NotBeNull("2^63 is above it stored and below it read back");
+                .Should().BeNull("a comparison reads the document, where a stored 2^63 raises the RETURNING BIGINT rather than reading back below 2^63 - 1");
         }
 
         /// <summary>
@@ -946,11 +1048,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// verdicts it refuses that the model says it could have given are counted.
         /// </summary>
         /// <remarks>
-        /// Explicit while <see cref="Question"/> is main's decisions, which the model says are wrong in
-        /// the families the yardstick finds on the emulator: text orders across U+D800, the null class
-        /// of a leading key, and 2^63 read back.
+        /// The refusals the model proves are the question's own "as many as possible" measure: a proof
+        /// a declaration cannot state — two types at a path — or one completed only when the rows
+        /// arrive, which the anchored read adds.
         /// </remarks>
-        [Fact(Explicit = true)]
+        [Fact]
         public void EveryVerdictOfTheQuestionHolds()
         {
             var question = Question;
@@ -997,6 +1099,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
 
             var summary = string.Join("; ", counts.OrderBy(c => c.Key, StringComparer.Ordinal).Select(c => $"{c.Key} {c.Value}"));
+            TestContext.Current.TestOutputHelper?.WriteLine(summary);
 
             // Each failure opens with its family in brackets, after the verdict.
             var families = string.Join("; ", failures
