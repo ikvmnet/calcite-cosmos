@@ -96,9 +96,13 @@ A Cosmos-only function (full text, scoring, `REGEXMATCH`, the string conversions
 
 **"Cosmos never returns a relevance score" / `ORDER BY FULLTEXTSCORE(…)` fails through a connection.**
 `ORDER BY RANK` cannot be recovered through a `CalciteConnection` ([#46](https://github.com/ikvmnet/calcite-cosmos/issues/46)).
-Use a planner you build (Chapter 21), or filter with `FULLTEXTCONTAINS…` instead of ranking. If the
-message ends *"write ORDER BY FULLTEXTSCORE(...) DESC"*, the ordering is ascending — the default when
-no direction is written — and Cosmos ranks only best first: add `DESC` (Chapter 17.3).
+Use a planner you build (Chapter 21), or filter with `FULLTEXTCONTAINS…` instead of ranking. Whichever
+route, an ordering on a score has to say `DESC`: Cosmos ranks only best first, and an ascending one —
+the default when no direction is written — is never pushed (Chapter 17.3). The message says both, since
+it cannot see which ordering it is under.
+
+**"cannot translate call FULLTEXTSCORE" in a planner you build.**
+The ordering on the score is ascending, or has no direction: add `DESC` (Chapter 17.3).
 
 **"The index path corresponding to the specified order-by item is excluded" (400).**
 Should not happen through the adapter, which reads the container's indexing policy and sorts an

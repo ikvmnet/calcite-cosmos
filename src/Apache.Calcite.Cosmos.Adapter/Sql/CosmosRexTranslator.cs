@@ -5557,15 +5557,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="node">The expression to test.</param>
         /// <returns><c>true</c> if it is a scoring function.</returns>
-        public static bool IsScoringFunction(RexNode? node)
+        public static bool IsScoringFunction(RexNode? node) => node is RexCall call && BestFirstDescending(call.getOperator().getName()) is not null;
+
+        /// <summary>
+        /// Determines whether an expression is a scoring function whose best match is its greatest value, so that
+        /// <c>ORDER BY RANK</c>, which answers the best first, is the descending order of it.
+        /// </summary>
+        /// <param name="node">The expression to test.</param>
+        /// <returns><c>true</c> for a full text score and a fusion of ranks.</returns>
+        public static bool IsBestFirstDescending(RexNode? node) => node is RexCall call && BestFirstDescending(call.getOperator().getName()) == true;
+
+        /// <summary>
+        /// Says which way a scoring function ranks, by name: <c>true</c> where its best match is its greatest value,
+        /// <c>false</c> where nothing the metadata holds says which, and <c>null</c> for a name that is no scoring
+        /// function.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The one list of them.</b> Whether an ordering can become a rank (<see cref="IsScoringFunction"/>), which
+        /// direction of it the rank is (<see cref="IsBestFirstDescending"/>), and what a score left in process says
+        /// (<see cref="CosmosSchemaFunction.Refusal"/>) all read it, so a scoring function is added here once.
+        /// </para>
+        /// <para>
+        /// A full text score and <c>RRF</c> rank the highest first. <c>VECTORDISTANCE</c> ranks best first ascending or
+        /// descending by the container's distance function, which the metadata does not hold. By name, for the reason
+        /// everything here dispatches by name: a connection resolves the functions through the schema and a planner
+        /// through the operator table, which are two operators with one name, and the in-process names are a third.
+        /// </para>
+        /// </remarks>
+        /// <param name="name">The function's name.</param>
+        /// <returns>Which way it ranks, or <c>null</c>.</returns>
+        internal static bool? BestFirstDescending(string name) => name switch
         {
-            return node is RexCall call && call.getOperator().getName() switch
-            {
-                "FULLTEXTSCORE" or "RRF" or "VECTORDISTANCE" => true,
-                "CLR_FT_SCORE" or "CLR_FT_RRF" => true,
-                _ => false,
-            };
-        }
+            "FULLTEXTSCORE" or "RRF" or "CLR_FT_SCORE" or "CLR_FT_RRF" => true,
+            "VECTORDISTANCE" => false,
+            _ => null,
+        };
 
         /// <summary>
         /// Determines whether an expression is a full text function — a predicate or the score — whose

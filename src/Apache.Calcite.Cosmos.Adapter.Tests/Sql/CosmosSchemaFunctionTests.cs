@@ -238,7 +238,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>ORDER BY RANK</c> returns the best match first, and the service refuses a direction for it — measured on
         /// Azure, SC2222 for both <c>ASC</c> and <c>DESC</c> — so the one ordering it answers is a descending score. An
         /// ascending one would have come back best first, which is the other order. It stays with Calcite, where the
-        /// score has no value; the sentence the statement then fails with is the one place to say what to write.
+        /// score has no value; the sentence the statement then fails with is the one place to say what to write. It
+        /// cannot see the ordering it is beneath, so it says what a descending one does too, and never tells a statement
+        /// that already says <c>DESC</c> only to add it. The message a statement raises through a connection is
+        /// <c>CosmosConnectionFunctionTests.AnAscendingScoreThroughAConnectionSaysToWriteDesc</c>.
         /// </remarks>
         [Fact]
         public void AnAscendingScoreIsNotRankedAndItsRefusalNamesDesc()
@@ -246,8 +249,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var ascending = () => Plan("SELECT c.\"id\" FROM products AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
             ascending.Should().Throw<Exception>("no rank renders an ascending score, and nothing else pushes it");
 
-            CosmosSchemaFunction.Refusal("FULLTEXTSCORE").Should().Contain("ORDER BY FULLTEXTSCORE(...) DESC");
+            CosmosSchemaFunction.Refusal("FULLTEXTSCORE").Should().Contain("write ORDER BY FULLTEXTSCORE(...) DESC").And.Contain("ikvmnet/calcite-cosmos#46");
             CosmosSchemaFunction.Refusal("RRF").Should().Contain("ORDER BY RRF(...) DESC");
+            CosmosSchemaFunction.Refusal("VECTORDISTANCE").Should().NotContain("DESC", "which way a distance ranks is the container's");
         }
 
         /// <summary>

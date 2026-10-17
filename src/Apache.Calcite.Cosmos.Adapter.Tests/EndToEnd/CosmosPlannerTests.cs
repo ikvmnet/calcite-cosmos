@@ -1464,20 +1464,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// ORDER BY RANK is the statement's one ordering and pairs with TOP alone, and the node writes
         /// the whole SELECT itself — so a subtree that has ordered, paged or projected leaves it
-        /// nowhere to go, and the three nodes it would have collapsed stay as they are.
+        /// nowhere to go, and the three nodes it would have collapsed stay as they are. Each score is
+        /// ordered descending, the one direction a rank answers, so that what declines it is the
+        /// subtree and not the direction; and the same score over the container itself ranks.
         /// </remarks>
         [Fact]
         public void AnOrderByRankIsNotPushedOntoASubtreeThatHasWrittenItsClauses()
         {
+            var bare = PlanToAsync(
+                "SELECT c.\"id\" FROM products AS c " +
+                "ORDER BY FULLTEXTSCORE(JSON_VALUE(c.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
+
+            Plan(bare).Should().Contain("CosmosRank", "a descending score over the container ranks: " + Plan(bare));
+
             var paged = PlanToAsync(
                 "SELECT y.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c ORDER BY c.\"id\" FETCH NEXT 20 ROWS ONLY) AS y " +
-                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
+                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
 
             Plan(paged).Should().NotContain("CosmosRank", "the statement has already ordered and paged: " + Plan(paged));
 
             var distinct = PlanToAsync(
                 "SELECT y.\"id\" FROM (SELECT DISTINCT c.\"id\", c.\"DOC\" FROM products AS c) AS y " +
-                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') FETCH FIRST 10 ROWS ONLY");
+                "ORDER BY FULLTEXTSCORE(JSON_VALUE(y.\"DOC\", '$.name'), 'steel') DESC FETCH FIRST 10 ROWS ONLY");
 
             Plan(distinct).Should().NotContain("CosmosRank", "the statement has already written its SELECT: " + Plan(distinct));
         }

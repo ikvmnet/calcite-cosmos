@@ -567,6 +567,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Measured by planning the same statement from <c>RelRoot.rel</c> instead of
         /// <c>RelRoot.project()</c>: the first plans to <c>CosmosRank</c> and the second does not.
         /// See <c>ikvmnet/calcite-cosmos#46</c>, and <c>TODO.md</c> under <em>Ranking and search</em>.
+        /// Ordered descending, the one direction a rank answers, so that a fix of #46 passes here
+        /// rather than meeting the refusal an ascending score meets anywhere.
         /// </para>
         /// <para>
         /// Reported inconclusive rather than failed, and it tells the two gaps apart: an emulator that
@@ -581,7 +583,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             try
             {
-                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 2 ROWS ONLY""");
+                var ids = await QueryAsync("""SELECT c."id" FROM "products" AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') DESC FETCH FIRST 2 ROWS ONLY""");
 
                 ids.Should().NotBeEmpty();
             }
@@ -597,6 +599,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 Assert.Skip("The name resolved and the service refused the statement, which this emulator does: " + described);
             }
+        }
+
+        /// <summary>
+        /// An ascending ranking through a connection fails saying to write <c>DESC</c>.
+        /// </summary>
+        /// <remarks>
+        /// <c>ORDER BY RANK</c> answers the best match first and takes no direction, so an ascending score is never
+        /// ranked on any route, and the statement fails where the score is computed in process. The message is the
+        /// one a user reads, so it is the one asserted: it says what to write for this ordering, and what is true of a
+        /// descending one, which <see cref="AScoreResolvesThroughAConnection"/> meets.
+        /// </remarks>
+        [Fact]
+        public async Task AnAscendingScoreThroughAConnectionSaysToWriteDesc()
+        {
+            RequireService();
+
+            var ascending = async () => await QueryAsync("""SELECT c."id" FROM "products" AS c ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.name'), 'steel') FETCH FIRST 2 ROWS ONLY""");
+            var raised = (await ascending.Should().ThrowAsync<Exception>("an ascending score is never ranked")).Which;
+
+            Describe(raised).Should().Contain("write ORDER BY FULLTEXTSCORE(...) DESC");
         }
 
         /// <summary>

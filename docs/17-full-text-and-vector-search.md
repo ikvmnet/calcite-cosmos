@@ -72,8 +72,10 @@ Rules the service imposes:
 - **Descending, and only descending.** `ORDER BY RANK` takes no direction — measured on Azure, the
   service refuses `ASC` and `DESC` after it — and returns the best match first, which for a score is
   the highest. So `ORDER BY <score> DESC` is sent as a bare `ORDER BY RANK`, and an ascending ordering
-  on a score, the default when no direction is written, is refused when the statement is planned,
-  with a message saying to write `DESC`.
+  on a score, the default when no direction is written, is never pushed: it stays in process, where a
+  score has no value, and the statement fails. Through a connection the message says to write `DESC`;
+  through a planner you build (Chapter 21) Calcite says it *cannot translate call FULLTEXTSCORE*. Write
+  `DESC`.
 - **No other ordering**, and no `GROUP BY`, in a ranked statement. A `VECTORDISTANCE` alone is not
   ranked: which way it ranks is the container's distance function's, so an ordering by it runs in
   process over the distances the service computes. Inside `RRF` it ranks.

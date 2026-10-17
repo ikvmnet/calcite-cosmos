@@ -124,10 +124,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // ORDER BY RANK returns the best match first, and the service refuses a direction for it (SC2222, measured
             // on Azure), so the one ordering it answers is the one that puts the best first: descending, for a full
             // text score and a fusion of ranks. An ascending one is not that order, and stays with Calcite, where the
-            // score has no value and the statement fails saying to write DESC (CosmosSchemaFunction.Refusal). A vector
-            // distance is best first ascending or descending by a distance function the metadata does not hold. Asked
-            // as every order the service computes is; a score reads no facts.
-            var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: IsBestFirstDescending(rank));
+            // score has no value and the statement fails saying an ascending score is never ranked
+            // (CosmosSchemaFunction.Refusal). A vector distance is best first ascending or descending by a distance
+            // function the metadata does not hold (CosmosRexTranslator.BestFirstDescending). Asked as every order the
+            // service computes is; a score reads no facts.
+            var operand = Metadata.CosmosOrderOperand.ForScore(bestFirstDescending: CosmosRexTranslator.IsBestFirstDescending(rank));
             var ordered = new Metadata.CosmosOrderKey(operand, (org.apache.calcite.rel.RelFieldCollation)collations.get(0));
             if (Metadata.CosmosServiceOrder.OrderBy(JsonFactSet.Empty, new[] { ordered }).IsProved == false)
                 return null;
@@ -191,13 +192,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             return new Match(projects, rank, sort.fetch, facts);
         }
-
-        /// <summary>
-        /// Determines whether a scoring function's best match is its greatest value: a full text score and a fusion of
-        /// ranks, by name, for the reason the translator dispatches by name.
-        /// </summary>
-        static bool IsBestFirstDescending(RexNode rank) =>
-            rank is RexCall call && call.getOperator().getName() is "FULLTEXTSCORE" or "RRF" or "CLR_FT_SCORE" or "CLR_FT_RRF";
 
     }
 
