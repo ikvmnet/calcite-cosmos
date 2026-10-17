@@ -298,9 +298,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <b>What a sort needs to know beyond whether the expression renders.</b>
         /// <see cref="IsSortableAtTheService"/> says the service will order by a geodesic distance;
         /// it does not say the key can never be null, and on a nullable key
-        /// <c>CosmosSort.TryGetDescending</c> refuses any placement but Cosmos's own — which is the
-        /// default spelling for neither direction, so a generated <c>ORDER BY</c> is declined and the
-        /// container is read whole and sorted in process. A distance is null only where an operand
+        /// <see cref="Metadata.CosmosServiceOrder.OrderBy"/> refuses any placement but Cosmos's own —
+        /// which is the default spelling for neither direction, so a generated <c>ORDER BY</c> is
+        /// declined and the container is read whole and sorted in process. A distance is null only where an operand
         /// is, and an operand is a literal or a stored shape, so the question reduces to whether the
         /// paths hold a value in every document.
         /// </para>

@@ -462,8 +462,8 @@ number", and over text there is no shape it reads. The adapter had been treating
 **So the pushed plan answered where the query raises**, which is not an optimisation: it is a
 different query, and it hands a caller rows the engine cannot produce. `CosmosTemporalForms.EngineReads`
 is the condition now, it is three rows long, and every site that drops a conversion asks it — the
-comparison in `CosmosFactRewriter`, the sort in `CosmosSort.OrderIsLexical`, the ordering candidate in
-`CosmosProject.IsOrderable`, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
+comparison in `CosmosFactRewriter`, the sort and the ordering candidate in `CosmosServiceOrder`, which
+reads a conversion through it, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
 place every clause reaches an accessor through and therefore catches the projection too. The other two
 families never had this problem and it is worth saying why: `UuidValue.fromString` and Calcite's
 integer cast were both measured against the engine when their rows were written, and the temporal
@@ -2938,11 +2938,11 @@ the stored value, a typed accessor only where its type is declared (below); read
 of what is known of the rows each reads — the declaration, or a filter beneath keeping a kind that declares it (L1,
 *The oracle in the planner*); read as
 JSON, never. The lookup join and the grouping ask it now — each taking an
-exception of its own first, the grouping for the document column, no two documents being equal — and
-`CosmosSort.StoredFields` asks it per ordinal: in the rule, of the binding,
-readings and container `TryBindOutput` derived; in the node, of the implementor the same walk built.
-`TryResolveSortKeys`, which both share, refuses a path-bound key that is not stored, and refuses an
-array, a multiset or a map beside the `VARIANT` it already refused, whatever their reading.
+exception of its own first, the grouping for the document column, no two documents being equal. The
+sort asked it per ordinal too, until the service's order was asked once (below): `CosmosServiceOrder`
+reads each key's reading itself (R2), of the binding, readings and facts `TryResolveSortKeys` hands it in
+the rule and in the node alike, and refuses an array, a multiset, a map and a `VARIANT` whatever their
+reading.
 
 **A `RETURNING` key is the stored value only where the container declares its type, and this
 paragraph used to say it always was.** The argument was that a document holding another type fails

@@ -829,12 +829,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A page of links with their bodies, as Entity Framework writes it: the root paged first, and the
         /// rest of the hierarchy joined onto the page.
         /// </summary>
+        /// <remarks>
+        /// Paged by the identifier, whose declared canonical form keeps its strings ASCII, so that the
+        /// service may be asked for its order. A label is a string whose characters nothing states, and a
+        /// page by label is taken in process (<see cref="AnInnerJoinOntoAPageKeepsThePageBelowIt"/> keeps one).
+        /// </remarks>
         const string PageOfLinks = """
             SELECT "l1"."Id", "l1"."Label", "s0"."ParkId", "s0"."MapId"
             FROM (
                 SELECT "l"."Id", "l"."Label"
                 FROM {views}."Link" AS "l"
-                ORDER BY "l"."Label" NULLS FIRST
+                ORDER BY "l"."Id" NULLS FIRST
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
             ) AS "l1"
             LEFT JOIN (
@@ -843,7 +848,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 LEFT JOIN {views}."ParkLinkBody" AS "p" ON "l0"."Id" = "p"."Id"
                 LEFT JOIN {views}."MapLinkBody" AS "m" ON "l0"."Id" = "m"."Id"
             ) AS "s0" ON "l1"."Id" = "s0"."Id"
-            ORDER BY "l1"."Label" NULLS FIRST
+            ORDER BY "l1"."Id" NULLS FIRST
             """;
 
         /// <summary>
@@ -869,10 +874,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             (await RowsAsync("DECLARED", PageOfLinks, 1, 3)).Should().Equal(new[]
             {
-                $"{G1}|Park one|{Park}|null",
                 $"{G2}|Map two|null|{MapA}",
-                $"{G5}|Spot five|null|null",
-            }.OrderBy(r => r, StringComparer.Ordinal), "the second to fourth links by label");
+                $"{G3}|Map three|null|{MapB}",
+                $"{G4}|Spot four|null|null",
+            }.OrderBy(r => r, StringComparer.Ordinal), "the second to fourth links by identifier");
         }
 
         /// <summary>
