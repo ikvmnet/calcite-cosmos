@@ -155,7 +155,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A clause over a path beneath one the filter pins to a scalar knows it absent in every row, over a container that
         /// declares nothing: <c>name = 'x'</c> leaves <c>name</c> a string, which has no <c>first</c>. So a sort by it orders
         /// nothing and drops the key, and its extreme pushes, as each did while the overlay answered these strata; the
-        /// engine says so once the stratum is told of the path the clause reads, which no conjunct does.
+        /// engine says so once the stratum is told of the path the clause reads, which no conjunct does. So does a path
+        /// beneath <c>id</c>, which the service states a string, as no build said before.
         /// </summary>
         /// <remarks>
         /// The control is a filter over another path, which leaves <c>name</c> anything, and the extreme in process: not a
@@ -174,6 +175,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Sent($"""SELECT MIN({First}) FROM items AS c WHERE {Name} = 'x'""", container).Should().Contain("MIN(c.name.first)");
             Sent($"""SELECT MIN({First}) FROM items AS c WHERE {Name} IS NOT NULL""", container).Should().Contain("MIN(c.name.first)", "a JSON_VALUE that is not null is a scalar's");
             Sent($"""SELECT MIN({First}) FROM items AS c WHERE c."id" > 'a'""", container).Should().NotContain("MIN(", "name may be an object, whose first is any value");
+
+            // Beneath what the service states a string, which the engine was never told of either until a clause asked.
+            var beneathId = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE c."id" = 'a' ORDER BY JSON_VALUE(c."DOC", '$.id.x') NULLS FIRST, c."_ts" DESC""", container, out _);
+            PlanText(beneathId).Should().NotContain("ClrCursorSort", "id is a string in every document: " + PlanText(beneathId));
+            Query(FindCosmos(beneathId), container).Sql.Should().EndWith("WHERE (c.id = @p0) ORDER BY c._ts DESC");
         }
 
     }

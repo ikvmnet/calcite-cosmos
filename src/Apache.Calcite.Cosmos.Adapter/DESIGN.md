@@ -848,12 +848,29 @@ process a run, the builds alternating:
 - retiring the overlay costs about 0.12 s (3 %) on the corpus of 78 planned new, and about 1.0 s (3 %) over the
   differential's 3,244 statements; nothing planned again, a statement's tree being remembered;
 - 1.1.1 without the overlay plans the corpus as fast as 1.1.0 with it (−0.06 s, p 0.75);
-- plans and the SQL sent were identical with the overlay and without it, over every corpus statement and every one
-  of the differential's.
+- plans and the SQL sent were identical with the overlay and without it, over every corpus statement, every one of
+  the differential's and the sort inventory's 17,107 — though not over every statement there is (below).
 
 So retiring it spent what 1.1.1 saved, and no more. The owner moved the line and retired it: no fact about a
 schema-less container's documents is derived beside the theory, and the cost is a millisecond or a few for each
 distinct stratum a new statement asks.
+
+**A path a clause reads is told to the context it reads.** Rules reason over paths that exist, and a stratum
+mentions what its conjuncts read and nothing else, so a projection, a sort or a grouping after the filter asks it of
+paths it was never told of. Beneath a scalar the filter pins that is a fact the theory has — `WHERE name = 'x' ORDER
+BY name.first` sorts by a path no row holds, since a path beneath one holding no object is absent — and the overlay
+had derived it in C#. Retired, it went: 110 of 720 statements written to read such a path planned otherwise, 30 sorts
+no longer pushed, and extremes, groupings and `DISTINCT`s ran in process; none was in the measured sets. So the
+tables a fact set reads tell their context of a path the first time they are asked about one it has no term for
+(`JsonScopeTables`): a child that mentions it and assumes nothing, run as a question's child is, without a split,
+and frozen (`JsonContexts.Mentioning`). A stratum's are leased with its statement; the declaration's are kept as its
+context is, and every statement's root reads the declaration's view, so a path is told to a declaration once. Then
+each of the 110 plans as it did beside the overlay, the sort inventory still plans as it did, and 78 more of the 720
+push what neither build pushed — a key beneath `id`, which the service states a string, or a path beneath a scalar a
+declaration states, which the engine had never been told of either — and each answers on the emulator as Calcite
+does. Two of them send a `CASE` on a constant where a constant was sent, the same rows; none pushes less. The
+corpus planned new costs what it did: 4.61 s against 4.60 s at the median of five rounds, 2.22 s against 2.21 s
+again.
 
 **Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
@@ -949,7 +966,8 @@ with a sibling for a branch.
 **What a context assumes, it has decided.** A predicate holding with a truth value on every row a context admits has
 that verdict there, whatever its atoms can be said to mean. The host reads the same of a predicate a context assumes,
 and of a conjunction of what it assumes, off the assumptions themselves and before any run, so that the answer rests
-on no run the engine might not finish. Without the two rules that say so, a predicate given was
+on no run the engine might not finish — which is two of those rules read in C#, and listed as such (*What is left in
+C#*). Without the two rules that say so, a predicate given was
 decided only where its atoms decided it, so an opaque one — a definedness test beside a type test, which is what the
 split rule pushes as a weakening — was never redundant beside itself, and a planner asking the oracle whether a
 weakening is already beneath a filter would push it under itself for ever. Two opaque duplicates were both kept. The
@@ -3411,12 +3429,27 @@ has not moved and its `TODO.md` entry. Everything else C# does with a fact reads
   the schema reader stating no facts of array elements yet; it reads `type`, `required`, `const` and the bounds through
   the schema reader's own readers. It goes when `JsonSchemaFacts` states the element facts and a rule of the theory
   reads a measurable point off them, the measured ranges as data (`TODO.md`, *Facts about array elements*).
-- **A disequality a domain or a set of types leaves out.** `JsonFactSet.Knows(NotEqualTo)` answers from a domain or
-  types that exclude the value, as the subset test a domain claim is read by; no finite table states "not v" for
-  every value a domain leaves out. Only the checks ask it.
+- **A disequality, or a bound, that what a path holds leaves out.** `JsonFactSet.Knows(NotEqualTo)` answers from a
+  domain or types that exclude the value, as the subset test a domain claim is read by; and `Knows` of a lower or an
+  upper bound from types that hold no number, which every bound holds of (`NoNumber`). No finite table states "not v"
+  for every value a domain leaves out, nor a bound for a path that holds no number. Only the checks ask the first;
+  `CosmosServiceOrder.Within` asks a bound, but over a path its callers have found may hold a number, so no plan
+  reads the second today.
+- **A predicate a context assumes.** `StatementTerms.Judge` asks `Node.Assumes` before anything else: a
+  predicate the context assumes, or a conjunction of predicates it assumes, is always true there. That is two of
+  `PredicateRules`' Decide rules — *a predicate that holds true of every row is always true*, and *a conjunction of
+  truths is true* — read off the assumptions before any run, so that a verdict a weakening's question needs rests on no
+  run that might stop on a limit and be discarded (*Predicates as facts: the oracle*). It is live through
+  `CosmosFilterStatement.IsApplied` and `RedundantConjuncts`. It goes when the verdicts of what a context assumes
+  survive a run that stops (`TODO.md`, *A verdict that rests on no run*).
 
 The overlay that answered a schema-less container's strata beside the engine, restating seven rules of JSON and the
-oracle's establishing rules, was on this list and is retired (*Generations, and what a question costs*).
+oracle's establishing rules, was on this list and is retired (*Generations, and what a question costs*). So is
+`PathValues.Normal`'s restatement of the rules of JSON on the `possible` lattice: the tables the lattice meets are
+narrowed by those rules before a verdict reads it, and what is left of the normal form is the value's own spelling,
+an exclusion folded into a known domain, which the lattice's laws need. And `JsonContexts.Decide`, a decision of a
+`JsonAtom` over a context's tables that restated a few of the theory's rules and that nothing in production asked, is
+the theory's tests' own reading now (`ContextVerdicts`).
 
 Not facts, and in C# by the rule: the reader of the pattern language, which reads an input; `CosmosServiceOrder.Agree`,
 which says what the service was measured to do with two sets of strings; and the rest of the one question.

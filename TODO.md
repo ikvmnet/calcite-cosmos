@@ -2016,10 +2016,37 @@ holds. Three bugs planted in what was added were each caught by it.
   rules in C#. The plan kept it until a schema-less question cost a millisecond or less through the engine; on
   1.1.1 one costs 1.4 ms at the median over the differential's statements and 4.9 ms over the corpus's. Retiring it
   costs about 0.12 s (3 %) on the corpus planned new and nothing planned again, and 1.1.1 without it is level with
-  1.1.0 with it; plans and the SQL sent are the same over the corpus and the differential's 3,244 statements. The
-  owner moved the line. Every stratum is the engine's context now, and what is left in C# of the facts about the
-  documents is the meet and the nullable widening (above), a geography's proof (*Facts about array elements*), and
-  the disequality read off a domain, which only the checks ask (`DESIGN.md`, *What is left in C#*).
+  1.1.0 with it. The owner moved the line. Every stratum is the engine's context now.
+
+  The corpus, the differential's 3,244 statements and the sort inventory's 17,107 plan alike with it and without,
+  but they hold no clause beneath a scalar the filter pins, and the overlay derived what the engine did not there:
+  a stratum mentions only what its conjuncts read, so `ORDER BY name.first` over `WHERE name = 'x'` asked of a path
+  the engine was never told of, and 110 of 720 crafted probes planned otherwise, 30 sorts no longer pushed. A
+  context's tables now tell it of a path the first time they are asked about one it has no term for
+  (`JsonScopeTables`, `JsonContexts.Mentioning`), and the rule that a path beneath one holding no object is absent
+  says so. Each of the 110 plans as it did beside the overlay, the inventory still plans as it did, and 78 more push
+  what neither build did — a key beneath `id`, which the service states a string, or a path beneath a scalar a
+  declaration states — each answered on the emulator as Calcite answers it. The corpus planned new costs what it
+  did, 4.61 s against 4.60 s at the median of five rounds.
+
+  What is left in C# of the facts about the documents is the meet and the nullable widening (above), a geography's
+  proof (*Facts about array elements*), a disequality or a bound read off what a domain or a path's types leave out,
+  and a predicate a context assumes read as decided before any run (*A verdict that rests on no run*, below)
+  (`DESIGN.md`, *What is left in C#*). `PathValues.Normal` no longer restates the rules of JSON — the tables its
+  lattice reads are already narrowed by them — and keeps only the fold of an exclusion into a known domain, the
+  value's own spelling, which the lattice's laws need; and `JsonContexts.Decide`, a C# reading of a context's
+  verdict on an atom that nothing in production asked, is the theory's tests' own (`ContextVerdicts`).
+- **A verdict that rests on no run** — *medium, and it waits on the engine.* `StatementTerms.Judge` first asks
+  `Node.Assumes`: a predicate the context assumes, or a conjunction of predicates it assumes, is always true there.
+  That restates two of `PredicateRules`' Decide rules — *a predicate that holds true of every row is always true*, and
+  *a conjunction of truths is true* — in C#, on purpose: a context whose run stops on a limit is discarded and its
+  node reads its parent's, which assumed less, and an answer of *no* for want of a run is what made the split rule
+  push a weakening under itself for ever (`DESIGN.md`, *What a context assumes, it has decided*). It is live through
+  `CosmosFilterStatement.IsApplied` and `CosmosStatementScope.RedundantConjuncts`. What has to move: the verdicts of
+  what a context assumes must survive a run that stops — a context opened in two runs, the assumptions and those two
+  rules over them first, a run bounded by the terms assumed, frozen beneath the full run, so that an incomplete second
+  run leaves the first to read; or an Eggnog that keeps a stopped run's sound part readable. Then `Assumes`, `Holding`
+  and `Hold` go, and `Judge` reads every verdict off a context.
 - **What a small declared container costs** — *medium.* Every declaration opens a context for every distinct
   established set, four a plan where the split rule fires, and one with no conditional rule — which every container
   that declares no schema has — does too, at a millisecond or a few each (*The overlay restated the theory*, above).
