@@ -1,14 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
-using Eggnog;
-
-using static Apache.Calcite.Cosmos.Facts.Saturation.JsonValues;
-
-namespace Apache.Calcite.Cosmos.Facts.Saturation
+namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 {
 
     /// <summary>
@@ -16,6 +8,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// holds what it asks, which is how Cosmos DB evaluates the comparison it stands for: a comparison over an absent
     /// path, or across types, is undefined, and a filter keeps no row for it.
     /// </summary>
+    /// <remarks>
+    /// The vocabulary the theory's own tests ask a context in (<see cref="ContextVerdicts"/>) and judge a document by
+    /// (<c>Documents.IsTrue</c>). The planner asks the oracle, whose atoms are <c>PredicateAtom</c>.
+    /// </remarks>
     internal abstract record JsonAtom(JsonPathSpec Path)
     {
 

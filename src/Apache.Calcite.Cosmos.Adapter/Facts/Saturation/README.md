@@ -21,6 +21,7 @@ dotnet exec --roll-forward Major Apache.Calcite.Cosmos.Adapter.Tests.dll -namesp
 | JSON Schema (`JsonContexts.JsonSchema`) | the rules of JSON Schema, as local rules, and the interpreter of conditional rules | yes |
 | a schema's (`JsonContexts.OpenSchema`) | its facts, its conditional rules as rows, its discriminators, split on each | once compiled |
 | a query's (`JsonContexts.Open`) | what the query established, split on the discriminators relevant to it | no |
+| a path's (`JsonContexts.Mentioning`) | one path more, beneath a frozen context never told of it — a stratum's, or the declaration's — when a fact set read from that context is first asked about it; nothing assumed, no split | yes |
 
 A rule is JSON's when everything it reads is a property of the document itself: presence, type, value, lengths,
 bounds, membership, elements, equality. It is JSON Schema's when it reads a fact only a schema keyword states, or
