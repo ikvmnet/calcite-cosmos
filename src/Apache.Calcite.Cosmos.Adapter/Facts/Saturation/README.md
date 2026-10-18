@@ -380,19 +380,22 @@ verdicts.
   lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
 - `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, what a scope assumes, an
-  incomplete run, and a container that declares no schema, whose strata are the engine's contexts as any other's are;
+  incomplete run, a container that declares no schema, whose strata are the engine's contexts as any other's are, and
+  a path no conjunct reads beneath a scalar one pins, absent under every clause's licence once the context is told of
+  it;
 - `CosmosPredicateLoaderTests`: the loader, `RETURNING DECIMAL` and the constants a conversion is compared with, and
   #117 through the translator;
 - `CosmosOracleReplayTests`: the fact family's defects, each answered by the general rules through the planner's
   statement;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
-- `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
-  their paths, and 64 documents drawn from each declaration and not from its filter; from a stream of their own,
-  patterns, `enum`s and `const`s of strings from all three bands, filters comparing paths with them, and 16
-  documents holding them. Every fact a context holds, row by row, `chars` among them; every claim and verdict each
-  licence's scope answers; every `holds`, verdict and `possible` row; every `atom` row against `IrEval` on every
-  declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts each conjunct was handed to render
-  from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
+- `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, one in eight with no
+  conditional rule as a container that declares no schema has, random filters over their paths, and 64 documents drawn
+  from each declaration and not from its filter; from a stream of their own, patterns, `enum`s and `const`s of strings
+  from all three bands, filters comparing paths with them, and 16 documents holding them. Every fact a context holds,
+  row by row, `chars` among them; every claim and verdict each licence's scope answers; every `holds`, verdict and
+  `possible` row; every `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath`
+  classes; the facts each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run,
+  5,000 on request;
 - `CharactersTests` and `CosmosOracleCharactersTests`: what the theory derives of a path's characters, by the rules
   and through the oracle's strata;
 - `PlantedBugTests`: ten faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
