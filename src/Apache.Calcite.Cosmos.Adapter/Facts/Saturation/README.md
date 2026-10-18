@@ -6,7 +6,7 @@ namespace, and it is internal to the adapter. `DESIGN.md`, under *The theory of 
 after it, is the record of why it is built this way. This file is the catalogue: what the tables mean, what the
 rules are, and how they are checked.
 
-It depends on `Eggnog` `0.0.1-pre.46`, an egglog-style e-graph with scopes, lattices and case splits. Its tests are
+It depends on `Eggnog` `1.1.0`, an egglog-style e-graph with scopes, lattices and case splits. Its tests are
 the adapter's, in `Apache.Calcite.Cosmos.Adapter.Tests/Facts/Saturation`:
 
 ```bash
