@@ -378,13 +378,12 @@ verdicts.
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
   lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
-- `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, what a scope assumes, and
-  an incomplete run;
+- `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, what a scope assumes, an
+  incomplete run, and a container that declares no schema, whose strata are the engine's contexts as any other's are;
 - `CosmosPredicateLoaderTests`: the loader, `RETURNING DECIMAL` and the constants a conversion is compared with, and
   #117 through the translator;
 - `CosmosOracleReplayTests`: the fact family's defects, each answered by the general rules through the planner's
   statement;
-- `JsonFactOverlayTests`: a stratum read off the overlay, against the engine's context for it;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
   their paths, and 64 documents drawn from each declaration and not from its filter; from a stream of their own,
@@ -411,9 +410,6 @@ verdicts.
   `multipleOf` or `additionalProperties`. `JsonDocumentPath` has no element segment.
 - **A range is read only through a numeric cast,** whose window was measured (`PredicateAtom`'s `NumberCast`). A
   comparison on a typed path or a raw value states the types and the presence alone.
-- **A verdict of an atom over one path is the engine's**, opened for it, where a stratum read off the overlay could
-  read it as `PredicateAtom.Over` reads one; the planner's redundancy questions are where that would pay
-  (`TODO.md`, *What a new statement costs*).
 - **The schema compiler has to emit conditional rules and discriminators directly.** That means a hidden
   discriminator for each undiscriminated `anyOf`, at which point `JsonSchemaFacts.Meet` and `JsonFact.Entails` go.
   Today's compiler emits `JsonFactRule`s and a meet.

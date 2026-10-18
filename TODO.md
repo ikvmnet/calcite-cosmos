@@ -2010,37 +2010,27 @@ holds. Three bugs planted in what was added were each caught by it.
   Population D draws its declarations as claims, so the meet and the nullable widening are fuzzed only by the
   schema reader's own tests; drawing some declarations as JSON Schema text through
   `CosmosSchemaRecognition.ReadFrom` would fuzz them end to end until they go.
-- **The overlay restates the theory** — *medium, and waiting on the engine's cost.* `JsonFactOverlay` answers a
-  stratum the engine would add nothing to without opening a context, which is what keeps an undeclared container's
-  filter at the closure's cost (below). To answer without the engine it restates, for its gated case, rules of JSON
-  the engine runs — against the owner's rule that there are no facts but the theory's:
-  - a value or a domain is of its own types (`PathValues.Normal`, `JsonRules` *a value is of its own type*);
-  - it holds its own characters (`TryChars`, *a value's characters are its own*);
-  - it bounds the path by its numbers (`TryLo`, `TryHi`, *a domain's numbers bound the path*);
-  - a present path of one value holds it in every document (`Constant`, *a present path of one value…*);
-  - a JSON null excluded leaves every other type, and booleans or null alone are a domain of their values
-    (`PathValues.Normal`);
-  - a present path has present objects above it, the root among them, and a path beneath one that holds no object
-    is absent (`Open`, `IsAbsent`);
-  - and `StatementTerms.Established` and `AtomOf` read each conjunct as the oracle's establishing rules do.
-
-  `JsonFactOverlayTests` holds it to the engine answer for answer. What has to happen is the overlay's retirement:
-  a context opened for these statements costs about 2 ms each, four a plan where the split rule fires, which the
-  planning gate will not take. Eggnog's idle-rule fix (`campaign/idle-rule-fix`, 165 KB to 32 KB a query at a
-  hundred idle local rules) is the lever; measure the corpus planned new with and without the overlay, with the
-  `MeasureScratchTests` harness, once it is released, and delete the overlay if the gate holds.
-- **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
-  conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
-  without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
-  the engine took about twice the closure's time). A declaration with conditional rules still opens a context
-  for every distinct established set, four a plan where the split rule fires. Against the closure, on one
-  workstation, a filter over a discriminated `oneOf` costs 19–26 ms a plan at two kinds and 25–34 ms at
-  twenty, against 10–13 and 14–15; the engine is ahead at two hundred kinds (10 ms against 41) and at a
-  thousand (23 ms against 78). The first plan in a generation also compiles the declaration: 0.4 s at two
-  hundred kinds and 0.6 s at a thousand, against the closure's 65 and 190 ms. The plan's gate (§3.6) extends
-  to these: an established path no conditional rule's body reads, directly or through the path-dependency
-  closure, cannot change an answer. The memo helps less than it might: four sets a plan, keyed by literal, fill
-  256 entries in sixty-odd distinct statements.
+- **The overlay restated the theory** — *done: retired on Eggnog 1.1.1, by the owner's decision.*
+  `JsonFactOverlay` answered a stratum over a declaration with no conditional rule — every container that declares
+  no schema — without opening a context, and to do it restated seven rules of JSON and the oracle's establishing
+  rules in C#. The plan kept it until a schema-less question cost a millisecond or less through the engine; on
+  1.1.1 one costs 1.4 ms at the median over the differential's statements and 4.9 ms over the corpus's. Retiring it
+  costs about 0.12 s (3 %) on the corpus planned new and nothing planned again, and 1.1.1 without it is level with
+  1.1.0 with it; plans and the SQL sent are the same over the corpus and the differential's 3,244 statements. The
+  owner moved the line. Every stratum is the engine's context now, and what is left in C# of the facts about the
+  documents is the meet and the nullable widening (above), a geography's proof (*Facts about array elements*), and
+  the disequality read off a domain, which only the checks ask (`DESIGN.md`, *What is left in C#*).
+- **What a small declared container costs** — *medium.* Every declaration opens a context for every distinct
+  established set, four a plan where the split rule fires, and one with no conditional rule — which every container
+  that declares no schema has — does too, at a millisecond or a few each (*The overlay restated the theory*, above).
+  Against the closure, on one workstation, a filter over a discriminated `oneOf` costs 19–26 ms a plan at two kinds
+  and 25–34 ms at twenty, against 10–13 and 14–15; the engine is ahead at two hundred kinds (10 ms against 41) and at
+  a thousand (23 ms against 78). The first plan in a generation also compiles the declaration: 0.4 s at two hundred
+  kinds and 0.6 s at a thousand, against the closure's 65 and 190 ms. The plan's gate (§3.6) extends to these only
+  as rules of the theory, as relevance is (`Facts/Saturation/README.md`, *A schema's conditional statements*): an
+  established path no conditional rule's body reads, directly or through the path-dependency closure, cannot
+  change an answer, and a gate that decided so in C# beside the engine would be the overlay again. The memo helps
+  less than it might: four sets a plan, keyed by literal, fill 256 entries in sixty-odd distinct statements.
 - **Interning bounded by the vocabulary, not the traffic** — *medium.* The plan's §2.1 renames a query's literals
   outside the declared vocabulary, which bounds interning and makes memo keys independent of literals. A generation
   is retired instead today, which bounds memory and not the rate of rebuilds.
@@ -2086,7 +2076,7 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
 - **`PredicateRules`**, 45 rules and a split beside `JsonRules`. Every constructor is unextractable.
 - **`CosmosOracle`**: a tree of contexts per statement remembered by digest, the strata, the licence table with the
   arm of a `CASE` and the rows a whole filter keeps beside the plan's rows, what a scope assumes read before any run,
-  strata over a declaration with no conditional rule read off `JsonFactOverlay`, and the planner's own graphs.
+  every stratum the engine's context, a schema-less declaration's too, and the planner's own graphs.
 - **`CosmosFilterStatement`**: a filter as the oracle reads it, remembered against its condition node, and the
   questions each rule asks. `CosmosFactExtractor`, the split rule's two passes and its digest test of what is
   beneath, the rewriter's fact half and every `Derive` at a filter site are gone, and so are the translator's four
@@ -2104,10 +2094,9 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   their disjunction.
 - **Tests**: the oracle's unit tests; `CosmosOracleReplayTests`, the family's defects answered by the general rules
   through the planner's statement, two of the shadow's rows corrected; the population-D checker and the planted-bug
-  suite, asking the arm and the whole filter's licences too; `AStratumReadOffTheOverlayAnswersAsItsContextDoes`;
-  and the kinds container in `CosmosDifferentialTests`, holding what the oracle pushes that the planner before it
-  did not to Calcite on the emulator. `CosmosPushdownProbeTests` and `CosmosPlanningTimeTests`, explicit, put a
-  change beside the commit before it.
+  suite, asking the arm and the whole filter's licences too; and the kinds container in `CosmosDifferentialTests`,
+  holding what the oracle pushes that the planner before it did not to Calcite on the emulator.
+  `CosmosPushdownProbeTests` and `CosmosPlanningTimeTests`, explicit, put a change beside the commit before it.
 
 **What is left.**
 - **Text sorts the rows' facts give the service are ordered by code point there** — *the open defect in section 4,
@@ -2176,9 +2165,10 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
     `Filter.DeepConjunction` costs 0.1–0.3 s on `main` and 0.7–1.0 s here, `Composite.TenantFunnel` about 0.1 s and
     0.2–0.4 s. Timed inside, over the six plans the test makes of each, nearly all of it the first,
     `DeepConjunction`'s oracle is 0.19 s of redundancy, 0.16 s of contradiction, 0.14 s of strata (0.10 s of it the
-    translator) and 0.14 s asking whether a weakening is applied; `TenantFunnel`'s is 0.30 s of redundancy. Each leave-one-out child of a redundancy question is read off `JsonFactOverlay` and then opened for
-    its verdict. A verdict of an atom over one path, read off the overlay as `PredicateAtom.Over` reads the path's met
-    values, would open none of them; an Eggnog whose idle rules allocate nothing would make each cheaper.
+    translator) and 0.14 s asking whether a weakening is applied; `TenantFunnel`'s is 0.30 s of redundancy. Each
+    leave-one-out child of a redundancy question is a context opened for its verdict (read off the overlay first,
+    when this was measured; it is retired). Eggnog 1.1.1, whose idle rules allocate nothing, makes each cheaper:
+    14–39 % at the median for a schema-less one.
   - **The clauses, the pins and the keys added nothing the runs can see.** Interleaved with the commit that moved
     the clauses (`115ad32`), the pins planned the corpus in 9.4–14.2 s against 12.6–14.6 s, three runs each, and the
     pins and the self-join the hierarchy in `MapLinks` 5.4–6.3 s against 5.6–6.3 s and `MapLinksByMapName` 5.8–7.0 s

@@ -825,27 +825,35 @@ Its parent lists it until then, so without the release it would live as long as 
 A small schema's query costs a few milliseconds on a workstation, once per distinct predicate. The Horn
 closure cost about 5 ms at 33k rules and 18.6 ms at 109k, and so did every planner question, with no memo.
 
-**Not every question goes to the engine.** A container that declares no schema still states what the
-service guarantees of `id`, `_ts` and `_etag`, so it is never empty, and every filter over it opened a query
-context. A filter the split rule divides asks with four distinct sets — the whole predicate, the conjuncts
-it can push, the pushed half with the cast weakened to a presence, and the residual — at about 1.8 ms
-each, which doubled what a single-container plan cost. `JsonFactOverlay` is the plan's demand gate for the
-case it covers: a declaration with no conditional rule, and a query whose facts are each one claim beside a
-presence on a path that neither lies beneath another nor meets one the declaration states. Then the rules
-of JSON add only what one claim says of its own path's types and characters, the present objects above it, and
-the absence of what lies beneath a scalar, and the answer is read off the query's facts and the declaration's
-own context without opening one. Anything else goes to the engine. `JsonFactOverlayTests` holds it to the
-engine over generated sets, and catches each of three bugs planted in it; a fourth, dropping the types a
-disequality with null rules out, changes no answer a set gives. An undeclared container opens no
-context now, and plans as fast as it did on the closure: 8–16 ms a plan against 11–14 ms, over three
-runs alternating the two on one workstation, where the engine had taken about twice the closure's time.
+**Every question goes to the engine, a schema-less container's too.** A container that declares no schema
+still states what the service guarantees of `id`, `_ts` and `_etag`, so its theory is never empty, and every
+stratum of a filter over it is a context the engine opens, as over any declaration.
 
-The predicate oracle's strata are read off it the same way (*The oracle in the planner*, below). What a stratum
-assumes is read path by path as `PredicateAtom.Kept` reads each conjunct, met in `PathValues`' lattice, and the
-rules of JSON that apply on one path are written out — a domain is of its own types, a JSON null excluded leaves
-every other type, types of booleans or of null alone are a domain — and two bounds, or several values excluded
-beside no domain, go to the engine. `AStratumReadOffTheOverlayAnswersAsItsContextDoes` holds six hundred
-generated statements to the engine's context for the same stratum.
+It was not always so. A filter the split rule divides asked with four distinct sets, at about 1.8 ms each when
+the engine replaced the closure, which doubled what a single-container plan cost. `JsonFactOverlay` was the
+plan's demand gate for the commonest case: over a declaration with no conditional rule, a stratum whose
+conjuncts each said one thing of a path that met nothing the declaration stated was read off those facts and
+the declaration's own context, without opening one. To answer without the engine it restated seven rules of
+JSON in C# — a value is of its own types, holds its own characters and bounds the path by its numbers; a present
+path of one value is constant; a JSON null excluded leaves every other type; a present path has present objects
+above it; a path beneath a scalar is absent — and read each conjunct as the oracle's establishing rules do. That
+is the rule at the head of *The theory of JSON, in layers* broken for the commonest container there is, and the
+plan kept it only until a schema-less question cost a millisecond or less through the engine.
+
+**Retired on Eggnog 1.1.1, which drops idle rule variants without allocating.** Measured in Release, a fresh
+process a run, the builds alternating:
+- a schema-less question — a stratum, a leave-one-out child, or a child made for a verdict — costs 1.4 ms at the
+  median over the differential's statements and 4.9 ms over the corpus's, p90 5–11 ms; 14–39 % less than on 1.1.0,
+  and not under the line;
+- retiring the overlay costs about 0.12 s (3 %) on the corpus of 78 planned new, and about 1.0 s (3 %) over the
+  differential's 3,244 statements; nothing planned again, a statement's tree being remembered;
+- 1.1.1 without the overlay plans the corpus as fast as 1.1.0 with it (−0.06 s, p 0.75);
+- plans and the SQL sent were identical with the overlay and without it, over every corpus statement and every one
+  of the differential's.
+
+So retiring it spent what 1.1.1 saved, and no more. The owner moved the line and retired it: no fact about a
+schema-less container's documents is derived beside the theory, and the cost is a millisecond or a few for each
+distinct stratum a new statement asks.
 
 **Nothing from the engine reaches the planner.** A context the engine cannot open answers with the
 declaration's own facts. A declaration it cannot compile answers nothing. Either way facts are lost and none
@@ -3380,17 +3388,15 @@ union of a branch lacking both bands with one lacking one keeps the one.
 **Stated of every domain, a domain of no string saying none.** The first version derived a row only from a domain
 holding a string. The engine states a row of every domain a run passes through, and a domain only narrows, so a
 row derived from a domain that still held a string outlived it. That happened to `text(x) = '30'` beside a typed
-reading, whose preimage held the string `"30"` until the type took it out. The overlay, reading the last domain,
-answered otherwise, and its differential caught the difference. Stated of every domain, the row a run ends with is
+reading, whose preimage held the string `"30"` until the type took it out. The overlay, since retired (*Generations,
+and what a question costs*), read the last domain and answered otherwise, and its differential caught the
+difference. Stated of every domain, the row a run ends with is
 the one its last domain says, whichever domains it passed through.
 
 **Who reads it.** `JsonFactSet.CharactersOf` is what R1 asks (*The service's order, asked once*), and `Knows` and
-`ClaimsFor` answer it as a claim. `JsonFactOverlay` answers it from its own domain, applying the rule's own function
-(`JsonValues.CharactersOf`) — one of the theory's rules the overlay restates for the statements it answers without
-the engine, listed below. `JsonFactOverlayTests` holds the two to each other over literals of all three bands, a
-service fact and a declaration. A literal's characters and type, and a parameter's characters once it is bound, are
-read by the theory's own reader of a value (`JsonFactEncoding.Characters`, `JsonValues.TypesOf`), so what a consumer
-asks of a value is what the theory knows of it.
+`ClaimsFor` answer it as a claim, each off a context the engine ran. A literal's characters and type, and a
+parameter's characters once it is bound, are read by the theory's own reader of a value (`JsonFactEncoding.Characters`,
+`JsonValues.TypesOf`), so what a consumer asks of a value is what the theory knows of it.
 
 **What is left in C#,** every fact about the documents still derived or combined outside the theory, each with why it
 has not moved and its `TODO.md` entry. Everything else C# does with a fact reads it, decides what is legal, or writes.
@@ -3401,13 +3407,6 @@ has not moved and its `TODO.md` entry. Everything else C# does with a fact reads
   combinations of facts. They go when the reader states such a union as cases of a hidden discriminator, a null one
   among them, which the theory's split already reasons over (`TODO.md`, *The schema reader emits splits rather than a
   meet*).
-- **The overlay.** `JsonFactOverlay` answers a stratum the engine would add nothing to without opening a context,
-  and so restates, for its gated case, rules of JSON the engine runs: a value is of its own types, holds its own
-  characters, and bounds the path by its numbers; a present path of one value is constant; a JSON null excluded
-  leaves every other type (`PathValues.Normal`); a present path has present objects above it; a path beneath one that
-  holds no object is absent. `StatementTerms.Established` reads each conjunct as the oracle's establishing rules do.
-  `JsonFactOverlayTests` holds it to the engine answer for answer. It goes when a context costs nothing measurable for
-  these statements, which is the planning cost the gate exists for (`TODO.md`, *The overlay restates the theory*).
 - **A geography's proof.** `CosmosGeographyForms` reads a subschema's array counts and its elements' bounds itself,
   the schema reader stating no facts of array elements yet; it reads `type`, `required`, `const` and the bounds through
   the schema reader's own readers. It goes when `JsonSchemaFacts` states the element facts and a rule of the theory
@@ -3415,6 +3414,9 @@ has not moved and its `TODO.md` entry. Everything else C# does with a fact reads
 - **A disequality a domain or a set of types leaves out.** `JsonFactSet.Knows(NotEqualTo)` answers from a domain or
   types that exclude the value, as the subset test a domain claim is read by; no finite table states "not v" for
   every value a domain leaves out. Only the checks ask it.
+
+The overlay that answered a schema-less container's strata beside the engine, restating seven rules of JSON and the
+oracle's establishing rules, was on this list and is retired (*Generations, and what a question costs*).
 
 Not facts, and in C# by the rule: the reader of the pattern language, which reads an input; `CosmosServiceOrder.Agree`,
 which says what the service was measured to do with two sets of strings; and the rest of the one question.
@@ -5087,9 +5089,8 @@ src/
       JsonClaim.cs, JsonFact.cs   ✔ Claims about one path, and entailment between them
       JsonFactRule.cs               ✔ A guarded claim
       JsonFactTheory.cs, JsonFactSet.cs ✔ A declaration compiled into the theory, and what a set of facts knows
-      JsonFactDeclaration.cs, JsonFactUnconditional.cs ✔ The declaration in one generation, as the oracle reads it
-      JsonFactTables.cs, JsonScopeTables.cs ✔ What a set reads: a context's tables, or the overlay's
-      JsonFactOverlay.cs            ✔ A query's facts read beside the declaration's, where the engine adds nothing
+      JsonFactDeclaration.cs        ✔ The declaration in one generation, as the oracle reads it
+      JsonFactTables.cs, JsonScopeTables.cs ✔ What a set reads: a context's tables
       JsonFactEncoding.cs, JsonFactVocabulary.cs ✔ Claims, paths, scalars and characters in the theory's terms,
                                         and back; the tokens of forms and extensions
       JsonCharacterBand.cs          ✔ The bands of UTF-16 units a string's characters are known by
@@ -5104,7 +5105,7 @@ src/
                                         connectives, and a statement of them
       CosmosOracle.cs               ✔ The predicate oracle: a declaration's statements, and the questions
       CosmosStatementScope.cs       ✔ One statement's strata, and the licence table that answers from them
-      StatementTerms.cs             ✔ The contexts of one statement beneath a declaration, engine or overlay
+      StatementTerms.cs             ✔ The contexts of one statement beneath a declaration
       OracleQuestion.cs, OracleLicence.cs, OracleVerdict.cs ✔ What a question is for, its licence, its answer
       JsonDocumentPath.cs, JsonType.cs ✔ What a claim is about, and the types it can name
       JsonScalar.cs                   ✔ A claim's value, compared as JSON compares it

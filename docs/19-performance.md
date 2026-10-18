@@ -94,10 +94,15 @@ statement used and which it could have used.
 - **Planning has a cost** of its own, in process and independent of Cosmos. It grows with the number of
   containers in the schema, since each container's rules are registered. Expose only the containers an
   application uses.
+- **A filter's facts are reasoned about once per distinct predicate.** What a filter proves of the documents
+  it keeps is worked out when a statement is first planned — a millisecond or a few for each combination of
+  its conditions the planner asks about — and reused when the same statement is planned again. A container
+  that declares no schema pays this too, since what Cosmos guarantees of `id`, `_ts` and `_etag` is reasoned
+  about beside every filter.
 - **A declared schema adds to planning** (Chapter 14). A filter over a container whose schema has conditional
-  rules — a `oneOf` by kind, an `if` — is reasoned about once per distinct predicate, a few milliseconds each,
-  and the first statement to reach the container compiles its schema: a few hundred milliseconds, rising to
-  about a second at tens of thousands of rules. A container that declares no schema pays none of this.
+  rules — a `oneOf` by kind, an `if` — costs more for each predicate, since the kinds a document may be are
+  reasoned about case by case, and the first statement to reach the container compiles its schema: a few
+  hundred milliseconds, rising to about a second at tens of thousands of rules.
 - **Joins of views over one container are merged before anything else is planned** (Chapter 12), so a
   table-per-type hierarchy plans like the one read it becomes rather than like the joins it was written
   as. A query over five such views still takes seconds to plan rather than milliseconds — Calcite folds
