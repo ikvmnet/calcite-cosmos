@@ -164,11 +164,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// what may be the value, absorbs the exclusions, and is of its own types.
         /// </summary>
         /// <remarks>
-        /// Each step says the same set of documents another way, so a state and its normal form are one state; and the
-        /// normal form is what a reader of one path's values reads — the overlay, which answers a stratum without the
-        /// engine, among them — so no reader restates any of it.
+        /// Each step says the same set of documents another way, so a state and its normal form are one state, and the
+        /// lattice settles on it.
         /// </remarks>
-        internal static PathValues Normal(PathValues x)
+        static PathValues Normal(PathValues x)
         {
             var kinds = x.Excluded.Contains(NullValue) ? x.Kinds.Remove(NullType) : x.Kinds;
             var types = kinds.Remove(AbsentKind);

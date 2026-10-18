@@ -50,9 +50,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// test makes an oracle in graphs of its own, so that no test reads another's memo.
     /// </para>
     /// <para>
-    /// <b>Not every stratum needs the engine.</b> Over a declaration with no conditional rule, a stratum whose
-    /// conjuncts touch nothing it states is read off <see cref="JsonFactOverlay"/>; the engine's context is opened only if
-    /// a verdict is asked of it.
+    /// <b>Every stratum is the engine's.</b> A declaration with no conditional rule, which every container that declares
+    /// no schema has, opens its strata as any other does: what one knows is what the rules derive, and C# reads no
+    /// stratum's facts off its predicates.
     /// </para>
     /// <para>
     /// How to ask it: load a filter into a <see cref="PredicateStatement"/> (<c>CosmosPredicateLoader.Loading</c> reads one

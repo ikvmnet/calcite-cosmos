@@ -41,7 +41,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <param name="established">What a query established, which may be empty.</param>
         /// <returns>What is known.</returns>
         public static JsonFactSet Derive(this JsonFactTheory theory, IEnumerable<JsonFact>? established) =>
-            theory.DeriveOnEngine(established ?? Array.Empty<JsonFact>(), Array.Empty<JsonDocumentPath>());
+            theory.Derive(established ?? Array.Empty<JsonFact>(), Array.Empty<JsonDocumentPath>());
 
         /// <summary>
         /// Saturates established facts beneath the declaration, the context told of paths beside those they speak of.
@@ -50,7 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         /// <param name="established">What a query established.</param>
         /// <param name="mentioned">Paths for the context to know of beside those it established, which a test asks about.</param>
         /// <returns>What is known.</returns>
-        public static JsonFactSet DeriveOnEngine(this JsonFactTheory theory, IEnumerable<JsonFact> established, IEnumerable<JsonDocumentPath> mentioned)
+        public static JsonFactSet Derive(this JsonFactTheory theory, IEnumerable<JsonFact> established, IEnumerable<JsonDocumentPath> mentioned)
         {
             var facts = established.Distinct().ToArray();
             if (facts.Length == 0 || theory.Declaration() is not JsonFactDeclaration declaration)

@@ -19,8 +19,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>A context of the theory, read.</b> The container's declaration is a frozen context, and what a query
     /// established is a context beneath it, saturated under the rules of JSON and of JSON Schema. Asking a question is a
     /// read of its tables — a presence, a set of types, a domain, a form — so an answer is whatever the rules proved, and
-    /// not only what one fact entails of another. Where the engine could prove nothing more than a query states, the
-    /// tables are read off the query instead (<see cref="JsonFactOverlay"/>), and asked the same way.
+    /// not only what one fact entails of another. Every set but the empty one reads a context the engine ran, a query's
+    /// as much as a declaration's: nothing here is read off the facts a query states.
     /// </para>
     /// <para>
     /// <b>A fact about a value holds if the value is there.</b> Every claim but <see cref="JsonClaim.Present"/> says what a
@@ -68,16 +68,6 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Gets the tables the set reads, or <c>null</c> where nothing is known.
-        /// </summary>
-        internal JsonFactTables? Tables => _tables;
-
-        /// <summary>
-        /// Gets the tokens of the theory's stored forms and extensions.
-        /// </summary>
-        internal JsonFactVocabulary? Vocabulary => _vocabulary;
-
-        /// <summary>
         /// Determines whether a fact holds.
         /// </summary>
         /// <remarks>
@@ -92,9 +82,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </para>
         /// <para>
         /// <b>Who asks which.</b> A presence, a type, a bound and an extension are asked by consumers; a value, a domain, a
-        /// disequality, a form and characters only by the checks that hold the theory to its documents — population D,
-        /// the overlay's differential, the theory's own tests — which ask every claim the way a consumer would. A form a
-        /// consumer reads through <see cref="FormsOf"/>, and characters through <see cref="CharactersOf"/>.
+        /// disequality, a form and characters only by the checks that hold the theory to its documents — population D and
+        /// the theory's own tests — which ask every claim the way a consumer would. A form a consumer reads through
+        /// <see cref="FormsOf"/>, and characters through <see cref="CharactersOf"/>.
         /// </para>
         /// </remarks>
         /// <param name="fact">The fact to test.</param>

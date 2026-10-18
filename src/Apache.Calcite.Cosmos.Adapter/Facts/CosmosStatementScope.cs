@@ -309,7 +309,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// disposes the context, which then answers less rather than throwing. A caller reading the context past its last use
         /// of the scope keeps the scope alive (<see cref="GC.KeepAlive(object)"/>); Release's JIT lets it go at this call.
         /// </remarks>
-        internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Engine.Scope, _terms.Rules);
+        internal (Scope? Context, PredicateRules? Rules) ContextFor(OracleLicence licence) => (ScopeFor(licence).Scope, _terms.Rules);
 
         /// <summary>
         /// Returns the conjuncts that may be deleted, removing one at a time.

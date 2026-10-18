@@ -51,7 +51,6 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly List<Saturation.JsonFact> _stated = new();
         readonly List<JsonGuardedRule> _guarded = new();
         readonly List<JsonPathSpec> _paths = new();
-        readonly List<JsonDocumentPath> _statedPaths = new();
         readonly HashSet<JsonDocumentPath> _mentionedPaths = new();
         readonly object _compiling = new();
         Compiled? _compiled;
@@ -103,7 +102,6 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (rule.Body.Count == 0)
                 {
                     _stated.AddRange(heads);
-                    _statedPaths.Add(rule.Head.Path);
                     continue;
                 }
 
@@ -156,9 +154,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Gets whether every rule holds outright, so that nothing a query proves can add to them.
         /// </summary>
         /// <remarks>
-        /// The question a caller asks before going to the trouble of reading facts off a predicate.
-        /// A container that declares no schema is in exactly this state — what the service guarantees
-        /// is conditional on nothing — so the common path does no work at all.
+        /// A container that declares no schema is in exactly this state: what the service guarantees is conditional on
+        /// nothing. It changes nothing about how a filter is reasoned about, whose strata are the engine's contexts beneath
+        /// such a declaration as beneath any other.
         /// </remarks>
         public bool IsUnconditional => _conditional == false;
 
@@ -191,9 +189,7 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactDeclaration? Declaration()
         {
             var compiled = Compile();
-            return compiled.Schema is Scope schema && compiled.Outright.Tables is JsonFactTables outright
-                ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary, _conditional == false ? new JsonFactUnconditional(_statedPaths, outright) : null)
-                : null;
+            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary) : null;
         }
 
         /// <summary>
