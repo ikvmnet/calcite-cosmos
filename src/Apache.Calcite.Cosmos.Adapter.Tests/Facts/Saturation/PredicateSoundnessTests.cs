@@ -60,7 +60,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 $"{trials:N0} trials in {elapsed.TotalSeconds:N1} s (p50 {times[times.Length / 2]:N0} ms, p95 {times[times.Length * 95 / 100]:N0} ms a trial): "
                 + $"{reports.Sum(r => r.Facts):N0} facts ({reports.Sum(r => r.Characters):N0} of characters), {reports.Sum(r => r.Verdicts):N0} verdicts ({reports.Sum(r => r.Decided):N0} deciding something), {reports.Sum(r => r.Rows):N0} rows, "
                 + $"{reports.Sum(r => r.Atoms):N0} atoms and {reports.Sum(r => r.Nodes):N0} e-nodes checked on {trials * (PopulationD.DocumentsPerTrial + PopulationD.BandedPerTrial):N0} documents; "
-                + $"{reports.Count(r => r.Strata > 1):N0} statements admitted in two strata or more, {reports.Count(r => r.Complete == false):N0} incomplete");
+                + $"{reports.Count(r => r.Strata > 1):N0} statements admitted in two strata or more, {reports.Count(r => r.Complete == false):N0} incomplete, "
+                + $"{reports.Count(r => r.Declaration.IsUnconditional):N0} declaring nothing conditional");
 
             if (failed.Count > 0)
                 Assert.Fail($"{failed.Count} of {trials} trials found something false ("
