@@ -400,8 +400,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(keeps, A, new JsonClaim.NotEqualTo("k1")).Should().BeTrue();
             Knows(keeps, B, new JsonClaim.LowerBound(400)).Should().BeTrue("the cast's window bounds the number it reads");
             Knows(keeps, Id, Type(JsonType.String)).Should().BeTrue("what the service states holds beneath the filter");
-            Knows(keeps, A.Property("x"), Present).Should().BeFalse("a string has no properties");
             keeps.IsContradictory.Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A path no conjunct reads, beneath one a conjunct pins to a scalar, is absent in every row the filter keeps — the
+        /// rule that a path beneath one holding no object is absent — and every clause after the filter knows it, though
+        /// the statement never mentioned the path: a view is told of a path the first time it is asked about it.
+        /// </summary>
+        /// <remarks>
+        /// What a projection, a sort or a grouping over <c>WHERE name = 'x'</c> asks of <c>name.first</c>. Asked through the
+        /// licence a clause reads, the declaration's own view, and a stratum over a declaration that states the path's
+        /// parent a scalar; and not of a path beneath one the filter leaves an object.
+        /// </remarks>
+        [Fact]
+        public void APathNoConjunctReadsBeneathAPinnedScalarIsKnownAbsent()
+        {
+            var beneath = A.Property("x");
+            var absent = Enum();
+
+            foreach (var licence in new[] { OracleLicence.Select, OracleLicence.OrderBy, OracleLicence.GroupBy, OracleLicence.Kept })
+            {
+                var facts = Admitted(Undeclared, Eq(Raw(A), "k0")).Facts(licence);
+
+                Knows(facts, beneath, absent).Should().BeTrue("a string has no properties, under {0}", licence.Question);
+                Knows(facts, beneath, Present).Should().BeFalse();
+                facts.TryGetTypes(beneath, out var types).Should().BeTrue();
+                types.Should().BeEmpty("a path that is never there holds no type");
+                facts.CharactersOf(beneath).Should().Be(JsonCharacterBand.None);
+            }
+
+            Knows(Admitted(Undeclared, Eq(Raw(A), "k0")).Facts(OracleLicence.Select), A, absent).Should().BeFalse("the pinned path itself is there where the filter keeps a row");
+            Knows(Admitted(Undeclared, IsNotNull(Raw(A))).Facts(OracleLicence.Select), beneath, absent).Should().BeFalse("a path that is not null may be an object");
+
+            Knows(CosmosOracle.For(Undeclared).Declared, Id.Property("q"), absent).Should().BeTrue("the service states id a string of every document");
+            Knows(Oracle(Theory(Outright(A, Type(JsonType.Boolean)))).Admit(new PredicateStatement(new[] { IsNotNull(Text(B)) }), (_, _) => true)
+                .Facts(OracleLicence.Select), beneath, absent).Should().BeTrue("the declaration states a boolean, beneath a filter that never reads it");
         }
 
         /// <summary>

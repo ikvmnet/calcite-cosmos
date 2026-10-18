@@ -13,8 +13,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <remarks>
     /// <para>
     /// <b>Every answer is a context's.</b> <see cref="JsonScopeTables"/> reads a context of the theory, saturated by the
-    /// engine. The predicate oracle's two (<see cref="StatementTerms"/>) read one holding its statement's lease for as long
-    /// as anything reads it, and say of a context released at once, because it admits no document, only that it is
+    /// engine, or for a path the context was never told of, a child the engine ran that is; the predicate oracle's
+    /// (<see cref="StatementTerms"/>) say of a context released at once, because it admits no document, only that it is
     /// contradictory. None derives an answer its context does not hold.
     /// </para>
     /// <para>

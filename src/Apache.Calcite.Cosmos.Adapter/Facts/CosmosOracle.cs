@@ -32,7 +32,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <para>
     /// Each holds the statement's terms and their verdicts, and mentions, for a split, only what it assumes. A question
     /// about a predicate a context does not hold is answered in a child made for it, which assumes nothing and so splits
-    /// on nothing: the context it was made beneath has lifted what a split there proves.
+    /// on nothing: the context it was made beneath has lifted what a split there proves. So is a path a context was never
+    /// told of — what a projection, a sort or a grouping after the filter reads and no conjunct does — the first time a
+    /// fact set read from it is asked about the path, and that child is kept with the statement's contexts.
     /// </para>
     /// <para>
     /// <b>No conjunct is rendered from its own facts.</b> A conjunct is admitted in the first stratum that renders it, and

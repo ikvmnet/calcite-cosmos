@@ -43,10 +43,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </summary>
         public static readonly JsonFactTheory Empty = new(Array.Empty<JsonFactRule>());
 
-
+        /// <summary>
+        /// How a path the declaration's context is first asked about is told to it: stopping on a contradiction, which
+        /// says only that the declaration admits nothing.
+        /// </summary>
+        static readonly RunOptions Told = new() { StopOnContradiction = true };
 
         readonly JsonFactRule[] _rules;
-        readonly bool _conditional;
         readonly JsonFactVocabulary _vocabulary = new();
         readonly List<Saturation.JsonFact> _stated = new();
         readonly List<JsonGuardedRule> _guarded = new();
@@ -85,9 +88,6 @@ namespace Apache.Calcite.Cosmos.Facts
 
             foreach (var rule in _rules)
             {
-                if (rule.Body.Count > 0)
-                    _conditional = true;
-
                 var heads = new List<Saturation.JsonFact>(JsonFactEncoding.Statement(rule.Head, _vocabulary, register: true));
                 if (heads.Count == 0)
                     continue;
@@ -151,16 +151,6 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactGenerations Generations { get; }
 
         /// <summary>
-        /// Gets whether every rule holds outright, so that nothing a query proves can add to them.
-        /// </summary>
-        /// <remarks>
-        /// A container that declares no schema is in exactly this state: what the service guarantees is conditional on
-        /// nothing. It changes nothing about how a filter is reasoned about, whose strata are the engine's contexts beneath
-        /// such a declaration as beneath any other.
-        /// </remarks>
-        public bool IsUnconditional => _conditional == false;
-
-        /// <summary>
         /// Gets the compiled rules.
         /// </summary>
         public IReadOnlyList<JsonFactRule> Rules => _rules;
@@ -189,7 +179,7 @@ namespace Apache.Calcite.Cosmos.Facts
         internal JsonFactDeclaration? Declaration()
         {
             var compiled = Compile();
-            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary) : null;
+            return compiled.Schema is Scope schema ? new JsonFactDeclaration(compiled.Generation, schema, _vocabulary, compiled.Outright) : null;
         }
 
         /// <summary>
@@ -242,7 +232,14 @@ namespace Apache.Calcite.Cosmos.Facts
                     var schema = contexts.OpenSchema(theory._stated, theory._guarded, theory._paths);
                     schema.Freeze();
                     _schema = schema;
-                    Outright = new JsonFactSet(contexts.Rules, theory._vocabulary, schema, owned: false);
+
+                    // A path the declaration says nothing of is told to it when first asked, beneath its frozen context,
+                    // and the child is kept as long as the context is: what the rules derive of it holds of every
+                    // document, as what the context holds does. Without a split, as a query's child: the declaration's own
+                    // run lifted what its cases prove of the paths it states.
+                    Outright = new JsonFactSet(
+                        new JsonScopeTables(contexts.Rules, schema, owned: false, mention: path => contexts.Mentioning(schema, JsonFactEncoding.Path(path), contexts.Saturation, Told)),
+                        theory._vocabulary);
                 }
                 catch (Exception e) when (IsEngineFailure(e))
                 {

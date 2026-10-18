@@ -37,6 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly RunOptions _run = Default;
         readonly PredicateRules? _rules;
         readonly JsonFactVocabulary? _vocabulary;
+        readonly JsonFactSet _declared = JsonFactSet.Empty;
         readonly HashSet<string> _held = new(StringComparer.Ordinal);
         readonly Dictionary<string, Node> _children = new(StringComparer.Ordinal);
         readonly Dictionary<string, OracleVerdict> _answers = new(StringComparer.Ordinal);
@@ -51,6 +52,7 @@ namespace Apache.Calcite.Cosmos.Facts
             _run = options ?? Default;
             _contexts = declaration.Generation.Contexts;
             _vocabulary = declaration.Vocabulary;
+            _declared = declaration.Declared;
             _rules = PredicateRules.Of(_contexts);
             _statement = statement;
 
@@ -369,7 +371,6 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 _owner = owner;
                 Scope = scope;
-                Parent = parent;
                 Key = key;
                 Complete = complete;
                 HoldsTerms = holdsTerms;
@@ -404,8 +405,6 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <summary>The context read, or <c>null</c> where nothing is known or nothing is kept.</summary>
             public Scope? Scope { get; }
 
-            public Node? Parent { get; }
-
             public string Key { get; }
 
             /// <summary>Whether the run that opened it completed, or ended in a contradiction.</summary>
@@ -426,6 +425,18 @@ namespace Apache.Calcite.Cosmos.Facts
 
         }
 
+        /// <summary>
+        /// Reads a context as a fact set: the declaration's own view where the node reads the declaration's context, and
+        /// otherwise the context's tables, told of each path they are asked about that the context has no term for, and
+        /// holding the statement's lease for as long as anything reads them.
+        /// </summary>
+        /// <remarks>
+        /// A stratum mentions what its statement reads (<see cref="Open"/>), and a clause after the filter reads paths no
+        /// conjunct does: <c>ORDER BY name.first</c> over <c>WHERE name = 'x'</c> asks of a path the stratum was never told
+        /// of, whose absence the rules derive the moment it is. So the tables tell the context of it then, in a child that
+        /// assumes nothing (<see cref="Mentioning"/>), and every reader of a stratum knows what the rules derive of every
+        /// path it asks about.
+        /// </remarks>
         JsonFactSet ViewOf(Node node)
         {
             if (node.Contradictory)
@@ -434,7 +445,24 @@ namespace Apache.Calcite.Cosmos.Facts
             if (node.Scope is null || _rules is null)
                 return JsonFactSet.Empty;
 
-            return new JsonFactSet(new Leased(new JsonScopeTables(_rules.Json, node.Scope, owned: false), _lease), _vocabulary);
+            if (ReferenceEquals(node.Scope, Root.Scope))
+                return _declared;
+
+            var scope = node.Scope;
+            return new JsonFactSet(new JsonScopeTables(_rules.Json, scope, owned: false, mention: path => Mentioning(scope, path), keep: _lease), _vocabulary);
+        }
+
+        /// <summary>
+        /// Opens a child of a context that mentions a path it has no term for, run as a child made for a question is, and
+        /// leases it with the statement's contexts; or returns <c>null</c> where its run does not complete.
+        /// </summary>
+        Scope? Mentioning(Scope scope, JsonDocumentPath path)
+        {
+            var told = _contexts!.Mentioning(scope, JsonFactEncoding.Path(path), _rules!.Answer, _run);
+            if (told is not null)
+                _lease.Add(told);
+
+            return told;
         }
 
         /// <summary>
@@ -456,51 +484,6 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 for (var i = _scopes.Count - 1; i >= 0; i--)
                     _scopes[i].Dispose();
-            }
-
-        }
-
-        /// <summary>
-        /// A context's tables, holding its statement's lease for as long as anything reads them.
-        /// </summary>
-        sealed class Leased : JsonFactTables
-        {
-
-            readonly JsonFactTables _tables;
-            readonly Lease _lease;
-
-            public Leased(JsonFactTables tables, Lease lease)
-            {
-                _tables = tables;
-                _lease = lease;
-            }
-
-            public override bool IsContradictory => Keep(_tables.IsContradictory);
-
-            public override bool Present(JsonDocumentPath path) => Keep(_tables.Present(path));
-
-            public override bool TryTypes(JsonDocumentPath path, out ValueSet<string> types) => Keep(_tables.TryTypes(path, out types));
-
-            public override bool TryDom(JsonDocumentPath path, out ValueSet<string> dom) => Keep(_tables.TryDom(path, out dom));
-
-            public override bool Ne(JsonDocumentPath path, string value) => Keep(_tables.Ne(path, value));
-
-            public override bool TryLo(JsonDocumentPath path, out Bound bound) => Keep(_tables.TryLo(path, out bound));
-
-            public override bool TryHi(JsonDocumentPath path, out Bound bound) => Keep(_tables.TryHi(path, out bound));
-
-            public override bool Form(JsonDocumentPath path, string token) => Keep(_tables.Form(path, token));
-
-            public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => Keep(_tables.TryChars(path, out bands));
-
-            public override bool Extension(JsonDocumentPath path, string key) => Keep(_tables.Extension(path, key));
-
-            public override bool Constant(JsonDocumentPath path, string value) => Keep(_tables.Constant(path, value));
-
-            T Keep<T>(T answer)
-            {
-                GC.KeepAlive(_lease);
-                return answer;
             }
 
         }

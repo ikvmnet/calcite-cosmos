@@ -192,6 +192,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     scope.Make((ConstructorTerm<JPath>)prefix.ToTerm(Rules));
         }
 
+        /// <summary>
+        /// Returns a child of a frozen context that mentions one path more, saturated and frozen: what the context knows of
+        /// a path it was never told of, which is what the rules derive of it from what they already hold — a path beneath
+        /// one that holds no object is absent, beneath one that is closed to it too.
+        /// </summary>
+        /// <remarks>
+        /// It assumes nothing, so it narrows no document the context admits and lifts no case: a split there decides only
+        /// what something here narrows, and the context it is made beneath has already lifted what its own split proves.
+        /// So it knows of the path what the context would have, told of it when it was opened, short of what only a split
+        /// on a discriminator would prove; less, never more.
+        /// </remarks>
+        /// <param name="parent">The context, frozen.</param>
+        /// <param name="path">The path.</param>
+        /// <param name="schedule">The rules the context ran, without its splits.</param>
+        /// <param name="options">The run's limits, or <c>null</c> for the engine's.</param>
+        /// <returns>The child; or <c>null</c> where its run stops short, or finds that the context admits no document,
+        /// which is the context's to say and no answer about the path.</returns>
+        public Scope? Mentioning(Scope parent, JsonPathSpec path, Schedule schedule, RunOptions? options)
+        {
+            var scope = parent.CreateChild();
+            try
+            {
+                Mention(scope, new[] { path });
+                var report = scope.Run(schedule, options);
+                if (report.StopReason != RunStopReason.Completed || scope.IsContradictory)
+                {
+                    scope.Dispose();
+                    return null;
+                }
+
+                scope.Freeze();
+                return scope;
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
+        }
+
         static IEnumerable<JsonPathSpec> Prefixes(JsonPathSpec path)
         {
             if (path.Hidden is not null)

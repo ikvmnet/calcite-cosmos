@@ -176,7 +176,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 var bare = new CosmosContainerMetadata("parks");
                 var id = JsonDocumentPath.Root.Property("id");
 
-                bare.Facts.IsUnconditional.Should().BeTrue();
                 bare.Facts.Derive(null).Knows(new JsonFact(id, new JsonClaim.OfType(JsonType.String))).Should().BeTrue();
 
                 metadata.Facts.Rules.Count.Should().BeGreaterThan(bare.Facts.Rules.Count,

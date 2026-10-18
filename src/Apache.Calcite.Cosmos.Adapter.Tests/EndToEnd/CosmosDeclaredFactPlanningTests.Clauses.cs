@@ -147,6 +147,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(best), container).Sql.Should().StartWith("SELECT DISTINCT VALUE");
         }
 
+        const string Name = """JSON_VALUE(c."DOC", '$.name')""";
+
+        const string First = """JSON_VALUE(c."DOC", '$.name.first')""";
+
+        /// <summary>
+        /// A clause over a path beneath one the filter pins to a scalar knows it absent in every row, over a container that
+        /// declares nothing: <c>name = 'x'</c> leaves <c>name</c> a string, which has no <c>first</c>. So a sort by it orders
+        /// nothing and drops the key, and its extreme pushes, as each did while the overlay answered these strata; the
+        /// engine says so once the stratum is told of the path the clause reads, which no conjunct does.
+        /// </summary>
+        /// <remarks>
+        /// The control is a filter over another path, which leaves <c>name</c> anything, and the extreme in process: not a
+        /// test of <c>name</c>'s nullness, since <c>JSON_VALUE</c> of an object is null and <c>IS NOT NULL</c> pins a scalar
+        /// as surely as an equality does.
+        /// </remarks>
+        [Fact]
+        public void AClauseBeneathAPinnedScalarKnowsItsPathAbsent()
+        {
+            var container = Declared(false);
+
+            var sorted = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {Name} = 'x' ORDER BY {First}, c."id" FETCH NEXT 5 ROWS ONLY""", container, out _);
+            PlanText(sorted).Should().NotContain("ClrCursorSort", "name.first orders nothing, and id orders the rest at the service: " + PlanText(sorted));
+            Query(FindCosmos(sorted), container).Sql.Should().EndWith("WHERE (c.name = @p0) ORDER BY c.id ASC OFFSET 0 LIMIT 5");
+
+            Sent($"""SELECT MIN({First}) FROM items AS c WHERE {Name} = 'x'""", container).Should().Contain("MIN(c.name.first)");
+            Sent($"""SELECT MIN({First}) FROM items AS c WHERE {Name} IS NOT NULL""", container).Should().Contain("MIN(c.name.first)", "a JSON_VALUE that is not null is a scalar's");
+            Sent($"""SELECT MIN({First}) FROM items AS c WHERE c."id" > 'a'""", container).Should().NotContain("MIN(", "name may be an object, whose first is any value");
+        }
+
     }
 
 }
