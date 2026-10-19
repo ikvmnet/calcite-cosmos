@@ -154,6 +154,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Planning.CosmosPushdownProbeTests.KindsSchema)!));
 
         /// <summary>
+        /// A sixth container, for what a string function computes: <c>s</c> a string declared nothing more of; <c>a</c>
+        /// printable ASCII; <c>b</c> every unit but the surrogates; <c>w</c> everything but what the service trims beside a
+        /// space — each by a <c>pattern</c>, which is how a declaration states characters.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Measured, every string function was pushed exactly over a path declared a string, and answered wrongly where a
+        /// string held a supplementary character (<c>CHAR_LENGTH</c>, <c>SUBSTRING</c>, <c>LEFT</c>, <c>RIGHT</c>), ß or
+        /// the Kelvin sign (<c>UPPER</c>, <c>LOWER</c> and the case-insensitive <c>LIKE</c> rewrites), or a tab, U+00A0 or
+        /// U+3000 at an end (<c>TRIM</c>) (<c>reports/verify-strings.md</c>). The documents hold each, where the
+        /// declaration lets them, and keep it: a fact is the caller's word.
+        /// </para>
+        /// <para>
+        /// <c>POSITION</c> over a supplementary character is not here: the emulator's <c>INDEX_OF</c> counts code points
+        /// where Azure's counts units as Calcite does (<c>Service.IndexOfCountsUnits</c>), so the statement is right on
+        /// the service and differs on the emulator alone. Over <c>b</c> it agrees on both.
+        /// </para>
+        /// </remarks>
+        static readonly CosmosContainerMetadata Strings = new CosmosContainerMetadata("strings", new[] { "/category" })
+            .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+                """
+                { "type": "object", "properties": {
+                    "s": { "type": "string" },
+                    "a": { "type": "string", "pattern": "^[ -~]*$" },
+                    "b": { "type": "string", "pattern": "^[\\u0000-\\uD7FF\\uE000-\\uFFFF]*$" },
+                    "w": { "type": "string", "pattern": "^[^\\t\\n\\u000B\\f\\r\\u0085\\u00A0\\u1680\\u180E\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]*$" } } }
+                """)!));
+
+        /// <summary>
+        /// The documents of <see cref="Strings"/>: a supplementary character between ASCII letters, and between spaces;
+        /// ß; the Kelvin sign; a tab at both ends; U+00A0 and U+3000 at either end; and ASCII, at each path its
+        /// declaration admits them.
+        /// </summary>
+        static readonly string[] StringsDocuments =
+        [
+            """{"id":"sup","category":"s","s":"a\uD83D\uDE00b","a":"axb","b":"axb","w":"a\uD83D\uDE00b"}""",
+            """{"id":"sharp","category":"s","s":"a\u00DFb","a":"aBc","b":"a\u00DFb","w":"a\u00DFb"}""",
+            """{"id":"kelvin","category":"s","s":"a\u212Ab","a":"a b","b":"a\u212Ab","w":"a\u212Ab"}""",
+            """{"id":"tab","category":"s","s":"\ta b\t","a":" a b ","b":"\ta b\t","w":" a b "}""",
+            """{"id":"nbsp","category":"s","s":"\u00A0a b\u3000","a":"x","b":"\u00A0a b\u3000","w":"x"}""",
+            """{"id":"ascii","category":"s","s":"aBc","a":"aBc","b":"aBc","w":"aBc"}""",
+            """{"id":"spaced","category":"s","s":"  a\uD83D\uDE00b  ","a":"  ab  ","b":"  ab  ","w":"  a\uD83D\uDE00b  "}""",
+        ];
+
+        /// <summary>
         /// The documents <see cref="Kinds"/> holds: each kind with and without what it declares, a string <c>"30"</c> and
         /// an integer 30 at <c>label</c> in the two kinds that differ there, and a string <c>"1"</c> beside an integer
         /// <c>n</c> of 1, which render alike.
@@ -277,6 +322,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static Container? _orderingContainer;
         static Container? _declaredContainer;
         static Container? _kindsContainer;
+        static Container? _stringsContainer;
         static string? _initializationFailure;
 
         static async Task ClassInitialize()
@@ -306,6 +352,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _orderingContainer = await Seed(database, "ordering", OrderingDocuments, cts.Token);
                 _declaredContainer = await Seed(database, "declared", DeclaredDocuments, cts.Token);
                 _kindsContainer = await Seed(database, "kinds", KindsDocuments, cts.Token, "kind");
+                _stringsContainer = await Seed(database, "strings", StringsDocuments, cts.Token);
 
                 _client = client;
             }
@@ -319,6 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 _orderingContainer = null;
                 _declaredContainer = null;
                 _kindsContainer = null;
+                _stringsContainer = null;
             }
         }
 
@@ -389,6 +437,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             _orderingContainer = null;
             _declaredContainer = null;
             _kindsContainer = null;
+            _stringsContainer = null;
         }
 
         /// <summary>
@@ -429,6 +478,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             (Ordering, _orderingContainer!),
             (Declared, _declaredContainer!),
             (Kinds, _kindsContainer!),
+            (Strings, _stringsContainer!),
         ];
 
         /// <summary>
@@ -1680,6 +1730,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') IN ('9007199254740993', '1152921504606846977')", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v' RETURNING BIGINT) = 9007199254740993 AND JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740993'", false),
             ("SELECT c.\"id\" FROM declared AS c WHERE JSON_VALUE(c.\"DOC\", '$.v') = '9007199254740992'", false),
+
+            // What a string function computes, over strings holding a supplementary character, ß, the Kelvin sign, a tab,
+            // U+00A0 and U+3000: each function pushed where the declaration proves the service computes what Calcite does,
+            // and computed in process elsewhere. Every one of these was pushed exactly over s, a path declared a string,
+            // and answered wrongly (reports/verify-strings.md).
+            ("SELECT c.\"id\", CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c", false),
+            ("SELECT c.\"id\", CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.b')) FROM strings AS c", false),
+            ("SELECT c.\"id\", CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.w')) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.s')) = 4", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.s')) = 3", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.b')) = 3", false),
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.s') FROM 2 FOR 1) FROM strings AS c", false),
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.s') FROM 2 FOR 2) FROM strings AS c", false),
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.b') FROM 2 FOR 1) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE SUBSTRING(JSON_VALUE(c.\"DOC\", '$.s') FROM 3 FOR 1) = 'b'", false),
+            ("SELECT c.\"id\", LEFT(JSON_VALUE(c.\"DOC\", '$.s'), 2), RIGHT(JSON_VALUE(c.\"DOC\", '$.s'), 2) FROM strings AS c", false),
+            ("SELECT c.\"id\", LEFT(JSON_VALUE(c.\"DOC\", '$.b'), 2), RIGHT(JSON_VALUE(c.\"DOC\", '$.b'), 2) FROM strings AS c", false),
+            ("SELECT c.\"id\", CHAR_LENGTH(SUBSTRING(JSON_VALUE(c.\"DOC\", '$.s') FROM 2 FOR 1)) FROM strings AS c", false),
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.s')), LOWER(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c", false),
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.a')), LOWER(JSON_VALUE(c.\"DOC\", '$.a')) FROM strings AS c", false),
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.b')) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.s')) = 'ASSB'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.s')) = 'akb'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.s')) LIKE '%SS%'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.s')) LIKE '%k%'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.s')) LIKE 'A__B'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.a')) LIKE '%B%'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.a')) LIKE 'a%'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') IN ('aBc', 'axb') AND UPPER(JSON_VALUE(c.\"DOC\", '$.s')) = 'ABC'", false),
+            ("SELECT c.\"id\", TRIM(JSON_VALUE(c.\"DOC\", '$.s')), TRIM(LEADING ' ' FROM JSON_VALUE(c.\"DOC\", '$.s')), TRIM(TRAILING ' ' FROM JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c", false),
+            ("SELECT c.\"id\", TRIM(JSON_VALUE(c.\"DOC\", '$.w')), TRIM(JSON_VALUE(c.\"DOC\", '$.a')), TRIM(JSON_VALUE(c.\"DOC\", '$.b')) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE TRIM(JSON_VALUE(c.\"DOC\", '$.s')) = 'a b'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE TRIM(JSON_VALUE(c.\"DOC\", '$.w')) = 'a b'", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE TRIM(JSON_VALUE(c.\"DOC\", '$.b')) = 'a b'", false),
+            ("SELECT c.\"id\", POSITION('b' IN JSON_VALUE(c.\"DOC\", '$.b')) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE POSITION('b' IN JSON_VALUE(c.\"DOC\", '$.b')) = 3", false),
+            ("SELECT c.\"id\", REVERSE(JSON_VALUE(c.\"DOC\", '$.s')), JSON_VALUE(c.\"DOC\", '$.s') || '!', REPLACE(JSON_VALUE(c.\"DOC\", '$.s'), 'b', '!'), REPEAT(JSON_VALUE(c.\"DOC\", '$.s'), 2) FROM strings AS c", false),
         ];
 
         /// <summary>
@@ -1743,6 +1830,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </remarks>
         static readonly (string Sql, string[] Rows)[] WithStatedRows =
         [
+            // Calcite's answers over the strings a pushed function used to answer otherwise: a supplementary character
+            // is two units, ß is SS, the Kelvin sign is k, and a tab is no space to trim. Stated as well as compared, so
+            // that an oracle and a pushdown agreeing on the service's answer would be seen.
+            ("SELECT c.\"id\", CHAR_LENGTH(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c WHERE c.\"id\" IN ('sup', 'sharp')",
+                ["(\"sharp\", 3)", "(\"sup\", 4)"]),
+            ("SELECT c.\"id\", UPPER(JSON_VALUE(c.\"DOC\", '$.s')), LOWER(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c WHERE c.\"id\" IN ('sharp', 'kelvin')",
+                ["(\"kelvin\", \"A\u212AB\", \"akb\")", "(\"sharp\", \"ASSB\", \"a\u00DFb\")"]),
+            ("SELECT c.\"id\", TRIM(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c WHERE c.\"id\" = 'tab'",
+                ["(\"tab\", \"\ta b\t\")"]),
+
             // A typed accessor over every document of the typed container, whose label holds a
             // string, a boolean, an array and an object as well as 30, null and nothing. Calcite
             // throws on the string and the boolean -- the RETURNING assertion, ikvmnet/calcite-dotnet#120
