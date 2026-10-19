@@ -261,8 +261,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// the high band of what is stored.
         /// </summary>
         /// <remarks>
-        /// The emulator refuses the write, with a 403, so there the measurement skips. Measured on the probe account on
-        /// 2026-10-16.
+        /// An emulator refuses the write as a request it cannot parse, so there the measurement skips. The vnext-preview
+        /// image answers 403 and the one CI runs answers 400, both with "Failed to parse Json request", so the refusal is
+        /// read from either code rather than one. Measured on the probe account on 2026-10-16.
         /// </remarks>
         [Fact]
         public async Task ALoneSurrogateIsStoredAsTheReplacementCharacter()
@@ -274,8 +275,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"lone\",\"pk\":\"a\",\"s\":\"\\ud800\"}")))
             using (var response = await stored.CreateItemStreamAsync(stream, new PartitionKey("a"), cancellationToken: TestContext.Current.CancellationToken))
-                if (response.StatusCode == HttpStatusCode.Forbidden)
-                    Assert.Skip("This service refuses a lone surrogate, as the emulator does; Azure stores it as U+FFFD.");
+                if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
+                    Assert.Skip($"This service refuses a lone surrogate ({(int)response.StatusCode}), as an emulator does; Azure stores it as U+FFFD.");
                 else
                     response.EnsureSuccessStatusCode();
 
