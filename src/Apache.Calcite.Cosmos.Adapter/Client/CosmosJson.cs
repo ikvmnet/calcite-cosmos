@@ -918,7 +918,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <remarks>
         /// <para>
         /// <b>Refused, because nothing Calcite can hold is right.</b> Azure validates nothing about UTF-8
-        /// in a document body (<c>Service.InvalidUtf8IsStoredAsWritten</c>). A client that writes raw bytes
+        /// in a document body (<c>Service.MalformedTextIsStoredAsWritten</c>). A client that writes raw bytes
         /// — a lone surrogate as WTF-8, CESU-8, an overlong form, a stray continuation byte, in a value or
         /// in a name — has them stored and returned as written, compared as bytes and counted by lead
         /// byte. Calcite holds a string as UTF-16 units and has no value for them that compares as the
@@ -1186,7 +1186,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </para>
         /// <para>
         /// <b>A number outside the width is refused, never saturated.</b> Azure stores an integer
-        /// written outside int64 as a double (<c>Service.IntegerOutsideInt64IsADouble</c>), so a
+        /// written outside int64 as a double (<c>Service.IntegerOutsideLongIsStoredAsADouble</c>), so a
         /// document written with 2^63 or 2^63 + 1 comes back as <c>9.223372036854776E+18</c>, which
         /// is no <c>BIGINT</c>; Calcite's <c>RETURNING BIGINT</c> raises over it in process
         /// (<c>Calcite.ReturningAsserts</c>), and so does this.

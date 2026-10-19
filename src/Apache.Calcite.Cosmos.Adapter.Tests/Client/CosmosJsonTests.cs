@@ -667,7 +667,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// Parses JSON text in which each <c>&lt;HH HH&gt;</c> stands for those raw bytes, as Azure stores and
-        /// returns what a client wrote that way (<c>Service.InvalidUtf8IsStoredAsWritten</c>).
+        /// returns what a client wrote that way (<c>Service.MalformedTextIsStoredAsWritten</c>).
         /// </summary>
         static JsonElement Bytes(string template)
         {

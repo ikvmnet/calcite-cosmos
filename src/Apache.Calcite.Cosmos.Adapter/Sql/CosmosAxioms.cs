@@ -43,6 +43,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         static readonly DateOnly Orders = new(2026, 10, 16);
 
+        static readonly DateOnly Stored = new(2026, 10, 19);
+
         /// <summary>
         /// Every row, grouped by what relies on it.
         /// </summary>
@@ -209,6 +211,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.ValidityIsDefinedness",
                 "ST_ISVALID is true for exactly the documents ST_DISTANCE is defined over.",
                 CosmosAxiomTarget.Azure, new(2026, 9, 20), "Measurements.CosmosGeographyValidityMeasurementTests.ValidityAgreesWithDefinedness"),
+            // ── What a document holds, read back (CosmosJson) ─────────────────────────────
+
+            new("Service.IntegerOutsideLongIsStoredAsADouble",
+                "An integer written outside int64 is stored as a double, which every query prints one way, the document read whole and the value projected alike: 9223372036854775808 comes back 9.223372036854776E+18, no BIGINT. The emulator keeps one written in [2^63, 2^64) as written, and prints it projected to 17 digits.",
+                CosmosAxiomTarget.Azure, Stored, "Measurements.CosmosStoredValueMeasurementTests.AnIntegerOutsideLongIsStoredAsADouble"),
+            new("Service.MalformedTextIsStoredAsWritten",
+                "Bytes that are not UTF-8 in a document body, in a value or in a name, are stored as a client wrote them, returned as written by every query and by a point read, and compared as bytes: a WTF-8 surrogate, CESU-8, an overlong form, a stray byte. The emulator refuses the write.",
+                CosmosAxiomTarget.Azure, Stored, "Measurements.CosmosStoredValueMeasurementTests.MalformedTextIsStoredAsWritten"),
+
             // ── The service's order (CosmosServiceOrder, CosmosContainerMetadata.IsSortSupported) ───
 
             new("Service.StringOrderIsCodePoint",
