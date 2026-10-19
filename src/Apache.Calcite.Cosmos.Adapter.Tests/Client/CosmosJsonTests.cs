@@ -269,6 +269,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <remarks>
+        /// <para>
+        /// What a document written with 2^63 or 2^63 + 1 reads back as: Azure stores an integer outside
+        /// int64 as a double and prints it <c>9.223372036854776E+18</c>, and the emulator returns the
+        /// document whole as it was written. Neither is a <c>BIGINT</c>. The double 2^63 used to pass the
+        /// range check, which compared with <c>(double)long.MaxValue</c> — 2^63 itself — and the cast
+        /// then saturated it to <c>9223372036854775807</c>, a number the document does not hold.
+        /// </para>
+        /// <para>
+        /// The same bound holds for every reading that comes through it, a <c>TIMESTAMP</c> stored as a
+        /// number among them.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("9.223372036854776E+18", "BIGINT")]
+        [InlineData("9223372036854775808", "BIGINT")]
+        [InlineData("9223372036854775809", "BIGINT")]
+        [InlineData("9223372036854775808.0", "BIGINT")]
+        [InlineData("1E+19", "BIGINT")]
+        [InlineData("1.8446744073709552E+19", "BIGINT")]
+        [InlineData("-9.223372036854778E+18", "BIGINT")]
+        [InlineData("9.223372036854776E+18", "TIMESTAMP")]
+        [InlineData("2147483648.0", "INTEGER")]
+        [InlineData("-2147483649.0", "INTEGER")]
+        [InlineData("2147483648.0", "DATE")]
+        [InlineData("32768.0", "SMALLINT")]
+        [InlineData("128.0", "TINYINT")]
+        public void ShouldRefuseAWholeDoubleOutsideTheRangeOfItsType(string json, string typeName)
+        {
+            var act = () => Read(json, SqlTypeName.valueOf(typeName));
+            act.Should().Throw<CosmosMaterializationException>().WithMessage($"*'{json}' is outside the range of {typeName}*");
+        }
+
+        /// <remarks>
+        /// And each width's own extremes still read, written as a double or as an integer. The least is
+        /// -2^(k-1), which a double holds exactly: Azure prints -9223372036854775809, written, as
+        /// <c>-9.223372036854776E+18</c>, which is <c>long.MinValue</c> exactly, so that reads.
+        /// </remarks>
+        [Theory]
+        [InlineData("9223372036854775807", "BIGINT", 9223372036854775807L)]
+        [InlineData("-9223372036854775808", "BIGINT", -9223372036854775808L)]
+        [InlineData("-9.223372036854776E+18", "BIGINT", -9223372036854775808L)]
+        [InlineData("9.223372036854775E+18", "BIGINT", 9223372036854774784L)]
+        [InlineData("2147483647.0", "INTEGER", 2147483647L)]
+        [InlineData("-2147483648.0", "INTEGER", -2147483648L)]
+        [InlineData("32767.0", "SMALLINT", 32767L)]
+        [InlineData("-128.0", "TINYINT", -128L)]
+        public void ShouldReadAWholeNumberAtTheExtremesOfItsType(string json, string typeName, long expected)
+        {
+            var read = Read(json, SqlTypeName.valueOf(typeName));
+            ((java.lang.Number)read!).longValue().Should().Be(expected);
+        }
+
+        /// <remarks>
         /// Built from the digits JSON carried rather than from a double, which is the whole point of a
         /// decimal.
         /// </remarks>

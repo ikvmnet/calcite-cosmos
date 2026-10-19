@@ -821,6 +821,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             return value.GetDouble();
         }
 
+        /// <summary>
+        /// Reads a JSON number as a whole number within a two's complement width.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every integral reading comes here</b> — <c>TINYINT</c> to <c>BIGINT</c>, and a <c>DATE</c>,
+        /// <c>TIME</c> or <c>TIMESTAMP</c> stored as a number — so the range is decided once, for each
+        /// width by the same two bounds.
+        /// </para>
+        /// <para>
+        /// <b>A number outside the width is refused, never saturated.</b> Azure stores an integer
+        /// written outside int64 as a double (<c>Service.IntegerOutsideInt64IsADouble</c>), so a
+        /// document written with 2^63 or 2^63 + 1 comes back as <c>9.223372036854776E+18</c>, which
+        /// is no <c>BIGINT</c>; Calcite's <c>RETURNING BIGINT</c> raises over it in process
+        /// (<c>Calcite.ReturningAsserts</c>), and so does this.
+        /// </para>
+        /// </remarks>
+        /// <param name="value">The value to read.</param>
+        /// <param name="min">The width's least value, -2^(k-1).</param>
+        /// <param name="max">The width's greatest value, 2^(k-1) - 1.</param>
+        /// <param name="typeName">The SQL type, which the refusal names.</param>
+        /// <returns>The value.</returns>
+        /// <exception cref="CosmosMaterializationException">The value is not a whole number within the width.</exception>
         static long GetInteger(JsonElement value, long min, long max, SqlTypeName typeName)
         {
             if (value.ValueKind != JsonValueKind.Number)
@@ -836,10 +859,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 if (double.IsFinite(number) == false || Math.Floor(number) != number)
                     throw new CosmosMaterializationException($"A JSON number of '{value.GetRawText()}' is not a whole number and cannot be read as {typeName.name()}.");
 
-                // Checked before the cast, which would otherwise wrap rather than fail. The bounds are
-                // widened to double for the comparison, so a value within one ULP of the extreme is
-                // admitted here and caught by the range check below.
-                if (number < min || number > max)
+                // Checked in doubles before the cast, which saturates rather than fails, and the bounds
+                // have to be exact there. The least value is -2^(k-1), a double exactly. The greatest is
+                // not, past 2^53: (double)long.MaxValue rounds up to 2^63, which is no long, so testing
+                // "number > max" admitted a stored 2^63 and the cast read it as 9223372036854775807 — the
+                // answer Azure's 9.223372036854776E+18 got under RETURNING BIGINT, where Calcite raises.
+                // One past the greatest, 2^(k-1), is a double exactly in every width: where max is one,
+                // adding one is exact, and where it rounded up to 2^63, adding one rounds back to it. So
+                // the refusal is "at or above max + 1" and "below min". Not "at or below min - 1", the
+                // mirror of it, which is -2^63 in doubles and would refuse long.MinValue itself.
+                if (number < min || number >= (double)max + 1.0)
                     throw new CosmosMaterializationException($"A JSON number of '{value.GetRawText()}' is outside the range of {typeName.name()}.");
 
                 integral = (long)number;
