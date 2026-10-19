@@ -318,7 +318,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (CosmosLookupJoinRule.TryProbeKey(probe, _probeKey, container => Facts ?? CosmosOracle.For(container.Facts).Declared, out var key) == false)
                 throw new Sql.CosmosTranslationException("The lookup key can no longer be restricted.");
 
-            var (query, _, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
+            var (query, paths, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
 
             Convert.CosmosConverters.AnnounceQueryPlan(implementor, this, query.Sql);
 
@@ -333,7 +333,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 Expression.Constant(KeyPrefix),
                 Expression.Constant(_batchSize),
                 KeySelector(buildPhysType, buildType, _buildKey),
-                CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings),
+                CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings, paths),
                 KeySelector(probePhysType, probeType, _probeKey),
                 ResultSelector(physType, buildPhysType, buildType, probePhysType, probeType),
                 Expression.Constant(DefaultCacheSize),

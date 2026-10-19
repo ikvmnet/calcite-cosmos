@@ -194,6 +194,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().Equal("a", "b", "\U0001F600", "");
         }
 
+        /// <summary>
+        /// A <c>DISTINCT</c>'s repeat is told apart by the bytes the service sent, so a row holding text a client wrote
+        /// that is not UTF-8 reaches the row's reader, which refuses it by name — where telling it apart by its text failed
+        /// first, with the decoder's error, which named nothing. The two rows tie on a numeric key, which is what makes
+        /// the reader tell them apart at all.
+        /// </summary>
+        [Fact]
+        public async Task ADistinctsRowHoldingTextThatIsNotUtf8IsRefusedByItsReader()
+        {
+            static JsonElement Bytes(string before, byte invalid, string after) =>
+                JsonDocument.Parse((byte[])[.. System.Text.Encoding.UTF8.GetBytes(before), invalid, .. System.Text.Encoding.UTF8.GetBytes(after)]).RootElement.Clone();
+
+            var rows = new[] { JsonDocument.Parse("""{"id":"a","s":"ok","$k0":1}""").RootElement.Clone(), Bytes("""{"id":"b","s":"x""", 0xFF, """y","$k0":1}""") };
+            var key = new CosmosOrderedKey("$k0", CosmosOrderedKeyKind.Exact, false, false, CosmosOrderAnchor.None);
+            var program = new CosmosOrderProgram([key], true, null, null, Statement, [], [], []);
+
+            var cursor = await CosmosCursors.OpenAsync(new RowsExecutor(rows), null!, new CosmosQuery(Statement, [], Order: program),
+                row => (string)CosmosJson.GetProperty(row, "s", org.apache.calcite.sql.type.SqlTypeName.VARCHAR, null, ["id"])!, CancellationToken.None);
+
+            var act = () => ListCursor.CollectAsync(cursor);
+
+            await act.Should().ThrowAsync<CosmosMaterializationException>().WithMessage("""Column 's' of document "b" holds text that is not UTF-8 at $: the bytes FF in "x\xFFy".*""");
+        }
+
+        /// <summary>
+        /// Answers every statement with the same rows, parsed from bytes a string cannot carry.
+        /// </summary>
+        sealed class RowsExecutor(IReadOnlyList<JsonElement> rows) : ICosmosQueryExecutor
+        {
+
+            public async ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                await Task.Yield();
+                return new ListCursor<JsonElement>(rows);
+            }
+
+        }
+
         // ── A window ──────────────────────────────────────────────────────────────────────────
 
         /// <summary>

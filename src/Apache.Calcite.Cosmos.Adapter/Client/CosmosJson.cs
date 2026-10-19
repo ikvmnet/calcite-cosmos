@@ -28,6 +28,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     /// reading: the document column aside, nothing in this adapter can distinguish a missing property from a
     /// null one, and SQL has no third value to distinguish them with.
     /// </para>
+    /// <para>
+    /// A value holding text that is not UTF-8, which Azure stores as a client wrote it, has no reading
+    /// and is refused by every reading alike, with an error that names what holds it, the document where
+    /// the row says which, and the bytes — <see cref="Undecodable"/>. Each reading of a row's column
+    /// catches the decoder's refusal and names it; the one that writes a value out rather than decoding
+    /// it looks for the bytes first.
+    /// </para>
     /// </remarks>
     public static class CosmosJson
     {
@@ -58,7 +65,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// The element type, where <paramref name="typeName"/> is a collection. See
         /// <see cref="GetList(JsonElement, SqlTypeName?)"/> for what it buys.
         /// </param>
-        public static object? GetProperty(JsonElement row, string name, SqlTypeName typeName, SqlTypeName? componentTypeName)
+        /// <param name="identity">
+        /// Where the row holds its document's <c>id</c>, as member names from the row, for the error a
+        /// value that is not UTF-8 is refused with; <c>null</c> where it holds none. See
+        /// <see cref="Undecodable"/>.
+        /// </param>
+        public static object? GetProperty(JsonElement row, string name, SqlTypeName typeName, SqlTypeName? componentTypeName, string[]? identity = null)
         {
             // A row that is not an object has no properties to name. That is not reachable through the
             // converters, which always project an object, but it is worth failing loudly rather than
@@ -66,7 +78,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (row.ValueKind != JsonValueKind.Object)
                 throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
 
-            return row.TryGetProperty(name, out var value) ? GetValue(value, typeName, componentTypeName) : null;
+            if (row.TryGetProperty(name, out var value) == false)
+                return null;
+
+            try
+            {
+                return GetValue(value, typeName, componentTypeName);
+            }
+            catch (InvalidOperationException e) when (IsUndecodable(e))
+            {
+                throw Undecodable($"Column '{name}'", DocumentIdOf(row, identity), value, e);
+            }
         }
 
         /// <summary>
@@ -81,14 +103,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="row">The JSON value Cosmos returned for the row.</param>
         /// <param name="name">The property to read.</param>
+        /// <param name="identity">Where the row holds its document's <c>id</c>; see <see cref="GetProperty(JsonElement, string, SqlTypeName, SqlTypeName?, string[])"/>.</param>
         /// <returns>The rendered text, or <c>null</c> where the property is absent or JSON null.</returns>
-        /// <exception cref="CosmosMaterializationException">The row is not a JSON object.</exception>
-        public static string? GetTextProperty(JsonElement row, string name)
+        /// <exception cref="CosmosMaterializationException">The row is not a JSON object, or the value holds text that is not UTF-8.</exception>
+        public static string? GetTextProperty(JsonElement row, string name, string[]? identity = null)
         {
             if (row.ValueKind != JsonValueKind.Object)
                 throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
 
-            return row.TryGetProperty(name, out var value) ? GetText(value) : null;
+            if (row.TryGetProperty(name, out var value) == false)
+                return null;
+
+            try
+            {
+                return GetText(value);
+            }
+            catch (InvalidOperationException e) when (IsUndecodable(e))
+            {
+                throw Undecodable($"Column '{name}'", DocumentIdOf(row, identity), value, e);
+            }
         }
 
         /// <summary>
@@ -137,9 +170,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="row">The row object.</param>
         /// <param name="name">The property to read.</param>
+        /// <param name="identity">Where the row holds its document's <c>id</c>; see <see cref="GetProperty(JsonElement, string, SqlTypeName, SqlTypeName?, string[])"/>.</param>
         /// <returns>The JSON text, or <c>null</c> where the property is absent or JSON null.</returns>
-        /// <exception cref="CosmosMaterializationException">The row is not an object.</exception>
-        public static string? GetJsonProperty(JsonElement row, string name)
+        /// <exception cref="CosmosMaterializationException">The row is not an object, or the value holds text that is not UTF-8.</exception>
+        public static string? GetJsonProperty(JsonElement row, string name, string[]? identity = null)
         {
             if (row.ValueKind != JsonValueKind.Object)
                 throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
@@ -147,7 +181,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (row.TryGetProperty(name, out var value) == false || value.ValueKind == JsonValueKind.Null)
                 return null;
 
-            return value.GetRawText();
+            try
+            {
+                return value.GetRawText();
+            }
+            catch (InvalidOperationException e) when (IsUndecodable(e))
+            {
+                throw Undecodable($"Column '{name}'", DocumentIdOf(row, identity), value, e);
+            }
         }
 
         /// <summary>
@@ -165,18 +206,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// A scalar at the path is not this operator's business and answers null — the guard renders
         /// that at the service, and this is the reading for what the guard admits.
         /// </para>
+        /// <para>
+        /// <b>Text that is not UTF-8 is refused here as everywhere, and here it has to be looked for.</b>
+        /// Every other reading decodes, and <c>System.Text.Json</c> refuses to decode it; writing a
+        /// value out does not decode it, and the writer replaces each byte it cannot read with an
+        /// escaped U+FFFD. So <c>x ED A0 80 y</c> came out as <c>"x\uFFFD\uFFFD\uFFFDy"</c> and was
+        /// answered without a word, where the in-process plan raised and the service compares the bytes
+        /// as they are (<c>reports/verify-bytes.md</c>, L15). The value is searched first instead,
+        /// which is one validation of each string's bytes and nothing for a value that has none.
+        /// </para>
         /// </remarks>
         /// <param name="row">The row object.</param>
         /// <param name="name">The property to read.</param>
+        /// <param name="identity">Where the row holds its document's <c>id</c>; see <see cref="GetProperty(JsonElement, string, SqlTypeName, SqlTypeName?, string[])"/>.</param>
         /// <returns>The JSON text, or <c>null</c> where the property is absent or JSON null.</returns>
-        /// <exception cref="CosmosMaterializationException">The row is not an object.</exception>
-        public static string? GetJsonTextProperty(JsonElement row, string name)
+        /// <exception cref="CosmosMaterializationException">The row is not an object, or the value holds text that is not UTF-8.</exception>
+        public static string? GetJsonTextProperty(JsonElement row, string name, string[]? identity = null)
         {
             if (row.ValueKind != JsonValueKind.Object)
                 throw new CosmosMaterializationException($"Expected a JSON object for the row, got {row.ValueKind}.");
 
             if (row.TryGetProperty(name, out var value) == false || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
                 return null;
+
+            if (IsDecodable(value) == false)
+                throw Undecodable($"Column '{name}'", DocumentIdOf(row, identity), value, null);
 
             using var buffer = new System.IO.MemoryStream();
 
@@ -239,7 +293,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     return null;
             }
 
-            return GetValue(value, typeName, componentTypeName);
+            try
+            {
+                return GetValue(value, typeName, componentTypeName);
+            }
+            catch (InvalidOperationException e) when (IsUndecodable(e))
+            {
+                // A point read's row is the document, so its id is known whatever the statement selects.
+                var path = new System.Text.StringBuilder("$");
+                foreach (var segment in segments)
+                    AppendStep(path, segment.IsIndex ? null : segment.Name, segment.ArrayIndex);
+
+                throw Undecodable($"The path '{path}'", DocumentIdOf(document, [Metadata.CosmosContainerMetadata.IdPropertyName]), value, e);
+            }
         }
 
         /// <summary>
@@ -803,6 +869,294 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 default:
                     return null;
             }
+        }
+
+        // ── Text that is not UTF-8 ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Determines whether an exception is <c>System.Text.Json</c> refusing to decode text that is not
+        /// UTF-8.
+        /// </summary>
+        /// <remarks>
+        /// What <c>GetString</c>, <c>GetRawText</c> and a property's <c>Name</c> throw over such bytes, and
+        /// only then: an <see cref="InvalidOperationException"/>, <em>"Cannot transcode invalid UTF-8 JSON
+        /// text to UTF-16 string."</em>, caused by the decoder's <see cref="System.Text.DecoderFallbackException"/>.
+        /// The cause is what is tested, the reader throwing that type for other reasons too.
+        /// </remarks>
+        /// <param name="e">The exception.</param>
+        /// <returns><c>true</c> where it is that refusal.</returns>
+        internal static bool IsUndecodable(Exception e) =>
+            e is InvalidOperationException { InnerException: System.Text.DecoderFallbackException };
+
+        /// <summary>
+        /// Reads a JSON string, refusing one whose bytes are not UTF-8 with the error that says so.
+        /// </summary>
+        /// <remarks>
+        /// For a reader that decodes a value outside a row's columns — the one completing an order, which
+        /// compares the keys and asks whether each certifies the rows around it — and so has a subject to
+        /// name but no column and no document.
+        /// </remarks>
+        /// <param name="value">A JSON string.</param>
+        /// <param name="subject">What holds the value, for the error.</param>
+        /// <returns>The text.</returns>
+        /// <exception cref="CosmosMaterializationException">The bytes are not UTF-8.</exception>
+        internal static string Decode(JsonElement value, string subject)
+        {
+            try
+            {
+                return value.GetString()!;
+            }
+            catch (InvalidOperationException e) when (IsUndecodable(e))
+            {
+                throw Undecodable(subject, null, value, e);
+            }
+        }
+
+        /// <summary>
+        /// Builds the error a value holding text that is not UTF-8 is refused with.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Refused, because nothing Calcite can hold is right.</b> Azure validates nothing about UTF-8
+        /// in a document body (<c>Service.InvalidUtf8IsStoredAsWritten</c>). A client that writes raw bytes
+        /// — a lone surrogate as WTF-8, CESU-8, an overlong form, a stray continuation byte, in a value or
+        /// in a name — has them stored and returned as written, compared as bytes and counted by lead
+        /// byte. Calcite holds a string as UTF-16 units and has no value for them that compares as the
+        /// service does. U+FFFD, a lenient decoder's reading, is not one: the service ranks <c>80</c> and
+        /// <c>C0 AF</c> below U+00E9 and says the raw document is not <c>"x\uFFFDy"</c>, where Calcite would
+        /// rank the replacement above every unit below U+D800 and call the two equal; and the document
+        /// column would stop being the text the service sent. Failing is the one reading that is not
+        /// wrong, and the differential counts a Calcite error as refining to anything.
+        /// </para>
+        /// <para>
+        /// <b>Named, because the decoder's own error names nothing</b>, and one such document anywhere in
+        /// a container fails every statement that reads its <c>DOC</c> — every plan not pushed in full —
+        /// mid-stream, after earlier rows have been handed out. So this says what holds the value, the
+        /// document where the row identifies one, where in the value the bytes lie, and the bytes: what a
+        /// caller needs to find the document and rewrite it.
+        /// </para>
+        /// <para>
+        /// <b>A value fails, not a row or a partition.</b> A statement fails exactly where a row carries
+        /// the bytes into something that decodes them. One whose rows leave the value out is answered, in
+        /// the same logical partition too (<c>reports/verify-bytes.md</c>, §2.5).
+        /// </para>
+        /// </remarks>
+        /// <param name="subject">What holds the value: a column, a path, a key.</param>
+        /// <param name="document">The document's <c>id</c> as <see cref="DocumentIdOf"/> shows it, or <c>null</c> where it is not known.</param>
+        /// <param name="value">The value the bytes are in.</param>
+        /// <param name="inner">The decoder's refusal, where there was one.</param>
+        /// <returns>The error.</returns>
+        internal static CosmosMaterializationException Undecodable(string subject, string? document, JsonElement value, Exception? inner)
+        {
+            var message = new System.Text.StringBuilder(subject);
+
+            if (document is not null)
+                message.Append(" of document ").Append(document);
+
+            message.Append(" holds text that is not UTF-8");
+
+            if (FindUndecodable(value) is { } found)
+            {
+                var (steps, bytes, name) = found;
+
+                message.Append(" at $");
+                for (var i = steps.Count - 1; i >= 0; i--)
+                    message.Append(steps[i]);
+
+                message.Append(name ? ", in a property name" : "").Append(": the bytes ");
+                AppendInvalidBytes(message, bytes);
+                message.Append(" in ");
+                AppendShown(message, bytes);
+            }
+
+            message.Append(". Cosmos DB stores the bytes a client writes without checking them, and Calcite has no string that compares as the service compares these, so the value cannot be read. Rewrite it as UTF-8, or leave it out of what the statement reads.");
+
+            return inner is null ? new(message.ToString()) : new(message.ToString(), inner);
+        }
+
+        /// <summary>
+        /// Shows the <c>id</c> a row holds where it says it holds one, for the error a value that is not
+        /// UTF-8 is refused with.
+        /// </summary>
+        /// <param name="row">The row, or the document.</param>
+        /// <param name="identity">The members leading to the <c>id</c>, from the row; <c>null</c> where the row holds none.</param>
+        /// <returns>The <c>id</c>, quoted as JSON writes it, or <c>null</c> where it is not there.</returns>
+        internal static string? DocumentIdOf(JsonElement row, string[]? identity)
+        {
+            if (identity is null)
+                return null;
+
+            var value = row;
+            foreach (var member in identity)
+                if (value.ValueKind != JsonValueKind.Object || value.TryGetProperty(member, out value) == false)
+                    return null;
+
+            // Shown from its bytes, an id being as able as anything else to hold some that are not UTF-8.
+            if (value.ValueKind != JsonValueKind.String)
+                return null;
+
+            var shown = new System.Text.StringBuilder();
+            AppendShown(shown, System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(value)[1..^1]);
+            return shown.ToString();
+        }
+
+        /// <summary>
+        /// Finds the first string, or property name, in a value whose bytes are not UTF-8.
+        /// </summary>
+        /// <remarks>
+        /// Over the bytes the service sent, which <c>JsonMarshal</c> hands over undecoded: a string's
+        /// token is its quotes, its text and any escapes, and an escape is ASCII, so the text between the
+        /// quotes is UTF-8 exactly where the bytes are. (An escaped lone surrogate is ASCII and still does
+        /// not decode; the service never returns one, storing the escape as U+FFFD,
+        /// <c>Service.LoneSurrogateIsStoredAsReplacement</c>.) Nothing is allocated unless something is
+        /// found, which is what lets <see cref="GetJsonTextProperty"/> ask it of every value; the steps to
+        /// it are gathered on the way out, innermost first.
+        /// </remarks>
+        /// <param name="value">The value.</param>
+        /// <returns>The steps to it from the value, innermost first; its bytes; and whether they are a property's name; or <c>null</c>.</returns>
+        static (List<string> Steps, byte[] Bytes, bool Name)? FindUndecodable(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String:
+                    var text = System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(value)[1..^1];
+                    return System.Text.Unicode.Utf8.IsValid(text) ? null : ([], text.ToArray(), false);
+
+                case JsonValueKind.Object:
+                    foreach (var property in value.EnumerateObject())
+                    {
+                        var name = System.Runtime.InteropServices.JsonMarshal.GetRawUtf8PropertyName(property);
+                        if (System.Text.Unicode.Utf8.IsValid(name) == false)
+                            return ([], name.ToArray(), true);
+
+                        if (FindUndecodable(property.Value) is { } found)
+                        {
+                            var step = new System.Text.StringBuilder();
+                            AppendStep(step, property.Name, -1);
+                            found.Steps.Add(step.ToString());
+                            return found;
+                        }
+                    }
+
+                    return null;
+
+                case JsonValueKind.Array:
+                    var index = 0;
+                    foreach (var element in value.EnumerateArray())
+                    {
+                        if (FindUndecodable(element) is { } found)
+                        {
+                            var step = new System.Text.StringBuilder();
+                            AppendStep(step, null, index);
+                            found.Steps.Add(step.ToString());
+                            return found;
+                        }
+
+                        index++;
+                    }
+
+                    return null;
+
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Determines whether every string and property name in a value is UTF-8.
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <returns><c>true</c> where nothing in it would be refused.</returns>
+        internal static bool IsDecodable(JsonElement value) => FindUndecodable(value) is null;
+
+        /// <summary>
+        /// Writes one step of a JSON path: <c>.name</c>, <c>['odd name']</c> or <c>[3]</c>.
+        /// </summary>
+        static void AppendStep(System.Text.StringBuilder builder, string? name, int index)
+        {
+            if (name is null)
+            {
+                builder.Append('[').Append(index.ToString(CultureInfo.InvariantCulture)).Append(']');
+                return;
+            }
+
+            var plain = name.Length > 0 && (char.IsAsciiLetter(name[0]) || name[0] == '_');
+            for (var i = 1; plain && i < name.Length; i++)
+                plain = char.IsAsciiLetterOrDigit(name[i]) || name[i] == '_';
+
+            if (plain)
+                builder.Append('.').Append(name);
+            else
+                builder.Append("['").Append(name.Replace("\\", "\\\\").Replace("'", "\\'")).Append("']");
+        }
+
+        /// <summary>
+        /// Writes the bytes of the first run of a text that are not UTF-8, in hex: <c>ED A0 80</c>.
+        /// </summary>
+        static void AppendInvalidBytes(System.Text.StringBuilder builder, ReadOnlySpan<byte> bytes)
+        {
+            var at = 0;
+            while (at < bytes.Length && System.Text.Rune.DecodeFromUtf8(bytes[at..], out _, out var consumed) == System.Buffers.OperationStatus.Done)
+                at += consumed;
+
+            // A run, because a decoder rejects a sequence a byte at a time where its second byte is out
+            // of range: a WTF-8 surrogate, ED A0 80, is three rejections, and it is one thing to rewrite.
+            var first = true;
+            while (at < bytes.Length && System.Text.Rune.DecodeFromUtf8(bytes[at..], out _, out var consumed) != System.Buffers.OperationStatus.Done)
+            {
+                for (var i = 0; i < consumed; i++, first = false)
+                    builder.Append(first ? "" : " ").Append(bytes[at + i].ToString("X2", CultureInfo.InvariantCulture));
+
+                at += consumed;
+            }
+        }
+
+        /// <summary>
+        /// Writes a text as JSON would quote it, with each byte that is not UTF-8 as <c>\xHH</c>; a long
+        /// one is cut around the first such byte, or after its start where it has none.
+        /// </summary>
+        static void AppendShown(System.Text.StringBuilder builder, ReadOnlySpan<byte> bytes)
+        {
+            const int Around = 32;
+
+            var first = 0;
+            while (first < bytes.Length && System.Text.Rune.DecodeFromUtf8(bytes[first..], out _, out var consumed) == System.Buffers.OperationStatus.Done)
+                first += consumed;
+
+            // Cut where a sequence starts, so that the cut itself shows no invalid bytes: a sequence is
+            // at most four bytes, so at most three continuation bytes are stepped over at either end.
+            var invalid = first < bytes.Length;
+
+            var start = invalid ? Math.Max(0, first - Around) : 0;
+            for (var i = 0; i < 3 && start > 0 && (bytes[start] & 0xC0) == 0x80; i++)
+                start--;
+
+            var end = Math.Min(bytes.Length, invalid ? first + Around : Around * 4);
+            for (var i = 0; i < 3 && end < bytes.Length && (bytes[end] & 0xC0) == 0x80; i++)
+                end++;
+
+            builder.Append(start > 0 ? "\"…" : "\"");
+
+            for (var at = start; at < end;)
+            {
+                if (System.Text.Rune.DecodeFromUtf8(bytes[at..], out var rune, out var consumed) != System.Buffers.OperationStatus.Done)
+                {
+                    for (var i = 0; i < consumed; i++)
+                        builder.Append("\\x").Append(bytes[at + i].ToString("X2", CultureInfo.InvariantCulture));
+                }
+                else if (rune.Value < 0x20)
+                {
+                    builder.Append("\\u").Append(rune.Value.ToString("x4", CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    builder.Append(rune.ToString());
+                }
+
+                at += consumed;
+            }
+
+            builder.Append(end < bytes.Length ? "…\"" : "\"");
         }
 
         /// <summary>

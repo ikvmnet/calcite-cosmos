@@ -238,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((query.PointReadId is not null || query.PointReadIds is not null) && rowBuilder is null)
                 query = query with { PointReadId = null, PointReadIds = null };
 
-            rowBuilder ??= CosmosConverters.RowBuilder(physType, getRowType(), readings);
+            rowBuilder ??= CosmosConverters.RowBuilder(physType, getRowType(), readings, fields);
 
             CosmosConverters.AnnounceQueryPlan(implementor, this, query.Sql);
 

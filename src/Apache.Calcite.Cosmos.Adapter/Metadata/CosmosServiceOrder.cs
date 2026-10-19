@@ -431,7 +431,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where it certifies.</returns>
         public static bool IsAnchor(CosmosOrderAnchor anchor, System.Text.Json.JsonElement value) => anchor switch
         {
-            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || JsonFactEncoding.Characters(value.GetString()!) == JsonCharacterBand.None,
+            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || JsonFactEncoding.Characters(Client.CosmosJson.Decode(value, Client.CosmosKeyComparer.Ordered)) == JsonCharacterBand.None,
             CosmosOrderAnchor.Number => value.ValueKind != System.Text.Json.JsonValueKind.Number || value.TryGetDouble(out var number) && Math.Abs(number) < (double)TwoTo53,
             _ => true,
         };
