@@ -159,7 +159,12 @@ a missing property give `NULL` under every one. So:
   (`NULL ON ERROR` is the default) where Calcite fails instead (Chapter 23).
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
-  that bends to the data would be a suggestion, not a type.
+  that bends to the data would be a suggestion, not a type. So does an integer written outside the
+  64-bit range under `BIGINT`: Azure stores 2^63 and beyond as a double, `9.223372036854776E+18`, which
+  no `BIGINT` holds. `RETURNING DOUBLE` reads it.
+- Text that is not UTF-8, which Azure stores as a client wrote it, fails to read wherever a column
+  carries it, `DOC` included, with a `CosmosMaterializationException` naming the column, the document
+  and the bytes (Chapter 22).
 - A sort on a `RETURNING` column reaches the service only where the container's schema declares the
   property that type (Chapter 9).
 - To *convert* a string to a number, use `CAST(JSON_VALUE(…) AS INTEGER)`. That converts, which the

@@ -27,6 +27,9 @@ statements Azure rejects and to reject features Azure implements:
 | `ORDER BY` over a computed property no included path names | computed properties dropped on create | rejected (400) |
 | `ORDER BY RANK … ASC` or `DESC` | rejected (`SC2005`) | rejected — no direction is taken |
 | two string constants compared, `'\uE000' < '\uD83D\uDE00'` | by code point | by UTF-16 code unit |
+| an integer written in [2^63, 2^64) | kept as written, and printed projected as another integer: 2^63 as `9223372036854775800` | stored as a double, printed one way: `9.223372036854776E+18` |
+| a document holding bytes that are not UTF-8 | rejected (403, or 400) | stored and returned as written |
+| a lone surrogate written as a JSON escape | rejected (403, or 400) | stored as U+FFFD |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 

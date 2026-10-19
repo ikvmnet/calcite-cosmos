@@ -2334,25 +2334,58 @@ across documents* and *A join of a container to itself* is the record.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
   numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
   so the basis is asked of the service per row.
-- **A lone surrogate is stored on Azure and cannot be read back** — *small, and the decision is what to
-  answer.* Measured on the probe account: a `\ud800` escape is stored as U+FFFD, and the raw bytes
-  `ED A0 80` (WTF-8 for U+D800) are stored verbatim and come back as invalid UTF-8, which
-  `JsonElement.GetString()` refuses (*"Cannot transcode invalid UTF-8 JSON text to UTF-16 string"*).
-  The emulator refuses both writes with a 403. A document another client wrote that way fails every
-  statement whose rows reach it. Either the failure names the document, or the reader reads the
-  sequence as U+FFFD, which is what the service itself did with the escape. Nothing orders them
-  wrongly meanwhile: U+FFFD and a surrogate both lie at or above U+D800, which R1 already refuses to rank
-  against a high unit, and what a declared `pattern` that admits a surrogate proves of the stored strings'
-  high band is nothing, by the theory's rule of what is stored (`Service.LoneSurrogateIsStoredAsReplacement`,
-  `DESIGN.md`, *Reading a pattern as characters*).
-- **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
-  returns a document read whole as it was written, and prints a projected number to 17 significant
-  digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and
-  `9223372036854775800` through `c.v`, so a pushed projection answers another number than the plan
-  that reads the document, and `RETURNING BIGINT` raises over the first and reads the second. The
-  `ORDER BY` yardstick meets it (`DESIGN.md`, *Differential testing*: the family *a double printed two
-  ways*). Azure reads 2^63 back as `9.223372036854776E+18`; whether a projection and a document read
-  whole agree there is unmeasured, and decides whether this is the emulator's alone.
+- **Text that is not UTF-8 is refused by name** — *done; a lenient reading of a lone surrogate is the
+  option left.* Measured on the probe account (`reports/verify-bytes.md` §2): Azure validates nothing about
+  UTF-8 in a document body. Any sequence a client writes raw is stored, returned by every query and by a
+  point read, and compared as written — a WTF-8 surrogate, a CESU-8 pair, `FF`, the overlong `C0 AF`, a
+  lone continuation byte, in a value or in a property name (`Service.MalformedTextIsStoredAsWritten`). A
+  lone surrogate written as a JSON escape is the exception, stored as U+FFFD
+  (`Service.LoneSurrogateIsStoredAsReplacement`). The emulator refuses every such write, with a 403 or, on
+  the image CI runs, a 400.
+
+  Every reading refuses such a value with a `CosmosMaterializationException` naming the column or path,
+  the document where the row says which, where in the value the bytes lie, and the bytes
+  (`CosmosJson.Undecodable`; `docs/22-troubleshooting.md`). It used to fail with *"Cannot transcode invalid
+  UTF-8 JSON text to UTF-16 string"*, which names nothing, mid-stream; and a projected `JSON_QUERY`, which
+  writes the value out rather than decoding it, answered each byte as an escaped U+FFFD without a word. It
+  looks for the bytes first now. So does the reader completing an order, over its text keys, and a
+  `DISTINCT`'s repeat is told apart by the bytes. The failure is per decoded value, not per row or per
+  partition: a statement fails exactly where a row carries the bytes into a reading, and one whose rows
+  leave the value out is answered, in the same logical partition too. Every plan that is not pushed in full
+  reads `DOC` for every document it scans, though, so one such document fails all of those over its
+  container.
+
+  **U+FFFD is no reading of them**, and was dropped as a candidate. The service compares the bytes as they
+  are and counts a sequence by its lead byte: it ranks `80` and `C0 AF` below U+00E9, and says the raw
+  document is not the one U+FFFD would make of it. Calcite would rank the replacement above every unit
+  below U+D800, and call the two equal. The document column would stop being the text the service sent.
+
+  **The option left, only if raw lone surrogates from other clients turn out to matter:** read a WTF-8
+  surrogate (`ED A0`–`BF 80`–`BF`) as the lone UTF-16 unit it encodes, and go on refusing every other
+  invalid sequence. It is the one lenient reading that agrees with the service: Azure ranks `ED A0 80`
+  between U+D7FF and U+E000, where Calcite's UTF-16 order puts U+D800; `LENGTH` counts it as 1, as
+  `CHAR_LENGTH` counts one unit; R1 already places a string holding a unit at or above U+D800 in the high
+  band; and a Java string can hold one. A CESU-8 pair read so becomes the UTF-16 pair, which the service
+  ranks as two surrogates and counts as 2. It needs a transcoder of its own, `System.Text.Json` having
+  none, so it is not small. `FF`, `C0 AF` and a lone `80` have no such reading and must still fail.
+- **An integer written in [2^63, 2^64) reads back two ways on the emulator** — *the emulator's alone,
+  measured.* The emulator keeps such an integer as written and returns it so in a document read whole,
+  but prints it projected as the double nearest it, to 17 significant digits: 2^63 reads
+  `9223372036854775808` through `SELECT VALUE c` and `9223372036854775800` through `c.v`. So a pushed
+  projection answers another number than the plan that reads the document. Nothing else prints two ways
+  on it: 2^53 + 1, 2^63 - 1, -2^63 - 1 and 2^64 each read back one way. Azure stores every integer
+  written outside int64 as a double and prints it one way, whole or projected
+  (`Service.IntegerOutsideLongIsStoredAsADouble`), so there the two plans agree (`reports/verify-bytes.md`
+  §1). The `ORDER BY` yardstick's family *a double printed two ways* is exactly this now: it is named only
+  where reading each printing as the double it stands for leaves the rows agreeing (`DESIGN.md`,
+  *Differential testing*). It used to be named wherever a differing row held any number past 2^53, which
+  could have hidden a real difference anywhere in [2^53, 2^63).
+
+  The adapter's own wrong value beside it is fixed: `RETURNING BIGINT` over Azure's
+  `9.223372036854776E+18` answered `9223372036854775807`, `CosmosJson.GetInteger` letting the double 2^63
+  past a bound that was 2^63 itself and then saturating. It refuses now, as Calcite does in process. The
+  emulator's `9223372036854775800` is valid int64 text, which no reader can tell from a stored integer;
+  that one stays the emulator's.
 
 ---
 
@@ -2453,7 +2486,7 @@ across documents* and *A join of a container to itself* is the record.
   Azure refuses to order by. Since the anchored read neither fails, the floors (`PushedFloors`) hold what
   each container pushes, and the model asks the one place by default. Two families of wrong answer that
   are no order's are reported apart where the statement sent no order (`Findings`): `CHAR_LENGTH` pushed
-  as `LENGTH` (section 4) and the emulator's double printed two ways (section 7). Owed:
+  as `LENGTH` (section 4) and the emulator's integer in [2^63, 2^64) printed two ways (section 7). Owed:
   - **The merge, on Azure.** `CosmosOrderMergeMeasurementTests` has not run, no container with two
     physical partitions existing now; it runs against one the caller names (appendix E), and runs the
     reader itself over the merge beside measuring it.

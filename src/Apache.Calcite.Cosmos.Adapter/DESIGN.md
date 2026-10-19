@@ -4721,6 +4721,47 @@ consult. And a document that disagrees with the declared type is **refused**, no
 `42` as `VARCHAR` throws rather than yielding `"42"`, because a row type that bends to the data is a
 suggestion rather than a declaration.
 
+**A whole number is read within its type's range, and refused outside it, never saturated.** Every
+integral reading — `TINYINT` to `BIGINT`, and a `DATE`, `TIME` or `TIMESTAMP` stored as a number — goes
+through `CosmosJson.GetInteger`, and a number arrives as a double where it is not integer text: `42.0`, or
+an integer Azure stored as a double because it was written outside int64
+(`Service.IntegerOutsideLongIsStoredAsADouble`). The range is checked in doubles, and the bounds have to be
+exact there. The least value, -2^(k-1), is. The greatest is not, past 2^53: `(double)long.MaxValue` rounds
+up to 2^63, which is no `long`, and testing against it let a stored 2^63 through to a cast that saturated
+it, so `RETURNING BIGINT` answered `9223372036854775807` over Azure's `9.223372036854776E+18`, where Calcite
+raises. One past the greatest, 2^(k-1), is exact in every width, so the refusal is "at or above max + 1"
+and "below min" (the mirror of the first, "at or below min - 1", rounds to -2^63 and would refuse
+`long.MinValue` itself). The emulator prints 2^63 projected as `9223372036854775800`, which is valid int64
+text that no reader can tell from a stored integer; that one is the emulator's (`TODO.md`, section 7).
+
+**Text that is not UTF-8 is refused by name, by every reading alike.** Azure validates nothing about UTF-8
+in a document body: whatever bytes a client writes are stored, returned and compared as written, in a value
+or in a name (`Service.MalformedTextIsStoredAsWritten`; a lone surrogate written as an escape is stored as
+U+FFFD instead). Calcite holds a string as UTF-16 units, and nothing it can hold compares as the service
+compares those bytes. U+FFFD, which a lenient decoder makes of them, is not that: the service ranks `80` and
+`C0 AF` below U+00E9 and says the raw document is not the replaced one, where Calcite would rank U+FFFD above
+every unit below U+D800 and call them equal; and the document column would stop being the text the service
+sent. So failing is the one reading that is not wrong, and it is made to say what it failed over:
+`CosmosJson.Undecodable` raises a `CosmosMaterializationException` naming the column or path, the document
+where the row says which, where in the value the bytes lie, and the bytes. `System.Text.Json`'s own refusal
+named none of them and arrived mid-stream, after earlier rows had been handed out.
+
+- **Each reading of a row's column catches the decoder's refusal and names it.** The document is named from
+  the plan's bindings, not from a column's name: the column bound to the path `id`, or the `id` inside the
+  column bound to the document. A point read's row is the document, so its own `id` names it.
+- **The JSON fragment has to look.** A projected `JSON_QUERY` writes its value out rather than decoding it,
+  and the writer replaces each byte it cannot read with an escaped U+FFFD, so it answered without a word
+  where the in-process plan raised. It searches the value's strings and names first, one validation of each
+  string's bytes.
+- **The reader completing an order decodes its text keys strictly too**, tells a `DISTINCT`'s repeat apart
+  by the bytes the service sent, and copies an extreme's row byte for byte, so it neither fails unnamed nor
+  replaces in silence.
+
+The failure is per value: a statement fails exactly where a row carries the bytes into a reading, and one
+whose rows leave the value out is answered, in the same logical partition too. Reading a WTF-8 surrogate as
+the lone unit it encodes is the one lenient reading that would agree with the service, and `TODO.md`
+(section 7) keeps it as an option.
+
 Nesting is not truncated: the document column carries the document and the value goes as deep as the
 document does. Addressing is not limited either — `JSON_VALUE(c."DOC", '$.a.b.c')` folds the whole
 path into one Cosmos path, `c.a.b.c`, array subscripts included. What depth costs is planner

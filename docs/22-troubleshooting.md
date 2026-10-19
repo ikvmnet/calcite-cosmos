@@ -94,6 +94,29 @@ adapter refuses rather than coerces. (A property that is sometimes a string or a
 A document contradicts a declared UUID form. The schema is wrong for this container, or a writer wrote
 something else. Chapter 14.
 
+**`CosmosMaterializationException: A JSON number of '9.223372036854776E+18' is outside the range of BIGINT`.**
+A document holds an integer written outside the 64-bit range — 2^63 or more, or less than -2^63. Azure
+stores such a number as a double, and a double that size is no `BIGINT`: Calcite refuses it too, and the
+adapter will not round it to the nearest `BIGINT` instead. Read the property with `RETURNING DOUBLE`, or as
+text with no `RETURNING`. On the emulator the same document reads `9223372036854775800` rather than
+failing: the emulator prints such a number that way, and it is a valid `BIGINT` (Appendix E). Chapter 7.
+
+**`CosmosMaterializationException: Column 'DOC' of document "…" holds text that is not UTF-8 at $.…: the
+bytes ED A0 80 in "…"`.**
+Some client wrote that document with bytes that are not UTF-8 — a lone surrogate encoded on its own, a
+CESU-8 pair, a stray byte. Azure stores such bytes exactly as they were written; the emulator refuses them.
+Calcite has no string that compares the way the service compares those bytes, so the adapter refuses the
+value rather than guess at one. The message says which column or path holds it, which document (where the
+row identifies it), where in the value the bytes are, and the bytes themselves.
+- **Rewrite the document with valid UTF-8.** A writer that escapes the character instead (`\ud800` in the
+  JSON) has it stored as U+FFFD, which reads.
+- **Or leave the value out of what the statement reads.** Only a statement whose rows carry the bytes into
+  a reading fails: one that selects other columns, or filters the document away at the service, answers,
+  even in the same logical partition.
+- **But `SELECT *`, and any statement not pushed to the service in full, read the `DOC` column of every
+  document they scan**, so one such document fails all of those over its container, and fails them part
+  way through, after earlier rows have been returned. Chapter 7.
+
 **"… is evaluated by the service and has no in-process body."**
 A Cosmos-only function (full text, scoring, `REGEXMATCH`, the string conversions) could not be pushed
 — most often because its first argument is not a property path. Rewrite it so it can be. Chapter 17.
@@ -159,7 +182,10 @@ Use `JSON_QUERY(… RETURNING VARCHAR ARRAY)`. Chapter 11.
 
 **Rows differ between the emulator and Azure.**
 The emulator accepts some statements Azure rejects and rejects some Azure runs (Appendix E). The real
-service is the reference.
+service is the reference. One that shows in rows: the emulator returns an integer written between 2^63
+and 2^64 as written in a document read whole, and as a nearby integer when a statement selects it — 2^63 as
+`9223372036854775800` — so a query that pushes the selection and one that reads the whole document answer
+different numbers. Azure stores such an integer as a double and answers it one way.
 
 **Sorting puts missing values first.**
 That is Cosmos's order, and what `DefaultNullCollation = "LOW"` asks for. For nulls last, the sort runs

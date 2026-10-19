@@ -31,7 +31,9 @@ back as `42.0`.
 
 **A document that disagrees with the declared type is refused, not coerced.** Reading the number `42`
 where the plan declared `VARCHAR` raises `CosmosMaterializationException` rather than producing
-`"42"`. A row type that bends to the data would be a suggestion, not a type.
+`"42"`. A row type that bends to the data would be a suggestion, not a type. A number outside an integer
+type's range is refused the same way rather than rounded to the type's limit — 2^63, which Azure stores
+as a double, is no `BIGINT` — and so is text that is not UTF-8, under any type.
 
 Some SQL types have no reading — the interval types, unsigned integers, and times with a time zone. A
 projection of one is never sent to the service; it is computed in process, and a plan that would need
