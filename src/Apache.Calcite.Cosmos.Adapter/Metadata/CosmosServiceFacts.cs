@@ -86,11 +86,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             rules.AddRange(About(CosmosContainerMetadata.ETagPropertyName, JsonType.String));
 
             // An entity tag, whose grammar RFC 9110 fixes: a quoted run of '!', 0x23 to 0x7E and 0x80
-            // to 0xFF. No unit at or above U+D800, stated as data like the rest: its strings then order
-            // alike by code point and by UTF-16 code unit (see JsonCharacterBand), which is what lets MIN
-            // and MAX over it push.
+            // to 0xFF. Read as the theory reads a range, as a pattern's is: no unit at or above U+D800,
+            // so its strings order alike by code point and by UTF-16 code unit (see JsonCharacterBand),
+            // which is what lets MIN and MAX over it push; and, the grammar admitting 0x80 to 0xFF,
+            // characters outside ASCII and two the service trims, U+0085 and U+00A0, so a string function
+            // over it counts as Calcite's does and does not map case or trim as Calcite's does.
             var etag = JsonDocumentPath.Root.Property(CosmosContainerMetadata.ETagPropertyName);
-            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new JsonClaim.Characters(JsonCharacterBand.None))));
+            var grammar = JsonFactEncoding.Characters('"', '"') | JsonFactEncoding.Characters('!', '!')
+                | JsonFactEncoding.Characters(0x23, 0x7E) | JsonFactEncoding.Characters(0x80, 0xFF);
+            rules.Add(JsonFactRule.Unconditional(new JsonFact(etag, new JsonClaim.Characters(grammar))));
 
             return rules.ToArray();
         }

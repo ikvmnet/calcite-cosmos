@@ -16,7 +16,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
     /// </summary>
     /// <remarks>
     /// Nothing here computes a character: each answer is <see cref="JsonFactSet.CharactersOf"/>, the theory's own fact,
-    /// which is what an order over the path asks (<c>CosmosServiceOrder</c>).
+    /// which is what an order over the path asks (<c>CosmosServiceOrder</c>), and a string function over it
+    /// (<c>CosmosStringFunctions</c>).
     /// </remarks>
     public sealed class CosmosOracleCharactersTests
     {
@@ -38,16 +39,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             Kept(Theory(), S, In(Text(S), "a", "b")).Should().Be(JsonCharacterBand.None);
             Kept(Theory(), S, Eq(Raw(S), Emoji)).Should().Be(JsonCharacterBand.Surrogates);
-            Kept(Theory(), S, In(Text(S), Private, Emoji)).Should().Be(JsonCharacterBand.Any);
-            Kept(Theory(), S, Eq(Text(S), "30")).Should().Be(JsonCharacterBand.None, "the rendering's preimage, a string and the numbers that render as it, holds no character above U+D800");
+            Kept(Theory(), S, In(Text(S), Private, Emoji)).Should().Be(JsonCharacterBand.FromD800);
+            Kept(Theory(), S, Eq(Text(S), "30")).Should().Be(JsonCharacterBand.None, "the rendering's preimage, a string and the numbers that render as it, is ASCII");
+        }
+
+        /// <summary>
+        /// The classes a string function asks of its arguments come the same way: a value outside ASCII below the
+        /// surrogates, and one the service's <c>TRIM</c> removes, each a class of the value's own, read as the theory reads
+        /// it.
+        /// </summary>
+        [Fact]
+        public void AFiltersValuesProveWhetherItsStringsAreAsciiAndWhatTheServiceTrims()
+        {
+            Kept(Theory(), S, In(Text(S), "a b", "c")).Should().Be(JsonCharacterBand.None, "a space is ASCII, and both trims remove it");
+            Kept(Theory(), S, In(Text(S), "a\tb", "c")).Should().Be(JsonCharacterBand.Trimmed);
+            Kept(Theory(), S, Eq(Text(S), "a\u00DFb")).Should().Be(JsonCharacterBand.NonAscii);
+            Kept(Theory(), S, Eq(Text(S), "a\u00A0b")).Should().Be(JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed);
+            Kept(Theory(), S, Or(Eq(Text(S), "a\u3000"), Eq(Text(S), Emoji))).Should().Be(JsonCharacterBand.NonAscii | JsonCharacterBand.Trimmed | JsonCharacterBand.Surrogates);
         }
 
         [Fact]
         public void ADisjunctionWidensToWhatEitherArmMayHold()
         {
-            Kept(Theory(), S, Or(Eq(Text(S), "a"), In(Text(S), "b", "中"))).Should().Be(JsonCharacterBand.None);
+            Kept(Theory(), S, Or(Eq(Text(S), "a"), In(Text(S), "b", "中"))).Should().Be(JsonCharacterBand.NonAscii, "one arm's value is outside ASCII, below U+D800");
             Kept(Theory(), S, Or(Eq(Text(S), "a"), Eq(Text(S), Emoji))).Should().Be(JsonCharacterBand.Surrogates);
-            Kept(Theory(), S, Or(Eq(Text(S), Private), Eq(Text(S), Emoji))).Should().Be(JsonCharacterBand.Any);
+            Kept(Theory(), S, Or(Eq(Text(S), Private), Eq(Text(S), Emoji))).Should().Be(JsonCharacterBand.FromD800);
             Kept(Theory(), S, Or(Eq(Text(S), "a"), Eq(Text(T), "b"))).Should().Be(JsonCharacterBand.Any, "the other arm says nothing of s");
         }
 

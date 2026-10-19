@@ -31,6 +31,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static readonly ValueSet<string> High = ValueSet.Of(HighBand);
 
+        static readonly ValueSet<string> NonAscii = ValueSet.Of(NonAsciiBand);
+
+        static readonly ValueSet<string> Trimmed = ValueSet.Of(TrimmedClass);
+
         const string Emoji = "a😀";
 
         const string Private = "";
@@ -52,8 +56,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             Chars("$.s", Is("$.s", "a", "B")).Should().Equal(NoBand);
             Chars("$.s", Is("$.s", "a", Emoji)).Should().Equal(Surrogate);
-            Chars("$.s", Is("$.s", Private, Emoji)).Should().Equal(AllBands);
-            Chars("$.s", Is("$.s", "中")).Should().Equal(NoBand, "a character below U+D800 is in neither band, ASCII or not");
+            Chars("$.s", Is("$.s", Private, Emoji)).Should().Equal(ValueSet.Of(SurrogateBand, HighBand));
+            Chars("$.s", Is("$.s", "中")).Should().Equal(NonAscii, "a character outside ASCII below U+D800 is in the third band");
+        }
+
+        /// <summary>
+        /// What the service's <c>TRIM</c> removes beside a space is a class of its own, cutting across the bands: a tab is
+        /// ASCII and in it, U+00A0 and U+3000 are in it and the third band, a space is in neither, and U+FEFF, which no
+        /// trim removes, is in the high band alone.
+        /// </summary>
+        [Fact]
+        public void WhatTheServiceTrimsIsAClassOfItsOwn()
+        {
+            Chars("$.s", Is("$.s", "a b")).Should().Equal(NoBand);
+            Chars("$.s", Is("$.s", "a\tb")).Should().Equal(Trimmed);
+            Chars("$.s", Is("$.s", "a\u00A0b", "\u3000")).Should().Equal(ValueSet.Of(NonAsciiBand, TrimmedClass));
+            Chars("$.s", Is("$.s", "\uFEFFa")).Should().Equal(High);
+            Chars("$.s", Is("$.s", "a\u200Bb")).Should().Equal(NonAscii, "a zero-width space is no space the service trims");
         }
 
         [Fact]
@@ -68,6 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public void AConjunctionNarrows()
         {
             Chars("$.s", new JsonFact.Characters("$.s", Surrogate), new JsonFact.Characters("$.s", High)).Should().Equal(NoBand);
+            Chars("$.s", new JsonFact.Characters("$.s", ValueSet.Of(NonAsciiBand, TrimmedClass)), Is("$.s", "a\tb", "c")).Should().Equal(Trimmed);
             Chars("$.s", new JsonFact.Characters("$.s", High), Is("$.s", "a", Emoji)).Should().Equal(NoBand, "the pattern's and the domain's meet");
         }
 

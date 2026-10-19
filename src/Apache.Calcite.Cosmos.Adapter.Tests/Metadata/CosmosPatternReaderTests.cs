@@ -33,13 +33,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         static readonly JsonCharacterBand H = JsonCharacterBand.HighBmp;
 
+        static readonly JsonCharacterBand N = JsonCharacterBand.NonAscii;
+
+        static readonly JsonCharacterBand W = JsonCharacterBand.Trimmed;
+
         static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternReader.Absent(pattern)?.ToArray();
 
         static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
 
         /// <summary>
-        /// The bands the theory says a path's stored strings hold no unit of, the pattern's claim of what was written the
-        /// one thing stated of it, as <see cref="Absent(string)"/> lists them.
+        /// The classes the theory says a path's stored strings hold no character of, the pattern's claim of what was
+        /// written the one thing stated of it, as <see cref="Absent(string)"/> lists them.
         /// </summary>
         static JsonCharacterBand[] Claimed(string pattern)
         {
@@ -47,22 +51,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var stored = new JsonFactTheory(CosmosPatternReader.Claims(pattern).Select(claim => JsonFactRule.Unconditional(new JsonFact(at, claim))).ToList())
                 .Derive(null).CharactersOf(at);
 
-            return new[] { S, H }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
+            return new[] { S, H, N, W }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
         }
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────
 
         /// <remarks>
-        /// A UUID in either case: hex digits and hyphens, so neither band, under either reading.
+        /// A UUID in either case: hex digits and hyphens, so no class at all, under either reading: ASCII, and nothing the
+        /// service trims.
         /// </remarks>
         [Fact]
         public void AUuidHoldsNeitherBand()
         {
             const string uuid = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
-            Absent(uuid, unicode: false).Should().Equal(S, H);
-            Absent(uuid, unicode: true).Should().Equal(S, H);
-            Claimed(uuid).Should().Equal(S, H);
+            Absent(uuid, unicode: false).Should().Equal(S, H, N, W);
+            Absent(uuid, unicode: true).Should().Equal(S, H, N, W);
+            Claimed(uuid).Should().Equal(S, H, N, W);
         }
 
         /// <remarks>
@@ -77,13 +82,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^(?:order|invoice)-\\d{6}$")]
         public void AnIdentifierHoldsNeitherBand(string identifier)
         {
-            Absent(identifier).Should().Equal(S, H);
-            Claimed(identifier).Should().Equal(S, H);
+            Absent(identifier).Should().Equal(S, H, N, W);
+            Claimed(identifier).Should().Equal(S, H, N, W);
         }
 
         /// <remarks>
         /// Every character below the surrogates, which is how text with no emoji and nothing from U+E000 is declared:
-        /// the whole of the basic plane's letters, CJK included, and neither band.
+        /// the whole of the basic plane's letters, CJK included, and neither band — but the rest of what is outside ASCII,
+        /// and characters the service trims.
         /// </remarks>
         [Fact]
         public void TheBasicPlaneBelowTheSurrogatesHoldsNeitherBand()
@@ -96,12 +102,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
-        /// The pattern as written: a space matches a space, which is below U+D800 either way.
+        /// The pattern as written: a space matches a space, which is ASCII either way, and the one character Calcite's
+        /// <c>TRIM</c> and the service's both remove, so not of the trimmed class.
         /// </remarks>
         [Fact]
         public void ASpaceIsACharacter()
         {
-            Claimed("^[a-z]+ [a-z]+$").Should().Equal(S, H);
+            Claimed("^[a-z]+ [a-z]+$").Should().Equal(S, H, N, W);
         }
 
         // ── Bands, read by every character a span holds ───────────────────────────────────────
@@ -117,9 +124,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^[a-z\U0001F600]+$")]
         public void ASupplementaryCharacterIsASurrogatePair(string pattern)
         {
-            Absent(pattern, unicode: false).Should().Equal(H);
-            Absent(pattern, unicode: true).Should().Equal(H);
-            Claimed(pattern).Should().BeEmpty();
+            Absent(pattern, unicode: false).Should().Equal(H, N, W);
+            Absent(pattern, unicode: true).Should().Equal(H, N, W);
+            Claimed(pattern).Should().Equal(new[] { N, W }, "what is stored may hold a high unit, and holds nothing else outside ASCII");
         }
 
         /// <remarks>
@@ -130,24 +137,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [Fact]
         public void ASurrogateAdmittedIsAHighUnitStored()
         {
-            Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H);
+            Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H, N, W);
             CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S) },
                 "the reader states what was written, a surrogate and nothing from U+E000");
-            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().BeEmpty("and the theory derives that what is stored may hold a high unit");
-            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S }, "one written without a surrogate is stored as it was written");
+            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new[] { N, W }, "and the theory derives that what is stored may hold a high unit");
+            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S, N, W }, "one written without a surrogate is stored as it was written");
         }
 
         /// <remarks>
-        /// A range's bands are those of every character it spans, not of its two ends: U+D000 and U+E100 are in neither
-        /// band, and every surrogate and U+E000 lie between them. A range whose ends sit in the band below the surrogates
-        /// holds nothing else.
+        /// A range's classes are those of every character it spans, not of its two ends: U+D000 and U+E100 are in neither
+        /// band from U+D800, and every surrogate and U+E000 lie between them. A range whose ends sit in the band below the
+        /// surrogates holds nothing from U+D800, and U+3000 and the spaces from U+2000 lie in this one, which the service
+        /// trims. Nothing the service trims lies from U+3001 up, and a tab is ASCII and trimmed.
         /// </remarks>
         [Fact]
         public void ARangeIsReadByEveryCharacterItSpans()
         {
-            Absent("^[\\uD000-\\uE100]$").Should().BeEmpty();
+            Absent("^[\\uD000-\\uE100]$").Should().Equal(W);
             Absent("^[\\u0100-\\uD000]$").Should().Equal(S, H);
-            Absent("^[\\uE000-\\uFFFF]+$").Should().Equal(S);
+            Absent("^[\\uE000-\\uFFFF]+$").Should().Equal(S, N, W);
+            Absent("^[\\u3001-\\uD7FF]+$").Should().Equal(S, H, W);
+            Absent("^[a-z\\t]+$").Should().Equal(S, H, N);
         }
 
         /// <remarks>
@@ -163,8 +173,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent("^[^\\uE000-\\uFFFF]*$", unicode: true).Should().Equal(H);
             Claimed("^[^\\uE000-\\uFFFF]*$").Should().BeEmpty("it admits a surrogate, which may be stored as U+FFFD");
 
-            Absent("^[^\\u0080-\\uFFFF]$", unicode: false).Should().Equal(S, H);
-            Absent("^[^\\u0080-\\uFFFF]$", unicode: true).Should().Equal(new[] { H }, "read by code point it admits every supplementary character");
+            Absent("^[^\\u0080-\\uFFFF]$", unicode: false).Should().Equal(new[] { S, H, N }, "it admits ASCII alone, a tab among it");
+            Absent("^[^\\u0080-\\uFFFF]$", unicode: true).Should().Equal(new[] { H, N }, "read by code point it admits every supplementary character");
 
             Absent("^[^\\s]+$").Should().BeNull();
         }
@@ -188,9 +198,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent("^[^\\uD800-\\uDFFF]*$", unicode: true).Should().BeEmpty();
             Absent("^[^\\uD800-\\uDFFF]*$").Should().BeEmpty();
 
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: false).Should().Equal(H);
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: true).Should().BeEmpty();
-            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$").Should().BeEmpty();
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: false).Should().Equal(H, N, W);
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$", unicode: true).Should().Equal(N, W);
+            Absent("^[\\uD800-\\uDBFF\\uDC00-\\uDFFF]$").Should().Equal(N, W);
         }
 
         /// <remarks>
@@ -274,7 +284,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("^(?:[a-z]+$|[0-9]+$)")]
         public void AnchoringInsideAGroupIsRead(string pattern)
         {
-            Absent(pattern).Should().Equal(S, H);
+            Absent(pattern).Should().Equal(S, H, N, W);
             Strings(pattern).Should().NotBeNull();
         }
 
@@ -368,7 +378,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Absent(pattern).Should().NotBeNull("it is read for its characters, for " + pattern);
 
             if (neitherBand)
-                Absent(pattern).Should().Equal(S, H);
+                Absent(pattern).Should().Equal(S, H, N, W);
         }
 
         // ── Read off a schema ─────────────────────────────────────────────────────────────────

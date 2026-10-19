@@ -75,12 +75,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         };
 
         /// <summary>
-        /// Strings from all three bands a <see cref="JsonClaim.Characters"/> claim speaks of: a high unit; a supplementary
-        /// character, which is two surrogates; both; and a character of the basic plane below U+D800 that is no ASCII.
+        /// Strings from every class a <see cref="JsonClaim.Characters"/> claim speaks of: a high unit; a supplementary
+        /// character, which is two surrogates; both; characters of the basic plane below U+D800 that are no ASCII, ß and
+        /// the Kelvin sign among them, which Calcite's case mapping and the service's part over; a tab, ASCII and trimmed by
+        /// the service; and U+00A0 and U+3000, trimmed and no ASCII.
         /// </summary>
         public static readonly string[] BandedStrings =
         {
             char.ConvertFromUtf32(0xE000), "a" + char.ConvertFromUtf32(0x1F600), char.ConvertFromUtf32(0xFF21) + char.ConvertFromUtf32(0x1F600), "\u4E2D",
+            "a\u00DFb", "\u212A", "a\tb", "\u00A0a\u3000",
         };
 
         static readonly J[] Banded = BandedStrings.Select(text => (J)new J.Str(text)).ToArray();
@@ -233,14 +236,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// What a pattern's reader may state of a path: that its strings hold no unit at or above U+D800, or none of one
-        /// band. A claim of them admits every value <see cref="Values"/> holds, so it never changes which declaration is
-        /// drawn.
+        /// What a pattern's reader may state of a path: any set of the classes, ASCII and nothing the service trims among
+        /// them. Every value <see cref="Values"/> holds is ASCII and trims as Calcite's does, so a claim of them admits each
+        /// and never changes which declaration is drawn.
         /// </summary>
         static IEnumerable<JsonClaim> Characters(Random bands, bool outright)
         {
             if (bands.Next(outright ? 6 : 12) == 0)
-                yield return new JsonClaim.Characters(new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp }[bands.Next(3)]);
+                yield return new JsonClaim.Characters((JsonCharacterBand)bands.Next(16));
         }
 
         IEnumerable<JsonClaim> Claims(Random random, JsonDocumentPath path, bool outright)
@@ -439,7 +442,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 // Of a string's units, read here unit by unit and not as the theory reads them.
                 JsonClaim.Characters c => value is not J.Str s || s.Value.All(unit =>
                     (char.IsSurrogate(unit) == false || c.Bands.HasFlag(JsonCharacterBand.Surrogates))
-                    && (unit < 0xE000 || c.Bands.HasFlag(JsonCharacterBand.HighBmp))),
+                    && (unit < 0xE000 || c.Bands.HasFlag(JsonCharacterBand.HighBmp))
+                    && (unit < 0x80 || unit >= 0xD800 || c.Bands.HasFlag(JsonCharacterBand.NonAscii))
+                    && (Documents.Trimmed.IndexOf(unit) < 0 || c.Bands.HasFlag(JsonCharacterBand.Trimmed))),
                 _ => throw new NotSupportedException(claim.GetType().Name),
             };
         }
@@ -457,7 +462,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             JsonClaim.NotEqualTo n => "<> " + n.Value,
             JsonClaim.LowerBound l => (l.Exclusive ? "> " : ">= ") + l.Value,
             JsonClaim.UpperBound u => (u.Exclusive ? "< " : "<= ") + u.Value,
-            JsonClaim.Characters c => "holds units below U+D800" + (c.Bands == JsonCharacterBand.None ? "" : " and in " + c.Bands),
+            JsonClaim.Characters c => "holds ASCII the service trims as Calcite does" + (c.Bands == JsonCharacterBand.None ? "" : " and characters of " + c.Bands),
             var other => other.ToString(),
         };
 

@@ -162,93 +162,151 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public const string HighBand = "high";
 
         /// <summary>
-        /// Both bands: what a string nothing states the characters of may hold units of. A unit below U+D800 is in
-        /// neither, and a string all of whose units are holds <see cref="NoBand"/>.
+        /// The band of the units from U+0080 to U+D7FF: outside ASCII and below the surrogates. With the other two, every
+        /// unit outside ASCII, so a string holding none of the three is ASCII.
         /// </summary>
-        public static readonly ValueSet<string> AllBands = ValueSet.Of(SurrogateBand, HighBand);
-
-        /// <summary>Neither band: every unit below U+D800.</summary>
-        public static readonly ValueSet<string> NoBand = ValueSet.Of<string>();
-
-        static readonly ValueSet<string> Surrogates = ValueSet.Of(SurrogateBand);
-
-        static readonly ValueSet<string> High = ValueSet.Of(HighBand);
+        public const string NonAsciiBand = "nonascii";
 
         /// <summary>
-        /// Returns the band a UTF-16 code unit is in, or <c>null</c> below U+D800, where it is in neither.
+        /// The class of the characters the service's <c>TRIM</c> removes beside U+0020, which cuts across the bands: see
+        /// <see cref="IsTrimmed"/>.
+        /// </summary>
+        public const string TrimmedClass = "trimmed";
+
+        /// <summary>
+        /// Every class: what a string nothing states the characters of may hold. A string of ASCII characters none of
+        /// which the service trims beside U+0020 holds <see cref="NoBand"/>.
+        /// </summary>
+        public static readonly ValueSet<string> AllBands = ValueSet.Of(SurrogateBand, HighBand, NonAsciiBand, TrimmedClass);
+
+        /// <summary>No class: every character ASCII, and none the service trims beside U+0020.</summary>
+        public static readonly ValueSet<string> NoBand = ValueSet.Of<string>();
+
+        /// <summary>
+        /// Every set of classes, by a mask of the four, so that reading a value's characters allocates nothing.
+        /// </summary>
+        static readonly ValueSet<string>[] ClassSets = Enumerable.Range(0, 16).Select(mask => mask == 0 ? NoBand : ValueSet.From(
+            new[] { SurrogateBand, HighBand, NonAsciiBand, TrimmedClass }.Where((_, i) => (mask & 1 << i) != 0))).ToArray();
+
+        /// <summary>
+        /// The characters the service's <c>TRIM</c>, <c>LTRIM</c> and <c>RTRIM</c> remove beside U+0020, as ranges of code
+        /// points: measured on the probe account over every unit of the basic plane but the surrogates, every code point of
+        /// plane 1 and U+E0000 to U+E01EF, each first and last in a string, projected and in a <c>WHERE</c>, the three
+        /// functions alike (<c>Service.TrimRemovesWhiteSpace</c>). It is the white space of an older Unicode, U+180E
+        /// among it and U+FEFF and U+200B not, and nothing past the basic plane. The emulator removes fewer: neither
+        /// U+0085, U+00A0, U+180E, U+2007 nor U+202F.
+        /// </summary>
+        static readonly (int Lo, int Hi)[] Trimmed =
+        [
+            (0x0009, 0x000D), (0x0085, 0x0085), (0x00A0, 0x00A0), (0x1680, 0x1680), (0x180E, 0x180E),
+            (0x2000, 0x200A), (0x2028, 0x2029), (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000),
+        ];
+
+        /// <summary>
+        /// Returns the band a UTF-16 code unit is in, or <c>null</c> for an ASCII one, which is in none.
         /// </summary>
         /// <remarks>
         /// The one place a unit's band is decided: a value's characters, a pattern's ranges, a parameter's at run time
-        /// and a row's as it arrives are each read through it.
+        /// and a row's as it arrives are each read through it, or through <see cref="BandsOf"/>, which reads a range by
+        /// the same bounds.
         /// </remarks>
         public static string? BandOf(char unit) =>
-            unit < '\uD800' ? null : unit <= '\uDFFF' ? SurrogateBand : HighBand;
+            unit < '\u0080' ? null : unit < '\uD800' ? NonAsciiBand : unit <= '\uDFFF' ? SurrogateBand : HighBand;
 
         /// <summary>
-        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point: a code
+        /// Determines whether the service's <c>TRIM</c> removes a character that Calcite's keeps: one of the measured
+        /// ranges, U+0020 being the one both remove.
+        /// </summary>
+        /// <param name="point">A code point, or a UTF-16 unit.</param>
+        public static bool IsTrimmed(int point) => TrimmedWithin(point, point);
+
+        /// <summary>
+        /// Returns the classes one UTF-16 unit is in: its band, and the trimmed class where the service trims it.
+        /// </summary>
+        public static ValueSet<string> ClassesOf(char unit)
+        {
+            var band = BandOf(unit);
+            return Classes(band == SurrogateBand, band == HighBand, band == NonAsciiBand, IsTrimmed(unit));
+        }
+
+        /// <summary>
+        /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point: a code
         /// point past U+FFFF is written in surrogates.
         /// </summary>
         /// <param name="lo">The first character.</param>
         /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
-        public static ValueSet<string> BandsOf(int lo, int hi)
-        {
-            var surrogates = lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF;
-            var high = lo <= 0xFFFF && hi >= 0xE000;
-            return Bands(surrogates, high);
-        }
+        public static ValueSet<string> BandsOf(int lo, int hi) => Classes(
+            lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF,
+            lo <= 0xFFFF && hi >= 0xE000,
+            lo <= 0xD7FF && hi >= 0x0080,
+            TrimmedWithin(lo, hi));
 
         /// <summary>
-        /// Returns the bands a text's units are in: <see cref="NoBand"/> where every one is below U+D800.
+        /// Returns the classes a text's units are in: <see cref="NoBand"/> where every one is ASCII and none is trimmed.
         /// </summary>
         public static ValueSet<string> BandsOfText(string text)
         {
-            bool surrogates = false, high = false;
+            bool surrogates = false, high = false, nonAscii = false, trimmed = false;
             foreach (var unit in text)
             {
                 var band = BandOf(unit);
                 surrogates |= band == SurrogateBand;
                 high |= band == HighBand;
+                nonAscii |= band == NonAsciiBand;
+                trimmed |= IsTrimmed(unit);
             }
 
-            return Bands(surrogates, high);
+            return Classes(surrogates, high, nonAscii, trimmed);
         }
 
         /// <summary>
-        /// Returns the bands a value holds units of: a string's own, and none for any other value, which holds no
+        /// Returns the classes a value holds characters of: a string's own, and none for any other value, which holds no
         /// character. An attribute of the value, read off its spelling, as its type is.
         /// </summary>
         public static ValueSet<string> CharactersOf(string value) => IsString(value) ? BandsOfText(StringOf(value)) : NoBand;
 
         /// <summary>
-        /// Returns the bands the strings of a domain hold units of, together.
+        /// Returns the classes the strings of a domain hold characters of, together.
         /// </summary>
         public static ValueSet<string> CharactersOf(ValueSet<string> values)
         {
-            bool surrogates = false, high = false;
+            bool surrogates = false, high = false, nonAscii = false, trimmed = false;
             foreach (var value in values)
             {
-                var bands = CharactersOf(value);
-                surrogates |= bands.Contains(SurrogateBand);
-                high |= bands.Contains(HighBand);
+                var classes = CharactersOf(value);
+                surrogates |= classes.Contains(SurrogateBand);
+                high |= classes.Contains(HighBand);
+                nonAscii |= classes.Contains(NonAsciiBand);
+                trimmed |= classes.Contains(TrimmedClass);
             }
 
-            return Bands(surrogates, high);
+            return Classes(surrogates, high, nonAscii, trimmed);
         }
 
         /// <summary>
-        /// Returns the bands a string written in some bands may hold once it is stored: the same, and the high band too
-        /// where it was written with a surrogate, which may have been a lone one.
+        /// Returns the classes a string written in some classes may hold once it is stored: the same, and the high band
+        /// too where it was written with a surrogate, which may have been a lone one.
         /// </summary>
         /// <remarks>
         /// The service's measured behaviour, read as data by one rule of the theory: a lone surrogate written as a JSON
         /// escape is stored as U+FFFD (<c>Service.LoneSurrogateIsStoredAsReplacement</c>, measured on the probe account;
-        /// the emulator refuses the write). A surrogate pair is stored as it is.
+        /// the emulator refuses the write). A surrogate pair is stored as it is. U+FFFD is in the high band alone, and no
+        /// trim removes it.
         /// </remarks>
         public static ValueSet<string> Stored(ValueSet<string> written) =>
-            written.Contains(SurrogateBand) ? AllBands : written;
+            written.Contains(SurrogateBand) && written.Contains(HighBand) == false ? ValueSet.From(written.Append(HighBand)) : written;
 
-        static ValueSet<string> Bands(bool surrogates, bool high) =>
-            surrogates ? high ? AllBands : Surrogates : high ? High : NoBand;
+        static bool TrimmedWithin(int lo, int hi)
+        {
+            foreach (var (from, to) in Trimmed)
+                if (lo <= to && hi >= from)
+                    return true;
+
+            return false;
+        }
+
+        static ValueSet<string> Classes(bool surrogates, bool high, bool nonAscii, bool trimmed) =>
+            ClassSets[(surrogates ? 1 : 0) | (high ? 2 : 0) | (nonAscii ? 4 : 0) | (trimmed ? 8 : 0)];
 
     }
 

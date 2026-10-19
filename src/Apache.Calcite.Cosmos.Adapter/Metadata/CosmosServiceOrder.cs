@@ -431,7 +431,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where it certifies.</returns>
         public static bool IsAnchor(CosmosOrderAnchor anchor, System.Text.Json.JsonElement value) => anchor switch
         {
-            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || JsonFactEncoding.Characters(Client.CosmosJson.Decode(value, Client.CosmosKeyComparer.Ordered)) == JsonCharacterBand.None,
+            CosmosOrderAnchor.Text => value.ValueKind != System.Text.Json.JsonValueKind.String || (JsonFactEncoding.Characters(Client.CosmosJson.Decode(value, Client.CosmosKeyComparer.Ordered)) & JsonCharacterBand.FromD800) == JsonCharacterBand.None,
             CosmosOrderAnchor.Number => value.ValueKind != System.Text.Json.JsonValueKind.Number || value.TryGetDouble(out var number) && Math.Abs(number) < (double)TwoTo53,
             _ => true,
         };
@@ -482,7 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static string LowerBound(string value)
         {
             var below = 0;
-            while (below < value.Length && JsonFactEncoding.Characters(value[below]) == JsonCharacterBand.None)
+            while (below < value.Length && (JsonFactEncoding.Characters(value[below]) & JsonCharacterBand.FromD800) == JsonCharacterBand.None)
                 below++;
 
             return value.Substring(0, below);
@@ -960,7 +960,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return string.Join(" and ", names);
         }
 
-        static string Describe(JsonCharacterBand bands) => bands switch
+        static string Describe(JsonCharacterBand bands) => (bands & JsonCharacterBand.FromD800) switch
         {
             JsonCharacterBand.None => "below U+D800",
             JsonCharacterBand.Surrogates => "nothing from U+E000",

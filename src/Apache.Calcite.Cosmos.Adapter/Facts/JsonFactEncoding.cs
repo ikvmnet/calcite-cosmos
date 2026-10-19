@@ -225,27 +225,40 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Returns the theory's members for a set of bands: <see cref="Saturation.JsonValues.SurrogateBand"/> and
-        /// <see cref="Saturation.JsonValues.HighBand"/>.
+        /// Returns the theory's members for a set of classes: <see cref="Saturation.JsonValues.SurrogateBand"/>,
+        /// <see cref="Saturation.JsonValues.HighBand"/>, <see cref="Saturation.JsonValues.NonAsciiBand"/> and
+        /// <see cref="Saturation.JsonValues.TrimmedClass"/>.
         /// </summary>
-        public static ValueSet<string> Members(JsonCharacterBand bands) => bands switch
+        public static ValueSet<string> Members(JsonCharacterBand bands)
         {
-            JsonCharacterBand.None => NoBand,
-            JsonCharacterBand.Surrogates => ValueSet.Of(SurrogateBand),
-            JsonCharacterBand.HighBmp => ValueSet.Of(HighBand),
-            _ => AllBands,
-        };
+            if (bands == JsonCharacterBand.None)
+                return NoBand;
+
+            var members = new List<string>(4);
+            if ((bands & JsonCharacterBand.Surrogates) != JsonCharacterBand.None)
+                members.Add(SurrogateBand);
+            if ((bands & JsonCharacterBand.HighBmp) != JsonCharacterBand.None)
+                members.Add(HighBand);
+            if ((bands & JsonCharacterBand.NonAscii) != JsonCharacterBand.None)
+                members.Add(NonAsciiBand);
+            if ((bands & JsonCharacterBand.Trimmed) != JsonCharacterBand.None)
+                members.Add(TrimmedClass);
+
+            return ValueSet.From(members);
+        }
 
         /// <summary>
-        /// Reads the theory's members back as a set of bands.
+        /// Reads the theory's members back as a set of classes.
         /// </summary>
         public static JsonCharacterBand Bands(ValueSet<string> members) =>
             (members.Contains(SurrogateBand) ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
-            | (members.Contains(HighBand) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None);
+            | (members.Contains(HighBand) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None)
+            | (members.Contains(NonAsciiBand) ? JsonCharacterBand.NonAscii : JsonCharacterBand.None)
+            | (members.Contains(TrimmedClass) ? JsonCharacterBand.Trimmed : JsonCharacterBand.None);
 
         /// <summary>
-        /// Returns the bands a value holds units of, as the theory reads a value's characters when it reasons with one: a
-        /// string's own, and none for any other value.
+        /// Returns the classes a value holds characters of, as the theory reads a value's characters when it reasons with
+        /// one: a string's own, and none for any other value.
         /// </summary>
         /// <remarks>
         /// The one reader of a value's characters, for a literal or a parameter a consumer holds, a row as it arrives and a
@@ -255,23 +268,20 @@ namespace Apache.Calcite.Cosmos.Facts
         public static JsonCharacterBand Characters(JsonScalar value) => Bands(CharactersOf(Value(value)));
 
         /// <summary>
-        /// Returns the bands a text's units are in.
+        /// Returns the classes a text's units are in.
         /// </summary>
         public static JsonCharacterBand Characters(string text) => Bands(BandsOfText(text));
 
         /// <summary>
-        /// Returns the band one UTF-16 unit is in: <see cref="JsonCharacterBand.None"/> below U+D800.
+        /// Returns the classes one UTF-16 unit is in: <see cref="JsonCharacterBand.None"/> for an ASCII unit the service
+        /// does not trim.
         /// </summary>
-        public static JsonCharacterBand Characters(char unit) => BandOf(unit) switch
-        {
-            null => JsonCharacterBand.None,
-            SurrogateBand => JsonCharacterBand.Surrogates,
-            _ => JsonCharacterBand.HighBmp,
-        };
+        public static JsonCharacterBand Characters(char unit) => Bands(ClassesOf(unit));
 
         /// <summary>
-        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point, a code point
-        /// past U+FFFF being written in surrogates: what a pattern's reader reads a range as.
+        /// Returns the classes of every character from one to another, each a UTF-16 code unit or a code point, a code
+        /// point past U+FFFF being written in surrogates: what a pattern's reader reads a range as, and a grammar a
+        /// standard fixes.
         /// </summary>
         public static JsonCharacterBand Characters(int lo, int hi) => Bands(BandsOf(lo, hi));
 

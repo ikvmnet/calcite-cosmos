@@ -389,7 +389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var fact in JsonFacts(context, json, graph))
                 {
                     _report.Facts++;
-                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters { Bands.Count: < 2 })
+                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters c && c.Bands.Count < Apache.Calcite.Cosmos.Facts.Saturation.JsonValues.AllBands.Count)
                         _report.Characters++;
 
                     foreach (var document in keeping)
