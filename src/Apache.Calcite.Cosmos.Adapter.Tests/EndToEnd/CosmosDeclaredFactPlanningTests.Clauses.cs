@@ -106,10 +106,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A projection under a rank reads the rows the filter kept, as a plain projection does: <c>UPPER(label)</c> under
-        /// <c>kind = 'a'</c> folds a string kind <c>a</c> declares, and the whole statement ranks at the service. Read from
-        /// the declaration alone, as a translator built without facts did, the label might have been a number the service's
-        /// fold is undefined over, and the rank, its page and the projection stayed in process.
+        /// A projection under a rank reads the rows the filter kept, as a plain projection does: <c>label || '!'</c> under
+        /// <c>kind = 'a'</c> concatenates a string kind <c>a</c> declares, and the whole statement ranks at the service.
+        /// Read from the declaration alone, as a translator built without facts did, the label might have been a number the
+        /// service's concatenation is undefined over, and the rank, its page and the projection stayed in process.
         /// </summary>
         [Fact]
         public void AProjectionUnderARankReadsTheRowsTheFilterKept()
@@ -117,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var container = Container(Planning.CosmosPushdownProbeTests.KindsSchema);
             const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
             string Ranked(string kind) =>
-                $"""SELECT UPPER(JSON_VALUE(c."DOC", '$.label')) AS "L" FROM items AS c WHERE {Kind} = '{kind}' ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.label'), 'steel') DESC FETCH FIRST 10 ROWS ONLY""";
+                $"""SELECT JSON_VALUE(c."DOC", '$.label') || '!' AS "L" FROM items AS c WHERE {Kind} = '{kind}' ORDER BY FULLTEXTSCORE(JSON_VALUE(c."DOC", '$.label'), 'steel') DESC FETCH FIRST 10 ROWS ONLY""";
 
             var ranked = PlanToCosmos(Ranked("a"), container, out _);
             PlanText(ranked).Should().Contain("CosmosRank", "the rank reaches the service: " + PlanText(ranked));

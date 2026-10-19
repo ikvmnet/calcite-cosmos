@@ -739,6 +739,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var expanded = RexUtil.expandSearch(_rexBuilder, null, node);
 
             RequireRenderingsReadAsRenderings(expanded, permitted: true);
+            RequireStringFunctionsAgree(expanded);
 
             var saved = _value;
             var savedPositive = _positive;
@@ -876,6 +877,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireRenderingsReadAsRenderings(Operand(call, i), ReadsRenderings(call, i, permitted));
         }
+
+        /// <summary>
+        /// Refuses a string function the facts do not prove computes at the service what Calcite computes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What each function asks is <see cref="CosmosStringFunctions"/>'s, and only that.</b> A count asks that no
+        /// string it counts hold a surrogate, a case mapping that it be ASCII, a trim that it hold nothing the service trims
+        /// beside a space; <c>POSITION</c>, <c>REVERSE</c>, <c>CONCAT</c>, <c>REPLACE</c> and <c>REPEAT</c> ask nothing.
+        /// This reads the answer off the facts the translation was licensed (<see cref="Facts"/>), for every input the
+        /// counted argument's characters come from (<see cref="Unproved"/>). Refused, the function stays in process, where
+        /// Calcite computes it over the value the service sends, which is what happens over a path nothing is declared of.
+        /// </para>
+        /// <para>
+        /// <b>Asked once, of the whole expression, before anything is written</b>, as a rendering is
+        /// (<see cref="RequireRenderingsReadAsRenderings"/>), because a function is not always written where it stands:
+        /// <c>UPPER(x) LIKE '%A%'</c> is written <c>CONTAINS(x, 'A', true)</c>, the fold the service's case-insensitive
+        /// match, and a check at the writer of <c>UPPER</c> would never see it. Measured, that rewrite lost <c>aßb</c>
+        /// under <c>'%SS%'</c> on both targets, and the weakening it stood in did too, a recheck above being unable to bring
+        /// back a row the service dropped.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <exception cref="CosmosTranslationException">A string function is not proved to be Calcite's.</exception>
+        void RequireStringFunctionsAgree(RexNode node)
+        {
+            if (node is not RexCall call || TryResolvePath(call, out _))
+                return;
+
+            if (CosmosStringFunctions.RuleOf(call) is var (refused, counted, why))
+                foreach (var ordinal in counted)
+                    if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), refused) is string input)
+                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}, and nothing proves {input} holds no {Spell(refused)}.");
+
+            for (var i = 0; i < call.getOperands().size(); i++)
+                RequireStringFunctionsAgree(Operand(call, i));
+        }
+
+        /// <summary>
+        /// Returns an input of an expression the facts do not prove free of some classes of character, or <c>null</c>
+        /// where every input is.
+        /// </summary>
+        /// <remarks>
+        /// A path is asked the theory's <c>chars</c> in the licensed facts; a literal is its own characters, read as the
+        /// theory reads a value's; a parameter may hold anything until it is bound; and a computed value is asked through
+        /// the operands its characters come from (<see cref="CosmosStringFunctions.Sources"/>), each of which has to be
+        /// proved, or is unproved itself. A number or a boolean holds no character. Nothing is combined: each input is
+        /// asked the one question, and the first that cannot say yes is the answer.
+        /// </remarks>
+        /// <param name="node">The expression.</param>
+        /// <param name="refused">The classes asked of it.</param>
+        /// <returns>What may hold them, spelled, or <c>null</c>.</returns>
+        string? Unproved(RexNode node, JsonCharacterBand refused)
+        {
+            if (TryResolvePath(node, out var path))
+                return DocumentOf(path) is JsonDocumentPath document && (_facts.CharactersOf(document) & refused) == JsonCharacterBand.None
+                    ? null
+                    : path?.ToString() ?? "a path";
+
+            switch (node)
+            {
+                case RexLiteral literal:
+                    return literal.getValue() is not NlsString text || (JsonFactEncoding.Characters(text.getValue()) & refused) == JsonCharacterBand.None
+                        ? null
+                        : "the literal";
+
+                case org.apache.calcite.rex.RexDynamicParam:
+                    return "a parameter";
+
+                case RexCall call when CosmosStringFunctions.Sources(call) is { } sources:
+                    foreach (var source in sources)
+                        if (Unproved(source, refused) is string input)
+                            return input;
+
+                    return null;
+            }
+
+            return node.getType()?.getSqlTypeName() is SqlTypeName type && (SqlTypeName.NUMERIC_TYPES.contains(type) || type == SqlTypeName.BOOLEAN)
+                ? null
+                : "a computed value";
+        }
+
+        static string Spell(JsonCharacterBand refused) => refused switch
+        {
+            JsonCharacterBand.Surrogates => "surrogate",
+            JsonCharacterBand.BeyondAscii => "character outside ASCII",
+            JsonCharacterBand.Trimmed => "character the service trims beside a space",
+            _ => "character of " + refused,
+        };
 
         /// <summary>
         /// Determines whether an expression is the rendering of a document value as text: a
@@ -4990,7 +5080,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// service applies under the flag agreeing on every character, and ASCII is where that is
         /// known: Java's <c>toUpperCase</c> maps <c>ß</c> to <c>SS</c> and a ligature to its letters,
         /// which no case-insensitive comparison of the stored text can reproduce. Outside ASCII the
-        /// plain form stands, folding at the service under its own rules as it did.
+        /// plain form stands, folding at the service under its own rules as it did. That the text
+        /// is ASCII is <see cref="CosmosStringFunctions.FoldsAlike"/>'s to say; that the value folded
+        /// is, <see cref="RequireStringFunctionsAgree"/>'s, which asks it of the fold before this is
+        /// reached: measured, the stored text matters as much as the pattern's, <c>ß</c> folding to
+        /// <c>SS</c> in Calcite and to nothing under the service's flag.
         /// </para>
         /// </remarks>
         /// <param name="pattern">The literal pattern.</param>
@@ -5015,9 +5109,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var core = pattern.Substring(start, end - start);
 
+            if (CosmosStringFunctions.FoldsAlike(core) == false)
+                return false;
+
             foreach (var c in core)
             {
-                if (c is '%' or '_' || c > 0x7F)
+                if (c is '%' or '_')
                     return false;
 
                 if (upper ? char.IsLower(c) : char.IsUpper(c))
