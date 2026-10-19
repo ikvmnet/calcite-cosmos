@@ -1332,16 +1332,38 @@ the distribution the gate is sized for.
   binds such a column to the bare path as text, which is why #181's boolean cast refuses a field. The
   sound answer is to address no path for a clause that substitutes a value; rendering `DEFAULT … ON
   EMPTY` as an `IS_DEFINED` ternary is the cheaper one, once Calcite's own answers are measured.
-- **Pushed string functions count characters their own way** — *a wrong answer, outside the sort work,
-  and the two services differ.* Measured on the probe account: `SUBSTRING`, `LEFT`, `RIGHT` and
-  `INDEX_OF` count UTF-16 code units on Azure and code points on the emulator, and `LENGTH` counts code
-  points on both. Calcite counts UTF-16 code units. So `CHAR_LENGTH` rendered as `LENGTH` is wrong on
-  both wherever a string holds a character beyond U+FFFF, and the other four are right on Azure and
-  wrong on the emulator the suite runs on. The `ORDER BY` yardstick meets it with `CHAR_LENGTH` as a
-  key (`DESIGN.md`, *Differential testing*: the family *a string function counts code points*). The
-  measurement belongs in `Sql/CosmosAxioms.cs` as two rows, one per target; `LENGTH` then pushes only
-  where the path's characters are declared below U+D800, and the four only where the target is
-  Azure or the characters are so declared.
+- **A string function pushes only where its characters are proved, and could push more** — *medium; what
+  is left of a wrong answer closed.* `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `UPPER`, `LOWER`, the
+  case-insensitive `LIKE` rewrites and the trims were pushed exactly over any declared string, and were wrong
+  where a string held a character beyond U+FFFF, ß or the Kelvin sign, or white space at an end
+  (`reports/verify-strings.md`). Each now pushes only where the facts prove the classes of character it needs
+  absent, and is computed in process otherwise (`Sql/CosmosStringFunctions.cs`; `DESIGN.md`, *What a string
+  function computes, asked of its characters*). What is left:
+  - **A weakening that would push them anyway** — *not built.* A filter could be sent as `(<pushed>) OR
+    RegexMatch(c.s, "[\\x{10000}-\\x{10FFFF}]")` for a count, `"[^\\x00-\\x7F]"` for a case mapping, a test of
+    the trimmed class at either end for a trim, with Calcite's filter kept above: the rows without the class are
+    exact, and the rows with it are shipped and Calcite decides them. A projection would select a fallback
+    member under a name no column has, keyed on the same test, and the reader would compute Calcite's value
+    from it. **The warning:** a pattern `RegexMatch` cannot compile answers undefined, not an error, and an
+    `OR` arm that is undefined drops the row it was there to keep — `RegexMatch(c.s, "(")` keeps nothing, and
+    neither does its `NOT` (`reports/azure-axioms.md` 3.4). Each disjunct has to be one measured to compile on
+    Azure and the emulator alike, as `[\x{10000}-\x{10FFFF}]` is. For `CHAR_LENGTH(s) = n` an index-friendly
+    form exists, units lying between code points and twice them: `LENGTH(c.s) BETWEEN ceil(n/2) AND n`.
+  - **`LIKE` over a declared string is not pushed** — *a missed pushdown, measured and not investigated.* The
+    same statement over an undeclared path pushes as a weakening; over the declared path the whole filter stays
+    in process and the scan reads whole documents. Plain `LIKE`'s `_` and `%` agree everywhere, so the exact
+    `LIKE` and its `STARTSWITH` should push there.
+  - **A bound parameter holding a lone surrogate** fails at the SDK's encoder when the statement runs, with an
+    unnamed `EncoderFallbackException`; a literal is refused when the plan is made
+    (`Service.LoneSurrogateParameterIsNeverSent`). A named error at the bind (`CosmosQueries.Bind`) is cheap; a
+    plan that reads a fallback for such a value is the answer.
+  - **`POSITION` over a supplementary character differs on the emulator**, whose `INDEX_OF` counts code points;
+    Azure's counts units as Calcite does, and the function is pushed (`Service.IndexOfCountsUnits`). The
+    differential corpus asks it only over strings without one, and the `ORDER BY` yardstick names it as the
+    family it meets (`Findings`).
+  - **A function over a parameter, or over an array's element,** is computed in process: a parameter may hold
+    anything until it is bound, and an element is no path a fact is about (below). Deciding a parameter's
+    characters as its value arrives, as the anchored read does, would push the first.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
@@ -2496,8 +2518,9 @@ across documents* and *A join of a container to itself* is the record.
   expected: text across U+D800, undefined and null on a leading key, 2^63 read back, and `_etag`, which
   Azure refuses to order by. Since the anchored read neither fails, the floors (`PushedFloors`) hold what
   each container pushes, and the model asks the one place by default. Two families of wrong answer that
-  are no order's are reported apart where the statement sent no order (`Findings`): `CHAR_LENGTH` pushed
-  as `LENGTH` (section 4) and the emulator's integer in [2^63, 2^64) printed two ways (section 7). Owed:
+  are no order's, both the emulator's, are reported apart where the statement sent no order (`Findings`):
+  `INDEX_OF` counting code points (section 4; `CHAR_LENGTH` pushed as `LENGTH` was here, and no longer pushes
+  over text of any character) and the integer in [2^63, 2^64) printed two ways (section 7). Owed:
   - **The merge, on Azure.** `CosmosOrderMergeMeasurementTests` has not run, no container with two
     physical partitions existing now; it runs against one the caller names (appendix E), and runs the
     reader itself over the merge beside measuring it.
