@@ -20,9 +20,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// numbers only, as the theory's do. A path no fact speaks of may hold <see cref="Anything"/>.
     /// </para>
     /// <para>
-    /// <b>Every value is normalised</b>, so that one state of knowledge has one spelling and the lattice settles: a
-    /// domain keeps only members of a kind the path may hold and within its bounds, and once a domain is known the
-    /// disequalities are folded into it.
+    /// <b>One spelling of a domain and what it excludes</b>, so that the lattice's laws hold: once a domain is known the
+    /// disequalities are folded into it (<see cref="Normal"/>). What the rules of JSON say of the values a path holds is
+    /// the theory's, derived in the tables before a verdict reads them, and not restated here.
     /// </para>
     /// <para>
     /// <b>A bound is about the number's value</b>, whether a decimal holds it or not. The theory keeps a number it
@@ -159,40 +159,31 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
-        /// Normalises a state of knowledge by what the rules of JSON say of one path's values: a JSON null excluded
-        /// leaves every other type; types of booleans or of null alone are a domain of their values; a domain keeps only
-        /// what may be the value, absorbs the exclusions, and is of its own types.
+        /// Spells a state of knowledge one way: once a domain is known, the scalars excluded are taken out of it and no
+        /// longer listed apart.
         /// </summary>
         /// <remarks>
-        /// Each step says the same set of documents another way, so a state and its normal form are one state; and the
-        /// normal form is what a reader of one path's values reads — the overlay, which answers a stratum without the
-        /// engine, among them — so no reader restates any of it.
+        /// <para>
+        /// <b>The value's own spelling, and not a rule about documents.</b> A domain and an exclusion beside it say one set
+        /// of scalars two ways, and the lattice's laws are written over one: a case join keeps a value excluded only where
+        /// both sides rule it out, which it reads off a side's domain where it has one, so a domain still holding a value
+        /// listed as excluded would join to more than either case allows, and a meet with the join would not give back
+        /// what it started from.
+        /// </para>
+        /// <para>
+        /// <b>Nothing else is normalised here.</b> What the rules of JSON say of one path's values — a value is of its own
+        /// type, a JSON null excluded leaves every other type, booleans or null alone are a domain of their values, a domain
+        /// keeps only what its bounds and the path's types admit — the theory derives in the tables every input is read
+        /// from, before a verdict reads this; and a verdict enumerates a value only of a kind the path may hold and admits
+        /// a boolean or a null only where <see cref="Admits"/> does (<c>PredicateAtom.State.Enumerate</c>). So a state is
+        /// read as the documents it allows, however it is spelled, and the lattice settles on the meet of what the tables
+        /// say.
+        /// </para>
         /// </remarks>
-        internal static PathValues Normal(PathValues x)
-        {
-            var kinds = x.Excluded.Contains(NullValue) ? x.Kinds.Remove(NullType) : x.Kinds;
-            var types = kinds.Remove(AbsentKind);
-
-            var domain = x.Values;
-            if (domain is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(BooleanType)))
-                domain = ValueSet.Of(Of(true), Of(false));
-            else if (domain is null && types.Count > 0 && types.IsSubsetOf(ValueSet.Of(NullType)))
-                domain = ValueSet.Of(NullValue);
-
-            if (domain is null)
-                return ReferenceEquals(kinds, x.Kinds) ? x : x with { Kinds = kinds };
-
-            var values = ValueSet.From(domain.Where(v => kinds.Contains(TypeOf(v))
-                && x.Excluded.Contains(v) == false
-                && (TryNumberOf(v, out var n) == false || (x.Lower is not Bound l || l.AdmitsAbove(n)) && (x.Upper is not Bound u || u.AdmitsBelow(n)))));
-
-            return x with
-            {
-                Kinds = ValueSet.From(kinds.Where(kind => kind == AbsentKind || values.Any(v => TypeOf(v) == kind))),
-                Values = values,
-                Excluded = ValueSet<string>.Empty,
-            };
-        }
+        static PathValues Normal(PathValues x) =>
+            x.Values is null || x.Excluded.Count == 0
+                ? x
+                : x with { Values = ValueSet.From(x.Values.Where(v => x.Excluded.Contains(v) == false)), Excluded = ValueSet<string>.Empty };
 
         static Bound? Stricter(Bound? a, Bound? b, System.Func<Bound, Bound, Bound> stricter) =>
             a is Bound x ? b is Bound y ? stricter(x, y) : x : b;

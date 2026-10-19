@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text;
 
 using Eggnog;
 
@@ -192,6 +190,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     scope.Make((ConstructorTerm<JPath>)prefix.ToTerm(Rules));
         }
 
+        /// <summary>
+        /// Returns a child of a frozen context that mentions one path more, saturated and frozen: what the context knows of
+        /// a path it was never told of, which is what the rules derive of it from what they already hold — a path beneath
+        /// one that holds no object is absent, beneath one that is closed to it too.
+        /// </summary>
+        /// <remarks>
+        /// It assumes nothing, so it narrows no document the context admits and lifts no case: a split there decides only
+        /// what something here narrows, and the context it is made beneath has already lifted what its own split proves.
+        /// So it knows of the path what the context would have, told of it when it was opened, short of what only a split
+        /// on a discriminator would prove; less, never more.
+        /// </remarks>
+        /// <param name="parent">The context, frozen.</param>
+        /// <param name="path">The path.</param>
+        /// <param name="schedule">The rules the context ran, without its splits.</param>
+        /// <param name="options">The run's limits, or <c>null</c> for the engine's.</param>
+        /// <returns>The child; or <c>null</c> where its run stops short, or finds that the context admits no document,
+        /// which is the context's to say and no answer about the path.</returns>
+        public Scope? Mentioning(Scope parent, JsonPathSpec path, Schedule schedule, RunOptions? options)
+        {
+            var scope = parent.CreateChild();
+            try
+            {
+                Mention(scope, new[] { path });
+                var report = scope.Run(schedule, options);
+                if (report.StopReason != RunStopReason.Completed || scope.IsContradictory)
+                {
+                    scope.Dispose();
+                    return null;
+                }
+
+                scope.Freeze();
+                return scope;
+            }
+            catch
+            {
+                scope.Dispose();
+                throw;
+            }
+        }
+
         static IEnumerable<JsonPathSpec> Prefixes(JsonPathSpec path)
         {
             if (path.Hidden is not null)
@@ -203,175 +241,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             for (var n = path.Segments.Count; n >= 1; n--)
                 yield return new JsonPathSpec(path.Segments.Take(n).ToArray());
         }
-
-        /// <summary>What every document the context admits says about a predicate.</summary>
-        public Truth Decide(Scope scope, JsonAtom atom)
-        {
-            // A context no document satisfies keeps no row, whatever is asked of it.
-            if (scope.IsContradictory)
-                return Truth.Never;
-
-            var r = Rules;
-            var p = atom.Path.ToTerm(r);
-            var present = scope.Check(r.Present.Of(p));
-            var absent = scope.Check(r.Absent.Of(p));
-            var types = scope.TryGet(r.Types.Of(p), out var t) ? t : AllTypes;
-            var dom = scope.TryGet(r.Dom.Of(p), out var d) ? d : null;
-
-            if (absent)
-                return Truth.Never;
-
-            switch (atom)
-            {
-                case JsonAtom.Defined:
-                    return present ? Truth.Always : Truth.Unknown;
-
-                case JsonAtom.HasType has:
-                {
-                    var wanted = JsonValues.Types(has.Type);
-                    if (types.Any(wanted.Contains) == false)
-                        return Truth.Never;
-                    return present && types.IsSubsetOf(wanted) ? Truth.Always : Truth.Unknown;
-                }
-
-                case JsonAtom.EqualTo eq:
-                {
-                    if (CannotHold(scope, p, types, dom, eq.Value))
-                        return Truth.Never;
-                    return present && dom is not null && dom.IsSubsetOf(ValueSet.Of(eq.Value)) ? Truth.Always : Truth.Unknown;
-                }
-
-                case JsonAtom.NumberIn range:
-                {
-                    if (types.Any(Numbers.Contains) == false)
-                        return Truth.Never;
-
-                    var lo = scope.TryGet(r.Lo.Of(p), out var l) ? l : (Bound?)null;
-                    var hi = scope.TryGet(r.Hi.Of(p), out var h) ? h : (Bound?)null;
-                    var lower = Stricter(lo, range.Lower, Bound.StricterLower);
-                    var upper = Stricter(hi, range.Upper, Bound.StricterUpper);
-                    if (lower is Bound a && upper is Bound b)
-                    {
-                        var integral = types.Contains(FractionType) == false;
-                        if (Bound.NoNumberBetween(a, b) || integral && Bound.NoIntegerBetween(a, b))
-                            return Truth.Never;
-                    }
-
-                    if (dom is not null)
-                    {
-                        // A number held approximately may lie anywhere, so it keeps the range from being refuted and
-                        // from being proven.
-                        var numbers = dom.Where(IsExactNumber).Select(NumberOf).ToList();
-                        var approximate = dom.Any(v => IsNumber(v) && IsExactNumber(v) == false);
-                        if (approximate == false && numbers.Any(x => In(x, range.Lower, range.Upper)) == false)
-                            return Truth.Never;
-                        if (present && dom.All(IsExactNumber) && numbers.All(x => In(x, range.Lower, range.Upper)))
-                            return Truth.Always;
-                    }
-
-                    var within = (range.Lower is null || lo is Bound pl && Bound.StricterLower(pl, range.Lower.Value) == pl)
-                              && (range.Upper is null || hi is Bound ph && Bound.StricterUpper(ph, range.Upper.Value) == ph);
-                    return present && types.IsSubsetOf(Numbers) && within ? Truth.Always : Truth.Unknown;
-                }
-
-                case JsonAtom.LengthIn length:
-                {
-                    if (types.Contains(ArrayType) == false)
-                        return Truth.Never;
-
-                    var min = Math.Max(scope.TryGet(r.MinItems.Of(p), out var m) ? m : 0, length.Min ?? 0);
-                    var max = Math.Min(scope.TryGet(r.MaxItems.Of(p), out var x) ? x : long.MaxValue, length.Max ?? long.MaxValue);
-                    if (min > max)
-                        return Truth.Never;
-
-                    var known = scope.TryGet(r.MinItems.Of(p), out var km) ? km : 0;
-                    var knownMax = scope.TryGet(r.MaxItems.Of(p), out var kx) ? kx : long.MaxValue;
-                    var within = known >= (length.Min ?? 0) && knownMax <= (length.Max ?? long.MaxValue);
-                    return present && types.IsSubsetOf(Types(ArrayType)) && within ? Truth.Always : Truth.Unknown;
-                }
-
-                case JsonAtom.ArrayHolds holds:
-                {
-                    if (types.Contains(ArrayType) == false)
-                        return Truth.Never;
-                    if (scope.TryGet(r.MaxItems.Of(p), out var most) && most == 0)
-                        return Truth.Never;
-
-                    var each = r.Each.Of(p);
-                    if (scope.Check(r.Absent.Of(each)))
-                        return Truth.Never;
-                    var eachTypes = scope.TryGet(r.Types.Of(each), out var et) ? et : AllTypes;
-                    var eachDom = scope.TryGet(r.Dom.Of(each), out var ed) ? ed : null;
-                    if (CannotHold(scope, each, eachTypes, eachDom, holds.Value))
-                        return Truth.Never;
-
-                    if (scope.TryGet(r.ContainsAtMost.Of(p, holds.Value), out var none) && none == 0)
-                        return Truth.Never;
-
-                    var held = scope.Check(r.Contains.Of(p, holds.Value))
-                        || present && types.IsSubsetOf(Types(ArrayType)) && scope.TryGet(r.ContainsAtLeast.Of(p, holds.Value), out var least) && least >= 1;
-                    return held ? Truth.Always : Truth.Unknown;
-                }
-
-                case JsonAtom.SameAs same:
-                {
-                    var q = same.Other.ToTerm(r);
-                    if (scope.Check(r.Absent.Of(q)))
-                        return Truth.Never;
-
-                    var otherTypes = scope.TryGet(r.Types.Of(q), out var ot) ? ot : AllTypes;
-                    if (types.Any(otherTypes.Contains) == false)
-                        return Truth.Never;
-                    if (dom is not null && scope.TryGet(r.Dom.Of(q), out var od) && dom.Any(od.Contains) == false && (types.IsSubsetOf(Scalars) || otherTypes.IsSubsetOf(Scalars)))
-                        return Truth.Never;
-
-                    var equal = scope.AreEqual(scope.Make((ConstructorTerm<JPath>)p), q);
-                    return equal && present ? Truth.Always : Truth.Unknown;
-                }
-
-                default:
-                    throw new NotSupportedException(atom.GetType().Name);
-            }
-        }
-
-        /// <summary>Whether the facts about a path leave no room for it to hold a value.</summary>
-        bool CannotHold(Scope scope, Term<JPath> p, ValueSet<string> types, ValueSet<string>? dom, string value)
-        {
-            var r = Rules;
-            if (types.Contains(TypeOf(value)) == false)
-                return true;
-            if (dom is not null && dom.Contains(value) == false)
-                return true;
-            if (scope.Check(r.Ne.Of(p, value)))
-                return true;
-
-            if (TryNumberOf(value, out var x))
-            {
-                if (scope.TryGet(r.MultipleOf.Of(p), out var m) && Multiples.IsMultiple(x, m) == false)
-                    return true;
-                if (scope.TryGet(r.Lo.Of(p), out var lo) && lo.AdmitsAbove(x) == false)
-                    return true;
-                if (scope.TryGet(r.Hi.Of(p), out var hi) && hi.AdmitsBelow(x) == false)
-                    return true;
-            }
-
-            if (IsString(value))
-            {
-                var length = StringOf(value).Length;
-                if (scope.TryGet(r.MinLength.Of(p), out var min) && length < min)
-                    return true;
-                if (scope.TryGet(r.MaxLength.Of(p), out var max) && length > max)
-                    return true;
-            }
-
-            return false;
-        }
-
-        static Bound? Stricter(Bound? a, Bound? b, Func<Bound, Bound, Bound> stricter) =>
-            a is Bound x ? b is Bound y ? stricter(x, y) : x : b;
-
-        static bool In(decimal x, Bound? lower, Bound? upper) =>
-            (lower is not Bound l || l.AdmitsAbove(x)) && (upper is not Bound u || u.AdmitsBelow(x));
 
     }
 

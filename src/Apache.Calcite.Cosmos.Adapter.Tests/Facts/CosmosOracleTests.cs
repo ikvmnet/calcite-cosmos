@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -20,7 +21,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
     /// <summary>
     /// The oracle's facade: the strata a statement's conjuncts are admitted in, the licence table that chooses the facts
-    /// a question is answered from, redundancy, and what an incomplete run is read as.
+    /// a question is answered from, redundancy, what an incomplete run is read as, and a container that declares no
+    /// schema.
     /// </summary>
     public sealed class CosmosOracleTests
     {
@@ -30,6 +32,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath Label = P("label");
         static readonly JsonDocumentPath Id = P("id");
         static readonly JsonDocumentPath X = P("x");
+        static readonly JsonDocumentPath B = P("b");
+
+        /// <summary>The service's facts alone: the theory of every container that declares no schema.</summary>
+        static readonly JsonFactTheory Undeclared = new(CosmosServiceFacts.Rules);
 
         static bool Knows(JsonFactSet facts, JsonDocumentPath path, JsonClaim claim) => facts.Knows(new JsonFact(path, claim));
 
@@ -308,8 +314,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ARunThatDoesNotCompleteKnowsNothingMore()
         {
-            // A conditional rule, so that the stratum is the engine's to open rather than the overlay's to read.
-            var oracle = new CosmosOracle(Theory(When(Kind, "z", X, Present)), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var scope = oracle.Admit(new PredicateStatement(new[] { Eq(Text(A), "x"), IsNotNull(Text(Kind)) }), (i, facts) => true);
 
             scope.Complete.Should().BeFalse();
@@ -327,7 +332,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void WhatAScopeAssumesIsAlwaysTrueThereHoweverItsRunEnds()
         {
-            var oracle = new CosmosOracle(Theory(When(Kind, "z", X, Present)), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
+            var oracle = new CosmosOracle(Theory(), null, new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var weakening = And(Opaque(0), Opaque(1));
             var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
 
@@ -377,6 +382,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(scope.Facts(arm), A, Present).Should().BeFalse("the conjunct the arm is part of is not its own licence");
 
             Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Kept).Should().BeTrue();
+        }
+
+        // A container that declares no schema.
+
+        /// <summary>
+        /// What a common filter over a container that declares no schema keeps is its stratum's context: what the filter
+        /// states, what the rules of JSON derive from it, and what the service guarantees, read from one context.
+        /// </summary>
+        [Fact]
+        public void ACommonFilterOverAnUndeclaredContainerKeepsWhatItsStratumDerives()
+        {
+            var keeps = Oracle(Undeclared).Admit(new PredicateStatement(new[] { Eq(Raw(A), "k0"), Cmp(Cast("DOUBLE", Text(B)), ">", Lit(500m)) }))
+                .Facts(OracleLicence.Kept);
+
+            Knows(keeps, A, Type(JsonType.String)).Should().BeTrue("a value is of its own type");
+            Knows(keeps, A, new JsonClaim.NotEqualTo("k1")).Should().BeTrue();
+            Knows(keeps, B, new JsonClaim.LowerBound(400)).Should().BeTrue("the cast's window bounds the number it reads");
+            Knows(keeps, Id, Type(JsonType.String)).Should().BeTrue("what the service states holds beneath the filter");
+            keeps.IsContradictory.Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A path no conjunct reads, beneath one a conjunct pins to a scalar, is absent in every row the filter keeps — the
+        /// rule that a path beneath one holding no object is absent — and every clause after the filter knows it, though
+        /// the statement never mentioned the path: a view is told of a path the first time it is asked about it.
+        /// </summary>
+        /// <remarks>
+        /// What a projection, a sort or a grouping over <c>WHERE name = 'x'</c> asks of <c>name.first</c>. Asked through the
+        /// licence a clause reads, the declaration's own view, and a stratum over a declaration that states the path's
+        /// parent a scalar; and not of a path beneath one the filter leaves an object.
+        /// </remarks>
+        [Fact]
+        public void APathNoConjunctReadsBeneathAPinnedScalarIsKnownAbsent()
+        {
+            var beneath = A.Property("x");
+            var absent = Enum();
+
+            foreach (var licence in new[] { OracleLicence.Select, OracleLicence.OrderBy, OracleLicence.GroupBy, OracleLicence.Kept })
+            {
+                var facts = Admitted(Undeclared, Eq(Raw(A), "k0")).Facts(licence);
+
+                Knows(facts, beneath, absent).Should().BeTrue("a string has no properties, under {0}", licence.Question);
+                Knows(facts, beneath, Present).Should().BeFalse();
+                facts.TryGetTypes(beneath, out var types).Should().BeTrue();
+                types.Should().BeEmpty("a path that is never there holds no type");
+                facts.CharactersOf(beneath).Should().Be(JsonCharacterBand.None);
+            }
+
+            Knows(Admitted(Undeclared, Eq(Raw(A), "k0")).Facts(OracleLicence.Select), A, absent).Should().BeFalse("the pinned path itself is there where the filter keeps a row");
+            Knows(Admitted(Undeclared, IsNotNull(Raw(A))).Facts(OracleLicence.Select), beneath, absent).Should().BeFalse("a path that is not null may be an object");
+
+            Knows(CosmosOracle.For(Undeclared).Declared, Id.Property("q"), absent).Should().BeTrue("the service states id a string of every document");
+            Knows(Oracle(Theory(Outright(A, Type(JsonType.Boolean)))).Admit(new PredicateStatement(new[] { IsNotNull(Text(B)) }), (_, _) => true)
+                .Facts(OracleLicence.Select), beneath, absent).Should().BeTrue("the declaration states a boolean, beneath a filter that never reads it");
+        }
+
+        /// <summary>
+        /// A filter that meets what the service states is reasoned about with it: a property of <c>id</c> is the property
+        /// of a string, which no document has.
+        /// </summary>
+        [Fact]
+        public void APropertyOfWhatTheServiceStatesAScalarKeepsNoDocument()
+        {
+            Oracle(Undeclared).Admit(new PredicateStatement(new[] { new SqlPredicate.IsDefined(Raw(Id.Property("q"))) }))
+                .IsContradictory(OracleLicence.Kept).Should().BeTrue();
         }
 
     }

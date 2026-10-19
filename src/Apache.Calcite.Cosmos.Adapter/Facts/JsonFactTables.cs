@@ -12,9 +12,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two kinds, read alike.</b> A context of the theory, saturated by the engine; and the facts a query states read
-    /// beside what its container states, where the engine could add nothing that changes an answer (see
-    /// <see cref="JsonFactOverlay"/>). A set asks both the same questions, so the two can differ only in what they hold.
+    /// <b>Every answer is a context's.</b> <see cref="JsonScopeTables"/> reads a context of the theory, saturated by the
+    /// engine, or for a path the context was never told of, a child the engine ran that is; the predicate oracle's
+    /// (<see cref="StatementTerms"/>) say of a context released at once, because it admits no document, only that it is
+    /// contradictory. None derives an answer its context does not hold.
     /// </para>
     /// <para>
     /// <b>Each read loses a fact rather than inventing one.</b> Where the engine fails, a read answers that nothing is

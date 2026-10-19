@@ -74,6 +74,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// Determines whether a trial's declaration states nothing under a kind, which one trial in eight's does, chosen by
+        /// a stream of its own so that every other trial draws what it did.
+        /// </summary>
+        /// <remarks>
+        /// What every container that declares no schema is beside the service's facts: a declaration whose strata the
+        /// engine opens with nothing to split on. The overlay once read them off their predicates in C#; that they are the
+        /// engine's now is held to documents here as every other stratum is.
+        /// </remarks>
+        public static bool DeclaresNothingConditional(int seed) => new Random(unchecked(seed * 31 + 5)).Next(8) == 0;
+
+        /// <summary>
         /// Runs one trial.
         /// </summary>
         /// <param name="seed">The trial's seed, which fixes the declaration, the documents, the filter and the world.</param>
@@ -84,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var random = new Random(seed);
             var bands = new Random(unchecked(seed * 7919 + 17));
             var world = new World(seed);
-            var declaration = Declaration.Random(random, bands);
+            var declaration = Declaration.Random(random, bands, DeclaresNothingConditional(seed));
             var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
                 .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
                 .ToArray();

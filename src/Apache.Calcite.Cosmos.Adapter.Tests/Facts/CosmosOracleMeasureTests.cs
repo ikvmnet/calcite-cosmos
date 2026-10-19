@@ -154,10 +154,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             // A query context of what the first two statements establish, on the engine and remembering nothing: how the
             // planner read a filter before the oracle, measured beside it (JsonFactDerivation).
             JsonFact Is(JsonDocumentPath path, JsonClaim claim) => new(path, claim);
-            theory.DeriveOnEngine(new[] { Is(Kind, Present) }, new[] { Property(0) });
-            var deriveOne = Time(n => theory.DeriveOnEngine(new[] { Is(Kind, Present), Is(Kind, Value("k0")), Is(Q, Present), Is(Q, Value("v" + n)) }, new[] { Property(0) })
+            theory.Derive(new[] { Is(Kind, Present) }, new[] { Property(0) });
+            var deriveOne = Time(n => theory.Derive(new[] { Is(Kind, Present), Is(Kind, Value("k0")), Is(Q, Present), Is(Q, Value("v" + n)) }, new[] { Property(0) })
                 .Knows(Is(Property(0), Present)) ? Truth.Always : Truth.Unknown, Truth.Always, "kind k0 requires p0");
-            var deriveTwo = Time(n => theory.DeriveOnEngine(new[] { Is(Kind, Present), Is(Kind, Enum("k0", "k1")), Is(Q, Present), Is(Q, Value("v" + n)) }, new[] { Property(0) })
+            var deriveTwo = Time(n => theory.Derive(new[] { Is(Kind, Present), Is(Kind, Enum("k0", "k1")), Is(Q, Present), Is(Q, Value("v" + n)) }, new[] { Property(0) })
                 .Knows(Is(Property(0), Present)) ? Truth.Always : Truth.Unknown, Truth.Always, "both kinds require p0");
 
             // Two questions of a tree that exists.

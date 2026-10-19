@@ -106,7 +106,10 @@ ORDER BY JSON_VALUE(c."DOC", '$.category'), c."_ts" DESC
 ```
 
 is a single-key sort and needs no composite index. A key that orders a path an earlier key already
-orders is dropped the same way — Azure refuses even `ORDER BY c.a, c.a` without a composite index.
+orders is dropped the same way — Azure refuses even `ORDER BY c.a, c.a` without a composite index. So
+is a key no row holds: a property of a value the `WHERE` pins to a scalar, or of one the schema or
+Cosmos declares a scalar — beside `name = 'x'`, `JSON_VALUE(c."DOC", '$.name.first')` is a property a
+string does not have, and sorts nothing.
 
 **Every key must be on an indexed path.** Azure refuses an `ORDER BY` over a path the indexing policy
 excludes — *"The index path corresponding to the specified order-by item is excluded"* — for one key

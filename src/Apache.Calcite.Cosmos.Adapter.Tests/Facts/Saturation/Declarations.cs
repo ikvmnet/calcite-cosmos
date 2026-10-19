@@ -38,6 +38,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// still admits a document, and its values are named apart (<see cref="BandedNames"/>), so that the filter drawn from
     /// the trial's stream is the one it was.
     /// </para>
+    /// <para>
+    /// <b>Some declare no conditional rule</b>, what every container that declares no schema has: drawn as any other,
+    /// and the claims under a kind taken back before a document is drawn (<see cref="Random"/>). Nothing a guard reads is
+    /// then a discriminator, so no stratum splits, and the strata are the ones a schema-less container's filters open.
+    /// </para>
     /// </remarks>
     sealed class Declaration
     {
@@ -99,6 +104,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>Gets the rules, as a container's theory is built from them.</summary>
         public IReadOnlyList<JsonFactRule> Rules => _rules;
 
+        /// <summary>Gets whether every rule holds outright, as a declaration with no schema's conditional rules does.</summary>
+        public bool IsUnconditional => _rules.All(r => r.Body.Count == 0);
+
         /// <summary>Gets the scalars the declaration names, by path: what a predicate over the path is likely to be about.</summary>
         public Dictionary<JsonDocumentPath, List<JsonScalar>> Mentioned { get; } = new();
 
@@ -117,12 +125,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <param name="bands">A stream of its own for the characters a string is said to hold, or <c>null</c> for none.
         /// A claim of them admits every value <see cref="Values"/> holds, so it never changes which declaration is
         /// drawn.</param>
-        public static Declaration Random(Random random, Random? bands = null)
+        /// <param name="unconditional">Whether to take back every claim made under a kind once the declaration is drawn,
+        /// so that it states only what holds outright. The trial's stream is drawn from as it would be otherwise until
+        /// then.</param>
+        public static Declaration Random(Random random, Random? bands = null, bool unconditional = false)
         {
             while (true)
             {
                 var declaration = new Declaration();
                 declaration.Fill(random, bands);
+                if (unconditional)
+                    declaration._rules.RemoveAll(r => r.Body.Count > 0);
+
                 if (declaration.TryGenerate(random, out _))
                 {
                     if (bands is not null)

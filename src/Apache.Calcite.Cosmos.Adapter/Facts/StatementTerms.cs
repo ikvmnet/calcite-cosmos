@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly RunOptions _run = Default;
         readonly PredicateRules? _rules;
         readonly JsonFactVocabulary? _vocabulary;
-        readonly JsonFactUnconditional? _unconditional;
+        readonly JsonFactSet _declared = JsonFactSet.Empty;
         readonly HashSet<string> _held = new(StringComparer.Ordinal);
         readonly Dictionary<string, Node> _children = new(StringComparer.Ordinal);
         readonly Dictionary<string, OracleVerdict> _answers = new(StringComparer.Ordinal);
@@ -52,7 +52,7 @@ namespace Apache.Calcite.Cosmos.Facts
             _run = options ?? Default;
             _contexts = declaration.Generation.Contexts;
             _vocabulary = declaration.Vocabulary;
-            _unconditional = declaration.Unconditional;
+            _declared = declaration.Declared;
             _rules = PredicateRules.Of(_contexts);
             _statement = statement;
 
@@ -90,9 +90,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// asked for. It holds the statement's terms and their verdicts, whatever it assumes.
         /// </summary>
         /// <remarks>
-        /// Read off <see cref="JsonFactOverlay"/> where the declaration has no conditional rule, every predicate assumed
-        /// down to the root says what it says of one path at a time, and none meets what the declaration states: there
-        /// the engine would derive nothing the overlay does not hold. Its context is opened only if it is asked a verdict.
+        /// Every child is the engine's context, over a declaration with no conditional rule as over any other: what a
+        /// stratum knows is what the rules derive beneath the declaration, and no reading of its predicates in C# stands
+        /// in for them. A container that declares no schema opens one too, at a millisecond or a few a context
+        /// (<c>DESIGN.md</c>, <em>Generations, and what a question costs</em>).
         /// </remarks>
         public Node Child(Node parent, IEnumerable<SqlPredicate> assumed)
         {
@@ -100,7 +101,7 @@ namespace Apache.Calcite.Cosmos.Facts
             foreach (var predicate in assumed)
                 distinct.TryAdd(predicate.Digest, predicate);
 
-            if (distinct.Count == 0 || parent.KnowsNothing || _rules is null)
+            if (distinct.Count == 0 || parent.Scope is null || _rules is null)
                 return parent;
 
             var key = parent.Key + "/" + string.Join(" & ", distinct.Keys.OrderBy(k => k, StringComparer.Ordinal));
@@ -110,128 +111,14 @@ namespace Apache.Calcite.Cosmos.Facts
                 if (_children.TryGetValue(key, out var child) == false)
                 {
                     var predicates = distinct.Values.ToArray();
-                    child = Overlaid(parent, key, predicates) ?? Opened(parent.Engine, key, predicates);
+                    var made = _statement.Conjuncts.Concat(predicates).ToArray();
+                    var paths = _statement.Paths.Concat(predicates.SelectMany(p => p.Paths)).Distinct().ToArray();
+                    child = Open(parent, key, assumed: predicates, made: made, paths: paths, holdsTerms: true);
                     _children[key] = child;
                 }
 
                 return child;
             }
-        }
-
-        /// <summary>
-        /// Opens the engine's context for a child: the statement's terms and the predicates it assumes, made beneath the
-        /// parent's context, and run.
-        /// </summary>
-        Node Opened(Node parent, string key, IReadOnlyList<SqlPredicate> predicates)
-        {
-            var made = _statement.Conjuncts.Concat(predicates).ToArray();
-            var paths = _statement.Paths.Concat(predicates.SelectMany(p => p.Paths)).Distinct().ToArray();
-            return Open(parent, key, assumed: predicates, made: made, paths: paths, holdsTerms: true);
-        }
-
-        /// <summary>
-        /// Returns a child read off the overlay, or <c>null</c> where the engine is needed: see <see cref="Child"/>.
-        /// </summary>
-        Node? Overlaid(Node parent, string key, IReadOnlyList<SqlPredicate> predicates)
-        {
-            if (_unconditional is null || (ReferenceEquals(parent, Root) == false && parent.Overlay is null))
-                return null;
-
-            var assumed = parent.Assumed.Concat(predicates).ToArray();
-            if (Established(assumed) is not { } established)
-                return null;
-
-            if (JsonFactOverlay.TryOpen(established, _unconditional.Stated, _unconditional.Outright) is not JsonFactOverlay overlay)
-                return null;
-
-            return new Node(this, parent, key, assumed, predicates, overlay);
-        }
-
-        /// <summary>
-        /// Returns what assumed predicates say of each path they read, one path at a time, as <see cref="PredicateAtom.Kept"/>
-        /// reads each atom and the paths' lattice meets them; or <c>null</c> where one says something only the engine can
-        /// read: a disjunction that holds or a conjunction that fails, whose arms are cases, or a predicate assumed both
-        /// true and false.
-        /// </summary>
-        /// <remarks>
-        /// The engine's own reading is <see cref="PredicateRules"/>' analysis and establishing rules, and
-        /// <c>JsonFactOverlayTests</c> holds the two to each other on generated statements.
-        /// </remarks>
-        internal static Dictionary<JsonDocumentPath, PathValues>? Established(IEnumerable<SqlPredicate> assumed)
-        {
-            var paths = new Dictionary<JsonDocumentPath, PathValues>();
-            var truths = new Dictionary<string, bool>(StringComparer.Ordinal);
-
-            bool Holds(SqlPredicate predicate, bool truth)
-            {
-                if (truths.TryGetValue(predicate.Digest, out var held))
-                    return held == truth;
-
-                truths[predicate.Digest] = truth;
-
-                switch (predicate)
-                {
-                    case SqlPredicate.Not n:
-                        return Holds(n.Operand, truth == false);
-
-                    case SqlPredicate.And a when truth:
-                        return a.Arms.All(arm => Holds(arm, true));
-
-                    case SqlPredicate.Or o when truth == false:
-                        return o.Arms.All(arm => Holds(arm, false));
-
-                    case SqlPredicate.And or SqlPredicate.Or:
-                        return false;
-
-                    default:
-                        if (AtomOf(predicate) is not var (path, atom))
-                            return true;
-
-                        var kept = atom.Kept(truth);
-                        if (kept == PathValues.Anything)
-                            return true;
-
-                        paths[path] = paths.TryGetValue(path, out var known) ? PathValues.Meet(known, kept) : kept;
-                        return true;
-                }
-            }
-
-            foreach (var predicate in assumed)
-                if (Holds(predicate, true) == false)
-                    return null;
-
-            return paths;
-        }
-
-        /// <summary>
-        /// Reads a predicate as the atom the analysis rules read it as: the path its value reads, how, and the test made of
-        /// it; or <c>null</c> where it is no atom.
-        /// </summary>
-        static (JsonDocumentPath Path, PredicateAtom Atom)? AtomOf(SqlPredicate predicate)
-        {
-            static string? Reader(SqlValue value) => value switch
-            {
-                SqlValue.Text => PredicateAtom.TextReader,
-                SqlValue.Raw => PredicateAtom.RawReader,
-                SqlValue.Typed t => PredicateAtom.TypedReader(t.Type),
-                SqlValue.Cast c => Reader(c.Value) is string inner ? PredicateAtom.CastReader(c.Target, inner) : null,
-                _ => null,
-            };
-
-            return predicate switch
-            {
-                SqlPredicate.Compare { Left: var v, Right: SqlValue.Literal l } c when v.PathRead is { } p && Reader(v) is string k =>
-                    (p, PredicateAtom.Compare(k, c.Op, l.Value)),
-                SqlPredicate.Compare { Left: var v, Right: SqlValue.Parameter } c when v.PathRead is { } p && Reader(v) is string k =>
-                    (p, PredicateAtom.CompareParameter(k, c.Op)),
-                SqlPredicate.In i when i.Value.PathRead is { } p && Reader(i.Value) is string k =>
-                    (p, PredicateAtom.In(k, i.Points)),
-                SqlPredicate.IsNull n when n.Value.PathRead is { } p && Reader(n.Value) is string k =>
-                    (p, PredicateAtom.IsNull(k)),
-                SqlPredicate.IsDefined d when d.Value.PathRead is { } p && Reader(d.Value) is string k =>
-                    (p, PredicateAtom.IsDefined(k)),
-                _ => null,
-            };
         }
 
         /// <summary>
@@ -248,12 +135,6 @@ namespace Apache.Calcite.Cosmos.Facts
             // question a weakening beneath asks, whose answer no must never be for want of a run.
             if (node.Assumes(predicate))
                 return OracleVerdict.Always;
-
-            // A verdict is the engine's to read, so a stratum read off the overlay opens its context now.
-            node = node.Engine;
-
-            if (node.Contradictory)
-                return OracleVerdict.Contradicted;
 
             if (node.Scope is null || _rules is null)
                 return OracleVerdict.Unknown;
@@ -478,45 +359,23 @@ namespace Apache.Calcite.Cosmos.Facts
         Term<JPath> Path(JsonDocumentPath path) => JsonFactEncoding.Path(path).ToTerm(_rules!.Json);
 
         /// <summary>
-        /// One context of the tree, or where its run did not complete, the one above it read in its place; or a stratum
-        /// read off the overlay, whose context is opened only when a verdict is asked of it.
+        /// One context of the tree, or where its run did not complete, the one above it read in its place.
         /// </summary>
         internal sealed class Node
         {
 
             readonly StatementTerms _owner;
-            readonly IReadOnlyList<SqlPredicate>? _own;
-            Node? _engine;
             JsonFactSet? _view;
 
             public Node(StatementTerms owner, Scope? scope, Node? parent, string key, bool complete, bool holdsTerms, bool contradictory, RunReport? report, IReadOnlyList<SqlPredicate>? own = null)
             {
                 _owner = owner;
                 Scope = scope;
-                Parent = parent;
                 Key = key;
                 Complete = complete;
                 HoldsTerms = holdsTerms;
                 Contradictory = contradictory;
                 Report = report;
-                Assumed = Array.Empty<SqlPredicate>();
-                Holding = Hold(parent, own);
-            }
-
-            /// <summary>
-            /// A stratum read off the overlay: it assumes <paramref name="assumed"/> in all, <paramref name="own"/> beyond
-            /// its parent.
-            /// </summary>
-            public Node(StatementTerms owner, Node parent, string key, IReadOnlyList<SqlPredicate> assumed, IReadOnlyList<SqlPredicate> own, JsonFactOverlay overlay)
-            {
-                _owner = owner;
-                _own = own;
-                Parent = parent;
-                Key = key;
-                Complete = true;
-                HoldsTerms = true;
-                Assumed = assumed;
-                Overlay = overlay;
                 Holding = Hold(parent, own);
             }
 
@@ -543,35 +402,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
             static readonly IReadOnlySet<string> Nothing = new HashSet<string>();
 
-            /// <summary>The context read, or <c>null</c> where nothing is known or nothing is kept, or the node is read off the overlay.</summary>
+            /// <summary>The context read, or <c>null</c> where nothing is known or nothing is kept.</summary>
             public Scope? Scope { get; }
-
-            /// <summary>The overlay a stratum is read off, or <c>null</c> where it is the engine's.</summary>
-            public JsonFactOverlay? Overlay { get; }
-
-            /// <summary>Every predicate a stratum read off the overlay assumes, down to the root; none for the engine's.</summary>
-            public IReadOnlyList<SqlPredicate> Assumed { get; }
-
-            /// <summary>Whether the node knows nothing at all: no context, and no overlay.</summary>
-            public bool KnowsNothing => Scope is null && Overlay is null;
-
-            /// <summary>
-            /// Gets the node whose context a verdict is read from: itself, or for one read off the overlay, the engine's
-            /// context for what it assumes, opened the first time it is asked for.
-            /// </summary>
-            public Node Engine
-            {
-                get
-                {
-                    if (Overlay is null)
-                        return this;
-
-                    lock (_owner._lock)
-                        return _engine ??= _owner.Opened(Parent!.Engine, Key, _own!);
-                }
-            }
-
-            public Node? Parent { get; }
 
             public string Key { get; }
 
@@ -593,18 +425,44 @@ namespace Apache.Calcite.Cosmos.Facts
 
         }
 
+        /// <summary>
+        /// Reads a context as a fact set: the declaration's own view where the node reads the declaration's context, and
+        /// otherwise the context's tables, told of each path they are asked about that the context has no term for, and
+        /// holding the statement's lease for as long as anything reads them.
+        /// </summary>
+        /// <remarks>
+        /// A stratum mentions what its statement reads (<see cref="Open"/>), and a clause after the filter reads paths no
+        /// conjunct does: <c>ORDER BY name.first</c> over <c>WHERE name = 'x'</c> asks of a path the stratum was never told
+        /// of, whose absence the rules derive the moment it is. So the tables tell the context of it then, in a child that
+        /// assumes nothing (<see cref="Mentioning"/>), and every reader of a stratum knows what the rules derive of every
+        /// path it asks about.
+        /// </remarks>
         JsonFactSet ViewOf(Node node)
         {
-            if (node.Overlay is JsonFactOverlay overlay)
-                return new JsonFactSet(overlay, _vocabulary);
-
             if (node.Contradictory)
                 return new JsonFactSet(Contradiction.Tables, _vocabulary);
 
             if (node.Scope is null || _rules is null)
                 return JsonFactSet.Empty;
 
-            return new JsonFactSet(new Leased(new JsonScopeTables(_rules.Json, node.Scope, owned: false), _lease), _vocabulary);
+            if (ReferenceEquals(node.Scope, Root.Scope))
+                return _declared;
+
+            var scope = node.Scope;
+            return new JsonFactSet(new JsonScopeTables(_rules.Json, scope, owned: false, mention: path => Mentioning(scope, path), keep: _lease), _vocabulary);
+        }
+
+        /// <summary>
+        /// Opens a child of a context that mentions a path it has no term for, run as a child made for a question is, and
+        /// leases it with the statement's contexts; or returns <c>null</c> where its run does not complete.
+        /// </summary>
+        Scope? Mentioning(Scope scope, JsonDocumentPath path)
+        {
+            var told = _contexts!.Mentioning(scope, JsonFactEncoding.Path(path), _rules!.Answer, _run);
+            if (told is not null)
+                _lease.Add(told);
+
+            return told;
         }
 
         /// <summary>
@@ -626,51 +484,6 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 for (var i = _scopes.Count - 1; i >= 0; i--)
                     _scopes[i].Dispose();
-            }
-
-        }
-
-        /// <summary>
-        /// A context's tables, holding its statement's lease for as long as anything reads them.
-        /// </summary>
-        sealed class Leased : JsonFactTables
-        {
-
-            readonly JsonFactTables _tables;
-            readonly Lease _lease;
-
-            public Leased(JsonFactTables tables, Lease lease)
-            {
-                _tables = tables;
-                _lease = lease;
-            }
-
-            public override bool IsContradictory => Keep(_tables.IsContradictory);
-
-            public override bool Present(JsonDocumentPath path) => Keep(_tables.Present(path));
-
-            public override bool TryTypes(JsonDocumentPath path, out ValueSet<string> types) => Keep(_tables.TryTypes(path, out types));
-
-            public override bool TryDom(JsonDocumentPath path, out ValueSet<string> dom) => Keep(_tables.TryDom(path, out dom));
-
-            public override bool Ne(JsonDocumentPath path, string value) => Keep(_tables.Ne(path, value));
-
-            public override bool TryLo(JsonDocumentPath path, out Bound bound) => Keep(_tables.TryLo(path, out bound));
-
-            public override bool TryHi(JsonDocumentPath path, out Bound bound) => Keep(_tables.TryHi(path, out bound));
-
-            public override bool Form(JsonDocumentPath path, string token) => Keep(_tables.Form(path, token));
-
-            public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands) => Keep(_tables.TryChars(path, out bands));
-
-            public override bool Extension(JsonDocumentPath path, string key) => Keep(_tables.Extension(path, key));
-
-            public override bool Constant(JsonDocumentPath path, string value) => Keep(_tables.Constant(path, value));
-
-            T Keep<T>(T answer)
-            {
-                GC.KeepAlive(_lease);
-                return answer;
             }
 
         }
