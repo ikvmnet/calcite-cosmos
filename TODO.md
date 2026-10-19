@@ -2368,6 +2368,17 @@ across documents* and *A join of a container to itself* is the record.
   band; and a Java string can hold one. A CESU-8 pair read so becomes the UTF-16 pair, which the service
   ranks as two surrogates and counts as 2. It needs a transcoder of its own, `System.Text.Json` having
   none, so it is not small. `FF`, `C0 AF` and a lone `80` have no such reading and must still fail.
+- **A projected `JSON_QUERY` is written out by another writer than Calcite's** — *small, a wrong answer, found
+  beside the work on bytes and not yet fixed.* `CosmosJson.GetJsonTextProperty` writes the fragment with
+  `Utf8JsonWriter`'s default encoder, which escapes every character outside ASCII and the HTML-sensitive ones,
+  and copies a number's text as stored. Calcite's own `JSON_QUERY` writes through Jackson, which escapes
+  neither and re-renders a number from what it parsed. Measured in process on 2026-10-19: over
+  `{"t":"é","u":"<>&"}` Calcite answers `{"t":"é","u":"<>&"}`, and the reader answers
+  `{"t":"\u00E9","u":"\u003C\u003E\u0026"}`. So the pushed column is another string than the in-process one
+  wherever a fragment holds such a character, and by the same token wherever it holds a number Jackson would
+  print otherwise (`1.50` as `1.5`). The rendering should be delegated as `GetText`'s is, to the function
+  Calcite writes the fragment with, over the value built as Calcite would hold it: a number past int64 is a
+  `BigInteger` to Jackson and a `Double` to `GetNatural`, so that reading needs care too.
 - **An integer written in [2^63, 2^64) reads back two ways on the emulator** — *the emulator's alone,
   measured.* The emulator keeps such an integer as written and returns it so in a document read whole,
   but prints it projected as the double nearest it, to 17 significant digits: 2^63 reads
