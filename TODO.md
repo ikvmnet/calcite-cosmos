@@ -1166,12 +1166,13 @@ hand. Two tests pin both directions.
   works — see *A parse carries a format* in `DESIGN.md`.
 - **A space-separated instant is not recognised** — *small, and the obstacle is gone.*
   `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
-  `isoformat(sep=' ')` and a good many SQL exports write it. `Normalise` used to strip whitespace
-  outside a class, which made the pattern indistinguishable from one with no separator and recognised
-  a pattern carrying a significant space as the form without it — a wrong answer, `RenderUuid`
-  writing a spelling the stored values do not have. Whitespace is kept now, as ECMA-262 reads it, and
-  `TheSpellingsInTheWildAreRecognised` holds a spaced UUID unrecognised. What is left is registering
-  the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
+  `isoformat(sep=' ')` and a good many SQL exports write it. Matching the forms by spelling once
+  stripped whitespace outside a class, which made the pattern indistinguishable from one with no
+  separator and recognised a pattern carrying a significant space as the form without it — a wrong
+  answer, `RenderUuid` writing a spelling the stored values do not have. The one reader of a pattern
+  reads a space as the character ECMA-262 matches, and `TheSpellingsInTheWildAreRecognised` and
+  `ASpaceTheRegistryDroppedIsAnotherLanguage` hold spaced patterns unrecognised. What is left is
+  defining the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
 - **`PARSE_TIMESTAMP` is recognised and pushes at neither site, and the reason is its type rather
   than its parse** — *small, and two separate pieces of work.* It is the name a caller reaches for
   first and it reads a format exactly as `PARSE_DATETIME` does, measured. What it answers is
@@ -1285,7 +1286,9 @@ the distribution the gate is sized for.
   `Service.ConstantStringComparisonIsByCodeUnit` for two constants). Every order the service computes is
   asked of `CosmosServiceOrder` (`DESIGN.md`, *The service's order, asked once*). **A declaration proves it
   when the plan is made:** a JSON Schema `pattern` read as the characters a path may hold
-  (`CosmosPatternAlphabet`; *Reading a pattern as characters*). **The rows prove the rest:** the anchored
+  (`CosmosPatternReader`; *Reading a pattern as characters*), and an `enum`, a `const`, a stored form or a
+  filter's `=` or `IN`, each of which the theory derives the characters from (*Characters, a fact of the
+  theory*). **The rows prove the rest:** the anchored
   read (*The anchored read*) sends `ORDER BY c.id`, its page and its keyset seek `WHERE c.id > ?`, a sort
   over a declared string, a comparison against a parameter, `MAX(c.id)` and a `BIGINT` past int64, and the
   reader checks each value as it arrives and reads a fallback where one breaks the proof. Eight of the nine
@@ -1342,19 +1345,26 @@ the distribution the gate is sized for.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
-- **One parser of the pattern language** — *medium, and the owner's decision.* `CosmosPatternLanguage`
-  puts a pattern in the spelling the stored-form tables are keyed by and reads a UUID's shape by its
-  atoms; `CosmosPatternAlphabet` parses the language strictly, under both readings, for its characters.
-  Two readers of one keyword, each stating what `\d` means. The alphabet's parse is to feed stored-form
-  recognition too, printing the tables' spelling from the parse, so that the language is read once.
-  The literal-space defect the first had is fixed; the readers agree on everything else they both read.
 - **`\d` and `\w` are read as ECMA-262's** — *the owner's to confirm.* A validator in .NET's default
   dialect or Python's matches every Unicode digit or word character, U+FF10 and U+1D7CE among them, so a
   path declared `^\d+$` and validated that way can hold strings whose order the declaration claims and
-  the service does not keep. JSON Schema names ECMA-262, the stored forms read `\d` as `[0-9]` too, and
-  chapter 14.4 tells a user to spell the classes out; refusing both in the reader would cost nothing a
-  user cannot write as `[0-9]`, but would leave the stored forms reading them, which a fix of one
-  reading alone does not make consistent.
+  the service does not keep. JSON Schema names ECMA-262, and chapter 14.4 tells a user to spell the
+  classes out. There is one reader of a pattern now, so refusing the two there would refuse them for the
+  characters and the stored forms at once: consistent, and costing nothing a user cannot write as
+  `[0-9]` — but every published date and integer pattern written with `\d` would lose its form.
+- **A table's form is recognised from its language exactly** — *small, and the owner's decision.* A
+  pattern admitting fewer strings than a temporal or numeric form — a month written `[01][0-9]`, an
+  hour `[0-2][0-9]`, a fixed width with a first digit `[1-9]` — is no form, though every string it
+  admits is the form's and both relations hold of them all. A UUID already reads its narrowings, its
+  shape being decided (`DESIGN.md`, *One reader of a pattern*). Reading a table's narrowings is the
+  same argument, read slot by slot against the definition's runs; the price is that a literal outside
+  the narrowing, which the form can spell and no document holds, is compared rather than refused,
+  which answers what the query does.
+- **One language read as two** — *small.* The reader puts a pattern's strings in one structure by
+  identities of the language (`CosmosPatternStrings`), and does not claim the converse: `^a$|^b$` and
+  `^[ab]$`, or `^[0-4][0-9]$|^[5-9][0-9]$` and `^[0-9]{2}$`, are one language read as two, and a form
+  written the first way is not recognised. Alternatives differing in one run of one character could be
+  merged into one class; no published spelling of a form has been seen to need it.
 - **Two values that may both be a JSON null are compared in process** — *small; closed as a wrong answer,
   left as a pushdown.* `=`, `<=` and `>=` between two paths that may each hold a JSON null kept the
   documents holding one at the service, which equates a null with a null where Calcite's comparison is
@@ -1818,7 +1828,7 @@ execution*. A declared UUID took it next (#207), the slot carrying the UUID form
 into it when it arrives. The numeric forms still lower against a literal only: the same move would
 take them, with an integer written into its width, and nothing has asked.
 
-### A null parameter is not SQL's null at the service — *small, found beside #182, and older than it*
+### A null parameter is not SQL's null at the service — *done; its cost on Azure is owed*
 
 A parameter is bound as it arrives, and a SQL `NULL` arrives as a JSON `null`, which the service compares
 as a value. Measured against the emulator, over one path holding `true`, `false`, `null`, a string, a
@@ -1829,13 +1839,24 @@ number and nothing:
 | `c.flag = @n` | the document storing `null` | nothing |
 | `c.flag != @n`, `NOT (c.flag = @n)` | every document holding something other than `null` | nothing |
 | `c.flag > @n` | nothing | nothing |
+| `c.t <= @n`, `c.t >= @n`, `c.t BETWEEN @n AND @m` | the document storing `null` | nothing |
+| `c.t IN (@n, 'apple')` | `apple` and the document storing `null` | `apple` |
+| `c.t NOT IN (@n, 'apple')` | every document holding something other than `null` or `apple` | nothing |
 
-So every parameterised equality, inequality and negated equality answers rows a null parameter should
-not, and the guards `WriteComparison` writes are about a null at the *path*. The repair is a guard on
-the parameter in those positions — `NOT IS_NULL(@p0)` beside the comparison — which costs nothing where
-the value is not null. A host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity
-Framework does, never sends one, which is likely why nothing has reported it. Not measured against an
-account.
+So every parameterised equality, inequality and negated equality answered rows a null parameter should
+not, and so did `<=`, `>=` and `BETWEEN` over a path that may hold a JSON null, `IN` and `NOT IN` with a
+parameter among the values, and an `OR` beside any of them: measured again over the differential's
+`ordering`, whose `t` is declared a string or null, `t <= ?` and `t BETWEEN ? AND ?` bound to nulls kept the
+document storing a null, `t NOT IN (?, 'apple')` every other, and `t = ? OR s = 'a'` the null one beside
+`a`. The guards `WriteComparison` wrote were about a null at the *path*.
+
+**Done: the parameter is guarded too**, in every position its operator would keep a row for a JSON null —
+`NOT IS_NULL(@p) AND` before `=`, `!=`, `<=` and `>=` in a positive position, `OR IS_NULL(@p)` after `=`,
+`!=`, `<` and `>` under a `NOT` (`DESIGN.md`, *A prepared statement's value belongs to the execution*). The
+differential's parameter rows bind each shape to a null and to a value. **Still owed:** what the test costs
+on Azure, where it is a constant the service may or may not fold before it picks an index; not measured. A
+host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
+one, which is likely why nothing had reported it.
 
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
@@ -1850,12 +1871,23 @@ The stored-number disjunct a lowered equality carried beside a declared string i
 `type: string`, or a sibling's kind declaring one, makes `label = '30'` exact from the stratum it is
 rendered from, and the oracle's rendering preimage meets a declared string down to the string.
 
-### Facts about array elements — *small, and waiting for a consumer*
+### Facts about array elements — *small, and a geography's proof waits on it*
 
 `JsonDocumentPath` carries property names only, so `items` and `prefixItems` state nothing. The
 path model has room for an element segment and `ARRAY_CONTAINS` and the traversal are the rules that
 would read one. Not built because nothing asks yet, and a path model that admits an index has to
 answer what `$.tags[0]` means against a fact declared for `items`.
+
+**A geography's proof is the one reader that asks now.** `CosmosGeographyForms` reads a subschema's
+`minItems`, `maxItems`, `prefixItems`/`items` and its elements' `minimum` and `maximum` itself, a second
+reader of the schema and a derivation in C# of "the service will measure this value"; it reads `type`,
+`required`, `const` and the bounds through `JsonSchemaFacts`' own readers. What has to move: the schema
+reader states the element facts — `prefixItems` as `Index` paths, `items` as `Each`, the counts as
+`minItems`/`maxItems` and the elements' bounds as `lo`/`hi`, all of which the theory already has — and a rule
+of the theory derives the geography from a pinned `type`, both members present, and the coordinates' counts
+and bounds, the measured ranges (±180 and ±90, `CosmosGeographyValidityMeasurementTests`) stated as data.
+Then `CosmosGeographyForms` goes. Not done in the review of `feature/allowable-orders`: it needs the element
+segment above first.
 
 ### The keywords still not read — *small each, and none of them blocked*
 
@@ -1962,7 +1994,41 @@ holds. Three bugs planted in what was added were each caught by it.
   `anyOf` (`JsonPathSpec.HiddenNamed`, the plan's §2.6), and the discriminators and conditional rules stated
   directly. `JsonSchemaFacts.Meet` and `JsonFact.Entails` then go. `Meet` is quadratic in a `oneOf`: 7.5 s to read a
   33k-rule schema and 76 s at 109k, against 0.8 s to compile one into the theory. At that size the reader is the
-  bottleneck.
+  bottleneck. **It is also where facts are still combined outside the theory, against the owner's rule**
+  (`DESIGN.md`, *Characters, a fact of the theory*, *What is left in C#*), and this is exactly what has to move:
+  - `JsonSchemaFacts.Meet`, which keeps a claim of every kind — a type, a domain joining the branches' constants, a
+    bound, a form, characters stored and written — where every branch entails one, by the rows of
+    `JsonFact.Entails`, which read a value's type through `JsonScalar.Type` beside the theory's `JsonValues.TypeOf`;
+  - `AdmitNull` and `NullableBranch`, which widen every fact of a nullable union's one branch to admit the null —
+    a type to its `OrNull`, a domain by a null, a presence and a geography under the union's presence and
+    non-null — and which are a hidden discriminator with a null case;
+  - and with them `JsonFact.Entails` itself, which nothing else asks.
+
+  Stated as a hidden discriminator's cases, the theory's lift joins what the branches say as it joins a
+  discriminated union's, and widens nothing by hand. Not done in the review of `feature/allowable-orders` because
+  it is the reader's rewrite the plan sizes as *large*, and every rule a union states would move with it.
+  Population D draws its declarations as claims, so the meet and the nullable widening are fuzzed only by the
+  schema reader's own tests; drawing some declarations as JSON Schema text through
+  `CosmosSchemaRecognition.ReadFrom` would fuzz them end to end until they go.
+- **The overlay restates the theory** — *medium, and waiting on the engine's cost.* `JsonFactOverlay` answers a
+  stratum the engine would add nothing to without opening a context, which is what keeps an undeclared container's
+  filter at the closure's cost (below). To answer without the engine it restates, for its gated case, rules of JSON
+  the engine runs — against the owner's rule that there are no facts but the theory's:
+  - a value or a domain is of its own types (`PathValues.Normal`, `JsonRules` *a value is of its own type*);
+  - it holds its own characters (`TryChars`, *a value's characters are its own*);
+  - it bounds the path by its numbers (`TryLo`, `TryHi`, *a domain's numbers bound the path*);
+  - a present path of one value holds it in every document (`Constant`, *a present path of one value…*);
+  - a JSON null excluded leaves every other type, and booleans or null alone are a domain of their values
+    (`PathValues.Normal`);
+  - a present path has present objects above it, the root among them, and a path beneath one that holds no object
+    is absent (`Open`, `IsAbsent`);
+  - and `StatementTerms.Established` and `AtomOf` read each conjunct as the oracle's establishing rules do.
+
+  `JsonFactOverlayTests` holds it to the engine answer for answer. What has to happen is the overlay's retirement:
+  a context opened for these statements costs about 2 ms each, four a plan where the split rule fires, which the
+  planning gate will not take. Eggnog's idle-rule fix (`campaign/idle-rule-fix`, 165 KB to 32 KB a query at a
+  hundred idle local rules) is the lever; measure the corpus planned new with and without the overlay, with the
+  `MeasureScratchTests` harness, once it is released, and delete the overlay if the gate holds.
 - **What a small declared container costs** — *medium.* The demand gate is built for a declaration with no
   conditional rule, which is every container that declares no schema: `JsonFactOverlay` answers its filters
   without the engine, and it plans as fast as it did on the closure (8–16 ms a plan against 11–14 ms, where
@@ -1989,15 +2055,6 @@ holds. Three bugs planted in what was added were each caught by it.
   in-process evaluation of the same query, over containers with schemas. The plan's step 1, still owed.
 - F7, alias-blind consumers, wants the tests over `CosmosUnnest` aliases the plan names.
 - F9, documentation drift, wants re-reading against what is here now.
-- **Characters as a fact of the theory** — *medium, and the owner's decision.* A path's characters are a
-  claim the theory carries opaquely, `CosmosCharacters`, one per band, which a pattern and a service fact
-  state; a domain and a stored form establish it only as `JsonFactSet.Knows` reads it, through the claim's
-  own `IsEntailedBy`, the way a bound is read off a domain. The owner decided they are a fact of the theory
-  like a type: per path, whether each band can occur, fed by one pattern parser, by each literal's bands as
-  it is loaded and by a rule that an ASCII form holds neither; narrowed by a conjunction, widened by a
-  disjunction, split per branch and licensed per scope, so that `WHERE s IN (…)` under an `OR` proves its
-  characters through the oracle. `CosmosServiceOrder` then asks the fact and keeps only the order's
-  legality: R2 to R4.
 - **What Eggnog adds beyond the closure** — *large, each its own decision.*
   - The rewriter as extraction under an RU cost.
   - Path equality for `CHECK`. The theory has it: a union of two path terms.
@@ -2268,8 +2325,9 @@ across documents* and *A join of a container to itself* is the record.
   statement whose rows reach it. Either the failure names the document, or the reader reads the
   sequence as U+FFFD, which is what the service itself did with the escape. Nothing orders them
   wrongly meanwhile: U+FFFD and a surrogate both lie at or above U+D800, which R1 already refuses to rank
-  against a high unit, and a declared `pattern` that admits a surrogate claims nothing of the high band
-  for this reason.
+  against a high unit, and what a declared `pattern` that admits a surrogate proves of the stored strings'
+  high band is nothing, by the theory's rule of what is stored (`Service.LoneSurrogateIsStoredAsReplacement`,
+  `DESIGN.md`, *Reading a pattern as characters*).
 - **A double past 2^53 reads back two ways on the emulator** — *small, and the emulator's.* The emulator
   returns a document read whole as it was written, and prints a projected number to 17 significant
   digits: 2^63 written whole reads `9223372036854775808` through `SELECT VALUE c` and

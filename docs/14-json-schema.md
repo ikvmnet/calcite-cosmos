@@ -197,8 +197,8 @@ not mention `status` is unaffected, and one asking for a `status` keeps nothing.
 ## 14.3 Stored forms: what a `pattern` proves
 
 A `pattern` is what pins the spelling of a string, and the adapter recognises a fixed family of
-spellings rather than interpreting arbitrary regular expressions. A pattern it does not recognise
-yields no stored form, though what it says of the characters a string holds may still be read
+stored forms rather than interpreting arbitrary regular expressions. A pattern that is not one of
+them yields no stored form, though what it says of the characters a string holds may still be read
 (14.4). Each recognised form says two independent things: whether comparing the stored strings for
 **equality** answers what comparing the values does, and whether their **order** does.
 
@@ -207,7 +207,7 @@ yields no stored form, though what it says of the characters a string holds may 
 | `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` — canonical lowercase UUID | ✔ | ✔ |
 | the same with a version digit or the variant nibble `[89ab]` pinned | ✔ | ✔ |
 | the same in uppercase throughout | ✔ | ✔ |
-| the same braced (`{…}`) or without hyphens | ✔ | ✔ |
+| the same braced (`\{…\}`) or without hyphens | ✔ | ✔ |
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` — ISO-8601 UTC, whole seconds | ✔ | ✔ |
 | the same with a fixed number of fraction digits, `\.[0-9]{n}`, and/or `\+00:00` or no zone in place of `Z` | ✔ | ✔ |
 | `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` — a calendar date | ✔ | ✔ |
@@ -217,12 +217,25 @@ yields no stored form, though what it says of the characters a string holds may 
 | `^[0-9]+$`, `^\d+$`, anything signed | ✘ | ✘ |
 | any other pattern | ✘ | ✘ |
 
-`\d` and `[0-9]` are read as the same thing. Whitespace is a character the pattern matches, as ECMA-262
-reads it: `^[0-9]{5} $` is not the fixed-width form, nor a UUID pattern with a stray space a UUID. A UUID pattern
-is read as a shape — 32 hex slots, hyphens in fixed places, anchored at both ends — so any narrower
-confinement of the slots (a pinned prefix, `[1-5]` for the version, `[8-9a-b]` for the variant)
-is recognised too. A pattern that mixes cases, or a character range like `[8-f]` that spans
-non-hex characters, is refused, because it admits two spellings of one value.
+**A form is recognised by the strings a pattern admits, not by how it is spelled.** The pattern is
+parsed, by the same reader that reads its characters (14.4), and it is a form where the strings it
+admits are the form's. So the ways of writing one language are one form: `\d` or `[0-9]` or
+`[0123456789]`; a run counted or spelled out, `\d{4}` or `\d\d\d\d` or `\d{2}\d{2}`; a separator
+written `-`, `[-]` or `\x2D`; a group around any part; the alternatives of `^(0|[1-9][0-9]*)$` in
+either order. Whitespace is a character the pattern matches, as ECMA-262 reads it: `^[0-9]{5} $` is
+not the fixed-width form, nor a UUID pattern with a stray space a UUID.
+
+The date, time and number patterns in the table must admit exactly the form's strings: a month
+narrowed to `[01][0-9]` is no form. A UUID pattern is read as a shape — 32 hex slots, hyphens in
+fixed places, anchored at both ends — so any narrower confinement of the slots (a pinned prefix,
+`[1-5]` for the version, `[8-9a-b]` for the variant) is recognised too. A pattern that mixes cases,
+or a character range like `[8-f]` that spans non-hex characters, is refused, because it admits two
+spellings of one value.
+
+**Escape the braces.** Validators differ on whether a pattern is read with ECMA-262's `u` flag, and
+a pattern only one reading accepts is no form: the other reading rejects it, so a validator using
+that reading cannot have checked a document. `^{…}$` with bare braces, and `\-` for a hyphen, are
+literals without the flag and errors with it. Write `\{…\}` and `-`.
 
 **`format` proves nothing.** JSON Schema calls `format` an annotation, not an assertion, and RFC 9562
 dropped the rule that UUIDs are written in lowercase. `"format": "uuid"` does not say how the value is
@@ -271,8 +284,10 @@ path run in process — `id` included, since Azure allows every character in an 
 
 **A `pattern` that rules those characters out is the proof.** Any pattern the adapter can read
 counts, not only the stored forms of 14.3, and the proof is made when the plan is: nothing is
-checked when the rows come back. Declare the type beside it, since a pattern constrains only a
-string and a text key sorts at the service only over a declared string (Chapter 9.3):
+checked when the rows come back. It is not the only proof — an `enum`, a `const`, a stored form and a
+`WHERE` listing the values each prove the same (Chapter 9.3) — but it is the one that covers strings
+no one listed. Declare the type beside it, since a pattern constrains only a string and a text key
+sorts at the service only over a declared string (Chapter 9.3):
 
 ```json
 "properties": {
@@ -322,7 +337,8 @@ UTF-16 unit at a time; with it, one code point at a time; and the two can disagr
 So every pattern is read both ways, and a character is ruled out only where both readings rule it out.
 What is read:
 
-- every alternative anchored at both ends, `^…$`. A `pattern` searches, so `[a-z]+` matches any
+- anchored at both ends: every alternative begins with `^` and ends with `$`, or sits in a group
+  that does, as in `^(?:a|b)$` or `(?:^a$)|(?:^b$)`. A `pattern` searches, so `[a-z]+` matches any
   string with a letter in it;
 - literals and escaped characters, `\uXXXX`, `\xHH`, `\t` and the other control escapes, `\d` and `\w`
   (ASCII in ECMA-262), character classes, ranges, groups, alternation, and any quantifier;
@@ -403,7 +419,7 @@ property above the `oneOf`.
 | `required` | presence, for children of an object that is itself present |
 | `const`, `enum` | the value, or its domain (scalars only) |
 | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum` | a bound on the value **if it is a number**; the exclusive forms as numbers (2019-09 on) or as flags beside `minimum` and `maximum` (Draft 4, OpenAPI 3.0) |
-| `pattern` | a stored form, for the recognised spellings (14.3); and, beside any type, the characters a string may hold, for any pattern read under both of its readings (14.4) |
+| `pattern` | a stored form, where the strings it admits are a recognised form's (14.3); and, beside any type, the characters a string may hold (14.4). Both are read under both of its readings |
 | `format` | nothing |
 | `allOf` | every branch |
 | `oneOf`, `anyOf` with a discriminating `const` | each branch, for documents that have the discriminator and its value; and what every branch implies, for every document |

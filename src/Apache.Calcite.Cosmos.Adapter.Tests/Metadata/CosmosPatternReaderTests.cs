@@ -11,27 +11,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 {
 
     /// <summary>
-    /// What a declared <c>pattern</c> says of the characters a string holds, read under both readings a validator may
-    /// have given it: by UTF-16 unit, and by code point as the <c>u</c> flag reads it.
+    /// What a declared <c>pattern</c> says of the characters a string holds and of the strings it admits, read under both
+    /// readings a validator may have given it: by UTF-16 unit, and by code point as the <c>u</c> flag reads it.
     /// </summary>
     /// <remarks>
-    /// Checked beside these, while it was written, against V8's own <c>RegExp</c> with and without the flag: 36,000
-    /// generated patterns, each matched against some four thousand strings drawn from every band, and no band the reader
-    /// called absent held by a string either reading matched, nor a pattern read that either reading rejects.
+    /// <para>
+    /// The characters were checked beside these, while the reader was written, against V8's own <c>RegExp</c> with and
+    /// without the flag: 36,000 generated patterns, each matched against some four thousand strings drawn from every band,
+    /// and no band the reader called absent held by a string either reading matched, nor a pattern read that either
+    /// reading rejects.
+    /// </para>
+    /// <para>
+    /// The strings are what a stored form is recognised by (<c>CosmosStoredFormsSpellingTests</c>), and these hold them to
+    /// the identities of the language they rest on.
+    /// </para>
     /// </remarks>
-    public class CosmosPatternAlphabetTests
+    public class CosmosPatternReaderTests
     {
 
-        static readonly CosmosCharacterBand S = CosmosCharacterBand.Surrogates;
+        static readonly JsonCharacterBand S = JsonCharacterBand.Surrogates;
 
-        static readonly CosmosCharacterBand H = CosmosCharacterBand.HighBmp;
+        static readonly JsonCharacterBand H = JsonCharacterBand.HighBmp;
 
-        static CosmosCharacterBand[]? Absent(string pattern) => CosmosPatternAlphabet.Absent(pattern)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern) => CosmosPatternReader.Absent(pattern)?.ToArray();
 
-        static CosmosCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternAlphabet.Absent(pattern, unicode)?.ToArray();
+        static JsonCharacterBand[]? Absent(string pattern, bool unicode) => CosmosPatternReader.Absent(pattern, unicode)?.ToArray();
 
-        static CosmosCharacterBand[] Claimed(string pattern) =>
-            CosmosPatternAlphabet.Claims(pattern).Cast<CosmosCharacters>().Select(c => c.Band).ToArray();
+        /// <summary>
+        /// The bands the theory says a path's stored strings hold no unit of, the pattern's claim of what was written the
+        /// one thing stated of it, as <see cref="Absent(string)"/> lists them.
+        /// </summary>
+        static JsonCharacterBand[] Claimed(string pattern)
+        {
+            var at = JsonDocumentPath.Root.Property("s");
+            var stored = new JsonFactTheory(CosmosPatternReader.Claims(pattern).Select(claim => JsonFactRule.Unconditional(new JsonFact(at, claim))).ToList())
+                .Derive(null).CharactersOf(at);
+
+            return new[] { S, H }.Where(band => (stored & band) == JsonCharacterBand.None).ToArray();
+        }
 
         // ── What a declaration proves ─────────────────────────────────────────────────────────
 
@@ -79,8 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
-        /// The pattern as written, not as <c>CosmosPatternLanguage.Normalise</c> leaves it: a space matches a space, which
-        /// is below U+D800 either way.
+        /// The pattern as written: a space matches a space, which is below U+D800 either way.
         /// </remarks>
         [Fact]
         public void ASpaceIsACharacter()
@@ -115,7 +131,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         public void ASurrogateAdmittedIsAHighUnitStored()
         {
             Absent("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(H);
-            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().BeEmpty();
+            CosmosPatternReader.Claims("^[a-z\\uD800-\\uDFFF]*$").Should().Equal(new JsonClaim[] { new JsonClaim.Written(S) },
+                "the reader states what was written, a surrogate and nothing from U+E000");
+            Claimed("^[a-z\\uD800-\\uDFFF]*$").Should().BeEmpty("and the theory derives that what is stored may hold a high unit");
+            Claimed("^[a-z\\uE000-\\uFFFF]*$").Should().Equal(new[] { S }, "one written without a surrogate is stored as it was written");
         }
 
         /// <remarks>
@@ -222,18 +241,134 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <remarks>
         /// JSON Schema's <c>pattern</c> searches: an alternative not anchored at both ends matches inside a string of
-        /// anything. Anchoring inside a group is not read either.
+        /// anything. A group that may be passed over anchors nothing, and neither does a group one of whose branches is
+        /// unanchored, or an empty one.
         /// </remarks>
         [Theory]
         [InlineData("[a-z]+")]
         [InlineData("^[a-z]+")]
         [InlineData("[a-z]+$")]
         [InlineData("^[a-z]+$|^x")]
-        [InlineData("(?:^[a-z]+$)")]
+        [InlineData("(?:^[a-z]+|[0-9]+)$")]
+        [InlineData("(?:^[a-z]+)?[0-9]$")]
+        [InlineData("^[a-z]+(?:$|x)")]
+        [InlineData("(?:)^[a-z]+$")]
         [InlineData("")]
         public void AnUnanchoredAlternativeIsRefused(string pattern)
         {
             Absent(pattern).Should().BeNull();
+            Strings(pattern).Should().BeNull();
+        }
+
+        /// <remarks>
+        /// Anchoring is read off the structure, not off the first and last characters: every way through each of these
+        /// asserts <c>^</c> before it consumes anything and <c>$</c> after it has consumed everything, which is all the
+        /// atoms' characters need to bound the string's, and all a form needs to be the string. The nil-UUID alternation
+        /// is published in the third shape.
+        /// </remarks>
+        [Theory]
+        [InlineData("(?:^[a-z]+$)")]
+        [InlineData("^(?:[a-z]+|[0-9]+)$")]
+        [InlineData("(?:^[a-z]+$)|(?:^[0-9]+$)")]
+        [InlineData("(?:^[a-z]+|^[0-9]+)$")]
+        [InlineData("^(?:[a-z]+$|[0-9]+$)")]
+        public void AnchoringInsideAGroupIsRead(string pattern)
+        {
+            Absent(pattern).Should().Equal(S, H);
+            Strings(pattern).Should().NotBeNull();
+        }
+
+        // ── What a pattern admits, as strings ─────────────────────────────────────────────────
+
+        static CosmosPatternStrings? Strings(string pattern) => CosmosPatternReader.Strings(pattern);
+
+        /// <remarks>
+        /// One language, written every way it commonly is and some it is not: <c>\d</c>, or the class, or its members in
+        /// any order; the run counted, spelled out or split; a count of a group, and an alternation of single characters;
+        /// a lazy count, a range of one count, a count with a leading zero; a run repeated no times; a group around the
+        /// whole; the same alternative twice. Each rewrite is an identity of the language, and the reader reads them all
+        /// as one, which is what a stored form is recognised by.
+        /// </remarks>
+        [Theory]
+        [InlineData("^[0-9]{4}$")]
+        [InlineData("^\\d{4}$")]
+        [InlineData("^\\d\\d\\d\\d$")]
+        [InlineData("^[0-9]{2}\\d{2}$")]
+        [InlineData("^[0123456789]{4}$")]
+        [InlineData("^[5-90-4]{4}$")]
+        [InlineData("^(?:[0-9]{2}){2}$")]
+        [InlineData("^((?:[0-4]|[5-9])){4}$")]
+        [InlineData("^[0-9]{4}?$")]
+        [InlineData("^[0-9]{4,4}$")]
+        [InlineData("^[0-9]{04}$")]
+        [InlineData("^x{0}[0-9]{2}x{0}[0-9]{2}$")]
+        [InlineData("(?:^[0-9]{4}$)")]
+        [InlineData("^[0-9]{4}$|^\\d{4}$")]
+        public void OneLanguageIsReadAsOneWhateverItsSpelling(string pattern)
+        {
+            Strings(pattern).Should().NotBeNull("for " + pattern);
+            Strings(pattern).Should().Be(Strings("^[0-9]{4}$"), "for " + pattern);
+        }
+
+        /// <remarks>
+        /// A sequence's alternation is distributed across it, which the language does not see, and the alternatives are
+        /// a set, written in whatever order.
+        /// </remarks>
+        [Fact]
+        public void AnAlternationIsDistributedAcrossItsSequence()
+        {
+            var distributed = Strings("^ab$|^acd$");
+
+            distributed.Should().NotBeNull();
+            distributed!.Alternatives.Should().HaveCount(2);
+
+            Strings("^a(?:b|cd)$").Should().Be(distributed);
+            Strings("(?:^ab$)|(?:^acd$)").Should().Be(distributed);
+            Strings("^(?:acd|ab)$").Should().Be(distributed);
+        }
+
+        /// <remarks>
+        /// Languages that differ are read apart: by a count, a range of counts, one character more or fewer in a class,
+        /// a space, which ECMA-262 matches as itself, and a run that may or may not be there.
+        /// </remarks>
+        [Theory]
+        [InlineData("^[0-9]{5}$")]
+        [InlineData("^[0-9]{3,4}$")]
+        [InlineData("^[0-9]{4,}$")]
+        [InlineData("^[0-8]{4}$")]
+        [InlineData("^[0-9:]{4}$")]
+        [InlineData("^[0-9]{4} $")]
+        [InlineData("^ [0-9]{4}$")]
+        [InlineData("^[0-9]{2} [0-9]{2}$")]
+        [InlineData("^[0-9]{4}Z?$")]
+        public void LanguagesThatDifferAreReadApart(string pattern)
+        {
+            Strings(pattern).Should().NotBeNull("for " + pattern);
+            Strings(pattern).Should().NotBe(Strings("^[0-9]{4}$"), "for " + pattern);
+        }
+
+        /// <remarks>
+        /// What is no union of sequences of runs has no strings, and is still read for its characters: a word boundary
+        /// or a second anchor between the anchors, which narrows the language in a way no run says; a range of counts of
+        /// a sequence; a count past the largest read; a class of surrogates, a pair read by unit and two lone surrogates
+        /// read by code point, one sequence of classes and two languages; and two escapes naming a pair, two atoms read by
+        /// unit and one read by code point.
+        /// </remarks>
+        [Theory]
+        [InlineData("^a\\bb$", true)]
+        [InlineData("^[a-z]{2}^$", true)]
+        [InlineData("^(?:ab)*$", true)]
+        [InlineData("^(?:ab|c)+$", true)]
+        [InlineData("^a{100001}$", true)]
+        [InlineData("^[\\uD800-\\uDFFF]{2}$", false)]
+        [InlineData("^\\uD83D\\uDE00$", false)]
+        public void WhatIsNoSequenceOfRunsHasNoStrings(string pattern, bool neitherBand)
+        {
+            Strings(pattern).Should().BeNull("for " + pattern);
+            Absent(pattern).Should().NotBeNull("it is read for its characters, for " + pattern);
+
+            if (neitherBand)
+                Absent(pattern).Should().Equal(S, H);
         }
 
         // ── Read off a schema ─────────────────────────────────────────────────────────────────
@@ -241,8 +376,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static JsonFactSet Facts(string schema) =>
             CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(schema)!)).Facts).Declared;
 
-        static bool Lacks(JsonFactSet facts, string path, CosmosCharacterBand band) =>
-            facts.Knows(new JsonFact(JsonDocumentPath.Root.Property(path), new CosmosCharacters(band)));
+        static bool Lacks(JsonFactSet facts, string path, JsonCharacterBand band) =>
+            (facts.CharactersOf(JsonDocumentPath.Root.Property(path)) & band) == JsonCharacterBand.None;
 
         /// <remarks>
         /// A pattern is read beside any type, or none: it constrains only a string, and so does what it says of the

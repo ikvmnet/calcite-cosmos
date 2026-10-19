@@ -17,7 +17,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <para>
     /// So the one thing the theory assumes is the one thing every form shares: a value in a stored form
     /// is a string, or a null, the form saying how strings are written and nothing about whether one is
-    /// there. See <see cref="JsonFact.Entails"/>.
+    /// there. See <see cref="JsonFact.Entails"/>. And what characters it is written in, which the form
+    /// states of itself (<see cref="Characters"/>) and the theory reads into what its strings hold.
     /// </para>
     /// <para>
     /// <b>Equality is the implementer's, and has to be value equality.</b> Two declarations of one form
@@ -31,6 +32,17 @@ namespace Apache.Calcite.Cosmos.Facts
         /// Gets a stable name for the form, for diagnostics.
         /// </summary>
         string Name { get; }
+
+        /// <summary>
+        /// Gets the bands a string spelled in the form may hold UTF-16 units of beside those below U+D800:
+        /// <see cref="JsonCharacterBand.None"/> for a form written in ASCII.
+        /// </summary>
+        /// <remarks>
+        /// Data about the form, which its owner reads off what defines it, and which the theory reads into a rule: a
+        /// path holding a string in the form holds only these (<c>JsonRules</c>, "a stored form holds the characters it
+        /// is written in"). Nothing reads a path's characters off its form any other way.
+        /// </remarks>
+        JsonCharacterBand Characters { get; }
 
     }
 

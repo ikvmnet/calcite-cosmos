@@ -30,10 +30,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <c>"true"</c>, strings that only look like numbers, and a structure at a path a predicate reads as a scalar.
     /// </para>
     /// <para>
-    /// <b>And the characters of a string</b>, which a declared <c>pattern</c> states as <see cref="CosmosCharacters"/>:
-    /// drawn from a stream of their own, beside the declaration and in documents of their own that hold a string of
-    /// either band wherever the rules let one stand. Every trial draws what it drew before the claim existed, and what the
-    /// claim adds is only more to check.
+    /// <b>And the characters of a string</b>, a fact of the theory every source states its own way: a declared
+    /// <c>pattern</c> as <see cref="JsonClaim.Characters"/>, and an <c>enum</c> or a <c>const</c> of strings from all three
+    /// bands, from whose values the theory derives them. Drawn from a stream of their own, beside the declaration, and
+    /// held to documents of their own that hold a string of any band wherever the rules let one stand. The declaration
+    /// draws from the trial's stream what it drew before the claims existed; a domain is kept only where the declaration
+    /// still admits a document, and its values are named apart (<see cref="BandedNames"/>), so that the filter drawn from
+    /// the trial's stream is the one it was.
     /// </para>
     /// </remarks>
     sealed class Declaration
@@ -67,10 +70,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         };
 
         /// <summary>
-        /// Strings in the two bands a <see cref="CosmosCharacters"/> claim may exclude: a high unit, and a supplementary
-        /// character, which is two surrogates.
+        /// Strings from all three bands a <see cref="JsonClaim.Characters"/> claim speaks of: a high unit; a supplementary
+        /// character, which is two surrogates; both; and a character of the basic plane below U+D800 that is no ASCII.
         /// </summary>
-        static readonly J[] Banded = { new J.Str(char.ConvertFromUtf32(0xE000)), new J.Str("a" + char.ConvertFromUtf32(0x1F600)) };
+        public static readonly string[] BandedStrings =
+        {
+            char.ConvertFromUtf32(0xE000), "a" + char.ConvertFromUtf32(0x1F600), char.ConvertFromUtf32(0xFF21) + char.ConvertFromUtf32(0x1F600), "\u4E2D",
+        };
+
+        static readonly J[] Banded = BandedStrings.Select(text => (J)new J.Str(text)).ToArray();
+
+        /// <summary>The paths a domain of banded strings may be declared of: those a document holds a scalar at.</summary>
+        static readonly JsonDocumentPath[] Scalars = { A, B, N };
 
         /// <summary>The scalars a claim names: a const, a member of an enum, a value a path is unequal to.</summary>
         static readonly JsonScalar[] Named = { "30", "x", "true", "", 30m, 30m, 2.5m, 7m, 7m, -1m, true, false, JsonScalar.Null, 1e30 };
@@ -91,6 +102,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>Gets the scalars the declaration names, by path: what a predicate over the path is likely to be about.</summary>
         public Dictionary<JsonDocumentPath, List<JsonScalar>> Mentioned { get; } = new();
 
+        /// <summary>
+        /// Gets the strings a domain drawn from the stream of characters names, by path: what a filter drawn from that
+        /// stream compares the path with.
+        /// </summary>
+        public Dictionary<JsonDocumentPath, List<string>> BandedNames { get; } = new();
+
         static JsonDocumentPath P(params string[] names) => names.Aggregate(JsonDocumentPath.Root, (path, name) => path.Property(name));
 
         /// <summary>
@@ -107,7 +124,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var declaration = new Declaration();
                 declaration.Fill(random, bands);
                 if (declaration.TryGenerate(random, out _))
+                {
+                    if (bands is not null)
+                        declaration.FillDomains(bands);
+
                     return declaration;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds domains of strings from all three bands, outright and under a kind, from the stream of characters: an
+        /// <c>enum</c> of a few, or a <c>const</c>. One that would leave the declaration admitting no document is taken
+        /// back.
+        /// </summary>
+        void FillDomains(Random bands)
+        {
+            var kinds = _rules.Where(r => r.Body.Count > 0).Select(r => r.Body).Distinct().ToList();
+
+            foreach (var path in Scalars)
+            {
+                var body = bands.Next(3) == 0 && kinds.Count > 0 ? kinds[bands.Next(kinds.Count)] : null;
+                if (bands.Next(body is null ? 4 : 6) != 0)
+                    continue;
+
+                // Mostly with a string a document is drawn with beside the banded ones, so that a document the trial's
+                // stream draws can still hold the path.
+                var values = BandedStrings.OrderBy(_ => bands.Next()).Take(1 + bands.Next(2)).ToList();
+                if (bands.Next(4) > 0)
+                    values.Add(bands.Next(2) == 0 ? "x" : "abc");
+
+                JsonClaim claim = values.Count == 1 ? new JsonClaim.EqualTo(values[0]) : new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray());
+                var rule = body is null ? Rule(path, claim) : new JsonFactRule(body, new JsonFact(path, claim));
+
+                _rules.Add(rule);
+                _branches = null;
+                if (Branches().Count == 0)
+                {
+                    _rules.Remove(rule);
+                    _branches = null;
+                    continue;
+                }
+
+                if (BandedNames.TryGetValue(path, out var named) == false)
+                    BandedNames[path] = named = new List<string>();
+
+                named.AddRange(values.Where(v => named.Contains(v) == false));
             }
         }
 
@@ -156,10 +218,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
         }
 
+        /// <summary>
+        /// What a pattern's reader may state of a path: that its strings hold no unit at or above U+D800, or none of one
+        /// band. A claim of them admits every value <see cref="Values"/> holds, so it never changes which declaration is
+        /// drawn.
+        /// </summary>
         static IEnumerable<JsonClaim> Characters(Random bands, bool outright)
         {
             if (bands.Next(outright ? 6 : 12) == 0)
-                yield return new CosmosCharacters(bands.Next(2) == 0 ? CosmosCharacterBand.Surrogates : CosmosCharacterBand.HighBmp);
+                yield return new JsonClaim.Characters(new[] { JsonCharacterBand.None, JsonCharacterBand.Surrogates, JsonCharacterBand.HighBmp }[bands.Next(3)]);
         }
 
         IEnumerable<JsonClaim> Claims(Random random, JsonDocumentPath path, bool outright)
@@ -355,8 +422,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     _ => true,
                 },
 
-                // Of a string's units, which is what a pattern's reader states.
-                CosmosCharacters c => value is not J.Str s || s.Value.All(unit => c.Band == CosmosCharacterBand.Surrogates ? char.IsSurrogate(unit) == false : unit < 0xE000),
+                // Of a string's units, read here unit by unit and not as the theory reads them.
+                JsonClaim.Characters c => value is not J.Str s || s.Value.All(unit =>
+                    (char.IsSurrogate(unit) == false || c.Bands.HasFlag(JsonCharacterBand.Surrogates))
+                    && (unit < 0xE000 || c.Bands.HasFlag(JsonCharacterBand.HighBmp))),
                 _ => throw new NotSupportedException(claim.GetType().Name),
             };
         }
@@ -374,7 +443,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             JsonClaim.NotEqualTo n => "<> " + n.Value,
             JsonClaim.LowerBound l => (l.Exclusive ? "> " : ">= ") + l.Value,
             JsonClaim.UpperBound u => (u.Exclusive ? "< " : "<= ") + u.Value,
-            CosmosCharacters c => "holds no " + (c.Band == CosmosCharacterBand.Surrogates ? "surrogate" : "unit from U+E000"),
+            JsonClaim.Characters c => "holds units below U+D800" + (c.Bands == JsonCharacterBand.None ? "" : " and in " + c.Bands),
             var other => other.ToString(),
         };
 

@@ -29,7 +29,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <para>
     /// The six of Stage 1's plan, and a seventh that only C5 sees: a union of two predicates, which is the trap a
     /// property of a context written as a property of a term becomes under congruence. An eighth is a declaration's
-    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind.
+    /// rather than a rule's: the characters one kind's <c>pattern</c> states, read of every kind. Two more are the
+    /// characters' own: a value's read narrower than it is, and an arm's stated of its disjunction. And two are the
+    /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
+    /// one value in every document without the path's presence.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -139,7 +142,64 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AGuardedCharactersClaimReadOfEveryKindIsCaught() =>
             Caught(theory => new CosmosOracle(new JsonFactTheory(theory.Rules.Select(rule =>
-                rule.Head.Claim is Adapter.Metadata.CosmosCharacters ? JsonFactRule.Unconditional(rule.Head) : rule)), null), "fact");
+                rule.Head.Claim is JsonClaim.Characters ? JsonFactRule.Unconditional(rule.Head) : rule)), null), "fact");
+
+        /// <summary>
+        /// A value's characters read by the unit's high band alone, a supplementary character's surrogates left out: what a
+        /// domain of an <c>enum</c>, a <c>const</c> or a filter's <c>=</c> and <c>IN</c> says of a path, stated narrower
+        /// than the strings it names.
+        /// </summary>
+        [Fact]
+        public void AValuesCharactersReadWithoutItsSurrogatesAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a value's characters are its units from U+E000", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain).Remove(SurrogateBand))));
+            })), "fact");
+
+        /// <summary>
+        /// A domain's numbers read as bounding the path from above their least: the rule that bounds a path by its
+        /// domain, off by the least member itself, which a document holding it refutes.
+        /// </summary>
+        [Fact]
+        public void ADomainsBoundStricterThanItsLeastIsCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a domain's numbers lie above its least", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Where(d, x => NumbersOf(x) is not null);
+                r.Then(rules.Json.Lo.Of(p).Is(Compute.Of(d, x => Bound.Above(NumbersOf(x)!.Value.Least))));
+            })), "fact");
+
+        /// <summary>
+        /// A domain of one read as one value in every document, the presence left out: what a declared <c>const</c> on a
+        /// property no <c>required</c> names says, read as a sort key that orders nothing and a partition key pinned.
+        /// </summary>
+        [Fact]
+        public void AConstantWithoutItsPresenceIsCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a path of one value holds it in every document", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(rules.Json.Dom.Of(p)));
+                r.Where(d, x => x.Count == 1);
+                r.Then(rules.Json.Constant.Of(p, Compute.Of(d, x => x[0])));
+            })), "fact");
+
+        /// <summary>
+        /// What one arm of a disjunction that holds says of a path's characters, stated of the disjunction: a filter's
+        /// <c>OR</c> narrowing the characters where it should widen them.
+        /// </summary>
+        [Fact]
+        public void AnArmsCharactersStatedOfItsDisjunctionAreCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: a disjunction that holds holds its left arm's characters", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
+                r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
+                r.Where(k, atom => atom.Kept(true).Values is not null);
+                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true).Values!))));
+            })), "fact");
 
         /// <summary>
         /// A union of two predicates: a conjunction with an arm the context decides always true made one class with its

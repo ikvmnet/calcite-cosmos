@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 
 namespace Apache.Calcite.Cosmos.Adapter.Metadata
@@ -216,7 +215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         const int LowSignNibble = 16;
 
         /// <summary>
-        /// Reads a declared pattern as a canonical UUID, deciding the shape rather than looking it up.
+        /// Reads a declared pattern's strings as a canonical UUID, deciding the shape rather than looking it up.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -243,7 +242,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// positions and so never decide a comparison, and <c>0</c>–<c>9</c> sort below <c>a</c>–<c>f</c>
         /// and below <c>A</c>–<c>F</c> alike. And nibble order taken in significance order is the
         /// unsigned order of the 128-bit value. Confining a slot only removes strings, so a narrower
-        /// pattern inherits all three from the widest one.
+        /// pattern inherits all three from the widest one — which is why a UUID form is recognised where
+        /// a pattern's strings lie within the shape, where a temporal or numeric one needs them to be its
+        /// language exactly.
+        /// </para>
+        /// <para>
+        /// <b>Read off the parse, not the text.</b> The strings are the reader's
+        /// (<see cref="CosmosPatternReader.Strings"/>), so a slot is a class however it was written — <c>[89ab]</c>,
+        /// <c>[8-9a-b]</c>, <c>[ba98]</c> and <c>(?:8|9|a|b)</c> are one set — and a run counted or spelled out is the
+        /// same slots. The brace is read where both readings read one: <c>\{</c>, or <c>[{]</c>. Unescaped, a brace is a
+        /// literal read by unit and an error read by code point, and a pattern one reading rejects is no form.
         /// </para>
         /// <para>
         /// <b>The confinement is read off the shape rather than matched.</b> Under the signed
@@ -263,14 +271,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the union of the two bodies' slots derives what used to be written down by hand: the 17th
         /// slot becomes <c>[089ab]</c>, which is no longer confined to <c>8</c>–<c>f</c>, so the
         /// pattern lands on the plain row exactly as it did before. Any other alternation — two
-        /// version nibbles written as two branches, a nil beside a max — is read on the same terms.
+        /// version nibbles written as two branches, a nil beside a max — is read on the same terms,
+        /// wherever its anchors are written: the reader distributes an alternation across the sequence
+        /// around it, so <c>^(?:A|B)$</c>, <c>^A$|^B$</c> and <c>(?:^A$)|(?:^B$)</c> are one union.
         /// </para>
         /// </remarks>
-        /// <param name="pattern">The pattern, already normalised.</param>
+        /// <param name="strings">The strings a declared pattern admits.</param>
         /// <returns>The form, or <c>null</c> where the pattern is not a canonical UUID.</returns>
-        internal static CosmosRepresentation? Recognise(string pattern)
+        internal static CosmosRepresentation? Recognise(CosmosPatternStrings strings)
         {
-            return MatchUuid(pattern, 0) is UuidShape shape ? Classify(shape) : null;
+            UuidShape? union = null;
+
+            foreach (var alternative in strings.Alternatives)
+            {
+                if (Shape(alternative) is not UuidShape branch)
+                    return null;
+
+                union = union is null ? branch : Union(union, branch);
+
+                if (union is null)
+                    return null;
+            }
+
+            return union is null ? null : Classify(union);
         }
 
         /// <summary>
@@ -289,137 +312,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         sealed record UuidShape(string[] Slots, bool Braced, bool Hyphenated);
 
         /// <summary>
-        /// Reads an anchored expression, a group around one, or an alternation of them.
+        /// How many characters the widest shape spells: the nibbles, the hyphens and the two braces.
+        /// </summary>
+        const int Widest = Nibbles + 4 + 2;
+
+        /// <summary>
+        /// Reads one alternative's runs as the nibbles and hyphens of a canonical UUID.
         /// </summary>
         /// <remarks>
-        /// Each alternative carries its own anchors here, because a top-level <c>|</c> binds looser
-        /// than they do: <c>^a|b$</c> is <c>(^a)|(b$)</c>, whose second branch is unanchored at the
-        /// front and admits a conforming value with anything before it. Inside an anchored body the
-        /// anchors are already outside the alternation, which is why <see cref="MatchBody"/> asks for
-        /// none.
+        /// The layout is checked after the runs are written out one character a slot, because a
+        /// pattern is free to write the same language with its runs counted or spelled out and the
+        /// reader has already made those one run. What the layout asks is only that the hyphens land
+        /// where a canonical UUID puts them, and that a brace opening the shape closes it.
         /// </remarks>
-        /// <param name="pattern">The expression.</param>
-        /// <param name="depth">Bounds the recursion a nested group can drive.</param>
+        /// <param name="runs">The alternative.</param>
         /// <returns>The shape, or <c>null</c>.</returns>
-        static UuidShape? MatchUuid(string pattern, int depth)
+        static UuidShape? Shape(IReadOnlyList<CosmosPatternRun> runs)
         {
-            if (depth > Nesting)
-                return null;
+            var slots = new List<CosmosPatternClass>(Widest);
 
-            if (CosmosPatternLanguage.SplitAlternatives(pattern) is { Count: > 1 } alternatives)
-                return Union(alternatives, part => MatchUuid(part, depth + 1));
-
-            if (CosmosPatternLanguage.Unwrap(pattern) is string grouped)
-                return MatchUuid(grouped, depth + 1);
-
-            if (pattern.Length < 2 || pattern[0] != '^' || pattern[pattern.Length - 1] != '$')
-                return null;
-
-            return MatchBody(pattern.Substring(1, pattern.Length - 2), depth + 1);
-        }
-
-        /// <summary>
-        /// Reads the inside of an anchored expression: the slots themselves, a group around them, or
-        /// an alternation of either.
-        /// </summary>
-        /// <param name="body">The body, with the anchors already taken off.</param>
-        /// <param name="depth">Bounds the recursion a nested group can drive.</param>
-        /// <returns>The shape, or <c>null</c>.</returns>
-        static UuidShape? MatchBody(string body, int depth)
-        {
-            if (depth > Nesting)
-                return null;
-
-            if (CosmosPatternLanguage.SplitAlternatives(body) is { Count: > 1 } alternatives)
-                return Union(alternatives, part => MatchBody(part, depth + 1));
-
-            if (CosmosPatternLanguage.Unwrap(body) is string grouped)
-                return MatchBody(grouped, depth + 1);
-
-            return MatchSlots(body);
-        }
-
-        /// <summary>
-        /// How deep a pattern may nest groups and alternations before it is refused rather than read.
-        /// </summary>
-        const int Nesting = 8;
-
-        /// <summary>
-        /// Reads a run of single-character atoms as the nibbles and hyphens of a canonical UUID.
-        /// </summary>
-        /// <remarks>
-        /// The layout is checked after the atoms are read rather than while they are, because a
-        /// pattern is free to write the same language with its runs counted or spelled out and
-        /// <see cref="CosmosPatternLanguage.Collapse"/> has already made those one spelling. What the layout asks is only
-        /// that the hyphens land where a canonical UUID puts them.
-        /// </remarks>
-        /// <param name="body">The body.</param>
-        /// <returns>The shape, or <c>null</c>.</returns>
-        static UuidShape? MatchSlots(string body)
-        {
-            var braced = false;
-
-            // A literal brace at the front cannot be a quantifier, nothing being there for it to
-            // count, so it is read as the delimiter it is -- escaped or not, both spellings being in
-            // use. The closing one is only looked for once the opening one is found, because a
-            // trailing `}` is otherwise the end of a count.
-            if (body.StartsWith(@"\{", StringComparison.Ordinal) || (body.Length > 0 && body[0] == '{'))
+            foreach (var run in runs)
             {
-                var open = body[0] == '{' ? 1 : 2;
-                var close = body.EndsWith(@"\}", StringComparison.Ordinal) ? 2 : body.Length > 0 && body[body.Length - 1] == '}' ? 1 : 0;
-
-                if (close == 0 || body.Length <= open + close)
+                // A run admitting a range of widths ends the shape, whatever it repeats, and a count wider than the
+                // shape cannot be one whatever else it is.
+                if (run.IsFixed == false || run.Min > Widest - slots.Count)
                     return null;
 
-                body = body.Substring(open, body.Length - open - close);
-                braced = true;
+                for (var n = 0; n < run.Min; n++)
+                    slots.Add(run.Class);
             }
 
-            var slots = new List<string?>();
-            var i = 0;
+            // A brace in the same place in every string, opening the shape and closing it; half of one is a slot that
+            // is no nibble, and is refused below.
+            var braced = slots.Count >= 2 && slots[0].Is('{') && slots[slots.Count - 1].Is('}');
 
-            while (i < body.Length)
-            {
-                if (CosmosPatternLanguage.ReadAtom(body, ref i) is not string atom)
-                    return null;
-
-                var repeats = 1;
-
-                if (i < body.Length && body[i] == '{')
-                {
-                    var close = body.IndexOf('}', i + 1);
-                    if (close < 0)
-                        return null;
-
-                    // A range of widths is a different language, and a count wider than the shape
-                    // cannot be one whatever else it is.
-                    if (int.TryParse(body.Substring(i + 1, close - i - 1), NumberStyles.None, CultureInfo.InvariantCulture, out repeats) == false || repeats > Nibbles)
-                        return null;
-
-                    i = close + 1;
-                }
-
-                // A quantifier admitting a range of widths ends the shape, whatever it quantifies.
-                if (i < body.Length && (body[i] is '?' or '*' or '+'))
-                    return null;
-
-                string? slot;
-
-                if (string.Equals(atom, "-", StringComparison.Ordinal) || string.Equals(atom, @"\-", StringComparison.Ordinal))
-                    slot = null;
-                else if (HexSet(atom) is string set)
-                    slot = set;
-                else
-                    return null;
-
-                for (var n = 0; n < repeats; n++)
-                {
-                    slots.Add(slot);
-
-                    if (slots.Count > Nibbles + Hyphens.Length)
-                        return null;
-                }
-            }
+            if (braced)
+                slots = slots.GetRange(1, slots.Count - 2);
 
             // Hyphenated or not, and nothing in between: a shape carrying some of the four would give
             // one value a spelling per hyphen it happened to omit.
@@ -434,7 +362,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             foreach (var slot in slots)
             {
-                if (slot is null)
+                if (slot.Is('-'))
                 {
                     if (hyphen >= Hyphens.Length || Hyphens[hyphen] != nibble)
                         return null;
@@ -443,10 +371,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     continue;
                 }
 
-                if (nibble >= Nibbles)
+                if (nibble >= Nibbles || HexSet(slot) is not string set)
                     return null;
 
-                read[nibble] = slot;
+                read[nibble] = set;
                 nibble++;
             }
 
@@ -457,67 +385,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Reads the hex digits one atom admits, or returns <c>null</c> where it admits anything else.
+        /// Reads the hex digits a slot admits, or returns <c>null</c> where it admits anything else.
         /// </summary>
         /// <remarks>
-        /// A class is taken apart into its members rather than compared as text, which is the liberty
-        /// <see cref="CosmosPatternLanguage.SortClass"/> takes one step further: <c>[89ab]</c>, <c>[8-9a-b]</c> and
-        /// <c>[89a-b]</c> are one set written three ways, and a form that turned on which way would be
-        /// recognising the writer rather than the language. A negation, an escape or a bare <c>-</c>
-        /// is refused rather than guessed at, on the same grounds <see cref="CosmosPatternLanguage.SortClass"/> refuses it.
+        /// A class is a set, so it is asked for its members rather than for how it was written. A range
+        /// is over code points rather than over hex digits, which is the trap this has to test for rather
+        /// than around: <c>[8-f]</c> spans 0x38-0x66 and so admits <c>@</c>, <c>Z</c> and <c>_</c> beside
+        /// the digits its writer meant -- and admits <c>A</c>-<c>F</c> as well as <c>a</c>-<c>f</c>, which
+        /// is two spellings of one nibble. So every member is asked, not just the two ends.
         /// </remarks>
-        /// <param name="atom">A single-character atom.</param>
+        /// <param name="slot">The characters the slot admits.</param>
         /// <returns>The admitted digits, sorted and distinct, or <c>null</c>.</returns>
-        static string? HexSet(string atom)
-        {
-            if (atom.Length == 1)
-                return IsHex(atom[0]) ? atom : null;
-
-            if (atom.Length < 3 || atom[0] != '[' || atom[atom.Length - 1] != ']')
-                return null;
-
-            var inner = atom.Substring(1, atom.Length - 2);
-
-            if (inner[0] == '^' || inner.IndexOf('\\') >= 0)
-                return null;
-
-            var members = new SortedSet<char>();
-
-            for (var i = 0; i < inner.Length; i++)
-            {
-                if (i + 2 < inner.Length && inner[i + 1] == '-')
-                {
-                    var low = inner[i];
-                    var high = inner[i + 2];
-
-                    if (low > high)
-                        return null;
-
-                    // A range is over code points rather than over hex digits, which is the trap this
-                    // has to test for rather than around: `[8-f]` spans 0x38-0x66 and so admits `@`,
-                    // `Z` and `_` beside the digits its writer meant -- and admits `A`-`F` as well as
-                    // `a`-`f`, which is two spellings of one nibble. So every member is asked, not
-                    // just the two ends.
-                    for (var c = low; c <= high; c++)
-                    {
-                        if (IsHex(c) == false)
-                            return null;
-
-                        members.Add(c);
-                    }
-
-                    i += 2;
-                    continue;
-                }
-
-                if (IsHex(inner[i]) == false)
-                    return null;
-
-                members.Add(inner[i]);
-            }
-
-            return string.Concat(members);
-        }
+        static string? HexSet(CosmosPatternClass slot) =>
+            slot.Members(22) is string members && members.Length > 0 && members.All(IsHex) ? members : null;
 
         /// <summary>
         /// Determines whether a character spells a nibble, in either case.
@@ -527,7 +407,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         static bool IsHex(char c) => c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
         /// <summary>
-        /// Takes the slot-wise union of several alternatives.
+        /// Takes the slot-wise union of two alternatives.
         /// </summary>
         /// <remarks>
         /// A union is what an alternation means, and it is the right thing to take because every claim
@@ -535,38 +415,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// widening the 17th slot past <c>8</c>–<c>f</c> costs the confinement for the pattern rather
         /// than for the branch, which is exactly what the nil alternation should do.
         /// </remarks>
-        /// <param name="alternatives">The branches.</param>
-        /// <param name="match">Reads one branch.</param>
-        /// <returns>The union, or <c>null</c> where a branch is not a canonical UUID.</returns>
-        static UuidShape? Union(List<string> alternatives, Func<string, UuidShape?> match)
+        /// <param name="union">The union of the branches so far.</param>
+        /// <param name="branch">The next branch.</param>
+        /// <returns>The union, or <c>null</c> where the two disagree on the spelling.</returns>
+        static UuidShape? Union(UuidShape union, UuidShape branch)
         {
-            UuidShape? union = null;
+            // The branches have to agree on the spelling, because a value written one way in one
+            // branch and another way in the other has two spellings and no equality survives it.
+            if (union.Braced != branch.Braced || union.Hyphenated != branch.Hyphenated)
+                return null;
 
-            foreach (var alternative in alternatives)
+            var slots = new string[Nibbles];
+
+            for (var i = 0; i < Nibbles; i++)
             {
-                if (match(alternative) is not UuidShape branch)
-                    return null;
-
-                if (union is null)
-                {
-                    union = branch;
-                    continue;
-                }
-
-                // The branches have to agree on the spelling, because a value written one way in one
-                // branch and another way in the other has two spellings and no equality survives it.
-                if (union.Braced != branch.Braced || union.Hyphenated != branch.Hyphenated)
-                    return null;
-
-                for (var i = 0; i < Nibbles; i++)
-                {
-                    var members = new SortedSet<char>(union.Slots[i]);
-                    members.UnionWith(branch.Slots[i]);
-                    union.Slots[i] = string.Concat(members);
-                }
+                var members = new SortedSet<char>(union.Slots[i]);
+                members.UnionWith(branch.Slots[i]);
+                slots[i] = string.Concat(members);
             }
 
-            return union;
+            return union with { Slots = slots };
         }
 
         /// <summary>
@@ -749,6 +617,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="representation">The path form.</param>
         /// <returns><c>true</c> where the form stores a UUID.</returns>
         public static bool IsUuid(CosmosRepresentation representation) => Uuids.ContainsKey(representation.Name);
+
+        /// <summary>
+        /// Returns the bands a UUID form's strings hold units of, read off its spelling: the digits, the hex letters in
+        /// its case, and the hyphens and braces it writes; or <c>null</c> for a form that is not one of these.
+        /// </summary>
+        internal static Facts.JsonCharacterBand? CharactersOf(CosmosRepresentation representation)
+        {
+            if (Uuids.TryGetValue(representation.Name, out var spelling) == false)
+                return null;
+
+            var alphabet = CosmosPatternClass.Range('0', '9').Union(spelling.Upper ? CosmosPatternClass.Range('A', 'F') : CosmosPatternClass.Range('a', 'f'));
+            if (spelling.Hyphenated)
+                alphabet = alphabet.Union(CosmosPatternClass.Of('-'));
+            if (spelling.Braced)
+                alphabet = alphabet.Union(CosmosPatternClass.Of('{')).Union(CosmosPatternClass.Of('}'));
+
+            return alphabet.Characters;
+        }
 
     }
 

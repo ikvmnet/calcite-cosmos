@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// The adapter's recognisers: <see cref="CosmosStoredForms.Recognise"/> for the pattern of a
-        /// declared string, and for a subschema <see cref="CosmosPatternAlphabet.Claims"/> for its pattern
+        /// declared string, and for a subschema <see cref="CosmosPatternReader.Claims"/> for its pattern
         /// and <see cref="CosmosGeographyForms.Recognise"/>.
         /// </summary>
         public static readonly JsonSchemaRecognisers Cosmos = new(
@@ -47,19 +47,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// says the value is a string, which is why that one waits for <c>"type": "string"</c>.
         /// </para>
         /// <para>
-        /// <b>Where the pattern is a stored form, the form says it.</b> Every registered form is ASCII, and a form
-        /// establishes the characters through the claim's own reading of it
-        /// (<see cref="CosmosCharacters.IsEntailedBy"/>); read again here, one pattern would say them twice. A form
-        /// is stated beside a declared string only, so a form's pattern beside no type is read here as any other.
+        /// <b>Every pattern is read for its characters, a stored form's among them.</b> The reader states what it reads
+        /// and decides nothing: where the pattern is also a stored form, the theory derives the same characters from the
+        /// form, and meets the two as it meets any two facts of one path.
         /// </para>
         /// </remarks>
         static IReadOnlyList<JsonClaim> Recognise(JsonNode node)
         {
-            var pattern = node.Get("pattern").Text();
-
-            var characters = JsonSchemaFacts.ReadType(node) is (JsonType.String, _) && CosmosStoredForms.Recognise(pattern) is not null
-                ? System.Array.Empty<JsonClaim>()
-                : CosmosPatternAlphabet.Claims(pattern);
+            var characters = CosmosPatternReader.Claims(node.Get("pattern").Text());
 
             if (CosmosGeographyForms.Recognise(node) == false)
                 return characters;

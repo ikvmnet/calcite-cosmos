@@ -120,10 +120,12 @@ namespace Apache.Calcite.Cosmos.Facts
             if (declared?.Type == JsonType.String && recognisers.StringPattern?.Invoke(Text(node, "pattern")) is IJsonStoredForm form)
                 State(new JsonClaim.Represents(form));
 
-            // Claims the caller reads off a subschema whole, which JSON Schema's own claims cannot state:
-            // the adapter's geography, proven from a pinned GeoJSON shape, and the characters a pattern
-            // lets a string hold -- read beside any type, being vacuous for anything but a string, as the
-            // pattern is. See JsonSchemaRecognisers.
+            // Claims the caller reads off a subschema whole: the adapter's geography, proven from a pinned
+            // GeoJSON shape, which JSON Schema's own claims cannot state and which says what the value is if
+            // there is one, as they do; and the characters a pattern lets
+            // a string hold, which they can, read by the caller's reader of the pattern language -- beside
+            // any type, being vacuous for anything but a string, as the pattern is. See
+            // JsonSchemaRecognisers.
             if (recognisers.Subschema?.Invoke(node) is { } recognised)
                 foreach (var claim in recognised)
                     State(claim);
@@ -133,15 +135,14 @@ namespace Apache.Calcite.Cosmos.Facts
             // says nothing at all where there is no object to constrain. So a nested one carries the
             // parent's own presence in its guard, which chains the whole way up; the document itself
             // needs no such guard, being what every path is read out of.
-            if (node.Get("required") is JsonNode required && required is JsonArray)
+            if (ReadRequired(node) is { Count: > 0 } required)
             {
                 var carrier = path.IsRoot
                     ? guard
                     : Extend(guard, new JsonFact(path, new JsonClaim.Present()));
 
-                for (var i = 0; i < required.Size(); i++)
-                    if (required.At(i).Text() is string name)
-                        rules.Add(new JsonFactRule(carrier, new JsonFact(path.Property(name), new JsonClaim.Present())));
+                foreach (var name in required)
+                    rules.Add(new JsonFactRule(carrier, new JsonFact(path.Property(name), new JsonClaim.Present())));
             }
 
             if (node.Get("properties") is JsonObject properties)
@@ -630,23 +631,23 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>A claim about the union's own value</b> has to admit the null: a type becomes its
         /// <c>OrNull</c>, a constant and a domain gain <c>null</c> as a member, and a disequality
         /// already holds of a null unless it excluded one. A stored form already admits a null —
-        /// it says how the strings are written and nothing about whether one is there — and a
-        /// consumer's claim says for itself whether a null satisfies it, as one about the characters
-        /// of a string does.
+        /// it says how the strings are written and nothing about whether one is there — and so does
+        /// a claim of what characters a string holds.
         /// </para>
         /// <para>
         /// <b>A claim that something is there</b> does not survive a null at all. A <c>required</c>
-        /// child, a <c>not</c>'s property, a geography: each is true of the object the branch
-        /// describes and false of a null standing in its place, where nothing below is present. So
-        /// those rules are kept under two more conditions, that the union's value is there and is not
-        /// null — a disequality alone holds of an absent path too, which no branch describes.
-        /// Everything else below is a claim about a value <em>if there is one</em>, which a null
-        /// makes vacuous rather than false.
+        /// child and a <c>not</c>'s property are each true of the object the branch describes and
+        /// false of a null standing in its place, where nothing below is present; and so is a
+        /// consumer's claim about the union's own value, a geography, which no null is. So those rules
+        /// are kept under two more conditions, that the union's value is there and is not null — a
+        /// disequality alone holds of an absent path too, which no branch describes. Everything else
+        /// below is a claim about a value <em>if there is one</em>, which a null makes vacuous rather
+        /// than false.
         /// </para>
         /// </remarks>
         static JsonFactRule? AdmitNull(JsonFactRule rule, JsonDocumentPath path)
         {
-            if (rule.Head.Entails(new JsonFact(rule.Head.Path, new JsonClaim.Present())))
+            if (rule.Head.Claim is JsonClaim.Present || rule.Head.Claim is JsonClaim.Extension && rule.Head.Path.Equals(path))
                 return new JsonFactRule(Extend(Extend(rule.Body, new JsonFact(path, new JsonClaim.Present())), new JsonFact(path, new JsonClaim.NotEqualTo(null))), rule.Head);
 
             if (rule.Head.Path.Equals(path) == false)
@@ -663,12 +664,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 JsonClaim.NotEqualTo unequal => unequal,
                 JsonClaim.Represents represents => represents,
 
-                // A bound binds a number and holds of a null already.
+                // A bound binds a number and holds of a null already, and what characters a string holds binds strings.
                 JsonClaim.LowerBound bound => bound,
                 JsonClaim.UpperBound bound => bound,
-
-                // And a consumer's claim that a null satisfies, which it says itself: what a string's characters are.
-                JsonClaim.Extension extension when extension.IsEntailedBy(new JsonClaim.OfType(JsonType.Null)) => extension,
+                JsonClaim.Characters characters => characters,
+                JsonClaim.Written written => written,
                 _ => null,
             };
 
@@ -1018,7 +1018,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="node">The schema node.</param>
         /// <returns>The bounds, which may be none.</returns>
-        static IEnumerable<JsonClaim> ReadBounds(JsonNode node)
+        internal static IEnumerable<JsonClaim> ReadBounds(JsonNode node)
         {
             if (Number(node, "minimum") is decimal minimum)
                 yield return new JsonClaim.LowerBound(minimum, node.Get("exclusiveMinimum").Boolean() == true);
@@ -1036,6 +1036,53 @@ namespace Apache.Calcite.Cosmos.Facts
                 node.TryMember(keyword, out var member) && member is JsonValue && TryLiteral(member, out var value) && value.ToClrValue() is decimal number
                     ? number
                     : null;
+        }
+
+        /// <summary>
+        /// Reads <c>required</c> as the names it lists.
+        /// </summary>
+        /// <remarks>
+        /// The one reading of the keyword, which the walk and a consumer's recogniser share: a name that is not a string
+        /// is no name, and anything but an array lists none.
+        /// </remarks>
+        /// <param name="node">The schema node.</param>
+        /// <returns>The names, which may be none.</returns>
+        internal static IReadOnlyList<string> ReadRequired(JsonNode node)
+        {
+            if (node.Get("required") is not JsonArray required)
+                return Array.Empty<string>();
+
+            var names = new List<string>(required.Count);
+            for (var i = 0; i < required.Count; i++)
+                if (required.At(i).Text() is string name)
+                    names.Add(name);
+
+            return names;
+        }
+
+        /// <summary>
+        /// Reads the one value a subschema admits, written as a <c>const</c> or as an <c>enum</c> of one member.
+        /// </summary>
+        /// <remarks>
+        /// The two say the same thing, and a schema in draft-07 has only the second. Read by the readers the walk reads
+        /// each keyword with, so a consumer's recogniser reads a constant as the walk states it.
+        /// </remarks>
+        /// <param name="node">The schema node.</param>
+        /// <param name="value">The value.</param>
+        /// <returns><c>true</c> where the subschema admits one value and it is a scalar.</returns>
+        internal static bool TryReadConstant(JsonNode node, out JsonScalar value)
+        {
+            if (node.TryMember("const", out var constant))
+                return TryLiteral(constant, out value);
+
+            if (ReadEnum(node) is { Count: 1 } domain)
+            {
+                value = domain[0];
+                return true;
+            }
+
+            value = JsonScalar.Null;
+            return false;
         }
 
         /// <summary>

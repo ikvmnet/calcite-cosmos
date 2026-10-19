@@ -221,11 +221,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         {
             var path = StatementPath.Root("c").Property("data").Property("parkId");
 
-            CosmosDocumentPaths.From(path).Should().Be(ParkId);
-            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId")).Should().Be(ParkId,
+            CosmosDocumentPaths.From(path, "c").Should().Be(ParkId);
+            CosmosDocumentPaths.From(StatementPath.Root("x").Property("data").Property("parkId"), "x").Should().Be(ParkId,
                 "the alias is the statement's business and no part of what a schema declares");
 
-            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0)).Should().BeNull(
+            CosmosDocumentPaths.From(StatementPath.Root("t").Property("data").Property("parkId"), "c").Should().BeNull(
+                "a path under a traversal's alias addresses an element, and is not the document's");
+
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Index(0), "c").Should().BeNull(
                 "an element is not its array, and conflating them would apply one's facts to the other");
         }
 
@@ -297,23 +300,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// A pinned value is read back as the scalar it is, and only where exactly one value is possible.
+        /// A value a path holds in every document is read back as the scalar it is: the theory's <c>constant</c>, a
+        /// presence and a domain of one, and only where both are known.
         /// </summary>
         [Fact]
         public void APinnedValueIsReadBackAsItsScalar()
         {
             foreach (var value in new JsonScalar[] { "ParkMap", 42L, 1.5m, true, JsonScalar.Null, 1e300 })
             {
-                var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, value) });
+                var set = JsonFactTheory.Empty.Derive(new[] { Equals(At, value), Present(At) });
 
-                set.TryGetValue(At, out var read).Should().BeTrue($"{value} is pinned");
+                set.TryGetConstant(At, out var read).Should().BeTrue($"{value} is pinned");
                 read.Should().Be(value);
+
+                JsonFactTheory.Empty.Derive(new[] { Equals(At, value) }).TryGetConstant(At, out _).Should().BeFalse(
+                    "a value says what the path holds if it is there, and a document without it conforms");
             }
 
-            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })) })
-                .TryGetValue(At, out _).Should().BeFalse("two values are possible");
-            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(At, out _).Should().BeFalse("nothing is known of the value");
-            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetValue(Type, out _).Should().BeFalse("nor of a path nothing mentions");
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OfType(JsonType.Null)), Present(At) })
+                .TryGetConstant(At, out var only).Should().BeTrue("a JSON null is one value");
+            only.Should().Be(JsonScalar.Null);
+            JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", "b" })), Present(At) })
+                .TryGetConstant(At, out _).Should().BeFalse("two values are possible");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetConstant(At, out _).Should().BeFalse("nothing is known of the value");
+            JsonFactTheory.Empty.Derive(new[] { Present(At) }).TryGetConstant(Type, out _).Should().BeFalse("nor of a path nothing mentions");
+        }
+
+        /// <summary>
+        /// A domain's numbers bound the path by the least and the most of them, a rule of the theory: what a sort's
+        /// exactness past 2^53 asks of an <c>enum</c> of numbers, and nothing combined where it is read.
+        /// </summary>
+        [Fact]
+        public void ADomainsNumbersBoundThePath()
+        {
+            var set = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 3L, -2.5m, "a" })) });
+
+            set.ClaimsFor(At).Should().Contain(new JsonClaim.LowerBound(-2.5m)).And.Contain(new JsonClaim.UpperBound(3m));
+            set.Knows(new JsonFact(At, new JsonClaim.LowerBound(-3m, Exclusive: true))).Should().BeTrue();
+            set.Knows(new JsonFact(At, new JsonClaim.UpperBound(3m, Exclusive: true))).Should().BeFalse("3 is among them");
+
+            var approximate = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { 1L, 1e300 })) });
+            approximate.Knows(new JsonFact(At, new JsonClaim.UpperBound(2m))).Should().BeFalse("a number held approximately is read against no bound");
+
+            var none = JsonFactTheory.Empty.Derive(new[] { new JsonFact(At, new JsonClaim.OneOf(new JsonScalar[] { "a", true })) });
+            none.Knows(new JsonFact(At, new JsonClaim.UpperBound(0m))).Should().BeTrue("a path holding no number satisfies every bound");
         }
 
         /// <summary>
@@ -353,21 +383,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// An extension says in JSON's terms what it entails, and those are what the rest of the theory reads: a
-        /// geography is an object, and one that is there, so the path's parent is there too.
+        /// An extension is a token, and states nothing beside it in JSON's terms: a geography says what the value is
+        /// where there is one, and whether one is there is a presence the theory is told of, or derives, as of any path.
         /// </summary>
         [Fact]
-        public void AnExtensionStatesWhatItEntails()
+        public void AnExtensionStatesNothingButItself()
         {
             var location = JsonDocumentPath.Root.Property("data").Property("location");
-            var theory = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())) });
-            var set = theory.Derive(null);
+            var alone = new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())) }).Derive(null);
 
-            set.IsAlwaysGeography(location).Should().BeTrue();
-            set.Knows(Present(location)).Should().BeTrue();
-            set.Knows(new JsonFact(location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
-            set.Knows(Present(JsonDocumentPath.Root.Property("data"))).Should().BeTrue("a present property has a present object for a parent");
-            set.IsAlwaysGeography(At).Should().BeFalse();
+            alone.Knows(new JsonFact(location, new CosmosGeography())).Should().BeTrue();
+            alone.Knows(Present(location)).Should().BeFalse("a claim about a value says nothing about its being there");
+            alone.Knows(new JsonFact(location, new JsonClaim.OfType(JsonType.Object))).Should().BeFalse("nor what type it is: that is the keyword's to say");
+            alone.IsAlwaysGeography(location).Should().BeFalse();
+
+            var required = new JsonFactTheory(new[]
+            {
+                JsonFactRule.Unconditional(new JsonFact(location, new CosmosGeography())),
+                JsonFactRule.Unconditional(Present(location)),
+            }).Derive(null);
+
+            required.IsAlwaysGeography(location).Should().BeTrue();
+            required.Knows(Present(JsonDocumentPath.Root.Property("data"))).Should().BeTrue("a present property has a present object for a parent");
+            required.IsAlwaysGeography(At).Should().BeFalse();
         }
 
         /// <summary>

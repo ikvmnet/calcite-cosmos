@@ -160,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             PlanText(seek).Should().StartWith("CosmosToClrCursorConverter", "the whole statement is the service's: " + PlanText(seek));
             var query = Query(FindCosmos(seek), container);
-            query.Sql.Should().Contain("(c.category = @p0)").And.Contain("(c.id > @p1)").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 50");
+            query.Sql.Should().Contain("(NOT IS_NULL(@p1) AND (c.category = @p0))").And.Contain("(c.id > @p2)").And.EndWith("ORDER BY c.id ASC OFFSET 0 LIMIT 50");
             query.Order!.Comparisons.Should().ContainSingle();
         }
 
@@ -346,6 +346,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Sent("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.w')""", Patterned()).Should().EndWith("ORDER BY c.w ASC");
             Program("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.w')""", Patterned()).Should().BeNull();
             Program("""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.x')""", Patterned())!.Keys.Single().Anchor.Should().Be(CosmosOrderAnchor.Text, "a string of any character is ordered anchored");
+        }
+
+        /// <summary>
+        /// A container of three kinds whose <c>label</c> a <c>pattern</c> declares in each kind's branch: below U+D800 in
+        /// <c>k1</c>, the basic plane without the surrogates in <c>k2</c>, and nothing in <c>k3</c>.
+        /// </summary>
+        static CosmosContainerMetadata Labelled() =>
+            new CosmosContainerMetadata("items", new[] { "/pk" })
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse("""
+                    { "type": "object", "required": ["kind", "label"],
+                      "properties": { "kind": { "enum": ["k1", "k2", "k3"] }, "label": { "type": "string" } },
+                      "oneOf": [
+                        { "properties": { "kind": { "const": "k1" }, "label": { "pattern": "^[a-z]+$" } } },
+                        { "properties": { "kind": { "const": "k2" }, "label": { "pattern": "^[\\u0000-\\uD7FF\\uE000-\\uFFFF]*$" } } },
+                        { "properties": { "kind": { "const": "k3" } } } ] }
+                    """)!));
+
+        /// <summary>
+        /// The characters a kind's branch declares hold where a filter picks the kind, and a filter picking two holds what
+        /// either may: they are the theory's fact, split per kind and per arm and joined, and the sort reads it. A high
+        /// unit against a high unit is one comparison in both orders, so two kinds of which one may hold U+E000 sort
+        /// proved; one that may hold anything leaves the sort to be checked as the rows arrive.
+        /// </summary>
+        [Fact]
+        public void AKindsCharactersHoldUnderTheFilterThatPicksIt()
+        {
+            const string Sort = """SELECT c."id" FROM items AS c WHERE {0} ORDER BY JSON_VALUE(c."DOC", '$.label')""";
+            CosmosOrderProgram? Of(string where) => Program(string.Format(System.Globalization.CultureInfo.InvariantCulture, Sort, where), Labelled());
+
+            Of("""JSON_VALUE(c."DOC", '$.kind') = 'k1'""").Should().BeNull("k1's labels hold nothing at or above U+D800");
+            Of("""JSON_VALUE(c."DOC", '$.kind') IN ('k1', 'k2')""").Should().BeNull("neither kind's labels hold a surrogate");
+            Of("""(JSON_VALUE(c."DOC", '$.kind') = 'k1' OR JSON_VALUE(c."DOC", '$.kind') = 'k2')""").Should().BeNull("per arm, as per kind");
+            Of("""JSON_VALUE(c."DOC", '$.kind') IN ('k1', 'k3')""")!.Keys.Single().Anchor.Should().Be(CosmosOrderAnchor.Text, "k3's labels may hold any character");
         }
 
     }

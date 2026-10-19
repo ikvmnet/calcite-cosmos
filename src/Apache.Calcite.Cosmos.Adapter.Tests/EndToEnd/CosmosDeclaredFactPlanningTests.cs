@@ -1911,7 +1911,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         static object? BoundUuid(CosmosQuery query, object value) =>
             Adapter.Client.CosmosQueries.Bind(query, new UuidContext(value)).Parameters
-                .Single(p => p.Name == query.Parameters.Single(q => q.Value is Adapter.Sql.CosmosDynamicValue).Name).Value;
+                .Single(p => p.Name == query.Parameters.Single(q => q.Value is Adapter.Sql.CosmosDynamicValue { Form: not null }).Name).Value;
 
         /// <summary>
         /// The comparison #207 reported: a UUID read out of a path declared canonical, against a
@@ -1927,8 +1927,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().NotContain("IS_DEFINED(c.ref)", "and is not weakened to a definedness test");
             plan.Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + plan);
 
-            var slot = query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single();
+            var slot = query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single(s => s.Form is not null);
             slot.Form.Should().Be(CosmosUuidForms.CanonicalLower, "the slot carries the spelling to write the value in");
+            query.Sql.Should().MatchRegex(@"NOT IS_NULL\(@p\d+\) AND \(c\.ref = @p\d+\)", "and a null bound to it keeps no stored null: " + query.Sql);
 
             BoundUuid(query, org.apache.calcite.util.UuidValue.fromString(Canonical.ToUpperInvariant())).Should().Be(Canonical,
                 "and the value Calcite's runtime holds is written in it when the statement runs");
@@ -1959,7 +1960,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var (query, plan) = PlanUuidParameter($"{Ref} IN (?, ?, ?)");
 
             query.Sql.Split("c.ref = @p").Length.Should().Be(4, "each parameter is compared with the stored string: " + query.Sql);
-            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Should().HaveCount(3)
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Where(slot => slot.Form is not null).Should().HaveCount(3)
                 .And.OnlyContain(slot => slot.Form == CosmosUuidForms.CanonicalLower);
             plan.Should().NotContain("ClrCursorFilter", plan);
         }

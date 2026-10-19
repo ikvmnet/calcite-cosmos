@@ -782,10 +782,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (at.Translator.TryResolvePath(operand, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, at.RootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (CosmosDocumentPaths.From(path, at.RootAlias) is not JsonDocumentPath document)
                 return null;
 
             if (at.Known.RepresentationOf(document) is not CosmosRepresentation representation || CosmosUuidForms.IsUuid(representation) == false)
@@ -850,10 +847,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (translator.TryResolvePath(operand, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (CosmosDocumentPaths.From(path, rootAlias) is not JsonDocumentPath document)
                 return null;
 
             if (known().RepresentationOf(document) is not CosmosRepresentation declared || CosmosUuidForms.IsUuid(declared) == false)
@@ -965,10 +959,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (translator.TryResolvePath(accessor, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, rootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (CosmosDocumentPaths.From(path, rootAlias) is not JsonDocumentPath document)
                 return null;
 
             if (known().RepresentationOf(document) is not CosmosRepresentation declared)
@@ -1030,10 +1021,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (at.Translator.TryResolvePath(accessor, out var path) == false || path is null)
                 return null;
 
-            if (string.Equals(path.Alias, at.RootAlias, StringComparison.Ordinal) == false)
-                return null;
-
-            if (CosmosDocumentPaths.From(path) is not JsonDocumentPath document)
+            if (CosmosDocumentPaths.From(path, at.RootAlias) is not JsonDocumentPath document)
                 return null;
 
             if (at.Known.RepresentationOf(document) is not CosmosRepresentation representation)

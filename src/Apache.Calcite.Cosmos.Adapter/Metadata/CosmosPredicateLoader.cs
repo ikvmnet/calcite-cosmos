@@ -447,10 +447,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 // A path rooted at a traversal alias addresses an element of an array, not the document; and the
                 // document itself is no path a filter compares.
-                if (string.Equals(path.Alias, _rootAlias, StringComparison.Ordinal) == false)
-                    return null;
-
-                return CosmosDocumentPaths.From(path) is JsonDocumentPath document && document.IsRoot == false ? document : null;
+                return CosmosDocumentPaths.From(path, _rootAlias) is JsonDocumentPath document && document.IsRoot == false ? document : null;
             }
 
             static bool IsDocumentValue(RexCall call) => CosmosRexTranslator.IsDocumentValueType(call.getType()?.getSqlTypeName());

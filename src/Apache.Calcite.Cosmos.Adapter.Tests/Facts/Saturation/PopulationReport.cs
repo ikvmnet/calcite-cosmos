@@ -39,6 +39,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         public int Facts { get; set; }
 
+        /// <summary>Of <see cref="Facts"/>, those about the characters of a path's strings that say something.</summary>
+        public int Characters { get; set; }
+
         public int Verdicts { get; set; }
 
         /// <summary>The verdicts that decided something: always or never, or nothing kept.</summary>

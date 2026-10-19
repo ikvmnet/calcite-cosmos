@@ -206,9 +206,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 ($"^[0-9a-f]{{8}}{Run}$", "uuid-hyphenless-lower", "0123456f89ab7cde8f0123456789abcd"),
                 ($@"^\{{[0-9a-f]{{8}}{Run}\}}$", "uuid-braced-hyphenless-lower", "{0123456f89ab7cde8f0123456789abcd}"),
 
-                // The brace written without its escape, which is a literal in an ECMA-262 pattern
-                // because nothing precedes it for a count to apply to.
-                ($"^{{{Groups}}}$", "uuid-braced-lower", "{0123456f-89ab-7cde-8f01-23456789abcd}"),
+                // The brace and the hyphen written as classes of one character, which are the same languages.
+                ($"^[{{]{Groups}[}}]$", "uuid-braced-lower", "{0123456f-89ab-7cde-8f01-23456789abcd}"),
+                ("^[0-9a-f]{8}[-][0-9a-f]{4}[-]7[0-9a-f]{3}[-][89ab][0-9a-f]{3}[-][0-9a-f]{12}$", "uuid-canonical-lower", "0123456f-89ab-7cde-8f01-23456789abcd"),
 
                 // And confined, which the shape does not touch either way.
                 ($"^[0-7]{Groups.Substring("[0-9a-f]".Length)}$", "uuid-canonical-lower-sortable", "0123456f-89ab-7cde-8f01-23456789abcd"),
@@ -227,6 +227,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 CosmosUuidForms.IsUuid(form.Value).Should().BeTrue("the reader takes every one of these, for " + pattern);
                 CosmosStoredForms.RenderUuid(form.Value, value).Should().Be(stored, "for " + pattern);
             }
+        }
+
+        /// <summary>
+        /// A spelling only one reading of a pattern accepts is no form, though the other reads it as one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// JSON Schema does not say whether a validator reads a pattern with ECMA-262's <c>u</c> flag, and validators
+        /// differ; a pattern the reading a validator chose rejects is one it could not have checked a document with. An
+        /// unescaped brace is a literal read by unit, nothing preceding it for a count to apply to, and an error read by
+        /// code point; so is <c>\-</c> outside a class. Each was read as a UUID's brace or hyphen when the forms were
+        /// matched by spelling, and is not now: the reader of the pattern refuses it, as it refuses it for the
+        /// characters. The escaped brace and the bare hyphen are read alike either way, and are the form.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public void ASpellingOneReadingRejectsIsNoForm()
+        {
+            const string Groups = "[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+
+            foreach (var pattern in new[]
+            {
+                $"^{{{Groups}}}$",
+                $@"^{{{Groups}\}}$",
+                $@"^\{{{Groups}}}$",
+                @"^[0-9a-f]{8}\-[0-9a-f]{4}\-7[0-9a-f]{3}\-[89ab][0-9a-f]{3}\-[0-9a-f]{12}$",
+            })
+            {
+                CosmosStoredForms.Recognise(pattern).Should().BeNull("one reading rejects " + pattern);
+                CosmosPatternReader.Absent(pattern).Should().BeNull("and the reader refuses it for its characters too, for " + pattern);
+            }
+
+            CosmosStoredForms.Recognise($@"^\{{{Groups}\}}$")!.Value.Name.Should().Be("uuid-braced-lower");
+            CosmosStoredForms.Recognise($"^{Groups}$")!.Value.Name.Should().Be("uuid-canonical-lower");
         }
 
         /// <summary>

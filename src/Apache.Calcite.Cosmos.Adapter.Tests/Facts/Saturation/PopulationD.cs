@@ -88,7 +88,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var documents = Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
                 .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
                 .ToArray();
-            var conjuncts = Statements.Draw(random, declaration);
+            var conjuncts = Statements.Draw(random, declaration).Concat(Statements.Banded(bands, declaration)).ToList();
             var report = new PopulationReport(seed, declaration, conjuncts);
 
             foreach (var document in documents)
@@ -287,6 +287,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     foreach (var claim in facts.ClaimsFor(path))
                     {
                         _report.Facts++;
+                        if (claim is JsonClaim.Characters)
+                            _report.Characters++;
+
                         foreach (var document in keeping)
                             if (Declaration.Holds(IrEval.At(document, path), claim) == false)
                             {
@@ -375,6 +378,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 foreach (var fact in JsonFacts(context, json, graph))
                 {
                     _report.Facts++;
+                    if (fact is Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters { Bands.Count: < 2 })
+                        _report.Characters++;
+
                     foreach (var document in keeping)
                         if (Documents.IsTrue(document, fact) == false)
                         {
@@ -500,6 +506,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Lower(p, (Bound)row.Output!);
                 foreach (var (p, row) in Of(r.Hi))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Upper(p, (Bound)row.Output!);
+
+                foreach (var (p, row) in Of(r.Written))
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Written(p, (ValueSet<string>)row.Output!);
+
+                // One value in every document: the path there in each, and holding the value.
+                foreach (var (p, row) in Of(r.Constant))
+                {
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Present(p);
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.OneOf(p, ValueSet.Of((string)row.Keys[1]));
+                }
                 foreach (var (p, row) in Of(r.MinLength))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.MinLength(p, (long)row.Output!);
                 foreach (var (p, row) in Of(r.MaxLength))
@@ -534,6 +550,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.NameMinLength(p, (long)row.Output!);
                 foreach (var (p, row) in Of(r.NameMaxLength))
                     yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.NameMaxLength(p, (long)row.Output!);
+                foreach (var (p, row) in Of(r.Chars))
+                    yield return new Apache.Calcite.Cosmos.Facts.Saturation.JsonFact.Characters(p, (ValueSet<string>)row.Output!);
             }
 
         }

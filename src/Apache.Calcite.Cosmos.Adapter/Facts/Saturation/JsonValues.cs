@@ -9,74 +9,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
-    /// A path into a document: a class of terms built from <c>Root</c>, <c>Prop</c>, <c>Index</c> and <c>Each</c>.
-    /// </summary>
-    internal readonly record struct JPath(ClassId Id) : ISort<JPath>
-    {
-
-        public static JPath FromId(ClassId id) => new(id);
-
-    }
-
-    /// <summary>
-    /// A bound on a number: the value, and whether the bound itself is excluded.
-    /// </summary>
-    internal readonly record struct Bound(decimal Value, bool Open)
-    {
-
-        public static Bound AtLeast(decimal value) => new(value, false);
-
-        public static Bound Above(decimal value) => new(value, true);
-
-        public static Bound AtMost(decimal value) => new(value, false);
-
-        public static Bound Below(decimal value) => new(value, true);
-
-        /// <summary>Whether a number satisfies this as a lower bound.</summary>
-        public bool AdmitsAbove(decimal x) => x > Value || x == Value && Open == false;
-
-        /// <summary>Whether a number satisfies this as an upper bound.</summary>
-        public bool AdmitsBelow(decimal x) => x < Value || x == Value && Open == false;
-
-        /// <summary>The stricter of two lower bounds: the larger, and the open one where they are equal.</summary>
-        public static Bound StricterLower(Bound a, Bound b) =>
-            a.Value > b.Value ? a : b.Value > a.Value ? b : new(a.Value, a.Open || b.Open);
-
-        /// <summary>The stricter of two upper bounds: the smaller, and the open one where they are equal.</summary>
-        public static Bound StricterUpper(Bound a, Bound b) =>
-            a.Value < b.Value ? a : b.Value < a.Value ? b : new(a.Value, a.Open || b.Open);
-
-        /// <summary>The weaker of two lower bounds: what holds whichever of two cases does.</summary>
-        public static Bound WeakerLower(Bound a, Bound b) =>
-            a.Value < b.Value ? a : b.Value < a.Value ? b : new(a.Value, a.Open && b.Open);
-
-        /// <summary>The weaker of two upper bounds: what holds whichever of two cases does.</summary>
-        public static Bound WeakerUpper(Bound a, Bound b) =>
-            a.Value > b.Value ? a : b.Value > a.Value ? b : new(a.Value, a.Open && b.Open);
-
-        /// <summary>Whether no number lies between a lower and an upper bound.</summary>
-        public static bool NoNumberBetween(Bound lower, Bound upper) =>
-            lower.Value > upper.Value || lower.Value == upper.Value && (lower.Open || upper.Open);
-
-        /// <summary>Whether no integer lies between a lower and an upper bound.</summary>
-        public static bool NoIntegerBetween(Bound lower, Bound upper)
-        {
-            var least = Math.Ceiling(lower.Value);
-            if (least == lower.Value && lower.Open)
-                least += 1;
-
-            var most = Math.Floor(upper.Value);
-            if (most == upper.Value && upper.Open)
-                most -= 1;
-
-            return least > most;
-        }
-
-        public override string ToString() => (Open ? "open " : "") + Value.ToString(CultureInfo.InvariantCulture);
-
-    }
-
-    /// <summary>
     /// The JSON types as a set of members, and scalar values as strings tagged with their type, so that a domain is
     /// a <see cref="ValueSet{T}"/> and the type of each member is read off its tag.
     /// </summary>
@@ -188,6 +120,28 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static ValueSet<string> AtMost(ValueSet<string> values, Bound upper) =>
             ValueSet.From(values.Where(v => TryNumberOf(v, out var x) == false || upper.AdmitsBelow(x)));
 
+        /// <summary>
+        /// The least and the most of a domain's numbers, or <c>null</c> where it holds none, or one held approximately,
+        /// whose place against a bound is not read.
+        /// </summary>
+        public static (decimal Least, decimal Most)? NumbersOf(ValueSet<string> values)
+        {
+            (decimal Least, decimal Most)? span = null;
+            foreach (var value in values)
+            {
+                // Read off the tag in place: a domain of strings, the commonest, is passed over without a copy of each.
+                if (value.StartsWith(IntegerType + "|", StringComparison.Ordinal) == false && value.StartsWith(FractionType + "|", StringComparison.Ordinal) == false)
+                    continue;
+
+                if (TryNumberOf(value, out var x) == false)
+                    return null;
+
+                span = span is var (least, most) ? (Math.Min(least, x), Math.Max(most, x)) : (x, x);
+            }
+
+            return span;
+        }
+
         /// <summary>A domain less the strings shorter than a length; members that are not strings are kept.</summary>
         public static ValueSet<string> LengthAtLeast(ValueSet<string> values, long least) =>
             ValueSet.From(values.Where(v => IsString(v) == false || StringOf(v).Length >= least));
@@ -195,6 +149,106 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A domain less the strings longer than a length; members that are not strings are kept.</summary>
         public static ValueSet<string> LengthAtMost(ValueSet<string> values, long most) =>
             ValueSet.From(values.Where(v => IsString(v) == false || StringOf(v).Length <= most));
+
+        // ── Characters ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The band of the UTF-16 units of a surrogate pair, U+D800 to U+DFFF: how a character beyond U+FFFF is written,
+        /// and a lone surrogate.
+        /// </summary>
+        public const string SurrogateBand = "surrogate";
+
+        /// <summary>The band of the units from U+E000 to U+FFFF: the private use area and the rest of the basic plane.</summary>
+        public const string HighBand = "high";
+
+        /// <summary>
+        /// Both bands: what a string nothing states the characters of may hold units of. A unit below U+D800 is in
+        /// neither, and a string all of whose units are holds <see cref="NoBand"/>.
+        /// </summary>
+        public static readonly ValueSet<string> AllBands = ValueSet.Of(SurrogateBand, HighBand);
+
+        /// <summary>Neither band: every unit below U+D800.</summary>
+        public static readonly ValueSet<string> NoBand = ValueSet.Of<string>();
+
+        static readonly ValueSet<string> Surrogates = ValueSet.Of(SurrogateBand);
+
+        static readonly ValueSet<string> High = ValueSet.Of(HighBand);
+
+        /// <summary>
+        /// Returns the band a UTF-16 code unit is in, or <c>null</c> below U+D800, where it is in neither.
+        /// </summary>
+        /// <remarks>
+        /// The one place a unit's band is decided: a value's characters, a pattern's ranges, a parameter's at run time
+        /// and a row's as it arrives are each read through it.
+        /// </remarks>
+        public static string? BandOf(char unit) =>
+            unit < '\uD800' ? null : unit <= '\uDFFF' ? SurrogateBand : HighBand;
+
+        /// <summary>
+        /// Returns the bands of every character from one to another, each a UTF-16 code unit or a code point: a code
+        /// point past U+FFFF is written in surrogates.
+        /// </summary>
+        /// <param name="lo">The first character.</param>
+        /// <param name="hi">The last, at least <paramref name="lo"/>.</param>
+        public static ValueSet<string> BandsOf(int lo, int hi)
+        {
+            var surrogates = lo <= 0xDFFF && hi >= 0xD800 || hi > 0xFFFF;
+            var high = lo <= 0xFFFF && hi >= 0xE000;
+            return Bands(surrogates, high);
+        }
+
+        /// <summary>
+        /// Returns the bands a text's units are in: <see cref="NoBand"/> where every one is below U+D800.
+        /// </summary>
+        public static ValueSet<string> BandsOfText(string text)
+        {
+            bool surrogates = false, high = false;
+            foreach (var unit in text)
+            {
+                var band = BandOf(unit);
+                surrogates |= band == SurrogateBand;
+                high |= band == HighBand;
+            }
+
+            return Bands(surrogates, high);
+        }
+
+        /// <summary>
+        /// Returns the bands a value holds units of: a string's own, and none for any other value, which holds no
+        /// character. An attribute of the value, read off its spelling, as its type is.
+        /// </summary>
+        public static ValueSet<string> CharactersOf(string value) => IsString(value) ? BandsOfText(StringOf(value)) : NoBand;
+
+        /// <summary>
+        /// Returns the bands the strings of a domain hold units of, together.
+        /// </summary>
+        public static ValueSet<string> CharactersOf(ValueSet<string> values)
+        {
+            bool surrogates = false, high = false;
+            foreach (var value in values)
+            {
+                var bands = CharactersOf(value);
+                surrogates |= bands.Contains(SurrogateBand);
+                high |= bands.Contains(HighBand);
+            }
+
+            return Bands(surrogates, high);
+        }
+
+        /// <summary>
+        /// Returns the bands a string written in some bands may hold once it is stored: the same, and the high band too
+        /// where it was written with a surrogate, which may have been a lone one.
+        /// </summary>
+        /// <remarks>
+        /// The service's measured behaviour, read as data by one rule of the theory: a lone surrogate written as a JSON
+        /// escape is stored as U+FFFD (<c>Service.LoneSurrogateIsStoredAsReplacement</c>, measured on the probe account;
+        /// the emulator refuses the write). A surrogate pair is stored as it is.
+        /// </remarks>
+        public static ValueSet<string> Stored(ValueSet<string> written) =>
+            written.Contains(SurrogateBand) ? AllBands : written;
+
+        static ValueSet<string> Bands(bool surrogates, bool high) =>
+            surrogates ? high ? AllBands : Surrogates : high ? High : NoBand;
 
     }
 

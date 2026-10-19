@@ -100,7 +100,24 @@ exact plan shape a `CalciteConnection` presents for it has not yet been separate
 Cosmos normally refuses an `ORDER BY` on anything but a path; a geodesic distance is the measured
 exception. The distance must be the **only** sort key — a second key beside it is rejected by the
 service. A distance is nullable (a document may have no location), so this needs
-`DefaultNullCollation = "LOW"` (Chapter 9).
+`DefaultNullCollation = "LOW"` (Chapter 9) — unless the container's schema (Chapter 14) says every
+document holds a point the service will measure: the location required by its parent, and its subschema
+an object whose `type` is pinned to `Point`, with both members required and both ordinates bounded.
+
+```json
+{ "type": "object",
+  "required": ["location"],
+  "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+    "properties": {
+      "type": { "const": "Point" },
+      "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+        "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                         { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+```
+
+Without the outer `required` the schema says what a location is where a document has one, and a document
+without one conforms; its distance still sorts first at the service, so under the default placement the
+sort runs in process.
 
 A geometry itself is not an orderable value; ordering by a shape runs in process.
 

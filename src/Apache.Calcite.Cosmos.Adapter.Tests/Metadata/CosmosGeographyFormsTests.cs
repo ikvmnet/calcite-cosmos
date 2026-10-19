@@ -117,6 +117,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
+        /// <c>properties</c> and <c>required</c> constrain an object and are vacuous for anything else, so a
+        /// subschema that does not say its value is one admits a string, which the service will not measure;
+        /// and one admitting a null beside the object admits a value that is no geography. <c>type</c> is
+        /// read as the schema reader reads it, so its array form says the same as the bare one.
+        /// </remarks>
+        [Theory]
+        [InlineData("", false)]
+        [InlineData("\"type\": [\"object\", \"null\"],", false)]
+        [InlineData("\"type\": \"object\", \"nullable\": true,", false)]
+        [InlineData("\"type\": [\"object\"],", true)]
+        public void TheValueHasToBeAnObjectAndNeverNull(string type, bool recognised)
+        {
+            Recognise($$"""
+            { {{type}} "required": ["type", "coordinates"],
+              "properties": { "type": { "const": "Point" }, {{Ordinates}} } }
+            """).Should().Be(recognised);
+        }
+
+        /// <remarks>
         /// Measured: <c>point</c> answers undefined where <c>Point</c> does not, so a schema pinning
         /// the lowercase spelling proves the opposite of what it looks like.
         /// </remarks>

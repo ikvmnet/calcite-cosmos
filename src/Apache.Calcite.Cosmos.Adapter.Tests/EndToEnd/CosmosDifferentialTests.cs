@@ -1790,7 +1790,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["a", "a", "0"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\uE000", "\uE000", "a"], false),
             ("SELECT c.\"id\" FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.s') > ? OR (JSON_VALUE(c.\"DOC\", '$.s') = ? AND c.\"id\" > ?)", ["\U0001F600", "\U0001F600", "\uFFFD"], false),
+
+            // A parameter bound to SQL's NULL, over a path declared a string or null that holds a string, a JSON null
+            // and nothing, and one declared an integer or null: Calcite keeps no row a comparison with it decides, and
+            // the service, comparing the JSON null it arrives as, kept the null documents under =, <=, >= and BETWEEN,
+            // every other one under <> and NOT IN, and under a NOT the null ones of < too. And the same statements
+            // bound to a value, which the guard that makes a null keep nothing changes nothing of.
+            (O(T + " = ?"), [null], false),
+            (O(T + " <> ?"), [null], false),
+            (O(T + " <= ?"), [null], false),
+            (O(T + " >= ?"), [null], false),
+            (O(T + " < ?"), [null], false),
+            (O(T + " BETWEEN ? AND ?"), [null, null], false),
+            (O(T + " BETWEEN ? AND ?"), ["A", null], false),
+            (O("NOT (" + T + " = ?)"), [null], false),
+            (O("NOT (" + T + " < ?)"), [null], false),
+            (O("NOT (" + T + " <= ?)"), [null], false),
+            (O(T + " IN (?, 'apple')"), [null], false),
+            (O(T + " NOT IN (?, 'apple')"), [null], false),
+            (O(T + " = ? OR JSON_VALUE(c.\"DOC\", '$.s') = 'a'"), [null], false),
+            (O(T + " IS NOT DISTINCT FROM ?"), [null], false),
+            (O(K + " = ?"), [null], false),
+            (O(K + " <= ?"), [null], false),
+            (O("NOT (" + K + " >= ?)"), [null], false),
+            (O(T + " = ?"), ["apple"], false),
+            (O(T + " <= ?"), ["a"], false),
+            (O("NOT (" + T + " < ?)"), ["b"], false),
+            (O(T + " NOT IN (?, 'apple')"), ["Zebra"], false),
+            (O(K + " <= ?"), [java.lang.Integer.valueOf(3)], false),
         ];
+
+        /// <summary>
+        /// A statement over <c>ordering</c> keeping the ids a predicate holds of.
+        /// </summary>
+        static string O(string predicate) => "SELECT c.\"id\" FROM ordering AS c WHERE " + predicate;
+
+        /// <summary>
+        /// <c>ordering</c>'s <c>t</c>, declared a string or null, read as text.
+        /// </summary>
+        const string T = "JSON_VALUE(c.\"DOC\", '$.t')";
+
+        /// <summary>
+        /// <c>ordering</c>'s <c>k</c>, declared an integer or null, read as one.
+        /// </summary>
+        const string K = "JSON_VALUE(c.\"DOC\", '$.k' RETURNING INTEGER)";
 
         /// <summary>
         /// Every statement with parameters answers as Calcite would, with the values it is run with.

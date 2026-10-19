@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;
@@ -13,15 +15,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
     /// What the dispatcher does before any family reads a pattern, and what it refuses outright.
     /// </summary>
     /// <remarks>
-    /// The families are tested beside the classes that hold them; what is left here is the pattern
-    /// language every one of them rests on — the rewrites that make one language written several ways
-    /// into one key, and the anchoring without which no form means anything.
+    /// The families are tested beside the classes that hold them, the reader of the pattern beside its own class, and
+    /// every spelling the forms were ever recognised under in <c>CosmosStoredFormsSpellingTests</c>; what is left here
+    /// is what every form rests on — one language however it is written, and the anchoring without which no form means
+    /// anything.
     /// </remarks>
     public class CosmosStoredFormsTests
     {
 
         /// <summary>
-        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800.
+        /// Every stored form writes ASCII, so a path in one holds no character at or above U+D800, as each form's definition is
+        /// read for the theory (<see cref="CosmosRepresentation.Characters"/>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -59,13 +63,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
                 writing += written.Count > 0 ? 1 : 0;
                 written.Should().OnlyContain(text => text.All(c => c < ''), $"{form.Name} writes ASCII");
+                form.Characters.Should().Be(JsonCharacterBand.None, $"{form.Name}'s definition is written below U+D800");
             }
 
             writing.Should().BeGreaterThan(forms.Count / 2, "most forms write a literal from these values, so this asks something of them");
         }
 
         /// <summary>
-        /// Written with <c>\d</c> it is the same pattern, which normalisation already knew.
+        /// A form's characters are read off what defines it, by the reader's own reading of a range's bands, and stated
+        /// nowhere beside it: a definition reaching past U+D800 would say so.
+        /// </summary>
+        [Fact]
+        public void AFormsCharactersAreReadOffItsDefinition()
+        {
+            CosmosStoredForms.Definition("^[0-9]{4}-[0-9]{2}$").Characters.Should().Be(JsonCharacterBand.None);
+            CosmosStoredForms.Definition("^[a-z\uE000]{3}$").Characters.Should().Be(JsonCharacterBand.HighBmp);
+            CosmosPatternClass.Range('\uD000', '\uE100').Characters.Should().Be(JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp,
+                "a range's bands are every unit's it spans, not its ends'");
+            CosmosStoredForms.CharactersOf(new CosmosRepresentation("no-family", PreservesEquality: true, PreservesOrder: false)).Should().Be(JsonCharacterBand.Any,
+                "a form no family defines says nothing");
+        }
+
+        /// <summary>
+        /// A form gives a path its characters through the theory's rule, and from nothing the recogniser states.
+        /// </summary>
+        /// <remarks>
+        /// The reader of a pattern states two things of a path, read off one parse: the form, where the strings are a
+        /// form's language, and the characters, where it can read them. The first is not a second way to the second.
+        /// With the characters left unread, a path declared in a stored form holds the characters the form is written
+        /// in all the same, which only the theory's rule that a path in a form holds its form's characters can have
+        /// derived; and a pattern that is no form says nothing of them.
+        /// </remarks>
+        [Fact]
+        public void AFormGivesItsCharactersThroughTheTheory()
+        {
+            var formsOnly = new JsonSchemaRecognisers(StringPattern: CosmosSchemaRecognition.Cosmos.StringPattern);
+            var path = JsonDocumentPath.Root.Property("p");
+
+            JsonFactSet Declared(string pattern) =>
+                CosmosOracle.For(new CosmosContainerMetadata("items", new[] { "/pk" }).WithFacts(JsonSchemaFacts.ReadFrom(
+                    JsonNode.Parse($$"""{ "type": "object", "properties": { "p": { "type": "string", "pattern": "{{pattern}}" } } }""")!, formsOnly)).Facts).Declared;
+
+            foreach (var form in new[] { "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "^[0-9]{5}$" })
+                Declared(form).CharactersOf(path).Should().Be(JsonCharacterBand.None, "the form is ASCII, for " + form);
+
+            Declared("^[a-z]+$").CharactersOf(path).Should().Be(JsonCharacterBand.Any, "a pattern that is no form gives nothing when only forms are read");
+        }
+
+        /// <summary>
+        /// Written with <c>\d</c> it is the same language, which ECMA-262 makes <c>[0-9]</c>.
         /// </summary>
         [Fact]
         public void TheDigitShorthandIsTheSamePattern()

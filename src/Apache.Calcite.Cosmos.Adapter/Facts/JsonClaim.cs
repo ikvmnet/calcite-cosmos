@@ -44,22 +44,23 @@ namespace Apache.Calcite.Cosmos.Facts
         public sealed record Present : JsonClaim;
 
         /// <summary>
-        /// A claim this theory carries for a consumer, which says for itself what it entails.
+        /// A claim this theory carries for a consumer, as a token it reads nothing of.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>The claims above are JSON's: a type, a presence, a value, a domain, a spelling.</b> A
         /// consumer may know more about a value than JSON can say — the adapter knows when the service
-        /// will measure a shape as a geography, which no subschema can state because the service
-        /// range-checks coordinates — and needs that claim derived, guarded and combined like any other.
+        /// will measure a shape as a geography — and needs that claim guarded and carried like any other.
         /// This is where it goes, without the theory learning what it means.
         /// </para>
         /// <para>
-        /// <b>It answers its own entailments, toward JSON's claims or toward its own kind.</b> What it
-        /// says about the value in JSON's terms — that a geography is an object, and one that is there —
-        /// is what lets the rest of the theory use it; <see cref="JsonFact.Entails"/> asks it. An
-        /// extension entails nothing it does not say it does, and is excluded by nothing, which loses
-        /// facts rather than inventing them.
+        /// <b>It entails nothing, and says nothing of whether the path is there.</b> Like every claim
+        /// but <see cref="Present"/>, it says what the value is <em>if</em> there is one; what the value
+        /// is in JSON's terms — an object, a presence — is stated beside it by the reader that read the
+        /// input, from the keywords that say so, and the theory derives the rest. An extension that
+        /// settled a type or a presence itself would be a fact derived in C#, and was one: a geography
+        /// said its path was there, which no keyword had said, and an optional location's distance was
+        /// sorted as though no document lacked one.
         /// </para>
         /// <para>
         /// A record, so its equality is value equality, which two declarations of one claim need.
@@ -74,28 +75,6 @@ namespace Apache.Calcite.Cosmos.Facts
             protected Extension()
             {
             }
-
-            /// <summary>
-            /// Determines whether this claim, holding of a value, establishes <paramref name="other"/>
-            /// of the same value.
-            /// </summary>
-            /// <param name="other">The claim to establish, of the same path.</param>
-            /// <returns><c>true</c> where it does; the default answers only for an equal claim.</returns>
-            public virtual bool Entails(JsonClaim other) => Equals(other);
-
-            /// <summary>
-            /// Determines whether one of JSON's own claims, holding of a value, establishes this one of the same value.
-            /// </summary>
-            /// <remarks>
-            /// The other direction, and asked where <see cref="Entails"/> is: by the meet of a union, which keeps a claim
-            /// every branch entails, and by the nullable union, which keeps a claim a null standing in for the value
-            /// satisfies. A claim about what a value is <em>if</em> it is one kind of thing — what the characters of a
-            /// string are — holds of every value of another kind, a null among them, and says so here; the default
-            /// says nothing establishes it, which loses facts rather than inventing them.
-            /// </remarks>
-            /// <param name="other">A claim of JSON's own, of the same path.</param>
-            /// <returns><c>true</c> where it does; the default answers <c>false</c>.</returns>
-            public virtual bool IsEntailedBy(JsonClaim other) => false;
 
         }
 
@@ -216,6 +195,45 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </remarks>
         /// <param name="Form">The form, as the consumer that recognised it identifies it.</param>
         public sealed record Represents(IJsonStoredForm Form) : JsonClaim;
+
+        /// <summary>
+        /// The value at the path, where it is a string, holds UTF-16 units only below U+D800 and in these bands.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A fact of JSON's like a type</b>, and the theory reasons with it as one: per path, the bands a string there
+        /// may hold units of, which a conjunction narrows and a disjunction, a case split or a union widens, per branch
+        /// and per scope. A declared <c>pattern</c> states it, read as the characters it admits; so does a service fact,
+        /// of a property whose grammar a standard fixes. And the theory derives it, from a value or a domain a
+        /// declaration or a filter states — each value's characters being its own — and from a stored form, which
+        /// says how its strings are written. See <c>DESIGN.md</c> under <em>Characters, a fact of the theory</em>.
+        /// </para>
+        /// <para>
+        /// <b>Silent about anything but a string</b>, as a pattern is: a number, a null or an absent path holds no
+        /// character, and satisfies every claim of this kind.
+        /// </para>
+        /// </remarks>
+        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        public sealed record Characters(JsonCharacterBand Bands) : JsonClaim;
+
+        /// <summary>
+        /// The value at the path, where it is a string, was written with UTF-16 units only below U+D800 and in these bands.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What a validator saw, which is not always what the service stores.</b> A declared <c>pattern</c> constrains
+        /// a document as it was written, and measured on the probe account a lone surrogate written as a JSON escape is
+        /// stored as U+FFFD, a unit of the high band. So the pattern's reader states this, the bands its strings were
+        /// written in, and the theory derives what the stored strings hold from it by a rule that reads the service's
+        /// measured behaviour as data (<c>JsonRules</c>, "a string is stored as it was written, a lone surrogate as
+        /// U+FFFD"). Nothing reads it but that rule.
+        /// </para>
+        /// <para>
+        /// <b>Silent about anything but a string</b>, as <see cref="Characters"/> is.
+        /// </para>
+        /// </remarks>
+        /// <param name="Bands">The bands beside the one below U+D800; <see cref="JsonCharacterBand.None"/> for none.</param>
+        public sealed record Written(JsonCharacterBand Bands) : JsonClaim;
 
     }
 

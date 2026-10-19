@@ -1,5 +1,6 @@
 ﻿using System;
 
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -62,6 +63,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Determines whether a subschema proves that every value at the path is one the service
         /// will measure.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Every value, where there is one.</b> Like every claim read off a subschema, this says what
+        /// the path holds if it holds anything: whether it is there is the parent's <c>required</c> to say,
+        /// and the theory's to derive. A geography that said its path was there settled what no keyword
+        /// had, and an optional location's distance was sorted as though no document lacked one.
+        /// </para>
+        /// <para>
+        /// <b>Read by the schema reader's own readers of the keywords it shares with them</b> —
+        /// <c>type</c>, <c>required</c>, <c>const</c> and <c>enum</c>, <c>minimum</c> and <c>maximum</c>
+        /// (<see cref="JsonSchemaFacts"/>) — so that one keyword is read one way. What no reader of the
+        /// theory's reads yet, an array's counts and its elements' subschemas, is read here; it moves into
+        /// the theory with the facts about array elements (<c>TODO.md</c>).
+        /// </para>
+        /// </remarks>
         /// <param name="node">The subschema declared for the path.</param>
         /// <returns><c>true</c> where the declaration proves it.</returns>
         public static bool Recognise(JsonNode? node)
@@ -69,17 +85,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (node is not JsonObject)
                 return false;
 
-            // An object, and one whose two GeoJSON members are both required. Without `required` the
-            // schema constrains the members it happens to carry and admits a document with neither,
-            // which is the `{"kind":"somewhere"}` case: a conforming object the service cannot read.
-            if (Declares(node, "type") == false || Requires(node, "type") == false || Requires(node, "coordinates") == false)
+            // An object, and nothing else: `properties` and `required` constrain an object and are vacuous
+            // for anything else, so without the type a string conforms, and a null beside it does too.
+            if (IsType(node, JsonType.Object) == false)
                 return false;
 
-            var shape = Constant(Property(node, "type"));
+            // And one whose two GeoJSON members are both required. Without `required` the schema
+            // constrains the members it happens to carry and admits a document with neither, which is
+            // the `{"kind":"somewhere"}` case: a conforming object the service cannot read.
+            var required = JsonSchemaFacts.ReadRequired(node);
+            if (Property(node, "type") is not JsonNode type || required.Contains("type") == false || required.Contains("coordinates") == false)
+                return false;
 
             // Exact case, measured: `point` answers undefined where `Point` does not, so a schema
             // pinning the lowercase spelling proves the opposite of what it looks like.
-            return shape switch
+            if (JsonSchemaFacts.TryReadConstant(type, out var shape) == false || shape.ToClrValue() is not string name)
+                return false;
+
+            return name switch
             {
                 "Point" => IsPosition(Property(node, "coordinates")),
                 "LineString" => IsPositionArray(Property(node, "coordinates"), minimum: 2),
@@ -97,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </remarks>
         static bool IsPosition(JsonNode? node)
         {
-            if (node is null || IsType(node, "array") == false)
+            if (node is null || IsType(node, JsonType.Array) == false)
                 return false;
 
             if (Integer(node, "minItems") is not int least || least < 2)
@@ -121,7 +144,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="minimum">How many positions the shape needs to be measurable.</param>
         static bool IsPositionArray(JsonNode? node, int minimum)
         {
-            if (node is null || IsType(node, "array") == false)
+            if (node is null || IsType(node, JsonType.Array) == false)
                 return false;
 
             // A line of one point answers undefined, measured, so the count is part of the proof.
@@ -136,60 +159,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Determines whether a subschema bounds a number to within <paramref name="limit"/> either way.
         /// </summary>
+        /// <remarks>
+        /// A number, an integer among them, and nothing else, with a bound on each side at least as strict
+        /// as the limit, exclusive or not: the bounds as the schema reader reads them.
+        /// </remarks>
         static bool IsBounded(JsonNode? node, double limit)
         {
-            if (node is not JsonObject || IsType(node, "number") == false && IsType(node, "integer") == false)
+            if (node is not JsonObject || JsonSchemaFacts.ReadType(node) is not (JsonType.Number or JsonType.Integer, false))
                 return false;
 
-            return Number(node, "minimum") is double least && least >= -limit
-                && Number(node, "maximum") is double most && most <= limit;
+            var below = false;
+            var above = false;
+            foreach (var bound in JsonSchemaFacts.ReadBounds(node))
+            {
+                below |= bound is JsonClaim.LowerBound lower && lower.Value >= (decimal)-limit;
+                above |= bound is JsonClaim.UpperBound upper && upper.Value <= (decimal)limit;
+            }
+
+            return below && above;
         }
 
         static JsonNode? Property(JsonNode node, string name) => node.Get("properties").Get(name);
 
-        static bool Declares(JsonNode node, string name) =>
-            Property(node, name) is not null;
-
-        static bool Requires(JsonNode node, string name)
-        {
-            var required = node.Get("required");
-
-            for (var i = 0; i < required.Size(); i++)
-                if (string.Equals(required.At(i).Text(), name, StringComparison.Ordinal))
-                    return true;
-
-            return false;
-        }
-
         /// <summary>
-        /// Reads the one value a subschema admits, written either way round.
+        /// Determines whether a subschema says its value is of one type and never null, as the schema
+        /// reader reads <c>type</c>.
         /// </summary>
-        /// <remarks>
-        /// <c>const</c> and a single-member <c>enum</c> say the same thing, and a container writing a
-        /// draft-07 schema has only the second.
-        /// </remarks>
-        static string? Constant(JsonNode? node)
-        {
-            if (node is not JsonObject)
-                return null;
-
-            if (node.Get("const").Text() is string constant)
-                return constant;
-
-            if (node.Get("enum") is JsonArray domain && domain.Count == 1)
-                return domain.At(0).Text();
-
-            return null;
-        }
-
-        static bool IsType(JsonNode node, string name) =>
-            string.Equals(node.Get("type").Text(), name, StringComparison.Ordinal);
+        static bool IsType(JsonNode node, JsonType type) =>
+            JsonSchemaFacts.ReadType(node) is var (declared, orNull) && declared == type && orNull == false;
 
         static int? Integer(JsonNode node, string keyword) =>
             node.Get(keyword) is JsonValue value && value.GetValueKind() == JsonValueKind.Number && value.TryGetValue<int>(out var integer) ? integer : null;
-
-        static double? Number(JsonNode node, string keyword) =>
-            node.Get(keyword) is JsonValue value && value.GetValueKind() == JsonValueKind.Number ? value.GetValue<double>() : null;
 
     }
 

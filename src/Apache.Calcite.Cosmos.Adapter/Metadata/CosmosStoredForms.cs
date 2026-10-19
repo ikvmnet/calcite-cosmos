@@ -25,12 +25,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <c>format: uuid</c> does not say what is stored. The pattern beside it does.
     /// </para>
     /// <para>
-    /// <b>This is the entry point and not the argument.</b> A family reads its own patterns and writes
+    /// <b>This is the entry point and not the argument.</b> A family decides its own forms and writes
     /// its own literals, and the three differ in kind rather than in detail: the temporal shapes are
     /// tabulated because their axes close, <see cref="CosmosUuidForms"/> decides a shape because a
     /// UUID pattern's axes do not, and the numeric forms are parametric because a width is a family
     /// rather than a row. What is left here is the dispatch, which is the one thing a caller holding a
     /// bare <c>pattern</c> cannot do for itself.
+    /// </para>
+    /// <para>
+    /// <b>No family reads the pattern.</b> The pattern is read once, by the one reader of the keyword
+    /// (<see cref="CosmosPatternReader"/>), into the strings it admits under both of the readings a validator may
+    /// give it, and every family is asked of those strings: a form is recognised where they are its language, however
+    /// the pattern was spelled. The same reader says what characters the strings hold, and neither question is asked
+    /// of the pattern's text.
     /// </para>
     /// </remarks>
     public static class CosmosStoredForms
@@ -40,36 +47,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Returns the stored form a declared pattern is recognised as, or <c>null</c>.
         /// </summary>
         /// <remarks>
-        /// The pattern is normalised once and offered to each family in turn. The order decides
-        /// nothing — the three languages are disjoint, a canonical UUID being no temporal shape and
-        /// neither being a run of digits — so it is the order they are cheapest in.
+        /// <para>
+        /// The pattern is read once and its strings offered to each family in turn. A pattern the reader refuses, or
+        /// whose two readings read different strings, is no form.
+        /// </para>
+        /// <para>
+        /// <b>The order decides two languages.</b> Eight digits, <c>^[0-9]{8}$</c>, is a basic calendar date and a fixed
+        /// width of digits alike, and is read as the date; thirty-two, <c>^[0-9]{32}$</c>, is a hyphenless UUID with no
+        /// letter in it and a fixed width alike, and is read as the UUID. Both are what they were always read as, and
+        /// either form proves both relations. The families are otherwise disjoint, a canonical UUID being no temporal
+        /// shape and neither being a run of digits.
+        /// </para>
         /// </remarks>
         /// <param name="pattern">The declared <c>pattern</c>, or <c>null</c>.</param>
         /// <returns>The representation, or <c>null</c> where the pattern is not one this knows.</returns>
         public static CosmosRepresentation? Recognise(string? pattern)
         {
-            if (CosmosPatternLanguage.Normalise(pattern) is not string normalised)
+            if (CosmosPatternReader.Strings(pattern) is not { } strings)
                 return null;
 
-            return CosmosTemporalForms.Recognise(normalised)
-                ?? CosmosUuidForms.Recognise(normalised)
-                ?? CosmosNumericForms.Recognise(normalised);
+            return CosmosTemporalForms.Recognise(strings)
+                ?? CosmosUuidForms.Recognise(strings)
+                ?? CosmosNumericForms.Recognise(strings);
         }
+
+        /// <summary>
+        /// Returns the strings a form's defining pattern admits, read by the reader every declared pattern is read by.
+        /// </summary>
+        /// <remarks>
+        /// A form defined by a pattern is defined by its language, and the definition is read as a declaration is, so
+        /// that a declaration is the form exactly where it admits what the definition does. A definition the reader
+        /// cannot read is a defect in the definition, and fails as one.
+        /// </remarks>
+        /// <param name="pattern">The pattern a form is defined by.</param>
+        /// <returns>Its strings.</returns>
+        internal static CosmosPatternStrings Definition(string pattern) =>
+            CosmosPatternReader.Strings(pattern) ?? throw new InvalidOperationException($"The pattern '{pattern}' defining a stored form is not one the reader reads.");
 
         /// <summary>
         /// Gets every stored form a pattern can be recognised as, a numeric form at each width a pattern can name.
         /// </summary>
         /// <remarks>
         /// <b>A hook for the tests, and read by nothing else.</b> What <c>CosmosStoredFormsTests</c> holds to the claim
-        /// the service's order rests on: every stored form is ASCII, so a path in one holds no character at or above
-        /// U+D800, where code point and UTF-16 order part (<see cref="CosmosCharacters"/>, which a form entails). The
-        /// tables it enumerates are the recognisers' own, so a form added to one is held to the claim with no list to
-        /// keep beside it.
+        /// the service's order rests on: every stored form is ASCII, as <see cref="CharactersOf"/> reads it off the form's
+        /// definition, so a path in one holds no character at or above U+D800, where code point and UTF-16 order part — a
+        /// rule of the theory reads that off the form. The tables it enumerates are the recognisers' own, so a form added
+        /// to one is held to the claim with no list to keep beside it.
         /// </remarks>
         internal static System.Collections.Generic.IEnumerable<CosmosRepresentation> Registered =>
-            System.Linq.Enumerable.Concat(
-                System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered),
-                System.Linq.Enumerable.Prepend(System.Linq.Enumerable.Select(System.Linq.Enumerable.Range(1, 19), CosmosNumericForms.IntegerFixedWidth), CosmosNumericForms.IntegerUnpadded));
+            System.Linq.Enumerable.Concat(System.Linq.Enumerable.Concat(CosmosTemporalForms.Registered, CosmosUuidForms.Registered), CosmosNumericForms.Registered);
+
+        /// <summary>
+        /// Returns the bands a form's strings hold units of beside those below U+D800, read off what defines the form —
+        /// a language the one reader of a pattern parsed, or a shape's alphabet — by the reader's own reading of a
+        /// range's bands; <see cref="Facts.JsonCharacterBand.Any"/> for a form no family defines, which says nothing.
+        /// </summary>
+        internal static Facts.JsonCharacterBand CharactersOf(CosmosRepresentation representation) =>
+            CosmosTemporalForms.CharactersOf(representation)
+                ?? CosmosUuidForms.CharactersOf(representation)
+                ?? CosmosNumericForms.CharactersOf(representation)
+                ?? Facts.JsonCharacterBand.Any;
 
         /// <inheritdoc cref="CosmosUuidForms.Render" />
         public static string? RenderUuid(CosmosRepresentation representation, Guid value) =>

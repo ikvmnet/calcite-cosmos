@@ -206,19 +206,63 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // point-read pushdown carry through unchanged. A sort keyed on the column is the one
                 // thing that does not: Calcite cannot order a VARIANT in process (VariantValue is not
                 // Comparable), so CosmosSort declines it and a caller orders by JSON_VALUE instead. #165.
-                var type = name switch
-                {
-                    CosmosContainerMetadata.TimestampPropertyName => typeFactory.createSqlType(SqlTypeName.BIGINT),
-                    CosmosContainerMetadata.IdPropertyName => varchar,
-                    CosmosContainerMetadata.ETagPropertyName => varchar,
-                    _ => typeFactory.createTypeWithNullability(variant, true),
-                };
+                var type = ServiceColumnType(name, typeFactory) ?? typeFactory.createTypeWithNullability(variant, true);
 
                 builder.add(name, type);
             }
 
             return builder.build();
         }
+
+        /// <summary>
+        /// Returns the type of a column bound to one of the properties the service maintains, read off what the theory
+        /// knows of it; or <c>null</c> for any other column.
+        /// </summary>
+        /// <remarks>
+        /// What the service guarantees of <c>id</c>, <c>_ts</c> and <c>_etag</c> is stated once, as facts
+        /// (<see cref="CosmosServiceFacts"/>), and the row type reads them: a string is a <c>VARCHAR</c> and an integer a
+        /// <c>BIGINT</c>, and <c>NOT NULL</c> where the path is there and its type admits no null. It used to say so a
+        /// second time, by name, and the translator's reading of a non-nullable field as the stored value
+        /// (<see cref="Sql.CosmosRexTranslator.IsReadAsStored"/>) rested on that second statement.
+        /// </remarks>
+        RelDataType? ServiceColumnType(string name, RelDataTypeFactory typeFactory)
+        {
+            if (CosmosServiceFacts.Properties.Contains(name) == false)
+                return null;
+
+            // Read once a table: the declaration is frozen, and the row type is asked for every time a statement over
+            // the table is prepared.
+            var read = _serviceColumns ??= ReadServiceColumns();
+            return read.TryGetValue(name, out var column)
+                ? typeFactory.createTypeWithNullability(typeFactory.createSqlType(column.Type), column.Nullable)
+                : null;
+        }
+
+        /// <summary>
+        /// What the theory knows of each of the service's properties, as the SQL type a column bound to it reads.
+        /// </summary>
+        Dictionary<string, (SqlTypeName Type, bool Nullable)> ReadServiceColumns()
+        {
+            var facts = Facts.CosmosOracle.For(_container.Facts).Declared;
+            var columns = new Dictionary<string, (SqlTypeName, bool)>(System.StringComparer.Ordinal);
+
+            foreach (var name in CosmosServiceFacts.Properties)
+            {
+                var path = Facts.JsonDocumentPath.Root.Property(name);
+
+                SqlTypeName? sql =
+                    facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.String))) ? SqlTypeName.VARCHAR
+                    : facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.OfType(Facts.JsonType.Integer))) ? SqlTypeName.BIGINT
+                    : null;
+
+                if (sql is SqlTypeName known)
+                    columns[name] = (known, facts.Knows(new Facts.JsonFact(path, new Facts.JsonClaim.Present())) == false);
+            }
+
+            return columns;
+        }
+
+        Dictionary<string, (SqlTypeName Type, bool Nullable)>? _serviceColumns;
 
         /// <summary>
         /// Returns the ordinal of the column carrying a declared path, or <c>-1</c>.

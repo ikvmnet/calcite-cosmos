@@ -100,8 +100,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _, out _, out var container) == false
                 || operand.getIndex() >= fields.Count
                 || fields[operand.getIndex()] is not Sql.CosmosPath path
-                || string.Equals(path.Alias, CosmosImplementor.DefaultRootAlias, System.StringComparison.Ordinal) == false
-                || CosmosDocumentPaths.From(path) is not Apache.Calcite.Cosmos.Facts.JsonDocumentPath document)
+                || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not Apache.Calcite.Cosmos.Facts.JsonDocumentPath document)
                 return false;
 
             var facts = CosmosRowFacts.Of(project.getInput(), container, Apache.Calcite.Cosmos.Facts.OracleLicence.OrderBy);

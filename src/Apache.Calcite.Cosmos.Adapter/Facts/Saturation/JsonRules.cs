@@ -72,7 +72,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             NameMinLength = graph.DefineFunction<JPath, long>("nameMinLength", ValueLattice.Max<long>());
             NameMaxLength = graph.DefineFunction<JPath, long>("nameMaxLength", ValueLattice.Min<long>());
             Form = graph.DefineRelation<JPath, string>("form");
+            Chars = graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
+            FormChars = graph.DefineFunction<string, ValueSet<string>>("formChars", ValueLattice.Intersect<string>());
+            Written = graph.DefineFunction<JPath, ValueSet<string>>("written", ValueLattice.Intersect<string>());
             Extension = graph.DefineRelation<JPath, string>("extension");
+            Constant = graph.DefineRelation<JPath, string>("constant");
 
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
@@ -187,11 +191,36 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Relation<JPath, string> Form { get; }
 
         /// <summary>
-        /// The path holds what a host's own claim, named by a key, says it holds. The theory reads nothing of it: what
-        /// it says in JSON's terms — that the path is there, that it is an object — is stated beside it by whoever states
-        /// it, so it is not inherited through a pattern, which would carry a presence it may imply.
+        /// If the path holds a string, the bands its UTF-16 units may be in beside those below U+D800:
+        /// <see cref="JsonValues.SurrogateBand"/> and <see cref="JsonValues.HighBand"/>. A fact about the value like a type,
+        /// and combined as one: a conjunction meets the sets, a case join unites them.
+        /// </summary>
+        public Function<JPath, ValueSet<string>> Chars { get; }
+
+        /// <summary>
+        /// The bands a stored form's strings may hold units of, by the form's token: a statement about how a form is
+        /// written, and about no document, stated beside the forms a declaration names.
+        /// </summary>
+        public Function<string, ValueSet<string>> FormChars { get; }
+
+        /// <summary>
+        /// If the path holds a string, the bands its UTF-16 units were written in: what a declared <c>pattern</c> says,
+        /// which is of the document a validator checked, and from which <see cref="Chars"/>, what is stored, is derived.
+        /// </summary>
+        public Function<JPath, ValueSet<string>> Written { get; }
+
+        /// <summary>
+        /// If the path holds a value, it is what a host's own claim, named by a key, says it is. The theory reads nothing
+        /// of it and derives nothing from it: what the value is in JSON's terms — an object, say — is stated beside it by
+        /// the reader that read it, from the keywords that say so, and whether it is there is a presence like any other.
+        /// No pattern inherits it, there being no claim of the kind a pattern carries.
         /// </summary>
         public Relation<JPath, string> Extension { get; }
+
+        /// <summary>
+        /// The path is there, and holds this value in every document: a presence and a domain of one together.
+        /// </summary>
+        public Relation<JPath, string> Constant { get; }
 
         readonly List<(string Name, Action<RuleBuilder> Define)> _schemaRules = new();
 
@@ -263,6 +292,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Where(Primitives.IsEmpty<string>().Of(t));
                 r.Then(Absent.Of(p));
             });
+            // One value in every document: what a key that orders nothing and a partition key pinned both are. Not a
+            // domain of one alone, which says what the path holds if it is there. The value is part of the fact, so that
+            // what every case of a split proves is lifted only where every case holds the same one: two cases each
+            // holding one value hold two between them.
+            Rule("a present path of one value holds it in every document", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(Present.Of(p), d.Is(Dom.Of(p)));
+                r.Where(d, x => x.Count == 1);
+                r.Then(Constant.Of(p, Compute.Of(d, x => x[0])));
+            });
             Rule("a path is not both absent and present", r =>
             {
                 var p = r.Var<JPath>("p");
@@ -284,6 +324,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (p, d, h) = r.Vars<JPath, ValueSet<string>, Bound>("p", "d", "h");
                 r.When(d.Is(Dom.Of(p)), h.Is(Hi.Of(p)));
                 r.Then(Dom.Of(p).Is(Compute.Of(d, h, AtMost)));
+            });
+            // The reverse of the two above: what a path holds is one of its domain's values, so its numbers lie between
+            // the least and the most of the domain's. Stated of every domain, as its characters are, and a domain only
+            // narrows, so the bounds a context ends with are its last domain's. A domain holding no number says it holds
+            // none, which its types say and every bound then holds of.
+            Rule("a domain's numbers bound the path", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Where(d, x => NumbersOf(x) is not null);
+                r.Then(
+                    Lo.Of(p).Is(Compute.Of(d, x => Bound.AtLeast(NumbersOf(x)!.Value.Least))),
+                    Hi.Of(p).Is(Compute.Of(d, x => Bound.AtMost(NumbersOf(x)!.Value.Most))));
             });
             Rule("no number lies between crossed bounds", r =>
             {
@@ -327,6 +380,34 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (p, n) = r.Vars<JPath, string>("p", "n");
                 r.When(Form.Of(p, n));
                 r.Then(Types.Of(p).Is(Types(StringType, NullType)));
+            });
+
+            // What characters a string holds is a fact about it like its length: a value's are its own, and a domain's
+            // strings say together which bands the path's may draw from; a domain of no string, that the path holds no
+            // character at all. Stated of every domain, so that what a context holds is what its last domain says
+            // whatever domains it passed through: a domain only narrows, and so do the bands of what it holds.
+            Rule("a value's characters are its own", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Then(Chars.Of(p).Is(Compute.Of(d, domain => CharactersOf(domain))));
+            });
+            // What a validator checked is the string as written, and the service does not store every string as it was
+            // written: measured on the probe account, a lone surrogate written as a JSON escape is stored as U+FFFD, a unit
+            // of the high band (Service.LoneSurrogateIsStoredAsReplacement). A string written with a surrogate may have
+            // had a lone one, so what is stored may hold a high unit too; one written without holds what it was written
+            // with.
+            Rule("a string is stored as it was written, a lone surrogate as U+FFFD", r =>
+            {
+                var (p, w) = r.Vars<JPath, ValueSet<string>>("p", "w");
+                r.When(w.Is(Written.Of(p)));
+                r.Then(Chars.Of(p).Is(Compute.Of(w, Stored)));
+            });
+            SchemaRule("a stored form holds the characters it is written in", r =>
+            {
+                var (p, n, c) = r.Vars<JPath, string, ValueSet<string>>("p", "n", "c");
+                r.When(Form.Of(p, n), c.Is(FormChars.Of(n)));
+                r.Then(Chars.Of(p).Is(c));
             });
         }
 
@@ -491,6 +572,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Inherit("hi", Hi);
             Inherit("minLength", MinLength);
             Inherit("maxLength", MaxLength);
+            Inherit("chars", Chars);
             Inherit("minItems", MinItems);
             Inherit("maxItems", MaxItems);
             Inherit("closed", Closed, schema: true);
@@ -847,6 +929,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         internal Relation<long, JPath, string> HeadRequired { get; private set; } = null!;
         internal Relation<long, JPath, ValueSet<string>> HeadClosed { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadForm { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadChars { get; private set; } = null!;
+        internal Relation<long, JPath, ValueSet<string>> HeadWritten { get; private set; } = null!;
         internal Relation<long, JPath, string> HeadExtension { get; private set; } = null!;
 
         /// <summary>
@@ -888,6 +972,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             HeadRequired = g.DefineRelation<long, JPath, string>("head_required", local);
             HeadClosed = g.DefineRelation<long, JPath, ValueSet<string>>("head_closed", local);
             HeadForm = g.DefineRelation<long, JPath, string>("head_form", local);
+            HeadChars = g.DefineRelation<long, JPath, ValueSet<string>>("head_chars", local);
+            HeadWritten = g.DefineRelation<long, JPath, ValueSet<string>>("head_written", local);
             HeadExtension = g.DefineRelation<long, JPath, string>("head_extension", local);
 
             SchemaRule("a singleton domain pins its value", r =>
@@ -980,6 +1066,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Head("a required property", HeadRequired, (p, v) => Required.Of(p, v));
             Head("a closed object", HeadClosed, (p, v) => Closed.Of(p).Is(v));
             Head("a stored form", HeadForm, (p, v) => Form.Of(p, v));
+            Head("characters", HeadChars, (p, v) => Chars.Of(p).Is(v));
+            Head("written characters", HeadWritten, (p, v) => Written.Of(p).Is(v));
             Head("a host's claim", HeadExtension, (p, v) => Extension.Of(p, v));
 
             // What a query mentions is relevant, and so is what bears on it: a path's parent and array, the patterns it

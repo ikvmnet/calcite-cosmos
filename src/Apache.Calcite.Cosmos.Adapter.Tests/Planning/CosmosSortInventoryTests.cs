@@ -361,8 +361,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// What the facts say of the characters of a path's strings, read off its claims: a domain all below U+D800, a
-        /// stored form (every one ASCII), or a statement that a band beyond is not there — one band for an order among
-        /// the path's own strings, both against a value that may hold anything.
+        /// stored form (every one ASCII), or the theory's statement of the bands its strings may hold — one band left
+        /// out for an order among the path's own strings, both against a value that may hold anything. Read here, as a
+        /// classifier of its own, rather than through the fact the question reads.
         /// </summary>
         static bool CharactersKnown(JsonFactSet facts, JsonDocumentPath path, bool againstAnything = false)
         {
@@ -380,9 +381,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     return domain.Values.All(v => v.ToClrValue() is not string s || BelowSurrogates(s));
             }
 
-            var surrogates = claims.Contains(new CosmosCharacters(CosmosCharacterBand.Surrogates));
-            var high = claims.Contains(new CosmosCharacters(CosmosCharacterBand.HighBmp));
-            return againstAnything ? surrogates && high : surrogates || high;
+            var held = claims.OfType<JsonClaim.Characters>().Select(c => c.Bands).DefaultIfEmpty(JsonCharacterBand.Any).First();
+            return againstAnything ? held == JsonCharacterBand.None : held != JsonCharacterBand.Any;
         }
 
         /// <summary>
@@ -481,7 +481,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
                 if (path is null)
                 {
-                    if (index < candidates.Count && candidates[index].Path is Adapter.Sql.CosmosPath converted && CosmosDocumentPaths.From(converted) is JsonDocumentPath document)
+                    if (index < candidates.Count && candidates[index].Path is Adapter.Sql.CosmosPath converted && CosmosDocumentPaths.From(converted, CosmosImplementor.DefaultRootAlias) is JsonDocumentPath document)
                         found.Add(new("sort: a conversion over a stored form", facts.RepresentationOf(document) is { PreservesOrder: true }));
                     else
                         found.Add(new("sort: a geodesic distance (the service's value)", true));
@@ -489,7 +489,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                     continue;
                 }
 
-                if (CosmosDocumentPaths.From(path) is not JsonDocumentPath at)
+                if (CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
                 {
                     found.Add(new("sort: the document", false));
                     continue;
@@ -575,7 +575,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         static Pushed Extreme(CosmosAggregate aggregate, int argument, string member)
         {
             if (CosmosImplementor.TryBindOutput(aggregate.getInput(), out var fields, out _, out _, out _, out var container) == false || container is null
-                || argument >= fields.Count || fields[argument] is not Adapter.Sql.CosmosPath path || CosmosDocumentPaths.From(path) is not JsonDocumentPath at)
+                || argument >= fields.Count || fields[argument] is not Adapter.Sql.CosmosPath path || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
                 return new("extreme: of no path", false);
 
             var facts = aggregate.Facts ?? CosmosOracle.For(container.Facts).Declared;
@@ -660,7 +660,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 return (true, true);
 
             var translator = new Adapter.Sql.CosmosRexTranslator(filter.getCluster().getRexBuilder(), fields, new Adapter.Sql.CosmosParameterList(), JsonFactSet.Empty);
-            if (translator.TryResolvePath(node, out var path) == false || CosmosDocumentPaths.From(path) is not JsonDocumentPath at)
+            if (translator.TryResolvePath(node, out var path) == false || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
                 return (true, true);
 
             // What the rows the filter keeps satisfy: a sibling's domain among it, which is what the comparison may lean on.
@@ -668,8 +668,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             if (CharactersKnown(facts, at, againstAnything: true))
                 return (false, false);
 
-            var claims = facts.ClaimsFor(at);
-            return (claims.Contains(new CosmosCharacters(CosmosCharacterBand.Surrogates)) == false, claims.Contains(new CosmosCharacters(CosmosCharacterBand.HighBmp)) == false);
+            var held = facts.ClaimsFor(at).OfType<JsonClaim.Characters>().Select(c => c.Bands).DefaultIfEmpty(JsonCharacterBand.Any).First();
+            return ((held & JsonCharacterBand.Surrogates) != JsonCharacterBand.None, (held & JsonCharacterBand.HighBmp) != JsonCharacterBand.None);
         }
 
         /// <summary>
@@ -705,7 +705,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
                 for (var k = 0; k < keys.size(); k++)
                     keyed |= ((RelFieldCollation)keys.get(k)).getFieldIndex() == operand.getIndex();
 
-                if (keyed == false || operand.getIndex() >= fields.Count || fields[operand.getIndex()] is not Adapter.Sql.CosmosPath path || CosmosDocumentPaths.From(path) is not JsonDocumentPath at)
+                if (keyed == false || operand.getIndex() >= fields.Count || fields[operand.getIndex()] is not Adapter.Sql.CosmosPath path || CosmosDocumentPaths.From(path, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath at)
                     continue;
 
                 found.Add(new("transpose: a sort keyed by text beneath a cast to " + target.getName(), facts.RepresentationOf(at) is { PreservesOrder: true }));

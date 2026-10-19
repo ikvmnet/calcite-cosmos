@@ -44,6 +44,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// stored — <c>42</c> is <c>00042</c> at width five — so a rewrite rendering a literal into the
     /// stored shape has to read it, and a form without one renders the value as it stands.
     /// </param>
-    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder, int? Width = null) : IJsonStoredForm;
+    public readonly record struct CosmosRepresentation(string Name, bool PreservesEquality, bool PreservesOrder, int? Width = null) : IJsonStoredForm
+    {
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Read off what defines the form, by its family (<see cref="CosmosStoredForms.CharactersOf"/>): one encoding of
+        /// what a form is written in, which is its definition. Every form the recognisers register comes out ASCII — hex
+        /// digits, hyphens and braces, digits and the ISO-8601 punctuation — which <c>CosmosStoredFormsTests</c> checks
+        /// over the tables the recognisers read.
+        /// </remarks>
+        public JsonCharacterBand Characters => CosmosStoredForms.CharactersOf(this);
+
+    }
 
 }

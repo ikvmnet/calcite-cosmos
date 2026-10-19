@@ -51,7 +51,9 @@ in the document tells apart.
 | `minProperties(p)`, `maxProperties(p)` | **if** an object, its property count lies within these |
 | `containsAtLeast(p, v)`, `containsAtMost(p, v)` | **if** an array, this many of its elements equal `v` (`contains`, `minContains`, `maxContains`) |
 | `nameMinLength(p)`, `nameMaxLength(p)` | **if** an object, its property names are within these lengths (`propertyNames`) |
-| `form(p, f)` | **if** a string, it is spelled in the stored form `f`: a token the theory reads nothing of |
+| `form(p, f)` | **if** a string, it is spelled in the stored form `f`: a token the theory reads nothing of but its characters |
+| `chars(p) = S` | **if** a string, its UTF-16 units are below U+D800 or in the bands `S`, over `surrogate` and `high` (U+E000 up) |
+| `formChars(f) = S` | a string in the stored form `f` holds units below U+D800 or in `S`: about how a form is written, and no document |
 | `extension(p, k)` | the path holds what a host's claim `k` says; what that entails in JSON's terms is stated beside it |
 | `p ≡ q` | the two paths hold one value, or are both absent: a union of the two path terms |
 
@@ -94,6 +96,9 @@ saturation terminates.
 - A maximum length narrows a domain.
 - No string has crossed lengths.
 - † A stored form is a string or null.
+- A value's characters are its own: a domain's `chars` are the bands its strings hold, and a domain of no string's
+  are none. Stated of every domain, so that what a run ends with is what its last domain says.
+- † A stored form holds the characters it is written in.
 
 **Objects**
 - A present property has a present object for its parent.
@@ -153,7 +158,7 @@ saturation terminates.
 - So is a property of an instance, an element of an instance, and every element of an instance.
 - An instance inherits:
   - `types`, `dom`, `ne` and both numeric bounds;
-  - both length bounds and both item bounds;
+  - both length bounds, the characters, and both item bounds;
   - absence;
   - † `closed`, `required` and a stored form;
   - † `multipleOf`, `unique`, the property counts, the name lengths and the counts of a value.
@@ -262,9 +267,11 @@ the last 256 sets' contexts.
     so a rule that fires when it should not states a falsehood and is caught.
 - **Equalities checked too.** A third of the generated documents hold one value at two places. Every pair of
   concrete paths the theory proves equal must hold one value in the document.
-- **Forms, extensions and numbers held approximately.** A document may hold `1e30`, `-1e30` or `1.5e-30`. A fact
-  may name a stored form — any string, or a string of at most one character — or the extension "an object", and a
-  conditional rule may state either. A proposed fact false of the document is drawn again.
+- **Forms, extensions, characters and numbers held approximately.** A document may hold `1e30`, `-1e30` or
+  `1.5e-30`, and strings of all three bands: a high unit, a supplementary character, both, and a character below
+  U+D800 that is no ASCII. A fact may name a stored form — any string, a string of at most one character, or an ASCII
+  one, whose characters every trial states — the extension "an object", or the bands a string's characters lie in;
+  a conditional rule may state any of them. A proposed fact false of the document is drawn again.
 - **The oracle is shown to catch unsound rules.** Each planted bug fails it. Among them:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
@@ -380,13 +387,19 @@ verdicts.
 - `JsonFactOverlayTests`: a stratum read off the overlay, against the engine's context for it;
 - `CosmosOracleMeasureTests`: what a question costs, at `MeasureTests`' sizes;
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, random filters over
-  their paths, and 64 documents drawn from each declaration and not from its filter. Every fact a context holds, row
-  by row; every claim and verdict each licence's scope answers; every `holds`, verdict and `possible` row; every
-  `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
-  each conjunct was handed to render from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
-- `PlantedBugTests`: seven faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
+  their paths, and 64 documents drawn from each declaration and not from its filter; from a stream of their own,
+  patterns, `enum`s and `const`s of strings from all three bands, filters comparing paths with them, and 16
+  documents holding them. Every fact a context holds, row by row, `chars` among them; every claim and verdict each
+  licence's scope answers; every `holds`, verdict and `possible` row; every `atom` row against `IrEval` on every
+  declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts each conjunct was handed to render
+  from; and the conjuncts called redundant. 200 trials a run, 5,000 on request;
+- `CharactersTests` and `CosmosOracleCharactersTests`: what the theory derives of a path's characters, by the rules
+  and through the oracle's strata;
+- `PlantedBugTests`: ten faults planted in graphs of their own — a too-wide preimage, establishing from a weakening,
   never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the measurement, a
-  stratum handing a conjunct its own facts, and a union of two predicates — each caught within a run's trials;
+  stratum handing a conjunct its own facts, a union of two predicates, one kind's characters read of every kind, a
+  value's characters read without its surrogates, and an arm's characters stated of its disjunction — each caught
+  within a run's trials;
 - `IrEvalCalciteTests`: the evaluator those are checked against, held to Calcite's runtime over the readings that
   were measured. The raw readings are drawn from what the table admits, and nothing holds those rows to Calcite yet.
 

@@ -40,15 +40,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static JsonFactSet Facts(string json) => Compile(json).Derive(null);
 
         /// <summary>
-        /// <c>Point</c> schema with bounded ordinates beside an object type declares that the path holds a geography.
+        /// A location's subschema pinning a point with bounded ordinates, required by its parent.
+        /// </summary>
+        const string RequiredPoint = """
+            { "type": "object",
+              "required": ["location"],
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+            """;
+
+        /// <summary>
+        /// The same subschema, the location not required.
+        /// </summary>
+        const string OptionalPoint = """
+            { "type": "object",
+              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
+            """;
+
+        /// <summary>
+        /// <c>Point</c> schema with bounded ordinates beside an object type, at a path its parent requires, declares that
+        /// the path holds a geography.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The one claim here that is declared rather than derived, and it has to be: measured
-        /// against an account, <c>{"type":"Point","coordinates":[999,999]}</c> validates against
-        /// every GeoJSON subschema anyone could write and the service still answers undefined for a
-        /// distance over it. <c>format</c> is annotation-only in JSON Schema, which is the standing
-        /// every claim here has — the container's word, believed.
+        /// The one claim here JSON's own cannot state: measured against an account,
+        /// <c>{"type":"Point","coordinates":[999,999]}</c> validates against every GeoJSON subschema anyone could write
+        /// and the service still answers undefined for a distance over it. So it is read off the subschema's structure,
+        /// the container's word, believed, as every claim here is.
         /// </para>
         /// <para>
         /// What it buys is <c>CosmosServiceOrder</c>'s distance reading: a distance over such a path is
@@ -59,16 +86,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void ASchemaPinningAPointDeclaresAGeography()
         {
-            Facts("""
-            { "type": "object",
-              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
-                "properties": {
-                  "type": { "const": "Point" },
-                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
-                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
-                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
-            """)
-                .IsAlwaysGeography(Location).Should().BeTrue();
+            Facts(RequiredPoint).IsAlwaysGeography(Location).Should().BeTrue();
         }
 
         /// <remarks>
@@ -103,30 +121,82 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// The claim carries its own presence, which is why the property need not be required.
+        /// A declared geography is there where its parent requires it, and an object because its subschema says so.
         /// </summary>
         /// <remarks>
-        /// Every other claim about a value is silent about whether the value is there — a schema's
-        /// <c>properties</c> constrains what a path holds <em>if</em> it holds anything. This one is
-        /// the exception, because there is no geography that is absent: declaring the format is
-        /// declaring a shape is there. <c>JsonFact.Entails</c> carries it.
+        /// Each from the keyword that says it, read by the schema reader: <c>required</c> for the presence and
+        /// <c>"type": "object"</c> for the type. The geography adds neither.
         /// </remarks>
         [Fact]
-        public void ADeclaredGeographyIsPresentAndAnObject()
+        public void ADeclaredGeographyIsPresentWhereRequiredAndAnObject()
         {
-            var facts = Facts("""
+            var facts = Facts(RequiredPoint);
+
+            facts.Knows(new JsonFact(Location, new JsonClaim.Present())).Should().BeTrue();
+            facts.Knows(new JsonFact(Location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
+            facts.HasOneScalarType(Location).Should().BeFalse("a shape is not a scalar");
+        }
+
+        /// <summary>
+        /// A geography says what the value is where there is one, and nothing of whether there is: not required, the
+        /// location may be absent, and is no geography in every document.
+        /// </summary>
+        /// <remarks>
+        /// The claim used to carry a presence of its own, on the ground that no geography is absent; but a document
+        /// without the property conforms to a schema that does not require it, and its distance arrives undefined,
+        /// which the service sorts first and Calcite's default placement last. So an optional location's distance was
+        /// sorted at the service under <c>NullCollation.HIGH</c>, and under a <c>LIMIT</c> the document lacking one
+        /// displaced a located row.
+        /// </remarks>
+        [Fact]
+        public void AnOptionalGeographyIsNotThereInEveryDocument()
+        {
+            var facts = Facts(OptionalPoint);
+
+            facts.Knows(new JsonFact(Location, new CosmosGeography())).Should().BeTrue("the value, where there is one, is a point");
+            facts.Knows(new JsonFact(Location, new JsonClaim.Present())).Should().BeFalse("nothing requires it");
+            facts.IsAlwaysGeography(Location).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A nullable union of a point and a null keeps the geography only where the value is there and is not null.
+        /// </summary>
+        [Fact]
+        public void ANullablePointIsAGeographyOnlyWhereItIsNotNull()
+        {
+            var facts = Compile("""
             { "type": "object",
-              "properties": { "location": { "type": "object", "required": ["type", "coordinates"],
+              "required": ["location"],
+              "properties": { "location": { "anyOf": [ { "type": "null" }, { "type": "object", "required": ["type", "coordinates"],
+                "properties": {
+                  "type": { "const": "Point" },
+                  "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
+                    "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
+                                     { "type": "number", "minimum": -90, "maximum": 90 } ] } } } ] } } }
+            """);
+
+            facts.Derive(null).IsAlwaysGeography(Location).Should().BeFalse("a null is no geography");
+            facts.Derive(new[] { new JsonFact(Location, new JsonClaim.NotEqualTo(JsonScalar.Null)) }).IsAlwaysGeography(Location).Should().BeTrue();
+        }
+
+        /// <summary>
+        /// A subschema that does not say its value is an object proves no geography: <c>properties</c> and
+        /// <c>required</c> are vacuous for anything else, so a string conforms to it.
+        /// </summary>
+        [Fact]
+        public void APointSchemaWithoutAnObjectTypeDeclaresNone()
+        {
+            Facts("""
+            { "type": "object",
+              "required": ["location"],
+              "properties": { "location": { "required": ["type", "coordinates"],
                 "properties": {
                   "type": { "const": "Point" },
                   "coordinates": { "type": "array", "minItems": 2, "maxItems": 3,
                     "prefixItems": [ { "type": "number", "minimum": -180, "maximum": 180 },
                                      { "type": "number", "minimum": -90, "maximum": 90 } ] } } } } }
-            """);
-
-            facts.Knows(new JsonFact(Location, new JsonClaim.Present())).Should().BeTrue();
-            facts.Knows(new JsonFact(Location, new JsonClaim.OfType(JsonType.Object))).Should().BeTrue();
-            facts.HasOneScalarType(Location).Should().BeFalse("a shape is not a scalar");
+            """)
+                .IsAlwaysGeography(Location).Should().BeFalse();
         }
 
         static JsonFact Equals(JsonDocumentPath path, JsonScalar value) => new(path, new JsonClaim.EqualTo(value));
@@ -552,11 +622,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <remarks>
         /// <para>
         /// <c>2024-01-15 12:30:00Z</c> is as fixed as its <c>T</c> spelling and would sort exactly as
-        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. The normaliser
-        /// used to strip whitespace outside a class, which made the pattern indistinguishable from one
-        /// with no separator at all; whitespace is significant in unextended ECMA-262, the dialect JSON
-        /// Schema specifies, and it is kept now. What is left is registering the form, which no table
-        /// does yet: unrecognised is the safe direction, the comparison staying in process.
+        /// well — Python's <c>isoformat(sep=' ')</c> and a good many SQL exports write it. Whitespace was
+        /// once stripped before a pattern was matched against the forms' spellings, which made the pattern
+        /// indistinguishable from one with no separator at all; a space is a character in unextended
+        /// ECMA-262, the dialect JSON Schema specifies, and the reader of a pattern reads it as one. What
+        /// is left is defining the form, which no table does yet: unrecognised is the safe direction, the
+        /// comparison staying in process.
         /// </para>
         /// </remarks>
         [Fact]

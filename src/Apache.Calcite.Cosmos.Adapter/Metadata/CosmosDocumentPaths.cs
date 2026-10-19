@@ -19,15 +19,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// something a fact cannot be about.
         /// </summary>
         /// <remarks>
-        /// The alias is dropped, being the statement's business. An array subscript answers <c>null</c>
-        /// rather than being skipped: <c>$.tags[0]</c> is not <c>$.tags</c>, and silently conflating
-        /// them would apply an element's fact to the array or the reverse.
+        /// <para>
+        /// <b>Rooted at the container, or nothing.</b> A path under a traversal's alias addresses an
+        /// element of an array, and <c>t.x</c> is no more the document's <c>x</c> than <c>$.tags[0]</c> is
+        /// <c>$.tags</c>: read as one, a fact of the document's property would be applied to every
+        /// element's. Every caller hands over the alias its statement binds the container to, so the
+        /// question is asked once, here, and no site can forget it — five did, at the self-join's keys,
+        /// the lookup join's key, an aggregate's presence and a distance sort's operands.
+        /// </para>
+        /// <para>
+        /// An array subscript answers <c>null</c> rather than being skipped, for the same reason:
+        /// silently conflating an element with its array would apply one's fact to the other.
+        /// </para>
         /// </remarks>
         /// <param name="path">The statement's path.</param>
+        /// <param name="rootAlias">The alias the statement binds the container to.</param>
         /// <returns>The document path, or <c>null</c>.</returns>
-        public static JsonDocumentPath? From(CosmosPath? path)
+        public static JsonDocumentPath? From(CosmosPath? path, string rootAlias)
         {
-            if (path is null)
+            if (path is null || string.Equals(path.Alias, rootAlias, System.StringComparison.Ordinal) == false)
                 return null;
 
             var document = JsonDocumentPath.Root;

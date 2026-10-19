@@ -256,6 +256,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
+        /// A lone surrogate written as a JSON escape is stored as U+FFFD on Azure, a unit of the high band: what the
+        /// theory's rule of what is stored reads as data, so that a <c>pattern</c> admitting a surrogate proves nothing of
+        /// the high band of what is stored.
+        /// </summary>
+        /// <remarks>
+        /// An emulator refuses the write as a request it cannot parse, so there the measurement skips. The vnext-preview
+        /// image answers 403 and the one CI runs answers 400, both with "Failed to parse Json request", so the refusal is
+        /// read from either code rather than one. Measured on the probe account on 2026-10-16.
+        /// </remarks>
+        [Fact]
+        public async Task ALoneSurrogateIsStoredAsTheReplacementCharacter()
+        {
+            if (_database is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            var stored = await Fresh(new ContainerProperties("stored", "/pk"), TestContext.Current.CancellationToken);
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes("{\"id\":\"lone\",\"pk\":\"a\",\"s\":\"\\ud800\"}")))
+            using (var response = await stored.CreateItemStreamAsync(stream, new PartitionKey("a"), cancellationToken: TestContext.Current.CancellationToken))
+                if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
+                    Assert.Skip($"This service refuses a lone surrogate ({(int)response.StatusCode}), as an emulator does; Azure stores it as U+FFFD.");
+                else
+                    response.EnsureSuccessStatusCode();
+
+            (await Rows(stored, "SELECT VALUE c.s FROM c WHERE c.id = 'lone'")).Should().Equal("\uFFFD");
+        }
+
+        /// <summary>
         /// Two constants are compared by UTF-16 code unit on Azure, where a document's strings are compared by code point.
         /// </summary>
         [Fact]

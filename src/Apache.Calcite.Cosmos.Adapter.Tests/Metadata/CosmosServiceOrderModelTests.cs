@@ -434,11 +434,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 if (type is JsonType declared)
                     yield return new JsonClaim.OfType(declared, orNull && declared != JsonType.Null);
 
-                if (admitted.HasFlag(Types.String) && facts.Characters.HasFlag(Bands.Supplementary) == false)
-                    yield return new CosmosCharacters(CosmosCharacterBand.Surrogates);
-
-                if (admitted.HasFlag(Types.String) && facts.Characters.HasFlag(Bands.High) == false)
-                    yield return new CosmosCharacters(CosmosCharacterBand.HighBmp);
+                var held = (facts.Characters.HasFlag(Bands.Supplementary) ? JsonCharacterBand.Surrogates : JsonCharacterBand.None)
+                    | (facts.Characters.HasFlag(Bands.High) ? JsonCharacterBand.HighBmp : JsonCharacterBand.None);
+                if (admitted.HasFlag(Types.String) && held != JsonCharacterBand.Any)
+                    yield return new JsonClaim.Characters(held);
 
                 if (facts.Bounded)
                 {

@@ -87,6 +87,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             return new SqlPredicate.Compare(Op(random), reading, Literal(random, declaration, path, reading));
         }
 
+        /// <summary>
+        /// Draws, from the stream of characters, conjuncts that compare a path with strings from all three bands: an
+        /// equality, a membership, or a disjunction of two of them, over the text or the raw value. Half the time the
+        /// strings are those the declaration's own domain of the path names, so that a filter and a declaration meet.
+        /// </summary>
+        /// <remarks>
+        /// What a filter's <c>=</c> and <c>IN</c> say of a path's characters is the theory's to derive, per disjunct; these
+        /// are what it is checked on, appended to what the trial's stream drew, which they leave as it was.
+        /// </remarks>
+        public static IEnumerable<SqlPredicate> Banded(Random bands, Declaration declaration)
+        {
+            if (bands.Next(2) == 0)
+                yield break;
+
+            var paths = new[] { Declaration.A, Declaration.B, Declaration.N };
+
+            SqlPredicate Atom(JsonDocumentPath path)
+            {
+                var pool = declaration.BandedNames.TryGetValue(path, out var named) && bands.Next(2) == 0
+                    ? named
+                    : Declaration.BandedStrings.Append("x").Append("30").ToList();
+
+                SqlValue reading = bands.Next(3) == 0 ? new SqlValue.Raw(path) : new SqlValue.Text(path);
+                return bands.Next(2) == 0
+                    ? new SqlPredicate.Compare(PredicateAtom.Equal, reading, SqlValue.Of(pool[bands.Next(pool.Count)]))
+                    : new SqlPredicate.In(reading, ValueSet.From(Enumerable.Range(0, 1 + bands.Next(3)).Select(_ => SqlValue.Of(pool[bands.Next(pool.Count)]).Value)));
+            }
+
+            var first = paths[bands.Next(paths.Length)];
+            yield return bands.Next(3) == 0
+                ? SqlPredicate.AnyOf(new[] { Atom(first), Atom(bands.Next(3) == 0 ? paths[bands.Next(paths.Length)] : first) })
+                : Atom(first);
+        }
+
         static string Op(Random random) => random.Next(10) switch
         {
             < 4 => PredicateAtom.Equal,

@@ -10,12 +10,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// The temporal forms a declared <c>pattern</c> is recognised as, and what each one licenses.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>These are tabulated, and the UUID forms are not, because these axes close.</b> What makes a
     /// temporal shape usable is its <em>fixedness</em> rather than which shape it is — a fraction has
     /// a width, a zone has a spelling, a shape stores this much of an instant and no more — so the
     /// product is finite and <see cref="AddTemporal"/> generates it. A pattern outside it is refused
     /// rather than guessed at, which is what keeps a shape that <em>varies</em> from claiming an order
     /// it does not have.
+    /// </para>
+    /// <para>
+    /// <b>A row is a form's definition, and a definition is a language.</b> Each form is defined by a pattern, which
+    /// the one reader of a pattern parses into the strings it admits (<see cref="CosmosPatternReader.Strings"/>), and a
+    /// declared pattern is the form where it admits the same strings, read by the same reader: <c>\d</c> and
+    /// <c>[0-9]</c>, a run counted or spelled out, a class of one character or the character, a group or none, are
+    /// one definition however a declaration writes them. Nothing is matched by spelling.
+    /// </para>
     /// </remarks>
     public static class CosmosTemporalForms
     {
@@ -50,8 +59,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static readonly CosmosRepresentation Iso8601Date = new("iso8601-date", PreservesEquality: true, PreservesOrder: true);
 
         /// <summary>
-        /// How one temporal form writes a value, and which values it can write.
+        /// One temporal form: what it is, the strings it is written as, how it writes a value, and which values it can
+        /// write.
         /// </summary>
+        /// <param name="Representation">The form, as a path's facts name it.</param>
+        /// <param name="Language">
+        /// The strings the form is written as: what a declared pattern has to admit, exactly, to be recognised as it.
+        /// </param>
         /// <param name="Format">
         /// The spelling, or <c>null</c> where the form holds too little of an instant to be written
         /// one — a time of day carries no date, and rendering into it would drop one silently.
@@ -81,7 +95,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <see cref="ParsesExactly"/> for what membership claims and
         /// <c>CalciteTemporalParseMeasurementTests</c> for the measurement that pins every row.
         /// </param>
-        sealed record TemporalForm(string? Format, Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses)
+        sealed record TemporalForm(CosmosRepresentation Representation, CosmosPatternStrings Language, string? Format, Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses)
         {
 
             /// <summary>
@@ -92,24 +106,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// How each temporal form writes a value, keyed by representation name. Populated by
-        /// <see cref="Build"/>, which is why it is declared above <see cref="Known"/>.
-        /// </summary>
-        static readonly Dictionary<string, TemporalForm> Temporal = new(StringComparer.Ordinal);
-
-        /// <summary>
         /// How many fraction digits each parse spelling reads, keyed by the spelling; a spelling
-        /// absent here reads none. Populated by <see cref="Build"/> beside <see cref="Temporal"/>.
+        /// absent here reads none. Populated by <see cref="Build"/> beside <see cref="Temporal"/>,
+        /// which is why it is declared above it.
         /// </summary>
         static readonly Dictionary<string, int> ParseDigits = new(StringComparer.Ordinal);
 
         /// <summary>
-        /// The recognised spellings, keyed by their normalised form.
+        /// Every temporal form, keyed by representation name.
         /// </summary>
-        static readonly Dictionary<string, CosmosRepresentation> Known = Build();
+        static readonly Dictionary<string, TemporalForm> Temporal = Build();
 
         /// <summary>
-        /// Builds the table of spellings this recognises.
+        /// Builds the table of the forms this recognises.
         /// </summary>
         /// <remarks>
         /// Every temporal language this knows, and nothing else. The UUID spellings were in here once,
@@ -119,15 +128,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// else to vary.
         /// </remarks>
         /// <returns>The table.</returns>
-        static Dictionary<string, CosmosRepresentation> Build()
+        static Dictionary<string, TemporalForm> Build()
         {
-            var known = new Dictionary<string, CosmosRepresentation>(StringComparer.Ordinal);
+            var forms = new Dictionary<string, TemporalForm>(StringComparer.Ordinal);
 
-            void Add(string pattern, CosmosRepresentation representation) => known[CosmosPatternLanguage.Normalise(pattern)!] = representation;
+            AddTemporal(forms);
 
-            AddTemporal(Add);
-
-            return known;
+            return forms;
         }
 
         /// <summary>
@@ -159,14 +166,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// wall clock against wall clock and the two agree.
         /// </para>
         /// </remarks>
-        /// <param name="add">Registers one spelling.</param>
-        static void AddTemporal(Action<string, CosmosRepresentation> add)
+        /// <param name="forms">The table, which each form is added to under its name.</param>
+        static void AddTemporal(Dictionary<string, TemporalForm> forms)
         {
-            void Register(string pattern, string name, string? format, (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) grid, CosmosTemporalParts carries, bool readsBack, params string[] parses)
-            {
-                Temporal[name] = new TemporalForm(format, grid.Floor, grid.Next, carries, readsBack, parses);
-                add(pattern, new CosmosRepresentation(name, PreservesEquality: true, PreservesOrder: true));
-            }
+            void Register(string pattern, string name, string? format, (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) grid, CosmosTemporalParts carries, bool readsBack, params string[] parses) =>
+                forms[name] = new TemporalForm(
+                    new CosmosRepresentation(name, PreservesEquality: true, PreservesOrder: true),
+                    CosmosStoredForms.Definition(pattern),
+                    format, grid.Floor, grid.Next, carries, readsBack, parses);
 
             // One spelling per dialect and no mixtures. Whichever function was written, the format is
             // read by the same model -- measured -- and that model spells each element two ways, so
@@ -336,7 +343,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// The resolution of a calendar date.
         /// </summary>
         /// <remarks>
-        /// A property rather than a field, as are the two below: <see cref="Known"/> is built by a
+        /// A property rather than a field, as are the two below: <see cref="Temporal"/> is built by a
         /// field initialiser declared above them, and a field here would still be unset when it ran.
         /// </remarks>
         static (Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next) Days =>
@@ -438,8 +445,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// two times of day, and nothing else. Every ISO-8601 instant — every <c>T</c>-separated
         /// shape, at every precision, with or without a zone — <em>raises</em>
         /// <c>Invalid DATE value</c>. The one instant spelling the cast does read is the
-        /// space-separated one, which <see cref="Recognise"/> does not recognise for the normaliser
-        /// reason <c>TODO.md</c> records.
+        /// space-separated one, which no form here is defined as yet (<c>TODO.md</c>).
         /// </para>
         /// <para>
         /// <b>Two shapes are worse than a refusal and are absent for that reason.</b>
@@ -551,22 +557,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns the temporal form a normalised pattern is recognised as, or <c>null</c>.
+        /// Returns the temporal form whose language a pattern's strings are, or <c>null</c>.
         /// </summary>
         /// <remarks>
-        /// A lookup and nothing more, which is the whole claim these forms make: a shape is one of the
-        /// generated languages or it is not one this knows.
+        /// The same strings and nothing more, which is the whole claim these forms make: a shape is one of the
+        /// generated languages or it is not one this knows. A pattern admitting fewer strings than a form — a month
+        /// written <c>[01][0-9]</c> — is not recognised, though every string it admits is the form's: the table's
+        /// claim is of its languages, and reading their narrowings is a decision of its own.
         /// </remarks>
-        /// <param name="normalised">The pattern, already normalised.</param>
+        /// <param name="strings">The strings a declared pattern admits.</param>
         /// <returns>The representation, or <c>null</c>.</returns>
-        internal static CosmosRepresentation? Recognise(string normalised) =>
-            Known.TryGetValue(normalised, out var representation) ? representation : null;
+        internal static CosmosRepresentation? Recognise(CosmosPatternStrings strings)
+        {
+            foreach (var form in Temporal.Values)
+                if (form.Language.Equals(strings))
+                    return form.Representation;
+
+            return null;
+        }
 
         /// <summary>
         /// Gets every temporal form a pattern can be recognised as: for <see cref="CosmosStoredForms.Registered"/>, a hook
         /// for the tests.
         /// </summary>
-        internal static IEnumerable<CosmosRepresentation> Registered => Known.Values.Distinct();
+        internal static IEnumerable<CosmosRepresentation> Registered => Temporal.Values.Select(form => form.Representation);
+
+        /// <summary>
+        /// Returns the bands a temporal form's strings hold units of, read off the language that defines it; or
+        /// <c>null</c> for a form that is not one of these.
+        /// </summary>
+        internal static Facts.JsonCharacterBand? CharactersOf(CosmosRepresentation representation) =>
+            Temporal.TryGetValue(representation.Name, out var form) ? form.Language.Characters : null;
 
         /// <summary>
         /// Writes an instant the way a path in this form stores it, or returns <c>null</c> where the

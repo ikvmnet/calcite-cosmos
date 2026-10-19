@@ -545,7 +545,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 if ((value is RexInputRef || CosmosRexTranslator.IsTextJsonValue(value)) && translator.TryResolvePath(value, out var resolved))
                 {
-                    if (CosmosDocumentPaths.From(resolved) is not JsonDocumentPath path || paths.Contains(path) == false)
+                    if (CosmosDocumentPaths.From(resolved, CosmosImplementor.DefaultRootAlias) is not JsonDocumentPath path || paths.Contains(path) == false)
                         return false;
 
                     continue;
@@ -672,7 +672,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (CosmosRexTranslator.IsTextJsonValue(text) == false || translator.TryResolvePath(text, out var resolved) == false)
                     return false;
 
-                path = CosmosDocumentPaths.From(resolved);
+                path = CosmosDocumentPaths.From(resolved, CosmosImplementor.DefaultRootAlias);
                 return path is JsonDocumentPath uuid && facts.RepresentationOf(uuid) is CosmosRepresentation representation && CosmosUuidForms.IsUuid(representation);
             }
 
@@ -684,7 +684,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
 
             // One scalar kind is what makes its text a faithful reading of its value.
-            path = CosmosDocumentPaths.From(accessed);
+            path = CosmosDocumentPaths.From(accessed, CosmosImplementor.DefaultRootAlias);
             return path is JsonDocumentPath scalar && facts.HasOneScalarType(scalar);
         }
 
