@@ -326,6 +326,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             public IReadOnlyDictionary<(string, string), JsonElement> ById { get; } = Documents
                 .Select(d => JsonDocument.Parse(d).RootElement)
                 .ToDictionary(d => (d.GetProperty("category").GetString()!, d.GetProperty("id").GetString()!));
+
+            /// <summary>
+            /// The integers the documents hold written in [2^63, 2^64), each by its value and by the emulator's printing of
+            /// it projected, to the double both stand for: the one number that reads back two ways, and only on the
+            /// emulator (<c>TODO.md</c>, section 7). The emulator keeps such an integer as written, and returns it so in a
+            /// document read whole, but prints it projected as the double nearest it, to 17 significant digits: 2^63 as
+            /// 9223372036854775800. Azure stores it as that double and prints it one way, and nothing else on either
+            /// target prints a number two ways: 2^53 + 1, 2^63 - 1, -2^63 - 1 and 2^64 each read back one way on both
+            /// (<c>reports/verify-bytes.md</c> 1.1).
+            /// </summary>
+            public IReadOnlyDictionary<decimal, double> PrintedTwoWays { get; } = Documents
+                .SelectMany(d => JsonDocument.Parse(d).RootElement.EnumerateObject())
+                .Where(p => p.Value.ValueKind == JsonValueKind.Number)
+                .Select(p => decimal.TryParse(p.Value.GetRawText(), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0m)
+                .Where(n => n >= 9223372036854775808m && n < 18446744073709551616m)
+                .Distinct()
+                .SelectMany(n => new[] { n, decimal.Parse(((double)n).ToString("G17", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture) }.Select(v => (Printed: v, Stands: (double)n)))
+                .DistinctBy(p => p.Printed)
+                .ToDictionary(p => p.Printed, p => p.Stands);
         }
 
         static readonly OrderContainer[] OrderContainers =
@@ -849,7 +868,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     if (pushed.Rows is { } rows && draft.Shown is { } shown
                         && OrderAllowability.Judge(rows, rows, draft.Width, shown, 0, null, ordered: true) is { Failed: true } own)
                     {
-                        var judged = new OrderJudgement(draft, true, "out of its own order, where Calcite raises over the input: " + own.Failure, OwnFamily(own, shown), false, pushed.Sent, rows);
+                        var judged = new OrderJudgement(draft, true, "out of its own order, where Calcite raises over the input: " + own.Failure, OwnFamily(draft.Container, own, shown), false, pushed.Sent, rows);
                         return judged.Pushed ? judged : judged with { Family = Runtime, Runtime = true };
                     }
 
@@ -904,9 +923,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             /// <summary>
             /// The family of an answer out of its own order, by the key values it holds out of order:
-            /// text from both sides of U+D800, or a number past 2^53.
+            /// text from both sides of U+D800, or an integer the container holds written in [2^63, 2^64), as
+            /// written or as the emulator prints it.
             /// </summary>
-            static string OwnFamily(OrderAllowability.Verdict own, IReadOnlyList<CalciteSortKey> shown)
+            static string OwnFamily(OrderContainer container, OrderAllowability.Verdict own, IReadOnlyList<CalciteSortKey> shown)
             {
                 if (own.Inversion is not (var before, var after))
                     return "out of its own order";
@@ -915,13 +935,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 if (HasBothBands(values))
                     return "text across U+D800";
 
-                return values.Any(IsLarge) ? "a double read back as another integer" : "out of its own order";
+                return values.Any(v => PrintedTwoWays(container, v) is not null) ? "a double read back as another integer" : "out of its own order";
             }
 
-            /// <summary>Whether a value, a number or the text of one, lies past 2^53.</summary>
-            static bool IsLarge(object? value) => value is not null
+            /// <summary>
+            /// The double a value stands for where it is one of the container's integers printed two ways, as written
+            /// or as the emulator prints it projected; <c>null</c> for any other value.
+            /// </summary>
+            static double? PrintedTwoWays(OrderContainer container, object? value) => value is not null
                 && decimal.TryParse(value is string s ? s : CalciteOrder.Canonical(value).Split(':')[^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var n)
-                && Math.Abs(n) >= 9007199254740992m;
+                && container.PrintedTwoWays.TryGetValue(n, out var stands) ? stands : null;
 
             static OrderAllowability.Verdict Verdict(OrderDraft draft, List<object?[]> input, List<object?[]> answer) => draft.Form switch
             {
@@ -939,16 +962,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             /// <b>Rows a comparison lost or gained</b> — an answer missing rows of its input, or holding
             /// rows it does not — are classified by what the rows that differ hold: a pushed string
             /// function, which counts code points where Calcite counts UTF-16 units; text from both
-            /// sides of U+D800, in the rows, their documents or a parameter; or a double past 2^53, which
-            /// the emulator prints to 17 digits in a projection where the document it returns whole keeps
-            /// what was written — which is not an order's doing, and is named apart.
+            /// sides of U+D800, in the rows, their documents or a parameter; or an integer written in
+            /// [2^63, 2^64), which the emulator prints to 17 digits in a projection where the document it
+            /// returns whole keeps what was written — which is not an order's doing, and is named apart.
+            /// That one is named only where it is the whole of the difference: read as the double each
+            /// printing stands for, the rows must agree. It used to be named wherever a row that differed held
+            /// any number past 2^53, which would have hidden a real difference over one, or beside one.
             /// </para>
             /// <para>
             /// <b>An order is asked again under another comparator.</b> An answer that would be
             /// allowable had Calcite compared text by code point, as a partition does, is the string
             /// order's. Otherwise the keys say: a key before the last whose path one document leaves
             /// absent and another holds null, which Calcite ties and the service does not; a path
-            /// holding a double the service prints as another integer; a null where Calcite does not put
+            /// holding an integer the emulator prints as another; a null where Calcite does not put
             /// it. A window that holds the wrong rows for none of those reasons is classified by the same
             /// statement unpaged, where a filter beneath the page lost them.
             /// </para>
@@ -964,9 +990,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                     var differing = Differing(draft, input, answer, lost: unpaged);
 
-                    // Not an order: a projection of a double past 2^53 is printed to 17 digits, where a
-                    // document read whole comes back as it was written, on the emulator.
-                    if (differing.SelectMany(r => r.Take(draft.Width)).Any(IsLarge))
+                    // Not an order: an integer written in [2^63, 2^64), which the emulator prints projected as the
+                    // double nearest it, to 17 digits, where a document read whole keeps it as written. Only where
+                    // that parts the rows and nothing else does: read as the double each printing stands for, the
+                    // rows agree. A difference anywhere else in them, or over any other number, is not this.
+                    if (differing.Count > 0 && Differing(draft, input, answer, lost: unpaged, draft.Container).Count == 0)
                         return "a double printed two ways";
 
                     // What the filter compared, in the rows that differ, and what a parameter was bound
@@ -998,7 +1026,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                             && documents.Any(d => KindAt(d, path) == JsonValueKind.Undefined) && documents.Any(d => KindAt(d, path) == JsonValueKind.Null))
                             return "undefined and null on a leading key";
 
-                    if (draft.Terms.Any(t => t.Expression.Path is string path && documents.Any(d => d.TryGetValue(path, out var v) && v.Kind == JsonValueKind.Number && IsPrintedAsAnother(v.Text))))
+                    if (draft.Terms.Any(t => t.Expression.Path is string path && documents.Any(d => d.TryGetValue(path, out var v) && v.Kind == JsonValueKind.Number && PrintedTwoWays(draft.Container, v.Text) is not null)))
                         return "a double read back as another integer";
                 }
 
@@ -1020,9 +1048,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             /// The rows an answer holds more often than its input does, and, where the answer should be
             /// all of its input, the rows of the input it holds less often: by what the answer selects.
             /// </summary>
-            static List<object?[]> Differing(OrderDraft draft, List<object?[]> input, List<object?[]> answer, bool lost)
+            /// <param name="draft">The statement.</param>
+            /// <param name="input">Its input's rows.</param>
+            /// <param name="answer">Its answer's rows.</param>
+            /// <param name="lost">Whether rows the answer lacks count.</param>
+            /// <param name="printed">
+            /// A container whose integers printed two ways are read as the double each printing stands for, so that
+            /// only what else parts the rows is left; <c>null</c> to read every value as it is.
+            /// </param>
+            static List<object?[]> Differing(OrderDraft draft, List<object?[]> input, List<object?[]> answer, bool lost, OrderContainer? printed = null)
             {
-                string Row(object?[] row) => string.Join(" | ", row.Take(draft.Width).Select(CalciteOrder.Canonical));
+                string Value(object? value) => printed is not null && PrintedTwoWays(printed, value) is double stands
+                    ? "printed two ways:" + stands.ToString("R", CultureInfo.InvariantCulture)
+                    : CalciteOrder.Canonical(value);
+
+                string Row(object?[] row) => string.Join(" | ", row.Take(draft.Width).Select(Value));
 
                 var held = input.GroupBy(Row).ToDictionary(g => g.Key, g => g.ToList());
                 var differing = new List<object?[]>();
@@ -1043,10 +1083,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             static JsonValueKind KindAt(Dictionary<string, (JsonValueKind Kind, string Text)> stored, string path) =>
                 stored.TryGetValue(path, out var value) ? value.Kind : JsonValueKind.Undefined;
-
-            /// <summary>Whether a number as written is a double the service prints as another integer.</summary>
-            static bool IsPrintedAsAnother(string text) =>
-                decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && Math.Abs(n) > long.MaxValue;
 
             /// <summary>The stored values of a row's document, by top-level property, absent ones absent.</summary>
             static Dictionary<string, (JsonValueKind Kind, string Text)> Stored(OrderContainer container, object?[] row)
@@ -1291,8 +1327,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The families of wrong answer that are no order's, each a finding of its own that <c>TODO.md</c>
         /// records, and held apart where the statement sent the service no order: a string function the
         /// service counts by code point where Calcite counts UTF-16 units (section 4, <em>Pushed string
-        /// functions count characters their own way</em>), and a double past 2^53 the emulator prints one
-        /// way in a projection and another in a document read whole (section 7). Each leaves a statement
+        /// functions count characters their own way</em>), and an integer written in [2^63, 2^64) the emulator
+        /// prints one way in a projection and another in a document read whole (section 7), the emulator's
+        /// alone. Each leaves a statement
         /// that orders nothing at the service answering another value, which the yardstick meets because
         /// its keys are drawn from every reading; one that sent an order is judged as any other.
         /// </summary>

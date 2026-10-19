@@ -5998,7 +5998,8 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
     a predicate is, and named by its family. The family is read from what the failure holds. Strings
     from both sides of U+D800, or an answer that would be allowable had Calcite compared text by code
     point, are the string order's. A leading key that one document leaves absent and another holds null
-    is the null class's. A double past 2^53 is the read-back's. Where the service was handed no order and
+    is the null class's. An integer the container holds written in [2^63, 2^64), as written or as the
+    emulator prints it, is the read-back's. Where the service was handed no order and
     the answer still fails, the CLR runtime's own order is to blame — two or more keys by culture — and
     the failure is reported apart, as `calcite-dotnet`'s.
 
@@ -6022,7 +6023,10 @@ same live container. Equal rows or a defect; there is no third outcome to hide i
   order failure at all: its failures are the null class's, `_etag`'s and the 2^63 sort's. Two families
   are not orders', and `TODO.md` records them: `CHAR_LENGTH` pushed as `LENGTH`, which counts code
   points, and the emulator printing a projected double past 2^53 to 17 digits where a document read
-  whole keeps what was written. A third finding came from an earlier draw of the generator and is in
+  whole keeps what was written — since measured to be the emulator's alone, and only an integer written in
+  [2^63, 2^64); the family is now named only where it is the whole of the difference, reading each printing
+  as the double it stands for leaving the rows agreeing, so it can hide nothing beside it. A third finding
+  came from an earlier draw of the generator and is in
   `TODO.md` too: a comparison of two nullable declared strings keeps the rows where both are null. 94
   answers were the CLR runtime's own, every one of them a sort of two keys or more done in process.
 
