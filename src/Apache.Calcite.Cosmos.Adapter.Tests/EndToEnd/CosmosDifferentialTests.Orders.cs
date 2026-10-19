@@ -755,8 +755,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>A top-level accessor in a generated statement.</summary>
         static readonly Regex Accessor = new(@"'\$\.(?<path>[A-Za-z_]+)'", RegexOptions.Compiled);
 
-        /// <summary>The service's string functions that count code points, where Calcite's count UTF-16 units.</summary>
-        static readonly Regex CodePointFunctions = new(@"\b(LENGTH|SUBSTRING|LEFT|RIGHT|INDEX_OF|REVERSE)\(", RegexOptions.Compiled);
+        /// <summary>
+        /// The service's one pushed string function that counts code points where Calcite counts UTF-16 units, on the
+        /// emulator alone: <c>INDEX_OF</c>, which Azure counts in units (<c>Service.IndexOfCountsUnits</c>). <c>LENGTH</c>,
+        /// <c>SUBSTRING</c>, <c>LEFT</c> and <c>RIGHT</c> were here, and push now only where no string they count holds a
+        /// surrogate (<c>CosmosStringFunctions</c>), so a difference one of them makes is a failure like any other.
+        /// </summary>
+        static readonly Regex CodePointFunctions = new(@"\bINDEX_OF\(", RegexOptions.Compiled);
 
         static readonly Regex OrderBySent = new(@" ORDER BY (?!RANK )(?<items>.*?)(?= OFFSET |$)", RegexOptions.Compiled);
 
@@ -986,7 +991,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 if (draft.Form == OrderForm.Rows || IsOrderOnly(verdict) == false && (unpaged || verdict.Failure!.StartsWith("(A0)", StringComparison.Ordinal)))
                 {
                     if (sent.Any(s => CodePointFunctions.IsMatch(s)))
-                        return "a string function counts code points";
+                        return "INDEX_OF counts code points on the emulator";
 
                     var differing = Differing(draft, input, answer, lost: unpaged);
 
@@ -1325,17 +1330,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// The families of wrong answer that are no order's, each a finding of its own that <c>TODO.md</c>
-        /// records, and held apart where the statement sent the service no order: a string function the
-        /// service counts by code point where Calcite counts UTF-16 units (section 4, <em>Pushed string
-        /// functions count characters their own way</em>), and an integer written in [2^63, 2^64) the emulator
-        /// prints one way in a projection and another in a document read whole (section 7), the emulator's
-        /// alone. Each leaves a statement
+        /// records, and held apart where the statement sent the service no order, both the emulator's alone:
+        /// <c>INDEX_OF</c>, which it counts by code point where Azure and Calcite count UTF-16 units (section 4,
+        /// <em>A string function pushes only where its characters are proved</em>), and an integer written in
+        /// [2^63, 2^64), which it prints one way in a projection and another in a document read whole (section 7). Each leaves a statement
         /// that orders nothing at the service answering another value, which the yardstick meets because
         /// its keys are drawn from every reading; one that sent an order is judged as any other.
         /// </summary>
         static readonly HashSet<string> Findings = new(StringComparer.Ordinal)
         {
-            "a string function counts code points",
+            "INDEX_OF counts code points on the emulator",
             "a double printed two ways",
         };
 
@@ -1370,6 +1374,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// to 91. Each container's floors are its own, so that losing what the rows complete shows where it
         /// was lost.
         /// </para>
+        /// <para>
+        /// The string functions' rule took one of those 91 (<c>CosmosStringFunctions</c>): a sort beneath
+        /// <c>UPPER(e) &lt;&gt; 'a'</c>, <c>e</c> an <c>enum</c> holding é and U+4E00, whose case mapping stays in
+        /// process, ASCII being where Java's mapping and the service's are known to agree. With it the code-point
+        /// family's three findings went: <c>CHAR_LENGTH</c> no longer pushes over text of any character.
+        /// </para>
         /// </remarks>
         static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
@@ -1382,7 +1392,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("orders_declared", "sort", 16, 99),
             ("orders_declared", "extreme", 3, 8),
             ("orders_declared", "comparison", 3, 22),
-            ("orders_ascii", "sort", 10, 91),
+            ("orders_ascii", "sort", 10, 90),
             ("orders_ascii", "extreme", 2, 13),
         ];
 
