@@ -50,6 +50,14 @@ the path a string in the container's schema for that sort to reach the service. 
 That is the safe form of a text comparison (Chapter 8). If the property is always a string, declare
 `"type": "string"` for it (Chapter 14) and the comparison becomes exact.
 
+**`UPPER`, `LOWER`, `CHAR_LENGTH`, `SUBSTRING` or `TRIM` over a declared string runs in process.**
+Calcite's string functions are Java's and the service's are its own, and they part over some characters:
+a case mapping outside ASCII (`ß` is `SS` to Calcite), a count over a character beyond U+FFFF (an emoji is
+two to Calcite), a trim over white space other than a space (a tab, U+00A0). Each pushes only where the
+container proves the string holds none of those — a `pattern` such as `^[ -~]*$`, an `enum`, a stored
+form, or the statement's own `IN (…)`. The property is still read at the service; only the function runs
+in process. Chapter 14.4 and Appendix B.2 say which pattern lets which function push.
+
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**
 The container does not declare the stored form, or the query reads it with a spelling that cannot push.
 Declare a `pattern` (Chapter 14); for instants, read with `PARSE_DATETIME` or `CAST … FORMAT`, not
@@ -142,6 +150,13 @@ You are on the emulator, which does not implement full text search. Use a real a
 **"ORDER BY item expression could not be mapped to a document path" (400, 2206).**
 Should not happen through the adapter — it never sends an expression sort other than a geodesic
 distance. If you see it, report the query.
+
+**`EncoderFallbackException: Unable to translate Unicode character \uD83D …` when a statement runs.**
+A parameter was bound to a string holding a lone surrogate — half of a character beyond U+FFFF, such as one
+cut from an emoji by a substring in the application. The Cosmos SDK encodes a statement as UTF-8 and
+cannot encode one, so nothing is sent. A literal holding one, `U&'\D83D'`, is computed in process instead;
+a parameter's value is not known until it is bound. Bind a whole character, or compare in the
+application. Chapter 8.
 
 **400 on a query with `SQRT`, `ASIN` or `ACOS`.**
 Cosmos fails the whole statement for an out-of-domain argument. Guard the input. Chapter 8.
