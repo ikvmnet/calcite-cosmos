@@ -857,6 +857,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             public Task<OrderJudgement> Judge(OrderDraft draft) => _judged.GetOrAdd(draft.ToString(), _ => new(() => JudgeCore(draft))).Value;
 
+            /// <summary>
+            /// Whether the service the yardstick runs on counts code points in <c>INDEX_OF</c>, as the emulator does,
+            /// where Azure counts UTF-16 units as Calcite does (<c>Service.IndexOfCountsUnits</c>): asked once, of
+            /// <c>b</c> in <c>a</c>U+1F600<c>b</c>, which is 2 on such a service and 3 on Azure.
+            /// </summary>
+            Task<bool> IndexOfCountsCodePoints => _indexOfCountsCodePoints.Value;
+
+            readonly Lazy<Task<bool>> _indexOfCountsCodePoints = new(async () =>
+            {
+                var query = new QueryDefinition("SELECT VALUE INDEX_OF(@s, \"b\")").WithParameter("@s", "a\U0001F600b");
+                using var iterator = containers[0].Container.GetItemQueryIterator<int>(query);
+                while (iterator.HasMoreResults)
+                    foreach (var position in await iterator.ReadNextAsync())
+                        return position == 2;
+
+                throw new InvalidOperationException("INDEX_OF answered nothing.");
+            });
+
             async Task<OrderJudgement> JudgeCore(OrderDraft draft)
             {
                 var parameters = draft.Parameters;
@@ -990,9 +1008,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 if (draft.Form == OrderForm.Rows || IsOrderOnly(verdict) == false && (unpaged || verdict.Failure!.StartsWith("(A0)", StringComparison.Ordinal)))
                 {
-                    if (sent.Any(s => CodePointFunctions.IsMatch(s)))
-                        return "INDEX_OF counts code points on the emulator";
-
                     var differing = Differing(draft, input, answer, lost: unpaged);
 
                     // Not an order: an integer written in [2^63, 2^64), which the emulator prints projected as the
@@ -1010,6 +1025,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                         .Concat(documents.SelectMany(d => Strings(d, compared)))
                         .Concat(draft.Parameters)
                         .ToList();
+
+                    // INDEX_OF's count, the emulator's alone: only on a service that counts code points, and only where
+                    // a character beyond U+FFFF is among what differs — or, where the statement shows no document, among
+                    // what the container holds. On Azure, or over rows that hold none, a difference is a failure.
+                    if (sent.Any(s => CodePointFunctions.IsMatch(s)) && await IndexOfCountsCodePoints
+                        && (HasSupplementary(values) || draft.Identified == false && HasSupplementary(draft.Container.Strings)))
+                        return "INDEX_OF counts code points on the emulator";
 
                     if (HasBothBands(values) || draft.Parameters.OfType<string>().Any() && HasBothBands(draft.Parameters.Concat(draft.Container.Strings)))
                         return "text across U+D800";
@@ -1117,6 +1139,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             static int Bands(string s) => s.Aggregate(0, (b, c) => b | (char.IsSurrogate(c) ? 4 : c >= '\uE000' ? 2 : 1));
 
             static bool HasBothBands(IEnumerable<object?> values) => (values.OfType<string>().Aggregate(0, (b, s) => b | Bands(s)) & 6) == 6;
+
+            /// <summary>Whether any of the values is a string holding a character beyond U+FFFF, a surrogate pair.</summary>
+            static bool HasSupplementary(IEnumerable<object?> values) => values.OfType<string>().Any(s => (Bands(s) & 4) != 0);
 
             /// <summary>
             /// The smallest part of a failing statement that fails too, adapter failures only: the first
@@ -1332,7 +1357,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The families of wrong answer that are no order's, each a finding of its own that <c>TODO.md</c>
         /// records, and held apart where the statement sent the service no order, both the emulator's alone:
         /// <c>INDEX_OF</c>, which it counts by code point where Azure and Calcite count UTF-16 units (section 4,
-        /// <em>A string function pushes only where its characters are proved</em>), and an integer written in
+        /// <em>A string function pushes only where its characters are proved</em>) — named only on a service
+        /// measured to count so, and where the rows that differ hold a character it counts otherwise — and an integer written in
         /// [2^63, 2^64), which it prints one way in a projection and another in a document read whole (section 7). Each leaves a statement
         /// that orders nothing at the service answering another value, which the yardstick meets because
         /// its keys are drawn from every reading; one that sent an order is judged as any other.
@@ -1380,19 +1406,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// process, ASCII being where Java's mapping and the service's are known to agree. With it the code-point
         /// family's three findings went: <c>CHAR_LENGTH</c> no longer pushes over text of any character.
         /// </para>
+        /// <para>
+        /// <c>LIKE</c> over a path declared a string, pushed exactly where it was refused as a rendering, raised the
+        /// gate's sorts from 219 to 225 — <c>orders_declared</c> 102 to 107, <c>orders_ascii</c> 90 to 91 — and its pages
+        /// from 2 to 3, and the default run's sorts to 35: a sort beneath <c>t LIKE 'a%'</c> was Calcite's, with the
+        /// filter, and is the service's with <c>STARTSWITH(c.t, @p0)</c> beside it. One
+        /// comparison with a parameter went to the sorts, which a statement counts first: <c>id &lt; ?</c> beside
+        /// <c>t LIKE 'a%'</c>, its sort now pushed too, so the gate's comparisons are 25, <c>orders_declared</c>'s 21.
+        /// </para>
         /// </remarks>
         static readonly (string? Container, string Kind, int Default, int Gate)[] PushedFloors =
         [
-            (null, "sort", 31, 217),
+            (null, "sort", 35, 225),
             (null, "extreme", 5, 25),
-            (null, "page", 0, 2),
-            (null, "comparison", 5, 26),
+            (null, "page", 0, 3),
+            (null, "comparison", 5, 25),
             ("orders_plain", "sort", 5, 27),
             ("orders_plain", "extreme", 0, 4),
-            ("orders_declared", "sort", 16, 99),
+            ("orders_declared", "sort", 19, 107),
             ("orders_declared", "extreme", 3, 8),
-            ("orders_declared", "comparison", 3, 22),
-            ("orders_ascii", "sort", 10, 90),
+            ("orders_declared", "comparison", 3, 21),
+            ("orders_ascii", "sort", 11, 91),
             ("orders_ascii", "extreme", 2, 13),
         ];
 
