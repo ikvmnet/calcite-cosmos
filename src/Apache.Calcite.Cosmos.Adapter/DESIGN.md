@@ -5926,6 +5926,56 @@ with, refuses one.
 digests at the parent and at the commit are byte-equal on both frameworks. `PredicateVocabularyTests` writes and analyses
 a conjunct in a graph that holds the vocabulary alone.
 
+### The theory, and the gate on an atom
+
+**S is a frozen theory and a bundle per statement round.** `RenderingTheory` loads the measured rows one batch per
+axiom, so a second row for one key and target that answers otherwise is refused whole and named, and then the host rows:
+the sets each target serves, what an answer means, the agreement's boxes, the 225 classes they range over, and each
+reader's edges. Its rules settle the rows and derive the classes each box allows and refutes; then it freezes, and every
+bundle is a child of it. A `RenderingBundle` holds one round's conjuncts as the shared vocabulary's terms, each path's
+import written once before the run, and the forms claimed for the conjuncts; it is run once, read, and disposed.
+
+**A key is settled in a set once every target the set serves has measured it.** `measure` gathers each key's answers
+and the targets that gave them per set; `tabulate`, a stratum later, when the gathering is whole, enters a key only where
+its targets cover the set's. So under `Portable` a key the emulator alone measured is no entry, and answers widest; a key
+the two targets answered differently is one entry holding both answers, whose outcomes are their union.
+
+**What a position keeps is rows, and the classes they allow are derived.** A cell's class pairs the truths Calcite may
+give on it with the outcomes the service may give; any of the one may meet any of the other on some document. Equal
+holds where every pair keeps alike, Implies where the service keeps whatever Calcite keeps, and a class refutes where
+every pair breaks the verdict and Calcite never raises. Decision 2 is two rows: `tolerated` sets a raise aside in an
+allowing box, and no allowing box admits a failure. `AgreementRows` writes these as boxes, and a brute-force test holds
+the sets the rules derive to the pairwise definition, class by class.
+
+**The universal over cells is a rule, and reads only complete inputs.** A candidate agrees where its cells' classes lie
+within the allowed ones, and is refuted where they meet the refuting ones. The bundle runs in strata — terms into atoms;
+cuts, partitions, the parts each form needs and the literals that part the string orders; the service on each part,
+leaves before connectives; the gate — so the classes a universal reads are whole when it reads them, and so is the set of
+parted literals a leaf reads as not holding a literal. The order test reads every rule's rendering and holds each
+universal, each lattice-free head and each superset to it; a plant after critic-validation F1, a set grown and tested in
+one stratum, is refused.
+
+**A proof and a refutation are packing.** The gate decides; the value says why. A proof carries the rows both sides read
+and the boxes' citations, and is vacuous where every cell is one Calcite raises on alone, or there are none. A
+refutation names the least refuting cell by its text, so of the null, the object and the array that refute a bare `!=`
+it names the array. Both are ordered values under `Min`, so the value does not depend on which is found first.
+
+**What the evaluation fills is held to one value a key.** `cuts`, `partition`, `svc` and `outcomes` have no lattice:
+each is computed once for each of its keys, and where two candidates share a partition the part they share is computed
+for each, so a primitive that answered one key two ways faults the bundle rather than meeting silently. A form that reads
+any path but its atom's is never partitioned, so never evaluated.
+
+**An answer is read off a completed run, and a contradiction is loud.** The limits are counts, 64 iterations and 50,000
+rows, never time, and a run they stop answers `Incomplete`. An agreement and a refutation of one claim derive the
+contradiction, and `Read` answers `Conflict`, never either verdict. After every run the tripwire requires each term to
+be its class's one node, which a merge would break.
+
+**What holds it.** `RenderingGateTests` derives the probe's T1, T2 and T5 as verdicts on the probe's rows: the guarded
+form exact, the bare one implied and refuted for Equal. It holds the disciplines with plants — a merge (T7), a leaf that
+answers twice, a box that both allows and refutes, a form over another path — and sixteen bundles on four threads to
+their serial answers (T8). `RenderingTheoryTests` holds the boxes to their algebra and their definition, the targets'
+merge, and a contradicting row (T6); `RenderingOrderTests` holds the strata.
+
 ---
 
 ## Differential testing
