@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -62,6 +63,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// </summary>
         static JsonFactSet Holding(JsonCharacterBand characters) =>
             new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), new JsonClaim.Characters(characters))) }).Derive(null);
+
+        /// <summary>What a declaration says of field 0's path, <c>name</c>: these claims, outright.</summary>
+        static JsonFactSet Declaring(params JsonClaim[] claims) =>
+            new JsonFactTheory(claims.Select(claim => JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("name"), claim))).ToArray()).Derive(null);
 
         /// <summary>A declaration of ASCII strings holding nothing the service trims beside a space.</summary>
         static readonly JsonFactSet Ascii = Holding(JsonCharacterBand.None);
@@ -764,12 +769,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <remarks>
         /// The one string function whose name differs: SQL repeats with <c>REPEAT</c> and Cosmos
-        /// with <c>REPLICATE</c>, same arguments in the same order.
+        /// with <c>REPLICATE</c>, same arguments in the same order — over a string whose length the
+        /// facts bound, the service's repeating no further than 10,000 code points.
         /// </remarks>
         [Fact]
         public void RepeatBecomesReplicate()
         {
-            Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
+            Translator(Declaring(new JsonClaim.OneOf(new JsonScalar[] { "bikes", "cars" }))).Translate(Call(SqlLibraryOperators.REPEAT, Ref(0, SqlTypeName.VARCHAR), Num(2)))
                 .Should().Be("REPLICATE(c.name, @p0)");
         }
 
@@ -794,6 +800,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         {
             Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(1), Num(3)))
                 .Should().Be("SUBSTRING(c.name, (@p0 - 1), @p1)");
+        }
+
+        /// <remarks>
+        /// Calcite clips a window that starts before the string — <c>SUBSTRING('abc' FROM 0 FOR 2)</c> is <c>'a'</c> — and
+        /// the service answers a negative start with the empty string, projected on both targets and against
+        /// <c>''</c> in a <c>WHERE</c> on Azure for nothing but the empty string. So a start not proved at least one is
+        /// written with the clip: from 0, for <c>start + length - 1</c> and no less than 0. A literal start of one or
+        /// more, or a path the facts bound there, is shifted alone.
+        /// </remarks>
+        [Fact]
+        public void ASubstringStartNotProvedAtLeastOneIsClippedAsCalciteClipsIt()
+        {
+            var t = Translator(Ascii);
+            var zero = t.Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), Num(0), Num(2)));
+            zero.Should().Be("SUBSTRING(c.name, (@p0 < 1 ? 0 : (@p0 - 1)), (@p0 < 1 ? (((@p0 + @p1) < 1) ? 0 : ((@p0 + @p1) - 1)) : @p1))",
+                "the start and the length are written once each and read where the clip needs them");
+            _parameters.Parameters.Select(p => p.Value).Should().Equal(0L, 2L);
+
+            var parameter = _rex.makeDynamicParam(_types.createSqlType(SqlTypeName.INTEGER), 0);
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), parameter, Num(2)))
+                .Should().StartWith("SUBSTRING(c.name, (", "a parameter may be anything until it is bound").And.Contain("< 1 ? 0 :");
+
+            var position = Call(SqlStdOperatorTable.POSITION, Str("x"), Ref(0, SqlTypeName.VARCHAR));
+            Translator(Ascii).Translate(Call(SqlStdOperatorTable.SUBSTRING, Ref(0, SqlTypeName.VARCHAR), position, Num(2)))
+                .Should().Contain("((INDEX_OF(c.name, @p0) + 1) < 1 ? 0 : ", "a POSITION is 0 where nothing is found");
         }
 
         [Fact]

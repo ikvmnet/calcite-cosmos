@@ -150,6 +150,22 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static ValueSet<string> LengthAtMost(ValueSet<string> values, long most) =>
             ValueSet.From(values.Where(v => IsString(v) == false || StringOf(v).Length <= most));
 
+        /// <summary>
+        /// The fewest and the most UTF-16 units of a domain's strings, or <c>null</c> where it holds none.
+        /// </summary>
+        public static (long Least, long Most)? LengthsOf(ValueSet<string> values)
+        {
+            (long Least, long Most)? span = null;
+            foreach (var value in values)
+                if (IsString(value))
+                {
+                    long length = value.Length - value.IndexOf('|') - 1;
+                    span = span is var (least, most) ? (Math.Min(least, length), Math.Max(most, length)) : (length, length);
+                }
+
+            return span;
+        }
+
         // ── Characters ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>

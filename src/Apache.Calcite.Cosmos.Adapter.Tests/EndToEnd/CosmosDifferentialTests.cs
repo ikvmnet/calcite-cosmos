@@ -1767,6 +1767,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", POSITION('b' IN JSON_VALUE(c.\"DOC\", '$.b')) FROM strings AS c", false),
             ("SELECT c.\"id\" FROM strings AS c WHERE POSITION('b' IN JSON_VALUE(c.\"DOC\", '$.b')) = 3", false),
             ("SELECT c.\"id\", REVERSE(JSON_VALUE(c.\"DOC\", '$.s')), JSON_VALUE(c.\"DOC\", '$.s') || '!', REPLACE(JSON_VALUE(c.\"DOC\", '$.s'), 'b', '!'), REPEAT(JSON_VALUE(c.\"DOC\", '$.s'), 2) FROM strings AS c", false),
+
+            // A window that starts before the string, which Calcite clips and the service answers with the empty string
+            // (Service.SubstringOfANegativeStartIsEmpty): a literal start, a POSITION that finds nothing, and a filter.
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM 0 FOR 2), SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM -1 FOR 3), SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM -5 FOR 2) FROM strings AS c", false),
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM POSITION('x' IN JSON_VALUE(c.\"DOC\", '$.a')) FOR 2) FROM strings AS c", false),
+            ("SELECT c.\"id\" FROM strings AS c WHERE SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM 0 FOR 2) = 'a'", false),
         ];
 
         /// <summary>
@@ -1839,6 +1845,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 ["(\"kelvin\", \"A\u212AB\", \"akb\")", "(\"sharp\", \"ASSB\", \"a\u00DFb\")"]),
             ("SELECT c.\"id\", TRIM(JSON_VALUE(c.\"DOC\", '$.s')) FROM strings AS c WHERE c.\"id\" = 'tab'",
                 ["(\"tab\", \"\ta b\t\")"]),
+            ("SELECT c.\"id\", SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM 0 FOR 2), SUBSTRING(JSON_VALUE(c.\"DOC\", '$.a') FROM -5 FOR 2) FROM strings AS c WHERE c.\"id\" IN ('ascii', 'tab')",
+                ["(\"ascii\", \"a\", \"\")", "(\"tab\", \" \", \"\")"]),
 
             // A typed accessor over every document of the typed container, whose label holds a
             // string, a boolean, an array and an object as well as 30, null and nothing. Calcite

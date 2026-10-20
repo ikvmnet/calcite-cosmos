@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -361,8 +362,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             {
                 Pushes(Undeclared(), SqlStdOperatorTable.POSITION, Lit("b"), Str()).Should().BeTrue();
                 Pushes(Undeclared(), SqlLibraryOperators.REVERSE, Str()).Should().BeTrue();
-                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeTrue();
                 Pushes(Undeclared(), SqlStdOperatorTable.CONCAT, Str(), Lit("!")).Should().BeTrue();
+                Pushes(Undeclared(), SqlLibraryOperators.CONCAT_FUNCTION, Str(), Lit("!")).Should().BeTrue("MySQL's CONCAT is null over a null, as the service's is");
+            }
+
+            /// <remarks>
+            /// PostgreSQL's and SQL Server's <c>CONCAT</c>, and Oracle's two-argument one, read a null as the empty string
+            /// where the service's <c>CONCAT</c> is undefined over one, and are spelled alike: the operator decides, not the
+            /// name.
+            /// </remarks>
+            [Fact]
+            public void AConcatenationThatReadsANullAsEmptyIsComputedInProcess()
+            {
+                Pushes(Undeclared(), SqlLibraryOperators.CONCAT_FUNCTION_WITH_NULL, Str(), Lit("!")).Should().BeFalse();
+                Pushes(Undeclared(), SqlLibraryOperators.CONCAT2, Str(), Lit("!")).Should().BeFalse();
+            }
+
+            /// <summary>A translator whose facts say <c>c.s</c> is one of these strings.</summary>
+            CosmosRexTranslator OneOf(params string[] values) => new(_rex, _fields, new CosmosParameterList(),
+                new JsonFactTheory(new[] { JsonFactRule.Unconditional(new JsonFact(JsonDocumentPath.Root.Property("s"), new JsonClaim.OneOf(values.Select(v => (JsonScalar)v).ToArray()))) }).Derive(null));
+
+            /// <remarks>
+            /// The service's <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty
+            /// string, and on Azure past 10,000 code points, inclusive, where Calcite repeats on. So the count is a literal,
+            /// and a positive one asks the subject's length to keep the repetition within the limit: a literal's own, or what
+            /// the facts bound a path's strings to — here a domain's, whose longest is three units, which bound three code
+            /// points or fewer. A count of 0 is the empty string at both ends.
+            /// </remarks>
+            [Fact]
+            public void ARepetitionPushesWhereTheCountKeepsItWithinWhatTheServiceRepeats()
+            {
+                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3333)).Should().BeTrue("3,333 times three is 9,999");
+                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(3334)).Should().BeFalse("3,334 times three is 10,002");
+                Pushes(OneOf("ab", "cde"), SqlLibraryOperators.REPEAT, Str(), Int(-1)).Should().BeFalse("REPLICATE is undefined for a negative count");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(0)).Should().BeTrue("a count of 0 is the empty string at both ends");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Str(), Int(2)).Should().BeFalse("nothing bounds the string's length");
+                Pushes(OneOf("ab"), SqlLibraryOperators.REPEAT, Str(), Num()).Should().BeFalse("a count from a column may be anything");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5000)).Should().BeTrue("a literal's length is its own");
+                Pushes(Undeclared(), SqlLibraryOperators.REPEAT, Lit("ab"), Int(5001)).Should().BeFalse();
+            }
+
+            /// <remarks>
+            /// The service's <c>REPLACE</c> of an empty search is undefined, where Calcite's is the subject. So the search is
+            /// proved to hold something: a literal that does, or a path whose strings a domain bounds to one unit or more. A
+            /// parameter may be empty until it is bound.
+            /// </remarks>
+            [Fact]
+            public void AReplacementPushesWhereTheSearchHoldsSomething()
+            {
+                Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit("a"), Lit("b")).Should().BeTrue();
+                Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Lit(""), Lit("b")).Should().BeFalse("an empty search");
+                Pushes(Translator(), SqlStdOperatorTable.REPLACE, Str(), Param(), Lit("b")).Should().BeFalse("a parameter may be empty");
+                Pushes(OneOf("ab", "c"), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeTrue("every string the search may be holds something");
+                Pushes(OneOf("ab", ""), SqlStdOperatorTable.REPLACE, Lit("abc"), Str(), Lit("!")).Should().BeFalse("the search may be empty");
             }
 
             /// <remarks>

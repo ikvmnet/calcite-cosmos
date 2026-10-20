@@ -368,6 +368,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(d.Is(Dom.Of(p)), n.Is(MaxLength.Of(p)));
                 r.Then(Dom.Of(p).Is(Compute.Of(d, n, LengthAtMost)));
             });
+            // The converse of the two above: a domain's strings bound how long a string the path holds can be, in UTF-16
+            // units as the bounds count them. Only where the domain holds a string, a bound being about one; a domain
+            // narrowing to none leaves the bound a wider one stated, which is still true of every string there is.
+            Rule("a domain's strings bound the lengths of the path's", r =>
+            {
+                var (p, d) = r.Vars<JPath, ValueSet<string>>("p", "d");
+                r.When(d.Is(Dom.Of(p)));
+                r.Where(d, domain => LengthsOf(domain) is not null);
+                r.Then(MinLength.Of(p).Is(Compute.Of(d, domain => LengthsOf(domain)!.Value.Least)), MaxLength.Of(p).Is(Compute.Of(d, domain => LengthsOf(domain)!.Value.Most)));
+            });
             Rule("no string has crossed lengths", r =>
             {
                 var (p, l, h) = r.Vars<JPath, long, long>("p", "l", "h");

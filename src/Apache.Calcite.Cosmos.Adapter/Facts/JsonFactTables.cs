@@ -61,6 +61,16 @@ namespace Apache.Calcite.Cosmos.Facts
         public abstract bool TryHi(JsonDocumentPath path, out Bound bound);
 
         /// <summary>
+        /// Returns the fewest UTF-16 units a path's string holds if it holds one, where it is known.
+        /// </summary>
+        public abstract bool TryMinLength(JsonDocumentPath path, out long length);
+
+        /// <summary>
+        /// Returns the most UTF-16 units a path's string holds if it holds one, where it is known.
+        /// </summary>
+        public abstract bool TryMaxLength(JsonDocumentPath path, out long length);
+
+        /// <summary>
         /// Determines whether a path is known to be spelled in a stored form, by the form's token.
         /// </summary>
         public abstract bool Form(JsonDocumentPath path, string token);

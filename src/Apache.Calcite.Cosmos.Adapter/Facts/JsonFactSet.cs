@@ -164,6 +164,19 @@ namespace Apache.Calcite.Cosmos.Facts
             Read(JsonCharacterBand.Any, t => t.TryChars(path, out var bands) ? JsonFactEncoding.Bands(bands) : JsonCharacterBand.Any);
 
         /// <summary>
+        /// Returns the fewest and the most UTF-16 units a path's string may hold, each where it is known.
+        /// </summary>
+        /// <remarks>
+        /// The theory's <c>minLength</c> and <c>maxLength</c>, which a domain's strings state and a rule meets with any
+        /// other; silent, as characters are, about whether a string is there. A code point is one unit or two, so a
+        /// count of units bounds a count of code points from above.
+        /// </remarks>
+        /// <param name="path">The path.</param>
+        /// <returns>The bounds, either <c>null</c> where nothing bounds it.</returns>
+        public (long? Least, long? Most) LengthsOf(JsonDocumentPath path) => Read<(long?, long?)>((null, null), t =>
+            (t.TryMinLength(path, out var least) ? least : null, t.TryMaxLength(path, out var most) ? most : null));
+
+        /// <summary>
         /// Returns every stored form known for a path, which may be none.
         /// </summary>
         /// <remarks>

@@ -81,6 +81,12 @@ namespace Apache.Calcite.Cosmos.Facts
         public override bool TryHi(JsonDocumentPath path, out Bound bound) => TryGet(path, r => r.Hi, out bound);
 
         /// <inheritdoc />
+        public override bool TryMinLength(JsonDocumentPath path, out long length) => TryGet(path, r => r.MinLength, out length);
+
+        /// <inheritdoc />
+        public override bool TryMaxLength(JsonDocumentPath path, out long length) => TryGet(path, r => r.MaxLength, out length);
+
+        /// <inheritdoc />
         public override bool Form(JsonDocumentPath path, string token) => Read(path, false, (scope, r, p) => scope.Check(r.Form.Of(p, token)));
 
         /// <inheritdoc />

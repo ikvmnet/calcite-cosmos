@@ -526,6 +526,18 @@ namespace Apache.Calcite.Cosmos.Facts
                 return false;
             }
 
+            public override bool TryMinLength(JsonDocumentPath path, out long length)
+            {
+                length = 0;
+                return false;
+            }
+
+            public override bool TryMaxLength(JsonDocumentPath path, out long length)
+            {
+                length = 0;
+                return false;
+            }
+
             public override bool Form(JsonDocumentPath path, string token) => false;
 
             public override bool TryChars(JsonDocumentPath path, out ValueSet<string> bands)

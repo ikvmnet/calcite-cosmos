@@ -5486,6 +5486,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                     WriteRrf(builder, call);
                     return;
+
+                // Renamed, and asked first what the service answers of their operands.
+                case "REPEAT":
+                    RequireARepetitionTheServiceAnswers(call);
+                    break;
+                case "REPLACE":
+                    RequireASearchForSomething(call);
+                    break;
+                case "CONCAT" or "||":
+                    RequireTheConcatenationThatIsNullOverANull(call);
+                    break;
             }
 
             if (DirectFunctions.TryGetValue(name, out var mapping) == false)
@@ -5496,6 +5507,112 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
 
             WriteFunctionCall(builder, call, mapping.Name);
+        }
+
+        /// <summary>
+        /// Refuses a <c>REPEAT</c> the service's <c>REPLICATE</c> does not answer as Calcite does.
+        /// </summary>
+        /// <remarks>
+        /// <c>REPLICATE</c> is undefined for a negative count, where Calcite's <c>REPEAT</c> is the empty string, and on
+        /// Azure past 10,000 code points, where Calcite repeats on: measured, <c>REPEAT(a, 4000)</c> over a three-character
+        /// string answered NULL, and <c>WHERE REPEAT(s, -1) = ''</c> lost every row. So the count has to be a literal, and
+        /// the subject's length — a literal's own, or a path's bound — has to keep the repetition within the limit
+        /// (<see cref="CosmosStringFunctions.RepeatsAsCalcite"/>); a count of 0 is the empty string at both ends.
+        /// </remarks>
+        void RequireARepetitionTheServiceAnswers(RexCall call)
+        {
+            if (call.getOperands().size() != 2 || IntegralLiteral(Operand(call, 1)) is not long count
+                || CosmosStringFunctions.RepeatsAsCalcite(count, LengthsOf(Operand(call, 0)).Most) == false)
+                throw new CosmosTranslationException($"REPEAT is computed in process: the service's REPLICATE is undefined for a negative count and past {CosmosStringFunctions.RepetitionLimit} code points, where Calcite's repeats, and nothing proves the count a literal that keeps it within them.");
+        }
+
+        /// <summary>
+        /// Refuses a <c>REPLACE</c> whose search may be empty.
+        /// </summary>
+        /// <remarks>
+        /// The service's <c>REPLACE</c> of an empty search is undefined, and Calcite's is the subject: measured,
+        /// <c>REPLACE(s, '', '-')</c> answered NULL on every row. So the search has to be proved to hold something — a
+        /// literal that does, or a path whose strings the facts bound to a length of one or more
+        /// (<see cref="CosmosStringFunctions.SearchesSomething"/>). A parameter may be empty until it is bound.
+        /// </remarks>
+        void RequireASearchForSomething(RexCall call)
+        {
+            if (call.getOperands().size() != 3 || CosmosStringFunctions.SearchesSomething(LengthsOf(Operand(call, 1)).Least) == false)
+                throw new CosmosTranslationException("REPLACE is computed in process: the service's REPLACE of an empty search is undefined, where Calcite's is the subject, and nothing proves the search holds something.");
+        }
+
+        /// <summary>
+        /// Refuses a concatenation that reads a null as the empty string.
+        /// </summary>
+        /// <remarks>
+        /// The service's <c>CONCAT</c> is undefined over a null, as SQL's <c>||</c> and the MySQL <c>CONCAT</c> are null.
+        /// PostgreSQL's and SQL Server's <c>CONCAT</c>, and Oracle's two-argument one, read a null as the empty string, and
+        /// carry the same name: measured, under the <c>pg</c> and <c>oracle</c> libraries a <c>CONCAT</c> of a string and
+        /// a path absent from the document answered NULL where Calcite answers the string. So the operator is matched, not
+        /// its name.
+        /// </remarks>
+        void RequireTheConcatenationThatIsNullOverANull(RexCall call)
+        {
+            var op = call.getOperator();
+            if (ReferenceEquals(op, SqlStdOperatorTable.CONCAT) == false && ReferenceEquals(op, SqlLibraryOperators.CONCAT_FUNCTION) == false)
+                throw new CosmosTranslationException($"{op.getName()} is computed in process: it reads a null as the empty string, and the service's CONCAT is undefined over one.");
+        }
+
+        /// <summary>
+        /// Returns the fewest and the most UTF-16 units a string operand holds: a literal's own length, or what the facts
+        /// bound a path's strings to; either <c>null</c> where nothing does.
+        /// </summary>
+        (long? Least, long? Most) LengthsOf(RexNode node)
+        {
+            if (StripCast(node) is RexLiteral literal)
+            {
+                try
+                {
+                    return GetLiteralValue(literal) is string text ? (text.Length, text.Length) : (null, null);
+                }
+                catch (CosmosTranslationException)
+                {
+                    return (null, null);
+                }
+            }
+
+            return TryResolvePath(node, out var path) && DocumentOf(path) is JsonDocumentPath document ? Facts.LengthsOf(document) : (null, null);
+        }
+
+        /// <summary>
+        /// Returns the value of an integral literal, through any cast Calcite typed it with, or <c>null</c>.
+        /// </summary>
+        static long? IntegralLiteral(RexNode node)
+        {
+            if (StripCast(node) is not RexLiteral literal)
+                return null;
+
+            try
+            {
+                return GetLiteralValue(literal) switch
+                {
+                    long l => l,
+                    int i => i,
+                    decimal m when m == decimal.Truncate(m) && m >= long.MinValue && m <= long.MaxValue => (long)m,
+                    _ => null,
+                };
+            }
+            catch (CosmosTranslationException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Looks through the casts Calcite types a literal operand with: a literal one changes is integral or text only
+        /// where it changes nothing, and is otherwise read as no literal by its reader.
+        /// </summary>
+        static RexNode StripCast(RexNode node)
+        {
+            while (node is RexCall cast && KindOf(cast) == SqlKind.__Enum.CAST && cast.getOperands().size() == 1)
+                node = Operand(cast, 0);
+
+            return node;
         }
 
         /// <summary>
@@ -5678,12 +5795,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Writes <c>SUBSTRING</c>, adjusting for the differing origin.
+        /// Writes <c>SUBSTRING</c>, adjusting for the differing origin, and clipping a window that starts before the
+        /// string as Calcite does.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// SQL positions are one-based and Cosmos's are zero-based: over <c>"Hello World"</c>,
         /// <c>SUBSTRING(s, 0, 5)</c> yields <c>"Hello"</c> where SQL's <c>FROM 1</c> does. The
         /// start is therefore emitted as <c>start - 1</c>.
+        /// </para>
+        /// <para>
+        /// <b>A start below one is clipped, and the service does not clip it.</b> Calcite reads
+        /// <c>SUBSTRING(s FROM 0 FOR 2)</c> as the window from the first character to the one before
+        /// <c>start + length</c>, so <c>'a'</c> of <c>'abc'</c>, and the empty string where that ends
+        /// before the string (<c>Calcite.SubstringClipsAWindowBeforeTheString</c>). The service answers a
+        /// negative start with the empty string projected, on Azure and the emulator alike
+        /// (<c>Service.SubstringOfANegativeStartIsEmpty</c>), and in a <c>WHERE</c> on Azure keeps only
+        /// the empty string equal to it. So <c>start - 1</c> stands alone only where the start is proved
+        /// at least one — a literal, or a path the facts bound there — and is otherwise written with
+        /// Calcite's clip: from 0, for <c>start + length - 1</c> and no less than 0, where the start is
+        /// below one. Measured, <c>SUBSTRING(s, 0, 0)</c> is the empty string projected and in a
+        /// <c>WHERE</c>. A start from <c>POSITION</c>, which is 0 where nothing is found, or from a
+        /// column, takes the clip.
+        /// </para>
         /// <para>
         /// Cosmos requires a length, so the two-argument SQL form — take the rest of the string —
         /// is declined rather than approximated with an over-long length.
@@ -5694,13 +5828,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (call.getOperands().size() != 3)
                 throw new CosmosTranslationException("SUBSTRING without an explicit length has no Cosmos equivalent.");
 
+            var start = Operand(call, 1);
+
             builder.Append("SUBSTRING(");
             Write(builder, Operand(call, 0));
-            builder.Append(", (");
-            Write(builder, Operand(call, 1));
-            builder.Append(" - 1), ");
-            Write(builder, Operand(call, 2));
-            builder.Append(')');
+
+            if (IsAtLeastOne(start))
+            {
+                builder.Append(", (");
+                Write(builder, start);
+                builder.Append(" - 1), ");
+                Write(builder, Operand(call, 2));
+                builder.Append(')');
+                return;
+            }
+
+            var s = WrittenAlone(start);
+            var n = WrittenAlone(Operand(call, 2));
+            builder.Append(", (").Append(s).Append(" < 1 ? 0 : (").Append(s).Append(" - 1)), (")
+                .Append(s).Append(" < 1 ? (((").Append(s).Append(" + ").Append(n).Append(") < 1) ? 0 : ((").Append(s).Append(" + ").Append(n).Append(") - 1)) : ")
+                .Append(n).Append("))");
+        }
+
+        /// <summary>
+        /// Determines whether a position is proved to be at least one: an integral literal that is, or a path whose
+        /// facts bound it there wherever it holds a number.
+        /// </summary>
+        bool IsAtLeastOne(RexNode node)
+        {
+            if (StripCast(node) is RexLiteral)
+                return IntegralLiteral(node) >= 1;
+
+            return TryResolvePath(node, out var path) && DocumentOf(path) is JsonDocumentPath document
+                && Facts.Knows(new JsonFact(document, new JsonClaim.LowerBound(1m)));
+        }
+
+        /// <summary>
+        /// Writes an expression on its own and returns its text, for a writer that needs it more than once.
+        /// </summary>
+        string WrittenAlone(RexNode node)
+        {
+            var text = new StringBuilder();
+            Write(text, node);
+            return text.ToString();
         }
 
         /// <summary>

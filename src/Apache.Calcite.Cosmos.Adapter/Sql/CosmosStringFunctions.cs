@@ -124,6 +124,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// The most code points the service's <c>REPLICATE</c> answers, inclusive: past them it is undefined on Azure, where
+        /// Calcite's <c>REPEAT</c> repeats (<c>Service.ReplicateStopsAtTenThousandCodePoints</c>). The emulator has no limit.
+        /// </summary>
+        public const long RepetitionLimit = 10_000;
+
+        /// <summary>
+        /// Determines whether the service's <c>REPLICATE</c> answers what Calcite's <c>REPEAT</c> does for a count and a
+        /// subject at most so many code points long: a count of 0 is the empty string at both, a negative one undefined at
+        /// the service and empty in Calcite, and a positive one Calcite's wherever the repetition stays within the limit.
+        /// </summary>
+        /// <param name="count">The count, a literal.</param>
+        /// <param name="most">The most code points the subject holds, or <c>null</c> where nothing bounds it; a count of
+        /// UTF-16 units bounds it from above.</param>
+        public static bool RepeatsAsCalcite(long count, long? most) =>
+            count == 0 || count > 0 && most is long length && length <= RepetitionLimit / count;
+
+        /// <summary>
+        /// Determines whether the service's <c>REPLACE</c> answers Calcite's for a search at least so many units long: of
+        /// an empty search it is undefined, where Calcite's is the subject (<c>Service.ReplaceOfAnEmptySearchIsUndefined</c>).
+        /// </summary>
+        /// <param name="least">The fewest units the search holds, or <c>null</c> where nothing bounds it.</param>
+        public static bool SearchesSomething(long? least) => least >= 1;
+
+        /// <summary>
         /// Determines whether a <c>LIKE</c> pattern is one the service answers as a <c>CONTAINS</c>: one run of text with no
         /// wildcard, after one or more <c>%</c> and before one or more. Measured on the probe account, <c>%b%</c>,
         /// <c>%%b%</c> and <c>%b%%</c> lose <c>a</c>U+0000<c>b</c> and <c>%</c>U+0000<c>%</c> keeps every string, where
