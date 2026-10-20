@@ -65,10 +65,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             return lost;
         }
 
-        /// <summary>A side that may fail the statement makes the compound fail it, through NOT, AND and OR alike.</summary>
+        /// <summary>
+        /// A side that may fail the statement lets the compound fail it, through NOT, AND and OR alike, and never makes it:
+        /// a side that only fails, beside one that decides the connective alone, may be skipped.
+        /// </summary>
         [Fact]
         public void FailsSurvivesEveryConnective()
         {
+            static OutcomeVector All(ServiceOutcomes outcomes) => new(Cells, Cells.Cells.Select(_ => new CellOutcome(outcomes, CosmosValueClass.None)).ToList(), ValueSet<string>.Empty);
+            ServiceCompound.On(Compounds[1], All(ServiceOutcomes.False), All(ServiceOutcomes.Fails), ProbeRows.Table).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.False | ServiceOutcomes.Fails));
+
             Lost(ServiceCompound.On).Should().BeEmpty();
             Lost((form, first, rest, table) =>
             {

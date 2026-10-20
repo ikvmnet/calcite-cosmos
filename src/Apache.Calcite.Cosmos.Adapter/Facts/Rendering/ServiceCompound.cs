@@ -11,8 +11,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// pair of the sides' outcomes, or a value that is no boolean by its class, through the row the pair keys.
     /// </summary>
     /// <remarks>
-    /// <b>A failure passes through every connective</b>: it fails the statement, whatever the other side holds. A key
-    /// the table does not hold answers every outcome and is named, so a connective without its rows composes nothing.
+    /// <b>A side that may fail may fail the compound</b>, where the service evaluates it (decision 2); and no row says the
+    /// service evaluates a side the other decides alone, so beside its failure it stands for every truth it could have
+    /// given. A key the table does not hold answers every outcome and is named.
     /// </remarks>
     internal static class ServiceCompound
     {
@@ -47,20 +48,21 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             return new OutcomeVector(first.Cells, outcomes, ValueSet.From(rows));
         }
 
-        /// <summary>What a side is keyed by: the class of a value that is no boolean, or each truth it may give.</summary>
+        /// <summary>
+        /// What a side is keyed by: the class of a value that is no boolean, or each truth it may give; and every truth
+        /// where it may fail.
+        /// </summary>
         static IEnumerable<CosmosValueClass> Operands(CellOutcome side)
         {
+            var truths = (side.Outcomes & ServiceOutcomes.Fails) != 0 ? ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined
+                : side.NonBoolean == CosmosValueClass.None ? side.Outcomes : ServiceOutcomes.None;
             if (side.NonBoolean != CosmosValueClass.None)
-            {
                 yield return side.NonBoolean;
-                yield break;
-            }
-
-            if ((side.Outcomes & ServiceOutcomes.True) != 0)
+            if ((truths & ServiceOutcomes.True) != 0)
                 yield return CosmosValueClass.True;
-            if ((side.Outcomes & ServiceOutcomes.False) != 0)
+            if ((truths & ServiceOutcomes.False) != 0)
                 yield return CosmosValueClass.False;
-            if ((side.Outcomes & ServiceOutcomes.Undefined) != 0)
+            if ((truths & ServiceOutcomes.Undefined) != 0)
                 yield return CosmosValueClass.Undefined;
         }
 

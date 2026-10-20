@@ -5885,8 +5885,10 @@ which literals part the orders, which subforms are evaluated, how verdicts compo
 
 **A key no row settles answers everything, a failure included, and is named** `missing:test/operand/cell`. So no branch
 encodes a behaviour without a row — an empty table answers widest everywhere — and an unproven conjunct names the
-measurement that would decide it. A failure passes through every connective: it fails the statement whatever a sibling
-decides.
+measurement that would decide it. A side that may fail lets its connective fail the statement where it is evaluated
+(decision 2), and never makes it: no row says the service evaluates a side its sibling decides the connective without,
+so beside its failure the side stands for every truth. A failure that refutes an atom composes, since a sibling that is
+the identity, or a `NOT`, decides nothing without it.
 
 **Strings are cut in Calcite's order and placed in the service's.** An interval of strings is cut by UTF-16 unit, so by
 code point it lies wholly to one side of a literal unless the literal parts the two orders over the path; S's rules
