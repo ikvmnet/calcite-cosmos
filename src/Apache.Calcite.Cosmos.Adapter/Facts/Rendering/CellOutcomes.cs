@@ -15,9 +15,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="Cells">Every cell with its class, so that a verdict can name one.</param>
     /// <param name="Classes">The classes the cells fall in.</param>
     /// <param name="Rows">The rows the service's outcomes and Calcite's readings rest on.</param>
-    /// <param name="Count">How many cells there are.</param>
-    /// <param name="Answering">How many cells Calcite answers on other than by raising alone.</param>
-    internal sealed record CellOutcomes(string Path, ValueSet<CellAt> Cells, ValueSet<CellClass> Classes, ValueSet<string> Rows, int Count, int Answering)
+    internal sealed record CellOutcomes(string Path, ValueSet<CellAt> Cells, ValueSet<CellClass> Classes, ValueSet<string> Rows)
     {
 
         static readonly ValueSet<string> WholeCondition = ValueSet.Of("Service.BarePathKeepsOnlyTrue", "Service.NotOverAPathKeepsOnlyFalse");
@@ -34,8 +32,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             if (service.Outcomes.Any(o => o.NonBoolean != CosmosValueClass.None))
                 rows = rows.Union(WholeCondition);
 
-            return new CellOutcomes(service.Cells.Path, ValueSet.From(at), ValueSet.From(at.Select(c => c.Class)), rows, cells.Count,
-                at.Count(c => (c.Class.Calcite & Truths.Any) != Truths.None));
+            return new CellOutcomes(service.Cells.Path, ValueSet.From(at), ValueSet.From(at.Select(c => c.Class)), rows);
         }
 
         static ServiceOutcomes Whole(CellOutcome outcome, AnswerMeanings means) => outcome.NonBoolean == CosmosValueClass.None ? outcome.Outcomes

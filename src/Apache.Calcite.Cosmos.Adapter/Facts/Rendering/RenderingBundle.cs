@@ -114,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return new(RenderingVerdictKind.Conflict, null, null, "agreed and refuted: " + string.Join("; ", Scope.Rows(_theory.Conflict)));
 
             if (Scope.TryGet(_theory.Agrees.Of(root, RenderPosition.Pos, form, claim), out var proof))
-                return new(RenderingVerdictKind.Proven, proof, null, null);
+                return new(RenderingVerdictKind.Proven, proof, null, null, Scope.Get(_theory.Vacuous.Of(root, RenderPosition.Pos, form, claim)));
 
             if (Scope.TryGet(_theory.Disagrees.Of(root, RenderPosition.Pos, form, claim), out var refutation))
                 return new(RenderingVerdictKind.Refuted, null, refutation, null);

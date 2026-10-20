@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             CellsOf(bare, C(U, t)).Should().Equal(ValueSet.Of("null", ObjectType, ArrayType));
             CellsOf(bare, C(U, u)).Should().Equal(ValueSet.Of("absent"));
 
-            (guarded.Count, guarded.Answering, bare.Count, bare.Answering).Should().Be((11, 11, 11, 11));
+            (guarded.Cells.Count, bare.Cells.Count).Should().Be((11, 11));
             guarded.Rows.Concat(bare.Rows).Should().NotContain(row => row.StartsWith("missing:"), "the probe's rows hold every key the two forms read");
             guarded.Rows.Should().Contain(Atom.Rests);
         }
@@ -78,7 +78,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 var outcomes = Outcomes(form, PathValues.OfKinds(ValueSet.Of(StringType)));
                 outcomes.Classes.Should().Equal(ValueSet.Of(C(T, t), C(F, f)), form.Text);
-                outcomes.Count.Should().Be(3);
+                outcomes.Cells.Count.Should().Be(3);
             }
         }
 

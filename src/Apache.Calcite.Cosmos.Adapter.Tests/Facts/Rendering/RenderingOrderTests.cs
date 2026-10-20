@@ -76,7 +76,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var (k, y, o) = r.Vars<ValueSet<CellClass>, ValueSet<CellClass>, CellOutcomes>("k", "y", "o");
                 r.When(theory.Candidate.Of(e, pos, f), k.Is(seen.Of(e)), y.Is(theory.Allowed.Of(pos, v)), o.Is(theory.Outcomes.Of(e, f)));
                 r.Where(Primitives.IsSubsetOf<CellClass>().Of(k, y));
-                r.Then(theory.Agrees.Of(e, pos, f, v).Is(Compute.Of(o, y, (x, w) => Proof.Of(x, ValueSet<string>.Empty, false))));
+                r.Then(theory.Agrees.Of(e, pos, f, v).Is(Compute.Of(o, y, (x, w) => Proof.Of(x, ValueSet<string>.Empty))));
             });
 
             Violations(theory).Should().Equal("gate/planted: every class seen is allowed: set-subset reads seen, which grows in its stratum");

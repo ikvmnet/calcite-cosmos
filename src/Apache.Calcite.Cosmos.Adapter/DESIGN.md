@@ -5963,9 +5963,13 @@ universal, each lattice-free head and each superset to it; a plant after critic-
 one stratum, is refused.
 
 **A proof and a refutation are packing.** The gate decides; the value says why. A proof carries the rows both sides read
-and the boxes' citations, and is vacuous where every cell is one Calcite raises on alone, or there are none. A
-refutation names the least refuting cell by its text, so of the null, the object and the array that refute a bare `!=`
-it names the array. Both are ordered values under `Min`, so the value does not depend on which is found first.
+and the boxes' citations. A refutation names the least refuting cell by its text, so of the null, the object and the
+array that refute a bare `!=` it names the array. Both are ordered values under `Min`, so the value does not depend on
+which is found first.
+
+**Vacuity is a table.** An agreement is vacuous where every cell is one Calcite raises on alone, or there are none: the
+gate writes `set-subset(classes, raiseonly)` beside it, and a junction or a negation copies each side's. `vacuous` is a
+`Max` over booleans, so a claim holds of nothing where any of its proofs does, whichever `Min` keeps.
 
 **What the evaluation fills is held to one value a key.** `cuts`, `partition`, `svc` and `outcomes` have no lattice:
 each is computed once for each of its keys, and where two candidates share a partition the part they share is computed

@@ -72,7 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var guarded = Check(Guarded, PathValues.Anything);
             (guarded.Equal.Kind, guarded.Implies.Kind).Should().Be((RenderingVerdictKind.Proven, RenderingVerdictKind.Proven));
-            guarded.Equal.Proof.Should().Be(guarded.Equal.Proof! with { Cells = 11, Vacuous = false });
+            (guarded.Equal.Proof!.Cells, guarded.Equal.Vacuous).Should().Be((11, false));
             guarded.Equal.Proof!.Rows.Should().Contain(new[] { "Service.IsNull", "Service.IsPrimitive", "Service.BarePathKeepsOnlyTrue" })
                 .And.NotContain(row => row.StartsWith("missing:"));
 

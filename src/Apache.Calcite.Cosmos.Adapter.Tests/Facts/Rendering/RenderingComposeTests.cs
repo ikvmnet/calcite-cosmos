@@ -329,12 +329,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var nothing = PathValues.OfKinds(ValueSet<string>.Empty);
             var junction = Check(LabelAndKind, All(Guarded, KindIsA), path: KindPath, values: nothing).Equal;
-            (junction.Kind, junction.Proof!.Vacuous, junction.Proof.Cells).Should().Be((RenderingVerdictKind.Proven, true, 11));
+            (junction.Kind, junction.Vacuous, junction.Proof!.Cells).Should().Be((RenderingVerdictKind.Proven, true, 11));
 
             var negation = Check(Not(Eq(Text(KindPath), "a")), Negated(KindIsA), path: KindPath, values: nothing).Equal;
-            (negation.Kind, negation.Proof!.Vacuous).Should().Be((RenderingVerdictKind.Proven, true));
+            (negation.Kind, negation.Vacuous).Should().Be((RenderingVerdictKind.Proven, true));
 
-            Check(LabelAndKind, All(Guarded, KindIsA)).Equal.Proof!.Vacuous.Should().BeFalse();
+            Check(LabelAndKind, All(Guarded, KindIsA)).Equal.Vacuous.Should().BeFalse();
         }
 
     }

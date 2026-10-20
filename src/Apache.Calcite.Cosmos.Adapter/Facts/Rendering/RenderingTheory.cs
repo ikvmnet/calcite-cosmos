@@ -85,6 +85,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Svc = Graph.DefineFunction<CellPartition, ServiceForm, OutcomeVector>("svc");
             Outcomes = Graph.DefineFunction<Pred, ServiceForm, CellOutcomes>("outcomes");
             Agrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Proof>("agrees", ValueLattice.Min<Proof>());
+            Vacuous = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, bool>("vacuous", ValueLattice.Max<bool>());
             Disagrees = Graph.DefineFunction<Pred, RenderPosition, ServiceForm, Verdict, Refutation>("disagrees", ValueLattice.Min<Refutation>());
             Conflict = Graph.DefineRelation<Pred, RenderPosition, ServiceForm, Verdict>("conflict");
             Junction = Graph.DefineRelation<Pred, Pred, Pred, JunctionSide>("junction", new TableOptions { Role = TableRole.Analysis });
@@ -206,6 +207,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<CellPartition, ServiceForm, OutcomeVector> Svc { get; }
         public Function<Pred, ServiceForm, CellOutcomes> Outcomes { get; }
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Proof> Agrees { get; }
+
+        /// <summary>Whether an agreement holds of nothing: by any of its proofs, Calcite raises on every row (a disjunction, by its lattice).</summary>
+        public Function<Pred, RenderPosition, ServiceForm, Verdict, bool> Vacuous { get; }
         public Function<Pred, RenderPosition, ServiceForm, Verdict, Refutation> Disagrees { get; }
         public Relation<Pred, RenderPosition, ServiceForm, Verdict> Conflict { get; }
         public Relation<Pred, Pred, Pred, JunctionSide> Junction { get; }
@@ -535,7 +539,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Candidate.Of(e, pos, f), o.Is(Outcomes.Of(e, f)), kk.Is(Compute.Of(o, x => x.Classes)), y.Is(Allowed.Of(pos, v)),
                     w.Is(AllowedCites.Of(pos, v)), ro.Is(RaiseOnly.Of()));
                 r.Where(Primitives.IsSubsetOf<CellClass>().Of(kk, y));
-                r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(o, w, Primitives.IsSubsetOf<CellClass>().Of(kk, ro), Proof.Of)));
+                r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(o, w, Proof.Of)), Vacuous.Of(e, pos, f, v).Is(Primitives.IsSubsetOf<CellClass>().Of(kk, ro)));
             });
 
             gate.DefineRule("a candidate is refuted where a class of its cells is a definite counterexample", r =>
@@ -581,12 +585,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (pos, d, j, v) = r.Vars<RenderPosition, JunctionSide, CosmosServiceTest, Verdict>("pos", "d", "j", "v");
                 var (f, l, m) = r.Vars<ServiceForm, ServiceForm, ServiceForm>("f", "l", "m");
                 var (pl, pr) = r.Vars<Proof, Proof>("pl", "pr");
-                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)), j.Is(ConnectiveOf.Of(d)));
+                var (vl, vr) = r.Vars<bool, bool>("vl", "vr");
+                r.When(Candidate.Of(e, pos, f), Junction.Of(e, x, y, d), pl.Is(Agrees.Of(x, pos, l, v)), pr.Is(Agrees.Of(y, pos, m, v)), j.Is(ConnectiveOf.Of(d)),
+                    vl.Is(Vacuous.Of(x, pos, l, v)), vr.Is(Vacuous.Of(y, pos, m, v)));
                 r.Where(RenderingPrimitives.SideIsLeft.Of(d));
                 r.Where(RenderingPrimitives.FormHeads.Of(f, j));
                 r.Where(RenderingPrimitives.FormDecomposes.Of(f, l, m));
                 Composes(r, j, f);
-                r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(pl, pr, Proof.Join)));
+                r.Then(Agrees.Of(e, pos, f, v).Is(Compute.Of(pl, pr, Proof.Join)), Vacuous.Of(e, pos, f, v).Is(vl), Vacuous.Of(e, pos, f, v).Is(vr));
             });
 
             compose.DefineRule("a negation agrees where its operand agrees at the opposite position", r =>
@@ -594,9 +600,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (e, a) = r.Vars<Pred, Pred>("e", "a");
                 var (pos, q, v) = r.Vars<RenderPosition, RenderPosition, Verdict>("pos", "q", "v");
                 var (g, h, p) = r.Vars<ServiceForm, ServiceForm, Proof>("g", "h", "p");
-                r.When(Candidate.Of(e, pos, g), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), h.Is(Compute.Of(g, ServiceForm.Strip)), p.Is(Agrees.Of(a, q, h, v)));
+                var vp = r.Var<bool>("vp");
+                r.When(Candidate.Of(e, pos, g), e.Is(Ir.Not.Of(a)), Opposite.Of(pos, q), h.Is(Compute.Of(g, ServiceForm.Strip)), p.Is(Agrees.Of(a, q, h, v)), vp.Is(Vacuous.Of(a, q, h, v)));
                 Composes(r, CosmosServiceTest.Not, null);
-                r.Then(Agrees.Of(e, pos, g, v).Is(p));
+                r.Then(Agrees.Of(e, pos, g, v).Is(p), Vacuous.Of(e, pos, g, v).Is(vp));
             });
 
             compose.DefineRule("a junction is refuted where one side is refuted and the other is its identity on another location", r =>
