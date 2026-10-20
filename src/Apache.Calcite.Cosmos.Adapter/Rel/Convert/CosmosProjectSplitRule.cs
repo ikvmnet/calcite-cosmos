@@ -233,9 +233,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 Collect(translator, expression, split);
             }
 
-            return split.Residual.Count > 0
-                && (split.Pushable.Count > 0 || split.Fragments.Count > 0)
-                && split.Nontrivial;
+            if (split.Residual.Count == 0)
+                return false;
+
+            return (split.Pushable.Count > 0 || split.Fragments.Count > 0) && split.Nontrivial
+                || Narrows(project, fields, split);
+        }
+
+        /// <summary>
+        /// Determines whether a split of nothing but references is still worth making: whether the inner projection reads
+        /// fewer of the input's columns than the input has, the document whole not among them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>A plain column beneath a function the service does not compute is still a column it can send.</b>
+        /// <c>UPPER(c."id")</c> over a string nothing proves ASCII stays in process, and with nothing renderable beside it
+        /// the split was not made: the scan sent every document whole, <c>DOC</c> and all, for Calcite to read one
+        /// property of. Projecting the references the residual reads — <c>{"id": c.id}</c> — sends that property alone, as
+        /// a declined function over an accessor already sends the accessor.
+        /// </para>
+        /// <para>
+        /// <b>It terminates, by the same argument as the guard it stands beside.</b> The projection this produces reads its
+        /// inner one, whose columns are exactly the references read; split again it would read every column of its input,
+        /// which is no narrower, and is not split.
+        /// </para>
+        /// <para>
+        /// Not where the residual reads the document itself, <c>DOC</c>: the documents cross the wire whole either way, and
+        /// dropping the few columns beside them is worth no node.
+        /// </para>
+        /// </remarks>
+        static bool Narrows(Project project, IReadOnlyList<CosmosPath?> fields, ProjectionSplit split)
+        {
+            var read = new HashSet<int>(split.Inputs);
+            foreach (var i in split.Pushable)
+                if ((RexNode)split.Projects.get(i) is RexInputRef reference)
+                    read.Add(reference.getIndex());
+                else
+                    return false;
+
+            foreach (var index in read)
+                if (index >= fields.Count || fields[index] is not CosmosPath { IsRoot: false })
+                    return false;
+
+            return split.Fragments.Count == 0 && read.Count < project.getInput().getRowType().getFieldCount();
         }
 
         /// <summary>

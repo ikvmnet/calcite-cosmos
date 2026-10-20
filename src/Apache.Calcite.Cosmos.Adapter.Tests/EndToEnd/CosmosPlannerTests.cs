@@ -1339,6 +1339,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
+        /// A function the service does not compute over a plain column stays in process, and the column goes down alone:
+        /// <c>UPPER</c> over <c>id</c>, whose characters nothing proves ASCII, reads <c>{"id": c.id}</c> rather than every
+        /// document whole, as a declined function over an accessor reads the accessor. With the sort, the key is read
+        /// beside it. A sort over the plain column still pushes.
+        /// </remarks>
+        [Fact]
+        public void APlainColumnBeneathADeclinedFunctionIsStillSent()
+        {
+            var best = PlanToAsync("SELECT UPPER(c.\"id\") AS \"u\" FROM products AS c");
+            var sql = Render(FindCosmos(best));
+
+            sql.Should().Contain("c.id").And.NotContain("\"DOC\"").And.NotContain("VALUE c FROM", "the documents are not read whole: " + sql);
+            Plan(best).Should().Contain("UPPER(", "Calcite maps the case: " + Plan(best));
+
+            var sorted = PlanToAsync("SELECT UPPER(c.\"id\") AS \"u\" FROM products AS c ORDER BY c.\"_ts\"");
+            Render(FindCosmos(sorted)).Should().Contain("ORDER BY c._ts ASC").And.NotContain("\"DOC\"");
+        }
+
+        /// <remarks>
         /// The other half of the same rule: a sort that does read the computed column has nothing to
         /// order by, Cosmos being unable to address a projection alias, so it is refused — <b>at the
         /// rule</b>, which is what <c>CosmosConverterRule</c> requires. The rule derives its binding by
