@@ -479,6 +479,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             type is not null && CanRead(type.getSqlTypeName(), ComponentTypeNameOf(type));
 
         /// <summary>
+        /// Determines whether a typed reading can refuse a value of the JSON kind it reads.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>What the service's guard leaves to refuse.</b> A pushed column is guarded by its kind —
+        /// <c>(IS_NUMBER(c.w) ? c.w : null)</c> — so a value of another kind arrives as null and is never
+        /// refused. What is left is the value itself: a number that is not whole or not within an integral
+        /// width (2^63, 1E+19 and 42.5 as a <c>BIGINT</c>), text that is not an ISO-8601 date or time, a
+        /// UUID, GeoJSON or base64, and a collection's element where its type is one of those.
+        /// </para>
+        /// <para>
+        /// <b>Why a plan asks.</b> Calcite reads a value only for the rows that reach the expression, and
+        /// a row a filter in process drops reaches nothing. A column the service projects is read for
+        /// every row it sends, so a reading that can refuse belongs beneath such a filter only where the
+        /// filter reads it anyway — see <see cref="Rel.Convert.CosmosProjectResidualRule"/>. Text that is
+        /// not UTF-8 is refused by every reading alike, the document column's included, so no plan
+        /// escapes it by reading the document whole and it is not asked here.
+        /// </para>
+        /// <para>
+        /// A switch beside the reader's for the reason <see cref="CanRead(SqlTypeName?, SqlTypeName?)"/>
+        /// is, and held to it the same way: <c>EveryTypeAgreesWithWhatCanRefuseSays</c> reads values of
+        /// each kind through <see cref="GetValue(JsonElement, SqlTypeName, SqlTypeName?)"/>. A type with
+        /// no reading refuses everything.
+        /// </para>
+        /// </remarks>
+        /// <param name="typeName">The SQL type the plan was built against.</param>
+        /// <param name="componentTypeName">The element type, where <paramref name="typeName"/> is a collection.</param>
+        /// <returns><c>true</c> where some value of the kind the reading takes is refused.</returns>
+        public static bool CanRefuse(SqlTypeName? typeName, SqlTypeName? componentTypeName = null)
+        {
+            if (CanRead(typeName, componentTypeName) == false)
+                return true;
+
+            return typeName?.name() switch
+            {
+                nameof(SqlTypeName.TINYINT) or nameof(SqlTypeName.SMALLINT) or nameof(SqlTypeName.INTEGER) or nameof(SqlTypeName.BIGINT) => true,
+                nameof(SqlTypeName.DATE) or nameof(SqlTypeName.TIME) or nameof(SqlTypeName.TIMESTAMP) or nameof(SqlTypeName.TIMESTAMP_TZ) => true,
+                nameof(SqlTypeName.UUID) or nameof(SqlTypeName.GEOMETRY) or nameof(SqlTypeName.BINARY) or nameof(SqlTypeName.VARBINARY) => true,
+                nameof(SqlTypeName.ARRAY) or nameof(SqlTypeName.MULTISET) => componentTypeName is not null && CanRefuse(componentTypeName),
+                _ => false,
+            };
+        }
+
+        /// <inheritdoc cref="CanRefuse(SqlTypeName?, SqlTypeName?)" />
+        /// <param name="type">The column's type, whose element type is read off it.</param>
+        public static bool CanRefuse(org.apache.calcite.rel.type.RelDataType? type) =>
+            type is null || CanRefuse(type.getSqlTypeName(), ComponentTypeNameOf(type));
+
+        /// <summary>
         /// Returns the element type of a collection type, or <c>null</c> where the type is not one.
         /// </summary>
         /// <remarks>

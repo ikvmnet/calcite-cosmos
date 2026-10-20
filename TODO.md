@@ -2456,6 +2456,24 @@ across documents* and *A join of a container to itself* is the record.
   past a bound that was 2^63 itself and then saturating. It refuses now, as Calcite does in process. The
   emulator's `9223372036854775800` is valid int64 text, which no reader can tell from a stored integer;
   that one stays the emulator's.
+- **Whether a reading can refuse is asked by its type alone** — *small; it decides how often a filter in
+  process reads whole documents.* A typed reading that can refuse a value (`CosmosJson.CanRefuse`: an
+  integral width, a date or time, a UUID, GeoJSON, base64) is no longer moved beneath a filter that stays in
+  process, since there it was read for rows the filter drops and failed the statement where Calcite answers.
+  The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
+  (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
+  did before #210. A path the schema declares an integer within the width's bounds, or a `date-time`
+  string, cannot be refused, and could move. That is a fact about documents, so the question belongs to
+  the theory rather than to a second list in C#.
+- **A refusing reading under a branch Calcite does not take** — *small, a failure where Calcite answers;
+  found beside the fix above, and not yet fixed.* `CosmosProjectSplitRule` pushes the sub-expressions of a
+  projection it cannot push whole, and each is read for every row the service sends. Calcite computes a
+  `CASE` branch only where its condition holds, so
+  `CASE WHEN LOWER(JSON_VALUE(c."DOC", '$.e')) = 'x' THEN JSON_VALUE(c."DOC", '$.w' RETURNING BIGINT) END`
+  sends `(IS_NUMBER(c.w) ? c.w : null)` as a column, planned on 2026-10-20, and a 1E+19 at `w` would fail
+  the statement where the condition is false and Calcite answers null. `COALESCE`'s later operands, and the
+  right side of an `AND` or `OR` Calcite short-circuits, are the same question. The fix is the one above:
+  such a fragment, where a branch guards it and its reading can refuse, is not pushed.
 
 ---
 

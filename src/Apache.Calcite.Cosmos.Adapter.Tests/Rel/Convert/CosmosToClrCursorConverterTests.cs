@@ -1317,6 +1317,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             plan.Should().Contain("b=[JSON_VALUE($0, '$.data.name')]", plan);
         }
 
+        /// <summary>
+        /// Not a projection with a reading that can refuse a value: beneath the conjunct it is read for
+        /// rows the conjunct drops, where Calcite never reads them.
+        /// </summary>
+        /// <remarks>
+        /// A stored 1E+19 read as a <c>BIGINT</c> is refused, and over a document the conjunct drops the
+        /// statement failed where Calcite answers. A <c>DOUBLE</c> refuses no number, and still moves.
+        /// </remarks>
+        [Fact]
+        public void ShouldNotPushAReadingThatCanRefuseUnderAResidualFilter()
+        {
+            const string Residual = "WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park' AND CAST(JSON_VALUE(c.\"DOC\", '$.data.ref') AS UUID) = UUID'3a900000-0000-4000-8000-000000000001'";
+
+            var refusing = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\", JSON_VALUE(c.\"DOC\", '$.data.count' RETURNING BIGINT) AS \"n\" FROM products AS c " + Residual));
+            var total = RelOptUtil.toString(PlanToClrAsAHostDoes(
+                "SELECT JSON_VALUE(c.\"DOC\", '$.data.name') AS \"b\", JSON_VALUE(c.\"DOC\", '$.data.count' RETURNING DOUBLE) AS \"n\" FROM products AS c " + Residual));
+
+            refusing.Should().NotContain("CosmosProject", "the BIGINT is read above the conjunct, by Calcite: " + refusing);
+            refusing.Should().Contain("ClrCursorProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')])", refusing);
+            refusing.Should().Contain("CosmosFilter", "what renders of the filter still reaches the service: " + refusing);
+
+            total.Should().Contain("CosmosProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')]", "the DOUBLE moves beneath: " + total);
+        }
+
         // ── What a point read can read ────────────────────────────────────────────
 
         /// <remarks>

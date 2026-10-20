@@ -969,6 +969,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE '%KES'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.label')) LIKE '%3%'", false),
             ("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM typed AS c) AS p WHERE UPPER(p.\"Label\") LIKE '%IKE%'", false),
+
+            // A reading that can refuse a value, under a filter that stays in process: LOWER over a
+            // name nothing proves ASCII. Calcite reads big and price for "Exact" alone; beneath the
+            // filter they were read for every document, and "Huge"'s 1e30 as a BIGINT and
+            // "Fractional"'s 30.7 as an INTEGER failed the statement.
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.big' RETURNING BIGINT) AS \"big\" FROM typed AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.name')) = 'exact'", false),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) AS \"price\" FROM typed AS c WHERE LOWER(JSON_VALUE(c.\"DOC\", '$.name')) = 'exact'", false),
             ("SELECT c.\"id\" FROM typed AS c WHERE UPPER(c.\"$.category\") LIKE '%A%'", false),
 
             // Projections.

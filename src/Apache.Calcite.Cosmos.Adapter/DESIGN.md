@@ -6432,6 +6432,17 @@ narrow on purpose, and each limit was measured:
 - **It declines where the document itself would have to be carried.** That saves nothing, and
   carrying it looped: the carried reference was pushed as a column on the next firing and carried
   again beside it.
+- **It declines a projection with a reading that can refuse a value.** The two commute in what they
+  answer, not in what they raise. Beneath the filter, the projection is read for every row the service
+  sends, and Calcite computes it only for the rows the filter keeps. So a value the reader refuses
+  (2^63 or 42.5 as a `BIGINT`, text that is no date) failed the statement over a row the filter would
+  drop, where Calcite answers, which the error refinement order never allows. The ORDER BY yardstick
+  found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does,
+  `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`
+  says which typed readings can refuse, beside the reader's switch, and a test holds the two together.
+  A projection holding one stays above, and the statement selects the document. The filter's own
+  paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
+  path declared within bounds pays too (`TODO.md`, section 7).
 
 The split, for its part, no longer weakens a filter over a projection. `FILTER_PROJECT_TRANSPOSE`
 gives that filter an equivalent beneath the projection, where its weakenings are derived against what

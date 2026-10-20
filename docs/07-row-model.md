@@ -161,7 +161,9 @@ a missing property give `NULL` under every one. So:
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
   that bends to the data would be a suggestion, not a type. So does an integer written outside the
   64-bit range under `BIGINT`: Azure stores 2^63 and beyond as a double, `9.223372036854776E+18`, which
-  no `BIGINT` holds. `RETURNING DOUBLE` reads it.
+  no `BIGINT` holds. `RETURNING DOUBLE` reads it. Only a row the select list is computed for fails. A
+  row the `WHERE` clause drops is not read as the type, even where part of that clause runs in process.
+  In that case the adapter reads those documents whole rather than having the service project the column.
 - Text that is not UTF-8, which Azure stores as a client wrote it, fails to read wherever a column
   carries it, `DOC` included, with a `CosmosMaterializationException` naming the column, the document
   and the bytes (Chapter 22).

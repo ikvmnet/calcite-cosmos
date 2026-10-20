@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
@@ -104,6 +105,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosJson.CanRead(SqlTypeName.MULTISET, SqlTypeName.INTERVAL_DAY).Should().BeFalse();
 
             CosmosJson.CanRead(SqlTypeName.ARRAY).Should().BeTrue("an element type nobody named is read by its own JSON type");
+        }
+
+        /// <summary>
+        /// <c>CanRefuse</c> says of every readable type what the reader does: whether some value of the
+        /// kind it reads is refused.
+        /// </summary>
+        /// <remarks>
+        /// A refusal of the kind — <c>"x"</c> read as an <c>INTEGER</c>, "Expected a JSON number" — is
+        /// not one: the service's guard sends such a value as null. A refusal of the value is the rest,
+        /// and the values tried are the ones each reading has a refusal for: 2^63 written whole, 1E+19
+        /// and 42.5 for the integral widths, text that is no date, UUID, GeoJSON or base64.
+        /// </remarks>
+        [Fact]
+        public void EveryTypeAgreesWithWhatCanRefuseSays()
+        {
+            string[] values =
+            [
+                "9223372036854775808", "1e19", "42.5", "1e308", "-0.0", "0",
+                "\"x\"", "\"!!\"", "\"\"", "\"2026-10-20\"", "\"12:00:00\"",
+                "true", "{}", "{\"type\":\"Point\"}", "[]", "[1.5]", "[\"x\"]",
+            ];
+
+            foreach (var type in (SqlTypeName[])SqlTypeName.values())
+            {
+                if (CosmosJson.CanRead(type) == false)
+                {
+                    CosmosJson.CanRefuse(type).Should().BeTrue("a type with no reading refuses everything: " + type.name());
+                    continue;
+                }
+
+                var refused = values.Where(json => RefusesTheValue(json, type, null)).ToList();
+                CosmosJson.CanRefuse(type).Should().Be(refused.Count > 0, $"for {type.name()}, which refused {string.Join(", ", refused)}");
+            }
+
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue();
+            RefusesTheValue("[1.5]", SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue("an element is read as its type");
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.VARCHAR).Should().BeFalse();
+            CosmosJson.CanRefuse(SqlTypeName.ARRAY).Should().BeFalse("an element type nobody named is read by its own JSON type");
+
+            static bool RefusesTheValue(string json, SqlTypeName type, SqlTypeName? component)
+            {
+                try
+                {
+                    CosmosJson.GetValue(Value(json), type, component);
+                    return false;
+                }
+                catch (CosmosMaterializationException e)
+                {
+                    return e.Message.StartsWith("Expected a", StringComparison.Ordinal) == false;
+                }
+            }
         }
 
         /// <remarks>

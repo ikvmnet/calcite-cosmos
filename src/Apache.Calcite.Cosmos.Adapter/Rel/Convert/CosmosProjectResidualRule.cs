@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 
+using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Facts;
@@ -43,6 +44,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// value the filter reads, and a pushed sub-expression is a value: the projection rule renders it
     /// to answer exactly what Calcite computes in process, which is what lets it be pushed at all. The
     /// filter then reads the same values from a column as it read from the document.
+    /// </para>
+    /// <para>
+    /// <b>Except where a value is refused.</b> They commute in what they answer, not in what they raise:
+    /// beneath the filter, the projection is read for every row the service sends, and Calcite computes
+    /// it only for the rows the filter keeps. A reading that can refuse a value —
+    /// <see cref="CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>: 2^63 or 42.5 as a
+    /// <c>BIGINT</c>, text that is no date — then failed the statement over a row the filter would have
+    /// dropped, where Calcite answers, which the error refinement order never allows. The ORDER BY
+    /// yardstick found it on a service that prints a stored 2^63 as <c>9.223372036854776E+18</c>, under
+    /// <c>LOWER</c> over a string nothing proves ASCII. So a projection holding such a reading stays
+    /// above, and the statement selects the document as it did before #210. The filter's own paths are
+    /// still carried: Calcite reads them for every row the filter tests.
     /// </para>
     /// <para>
     /// <b>Why it terminates.</b> The filter it produces sits over a projection, and a subtree that has
@@ -218,7 +231,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             {
                 var expression = (RexNode)projects.get(i);
 
-                if (translator.TryTranslateProjection(expression, out _, out _) == false)
+                if (translator.TryTranslateProjection(expression, out _, out var reading) == false)
+                    return false;
+
+                // Beneath the filter, a reading that can refuse a value would be asked of rows the filter
+                // drops, where Calcite never reads them. A bare reference is read by the scan either way.
+                if (expression is not RexInputRef && reading == CosmosReading.Typed && CosmosJson.CanRefuse(expression.getType()))
                     return false;
 
                 split.Pushable.Add(i);
