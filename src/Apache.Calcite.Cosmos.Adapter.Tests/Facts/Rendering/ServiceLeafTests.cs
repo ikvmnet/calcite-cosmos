@@ -153,6 +153,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var vector = ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, table, ValueSet<string>.Empty);
             At(vector, Emoji).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined, "by code point it is above, by unit below");
             At(vector, new PathCell.Strings(null, Emoji, ValueSet<string>.Empty, AllBands).Text).Should().Be(ServiceOutcomes.True | ServiceOutcomes.False | ServiceOutcomes.Undefined);
+
+            // What an order entry answers beside its comparators stands beside every cell it places.
+            var failing = ProbeRows.TableOf(new[] { CosmosAnswer.CodePoint, CosmosAnswer.Fails }.Select(a => Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, a))
+                .Concat(new[] { CosmosValueClass.Below, CosmosValueClass.Equal, CosmosValueClass.Above }.Select(side => Row(CosmosServiceTest.Less, CosmosValueClass.String, side, CosmosAnswer.True))));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, High), cells, failing, ValueSet<string>.Empty).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == (ServiceOutcomes.True | ServiceOutcomes.Fails));
         }
 
         /// <summary>A key the table misses is named among the rows, and answers everything where it is read.</summary>

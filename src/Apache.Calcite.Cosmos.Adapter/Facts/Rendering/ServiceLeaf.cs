@@ -43,16 +43,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             if (leaf.Members.Count > 0)
                 throw new ArgumentException("A leaf tests one path; a connective is evaluated from its parts.", nameof(leaf));
+            if (leaf.Path is { } own && own != cells.Path)
+                throw new ArgumentException("A leaf is evaluated on its own path's cells, and the partition rule hands no other.", nameof(cells));
 
             var rows = new HashSet<string>(StringComparer.Ordinal);
-            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, cells.Path, table, parted, rows), NonBoolean(leaf, cell))).ToList();
+            var outcomes = cells.Cells.Select(cell => new CellOutcome(Outcomes(leaf, cell, table, parted, rows), NonBoolean(leaf, cell))).ToList();
             return new OutcomeVector(cells, outcomes, ValueSet.From(rows));
         }
 
-        static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, string path, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
+        static ServiceOutcomes Outcomes(ServiceForm leaf, PathCell cell, ServiceTable table, ValueSet<string> parted, ISet<string> rows)
         {
-            // A kind the theory does not know, and a form of another path, say nothing of the cell.
-            if (ClassOf(cell) is not CosmosValueClass kind || leaf.Path != path)
+            // A kind the theory does not know says nothing of the cell.
+            if (ClassOf(cell) is not CosmosValueClass kind)
                 return ServiceOutcomes.Widest;
 
             switch (leaf.Kind)
@@ -81,9 +83,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 return ServiceOutcomes.Widest;
             }
 
+            // An entry that names no comparator orders nothing; what else it answers, a failure say, stands beside.
             rows.UnionWith(comparators.Evidence);
-            var outcomes = ServiceOutcomes.None;
-            foreach (var comparator in comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric))
+            var placing = comparators.Answers.Where(a => a is CosmosAnswer.CodePoint or CosmosAnswer.Utf16 or CosmosAnswer.Numeric).ToList();
+            if (placing.Count == 0)
+                return ServiceOutcomes.Widest;
+
+            var outcomes = comparators.Outcomes;
+            foreach (var comparator in placing)
             {
                 if (Place(cell, leaf.Literal!, comparator, parted) is not { } sides)
                     return ServiceOutcomes.Widest;
@@ -92,8 +99,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                     outcomes |= table.Outcomes(MeasuredKey.Of(leaf.Test, operand, side), rows);
             }
 
-            // An entry that names no comparator orders nothing.
-            return outcomes == ServiceOutcomes.None ? ServiceOutcomes.Widest : outcomes;
+            return outcomes;
         }
 
         static CosmosValueClass NonBoolean(ServiceForm leaf, PathCell cell) =>
