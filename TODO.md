@@ -2532,6 +2532,16 @@ across documents* and *A join of a container to itself* is the record.
   refutation two junctions deep is unproven. The first family's wrong answers need one.
 - **Only sibling properties are disjoint locations** — *small.* `$.a.b` and `$.c` lie apart in every document, but the
   `disjoint` rule derives it only for two properties of one parent, so a refutation across them is unproven.
+- **A text cast of a raw value is read as its rendering, and over a `VARIANT` it is null** — *medium, a wrong answer,
+  and it touches plans.* Over a promoted path's `VARIANT` column Calcite casts every boolean and number to `NULL`
+  (measured in process through `MaterialisedTable`: `true`, `false`, `42`, `2.5` all read `NULL`; `ANY` renders them).
+  `PredicateAtom`'s cast reading (`cast:VARCHAR:raw`, `Text` over structures) answers a boolean or a number as its
+  rendering, and so does the translator (`CosmosRexTranslator.IsDocumentValueType`: "Calcite's cast over either is the
+  value's own rendering"). Over a present boolean the facts graph decides `NOT (CAST(raw(flag) AS VARCHAR) = 'x')`
+  `Always` and `CAST(raw(flag) AS VARCHAR) IS NULL` `Never`, where Calcite answers `UNKNOWN` and `TRUE`, and `WHERE NOT
+  (CAST("v" AS VARCHAR) = 'b')` keeps `"a"` alone in process where `NOT (c.v = "b")` keeps the booleans too. The reading
+  wants the union of the three columns — the rendering, `NULL` and `VARCHAR`'s raise — backed by a `Calcite.*` row, and
+  `IrEval`'s cast over a raw value should follow `RawAs`. The rendering graph cuts the cast nowhere until then.
 
 ---
 

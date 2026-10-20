@@ -247,6 +247,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A text cast of the raw value has no edges row, so the written form is never evaluated: over a <c>VARIANT</c>
+        /// Calcite casts a boolean to null, where the service compares it.
+        /// </summary>
+        [Fact]
+        public void ACastToTextOverARawValueIsNeverEvaluated()
+        {
+            var form = ServiceForm.NotOf(ServiceForm.CompareOf(CosmosServiceTest.Equal, Label, Of("b")));
+            var (equal, implies) = Check(form, PathValues.Anything, Not(Eq(Cast("VARCHAR", Raw(LabelPath)), "b")));
+            (equal.Kind, implies.Kind).Should().Be((RenderingVerdictKind.Unproven, RenderingVerdictKind.Unproven));
+        }
+
+        /// <summary>
         /// An ordering against U+E000 parts the two string orders where the path's strings may hold a surrogate, and only
         /// there: the literal holds the high band, so the import must hold the other.
         /// </summary>

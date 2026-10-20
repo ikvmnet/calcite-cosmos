@@ -5931,7 +5931,9 @@ a conjunct in a graph that holds the vocabulary alone.
 **S is a frozen theory and a bundle per statement round.** `RenderingTheory` loads the measured rows one batch per
 axiom, so a second row for one key and target that answers otherwise is refused whole and named, and then the host rows:
 the sets each target serves, what an answer means, the agreement's boxes, the 225 classes they range over, and each
-reader's edges. Its rules settle the rows and derive the classes each box allows and refutes; then it freezes, and every
+reader's edges. A reader with no edges row is cut nowhere, so an atom it reads is never evaluated: text and raw have
+one, and a text cast of the raw value has none, since over a `VARIANT` Calcite casts all but a string to null where
+its cells, modelled on the rendering, say otherwise (`TODO.md`). Its rules settle the rows and derive the classes each box allows and refutes; then it freezes, and every
 bundle is a child of it. A `RenderingBundle` holds one round's conjuncts as the shared vocabulary's terms, each path's
 import written once before the run, and the forms claimed for the conjuncts; it is run once, read, and disposed.
 
