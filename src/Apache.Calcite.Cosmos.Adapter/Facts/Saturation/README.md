@@ -323,7 +323,9 @@ generation's graph the first time the oracle asks, in the generations the declar
 run only in the oracle's schedules, so a query context the planner opens for itself pays nothing for them.
 `DESIGN.md`, under *Predicates as facts* and the sections after it, is the record.
 
-**Vocabulary.** Two sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute.
+**Vocabulary.** Two sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute. The
+terms, `point`, `reads`, `atom` and the analysis are `PredicateVocabulary`'s (the paths `PathVocabulary`'s), which the
+rendering graph defines too, and `PredicateWriter` writes them.
 
 | term | means |
 | --- | --- |

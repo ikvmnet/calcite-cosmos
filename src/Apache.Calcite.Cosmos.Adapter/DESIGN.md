@@ -5908,6 +5908,24 @@ array. The primitives' tests hold them to answering nothing without a row, never
 where a literal parts them, a failure through every connective and a bare value's own keys; a table to equality by
 content, and the form's helpers to each other. Plants: a table equal by size, and a `NOT` that drops a failure.
 
+### One vocabulary for both graphs
+
+**F and S read one conjunct as the same term, because they define it from the same code.** `PathVocabulary` holds the
+`Path` sort and its four constructors; `PredicateVocabulary` the `Val` and `Pred` sorts, the IR's fourteen constructors,
+`reads`, `atom` and `point`, and the `analyse` ruleset's nine rules. Each graph defines both, and `PredicateWriter` writes
+the loader's IR into them, a literal's `point` always beside its atom. `JsonRules` and `PredicateRules` forward to them,
+so the facts graph's callers read them where they did; what `PredicateRules` keeps — `possible`, `holds`, `chosen`,
+`arms`, `arm` and the two later rulesets — is F's alone.
+
+**A junction's arms are the caller's.** The writer hands each junction, with its arms flattened, to a callback: F's
+numbers them for its split over arms, as it did, and S's will record each one for pairing. A hidden discriminator is the
+theory's and no path, so `JsonPathSpec.ToTerm(PathVocabulary)`, the overload a graph without the theory writes paths
+with, refuses one.
+
+**What holds it.** The refactor moves where `point`, `reads` and `atom` are defined, ahead of F's own tables; the plan
+digests at the parent and at the commit are byte-equal on both frameworks. `PredicateVocabularyTests` writes and analyses
+a conjunct in a graph that holds the vocabulary alone.
+
 ---
 
 ## Differential testing
