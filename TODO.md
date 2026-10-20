@@ -2483,6 +2483,9 @@ across documents* and *A join of a container to itself* is the record.
   instead of the statement's projection once produced a null reference inside the join's result
   selector, and which access produced it was never established. Worth knowing whether a malformed
   service response fails loudly or quietly.
+- **The plan digests leave out the parameterised statements** — *small.* `WriteDigests` plans what the rendering
+  check reads, and the check skips the differential's 33 statements with parameters whole, so a commit's "changes no
+  plan" is not compared over them. Planning them needs no values, and adding them is a line.
 
 ---
 

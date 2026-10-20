@@ -5771,6 +5771,36 @@ no request units at all. Its decisions:
 
 ---
 
+## The rendering graph in check mode
+
+The rendering graph, S, is a second e-graph that proves a written Cosmos form keeps the rows Calcite keeps for the
+predicate it was written from. Its first stage checks the SQL today's translator writes, in CI and with no service, and
+changes nothing the planner decides; every commit that says so is held to it by the plan digests.
+
+### Plan digests
+
+**"Changes no plan" is compared with the parent, not argued.** `Tests/Planning/PlanDigests.cs` plans every statement
+the check reads, and executes none: the planner corpus, the differential's 465 statements without parameters, the
+statements of the partition run's first 200 predicates (1,000 where `COSMOS_PARTITION_GATE=1`), and the definedness
+probe, whose operator the differential's validator does not know. `PlanDigestTests.WriteDigests` writes a line a
+statement, at the parent and at the commit, and the two files must be byte-equal. Each input is planned as the test
+that runs it plans it, off that test's own lists, so a statement added there is digested too.
+
+**A digest holds what a plan can change without changing its text.** Beside the plan's text: each statement it builds,
+with its parameters' values and where it is sent, since a partition key read under other facts routes a statement
+whose text is the same; and each pushed conjunct's IR digest and the round that admitted it. A conjunct admitted a round
+later renders from other facts, and often into the same SQL.
+
+**The round is read off the statement the implementor rendered from**, looked up by the condition and the binding the
+implementor holds once it has implemented the filter's input. A binding walked off the plan (`TryBindOutput`) leaves
+an array's element unbound where the implementor binds it to its alias, and read the filter over an `UNNEST` as an
+opaque conjunct no round admits: another statement than the one that was sent.
+
+**Two files compare only if planning is deterministic**, and the oracle remembers statements across a process.
+`TheDigestsAreDeterministic` plans the corpus twice in one process, per pull request, and requires the same lines.
+
+---
+
 ## Differential testing
 
 Every pushdown is checked against an oracle rather than an expected string: the same SQL is planned

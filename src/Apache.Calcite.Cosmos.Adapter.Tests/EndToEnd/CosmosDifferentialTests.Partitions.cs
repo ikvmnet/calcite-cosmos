@@ -60,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Each costs four statements: the three partitions pushed, and Calcite's reading of the
         /// predicate in process. See the test's remarks for what a run of each size costs.
         /// </remarks>
-        static int PartitionedPredicates => Environment.GetEnvironmentVariable("COSMOS_PARTITION_GATE") == "1"
+        internal static int PartitionedPredicates => Environment.GetEnvironmentVariable("COSMOS_PARTITION_GATE") == "1"
             ? GatePartitionedPredicates
             : DefaultPartitionedPredicates;
 
@@ -380,6 +380,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// The first <paramref name="count"/> predicates the generator draws from <see cref="PartitionSeed"/>, alternating
+        /// between the two containers.
+        /// </summary>
+        static List<(Vocabulary Vocabulary, Predicate Predicate)> PartitionedPredicatesOf(int count)
+        {
+            var typed = TypedVocabulary();
+            var products = ProductsVocabulary();
+
+            var generator = new PredicateGenerator(new Random(PartitionSeed));
+            return Enumerable.Range(0, count)
+                .Select(i => i % 2 == 0 ? typed : products)
+                .Select(v => (v, generator.Next(v)))
+                .ToList();
+        }
+
+        /// <summary>
+        /// The three statements that partition a container by a predicate, each with the truth value of the rows it keeps.
+        /// </summary>
+        static (string Name, string Sql, string Truth)[] PartitionsOf(Vocabulary v, Predicate predicate)
+        {
+            var where = $"SELECT c.\"id\" FROM {v.Table} AS c WHERE ";
+            return
+            [
+                ("φ", where + predicate.Sql, "true"),
+                ("NOT φ", where + $"NOT ({predicate.Sql})", "false"),
+                ("φ IS NULL", where + $"({predicate.Sql}) IS NULL", "null"),
+            ];
+        }
+
+        /// <summary>
         /// Runs and judges predicates, asking each statement of each once however often it comes up —
         /// the generator repeats itself, and narrowing a failure asks again of the parts.
         /// </summary>
@@ -415,13 +445,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             async Task<Partitioning> JudgeCore(Vocabulary v, Predicate predicate)
             {
-                var where = $"SELECT c.\"id\" FROM {v.Table} AS c WHERE ";
-                var partitions = new (string Name, string Sql, string Truth)[]
-                {
-                    ("φ", where + predicate.Sql, "true"),
-                    ("NOT φ", where + $"NOT ({predicate.Sql})", "false"),
-                    ("φ IS NULL", where + $"({predicate.Sql}) IS NULL", "null"),
-                };
+                var partitions = PartitionsOf(v, predicate);
 
                 // Calcite's answer for every row at once: the predicate as a column, in process. One
                 // predicate a statement: a projection of many costs more than they do apart, measured at
@@ -517,14 +541,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             if (_container is null)
                 Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
 
-            var typed = TypedVocabulary();
-            var products = ProductsVocabulary();
-
-            var generator = new PredicateGenerator(new Random(PartitionSeed));
-            var predicates = Enumerable.Range(0, PartitionedPredicates)
-                .Select(i => i % 2 == 0 ? typed : products)
-                .Select(v => (Vocabulary: v, Predicate: generator.Next(v)))
-                .ToList();
+            var predicates = PartitionedPredicatesOf(PartitionedPredicates);
 
             var judge = new PartitionJudge();
             var judged = new Partitioning[predicates.Count];
