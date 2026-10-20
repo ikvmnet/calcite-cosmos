@@ -40,8 +40,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly string[] HostAndTheory =
         [
             "outcome", "cites", "serves", "means", "answers", "measured", "evidence", "final", "table", "class", "raiseonly", "allowing",
-            "refuting", "tolerated", "allowed", "allowedcites", "refutes", "edges", "parting", "version", "spelling", "arm", "under", "imported",
-            "importedchars", "candidate", "member",
+            "refuting", "tolerated", "allowed", "allowedcites", "refutes", "edges", "parting", "kleene", "expected", "matched", "licensed",
+            "identity", "opposite", "connectiveof", "version", "spelling", "arm", "under", "imported", "importedchars",
         ];
 
         static readonly string[] Universals = ["set-subset", "truths-within", "outcomes-within"];
@@ -80,6 +80,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             });
 
             Violations(theory).Should().Equal("gate/planted: every class seen is allowed: set-subset reads seen, which grows in its stratum");
+        }
+
+        /// <summary>
+        /// A stratum narrows a set of character classes and reads it as the superset of <c>set-subset</c>, so the universal
+        /// may hold of a set that later loses a member.
+        /// </summary>
+        [Fact]
+        public void AUniversalOverATableItsOwnStratumNarrowsIsRefused()
+        {
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var chars = theory.Graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
+            theory.Graph.Rulesets.Single(r => r.Name == "cuts").DefineRule("planted: a path's classes narrow", r =>
+            {
+                var (p, k) = r.Vars<JPath, ValueSet<string>>("p", "k");
+                r.When(k.Is(theory.ImportedChars.Of(p)));
+                r.Then(chars.Of(p).Is(k));
+            });
+            theory.Graph.Rulesets.Single(r => r.Name == "parted").DefineRule("planted: a literal within the classes parts nothing", r =>
+            {
+                var (p, k, x) = r.Vars<JPath, ValueSet<string>, ValueSet<string>>("p", "k", "x");
+                r.When(k.Is(chars.Of(p)), x.Is(theory.PartedLiterals.Of(p)));
+                r.Where(Primitives.IsSubsetOf<string>().Of(x, k));
+                r.Then(theory.PartedLiterals.Of(p).Is(x));
+            });
+
+            Violations(theory).Should().Contain("parted/planted: a literal within the classes parts nothing: set-subset reads chars, which narrows in its stratum");
+        }
+
+        /// <summary>A filter written as a lambda over an agreement is one the order test cannot read, and is refused.</summary>
+        [Fact]
+        public void ALambdaFilterIsRefused()
+        {
+            var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
+            var proven = theory.Graph.DefineRelation<Pred>("proven");
+            theory.Graph.Rulesets.Single(r => r.Name == "compose").DefineRule("planted: an agreement over some cell", r =>
+            {
+                var (e, pos, f, v) = r.Vars<Pred, RenderPosition, ServiceForm, Verdict>("e", "pos", "f", "v");
+                var p = r.Var<Proof>("p");
+                r.When(p.Is(theory.Agrees.Of(e, pos, f, v)));
+                r.Where(p, x => x.Cells > 0);
+                r.Then(proven.Of(e));
+            });
+
+            Violations(theory).Should().Equal("compose/planted: an agreement over some cell: a filter is a lambda");
         }
 
         static List<string> Violations(RenderingTheory theory)

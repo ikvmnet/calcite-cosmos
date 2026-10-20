@@ -12,9 +12,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The probe's rows (<c>probes/rcore/Program.cs</c>), completed for the cells and connectives the first checks read:
-    /// the kinds the probe lacks, <c>NOT</c>, <c>AND</c> and <c>OR</c> over the truths and the six kinds that are no
-    /// boolean, the strings' comparator, and <c>!=</c> within a type. Each is written for the emulator and Azure, so that
-    /// both service sets settle it, and the connectives for Calcite too. Test data, until the registry replaces it.
+    /// the kinds the probe lacks, <c>IS_DEFINED</c>, <c>NOT</c>, <c>AND</c> and <c>OR</c> over the truths and the six
+    /// kinds that are no boolean, the strings' comparator, and <c>=</c> and <c>!=</c> within a type. Each is written for
+    /// the emulator and Azure, so that both service sets settle it, and the connectives for Calcite too. Test data, until
+    /// the registry replaces it.
     /// </summary>
     internal static class ProbeRows
     {
@@ -47,6 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             {
                 Service("IsPrimitive", CosmosServiceTest.IsPrimitive, None, kind, kind is Absent or Object or Array ? CosmosAnswer.False : CosmosAnswer.True);
                 Service("IsNull", CosmosServiceTest.IsNull, None, kind, kind == Null ? CosmosAnswer.True : CosmosAnswer.False);
+                Service("IsDefined", CosmosServiceTest.IsDefined, None, kind, kind == Absent ? CosmosAnswer.False : CosmosAnswer.True);
                 if (kind == String)
                     continue;
 
@@ -56,7 +58,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             Service("StringOrderIsCodePoint", CosmosServiceTest.Order, String, None, CosmosAnswer.CodePoint);
             foreach (var side in new[] { Below, Equal, Above })
+            {
+                Service("StringOrderIsCodePoint", CosmosServiceTest.Equal, String, side, side == Equal ? CosmosAnswer.True : CosmosAnswer.False);
                 Service("StringOrderIsCodePoint", CosmosServiceTest.NotEqual, String, side, side == Equal ? CosmosAnswer.False : CosmosAnswer.True);
+            }
 
             foreach (var x in Operands)
             {

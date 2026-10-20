@@ -2524,6 +2524,14 @@ across documents* and *A join of a container to itself* is the record.
 - **A double edge no decimal holds is not cut** — *small.* `CutPoints` cuts at a numeric literal's double only where a
   decimal holds its exact value, which 0.1's needs 55 places for. Whether the double slots need a cut there, spelled
   approximately, is for the numbers' cells to decide.
+- **Nothing licenses `Range`** — *small.* `KleeneTables` holds no expectation for `Range`, so a junction of two string
+  orderings of one path, one of whose literals parts the orders where the path may hold the other band, is unproven
+  under every set. Its expected keys belong beside N8's rows, which say which targets answer two such bounds pointwise.
+- **A refutation over two paths composes no further** — *small.* A junction refuted through its sibling's identity sets
+  two paths and names one, so composing it again would need each path it sets to lie apart from the next sibling's; a
+  refutation two junctions deep is unproven. The first family's wrong answers need one.
+- **Only sibling properties are disjoint locations** — *small.* `$.a.b` and `$.c` lie apart in every document, but the
+  `disjoint` rule derives it only for two properties of one parent, so a refutation across them is unproven.
 
 ---
 

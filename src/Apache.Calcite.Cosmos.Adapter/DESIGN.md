@@ -5976,6 +5976,48 @@ answers twice, a box that both allows and refutes, a form over another path — 
 their serial answers (T8). `RenderingTheoryTests` holds the boxes to their algebra and their definition, the targets'
 merge, and a contradicting row (T6); `RenderingOrderTests` holds the strata.
 
+### Composition through AND, OR and NOT
+
+**A connective composes in a set where its measured rows are Kleene's on every key Kleene's logic expects there.**
+`KleeneTables` writes what each target must answer: the service's targets over the three truths and the six classes of
+a value that is no boolean, which the service reads as unknown inside a connective; Calcite over the truths alone, since
+its connectives take booleans. `expected` gathers a set's keys from the targets it serves, `matched` those it settled as
+Kleene's, and `licence`, a stratum later, licenses a connective whose expected keys all matched. A key missing, answered
+apart by two targets, or not Kleene's leaves the connective unlicensed, and every step through it unproven. Each step
+reads the set's licence and Calcite's: `T(a∧b) = T(a) ∩ T(b)`, `F(a∧b) = F(a) ∪ F(b)`, their duals and `T(¬a) = F(a)`
+must hold on both sides. One expectation for every set, as first planned, would have asked Calcite for the six classes
+too, and licensed nothing under it.
+
+**Positions and pairings are derived.** A junction of the IR has a `junction` row from each arm; a negation's operand is
+a candidate for the form stripped of a `NOT` at the opposite position. The first arm is offered each member of the
+form, and the second the form without it, whose members a rule states where three or more remain; so every pairing is
+tried, and the gate, not C#, says which holds. A junction agrees where both sides agree on one verdict and its form joins
+theirs by its own connective, in either order. A node may hold candidates from two parents, so the connective is read
+where the step is taken: an `OR` of the same members, claimed beside an `AND`, offers its sides the same candidates and
+must not compose. A written member that the IR merged is dropped once where its text matches, `AND` and `OR` being
+idempotent; where its text differs it is left over, unproven where it falls to the first arm, and proven only where the
+second arm, an atom, evaluates it with its own on its cells, which is a proof of what was written.
+
+**A refutation composes across locations a document sets apart.** A side refuted on a cell, beside a sibling that is
+the connective's identity on one of its own — `(T,t)` for `AND`, `(F,f)` for `OR` — refutes the junction on a document
+setting both; `disjoint` holds of two properties of one parent, never of an element against an index or a path against
+one beneath it. Only a refutation that sets one path composes so: one that already sets two names a single `Path`, and
+its sibling's could be the other, at another cell. Without that, `(kind = 'a' AND (label != 'bikes' OR kind = 'a'))`
+was refuted by a witness setting `kind` to `false` and to `'a'`, where both sides keep the documents whose `kind` is
+`'a'` and no others.
+
+**Two bounds that part the orders need `Range`.** Where two string orderings of one path stand under one junction, a
+literal of one holds a character class that parts the orders against one the import may hold, and the service may answer
+the pair as a range, which Azure answers empty (N8). The junction then composes only where the set licenses `Range`.
+`KleeneTables` holds no `Range` row yet, so nothing licenses it.
+
+**What holds it.** `RenderingComposeTests` proves the probe's T3 in both written orders, refutes the eight readable wrong
+answers of the first family as 4b65754 wrote them at a structure, P5 and P6 through a two-path witness, and holds each
+licence and pairing with plants: an `AND` row dropped, the non-boolean rows dropped, `Range` licensed under the emulator
+and not the portable set, a member that differs in text dropped as the aligner did, a refutation over one path, and a
+vacuous side. The order test reads the composition's rules as well, and refuses its two further plants: a superset that
+narrows in its stratum, and a lambda filter over an agreement.
+
 ---
 
 ## Differential testing

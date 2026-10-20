@@ -15,6 +15,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="Rows">The measured rows, one per key, target and axiom.</param>
     /// <param name="Serves">The targets each set holds a statement to.</param>
     /// <param name="Means">What each answer means to a <c>WHERE</c>.</param>
+    /// <param name="Kleene">What each target must answer on a connective's keys for a set to compose through it.</param>
+    /// <param name="Identity">The class of a cell on which a side leaves each junction to its sibling.</param>
     /// <param name="Allowing">The boxes a class must lie in for a verdict to hold.</param>
     /// <param name="Refuting">The boxes in which a class definitely refutes a verdict.</param>
     /// <param name="Tolerated">What an allowing box sets aside of Calcite's truths: its raise (decision 2).</param>
@@ -27,6 +29,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="Pair">Calcite's atom beside the service on each cell (<see cref="CellOutcomes.Of"/>).</param>
     internal sealed record RenderingDefinition(
         IReadOnlyList<MeasuredOutcome> Rows, IReadOnlyDictionary<RenderingSet, ValueSet<RenderingTarget>> Serves, AnswerMeanings Means,
+        IReadOnlyList<(RenderingTarget, MeasuredKey, CosmosAnswer)> Kleene, IReadOnlyDictionary<CosmosServiceTest, ValueSet<CellClass>> Identity,
         IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing, IReadOnlyList<(RenderPosition, Verdict, Box)> Refuting, Truths Tolerated,
         IReadOnlyDictionary<string, ReaderEdges> Edges, IReadOnlyList<(string, string)> Parting,
         Func<PredicateAtom, ServiceForm, ReaderEdges, ValueSet<CutPoint>> Cut,
@@ -37,8 +40,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     {
 
         /// <summary>
-        /// S as measured: the rows given, the sets as the targets serve them, and the agreement, edges and primitives as
-        /// written.
+        /// S as measured: the rows given, the sets as the targets serve them, and Kleene's logic, the agreement, edges and
+        /// primitives as written.
         /// </summary>
         public static RenderingDefinition Measured(IReadOnlyList<MeasuredOutcome> rows) => new(
             rows,
@@ -49,7 +52,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 [RenderingSet.Emulator] = ValueSet.Of(RenderingTarget.Emulator),
                 [RenderingSet.Calcite] = ValueSet.Of(RenderingTarget.Calcite),
             },
-            AnswerMeanings.Measured, AgreementRows.Allowing, AgreementRows.Refuting, Truths.Raises, ReaderEdgesTable.Rows,
+            AnswerMeanings.Measured, KleeneTables.Rows, KleeneTables.Identity, AgreementRows.Allowing, AgreementRows.Refuting, Truths.Raises,
+            ReaderEdgesTable.Rows,
             // U+E000 and above sorts after a surrogate by UTF-16 unit and before the character it writes by code point.
             [(JsonValues.SurrogateBand, JsonValues.HighBand), (JsonValues.HighBand, JsonValues.SurrogateBand)],
             CutPoints.Of, PathCell.Split, ServiceLeaf.On, ServiceCompound.On, CellOutcomes.Of);
