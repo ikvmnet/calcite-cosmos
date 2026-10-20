@@ -6287,6 +6287,44 @@ outcome lands, and a verdict moves only where a row answers otherwise than the p
 **What holds it.** `CosmosAxiomsTests`: the reader on a planted row, S defined from the registry, and a test for each
 declaration above.
 
+### The rows' vectors, held by their tests
+
+**The `IS_*` family, the comparisons, the connectives and the order's two exact rows carry vectors, and each pinning
+test is `Holds` of its row.** `CosmosOutcomeHarness` writes the catalogue's witnesses (`CosmosOutcomeWitnesses`) under a
+partition of their own and reads each cell off three statements: a witness `WHERE` keeps is true, one `WHERE NOT` keeps
+is false, one neither keeps is undefined, and a projection that is a boolean or nothing says the same. An order is the
+one comparator that sorts its witnesses as `ORDER BY` does. Each declared cell's witnesses must answer alike, and as one
+target the outcome names declared; the harness never asks which endpoint it reached, and appends every cell it observed,
+the owed ones too, to `TestResults/measurements/runs.tsv`, which is what a run record is made of.
+
+**The catalogue has one literal per class of operand,** so a cell's witnesses are a function of the operand and the
+cell: U+E000, where the two string orders part; 2^53 + 1, where a double and an int64 part; `true`. It is bound as a
+parameter, as the translator binds one, where the type tests wrote theirs inline; both images answer the two alike. The
+kinds are witnessed as the measurements that first ran them were, a string spelling a boolean and a number that might
+read as one beside the plain ones, and widened where a type might matter: `false` and a fraction, and an object and an
+array for the boolean rows.
+
+**An outcome claims what its targets ran.** The witnesses the probe account ran on 2026-10-16 claim both targets with
+the answer its record holds; the widened ones claim the emulator. A cell the record holds as `NotKept`, a `WHERE` with no
+`WHERE NOT`, is that on Azure beside the emulator's definite answer, so the portable set reads false or undefined where
+the emulator set reads the one measured — except where another row's record answers the key on Azure finer, as the
+projected `NOT c.v` does for `NOT` over a path: `outcome` is lattice-free, and a `NotKept` beside a `False` would refuse
+S's load. Two such answers are no divergence, so a declared divergence is two answers that mean nothing in common.
+
+**The emulator's string comparator is not claimed.** It stores U+0000 as U+FDD0 followed by `0` and orders and compares
+what it stores, a parameter as written: measured on both images, U+0000 sorts above U+E000 and is unequal to itself sent
+as a parameter. No `CosmosAnswer` names that comparator, and the side a string holding U+0000 lies on hangs on the
+target, so `Order/String` claims Azure alone, its witnesses hold no U+0000, and the order's pinning test measures U+0000
+apart, requiring one of the two answers. So the registry settles no comparison within strings under the emulator set or
+the portable set, which read it as unknown; the rendering tests' fixture keeps code point standing in for the emulator,
+as test data, so their verdicts are unmoved.
+
+**A composite is checked by composing its atoms.** `CosmosAxiomsTests` reads each formula by a copy of the reader's
+grammar and evaluates it over each witness through `ServiceLeaf` and `ServiceCompound`: on every target it names the
+composition holds the measured answer, and on the emulator, whose atoms are all measured definite, is it; Azure's
+`NotKept` atoms compose wider. The probe's Kleene rows stand for the connectives no row measures yet. The guarded
+accessor, `(IS_PRIMITIVE(c.v) ? c.v : null)`, answers values, not truths, so it stays its test's own assertion.
+
 ---
 
 ## Differential testing

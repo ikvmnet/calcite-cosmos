@@ -18,19 +18,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
     /// <summary>
     /// The rendering tests' fixture: the registry's rows as S reads them (<see cref="CosmosAxiomRows"/>), beside the probe's
-    /// (<c>probes/rcore/Program.cs</c>), completed for the cells and connectives the first checks read, each written for
-    /// the emulator and Azure so that both service sets settle it; the theory defined from them, once; the probe's label
-    /// forms; and a bundle that checks one claim. The probe's rows are test data, each to go as the registry answers its
-    /// key.
+    /// (<c>probes/rcore/Program.cs</c>) for the keys and targets the registry leaves to them, so that both service sets
+    /// settle what the first checks read; the theory defined from them, once; the probe's label forms; and a bundle that
+    /// checks one claim. The probe's rows are test data, each to go as the registry answers its key.
     /// </summary>
     internal static class ProbeRows
     {
 
-        static readonly CosmosValueClass[] Kinds = [Absent, Null, True, False, Number, String, Object, Array];
-
         public static IReadOnlyList<MeasuredOutcome> Rows { get; } = Build();
 
-        /// <summary>The table a service set settles the rows into: one entry a key, both targets agreeing.</summary>
+        /// <summary>The table the service sets settle the rows into: one entry a key, holding what either target answered.</summary>
         public static ServiceTable Table { get; } = TableOf(Rows.Where(row => row.Target != RenderingTarget.Calcite));
 
         public static RenderingDefinition Measured { get; } = RenderingDefinition.Measured(Rows);
@@ -84,33 +81,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             void Add(MeasuredOutcome row) =>
                 rows.Add(registry.Contains((row.Key, row.Target)) ? throw new System.InvalidOperationException($"The registry answers {row.Key} on {row.Target}: drop the probe's row.") : row);
 
-            void Service(string id, CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer)
+            void Service(string id, CosmosServiceTest test, CosmosValueClass operand, CosmosValueClass cell, CosmosAnswer answer, params RenderingTarget[] targets)
             {
-                Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Emulator, answer));
-                Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), RenderingTarget.Azure, answer));
+                foreach (var target in targets)
+                    Add(new MeasuredOutcome("Service." + id, MeasuredKey.Of(test, operand, cell), target, answer));
             }
 
-            foreach (var kind in Kinds)
-            {
-                Service("IsPrimitive", CosmosServiceTest.IsPrimitive, None, kind, kind is Absent or Object or Array ? CosmosAnswer.False : CosmosAnswer.True);
-                Service("IsNull", CosmosServiceTest.IsNull, None, kind, kind == Null ? CosmosAnswer.True : CosmosAnswer.False);
-                Service("IsDefined", CosmosServiceTest.IsDefined, None, kind, kind == Absent ? CosmosAnswer.False : CosmosAnswer.True);
-                if (kind == String)
-                    continue;
+            // On Azure, what the emulator alone has measured over false.
+            Service("IsPrimitive", CosmosServiceTest.IsPrimitive, None, False, CosmosAnswer.True, RenderingTarget.Azure);
+            Service("IsNull", CosmosServiceTest.IsNull, None, False, CosmosAnswer.False, RenderingTarget.Azure);
+            Service("IsDefined", CosmosServiceTest.IsDefined, None, False, CosmosAnswer.True, RenderingTarget.Azure);
+            Service("EqualityAcrossTypesIsFalse", CosmosServiceTest.Equal, String, False, CosmosAnswer.False, RenderingTarget.Azure);
+            Service("InequalityOverNullIsTrue", CosmosServiceTest.NotEqual, String, False, CosmosAnswer.True, RenderingTarget.Azure);
 
-                Service("EqualityAcrossTypesIsFalse", CosmosServiceTest.Equal, String, kind, kind == Absent ? CosmosAnswer.Undefined : CosmosAnswer.False);
-                Service("InequalityOverNullIsTrue", CosmosServiceTest.NotEqual, String, kind, kind == Absent ? CosmosAnswer.Undefined : CosmosAnswer.True);
+            // A string either side of the literal under = and !=, which no row measures; and code point standing in for the
+            // emulator's comparator, which no answer names (it orders U+0000 as it stores it).
+            foreach (var side in new[] { Below, Above })
+            {
+                Service("StringOrderIsCodePoint", CosmosServiceTest.Equal, String, side, CosmosAnswer.False, RenderingTarget.Emulator, RenderingTarget.Azure);
+                Service("StringOrderIsCodePoint", CosmosServiceTest.NotEqual, String, side, CosmosAnswer.True, RenderingTarget.Emulator, RenderingTarget.Azure);
             }
 
-            Service("StringOrderIsCodePoint", CosmosServiceTest.Order, String, None, CosmosAnswer.CodePoint);
-            foreach (var side in new[] { Below, Equal, Above })
-            {
-                Service("StringOrderIsCodePoint", CosmosServiceTest.Equal, String, side, side == Equal ? CosmosAnswer.True : CosmosAnswer.False);
-                Service("StringOrderIsCodePoint", CosmosServiceTest.NotEqual, String, side, side == Equal ? CosmosAnswer.False : CosmosAnswer.True);
-            }
+            Service("StringOrderIsCodePoint", CosmosServiceTest.Order, String, None, CosmosAnswer.CodePoint, RenderingTarget.Emulator);
 
-            // The connectives are Kleene's expectations written as rows, not measurements, until c07–c09 measure them.
-            foreach (var (target, key, answer) in KleeneTables.Rows)
+            // The connectives are Kleene's expectations written as rows, not measurements, beside NOT over what a path holds,
+            // which is measured.
+            foreach (var (target, key, answer) in KleeneTables.Rows.Where(row => row.Item1 == RenderingTarget.Calcite || row.Item2.Test != CosmosServiceTest.Not || row.Item2.Cell == Undefined))
                 Add(new MeasuredOutcome(target == RenderingTarget.Calcite ? "Calcite.ConnectivesAreKleene"
                     : key.Test == CosmosServiceTest.Not ? "Service.NotOverUndefinedIsUndefined" : "Service.ConnectivesReadNonBooleansAsUnknown", key, target, answer));
 

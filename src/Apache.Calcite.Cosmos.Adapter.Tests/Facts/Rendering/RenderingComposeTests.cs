@@ -147,19 +147,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void WithoutTheNonBooleanRowsABareMemberDoesNotCompose()
         {
-            CosmosValueClass[] kinds = [CosmosValueClass.Absent, CosmosValueClass.Null, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Number,
-                CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array];
-            var bare = kinds.SelectMany(kind => new[] { RenderingTarget.Emulator, RenderingTarget.Azure }.Select(target => new MeasuredOutcome("Service.BarePathKeepsOnlyTrue",
-                MeasuredKey.Of(Op.Bare, CosmosValueClass.None, kind), target,
-                kind == CosmosValueClass.True ? CosmosAnswer.True : kind == CosmosValueClass.False ? CosmosAnswer.False : CosmosAnswer.Undefined)));
             static bool Boolean(CosmosValueClass x) => x is CosmosValueClass.None or CosmosValueClass.True or CosmosValueClass.False or CosmosValueClass.Undefined;
             var booleans = ProbeRows.Rows.Where(row => row.Key.Test is not (Op.And or Op.Or or Op.Not) || Boolean(row.Key.Operand) && Boolean(row.Key.Cell));
 
             var conjunct = And(Eq(Raw(FlagPath), true), Eq(Text(KindPath), "a"));
             var form = All(ServiceForm.BareOf(SqlValue.Spell(FlagPath)), KindIsA);
-            Check(conjunct, form, RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows, .. bare] })).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
+            Check(conjunct, form).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
-            var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans, .. bare] });
+            var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans] });
             theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEmpty("no connective is licensed");
             Check(conjunct, form, theory).Equal.Kind.Should().Be(RenderingVerdictKind.Unproven);
         }

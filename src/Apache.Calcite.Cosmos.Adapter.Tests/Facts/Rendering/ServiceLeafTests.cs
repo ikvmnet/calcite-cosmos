@@ -112,8 +112,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ServiceOutcomes.Widest.Should().HaveFlag(ServiceOutcomes.Fails);
 
             var strings = PathCell.Split(S, PathValues.OfKinds(ValueSet.Of(StringType)), AllBands, ValueSet.Of(new CutPoint(Of("bikes"), CutKind.Literal)));
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
-                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "the probe's rows hold no ordering");
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
+                .Should().OnlyContain(o => o.Outcomes == ServiceOutcomes.Widest, "no row measures <=");
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), strings, ProbeRows.Table, ValueSet<string>.Empty).Outcomes
                 .Should().NotContain(o => o.Outcomes.HasFlag(ServiceOutcomes.Fails));
         }
@@ -174,8 +174,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             At(vector, "null").Should().Be(ServiceOutcomes.Widest);
             At(vector, "absent").Should().Be(ServiceOutcomes.Undefined);
 
-            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.Less, S, Of("bikes")), cells, table, ValueSet<string>.Empty).Rows.Where(row => row.StartsWith("missing:"))
-                .Should().BeEquivalentTo(new[] { "Below", "Equal", "Above", "Absent", "Null", "True", "False", "Number", "Object", "Array" }.Select(cell => "missing:Less/String/" + cell));
+            ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.LessOrEqual, S, Of("bikes")), cells, table, ValueSet<string>.Empty).Rows.Where(row => row.StartsWith("missing:"))
+                .Should().BeEquivalentTo(new[] { "Below", "Equal", "Above", "Absent", "Null", "True", "False", "Number", "Object", "Array" }.Select(cell => "missing:LessOrEqual/String/" + cell));
             ServiceLeaf.On(ServiceForm.CompareOf(CosmosServiceTest.NotEqual, S, Of("bikes")), cells, Empty, ValueSet<string>.Empty).Rows.Should().Contain("missing:Order/String/None");
         }
 

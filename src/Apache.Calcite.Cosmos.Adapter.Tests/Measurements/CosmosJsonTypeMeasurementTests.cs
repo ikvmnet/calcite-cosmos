@@ -7,7 +7,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 
 using FluentAssertions;
 
@@ -43,14 +45,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// the value's rendering, and each is a row of <c>CosmosAxioms</c>.
     /// </para>
     /// <para>
-    /// <b>Read as a projection, so that undefined is visible.</b> A filter cannot tell undefined from
-    /// false: neither keeps the document. An object constructor omits a property whose value is
-    /// undefined, so <c>SELECT c.id, F(c.v) AS r</c> answers <c>true</c>, <c>false</c> or nothing, and
-    /// nothing is undefined.
+    /// <b>A row's outcomes are held by <see cref="CosmosOutcomeHarness"/>,</b> which tells undefined from
+    /// false by a <c>WHERE</c> and a <c>WHERE NOT</c>, neither of which keeps it, and by the projection: an
+    /// object constructor omits a property whose value is undefined, so <c>SELECT c.id, F(c.v) AS r</c>
+    /// answers <c>true</c>, <c>false</c> or nothing. What is no truth is read projected here.
     /// </para>
     /// <para>
-    /// Against whatever account the suite resolves — see <see cref="CosmosEmulator"/>. Measured on the
-    /// emulator; Azure is owed, and <c>TODO.md</c> says so.
+    /// Against whatever account the suite resolves — see <see cref="CosmosEmulator"/>. Each outcome
+    /// names the targets that ran it.
     /// </para>
     /// </remarks>
     public class CosmosJsonTypeMeasurementTests : IClassFixture<CosmosJsonTypeMeasurementTests.Fixture>
@@ -142,6 +144,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             _client = null;
         }
 
+        /// <summary>Holds a row's outcomes against the service, over witnesses of their own.</summary>
+        static Task Holds(CosmosAxiom axiom)
+        {
+            if (_container is null)
+                Assert.Skip("These need a service. " + _unavailable);
+
+            return CosmosOutcomeHarness.Holds(_container!, axiom);
+        }
+
         /// <summary>
         /// What an expression over <c>c.v</c> answers for each document, written
         /// <c>id=answer</c> in the order of <see cref="Documents"/>: the value's JSON, or
@@ -173,10 +184,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// undefined — which is what <c>JSON_VALUE</c> answers there, and why
         /// <c>IS_DEFINED</c> over the guard is true even where the path is not.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.IsPrimitive")]
         public async Task IsPrimitiveIsFalseOverAnAbsentPath()
         {
-            (await Answers("IS_PRIMITIVE(c.v)")).Should().Be("string=true number=true boolean=true null=true object=false array=false absent=false");
+            await Holds(CosmosAxioms.Get("Service.IsPrimitive"));
             (await Answers("(IS_PRIMITIVE(c.v) ? c.v : null)")).Should().Be("string=\"bikes\" number=30 boolean=true null=null object=null array=null absent=null",
                 "so the guarded accessor is null over an absent path, as JSON_VALUE is");
         }
@@ -185,34 +196,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>IS_DEFINED</c> is false over an absent path and true over everything else, a null
         /// included.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.IsDefined")]
         public async Task IsDefinedIsFalseOnlyOverAnAbsentPath()
         {
-            (await Answers("IS_DEFINED(c.v)")).Should().Be("string=true number=true boolean=true null=true object=true array=true absent=false");
+            await Holds(CosmosAxioms.Get("Service.IsDefined"));
         }
 
         /// <summary>
         /// <c>IS_NULL</c> is true of a null alone, and false over an absent path: absence is not null
         /// to the service, which is why SQL's null test names both.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.IsNull")]
         public async Task IsNullIsTrueOnlyOfANull()
         {
-            (await Answers("IS_NULL(c.v)")).Should().Be("string=false number=false boolean=false null=true object=false array=false absent=false");
+            await Holds(CosmosAxioms.Get("Service.IsNull"));
         }
 
         /// <summary>
         /// Each test of a kind is true of that kind and false of everything else, an absent path
         /// included.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.KindTests")]
         public async Task EachKindTestIsTrueOfItsKindAlone()
         {
-            (await Answers("IS_STRING(c.v)")).Should().Be("string=true number=false boolean=false null=false object=false array=false absent=false");
-            (await Answers("IS_NUMBER(c.v)")).Should().Be("string=false number=true boolean=false null=false object=false array=false absent=false");
-            (await Answers("IS_BOOL(c.v)")).Should().Be("string=false number=false boolean=true null=false object=false array=false absent=false");
-            (await Answers("IS_OBJECT(c.v)")).Should().Be("string=false number=false boolean=false null=false object=true array=false absent=false");
-            (await Answers("IS_ARRAY(c.v)")).Should().Be("string=false number=false boolean=false null=false object=false array=true absent=false");
+            await Holds(CosmosAxioms.Get("Service.KindTests"));
         }
 
         /// <summary>
@@ -223,13 +230,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// That is what <c>CosmosOperators.IsAbsenceObserving</c> claims of the family: an expression
         /// built from one keeps a document without the path, where a comparison over it would not.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.NotOfAKindTest")]
         public async Task NotOfATypeTestIsTrueOverAnAbsentPath()
         {
-            foreach (var test in new[] { "IS_PRIMITIVE", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_NULL", "IS_OBJECT", "IS_ARRAY" })
-                (await Answers($"NOT {test}(c.v)")).Should().EndWith("absent=true", $"NOT {test} over an absent path");
-
-            (await Answers("NOT IS_DEFINED(c.v)")).Should().Be("string=false number=false boolean=false null=false object=false array=false absent=true");
+            await Holds(CosmosAxioms.Get("Service.NotOfAKindTest"));
         }
 
         /// <summary>
@@ -275,11 +279,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// An ordering comparison across types is undefined, as is one over an absent path.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.OrderingAcrossTypesIsUndefined")]
         public async Task AnOrderingAcrossTypesIsUndefined()
         {
-            (await Answers("c.v < \"zzz\"")).Should().Be("string=true number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("c.v > 0")).Should().Be("string=undefined number=true boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
+            await Holds(CosmosAxioms.Get("Service.OrderingAcrossTypesIsUndefined"));
         }
 
         /// <summary>
@@ -294,12 +297,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <c>NOT IS_NULL</c>, and why <c>NOT (p = x)</c> keeps a null at the service and not in
         /// process.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.EqualityAcrossTypesIsFalse"), CosmosPins("Service.InequalityOverNullIsTrue")]
         public async Task AnEqualityAcrossTypesIsFalseAndAnInequalityOverANullIsTrue()
         {
-            (await Answers("c.v = \"bikes\"")).Should().Be("string=true number=false boolean=false null=false object=false array=false absent=undefined");
-            (await Answers("c.v != \"bikes\"")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
-            (await Answers("c.v != 30")).Should().Be("string=true number=false boolean=true null=true object=true array=true absent=undefined");
+            await Holds(CosmosAxioms.Get("Service.EqualityAcrossTypesIsFalse"));
+            await Holds(CosmosAxioms.Get("Service.InequalityOverNullIsTrue"));
         }
 
         /// <summary>
@@ -311,12 +313,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// undefined stands where SQL's unknown does — and part company wherever the service answers
         /// false where SQL answers unknown, which is the equality across types and over a null above.
         /// </remarks>
-        [Fact]
+        [Fact, CosmosPins("Service.NotOverUndefinedIsUndefined")]
         public async Task NotOverUndefinedIsUndefined()
         {
-            (await Answers("NOT (c.v < \"zzz\")")).Should().Be("string=false number=undefined boolean=undefined null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("NOT c.v")).Should().Be("string=undefined number=undefined boolean=false null=undefined object=undefined array=undefined absent=undefined");
-            (await Answers("NOT (c.v = \"bikes\")")).Should().Be("string=false number=true boolean=true null=true object=true array=true absent=undefined");
+            await Holds(CosmosAxioms.Get("Service.NotOverUndefinedIsUndefined"));
         }
 
     }

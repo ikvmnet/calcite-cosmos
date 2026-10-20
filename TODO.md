@@ -2669,6 +2669,18 @@ across documents* and *A join of a container to itself* is the record.
 - **Two constants compared are a divergence S cannot see** — *small.* Azure compares two string constants by UTF-16
   unit and the emulator by code point (`Service.ConstantStringComparisonIsByCodeUnit`), but no form S reads compares two
   constants, so the declared divergences hold no key for it. A written form that does needs its key and both outcomes.
+- **S reads no comparison within strings on the emulator** — *large, for the gains preview and coverage lines.* The
+  emulator orders and compares a string holding U+0000 as it stores it, U+FDD0 then `0`, a parameter as written, so
+  `Service.StringOrderIsCodePoint` claims its comparator on Azure alone, and the emulator and portable sets answer every
+  `=`, `!=` and ordering within strings widest. A comparator that reads the emulator's storage — exact where a cell
+  holds neither U+0000 nor the high band, either side elsewhere, the equal cell above where the literal holds U+0000 —
+  would give `=` and `!=` back whatever a path may hold; a parting row scoped to the emulator would give the orderings
+  back where it holds no U+0000. Until one lands the rendering tests' fixture stands code point in for it.
+- **What the probe account owes at D7** — *small.* Its run of the measurement namespace should record the cells
+  `Holds` measures that the record of 2026-10-16 does not: the `WHERE NOT` beside each `NotKept` (a bare path, the
+  string order's `>`, the integers' `=`); the widened witnesses, `false`, 30.5, an object and an array; and each literal
+  as a parameter, 2^53 + 1 among them, which that day's tests wrote inline. `CosmosAxiomRows.Owed` lists the cells left
+  owed on each target, those no row's test measures among them.
 
 ---
 

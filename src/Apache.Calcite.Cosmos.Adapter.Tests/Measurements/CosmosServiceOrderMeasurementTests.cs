@@ -9,7 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
 
 using FluentAssertions;
 
@@ -79,16 +81,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             """{"id":"object","pk":"a","v":{"a":1}}""",
         ];
 
-        /// <summary>Integers past 2^53, where a double ties neighbours, up to 2^63 - 1.</summary>
-        static readonly string[] Numbers =
-        [
-            """{"id":"p53","pk":"a","v":9007199254740992}""",
-            """{"id":"p53p1","pk":"a","v":9007199254740993}""",
-            """{"id":"p53p2","pk":"a","v":9007199254740994}""",
-            """{"id":"p63m2","pk":"a","v":9223372036854775806}""",
-            """{"id":"p63m1","pk":"a","v":9223372036854775807}""",
-        ];
-
         static CosmosClient? _client;
         static Database? _database;
         static string? _unavailable;
@@ -136,9 +128,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var json in Types)
                     await Write(types, json, cts.Token);
 
-                var numbers = await Fresh(new ContainerProperties("numbers", "/pk"), cts.Token);
-                foreach (var json in Numbers)
-                    await Write(numbers, json, cts.Token);
+                await Fresh(new ContainerProperties("numbers", "/pk"), cts.Token);
 
                 var excluding = new ContainerProperties("excluded", "/pk");
                 excluding.IndexingPolicy.IncludedPaths.Add(new IncludedPath { Path = "/*" });
@@ -233,26 +223,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             refused!.StatusCode.Should().Be(HttpStatusCode.BadRequest, sql);
         }
 
-        static int CodePoints(string left, string right) => ServiceOrderModel.CompareCodePoints(left, right);
-
         // ── Strings ───────────────────────────────────────────────────────────────────────────
 
         /// <summary>
         /// A document's strings are ordered, compared and extremed by code point, with no collation: U+E000 below
         /// U+1F600, where Calcite's UTF-16 order puts it above.
         /// </summary>
-        [Fact]
+        /// <remarks>
+        /// U+0000 where it decides is no outcome's witness, since its side hangs on the target: Azure reads past it, and the
+        /// emulator, which stores it as U+FDD0 followed by 0, orders and compares what it stores, a parameter as written. So
+        /// it is measured here, and must be one of the two.
+        /// </remarks>
+        [Fact, CosmosPins("Service.StringOrderIsCodePoint")]
         public async Task ADocumentsStringsOrderByCodePoint()
         {
             var strings = Container("strings");
-            var codePoint = Strings.Select(s => s.S).OrderBy(s => s, Comparer<string>.Create(CodePoints)).ToList();
-
-            (await Rows(strings, "SELECT VALUE c.s FROM c ORDER BY c.s")).Should().Equal(codePoint);
-            (await Rows(strings, "SELECT VALUE c.s FROM c ORDER BY c.s DESC")).Should().Equal(Enumerable.Reverse(codePoint));
+            await CosmosOutcomeHarness.Holds(strings, CosmosAxioms.Get("Service.StringOrderIsCodePoint"));
             (await Rows(strings, "SELECT VALUE MAX(c.s) FROM c")).Should().Equal("\U0001F600");
-            (await Rows(strings, "SELECT VALUE c.s FROM c WHERE c.s > @p ORDER BY c.s", ("@p", ""))).Should().Equal("Ａ", "\U0001F600");
 
-            codePoint.Should().NotEqual(codePoint.OrderBy(s => s, StringComparer.Ordinal), "the strings are ones the two orders part over");
+            var nul = await Fresh(new ContainerProperties("nul", "/pk"), TestContext.Current.CancellationToken);
+            foreach (var (id, s) in new[] { ("nul", "\0"), ("a", "a"), ("e000", "\uE000") })
+                await Write(nul, new JObject { ["id"] = id, ["pk"] = "a", ["s"] = s }.ToString(Newtonsoft.Json.Formatting.None), TestContext.Current.CancellationToken);
+
+            var order = string.Join(" ", await Rows(nul, "SELECT VALUE c.id FROM c ORDER BY c.s"));
+            var equal = string.Join(" ", await Rows(nul, "SELECT VALUE c.id FROM c WHERE c.s = @p", ("@p", "\0")));
+            $"{order}; {equal}".Should().BeOneOf(["nul a e000; nul", "a e000 nul; "], "by code point, as on Azure, or by what the emulator stores");
         }
 
         /// <summary>
@@ -333,15 +328,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// An int64 is held and ordered exactly, past 2^53 where a double ties its neighbours, up to 2^63 - 1.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Service.IntegersOrderExactly")]
         public async Task IntegersOrderExactly()
         {
-            var numbers = Container("numbers");
-            var order = Numbers.Select(json => (string)JObject.Parse(json)["id"]!).ToList();
-
-            (await Rows(numbers, "SELECT VALUE c.id FROM c ORDER BY c.v")).Should().Equal(order);
-            (await Rows(numbers, "SELECT VALUE c.id FROM c ORDER BY c.v DESC")).Should().Equal(Enumerable.Reverse(order));
-            (await Rows(numbers, "SELECT VALUE c.id FROM c WHERE c.v = 9007199254740993")).Should().Equal("p53p1");
+            await CosmosOutcomeHarness.Holds(Container("numbers"), CosmosAxioms.Get("Service.IntegersOrderExactly"));
         }
 
         // ── What the service accepts ──────────────────────────────────────────────────────────

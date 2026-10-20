@@ -3,11 +3,21 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
+using Apache.Calcite.Cosmos.Adapter.Tests.Measurements;
+using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
+
+using Eggnog;
 
 using FluentAssertions;
+
+using Newtonsoft.Json.Linq;
+
 using Xunit;
 
 using Class = Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass;
@@ -150,14 +160,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             GC.KeepAlive(theory);
         }
 
-        /// <summary>A new divergence between the emulator and Azure is data, not a conflict, so it is declared, or it would pass unseen.</summary>
+        /// <summary>
+        /// A new divergence between the emulator and Azure is data, not a conflict, so it is declared, or it would pass unseen:
+        /// answers that differ and mean nothing in common. What a <c>WHERE</c> alone measured on one, beside an answer within
+        /// it on the other, is no divergence.
+        /// </summary>
         [Fact]
         public void TheKeysTheTargetsDisagreeOnAreDeclared()
         {
             var answers = CosmosAxiomRows.Read(CosmosAxioms.All).ToLookup(r => (r.Key, r.Target), r => r.Answer);
+            ServiceOutcomes Meaning(IEnumerable<CosmosAnswer> each) => each.Aggregate(ServiceOutcomes.None, (m, a) => m | AnswerMeanings.Measured.Of(a));
             var disagreeing = answers.Select(g => g.Key.Key).Distinct().Where(key =>
                 answers[(key, RenderingTarget.Emulator)].Any() && answers[(key, RenderingTarget.Azure)].Any()
-                && answers[(key, RenderingTarget.Emulator)].ToHashSet().SetEquals(answers[(key, RenderingTarget.Azure)]) == false);
+                && answers[(key, RenderingTarget.Emulator)].ToHashSet().SetEquals(answers[(key, RenderingTarget.Azure)]) == false
+                && (Meaning(answers[(key, RenderingTarget.Emulator)]) & Meaning(answers[(key, RenderingTarget.Azure)])) == ServiceOutcomes.None);
 
             disagreeing.Select(k => k.ToString()).Should().BeEquivalentTo(Disagreements.Select(k => k.ToString()));
         }
@@ -190,6 +206,102 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Test.Range => [Class.Between, Class.Outside],
             _ when operand is Class.String or Class.Number => [.. Kinds.Where(k => k != operand), Class.Below, Class.Equal, Class.Above],
             _ => Kinds,
+        };
+
+        /// <summary>
+        /// A composite's measured answers are what its atoms compose to: read by a copy of the reader's grammar and evaluated
+        /// over each witness by <see cref="ServiceLeaf"/> and <see cref="ServiceCompound"/>, on each target it names the
+        /// composition holds the answer, and on the emulator, whose every atom here was measured definite, is it. The rows
+        /// are the rendering tests', the probe's Kleene rows standing for the connectives no row measures yet.
+        /// </summary>
+        [Fact]
+        public void EveryCompositeIsWhatItsAtomsCompose()
+        {
+            var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
+            var wrong = new List<string>();
+            foreach (var axiom in WithOutcomes)
+                foreach (var outcome in axiom.Outcomes!.Where(o => o.Formula is not null))
+                    foreach (var (_, target) in new[] { (CosmosAxiomTarget.Emulator, RenderingTarget.Emulator), (CosmosAxiomTarget.Azure, RenderingTarget.Azure) }.Where(t => outcome.On.HasFlag(t.Item1)))
+                    {
+                        var table = ProbeRows.TableOf(ProbeRows.Rows.Where(row => row.Target == target));
+                        foreach (var (cell, answer) in outcome.Cells)
+                        {
+                            var measured = AnswerMeanings.Measured.Of(answer);
+                            var cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell).Select(CellOf)));
+                            foreach (var composed in Evaluate(Read(outcome.Formula!, path), cells, table).Outcomes.Select(o => o.Outcomes))
+                                if ((composed & measured) != measured || target == RenderingTarget.Emulator && composed != measured)
+                                    wrong.Add($"{axiom.Id}: {outcome.Formula} at {cell} on {target} is {measured}, composed {composed}");
+                        }
+                    }
+
+            wrong.Should().BeEmpty();
+        }
+
+        static readonly Dictionary<string, Test> Operators = new() { ["="] = Test.Equal, ["!="] = Test.NotEqual, ["<"] = Test.Less, ["<="] = Test.LessOrEqual, [">"] = Test.Greater, [">="] = Test.GreaterOrEqual };
+
+        /// <summary>The reader's grammar, as far as the composites go: <c>NOT</c>, a parenthesised junction, a test, a comparison or <c>c.v</c> bare, and a constant.</summary>
+        static ServiceForm Read(string formula, string path)
+        {
+            var tokens = Regex.Matches(formula, @"""[^""]*""|-?\d+(\.\d+)?(?![\w.])|<=|>=|!=|[()=<>]|[\w.]+").Select(m => m.Value).ToList();
+            var at = 0;
+            ServiceForm Term()
+            {
+                var token = tokens[at++];
+                if (token == "NOT")
+                    return ServiceForm.NotOf(Term());
+                if (token is "true" or "false")
+                    return ServiceForm.ConstantOf(token == "true");
+                if (token.StartsWith("IS_", StringComparison.Ordinal))
+                {
+                    at += 3;
+                    return ServiceForm.TestOf(Enum.Parse<Test>("Is" + token[3] + token[4..].ToLowerInvariant()), path);
+                }
+
+                if (token == "(")
+                {
+                    var members = new List<ServiceForm> { Term() };
+                    var connective = Test.And;
+                    while (tokens[at] != ")")
+                    {
+                        connective = tokens[at++] == "AND" ? Test.And : Test.Or;
+                        members.Add(Term());
+                    }
+
+                    at++;
+                    return members.Count == 1 ? members[0] : ServiceForm.JunctionOf(connective, members);
+                }
+
+                if (at + 1 < tokens.Count && Operators.TryGetValue(tokens[at], out var op))
+                {
+                    var literal = tokens[at + 1];
+                    at += 2;
+                    return ServiceForm.CompareOf(op, path, literal[0] == '"' ? JsonValues.Of(literal[1..^1]) : JsonValues.Of(decimal.Parse(literal, System.Globalization.CultureInfo.InvariantCulture)));
+                }
+
+                return ServiceForm.BareOf(path);
+            }
+
+            var form = Term();
+            at.Should().Be(tokens.Count, formula);
+            return form;
+        }
+
+        /// <summary>A form over one partition: a constant by its value, a leaf and a connective by the primitives.</summary>
+        static OutcomeVector Evaluate(ServiceForm form, CellPartition cells, ServiceTable table) => form.Kind switch
+        {
+            ServiceFormKind.Constant => new(cells, [.. cells.Cells.Select(_ => new CellOutcome(form.Literal == JsonValues.Of(true) ? ServiceOutcomes.True : ServiceOutcomes.False, Class.None))], ValueSet<string>.Empty),
+            ServiceFormKind.Not or ServiceFormKind.And or ServiceFormKind.Or => ServiceCompound.On(form, Evaluate(ServiceForm.First(form), cells, table), Evaluate(ServiceForm.Rest(form), cells, table), table),
+            _ => ServiceLeaf.On(form, cells, table, ValueSet<string>.Empty),
+        };
+
+        static PathCell CellOf(string? json) => json is null ? new PathCell.Absent() : JToken.Parse(json) switch
+        {
+            { Type: JTokenType.Null } => new PathCell.Null(),
+            { Type: JTokenType.Object } => new PathCell.Structure(JsonValues.ObjectType),
+            { Type: JTokenType.Array } => new PathCell.Structure(JsonValues.ArrayType),
+            { Type: JTokenType.String } s => new PathCell.Point(JsonValues.Of((string)s!)),
+            { Type: JTokenType.Boolean } b => new PathCell.Point(JsonValues.Of((bool)b)),
+            var n => new PathCell.Point(JsonValues.Of(n.Value<decimal>())),
         };
 
         /// <summary>
