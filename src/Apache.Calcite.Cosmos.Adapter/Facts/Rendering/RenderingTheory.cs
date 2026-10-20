@@ -53,7 +53,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Final = Graph.DefineFunction<CosmosServiceTest, CosmosValueClass, CosmosValueClass, RenderingSet, ValueSet<CosmosAnswer>>("final");
             Table = Graph.DefineFunction<RenderingSet, ValueSet<MeasuredEntry>>("table", ValueLattice.Union<MeasuredEntry>());
             Class = Graph.DefineRelation<CellClass>("class");
-            RaiseOnly = Graph.DefineFunction<ValueSet<CellClass>>("raiseonly");
+            RaiseOnly = Graph.DefineFunction<ValueSet<CellClass>>("raiseonly", ValueLattice.Union<CellClass>());
             Allowing = Graph.DefineRelation<RenderPosition, Verdict, Box>("allowing");
             Refuting = Graph.DefineRelation<RenderPosition, Verdict, Box>("refuting");
             Tolerated = Graph.DefineFunction<Truths>("tolerated");
@@ -79,7 +79,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             PartedLiterals = Graph.DefineFunction<JPath, ValueSet<string>>("partedliterals", ValueLattice.Union<string>());
             Candidate = Graph.DefineRelation<Pred, RenderPosition, ServiceForm>("candidate");
             Member = Graph.DefineRelation<ServiceForm, ServiceForm>("member");
-            Cuts = Graph.DefineFunction<Pred, ServiceForm, ValueSet<CutPoint>>("cuts");
             Partition = Graph.DefineFunction<Pred, ServiceForm, CellPartition>("partition");
             Need = Graph.DefineRelation<CellPartition, ServiceForm>("need");
             Svc = Graph.DefineFunction<CellPartition, ServiceForm, OutcomeVector>("svc");
@@ -108,7 +107,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var disjoint = Graph.DefineRuleset("disjoint");
             DefineDescent(structure, descend, disjoint);
 
-            var cuts = Graph.DefineRuleset("cuts");
             var partition = Graph.DefineRuleset("partition");
             var need = Graph.DefineRuleset("need");
             var parted = Graph.DefineRuleset("parted");
@@ -117,14 +115,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             var gate = Graph.DefineRuleset("gate");
             var compose = Graph.DefineRuleset("compose");
             var conflict = Graph.DefineRuleset("conflict");
-            DefineCells(definition, cuts, partition, need, parted);
+            DefineCells(definition, partition, need, parted);
             DefineEvaluation(definition, evaluate);
             DefineGate(definition, classes, gate, conflict);
             DefineComposition(compose);
 
             Settle = Schedule.Sequence(Schedule.Saturate(measure, allowed, refutes, expected), Schedule.Saturate(tabulate), Schedule.Saturate(matched),
                 Schedule.Saturate(licence));
-            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(cuts, partition, need, parted),
+            Check = Schedule.Sequence(Schedule.Saturate(Ir.Analyse, structure, descend, disjoint), Schedule.Saturate(partition, need, parted),
                 Schedule.Saturate(evaluate), Schedule.Saturate(classes, gate), Schedule.Saturate(compose, conflict));
 
             Version = Digest(definition);
@@ -201,7 +199,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<JPath, ValueSet<string>> PartedLiterals { get; }
         public Relation<Pred, RenderPosition, ServiceForm> Candidate { get; }
         public Relation<ServiceForm, ServiceForm> Member { get; }
-        public Function<Pred, ServiceForm, ValueSet<CutPoint>> Cuts { get; }
         public Function<Pred, ServiceForm, CellPartition> Partition { get; }
         public Relation<CellPartition, ServiceForm> Need { get; }
         public Function<CellPartition, ServiceForm, OutcomeVector> Svc { get; }
@@ -289,6 +286,14 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Where(RenderingPrimitives.TruthsWithin.Of(kc, bc));
                 r.Where(RenderingPrimitives.OutcomesWithin.Of(ks, bs));
                 r.Then(Allowed.Of(pos, v).Is(Primitives.Singleton<CellClass>().Of(k)), AllowedCites.Of(pos, v).Is(Compute.Of(b, x => x.Cites)));
+            });
+
+            allowed.DefineRule("a class whose every truth of Calcite's the policy sets aside is one Calcite raises on alone", r =>
+            {
+                var (k, tol, kc) = r.Vars<CellClass, Truths, Truths>("k", "tol", "kc");
+                r.When(Class.Of(k), tol.Is(Tolerated.Of()), kc.Is(Compute.Of(k, x => x.Calcite)));
+                r.Where(RenderingPrimitives.TruthsWithin.Of(kc, tol));
+                r.Then(RaiseOnly.Of().Is(Primitives.Singleton<CellClass>().Of(k)));
             });
 
             // Calcite's truths as they are: a class that may raise is no definite counterexample, whatever the box says.
@@ -416,24 +421,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             });
         }
 
-        void DefineCells(RenderingDefinition definition, Ruleset cuts, Ruleset partition, Ruleset need, Ruleset parted)
+        void DefineCells(RenderingDefinition definition, Ruleset partition, Ruleset need, Ruleset parted)
         {
-            cuts.DefineRule("an atom's path is cut at its literals, the form's, and the edges its reader names", r =>
-            {
-                var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
-                var (pos, k, g) = r.Vars<RenderPosition, string, ReaderEdges>("pos", "k", "g");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), k.Is(Compute.Of(a, x => x.Reader)), g.Is(Edges.Of(k)));
-                r.Then(Cuts.Of(e, f).Is(Compute.Of(a, f, g, definition.Cut)));
-            });
-
-            partition.DefineRule("an atom's import is cut into cells where the form reads that path alone", r =>
+            partition.DefineRule("an atom's import is cut into cells, at its literals, the form's and the edges its reader names, where the form reads that path alone", r =>
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, x, k) = r.Vars<RenderPosition, PathValues, ValueSet<string>>("pos", "x", "k");
-                var (n, c) = r.Vars<string, ValueSet<CutPoint>>("n", "c");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), n.Is(Spelling.Of(p)), c.Is(Cuts.Of(e, f)));
+                var (n, rd, g) = r.Vars<string, string, ReaderEdges>("n", "rd", "g");
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), x.Is(Imported.Of(p)), k.Is(ImportedChars.Of(p)), n.Is(Spelling.Of(p)),
+                    rd.Is(Compute.Of(a, y => y.Reader)), g.Is(Edges.Of(rd)));
                 r.Where(Primitives.IsSubsetOf<string>().Of(Compute.Of(f, y => y.Paths), Primitives.Singleton<string>().Of(n)));
-                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, (q, y, z) => new PathFacts(q, y, z)), c, definition.Split)));
+                r.Then(Partition.Of(e, f).Is(Compute.Of(Compute.Of(n, x, k, (q, y, z) => new PathFacts(q, y, z)), Compute.Of(a, f, g, definition.Cut), definition.Split)));
             });
 
             need.DefineRule("a candidate of an atom is evaluated on the atom's cells", r =>
@@ -709,7 +707,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 foreach (var (side, connective) in KleeneTables.ConnectiveOf)
                     w.Assume(ConnectiveOf.Of(side).Is(connective));
 
-                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(AgreementRows.RaiseOnly), Tolerated.Of().Is(definition.Tolerated), _version.Of().Is(Version));
+                w.Assume(Means.Of().Is(definition.Means), RaiseOnly.Of().Is(ValueSet<CellClass>.Empty), Tolerated.Of().Is(definition.Tolerated), _version.Of().Is(Version));
             });
 
             var report = Theory.Run(Settle);

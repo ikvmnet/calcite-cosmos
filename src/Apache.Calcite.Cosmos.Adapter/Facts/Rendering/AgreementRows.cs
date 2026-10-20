@@ -43,9 +43,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ValueSet<CellClass> Classes { get; } = ValueSet.From(
             from c in Enumerable.Range(1, 15) from s in Enumerable.Range(1, 15) select new CellClass((Truths)c, (ServiceOutcomes)s));
 
-        /// <summary>The classes of a cell Calcite raises on alone: a proof whose cells are all of them holds of nothing.</summary>
-        public static ValueSet<CellClass> RaiseOnly { get; } = Classes.Where(k => k.Calcite == Truths.Raises);
-
         /// <summary>The boxes a class must lie in for a verdict to hold on its cells, at each position.</summary>
         public static IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing { get; } =
         [

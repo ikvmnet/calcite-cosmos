@@ -32,6 +32,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void TheTheoryHasAtMostFortyRules() => Probe.Value.Graph.Rulesets.Sum(r => r.Rules.Count).Should().BeLessThanOrEqualTo(40);
 
+        /// <summary>The classes Calcite raises on alone follow the policy: what it sets aside, and nothing where it sets none.</summary>
+        [Fact]
+        public void TheRaiseOnlyClassesAreTheOnesThePolicySetsAside()
+        {
+            Probe.Value.Theory.Get(Probe.Value.RaiseOnly.Of()).Should().BeEquivalentTo(AgreementRows.Classes.Where(k => k.Calcite == Truths.Raises));
+            var strict = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows) with { Tolerated = Truths.None });
+            strict.Theory.Get(strict.RaiseOnly.Of()).Should().BeEmpty();
+        }
+
         /// <summary>
         /// An exact form is implied, an implied form's refutation refutes it as exact, and no class is both allowed and a
         /// refutation: what composition and the conflict rule rely on.

@@ -5968,10 +5968,12 @@ array that refute a bare `!=` it names the array. Both are ordered values under 
 which is found first.
 
 **Vacuity is a table.** An agreement is vacuous where every cell is one Calcite raises on alone, or there are none: the
-gate writes `set-subset(classes, raiseonly)` beside it, and a junction or a negation copies each side's. `vacuous` is a
+gate writes `set-subset(classes, raiseonly)` beside it, and a junction or a negation copies each side's. `raiseonly` is
+derived too: the classes whose truths of Calcite's the policy sets aside whole, so a plant of `tolerated` moves it. `vacuous` is a
 `Max` over booleans, so a claim holds of nothing where any of its proofs does, whichever `Min` keeps.
 
-**What the evaluation fills is held to one value a key.** `cuts`, `partition`, `svc` and `outcomes` have no lattice:
+**What the evaluation fills is held to one value a key.** `partition`, which applies the reader's edges by arithmetic
+and cuts at them, `svc` and `outcomes` have no lattice:
 each is computed once for each of its keys, and where two candidates share a partition the part they share is computed
 for each, so a primitive that answered one key two ways faults the bundle rather than meeting silently. A form that reads
 any path but its atom's is never partitioned, so never evaluated.

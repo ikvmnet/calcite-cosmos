@@ -91,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var theory = RenderingTheory.Define(RenderingDefinition.Measured(ProbeRows.Rows));
             var chars = theory.Graph.DefineFunction<JPath, ValueSet<string>>("chars", ValueLattice.Intersect<string>());
-            theory.Graph.Rulesets.Single(r => r.Name == "cuts").DefineRule("planted: a path's classes narrow", r =>
+            theory.Graph.Rulesets.Single(r => r.Name == "partition").DefineRule("planted: a path's classes narrow", r =>
             {
                 var (p, k) = r.Vars<JPath, ValueSet<string>>("p", "k");
                 r.When(k.Is(theory.ImportedChars.Of(p)));

@@ -173,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             calls.Values.Should().OnlyContain(n => n == 1);
             int Keys(string table) => calls.Keys.Count(k => ((ITuple)k)[0]!.Equals(table));
             (Keys("cuts"), Keys("partition"), Keys("svc"), Keys("outcomes")).Should().Be(
-                ((int)bundle.Scope.CountRows(theory.Cuts), (int)bundle.Scope.CountRows(theory.Partition), (int)bundle.Scope.CountRows(theory.Svc), (int)bundle.Scope.CountRows(theory.Outcomes)));
+                ((int)bundle.Scope.CountRows(theory.Partition), (int)bundle.Scope.CountRows(theory.Partition), (int)bundle.Scope.CountRows(theory.Svc), (int)bundle.Scope.CountRows(theory.Outcomes)));
             Keys("svc").Should().Be(7, "the guarded form's six parts and the comparison of kind");
         }
 
