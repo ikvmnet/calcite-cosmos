@@ -183,11 +183,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// Makes the terms of paths a context will be asked about. Rules reason over paths that exist, so a path no
         /// fact and no question mentions has nothing proven of it.
         /// </summary>
-        public void Mention(Scope scope, IEnumerable<JsonPathSpec> paths)
+        public void Mention(Scope scope, IEnumerable<JsonPathSpec> paths) => Mention(Rules, scope, paths);
+
+        /// <inheritdoc cref="Mention(Scope, IEnumerable{JsonPathSpec})"/>
+        /// <param name="rules">The rules of JSON of the scope's graph.</param>
+        /// <param name="scope">The context.</param>
+        /// <param name="paths">The paths.</param>
+        public static void Mention(JsonRules rules, Scope scope, IEnumerable<JsonPathSpec> paths)
         {
             foreach (var path in paths)
                 foreach (var prefix in Prefixes(path))
-                    scope.Make((ConstructorTerm<JPath>)prefix.ToTerm(Rules));
+                    scope.Make((ConstructorTerm<JPath>)prefix.ToTerm(rules));
         }
 
         /// <summary>

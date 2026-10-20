@@ -121,6 +121,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 : Atom(first);
         }
 
+        /// <summary>
+        /// Draws, from a stream of its own, strings computed from the declaration's paths and from strings of every class:
+        /// a concatenation, a case mapping, a window, a reversal, a repetition, a replacement, a trim and a conditional,
+        /// nested two deep, as the loader reads a call of each. What the theory derives of their characters is checked on
+        /// them (<see cref="PopulationD"/>).
+        /// </summary>
+        public static IReadOnlyList<SqlValue> Computed(Random random, Declaration declaration)
+        {
+            var paths = new[] { Declaration.A, Declaration.B, Declaration.N, Declaration.V };
+
+            SqlValue Leaf()
+            {
+                if (random.Next(3) > 0)
+                    return new SqlValue.Text(paths[random.Next(paths.Length)]);
+
+                var pool = Declaration.BandedStrings.Append("x").Append("").Append(" a ").Concat(declaration.BandedNames.Values.SelectMany(named => named)).ToArray();
+                return SqlValue.Of(pool[random.Next(pool.Length)]);
+            }
+
+            SqlValue Number(int least, int most) => SqlValue.Of((decimal)random.Next(least, most + 1));
+
+            SqlValue Term(int depth)
+            {
+                if (depth == 0 || random.Next(4) == 0)
+                    return Leaf();
+
+                SqlValue Next() => Term(depth - 1);
+
+                return random.Next(12) switch
+                {
+                    0 => new SqlValue.Call("||", [Next(), Next()]),
+                    1 => new SqlValue.Call("CONCAT", [Next(), Next(), Next()]),
+                    2 or 3 => new SqlValue.Call("UPPER", [Next()]),
+                    4 => new SqlValue.Call("LOWER", [Next()]),
+                    5 => new SqlValue.Call("SUBSTRING", [Next(), Number(-1, 3), Number(0, 3)]),
+                    6 => new SqlValue.Call(random.Next(2) == 0 ? "LEFT" : "RIGHT", [Next(), Number(0, 2)]),
+                    7 => new SqlValue.Call("REVERSE", [Next()]),
+                    8 => new SqlValue.Call("REPEAT", [Next(), Number(0, 2)]),
+                    9 => new SqlValue.Call("REPLACE", [Next(), SqlValue.Of(random.Next(2) == 0 ? "a" : "x"), Next()]),
+                    10 => new SqlValue.Call(new[] { "TRIM BOTH", "TRIM LEADING", "TRIM TRAILING" }[random.Next(3)], [SqlValue.Of(" "), Next()]),
+                    _ => new SqlValue.Call("CASE", [Next(), Next()]),
+                };
+            }
+
+            // Each case mapping over a string of one class, beside three terms drawn whole: the mapping is where a class
+            // can be gained, and a term drawn whole reaches one over a single class only now and then.
+            SqlValue Banded() => SqlValue.Of(Declaration.BandedStrings[random.Next(Declaration.BandedStrings.Length)]);
+
+            return Enumerable.Range(0, 3).Select(_ => Term(2))
+                .Append(new SqlValue.Call("UPPER", [Banded()]))
+                .Append(new SqlValue.Call("LOWER", [Banded()]))
+                .ToArray();
+        }
+
         static string Op(Random random) => random.Next(10) switch
         {
             < 4 => PredicateAtom.Equal,

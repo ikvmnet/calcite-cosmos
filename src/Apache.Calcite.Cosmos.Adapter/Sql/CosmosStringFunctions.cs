@@ -9,9 +9,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
     /// <summary>
-    /// What a pushed string function computes against Calcite's, decided in one place: for each function the translator
-    /// writes, the classes of character (<see cref="JsonCharacterBand"/>) its counted arguments have to be proved free of
-    /// for the service's answer to be Calcite's, and which operands of a computed argument its characters come from.
+    /// What a pushed string function computes against Calcite's, decided in one place: for each string function the
+    /// translator writes, the classes of character (<see cref="JsonCharacterBand"/>) the operands it asks have to be proved
+    /// free of for the service's answer to be Calcite's, and what else the service was measured to need of them.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -32,19 +32,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <c>LOWER</c> ask, of the pattern's text as of the folded value (<see cref="FoldsAlike"/>).</description></item>
     /// <item><description><b>A trim, over the trimmed class.</b> The service's <c>TRIM</c>, <c>LTRIM</c> and
     /// <c>RTRIM</c> remove white space, and Calcite's U+0020 alone.</description></item>
-    /// <item><description><b>Nothing, for the rest.</b> <c>INDEX_OF</c> counts units on Azure, so <c>POSITION</c> is
-    /// Calcite's there over every string, and is pushed; the emulator counts code points, a difference recorded
-    /// (<c>Service.IndexOfCountsUnits</c>) and not declined. <c>REVERSE</c>, <c>CONCAT</c>, <c>REPLACE</c>,
-    /// <c>REPEAT</c>, plain <c>LIKE</c> and <c>STARTSWITH</c> agree everywhere.</description></item>
+    /// <item><description><b>A search, over U+0000.</b> Azure's <c>REPLACE</c> and <c>CONTAINS</c>, and the
+    /// <c>LIKE</c> it answers as a <c>CONTAINS</c>, read a string only up to its first U+0000, and a search holding one
+    /// matches every string (<c>Service.NulEndsWhatReplaceAndContainsRead</c>).</description></item>
+    /// <item><description><b>Nothing of the characters, for the rest.</b> <c>INDEX_OF</c> counts units on Azure, so
+    /// <c>POSITION</c> is Calcite's there over every string, and is pushed; the emulator counts code points, a difference
+    /// recorded (<c>Service.IndexOfCountsUnits</c>) and not declined. <c>REVERSE</c> and <c>CONCAT</c> agree projected
+    /// everywhere; Azure's <c>REVERSE</c> compared in a <c>WHERE</c> with a parameter holding a supplementary character
+    /// keeps nothing, which nothing pushes (<c>TODO.md</c>). <c>REPEAT</c> and <c>REPLACE</c> ask of what is not a
+    /// character: a count and a length that keep a repetition within the service's limit, and a search that is not empty
+    /// (<see cref="RepeatsAsCalcite"/>, <see cref="SearchesSomething"/>).</description></item>
     /// </list>
     /// <para>
-    /// <b>The rule asks the facts, and decides nothing about the documents.</b> What classes a path's strings may hold is
-    /// the theory's <c>chars</c>, read off the facts the translation was licensed (<see cref="CosmosRexTranslator.Facts"/>):
-    /// a declared <c>pattern</c>, an <c>enum</c> or a filter's <c>=</c> and <c>IN</c>, a stored form, or a service fact
-    /// states it. A literal's are its own, read as the theory reads a value's. A parameter's are anything until it is
-    /// bound. A computed argument is asked through every input its characters come from (<see cref="Sources"/>): each has
-    /// to be free of the class, which is a conjunction of questions and not a fact combined here. Where any is not proved,
-    /// the function stays in process, which is where it was computed over a path nothing is declared of.
+    /// <b>The rule asks the facts, and decides nothing about the documents.</b> What classes an operand may hold is the
+    /// theory's, read off the facts the translation was licensed (<see cref="CosmosRexTranslator.Facts"/>,
+    /// <see cref="JsonFactSet.CharactersOf(SqlValue)"/>): a path's <c>chars</c>, which a declared <c>pattern</c>, an
+    /// <c>enum</c> or a filter's <c>=</c> and <c>IN</c>, a stored form or a service fact state; a literal's own; and a
+    /// computed value's, which the theory derives from what its function draws from each operand. A parameter's are
+    /// anything until it is bound. Where one is not proved, the function stays in process, which is where it was
+    /// computed over a path nothing is declared of.
+    /// </para>
+    /// <para>
+    /// <b>Every string function the translator writes has a verdict here</b> (<see cref="HasVerdict"/>), the ones that ask
+    /// nothing of the characters among them, and one written by name with none is refused: a function added to the
+    /// translator's table is computed in process until what it asks has been said.
     /// </para>
     /// <para>
     /// <b>And what cannot be sent at all.</b> A value holding a lone surrogate is refused by the SDK's UTF-8 encoder
@@ -57,71 +68,89 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     {
 
         /// <summary>
+        /// What a function asks of the characters of some of its operands: the classes refused, what they are called, the
+        /// operands asked, by position, and why.
+        /// </summary>
+        public sealed record Rule(JsonCharacterBand Refused, string Named, int[] Asked, string Why);
+
+        /// <summary>
         /// The classes a case mapping asks its argument to be free of: everything outside ASCII, where Java's full mapping
         /// and the service's simple ones part. Named once, for the mapping and for the case-insensitive match a fold
         /// beneath a pattern is written as (<see cref="FoldsAlike"/>).
         /// </summary>
         const JsonCharacterBand CaseMapped = JsonCharacterBand.BeyondAscii;
 
-        const string Surrogate = "surrogate";
+        static readonly Rule Counted = new(JsonCharacterBand.Surrogates, "surrogate", [0],
+            "the service counts code points (LENGTH) or, on Azure, UTF-16 units with a split pair sent as U+FFFD (SUBSTRING, LEFT, RIGHT), where Calcite counts units and keeps a lone surrogate");
 
-        const string OutsideAscii = "character outside ASCII";
+        static readonly Rule Mapped = new(CaseMapped, "character outside ASCII", [0],
+            "the service maps case by a simple mapping and Calcite by Java's full one, which agree over ASCII alone");
 
-        const string Trimmed = "character the service trims beside a space";
+        static readonly Rule Trimmed = new(JsonCharacterBand.Trimmed, "character the service trims beside a space", [2],
+            "the service's trim removes white space and Calcite's U+0020 alone");
 
-        const string Nul = "U+0000";
+        static readonly Rule Searched = new(JsonCharacterBand.Nul, "U+0000", [0, 1],
+            "the service's REPLACE, CONTAINS and the LIKE it answers as a CONTAINS read a string only up to its first U+0000, and a search holding one matches every string");
 
         /// <summary>
-        /// The counts that agree with Calcite's only where no counted string holds a surrogate.
+        /// Every string function the translator writes by name, and what it asks of its operands' characters; <c>null</c>
+        /// for one that asks nothing of them. <c>TRIM</c> and <c>LIKE</c> are read by their kind (<see cref="RuleOf"/>).
         /// </summary>
-        const string Counts = "the service counts code points (LENGTH) or, on Azure, UTF-16 units with a split pair sent as U+FFFD (SUBSTRING, LEFT, RIGHT), where Calcite counts units and keeps a lone surrogate";
+        static readonly Dictionary<string, Rule?> Verdicts = new(StringComparer.Ordinal)
+        {
+            ["CHAR_LENGTH"] = Counted,
+            ["CHARACTER_LENGTH"] = Counted,
+            ["LENGTH"] = Counted,
+            ["SUBSTRING"] = Counted,
+            ["LEFT"] = Counted,
+            ["RIGHT"] = Counted,
+            ["UPPER"] = Mapped,
+            ["LOWER"] = Mapped,
+            ["REPLACE"] = Searched,
+
+            // Azure's INDEX_OF counts units as Calcite does.
+            ["POSITION"] = null,
+
+            // A reversal and a concatenation keep every character as it is at both ends; a repetition does too, and its
+            // count is asked apart.
+            ["REVERSE"] = null,
+            ["CONCAT"] = null,
+            ["||"] = null,
+            ["REPEAT"] = null,
+
+            // The service's own function, which Calcite has no body for: what the service computes is what it means.
+            ["ToString"] = null,
+        };
 
         /// <summary>
-        /// The case mappings, which agree with Calcite's over ASCII alone.
-        /// </summary>
-        const string Cases = "the service maps case by a simple mapping and Calcite by Java's full one, which agree over ASCII alone";
-
-        /// <summary>
-        /// The trims, which agree with Calcite's where nothing the service trims beside a space is held.
-        /// </summary>
-        const string Trims = "the service's trim removes white space and Calcite's U+0020 alone";
-
-        /// <summary>
-        /// The searches that read a string only up to its first U+0000, and match anywhere with one in what they seek.
-        /// </summary>
-        const string Searches = "the service's REPLACE, CONTAINS and the LIKE it answers as a CONTAINS read a string only up to its first U+0000, and a search holding one matches every string";
-
-        /// <summary>
-        /// Returns what a function asks of its arguments' characters for the service's answer to be Calcite's, or
-        /// <c>null</c> where it asks nothing.
+        /// Returns what a function asks of its operands' characters for the service's answer to be Calcite's, or
+        /// <c>null</c> where it asks nothing of them.
         /// </summary>
         /// <param name="call">The function.</param>
-        /// <returns>The classes no counted argument's input may hold and what they are called, the operands counted, and
-        /// why.</returns>
-        public static (JsonCharacterBand Refused, string Named, int[] Counted, string Why)? RuleOf(RexCall call)
+        public static Rule? RuleOf(RexCall call)
         {
             switch (call.getKind().name())
             {
                 case "TRIM":
-                    return (JsonCharacterBand.Trimmed, Trimmed, [2], Trims);
+                    return Trimmed;
 
                 // The service answers one run of text between two `%` as a CONTAINS, which reads the subject only up to its
                 // first U+0000 and, seeking one, matches everything; every other pattern was measured to read past it.
                 // Whatever the pattern is written as — the case-insensitive CONTAINS of a fold beneath it among them — the
                 // subject's characters, and the pattern's own, are asked here.
                 case "LIKE" when call.getOperands().size() == 2 && call.getOperands().get(1) is RexLiteral { } literal && literal.getValue() is org.apache.calcite.util.NlsString pattern && IsContainment(pattern.getValue()):
-                    return (JsonCharacterBand.Nul, Nul, [0, 1], Searches);
+                    return Searched;
             }
 
-            return call.getOperator().getName() switch
-            {
-                "CHAR_LENGTH" or "CHARACTER_LENGTH" or "LENGTH" or "SUBSTRING" or "LEFT" or "RIGHT" => (JsonCharacterBand.Surrogates, Surrogate, [0], Counts),
-                "UPPER" or "LOWER" => (CaseMapped, OutsideAscii, [0], Cases),
-                "LTRIM" or "RTRIM" or "BTRIM" => (JsonCharacterBand.Trimmed, Trimmed, [0], Trims),
-                "REPLACE" => (JsonCharacterBand.Nul, Nul, [0, 1], Searches),
-                _ => null,
-            };
+            return Verdicts.TryGetValue(call.getOperator().getName(), out var rule) ? rule : null;
         }
+
+        /// <summary>
+        /// Determines whether a string function written by name has been given a verdict: what it asks of its operands'
+        /// characters, or that it asks nothing.
+        /// </summary>
+        /// <param name="name">The function's name, as the translator's table maps it.</param>
+        public static bool HasVerdict(string name) => Verdicts.ContainsKey(name);
 
         /// <summary>
         /// The most code points the service's <c>REPLICATE</c> answers, inclusive: past them it is undefined on Azure, where
@@ -164,50 +193,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 end--;
 
             return start > 0 && end < pattern.Length && end > start && pattern.IndexOfAny(['%', '_'], start, end - start) < 0;
-        }
-
-        /// <summary>
-        /// Returns the operands a string-valued call's characters are drawn from, so that a function over it is asked of
-        /// those; <c>null</c> where they may come from anywhere.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// Each of these answers a string whose every character is a character of one of these operands, at the service
-        /// as in Calcite, wherever the rule its own position asks holds: a concatenation, a repetition, a reversal, a
-        /// replacement's subject and replacement; a window, a trim and a case mapping, which remove or map characters
-        /// within the classes asked of them; a conditional's arms; a cast to text of a string. A split pair Azure sends as
-        /// U+FFFD comes only of a surrogate, which is refused before it can matter to a count, and Java's full mapping keeps
-        /// every character of the basic plane in it.
-        /// </para>
-        /// <para>
-        /// Anything else — a conversion such as <c>ToString</c>, a JSON function, a function this list does not name —
-        /// may make characters of its own, and an argument computed by one is not proved. A value that is not text has
-        /// none to give, and is asked nothing (<see cref="CosmosRexTranslator"/>).
-        /// </para>
-        /// </remarks>
-        /// <param name="call">The call.</param>
-        /// <returns>The operands, or <c>null</c>.</returns>
-        public static IEnumerable<RexNode>? Sources(RexCall call)
-        {
-            var count = call.getOperands().size();
-
-            switch (call.getKind().name())
-            {
-                case "TRIM":
-                    return count == 3 ? [Operand(call, 1), Operand(call, 2)] : null;
-                case "CASE":
-                    return Arms(call);
-                case "CAST" or "SAFE_CAST":
-                    return count == 1 ? [Operand(call, 0)] : null;
-            }
-
-            return call.getOperator().getName() switch
-            {
-                "||" or "CONCAT" or "COALESCE" => Operands(call, 0, count),
-                "UPPER" or "LOWER" or "REVERSE" or "SUBSTRING" or "LEFT" or "RIGHT" or "REPEAT" or "LTRIM" or "RTRIM" or "BTRIM" when count >= 1 => [Operand(call, 0)],
-                "REPLACE" when count == 3 => [Operand(call, 0), Operand(call, 2)],
-                _ => null,
-            };
         }
 
         /// <summary>
@@ -255,27 +240,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 default:
                     return true;
             }
-        }
-
-        static RexNode Operand(RexCall call, int index) => (RexNode)call.getOperands().get(index);
-
-        static IEnumerable<RexNode> Operands(RexCall call, int from, int to)
-        {
-            for (var i = from; i < to; i++)
-                yield return Operand(call, i);
-        }
-
-        /// <summary>
-        /// A <c>CASE</c>'s arms, which are its value, and not its conditions, which only choose one.
-        /// </summary>
-        static IEnumerable<RexNode> Arms(RexCall call)
-        {
-            var count = call.getOperands().size();
-            for (var i = 1; i < count; i += 2)
-                yield return Operand(call, i);
-
-            if (count % 2 == 1)
-                yield return Operand(call, count - 1);
         }
 
     }

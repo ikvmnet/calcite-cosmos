@@ -1118,15 +1118,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>LIKE</c> over a <c>VARIANT</c> column is over the raw path, as it was over the bare
         /// <c>ANY</c> column: the coercion to <c>VARCHAR</c> the operator forces is unwrapped and the
         /// prefix pushes as <c>STARTSWITH</c>, the case-folded suffix as <c>ENDSWITH</c>, needing no
-        /// rendering guard. See <c>CosmosRexTranslator.StripTextCoercion</c>.
+        /// rendering guard. See <c>CosmosRexTranslator.StripTextCoercion</c>. The fold asks its
+        /// argument to be ASCII, and the cast to text of the value the path holds is what the path's
+        /// characters say only where it holds scalars: an object cast to text is the JSON of what it
+        /// holds.
         /// </remarks>
         [Fact]
         public void LikeOverAVariantColumnPushesOverTheRawPath()
         {
             Translate(Call(SqlStdOperatorTable.LIKE, Cast(Variant(0), SqlTypeName.VARCHAR), Str("bi%")))
                 .Should().Be("STARTSWITH(c.name, @p0)");
-            Translator(Ascii).Translate(Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Cast(Variant(0), SqlTypeName.VARCHAR)), Str("%KES")))
+
+            var fold = Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Cast(Variant(0), SqlTypeName.VARCHAR)), Str("%KES"));
+            Translator(Declaring(new JsonClaim.Characters(JsonCharacterBand.None), new JsonClaim.OfType(JsonType.String, OrNull: true))).Translate(fold)
                 .Should().Be("ENDSWITH(c.name, @p0, true)");
+            CanTranslate(Translator(Ascii), fold).Should().BeFalse("ASCII if a string, and nothing says it is not an object");
         }
 
     }

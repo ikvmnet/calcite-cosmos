@@ -191,20 +191,20 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Relation<JPath, string> Form { get; }
 
         /// <summary>
-        /// If the path holds a string, the bands its UTF-16 units may be in beside those below U+D800:
-        /// <see cref="JsonValues.SurrogateBand"/> and <see cref="JsonValues.HighBand"/>. A fact about the value like a type,
-        /// and combined as one: a conjunction meets the sets, a case join unites them.
+        /// If the path holds a string, the classes its characters may be in (<see cref="JsonValues.CharacterClasses"/>): the
+        /// surrogates, the units from U+E000, the rest outside ASCII, what the service trims beside a space, and U+0000. A
+        /// fact about the value like a type, and combined as one: a conjunction meets the sets, a case join unites them.
         /// </summary>
         public Function<JPath, ValueSet<string>> Chars { get; }
 
         /// <summary>
-        /// The bands a stored form's strings may hold units of, by the form's token: a statement about how a form is
+        /// The classes a stored form's strings may hold characters of, by the form's token: a statement about how a form is
         /// written, and about no document, stated beside the forms a declaration names.
         /// </summary>
         public Function<string, ValueSet<string>> FormChars { get; }
 
         /// <summary>
-        /// If the path holds a string, the bands its UTF-16 units were written in: what a declared <c>pattern</c> says,
+        /// If the path holds a string, the classes its characters were written in: what a declared <c>pattern</c> says,
         /// which is of the document a validator checked, and from which <see cref="Chars"/>, what is stored, is derived.
         /// </summary>
         public Function<JPath, ValueSet<string>> Written { get; }

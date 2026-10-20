@@ -78,12 +78,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Strings from every class a <see cref="JsonClaim.Characters"/> claim speaks of: a high unit; a supplementary
         /// character, which is two surrogates; both; characters of the basic plane below U+D800 that are no ASCII, ß and
         /// the Kelvin sign among them, which Calcite's case mapping and the service's part over; a tab, ASCII and trimmed by
-        /// the service; U+00A0 and U+3000, trimmed and no ASCII; and U+0000, ASCII, which the service's searches stop at.
+        /// the service; U+00A0 and U+3000, trimmed and no ASCII; U+0000, ASCII, which the service's searches stop at; and
+        /// U+FB13, from U+E000, which Java's full mapping upper-cases to letters below U+D800.
         /// </summary>
         public static readonly string[] BandedStrings =
         {
             char.ConvertFromUtf32(0xE000), "a" + char.ConvertFromUtf32(0x1F600), char.ConvertFromUtf32(0xFF21) + char.ConvertFromUtf32(0x1F600), "\u4E2D",
-            "a\u00DFb", "\u212A", "a\tb", "\u00A0a\u3000", "a\0b",
+            "a\u00DFb", "\u212A", "a\tb", "\u00A0a\u3000", "a\0b", "\uFB13",
         };
 
         static readonly J[] Banded = BandedStrings.Select(text => (J)new J.Str(text)).ToArray();

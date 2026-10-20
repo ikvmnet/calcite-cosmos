@@ -906,58 +906,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (node is not RexCall call || TryResolvePath(call, out _))
                 return;
 
-            if (CosmosStringFunctions.RuleOf(call) is var (refused, named, counted, why))
-                foreach (var ordinal in counted)
-                    if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), refused) is string input)
-                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {why}, and nothing proves {input} holds no {named}.");
+            if (CosmosStringFunctions.RuleOf(call) is { } rule)
+                foreach (var ordinal in rule.Asked)
+                    if (ordinal < call.getOperands().size() && Unproved(Operand(call, ordinal), rule.Refused) is string input)
+                        throw new CosmosTranslationException($"{call.getOperator().getName()} is computed in process: {rule.Why}, and nothing proves {input} holds no {rule.Named}.");
 
             for (var i = 0; i < call.getOperands().size(); i++)
                 RequireStringFunctionsAgree(Operand(call, i));
         }
 
         /// <summary>
-        /// Returns an input of an expression the facts do not prove free of some classes of character, or <c>null</c>
-        /// where every input is.
+        /// Returns an expression the facts do not prove free of some classes of character, spelled, or <c>null</c> where
+        /// they prove it.
         /// </summary>
         /// <remarks>
-        /// A path is asked the theory's <c>chars</c> in the licensed facts; a literal is its own characters, read as the
-        /// theory reads a value's; a parameter may hold anything until it is bound; and a computed value is asked through
-        /// the operands its characters come from (<see cref="CosmosStringFunctions.Sources"/>), each of which has to be
-        /// proved, or is unproved itself. A number or a boolean holds no character. Nothing is combined: each input is
-        /// asked the one question, and the first that cannot say yes is the answer.
+        /// <para>
+        /// <b>The expression is read as the oracle reads a value, and its characters are the theory's.</b> The one reader of
+        /// a <see cref="RexNode"/> into the theory's terms reads it (<see cref="Metadata.CosmosPredicateLoader.Loading.ReadValue"/>),
+        /// and the licensed facts answer what classes it may hold (<see cref="JsonFactSet.CharactersOf(SqlValue)"/>): a
+        /// path its <c>chars</c>, a literal its own, and a computed value what the theory derives from what its function
+        /// draws from each operand — a concatenation's sides, a window's string, a replacement's subject and replacement, a
+        /// conditional's arms. Nothing is derived or combined here.
+        /// </para>
+        /// <para>
+        /// A parameter may hold anything until it is bound, and so may what the loader does not read, and a call of a
+        /// function the theory does not: a conversion such as <c>ToString</c> may make characters of its own.
+        /// </para>
         /// </remarks>
         /// <param name="node">The expression.</param>
         /// <param name="refused">The classes asked of it.</param>
         /// <returns>What may hold them, spelled, or <c>null</c>.</returns>
         string? Unproved(RexNode node, JsonCharacterBand refused)
         {
-            if (TryResolvePath(node, out var path))
-                return DocumentOf(path) is JsonDocumentPath document && (_facts.CharactersOf(document) & refused) == JsonCharacterBand.None
-                    ? null
-                    : path?.ToString() ?? "a path";
+            var value = Values.ReadValue(node);
+            if (value is not null && (_facts.CharactersOf(value) & refused) == JsonCharacterBand.None)
+                return null;
 
-            switch (node)
+            return value switch
             {
-                case RexLiteral literal:
-                    return literal.getValue() is not NlsString text || (JsonFactEncoding.Characters(text.getValue()) & refused) == JsonCharacterBand.None
-                        ? null
-                        : "the literal";
-
-                case org.apache.calcite.rex.RexDynamicParam:
-                    return "a parameter";
-
-                case RexCall call when CosmosStringFunctions.Sources(call) is { } sources:
-                    foreach (var source in sources)
-                        if (Unproved(source, refused) is string input)
-                            return input;
-
-                    return null;
-            }
-
-            return node.getType()?.getSqlTypeName() is SqlTypeName type && (SqlTypeName.NUMERIC_TYPES.contains(type) || type == SqlTypeName.BOOLEAN)
-                ? null
-                : "a computed value";
+                SqlValue.Text or SqlValue.Raw when TryResolvePath(node, out var path) && path is not null => path.ToString(),
+                SqlValue.Literal => "the literal",
+                SqlValue.Parameter => "a parameter",
+                SqlValue.Call call => "the value of " + call.Function,
+                _ => "a computed value",
+            };
         }
+
+        /// <summary>
+        /// Gets the reader of this translation's expressions as the theory's values, made the first time it is asked for:
+        /// over the same fields, read back the same way.
+        /// </summary>
+        Metadata.CosmosPredicateLoader.Loading Values => _values ??= new(_fields, _readings, CosmosImplementor.DefaultRootAlias);
+
+        Metadata.CosmosPredicateLoader.Loading? _values;
 
         /// <summary>
         /// Determines whether an expression is the rendering of a document value as text: a
@@ -5505,6 +5506,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var count = call.getOperands().size();
             if (count < mapping.MinArgs || count > mapping.MaxArgs)
                 throw new CosmosTranslationException($"Function '{name}' with {count} argument(s) has no Cosmos equivalent.");
+
+            // A string function the table maps that nothing has said what it asks of its operands' characters: computed in
+            // process until something does (CosmosStringFunctions.HasVerdict).
+            if (call.getType()?.getSqlTypeName() is SqlTypeName type && (type == SqlTypeName.VARCHAR || type == SqlTypeName.CHAR) && CosmosStringFunctions.HasVerdict(name) == false)
+                throw new CosmosTranslationException($"{name} is computed in process: what it asks of its operands' characters for the service to answer as Calcite does has not been measured.");
 
             WriteFunctionCall(builder, call, mapping.Name);
         }

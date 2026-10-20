@@ -76,9 +76,15 @@ namespace Apache.Calcite.Cosmos.Facts
         public abstract bool Form(JsonDocumentPath path, string token);
 
         /// <summary>
-        /// Returns the bands of UTF-16 units a path's strings may hold beside those below U+D800, where they are known.
+        /// Returns the classes a path's strings may hold characters of, where they are known.
         /// </summary>
         public abstract bool TryChars(JsonDocumentPath path, out ValueSet<string> bands);
+
+        /// <summary>
+        /// Returns the classes a value's characters may be in, if it is a string, where the theory derives them: the
+        /// theory's <c>chars</c> said of a value, a computed one among them.
+        /// </summary>
+        public abstract bool TryValueChars(SqlValue value, out ValueSet<string> classes);
 
         /// <summary>
         /// Determines whether a path is known to hold what an extension claim says, by the claim's key.

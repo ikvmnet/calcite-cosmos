@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Apache.Calcite.Cosmos.Facts
@@ -67,6 +70,31 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
+        /// A function of values, as the loader reads one: the operator's name, and the operands that are values. A
+        /// <c>TRIM</c>'s flag is spelled in its name, and a <c>CASE</c> is read as its arms, the conditions that choose
+        /// one being no part of its value. What characters it holds the theory says, of the functions it knows
+        /// (<c>StringCalls</c>), and of no other.
+        /// </summary>
+        public sealed record Call(string Function, IReadOnlyList<SqlValue> Operands) : SqlValue
+        {
+
+            public bool Equals(Call? other) => other is not null && Function == other.Function && Operands.SequenceEqual(other.Operands);
+
+            public override int GetHashCode()
+            {
+                var hash = new HashCode();
+                hash.Add(Function);
+                foreach (var operand in Operands)
+                    hash.Add(operand);
+
+                return hash.ToHashCode();
+            }
+
+            public override string ToString() => Function + "(" + string.Join(", ", Operands) + ")";
+
+        }
+
+        /// <summary>
         /// Returns the literal of a scalar.
         /// </summary>
         public static Literal Of(JsonScalar value) => new(JsonFactEncoding.Value(value));
@@ -82,6 +110,11 @@ namespace Apache.Calcite.Cosmos.Facts
             Cast c => c.Value.PathRead,
             _ => null,
         };
+
+        /// <summary>
+        /// Gets every document path the value reads, a call's operands' among them.
+        /// </summary>
+        public IEnumerable<JsonDocumentPath> PathsRead => this is Call call ? call.Operands.SelectMany(operand => operand.PathsRead) : PathRead is { } path ? [path] : [];
 
         /// <summary>
         /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names.

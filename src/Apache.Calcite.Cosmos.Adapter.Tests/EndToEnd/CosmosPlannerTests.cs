@@ -67,6 +67,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly CosmosContainerMetadata AsciiProducts = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
             """{ "type": "object", "properties": { "name": { "pattern": "^[ -~]*$" }, "category": { "pattern": "^[ -~]*$" } } }""")));
 
+        /// <summary>
+        /// The same with <c>category</c> declared a string too: what the value the service holds there, cast to text, is
+        /// the characters of.
+        /// </summary>
+        static readonly CosmosContainerMetadata AsciiStringProducts = Products.WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "type": "object", "properties": { "category": { "type": "string", "pattern": "^[ -~]*$" } } }""")));
+
         CosmosTable _table = null!;
 
         public CosmosPlannerTests()
@@ -3324,15 +3331,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Over a path the row model types <c>ANY</c> there is no rendering and no guard, and the
-        /// fold renders as the native function directly.
+        /// fold renders as the native function directly. What it folds is the value the service holds
+        /// there cast to text, whose characters are the path's only where it holds a scalar: an object
+        /// cast to text is the JSON of what it holds, which no pattern bounds. So the path is declared a
+        /// string beside its characters, and declared only its characters it is folded in process.
         /// </summary>
         [Fact]
         public void ACaseFoldedSuffixOverARawPathNeedsNoGuard()
         {
-            _table = new CosmosTable(AsciiProducts);
+            _table = new CosmosTable(AsciiStringProducts);
             var best = PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
 
             Render(best).Should().Contain("ENDSWITH(c.category, @p0, true)").And.NotContain("IS_STRING");
+
+            _table = new CosmosTable(AsciiProducts);
+            var unproved = PlanToAsync("SELECT c.\"id\" FROM products AS c WHERE UPPER(c.\"$.category\") LIKE '%KES'");
+            Render(FindCosmos(unproved)).Should().NotContain("ENDSWITH", "the path may hold an object");
+            Plan(unproved).Should().Contain("ClrCursorFilter");
         }
 
         /// <summary>

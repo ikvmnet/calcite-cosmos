@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
@@ -39,25 +40,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     internal sealed class PredicateRules
     {
 
-        static readonly ConditionalWeakTable<JsonContexts, PredicateRules> Defined = new();
+        static readonly ConditionalWeakTable<JsonRules, PredicateRules> Defined = new();
 
         /// <summary>
         /// Returns the rules of predicates in a graph, defining them the first time they are asked for.
         /// </summary>
         /// <remarks>
-        /// Defined after the graph's root is frozen, which a definition may be, and only where something asks: the planner
-        /// never does, so the graphs it reasons in never hold them.
+        /// Defined after the graph's root is frozen, which a definition may be, and only where something asks: the oracle,
+        /// and a question of a computed string's characters (<see cref="Characters"/>). Their rulesets run only in their
+        /// own schedules, so a context the planner opens for itself pays nothing for them.
         /// </remarks>
         /// <param name="contexts">The graph and its rules of JSON.</param>
         /// <returns>The rules.</returns>
-        public static PredicateRules Of(JsonContexts contexts)
+        public static PredicateRules Of(JsonContexts contexts) => Of(contexts.Rules);
+
+        /// <inheritdoc cref="Of(JsonContexts)"/>
+        /// <param name="json">The rules of JSON of the graph.</param>
+        public static PredicateRules Of(JsonRules json)
         {
             lock (Defined)
             {
-                if (Defined.TryGetValue(contexts, out var rules) == false)
+                if (Defined.TryGetValue(json, out var rules) == false)
                 {
-                    rules = new PredicateRules(contexts.Graph, contexts.Rules);
-                    Defined.Add(contexts, rules);
+                    rules = new PredicateRules(json.Graph, json);
+                    Defined.Add(json, rules);
                 }
 
                 return rules;
@@ -106,14 +112,28 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             AlwaysFalse = graph.DefineRelation<Pred>("always false");
             NeverTrue = graph.DefineRelation<Pred>("never true");
 
+            graph.DefineSort<Args>("Args");
+            Call = graph.DefineConstructor<string, Args, Val>("call", options: term);
+            NoOperands = graph.DefineConstructor<Args>("no operands", options: term);
+            Operand = graph.DefineConstructor<Val, Args, Args>("operand", options: term);
+            ValueChars = graph.DefineFunction<Val, ValueSet<string>>("value chars", ValueLattice.Intersect<string>());
+            Walk = graph.DefineRelation<Val, long, Args>("walk", analysis);
+            Drawn = graph.DefineFunction<Val, Args, ValueSet<string>>("drawn", ValueLattice.Intersect<string>());
+
             Analyse = graph.DefineRuleset("analyse");
             Establish = graph.DefineRuleset("establish");
             Decide = graph.DefineRuleset("decide");
+            Characters = graph.DefineRuleset("characters");
 
             DefineAnalysis();
             DefineEstablish();
             DefineSplit();
             DefineDecide();
+            DefineCharacters();
+
+            // A question of a value's characters is asked in a context made for it, which assumes nothing: it reads the
+            // paths the value reads, as the rules of JSON derive them beneath the context, and the value's own term.
+            CharacterSaturation = Schedule.Saturate(json.Json, json.JsonSchema, Characters);
 
             ScheduleWith(ByArm);
         }
@@ -231,6 +251,36 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>The predicate is FALSE or UNKNOWN of every row the context admits: it keeps none.</summary>
         public Relation<Pred> NeverTrue { get; }
+
+        /// <summary>A function of values: its name, as the loader spells it, and its operands.</summary>
+        public Constructor<string, Args, Val> Call { get; }
+
+        /// <summary>The end of a call's operands.</summary>
+        public Constructor<Args> NoOperands { get; }
+
+        /// <summary>An operand of a call, and those after it.</summary>
+        public Constructor<Val, Args, Args> Operand { get; }
+
+        /// <summary>
+        /// If the value is a string, the classes its characters may be in: the theory's <c>chars</c>, said of a value
+        /// rather than a path. A conjunction meets two, as it meets a path's.
+        /// </summary>
+        public Function<Val, ValueSet<string>> ValueChars { get; }
+
+        /// <summary>The operands of a call, from a position on: an analysis of terms alone, which the rules walk.</summary>
+        public Relation<Val, long, Args> Walk { get; }
+
+        /// <summary>The classes a call's value draws from its operands from a point in them on.</summary>
+        public Function<Val, Args, ValueSet<string>> Drawn { get; }
+
+        /// <summary>What a value's characters are: of a reading, a literal, and a call of a function the theory reads.</summary>
+        public Ruleset Characters { get; }
+
+        /// <summary>
+        /// What a context made for a question of a value's characters runs: the rules of JSON and of JSON Schema over the
+        /// paths it reads, and the rules of characters.
+        /// </summary>
+        public Schedule CharacterSaturation { get; }
 
         /// <summary>Reads terms into atoms.</summary>
         public Ruleset Analyse { get; }
@@ -440,6 +490,118 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 s.Assume(Chosen.Of(o, t, i));
             });
         }
+
+        /// <summary>
+        /// What a value's characters are, as a path's are (<see cref="JsonRules.Chars"/>): a reading of a path holds the
+        /// path's, a literal its own, and a call what it draws from its operands, by <see cref="StringCalls"/>. A parameter
+        /// and a call of a function the table does not name hold anything: no row is stated of them.
+        /// </summary>
+        /// <remarks>
+        /// A call's operands are walked from the first, so that each is known by its position, and drawn from the last: what
+        /// a call draws from an operand on is the image of that operand's classes, where the function reads it, beside
+        /// what it draws from the operands after it. Every row only narrows, as the characters of what is read narrow, so
+        /// the run terminates over the terms it was given.
+        /// </remarks>
+        void DefineCharacters()
+        {
+            var json = Json;
+
+            Characters.DefineRule("a reading of a path as text holds the path's characters", r =>
+            {
+                // The text of a number or a boolean is digits, signs and letters, which hold no class.
+                var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
+                r.When(v.Is(Text.Of(p)), c.Is(json.Chars.Of(p)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+            Characters.DefineRule("the value a path holds holds the path's characters", r =>
+            {
+                var (v, p, c) = r.Vars<Val, JPath, ValueSet<string>>("v", "p", "c");
+                r.When(v.Is(Raw.Of(p)), c.Is(json.Chars.Of(p)));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+            Characters.DefineRule("the cast to text of a scalar a path holds holds the path's characters", r =>
+            {
+                // A number, a boolean or a string cast to text is digits, letters and signs or the string itself; an object
+                // or an array is the JSON text of everything in it, which nothing here bounds.
+                var (v, w, p) = r.Vars<Val, Val, JPath>("v", "w", "p");
+                var (t, c, k) = r.Vars<string, ValueSet<string>, ValueSet<string>>("t", "c", "k");
+                r.When(v.Is(Cast.Of(t, w)), w.Is(Raw.Of(p)), c.Is(json.Chars.Of(p)), k.Is(json.Types.Of(p)));
+                r.Where(t, k, (target, types) => target is "VARCHAR" or "CHAR" && types.IsSubsetOf(JsonValues.Scalars));
+                r.Then(ValueChars.Of(v).Is(c));
+            });
+            Characters.DefineRule("a literal holds its own characters", r =>
+            {
+                var (v, s) = r.Vars<Val, string>("v", "s");
+                r.When(v.Is(Literal.Of(s)));
+                r.Then(ValueChars.Of(v).Is(Compute.Of(s, value => JsonValues.CharactersOf(value))));
+            });
+
+            Characters.DefineRule("a call of a function the theory reads walks its operands from the first", r =>
+            {
+                var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
+                r.When(v.Is(Call.Of(f, a)));
+                r.Where(f, StringCalls.Knows);
+                r.Then(Walk.Of(v, 0L, a));
+            });
+            Characters.DefineRule("the walk steps past an operand", r =>
+            {
+                var (v, a, t) = r.Vars<Val, Args, Args>("v", "a", "t");
+                var (i, h) = r.Vars<long, Val>("i", "h");
+                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)));
+                r.Then(Walk.Of(v, Primitives.Add.Of(i, 1L), t));
+            });
+            Characters.DefineRule("a call draws nothing past its last operand", r =>
+            {
+                var (v, a) = r.Vars<Val, Args>("v", "a");
+                var i = r.Var<long>("i");
+                r.When(Walk.Of(v, i, a), a.Is(NoOperands.Of()));
+                r.Then(Drawn.Of(v, a).Is(JsonValues.NoBand));
+            });
+            Characters.DefineRule("a call draws nothing from an operand it does not read characters of", r =>
+            {
+                var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
+                var (i, h, f, d) = r.Vars<long, Val, string, ValueSet<string>>("i", "h", "f", "d");
+                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)), v.Is(Call.Of(f, x)), d.Is(Drawn.Of(v, t)));
+                r.Where(f, i, (function, operand) => StringCalls.Reads(function, operand) == false);
+                r.Then(Drawn.Of(v, a).Is(d));
+            });
+            Characters.DefineRule("a call draws an operand's characters, as the function maps them", r =>
+            {
+                var (v, a, t, x) = r.Vars<Val, Args, Args, Args>("v", "a", "t", "x");
+                var (i, h, f) = r.Vars<long, Val, string>("i", "h", "f");
+                var (c, d) = r.Vars<ValueSet<string>, ValueSet<string>>("c", "d");
+                r.When(Walk.Of(v, i, a), a.Is(Operand.Of(h, t)), v.Is(Call.Of(f, x)), c.Is(ValueChars.Of(h)), d.Is(Drawn.Of(v, t)));
+                r.Where(f, i, StringCalls.Reads);
+                r.Then(Drawn.Of(v, a).Is(Compute.Of(f, c, d, StringCalls.Drawn)));
+            });
+            Characters.DefineRule("a call holds what it draws from its operands", r =>
+            {
+                var (v, f, a) = r.Vars<Val, string, Args>("v", "f", "a");
+                var d = r.Var<ValueSet<string>>("d");
+                r.When(v.Is(Call.Of(f, a)), d.Is(Drawn.Of(v, a)));
+                r.Then(ValueChars.Of(v).Is(d));
+            });
+        }
+
+        /// <summary>
+        /// Builds a value's term: a reading of a path, a cast, a literal, a parameter, or a call over its operands' terms.
+        /// </summary>
+        public ConstructorTerm<Val> Term(SqlValue value) => value switch
+        {
+            SqlValue.Text t => Text.Of(Path(t.Path)),
+            SqlValue.Raw w => Raw.Of(Path(w.Path)),
+            SqlValue.Typed t => Typed.Of(Path(t.Path), t.Type),
+            SqlValue.Cast c => Cast.Of(c.Target, Term(c.Value)),
+            SqlValue.Literal l => Literal.Of(l.Value),
+            SqlValue.Parameter p => Parameter.Of(p.Ordinal, p.Type),
+            SqlValue.Call c => Call.Of(c.Function, Operands(c.Operands, 0)),
+            _ => throw new NotSupportedException(value.GetType().Name),
+        };
+
+        ConstructorTerm<Args> Operands(IReadOnlyList<SqlValue> operands, int from) =>
+            from == operands.Count ? NoOperands.Of() : Operand.Of(Term(operands[from]), Operands(operands, from + 1));
+
+        Term<JPath> Path(JsonDocumentPath path) => JsonFactEncoding.Path(path).ToTerm(Json);
 
         void DefineDecide()
         {

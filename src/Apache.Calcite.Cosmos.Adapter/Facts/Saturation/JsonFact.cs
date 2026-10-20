@@ -67,19 +67,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public sealed record Form(JsonPathSpec Path, string Name) : JsonFact(Path);
 
         /// <summary>
-        /// If the path holds a string, its UTF-16 units are below U+D800 or in these bands
-        /// (<see cref="JsonValues.SurrogateBand"/>, <see cref="JsonValues.HighBand"/>).
+        /// If the path holds a string, its characters are of these classes alone (<see cref="JsonValues.CharacterClasses"/>);
+        /// none for ASCII other than U+0000 that the service trims as Calcite does.
         /// </summary>
         public sealed record Characters(JsonPathSpec Path, ValueSet<string> Bands) : JsonFact(Path);
 
         /// <summary>
-        /// If the path holds a string, it was written with UTF-16 units below U+D800 or in these bands: what a validator
-        /// saw, from which the theory derives what is stored.
+        /// If the path holds a string, it was written with characters of these classes alone: what a validator saw, from
+        /// which the theory derives what is stored.
         /// </summary>
         public sealed record Written(JsonPathSpec Path, ValueSet<string> Bands) : JsonFact(Path);
 
         /// <summary>
-        /// A stored form's strings hold units below U+D800 or in these bands: a statement about how the form is
+        /// A stored form's strings hold characters of these classes alone: a statement about how the form is
         /// written, and so about no path, which rides on the root. Says nothing about any document.
         /// </summary>
         public sealed record FormCharacters(string Name, ValueSet<string> Bands) : JsonFact(JsonPathSpec.Root);
