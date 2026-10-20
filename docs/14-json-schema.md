@@ -336,8 +336,8 @@ an emoji is 2 to one and 1 to the other, and Azure's `SUBSTRING` returns half of
 maps case by Java's full mapping, `ß` to `SS` and `ﬀ` to `FF`, and the service leaves both, and on
 Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree. Calcite's `TRIM` removes spaces
 where the service's removes white space: a tab, a line break, U+00A0, U+3000 and the rest of Appendix
-B.2's list. And Azure's `REPLACE` and `CONTAINS` read a string only up to its first U+0000, so does a
-`LIKE` the service answers as a `CONTAINS` — a pattern that is one run of text between two `%` — and
+B.2's list. And Azure's `REPLACE` and `CONTAINS` read a string only up to its first U+0000, as does a
+`LIKE` the service answers as a `CONTAINS` — a pattern that is one run of text between two `%` — so
 each loses what lies past one. So what a pattern says of the characters also decides which functions
 push over the path:
 
@@ -357,8 +357,7 @@ first two rows prove both, and it is sent as `CONTAINS(c.x, @p0, true)`; a `LIKE
 Proved when the plan is made, with nothing checked as the rows arrive. In process means Calcite computes
 the function over the string the service sends: in a projection the path alone is still read at the
 service, and the rest of the statement pushes as it would; in a filter the comparison is Calcite's, made
-over the documents the rest of the filter keeps, and those are read whole. A
-stored form is ASCII and holds no white space and no U+0000, so a UUID, a date or a number written as a
+over the documents the rest of the filter keeps, and those are read whole. A stored form is ASCII and holds no white space and no U+0000, so a UUID, a date or a number written as a
 string pushes every one of them; so does a path whose `enum` or `const` lists only such strings, and so
 does a statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A computed argument needs
 every input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is
