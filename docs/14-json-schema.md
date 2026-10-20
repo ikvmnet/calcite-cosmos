@@ -331,28 +331,43 @@ A literal compares exactly in every row because, under the default charset, it h
 above U+0100 (Chapter 8.3).
 
 **And about string functions.** Calcite's string functions are Java's and the service's are its own,
-and they part over three things. Calcite counts UTF-16 units and the service's `LENGTH` code points, so
+and they part over four things. Calcite counts UTF-16 units and the service's `LENGTH` code points, so
 an emoji is 2 to one and 1 to the other, and Azure's `SUBSTRING` returns half of one as U+FFFD. Calcite
 maps case by Java's full mapping, `ß` to `SS` and `ﬀ` to `FF`, and the service leaves both, and on
-Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree. And Calcite's `TRIM` removes spaces
+Azure U+017F, U+0130 and the Kelvin sign too; over ASCII they agree. Calcite's `TRIM` removes spaces
 where the service's removes white space: a tab, a line break, U+00A0, U+3000 and the rest of Appendix
-B.2's list. So what a pattern says of the characters also decides which functions push over the path:
+B.2's list. And Azure's `REPLACE` and `CONTAINS` read a string only up to its first U+0000, so does a
+`LIKE` the service answers as a `CONTAINS` — a pattern that is one run of text between two `%` — and
+each loses what lies past one. So what a pattern says of the characters also decides which functions
+push over the path:
 
-| the strings may hold | `UPPER`, `LOWER`, `UPPER(x) LIKE '%A%'` | `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT` | `TRIM`, `LTRIM`, `RTRIM` |
-| --- | --- | --- | --- |
-| printable ASCII: `^[ -~]*$` | ✔ | ✔ | ✔ |
-| ASCII with a tab: `^[\t -~]*$` | ✔ | ✔ | in process |
-| nothing beyond U+FFFF: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | in process | ✔ | in process |
-| anything but white space: `^[^\t\n\u000B\f\r\u0085\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]*$` | in process | in process | ✔ |
-| anything: no pattern, or one not read | in process | in process | in process |
+| the strings may hold | `UPPER`, `LOWER` | `CHAR_LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT` | `TRIM`, `LTRIM`, `RTRIM` | `REPLACE`, `LIKE '%a%'` |
+| --- | --- | --- | --- | --- |
+| printable ASCII: `^[ -~]*$` | ✔ | ✔ | ✔ | ✔ |
+| ASCII with a tab: `^[\t -~]*$` | ✔ | ✔ | in process | ✔ |
+| nothing beyond U+FFFF: `^[\u0000-\uD7FF\uE000-\uFFFF]*$` | in process | ✔ | in process | in process |
+| anything but white space: `^[^\t\n\u000B\f\r\u0085\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]*$` | in process | in process | ✔ | in process |
+| anything: no pattern, or one not read | in process | in process | in process | in process |
 
-Proved when the plan is made, with nothing checked as the rows arrive; in process means Calcite computes
-the function over the string the service sends, and the rest of the statement pushes as it would. A
-stored form is ASCII and holds no white space, so a UUID, a date or a number written as a string pushes
-every one of them; so does a path whose `enum` or `const` lists only such strings, and so does a
-statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A computed argument needs every
-input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is proved of
-nothing. `POSITION`, `REPLACE`, `CONCAT`, `REVERSE` and `REPEAT` push over any string.
+`UPPER(x) LIKE '%A%'` asks both its columns: the service's case-insensitive `CONTAINS` folds the
+service's way, so the string has to be ASCII, and it stops at a U+0000, so it has to hold none. The
+first two rows prove both, and it is sent as `CONTAINS(c.x, @p0, true)`; a `LIKE` of any other shape —
+`'a%'`, `'a_b'`, `'%a%b%'` — pushes over any declared string, `_` being one code point to both.
+
+Proved when the plan is made, with nothing checked as the rows arrive. In process means Calcite computes
+the function over the string the service sends: in a projection the path alone is still read at the
+service, and the rest of the statement pushes as it would; in a filter the comparison is Calcite's, made
+over the documents the rest of the filter keeps, and those are read whole. A
+stored form is ASCII and holds no white space and no U+0000, so a UUID, a date or a number written as a
+string pushes every one of them; so does a path whose `enum` or `const` lists only such strings, and so
+does a statement's own `WHERE c."s" IN ('ab', 'cd')` for the rows it keeps. A computed argument needs
+every input proved — `UPPER(a || b)` asks it of both — and a parameter, which may hold anything, is
+proved of nothing. `POSITION`, `CONCAT`, `||` and `REVERSE` push over any string. Three ask something
+other than a character, where the service answers otherwise than Calcite: `REPLACE` needs its search
+proved to hold something, a literal that does or a path whose `enum` lists no empty string; `REPEAT` a literal
+count, and a subject short enough that the result stays within Azure's 10,000 code points, which only an
+`enum`, a `const` or a literal proves yet (`maxLength` is not read); and a `SUBSTRING` whose start is not
+proved at least one is written with Calcite's clip to the string (Appendix B.2).
 
 **How a pattern is read.** As ECMA-262, the dialect JSON Schema names — but JSON Schema does not say
 whether the `u` flag applies, and each validator chooses. Without it a pattern is read and matched one
@@ -391,7 +406,9 @@ them. If your writers validate that way, spell the classes out: `[0-9]`, `[A-Za-
 
 A pattern is a promise like the rest of a schema (14.7). A document holding an emoji where the
 pattern says none can is given a page from the wrong place, a wrong `MIN` or `MAX`, and comparisons
-that keep the wrong rows.
+that keep the wrong rows. It is given the service's string functions too, where it holds what the
+pattern rules out: a length counting an emoji as one, `ß` left as it is by `UPPER`, a tab left by `TRIM`,
+and a `REPLACE` or a `LIKE '%a%'` that stops at a U+0000.
 
 ## 14.5 Containers that hold several kinds of document
 

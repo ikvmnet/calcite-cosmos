@@ -50,13 +50,17 @@ the path a string in the container's schema for that sort to reach the service. 
 That is the safe form of a text comparison (Chapter 8). If the property is always a string, declare
 `"type": "string"` for it (Chapter 14) and the comparison becomes exact.
 
-**`UPPER`, `LOWER`, `CHAR_LENGTH`, `SUBSTRING` or `TRIM` over a declared string runs in process.**
+**`UPPER`, `LOWER`, `CHAR_LENGTH`, `SUBSTRING`, `TRIM`, `REPLACE` or `LIKE '%a%'` over a declared string runs in process.**
 Calcite's string functions are Java's and the service's are its own, and they part over some characters:
 a case mapping outside ASCII (`ß` is `SS` to Calcite), a count over a character beyond U+FFFF (an emoji is
-two to Calcite), a trim over white space other than a space (a tab, U+00A0). Each pushes only where the
-container proves the string holds none of those — a `pattern` such as `^[ -~]*$`, an `enum`, a stored
-form, or the statement's own `IN (…)`. The property is still read at the service; only the function runs
-in process. Chapter 14.4 and Appendix B.2 say which pattern lets which function push.
+two to Calcite), a trim over white space other than a space (a tab, U+00A0), and a search past a U+0000
+(Azure's `REPLACE` and `CONTAINS`, which answers a `LIKE '%a%'`, stop at the first). Each pushes only
+where the container proves the string holds none of those — a `pattern` such as `^[ -~]*$`, an `enum`, a
+stored form, or the statement's own `IN (…)`. In a projection the property alone is still read at the
+service, and only the function runs in process; in a filter the comparison runs in process, over the
+documents the rest of the filter keeps, which are read whole. `REPLACE` and `REPEAT` ask something of
+their other operands as well, a search that is not empty and a count the service repeats as far as
+Calcite does. Chapter 14.4 and Appendix B.2 say which pattern lets which function push.
 
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**
 The container does not declare the stored form, or the query reads it with a spelling that cannot push.

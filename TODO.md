@@ -1349,10 +1349,38 @@ the distribution the gate is sized for.
     neither does its `NOT` (`reports/azure-axioms.md` 3.4). Each disjunct has to be one measured to compile on
     Azure and the emulator alike, as `[\x{10000}-\x{10FFFF}]` is. For `CHAR_LENGTH(s) = n` an index-friendly
     form exists, units lying between code points and twice them: `LENGTH(c.s) BETWEEN ceil(n/2) AND n`.
-  - **`LIKE` over a declared string is not pushed** — *a missed pushdown, measured and not investigated.* The
-    same statement over an undeclared path pushes as a weakening; over the declared path the whole filter stays
-    in process and the scan reads whole documents. Plain `LIKE`'s `_` and `%` agree everywhere, so the exact
-    `LIKE` and its `STARTSWITH` should push there.
+  - **`LIKE` over a declared string** — *done.* It was refused as a rendering whatever was declared, and the
+    filter read whole documents where the same statement over an undeclared path pushed as a weakening. A path
+    declared a string renders as the string, so it is pushed exactly as every other operator over one is: a
+    prefix as `STARTSWITH`, another pattern as the service's `LIKE`, the containment shape only where the
+    subject holds no U+0000, and a fold beneath one as the case-insensitive match where it is proved ASCII too
+    (`CosmosDeclaredFactPlanningTests.ALikeOverAPathDeclaredAStringPushesExactly`).
+  - **A declined function in a filter reads whole documents** — *a missed pushdown, small.* In a projection a
+    function the service does not compute over a plain column now sends the column alone, `{"$f0": c.id}`
+    (`CosmosProjectSplitRule.Narrows`), as it sends an accessor. In a filter, `WHERE UPPER(c."id") = 'AB'` over
+    an `id` nothing proves ASCII is Calcite's, above a scan with no projection, and every document arrives whole
+    though one property is read; beside a conjunct that pushes, the same, over fewer. Calcite's
+    `PROJECT_FILTER_TRANSPOSE` would put the columns the filter and the projection read beneath the filter,
+    where the split sends them; it is not in the rule set, and moving every residual filter's projection
+    reshapes plans across the corpus, so it wants its own measurement.
+  - **`_etag` declines what Azure's etags would push** — *decided, not a defect.* RFC 9110's grammar admits
+    `obs-text`, 0x80 to 0xFF, read as U+0080 to U+00FF, so the theory gives `_etag` N and two of W (U+0085,
+    U+00A0), and `UPPER`, `LOWER` and `TRIM` over it are computed in process, the property alone sent
+    (`Metadata/CosmosServiceFacts.cs`). The etags Azure issues are a quoted GUID, ASCII; stating that would be a
+    fact measured on Azure and not the grammar, which no axiom row pins. Measured and pinned, it would narrow
+    the grammar to `"`, `!` and 0x23 to 0x7E.
+  - **`REPEAT` and `REPLACE` read a length, and only a domain states one** — *small.* `REPEAT` pushes where its
+    subject's length keeps the result within Azure's 10,000 code points, and `REPLACE` where its search holds
+    something; a literal knows its own length, and a domain — an `enum`, a `const` — bounds a path's
+    (`JsonValues.LengthsOf`). The schema reader does not read `minLength` or `maxLength`, which count code
+    points: a `minLength` of n bounds the UTF-16 units from below by n and a `maxLength` of n from above by 2n,
+    which is all the theory's units need of them (below, *The other bounds*).
+  - **The emulator's U+0000, `REPLICATE` and `REPLACE` are not Azure's** — *recorded.* It stores U+0000 as
+    U+FDD0 followed by `0`, so every function over such a string differs; its `REPLICATE` has no limit; and a
+    parameter holding U+0000 in `REPLACE`'s replacement or a `CONCAT` fails the statement with 500
+    `PostgresError(E22P05)` (Appendix E). Azure is the target, so none of them is declined. The differential
+    corpus holds no U+0000 and no repetition near the limit, and the measurement tests that pin Azure's rows
+    skip on the emulator's.
   - **A bound parameter holding a lone surrogate** cannot be sent (`Service.LoneSurrogateParameterIsNeverSent`) —
     *named, and narrowed.* A literal is refused when the plan is made and computed in process; a column computed
     from parameters alone is computed above the statement and never sent; and a parameter the service reads is
@@ -1365,7 +1393,12 @@ the distribution the gate is sized for.
     family it meets (`Findings`).
   - **A function over a parameter, or over an array's element,** is computed in process: a parameter may hold
     anything until it is bound, and an element is no path a fact is about (below). Deciding a parameter's
-    characters as its value arrives, as the anchored read does, would push the first.
+    characters as its value arrives, as the anchored read does, would push the first. **What it would reach
+    first:** on Azure, `WHERE REVERSE(c.s) = @p` keeps nothing where `@p` holds a character beyond U+FFFF,
+    though the same comparison projected is true, and the ternary the adapter writes behaves the same
+    (`reports/verify-strings.md` §4.4). `REVERSE` asks nothing because it is measured to agree projected; a
+    filter comparing it with such a parameter is not measured to, and would have to ask S of the parameter, or
+    be measured, before it pushes.
 - **`LIKE`'s `_` — closed by measurement, not a defect.** It matches one code point at the service,
   and so does Calcite's: `a`, U+1F600, `b` matches `LIKE 'a_b'` in both, on Azure and on the emulator
   alike.
@@ -2010,7 +2043,9 @@ holds. Three bugs planted in what was added were each caught by it.
 - **A bound inside a condition** — *small.* An `if` naming a `minimum` is not read, which drops its `then`. The
   theory's rows have no bound atom yet.
 - **The other bounds** — *small each.* The theory has `minLength`, `maxLength`, `multipleOf`, `minItems` and the
-  rest, and the adapter has no claim for them, so the reader states none.
+  rest, and the adapter has no claim for them, so the reader states none. The lengths have a reader waiting:
+  `REPEAT` and `REPLACE` ask one of their operands (above, *A string function pushes only where its characters are
+  proved*).
 - **Gap 1 spelled per kind** — *done.* `(type = 'park' AND …) OR (type = 'map' AND …)` proves what both kinds
   declare, by the predicate oracle's split over the arms, which the rewriter asks; a UUID comparison beside it is
   lowered (`CosmosPushdownProbeTests`' "each kind spelled per arm", held to Calcite by `CosmosDifferentialTests`).

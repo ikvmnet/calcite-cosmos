@@ -33,6 +33,9 @@ statements Azure rejects and to reject features Azure implements:
 | `SUBSTRING`, `LEFT`, `RIGHT` and `INDEX_OF` over a character beyond U+FFFF | count code points | count UTF-16 units, as Calcite does, and send half of a split pair as U+FFFD |
 | `UPPER('\u017F')`, `LOWER('\u0130')`, `LOWER('\u212A')` | `S`, `i`, `k` | left as they are |
 | `TRIM`, `LTRIM`, `RTRIM` | remove white space but U+0085, U+00A0, U+180E, U+2007 and U+202F | remove those too |
+| a string holding U+0000 | stored as U+FDD0 followed by `0`, so `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
+| `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500 `PostgresError(E22P05)`; so does a `CONCAT` of one | replaces with it as written |
+| `REPLICATE` past 10,000 code points | repeats on | undefined |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 

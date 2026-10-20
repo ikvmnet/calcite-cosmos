@@ -3567,6 +3567,25 @@ asks the same of its pattern's text (`FoldsAlike`), the case mapping's class nam
 proved the translation is refused, and the function stays in process over the value the service sends, which is what a
 path declared nothing of always did; the rest of the statement pushes.
 
+**What stays in process still reads only what it needs, in a projection.** A declined function over a path's reading
+sends the reading, `{"$f0": (IS_PRIMITIVE(c.s) ? c.s : null)}`, the projection split putting the accessor beneath the
+function. Over a plain column there was no accessor to push, and the split was not made where nothing else beside it
+rendered: `UPPER(c."id")` over an `id` nothing proves ASCII, which pushed before the characters were asked, sent
+every document whole for Calcite to read one property of. The split now also counts a narrowing as worth a node —
+only references, none of them the document itself, fewer than the input's columns (`CosmosProjectSplitRule.Narrows`)
+— and sends `{"$f0": c.id}`. It terminates as the guard beside it does: the projection it makes reads exactly its
+inner one's columns, which split again would be no narrower. In a filter it does not reach: a declined comparison
+is Calcite's, above a scan with no projection, and the documents arrive whole (`TODO.md`).
+
+**`LIKE` over a declared string is `LIKE` over the string.** A path declared a string renders as the string, so the
+service's functions have no other type to be undefined over, as no operator over one has
+(`RequireRenderingsReadAsRenderings`); refusing `LIKE` over its rendering whatever was declared sent the filter to
+Calcite over whole documents, where the same statement over an undeclared path pushed as a weakening. It is pushed
+exactly now: a prefix as `STARTSWITH`, another pattern as the service's `LIKE` — `_` one code point at both ends — the
+containment shape where the subject and the pattern hold no Z, and a fold beneath it as the case-insensitive match
+where the fold's classes are proved too (`CosmosRexTranslator.IsUndeclaredRendering`). On the `ORDER BY` yardstick's gate
+it gives back six sorts and a page that a `LIKE 'a%'` beside them kept in process.
+
 **What an argument holds is the theory's, a computed one's too.** The argument is read by the one reader of a
 `RexNode` into the theory's terms (`CosmosPredicateLoader.Loading.ReadValue`): a path's reading, a literal, a
 parameter, or a call — the operator's name and its operands, a `TRIM`'s flag spelled in the name, a `CASE` read as its
@@ -3647,7 +3666,8 @@ fails.
 RegexMatch(c.s, "[\x{10000}-\x{10FFFF}]")` and rechecked above, exact over the rows without the class and shipping the
 rows with it; a projection with a fallback member keyed on the same test. A pattern `RegexMatch` cannot compile
 answers undefined, which drops the row its arm was to keep, so each would need one measured to compile on both
-targets. And `LIKE` over a declared string is not pushed at all, a missed pushdown measured beside these. Both are in
+targets. A declined comparison over a plain column reads whole documents in a filter, as above. And the lengths
+`REPEAT` and `REPLACE` ask come from a domain alone, the schema's `minLength` and `maxLength` unread. All three are in
 `TODO.md`.
 
 #### The anchored read: a proof completed as the rows arrive
