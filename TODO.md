@@ -2504,6 +2504,19 @@ across documents* and *A join of a container to itself* is the record.
 - **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
   in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
   `c.pk = 42` is unchecked.
+- **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
+  `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,
+  `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
+  `RETURNING` does, which `NeverTrue` reads as leave to decide. Read from the code and modelled in `IrEval`'s column
+  mode; the column measurement holds no structure. The typed cells answer the raise.
+- **The typed `DOUBLE` reading compares numbers exactly** — *small, and it touches plans.* `Typed.Equal` decides a
+  stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE` compare the doubles they
+  round to: past 2^53 two integers a unit apart are one double, and `KeptEqual` establishes the literal of a row that
+  holds the other. The typed cells compare doubles, so a cell may answer TRUE there where its state does not.
+- **The cast readings rest on no row** — *small.* `NumberCast` answers from measurements the registry has no row for
+  (`CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering`,
+  `ReturningDecimalParsesTheRendering`), so `PredicateAtom.Rests` is empty for a numeric cast and `RETURNING DECIMAL`,
+  and a proof through one cites nothing on Calcite's side. The rows are owed before the casts' cells are.
 
 ---
 

@@ -210,6 +210,46 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             }
         }
 
+        /// <summary>
+        /// The truth values the atom may take on one cell of a path's import: <see cref="On"/>'s, through the reading's cell
+        /// methods, which answer on the state the cell lies in where they know no better.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The rendering check's Calcite side, which the facts graph never reads</b>, so it changes no plan. A reading
+        /// narrower on a cell than on its state is what proves a form exact; one wider is a raise the coarse reading leaves
+        /// out (<c>TODO.md</c>): a reading is the union of the readers it stands for, each as measured.
+        /// </para>
+        /// </remarks>
+        internal Truths OnCell(PathCell cell)
+        {
+            if (Test == DefinedTest || Reads is not Reading reading || cell is PathCell.Unknown)
+                return On(cell.Coarse);
+
+            // A comparison with a parameter reads the value as the null test does, and raises where that read does.
+            if (Parameter)
+                return reading.Parameter(cell.Coarse) | (reading.NullOn(cell) & Truths.Raises);
+
+            switch (Test)
+            {
+                case Equal:
+                    return reading.EqualOn(cell, Operand!);
+                case NotEqual:
+                    return Swap(reading.EqualOn(cell, Operand!));
+                case Less or LessOrEqual or Greater or GreaterOrEqual:
+                    return reading.OrderOn(cell, Test, Operand!);
+                case InTest when Points is { Count: > 0 }:
+                    return Points.Select(point => reading.EqualOn(cell, point)).Aggregate(Or);
+                case NullTest:
+                    return reading.NullOn(cell);
+                default:
+                    return On(cell.Coarse);
+            }
+        }
+
+        /// <summary>The <c>Calcite.*</c> rows the reading's answers on a cell rest on.</summary>
+        internal ValueSet<string> Rests => Test != DefinedTest && Reads is Reading reading ? reading.Rests : ValueSet<string>.Empty;
+
         /// <summary>The truth values of <c>NOT</c> over these.</summary>
         public static Truths Swap(Truths truths) =>
             (truths & (Truths.Unknown | Truths.Raises)) | ((truths & Truths.True) != 0 ? Truths.False : 0) | ((truths & Truths.False) != 0 ? Truths.True : 0);
@@ -391,6 +431,27 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>What a path holds where a comparison with a parameter is TRUE or FALSE.</summary>
             public abstract PathValues KeptParameter();
 
+            /// <summary>The rows the cell methods rest on.</summary>
+            public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
+
+            /// <summary>The truth values of an equality on a cell: by default, on the state it lies in.</summary>
+            public virtual Truths EqualOn(PathCell cell, string literal) => Equal(cell.Coarse, literal);
+
+            /// <summary>The truth values of an ordering on a cell: by default, on the state it lies in.</summary>
+            public virtual Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal);
+
+            /// <summary>The truth values of <c>IS NULL</c> on a cell: by default, on the state it lies in.</summary>
+            public virtual Truths NullOn(PathCell cell) => Null(cell.Coarse);
+
+            /// <summary>Whether an ordering holds of a value that compares with the literal as the sign says.</summary>
+            static bool Ordered(string op, int sign) => op switch
+            {
+                Less => sign < 0,
+                LessOrEqual => sign <= 0,
+                Greater => sign > 0,
+                _ => sign >= 0,
+            };
+
             /// <summary>
             /// <c>JSON_VALUE</c> read as text, and the cast to text over a raw value, which renders an object and an array
             /// as well and whose rendering of a null has not been measured.
@@ -541,6 +602,45 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public override PathValues KeptParameter() => PathValues.OfKinds(Renders);
 
+                static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.JsonValueRendersScalarsAsText", "Calcite.JsonValueReadsStructureAsNull", "Calcite.TextOrderIsByCodeUnit");
+
+                public override ValueSet<string> Rests => Rows;
+
+                /// <summary>An interval of strings holds the literal or not; anything else answers as its state.</summary>
+                public override Truths EqualOn(PathCell cell, string literal) =>
+                    cell is PathCell.Strings && IsString(literal) ? (cell.Contains(literal) ? T | F : F) : Equal(cell.Coarse, literal);
+
+                /// <summary>
+                /// Text orders by UTF-16 unit (<c>Calcite.TextOrderIsByCodeUnit</c>): a string or a boolean is placed exactly, an
+                /// interval wholly to one side of the literal is placed there, and a number by the first unit of its rendering,
+                /// which is <c>-</c> or a digit whatever its spelling (<c>Calcite.JsonValueRendersScalarsAsText</c>).
+                /// </summary>
+                public override Truths OrderOn(PathCell cell, string op, string literal)
+                {
+                    if (IsString(literal) == false)
+                        return Order(cell.Coarse, op, literal);
+
+                    var text = StringOf(literal);
+                    int? side = cell switch
+                    {
+                        PathCell.Point { Value: var v } when IsString(v) => Math.Sign(string.CompareOrdinal(StringOf(v), text)),
+                        PathCell.Point { Value: var v } when TypeOf(v) == BooleanType => Math.Sign(string.CompareOrdinal(Renderings.BooleanText(v), text)),
+                        PathCell.Point { Value: var v } when IsNumber(v) => FirstUnit(text),
+                        PathCell.Numbers => FirstUnit(text),
+                        PathCell.Strings { High: string high } when string.CompareOrdinal(StringOf(high), text) <= 0 => -1,
+                        PathCell.Strings { Low: string low } when string.CompareOrdinal(StringOf(low), text) >= 0 => 1,
+                        _ => null,
+                    };
+
+                    return side is int sign ? (Ordered(op, sign) ? T : F) : Order(cell.Coarse, op, literal);
+                }
+
+                /// <summary>
+                /// Which side of text every rendering of a number lies: above where the text is empty or starts below
+                /// <c>+</c>, below where it starts above <c>9</c>, and either otherwise.
+                /// </summary>
+                static int? FirstUnit(string text) => text.Length == 0 || text[0] < '+' ? 1 : text[0] > '9' ? -1 : null;
+
             }
 
             /// <summary>
@@ -591,6 +691,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public override PathValues KeptParameter() => PathValues.AnythingThere;
 
+                static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.RawStringEqualityIsOrdinal", "Calcite.RawNullIsSqlNull");
+
+                public override ValueSet<string> Rests => Rows;
+
+                /// <summary>
+                /// The union of the three columns a raw value is read through (<c>Calcite.RawStringEqualityIsOrdinal</c>,
+                /// <c>Calcite.RawNullIsSqlNull</c>): a null is SQL null in each, a string is equal to the one with its units
+                /// alone, and a value of another type is unequal in a <c>VARIANT</c> and an <c>ANY</c> and fails a
+                /// <c>VARCHAR</c> column's read — which is raw beside a string literal alone. A number literal is left coarse:
+                /// a <c>VARIANT</c> is equal to a number of its own SQL type alone, which the IR does not keep.
+                /// </summary>
+                public override Truths EqualOn(PathCell cell, string literal) => IsNumber(literal) || TypeOf(literal) == NullType ? Equal(cell.Coarse, literal) : cell switch
+                {
+                    PathCell.Absent or PathCell.Null => U,
+                    PathCell.Point { Value: var v } when TypeOf(v) == TypeOf(literal) => v == literal ? T : F,
+                    PathCell.Strings => IsString(literal) && cell.Contains(literal) ? T | F : F,
+                    PathCell.Point { Value: var v } when IsString(v) => F,
+                    _ => IsString(literal) ? F | R : F,
+                };
+
+                /// <summary>A <c>VARIANT</c> has no ordering, and an <c>ANY</c> raises on one across types: the state's answer, or the raise.</summary>
+                public override Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal) | R;
+
+                /// <summary>True of a null alone; and a <c>VARCHAR</c> column fails to read anything but a string.</summary>
+                public override Truths NullOn(PathCell cell) => cell switch
+                {
+                    PathCell.Absent or PathCell.Null => T,
+                    PathCell.Strings => F,
+                    PathCell.Point { Value: var v } when IsString(v) => F,
+                    _ => F | R,
+                };
+
             }
 
             /// <summary>
@@ -605,10 +737,12 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             sealed class Typed : Reading
             {
 
+                readonly string _type;
                 readonly ValueSet<string> _kinds;
 
-                Typed(ValueSet<string> kinds)
+                Typed(string type, ValueSet<string> kinds)
                 {
+                    _type = type;
                     _kinds = kinds;
                 }
 
@@ -620,10 +754,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// </remarks>
                 public static Reading? For(string type) => type switch
                 {
-                    "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => new Typed(ValueSet.Of(IntegerType)),
-                    "FLOAT" or "REAL" or "DOUBLE" => new Typed(ValueSet.Of(IntegerType, FractionType)),
+                    "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => new Typed(type, ValueSet.Of(IntegerType)),
+                    "FLOAT" or "REAL" or "DOUBLE" => new Typed(type, ValueSet.Of(IntegerType, FractionType)),
                     "DECIMAL" => new NumberCast("DECIMAL", overText: true),
-                    "BOOLEAN" => new Typed(ValueSet.Of(BooleanType)),
+                    "BOOLEAN" => new Typed(type, ValueSet.Of(BooleanType)),
                     _ => null,
                 };
 
@@ -664,6 +798,57 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     truth ? PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind, NullType, ObjectType, ArrayType)) : PathValues.OfKinds(_kinds);
 
                 public override PathValues KeptParameter() => PathValues.OfKinds(_kinds);
+
+                static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.ReturningAsserts", "Calcite.ColumnReadsWholeNumbersAsItsType");
+
+                public override ValueSet<string> Rests => Rows;
+
+                /// <summary>
+                /// The union of <c>RETURNING</c> and the column the reader fills (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>):
+                /// on a point of a measured type, its value where either reads it, beside the raise where either may raise; and
+                /// over a structure the column fails the statement, where <c>RETURNING</c> answers null.
+                /// </summary>
+                public override Truths EqualOn(PathCell cell, string literal) => cell switch
+                {
+                    PathCell.Point { Value: var v } when _kinds.Contains(TypeOf(v)) && _type is "INTEGER" or "BIGINT" or "DOUBLE" or "BOOLEAN" => Read(v, literal),
+                    _ => Equal(cell.Coarse, literal) | Unread(cell),
+                };
+
+                public override Truths OrderOn(PathCell cell, string op, string literal) => Order(cell.Coarse, op, literal) | Unread(cell);
+
+                public override Truths NullOn(PathCell cell) => Null(cell.Coarse) | Unread(cell);
+
+                static Truths Unread(PathCell cell) => cell is PathCell.Structure ? R : Truths.None;
+
+                /// <summary>What an equality answers on a point of the type.</summary>
+                /// <remarks>
+                /// <c>RETURNING</c> raises over an integer spelled with a point, and under <c>BIGINT</c> over one an int holds,
+                /// and the theory spells either as the column reads it; the column raises beyond its type, but for a
+                /// <c>BIGINT</c> whose double its bound admits, which it reads as a number it does not hold (<c>TODO.md</c>).
+                /// A <c>DOUBLE</c> compares doubles, which two numbers may share.
+                /// </remarks>
+                Truths Read(string v, string literal)
+                {
+                    var value = Renderings.SameValue(v, literal) ? T : _type == "DOUBLE" && Doubles(v).Any(d => Doubles(literal).Any(e => d == e)) ? T | F : F;
+                    switch (_type)
+                    {
+                        case "BOOLEAN":
+                            return value;
+                        case "DOUBLE":
+                            return TypeOf(v) == FractionType ? value : value | R;
+                    }
+
+                    var (least, most) = _type == "INTEGER" ? ((decimal)int.MinValue, (decimal)int.MaxValue) : (long.MinValue, long.MaxValue);
+                    if (TryNumberOf(v, out var x) && x >= least && x <= most)
+                        return value | R;
+
+                    return _type == "BIGINT" && Doubles(v).Any(d => d >= long.MinValue && d <= long.MaxValue) ? T | F | R : R;
+                }
+
+                /// <summary>The doubles a number may be read as: parsed, as the reader does, and cast from a decimal.</summary>
+                static double[] Doubles(string number) => TryNumberOf(number, out var x)
+                    ? new[] { double.Parse(x.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture), (double)x }
+                    : new[] { ApproximateOf(number) ?? double.NaN };
 
             }
 

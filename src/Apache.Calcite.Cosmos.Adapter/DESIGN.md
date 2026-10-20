@@ -5828,6 +5828,41 @@ where one string holds U+E000 or above and another a supplementary character.
 FALSE raises where its other operand raises, in either order. `IrEval` answers the deciding arm and `Raises` marks the
 row, which is what the check against Calcite leaves out.
 
+### Cells, and Calcite on one
+
+**A cell is a set of the values one path may hold, cut so that each side of a pair answers one way on it.**
+`PathCell.Split` cuts one imported `PathValues`, with the classes of its strings' characters, at the values the pair
+compares with: absent, null, each structure and each boolean apart; a literal the import admits as a point, and one it
+excludes as a boundary; strings between two literals in Calcite's order, by UTF-16 unit; numbers of a kind between two by
+value. The cut points are handed in, for S's rules to choose. Every value the import admits lies in exactly one cell,
+and a value it refuses in none.
+
+**Every cell is inhabited, and the search for an inhabitant is complete.** A refutation names a cell, and a cell nothing
+lies in refutes nothing, so `Split` keeps an interval only where `Witness` finds a value in it. An interval's strings
+are tried from the least above its low end, then each next in order — the last with the least unit its classes allow
+appended, nothing lying between — until one is not excepted or one reaches the high end; its numbers from its bounds.
+So the strings below `""`, those between `l` and `l` + U+0000, and bounds that hold no number of the kind are dropped,
+and nothing the import admits is. Classes are read through `JsonValues.BandsOfText` a unit at a time, so classes the
+string fixes add come through unchanged.
+
+**`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
+its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
+literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell;
+a typed equality on a point reads its value as the column and as `RETURNING` read it. Making `On` exact on a scalar
+instead would change the facts graph's verdicts wherever a domain is known.
+
+**A reading on a cell is the union of the readers it stands for, raises included.** The coarse raw and typed readings
+leave out raises their readers make: a `VARCHAR` column's read of anything but a string, a raw ordering, and a typed
+column's read of a structure, which `RETURNING` answers null for. A cell answers them, and only there stands outside the
+coarse answer (`TODO.md`). Under decision 2 a raise beside a truth value constrains nothing, so the union only keeps a
+cell from refuting where Calcite may fail.
+
+**What holds it.** `PredicateAtomCellTests` holds every answer to `IrEval` on every value in the cell, through each
+reader (`RETURNING` and the column; a `VARIANT`, an `ANY` and a `VARCHAR`), leaving out and counting the coins `IrEval`
+tosses where nothing was measured; each answer within the coarse one but for those raises; and a sub-cell's within its
+cell's, the probe's T9 as a gain. `PathCellTests` holds a split to covering the import exactly and every cell to an
+inhabitant, each with a plant it must catch.
+
 ---
 
 ## Differential testing

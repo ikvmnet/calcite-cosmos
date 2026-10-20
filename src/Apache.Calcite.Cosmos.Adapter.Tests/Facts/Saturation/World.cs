@@ -45,6 +45,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             _seed = unchecked((ulong)seed * 0x9E3779B97F4A7C15UL + 0x632BE59BD9B4E019UL);
         }
 
+        /// <summary>How many coins this world has tossed: questions it chose one of several answers to.</summary>
+        public int Tossed { get; private set; }
+
         /// <summary>
         /// Picks one of the truth values, the same each time this world is asked the same question.
         /// </summary>
@@ -53,6 +56,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var members = Order.Where(t => (among & t) != 0).ToArray();
             if (members.Length == 0)
                 throw new ArgumentOutOfRangeException(nameof(among), among, "A coin needs a side.");
+
+            if (members.Length > 1)
+                Tossed++;
 
             return members[(int)(Hash(question) % (ulong)members.Length)];
         }
