@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         Func<PathFacts, ValueSet<CutPoint>, CellPartition> Split,
         Func<ServiceForm, CellPartition, ServiceTable, ValueSet<string>, OutcomeVector> Leaf,
         Func<ServiceForm, OutcomeVector, OutcomeVector, ServiceTable, OutcomeVector> Compound,
-        Func<PredicateAtom, OutcomeVector, CellOutcomes> Pair)
+        Func<PredicateAtom, OutcomeVector, AnswerMeanings, CellOutcomes> Pair)
     {
 
         /// <summary>

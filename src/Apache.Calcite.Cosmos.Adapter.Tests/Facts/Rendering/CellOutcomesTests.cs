@@ -48,7 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static CellOutcomes Outcomes(ServiceForm form, PathValues import)
         {
             var cuts = CutPoints.Of(Atom, form, new ReaderEdges(ValueSet<CutKind>.Empty, ValueSet<string>.Empty));
-            return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(new PathFacts(Label, import, AllBands), cuts), ProbeRows.Table, ValueSet<string>.Empty));
+            return CellOutcomes.Of(Atom, Evaluate(form, PathCell.Split(new PathFacts(Label, import, AllBands), cuts), ProbeRows.Table, ValueSet<string>.Empty), AnswerMeanings.Measured);
         }
 
         static CellClass C(Truths calcite, ServiceOutcomes service) => new(calcite, service);
@@ -80,6 +80,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 outcomes.Classes.Should().Equal(ValueSet.Of(C(T, t), C(F, f)), form.Text);
                 outcomes.Count.Should().Be(3);
             }
+        }
+
+        /// <summary>
+        /// A value that is no boolean reads as the meanings say where its row keeps it not, and what the row keeps, and a
+        /// failure, stand: a row that kept a number would refute what a narrowing to undefined would let pass.
+        /// </summary>
+        [Fact]
+        public void AValueThatIsNoBooleanKeepsWhatItsRowKeeps()
+        {
+            var cells = PathCell.Split(new PathFacts(Label, PathValues.OfKinds(ValueSet.Of(IntegerType)), AllBands), ValueSet<CutPoint>.Empty);
+            var vector = new OutcomeVector(cells, cells.Cells.Select(_ => new CellOutcome(t | f | E, CosmosValueClass.Number)).ToList(), ValueSet<string>.Empty);
+            CellOutcomes.Of(Atom, vector, AnswerMeanings.Measured).Classes.Should().OnlyContain(k => k.Service == (t | u | E));
         }
 
         /// <summary>

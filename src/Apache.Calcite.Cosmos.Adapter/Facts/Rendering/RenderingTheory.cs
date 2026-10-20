@@ -521,8 +521,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             {
                 var (e, p, a, f) = r.Vars<Pred, JPath, PredicateAtom, ServiceForm>("e", "p", "a", "f");
                 var (pos, z, v) = r.Vars<RenderPosition, CellPartition, OutcomeVector>("pos", "z", "v");
-                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)));
-                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, definition.Pair)));
+                var mn = r.Var<AnswerMeanings>("mn");
+                r.When(Candidate.Of(e, pos, f), Ir.Atom.Of(e, p, a), z.Is(Partition.Of(e, f)), v.Is(Svc.Of(z, f)), mn.Is(Means.Of()));
+                r.Then(Outcomes.Of(e, f).Is(Compute.Of(a, v, mn, definition.Pair)));
             });
 
             // The universal over cells: the cells' classes are complete (lattice-free), and the allowed ones the theory's.

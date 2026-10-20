@@ -5897,8 +5897,10 @@ names, their answers unioned. A number is placed only within ±2^53, where a dou
 which no comparator orders.
 
 **A path written bare carries the class of a value that is no boolean**, and a connective over it reads that class's
-row, not unknown's. As a whole condition such a value is kept by neither `WHERE` nor `WHERE NOT`
-(`Service.BarePathKeepsOnlyTrue`, `Service.NotOverAPathKeepsOnlyFalse`), and `CellOutcomes` reads it so.
+row, not unknown's. As a whole condition, where its row keeps it not, such a value is kept by neither `WHERE` nor
+`WHERE NOT` (`Service.BarePathKeepsOnlyTrue`, `Service.NotOverAPathKeepsOnlyFalse`): `means()` says it reads as
+undefined, and the `classes` rule hands that to `CellOutcomes`. What its row keeps stands, so a row that kept a number
+would refute; at `Pos` false and undefined are alike, and at `Neg` the reading is the licensed `NOT`'s.
 
 **A literal's double edge is the double's exact value.** A decimal's own conversion from a double keeps fifteen digits
 and moves 2^53 by two, so `CutPoints` reads the double's bits, and cuts nowhere where no decimal holds the value.

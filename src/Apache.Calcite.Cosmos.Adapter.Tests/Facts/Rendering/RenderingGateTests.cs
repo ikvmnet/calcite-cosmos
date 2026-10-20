@@ -157,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Split = (x, c) => Count(("partition", x, c), Measured.Split(x, c)),
                 Leaf = (f, z, t, q) => Count(("svc", z, f), Measured.Leaf(f, z, t, q)),
                 Compound = (f, v, w, t) => Count(("svc", v.Cells, f), Measured.Compound(f, v, w, t)),
-                Pair = (a, v) => Count(("outcomes", a, v), Measured.Pair(a, v)),
+                Pair = (a, v, m) => Count(("outcomes", a, v), Measured.Pair(a, v, m)),
             });
 
             using var bundle = theory.Open(RenderingSet.Emulator);
