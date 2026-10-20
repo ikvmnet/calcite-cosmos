@@ -144,7 +144,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 var bytes = await Fresh("bytes", cts.Token);
                 (await Write(bytes, Encoding.UTF8.GetBytes("""{"id":"good","pk":"a","n":1,"s":"ok"}"""), cts.Token)).Should().BeTrue();
 
-                var malformed = Malformed.Select(m => (m.Id, Document: Concat($$"""{"id":"{{m.Id}}","pk":"a","n":5,"s":""", m.Text, "\"}")))
+                // The prefix ends with the quote that opens the value: a raw literal closes at the first three quotes, which
+                // took that one, and the body sent was `"s":x…`, which Azure refuses as an invalid payload.
+                var malformed = Malformed.Select(m => (m.Id, Document: Concat("{\"id\":\"" + m.Id + "\",\"pk\":\"a\",\"n\":5,\"s\":\"", m.Text, "\"}")))
                     .Append(("nested", Concat("""{"id":"nested","pk":"a","n":5,"o":{"t":"x""", [0xED, 0xA0, 0x80], "y\"}}")))
                     .Append(("badkey", Concat("""{"id":"badkey","pk":"a","n":5,"o":{"k""", [0xFF], "\":1}}")));
 
@@ -172,12 +174,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Writes a document as the bytes given, and answers whether the service stored it: an emulator's refusal of the
         /// bytes is recorded rather than thrown, since that is a measurement too.
         /// </summary>
+        /// <remarks>
+        /// Only the emulator's refusal: the vnext-preview image answers 403 and the one CI runs 400, both "Failed to parse
+        /// Json request". Any other refusal is a document the test wrote wrongly, and fails the fixture rather than skipping
+        /// every test that reads it — Azure's "The request payload is invalid" was once taken for the emulator's, and both
+        /// tests of what Azure stores skipped on Azure.
+        /// </remarks>
         static async Task<bool> Write(Container container, byte[] document, CancellationToken cancellation)
         {
             using var stream = new MemoryStream(document);
             using var response = await container.CreateItemStreamAsync(stream, new PartitionKey("a"), cancellationToken: cancellation);
 
-            if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
+            if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.BadRequest && response.ErrorMessage?.Contains("Failed to parse Json request", StringComparison.Ordinal) == true)
             {
                 _refused = response.StatusCode;
                 return false;
