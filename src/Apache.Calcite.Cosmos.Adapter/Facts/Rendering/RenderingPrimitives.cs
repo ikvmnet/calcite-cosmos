@@ -29,6 +29,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A form is a connective over parts.</summary>
         public static Primitive<ServiceForm, bool> FormIsCompound { get; } = Primitive.Create<ServiceForm, bool>("form-is-compound", f => f.Members.Count > 0);
 
+        /// <summary>
+        /// The connective whose laws evaluating a form by its first part and its rest takes for granted: a junction's own
+        /// where it has more than two members, which the rest regroups and rids of copies; none otherwise.
+        /// </summary>
+        public static Primitive<ServiceForm, ValueSet<CosmosServiceTest>> FormRegroups { get; } = Primitive.Create<ServiceForm, ValueSet<CosmosServiceTest>>("form-regroups", f =>
+            f.Kind is ServiceFormKind.And or ServiceFormKind.Or && f.Members.Count > 2 ? ValueSet.Of(f.Test) : ValueSet<CosmosServiceTest>.Empty);
+
         /// <summary>A form orders a path against a string, which the service's order and Calcite's may rank apart.</summary>
         public static Primitive<ServiceForm, bool> StringOrdering { get; } = Primitive.Create<ServiceForm, bool>("string-ordering", f =>
             f.Kind == ServiceFormKind.Compare && f.Test is CosmosServiceTest.Less or CosmosServiceTest.LessOrEqual or CosmosServiceTest.Greater or CosmosServiceTest.GreaterOrEqual

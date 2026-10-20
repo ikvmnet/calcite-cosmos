@@ -5990,6 +5990,11 @@ reads the set's licence and Calcite's: `T(a∧b) = T(a) ∩ T(b)`, `F(a∧b) = F
 must hold on both sides. One expectation for every set, as first planned, would have asked Calcite for the six classes
 too, and licensed nothing under it.
 
+**On one atom's cells, a junction of three members or more is regrouped only under its licence.** It is evaluated as
+its first member and the rest, a junction rid of every copy of that member, which takes associativity and idempotence
+for granted; a missing row of the grouping as written was never read. So it is evaluated only where the set licenses
+its connective. Two members read their row as written, and a junction nested as written is evaluated as nested.
+
 **Positions and pairings are derived.** A junction of the IR has a `junction` row from each arm; a negation's operand is
 a candidate for the form stripped of a `NOT` at the opposite position. The first arm is offered each member of the
 form, and the second the form without it, whose members a rule states where three or more remain; so every pairing is

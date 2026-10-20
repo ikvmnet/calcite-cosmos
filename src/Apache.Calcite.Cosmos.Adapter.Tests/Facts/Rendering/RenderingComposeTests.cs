@@ -156,6 +156,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A junction of three members at one atom is evaluated regrouped and rid of copies, which only the licence makes
+        /// its value: with one AND row dropped, the flat guarded form is unproven, where its members written two by two,
+        /// whose rows are read as written and hold no dropped key, prove.
+        /// </summary>
+        [Fact]
+        public void AJunctionOfThreeIsRegroupedOnlyUnderTheLicence()
+        {
+            var dropped = MeasuredKey.Of(Op.And, CosmosValueClass.Undefined, CosmosValueClass.Undefined);
+            var theory = RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows.Where(row => row.Key != dropped || row.Target != RenderingTarget.Emulator)] });
+            var notBikes = Ne(Text(LabelPath), "bikes");
+            Check(notBikes, Guarded).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
+            Check(notBikes, Guarded, theory).Equal.Kind.Should().Be(RenderingVerdictKind.Unproven);
+            Check(notBikes, All(Guarded.Members[0], All(Guarded.Members[1], Bare)), theory).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
+        }
+
+        /// <summary>
         /// A path written bare is read inside AND by the row for the class of what it holds, so AND is licensed only where
         /// the rows for values that are no boolean match Kleene's too: without them a junction holding one is unproven.
         /// </summary>
@@ -175,7 +191,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             Check(conjunct, form, RenderingTheory.Define(Measured with { Rows = [.. ProbeRows.Rows, .. bare] })).Equal.Kind.Should().Be(RenderingVerdictKind.Proven);
 
             var theory = RenderingTheory.Define(Measured with { Rows = [.. booleans, .. bare] });
-            theory.Theory.TryGet(theory.Licensed.Of(RenderingSet.Emulator), out _).Should().BeFalse("no connective is licensed");
+            theory.Theory.Get(theory.Licensed.Of(RenderingSet.Emulator)).Should().BeEmpty("no connective is licensed");
             Check(conjunct, form, theory).Equal.Kind.Should().Be(RenderingVerdictKind.Unproven);
         }
 

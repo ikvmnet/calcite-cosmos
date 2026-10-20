@@ -497,15 +497,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Svc.Of(z, g).Is(Compute.Of(g, z, Compute.Of(t, ServiceTable.Of), q, definition.Leaf)));
             });
 
+            // A junction of three members or more is evaluated as its first and a regrouped rest rid of copies, which only
+            // the set's licence makes the junction's own value; two members read their row as written.
             evaluate.DefineRule("a compound is evaluated from its parts by its connective's rows", r =>
             {
                 var z = r.Var<CellPartition>("z");
                 var (g, h1, h2, s) = r.Vars<ServiceForm, ServiceForm, ServiceForm, RenderingSet>("g", "h1", "h2", "s");
                 var (v, w, t) = r.Vars<OutcomeVector, OutcomeVector, ValueSet<MeasuredEntry>>("v", "w", "t");
+                var lic = r.Var<ValueSet<CosmosServiceTest>>("lic");
                 r.When(Need.Of(z, g));
                 r.Where(RenderingPrimitives.FormIsCompound.Of(g));
                 r.When(h1.Is(Compute.Of(g, ServiceForm.First)), h2.Is(Compute.Of(g, ServiceForm.Rest)), v.Is(Svc.Of(z, h1)), w.Is(Svc.Of(z, h2)),
-                    Under.Of(s), t.Is(Table.Of(s)));
+                    Under.Of(s), t.Is(Table.Of(s)), lic.Is(Licensed.Of(s)));
+                r.Where(Primitives.IsSubsetOf<CosmosServiceTest>().Of(RenderingPrimitives.FormRegroups.Of(g), lic));
                 r.Then(Svc.Of(z, g).Is(Compute.Of(g, v, w, Compute.Of(t, ServiceTable.Of), definition.Compound)));
             });
         }
@@ -665,8 +669,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             Theory.Write(w =>
             {
+                // Every set's licence starts empty, so a rule may read a set that licenses nothing.
                 foreach (var (set, targets) in definition.Serves)
-                    w.Assume(Serves.Of(set).Is(targets));
+                    w.Assume(Serves.Of(set).Is(targets), Licensed.Of(set).Is(ValueSet<CosmosServiceTest>.Empty));
 
                 foreach (var k in AgreementRows.Classes)
                     w.Assume(Class.Of(k));
