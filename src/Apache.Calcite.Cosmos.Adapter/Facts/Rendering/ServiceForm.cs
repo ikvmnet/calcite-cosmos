@@ -116,11 +116,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         static ServiceForm Compound(ServiceFormKind kind, CosmosServiceTest test, ServiceForm[] members, string text) =>
             new(kind, test, null, null, members.Aggregate(ValueSet<string>.Empty, (s, m) => s.Union(m.Literals)), members.Aggregate(ValueSet<string>.Empty, (s, m) => s.Union(m.Paths)), members, text);
 
-        /// <summary>A negation's operand, or a junction's first member.</summary>
-        public static ServiceForm First(ServiceForm compound) => Operands(compound)[0];
+        /// <summary>A negation's operand, or a junction's first member; a leaf is its own.</summary>
+        public static ServiceForm First(ServiceForm form) => form.Members.Count > 0 ? form.Members[0] : form;
 
-        /// <summary>A negation's operand, or a junction without its first member.</summary>
-        public static ServiceForm Rest(ServiceForm compound) => compound.Kind == ServiceFormKind.Not ? Operands(compound)[0] : Without(compound, Operands(compound)[0]);
+        /// <summary>A negation's operand, or a junction without its first member; a leaf is its own.</summary>
+        public static ServiceForm Rest(ServiceForm form) => form.Kind is ServiceFormKind.And or ServiceFormKind.Or ? Without(form, form.Members[0]) : First(form);
 
         /// <summary>
         /// A junction without every member whose text is the member's: the one member left where one is, and the member
@@ -146,9 +146,6 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A negation's operand, or the negation of anything else.</summary>
         public static ServiceForm Strip(ServiceForm form) => form.Kind == ServiceFormKind.Not ? form.Members[0] : NotOf(form);
-
-        static IReadOnlyList<ServiceForm> Operands(ServiceForm compound) =>
-            compound.Members.Count > 0 ? compound.Members : throw new ArgumentException("A leaf has no parts.", nameof(compound));
 
         /// <inheritdoc />
         public bool Equals(ServiceForm? other) => other is not null && string.Equals(Text, other.Text, StringComparison.Ordinal);

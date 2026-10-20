@@ -440,7 +440,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(Need.Of(z, f));
             });
 
-            // The filter is placed before the parts are taken: a leaf has none, and taking them throws.
+            // Every value a body computes is total: body calls are unordered, so a filter beside one guards nothing. A
+            // leaf is its own part, and none of these derives anything from it.
             need.DefineRule("a compound that is evaluated is evaluated through its parts", r =>
             {
                 var z = r.Var<CellPartition>("z");
@@ -459,7 +460,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var (u, w, l) = r.Vars<string, string, string>("u", "w", "l");
                 r.When(Need.Of(z, g), z.Is(Partition.Of(e, f)), Ir.Atom.Of(e, p, a), k.Is(ImportedChars.Of(p)), Parting.Of(u, w));
                 r.Where(RenderingPrimitives.StringOrdering.Of(g));
-                r.When(l.Is(Compute.Of(g, x => x.Literal!)), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                r.When(l.Is(Compute.Of(g, x => x.Literal ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));
                 r.Then(PartedLiterals.Of(p).Is(Primitives.Singleton<string>().Of(l)));
@@ -476,7 +477,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(Arm.Of(e, t1), Arm.Of(e, t2), t1.IsNot(t2), Ir.Atom.Of(t1, p, a1), Ir.Atom.Of(t2, p, a2));
                 r.Where(RenderingPrimitives.AtomStringOrdering.Of(a1));
                 r.Where(RenderingPrimitives.AtomStringOrdering.Of(a2));
-                r.When(k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(a1, x => x.Operand!)), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
+                r.When(k.Is(ImportedChars.Of(p)), Parting.Of(u, w), l.Is(Compute.Of(a1, x => x.Operand ?? "")), b.Is(Compute.Of(l, x => JsonValues.CharactersOf(x))));
                 r.Where(Primitives.Contains<string>().Of(k, u));
                 r.Where(Primitives.Contains<string>().Of(b, w));
                 r.Then(Needs.Of(e).Is(Primitives.Singleton<CosmosServiceTest>().Of(CosmosServiceTest.Range)));
